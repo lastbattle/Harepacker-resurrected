@@ -98,7 +98,8 @@ namespace HaCreator.MapSimulator.Fields
             PacketTeleportResult = 12,
             PacketChairSitResult = 13,
             PacketQuestResult = 14,
-            InterfaceGateAdmission = 15
+            InterfaceGateAdmission = 15,
+            FollowCharacterReleaseInput = 16
         }
 
         public enum QueuedRetryWriterOwner
@@ -542,6 +543,30 @@ namespace HaCreator.MapSimulator.Fields
         {
             return clearsPendingFollowRequest
                 ? QueuedRetryLifecycleClearOwner.FollowCharacterFailure
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static bool ShouldClearQueuedRetryFromFollowCharacterReleaseInput(
+            bool hasPendingRequest,
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+                    isLocalUser,
+                    releaseKeyPressed,
+                    hasAttachedDriver));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            return isLocalUser && releaseKeyPressed && hasAttachedDriver
+                ? QueuedRetryLifecycleClearOwner.FollowCharacterReleaseInput
                 : QueuedRetryLifecycleClearOwner.None;
         }
 

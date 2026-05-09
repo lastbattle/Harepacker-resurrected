@@ -1353,21 +1353,24 @@ namespace HaCreator.MapSimulator.Entities
                 ? GetStateFrame(tickCount, out _)
                 : LastFrameDrawn ?? Frame0;
 
+            if (_transientFrameDelays != null
+                && _transientFrameDelays.Length > 0
+                && _transientSourceBounds != null
+                && _transientSourceBounds.Length > 0)
+            {
+                int sourceFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
+                    _transientFrameIndex,
+                    _transientSourceBounds.Length);
+                Rectangle sourceBounds = _transientSourceBounds[sourceFrameIndex];
+                return new Rectangle(
+                    _currentWorldX + sourceBounds.X,
+                    _currentWorldY + sourceBounds.Y,
+                    sourceBounds.Width,
+                    sourceBounds.Height);
+            }
+
             if (frame == null)
             {
-                if (_transientSourceBounds != null && _transientSourceBounds.Length > 0)
-                {
-                    int sourceFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
-                        _transientFrameIndex,
-                        _transientSourceBounds.Length);
-                    Rectangle sourceBounds = _transientSourceBounds[sourceFrameIndex];
-                    return new Rectangle(
-                        _currentWorldX + sourceBounds.X,
-                        _currentWorldY + sourceBounds.Y,
-                        sourceBounds.Width,
-                        sourceBounds.Height);
-                }
-
                 int fallbackX = _currentWorldX;
                 int fallbackY = _currentWorldY;
                 int fallbackWidth = Math.Max(1, ReactorInstance?.Width ?? 1);

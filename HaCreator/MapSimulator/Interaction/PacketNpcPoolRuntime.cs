@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketNpcLimitedInfoPacket(int ObjectId, bool Enabled);
 
+    internal readonly record struct PacketNpcLimitedDisableInfoPacket(IReadOnlyList<int> DisabledTemplateIds);
+
     internal readonly record struct PacketNpcSpecialActionPacket(int ObjectId, string ActionName);
 
     internal readonly record struct PacketNpcImitateEntry(
@@ -66,6 +68,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<PacketNpcChangeControllerPacket, int, PacketNpcPoolApplyResult> ChangeController { get; init; }
         internal Func<PacketNpcMovePacket, int, PacketNpcPoolApplyResult> Move { get; init; }
         internal Func<PacketNpcLimitedInfoPacket, int, PacketNpcPoolApplyResult> UpdateLimitedInfo { get; init; }
+        internal Func<PacketNpcLimitedDisableInfoPacket, int, PacketNpcPoolApplyResult> UpdateLimitedDisableInfo { get; init; }
         internal Func<PacketNpcSpecialActionPacket, int, PacketNpcPoolApplyResult> SetSpecialAction { get; init; }
         internal Func<IReadOnlyList<PacketNpcImitateEntry>, int, PacketNpcPoolApplyResult> ImitateData { get; init; }
         internal Func<byte[], int, PacketNpcPoolApplyResult> TemplatePacket { get; init; }
@@ -75,6 +78,9 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private int _boundMapId = int.MinValue;
         private string _status = "Packet-owned NPC pool idle.";
+        private readonly HashSet<int> _disabledTemplateIds = new();
+
+        internal IReadOnlyCollection<int> DisabledTemplateIds => _disabledTemplateIds;
 
         internal void BindMap(int mapId)
         {
@@ -86,6 +92,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void Clear()
         {
+            _disabledTemplateIds.Clear();
             _status = "Packet-owned NPC pool cleared.";
         }
 
@@ -94,7 +101,10 @@ namespace HaCreator.MapSimulator.Interaction
             string mapSuffix = _boundMapId > 0
                 ? $" map={_boundMapId.ToString(CultureInfo.InvariantCulture)}"
                 : string.Empty;
-            return $"{_status}{mapSuffix} live={Math.Max(0, liveNpcCount).ToString(CultureInfo.InvariantCulture)}";
+            string disabledSuffix = _disabledTemplateIds.Count > 0
+                ? $" disabledTemplates={_disabledTemplateIds.Count.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $"{_status}{mapSuffix} live={Math.Max(0, liveNpcCount).ToString(CultureInfo.InvariantCulture)}{disabledSuffix}";
         }
 
         internal bool TryApplyPacket(
@@ -228,9 +238,19 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
-        internal static byte[] BuildLimitedDisableInfoPayload(int objectId, bool enabled)
+        internal static byte[] BuildLimitedDisableInfoPayload(params int[] disabledTemplateIds)
         {
-            return BuildLimitedInfoPayload(objectId, enabled);
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            int count = Math.Clamp(disabledTemplateIds?.Length ?? 0, byte.MinValue, byte.MaxValue);
+            writer.Write((byte)count);
+            for (int i = 0; i < count; i++)
+            {
+                writer.Write(disabledTemplateIds[i]);
+            }
+
+            writer.Flush();
+            return stream.ToArray();
         }
 
         internal static byte[] BuildSpecialActionPayload(int objectId, string actionName)
@@ -335,9 +355,26 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? new PacketNpcPoolApplyResult(false, "CNpc::OnUpdateLimitedInfo routed without a simulator handler.");
         }
 
-        private static PacketNpcPoolApplyResult ApplyLimitedDisableInfo(byte[] payload, int currentTick, PacketNpcPoolCallbacks callbacks)
+        private PacketNpcPoolApplyResult ApplyLimitedDisableInfo(byte[] payload, int currentTick, PacketNpcPoolCallbacks callbacks)
         {
-            return ApplyLimitedInfo(payload, currentTick, callbacks);
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+            int count = reader.ReadByte();
+            var disabledTemplateIds = new List<int>(count);
+            for (int i = 0; i < count; i++)
+            {
+                disabledTemplateIds.Add(reader.ReadInt32());
+            }
+
+            EnsureNoTrailingBytes(stream, "NPC limited-disable-info");
+            _disabledTemplateIds.Clear();
+            foreach (int templateId in disabledTemplateIds)
+            {
+                _disabledTemplateIds.Add(templateId);
+            }
+
+            return callbacks.UpdateLimitedDisableInfo?.Invoke(new PacketNpcLimitedDisableInfoPacket(disabledTemplateIds), currentTick)
+                ?? new PacketNpcPoolApplyResult(true, $"CNpcPool::OnUpdateLimitedDisableInfo retained {disabledTemplateIds.Count.ToString(CultureInfo.InvariantCulture)} disabled NPC template id(s).");
         }
 
         private static PacketNpcPoolApplyResult ApplySpecialAction(byte[] payload, int currentTick, PacketNpcPoolCallbacks callbacks)

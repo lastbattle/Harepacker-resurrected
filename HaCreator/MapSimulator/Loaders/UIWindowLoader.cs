@@ -2182,6 +2182,8 @@ namespace HaCreator.MapSimulator.Loaders
                                               ?? uiWindowImage?["FadeYesNo"] as WzSubProperty;
             WzSubProperty uiWindowFadeYesNoProperty = uiWindowImage?["FadeYesNo"] as WzSubProperty
                                                      ?? fadeYesNoProperty;
+            WzImage basicImage = Program.FindImage("UI", "Basic.img");
+            WzSubProperty basicIconProperty = basicImage?["icon"] as WzSubProperty;
             Texture2D frameTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device)
                                      ?? LoadCanvasTexture(fadeYesNoProperty, "backgrnd", device)
                                      ?? CreatePlaceholderWindowTexture(device, 206, 70, "Confirm");
@@ -2190,6 +2192,34 @@ namespace HaCreator.MapSimulator.Loaders
                                                    ?? frameTexture;
             Texture2D messengerInviteIcon = LoadCanvasTexture(uiWindowFadeYesNoProperty, "icon0", device)
                                             ?? defaultIcon;
+            Dictionary<string, IDXObject> fadeYesNoFrames = new(StringComparer.Ordinal);
+            foreach (string frameName in new[] { "backgrnd", "backgrnd2", "backgrnd3", "backgrnd4", "backgrnd5", "backgrnd6", "backgrnd7", "backgrnd8", "backgrnd9" })
+            {
+                Texture2D texture = LoadCanvasTexture(uiWindowFadeYesNoProperty, frameName, device)
+                                    ?? LoadCanvasTexture(fadeYesNoProperty, frameName, device);
+                if (texture != null)
+                {
+                    fadeYesNoFrames[frameName] = new DXObject(0, 0, texture, 0);
+                }
+            }
+
+            Dictionary<string, Texture2D> fadeYesNoIcons = new(StringComparer.Ordinal);
+            foreach (string iconName in new[] { "icon0", "icon1", "icon2", "icon3", "icon4", "icon5", "icon6", "icon7", "icon8", "icon9" })
+            {
+                Texture2D texture = LoadCanvasTexture(uiWindowFadeYesNoProperty, iconName, device)
+                                    ?? LoadCanvasTexture(fadeYesNoProperty, iconName, device);
+                if (texture != null)
+                {
+                    fadeYesNoIcons[iconName] = texture;
+                }
+            }
+
+            Texture2D deliveryIcon = LoadCanvasTexture(basicIconProperty, "delivery", device);
+            if (deliveryIcon != null)
+            {
+                fadeYesNoIcons["delivery"] = deliveryIcon;
+            }
+
             UIObject confirmButton = LoadButton(fadeYesNoProperty, "BtOK", btClickSound, btOverSound, device);
             UIObject cancelButton = LoadButton(fadeYesNoProperty, "BtCancel", btClickSound, btOverSound, device);
 
@@ -2202,6 +2232,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new DXObject(0, 0, messengerInviteFrameTexture, 0),
                 messengerInviteIcon,
                 defaultIcon,
+                fadeYesNoFrames,
+                fadeYesNoIcons,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);
@@ -3297,6 +3329,7 @@ namespace HaCreator.MapSimulator.Loaders
                 gaugeTexture,
                 selectionFrames,
                 150,
+                new Dictionary<int, Texture2D>(),
                 changeButton,
                 cancelButton,
                 channelButtons,

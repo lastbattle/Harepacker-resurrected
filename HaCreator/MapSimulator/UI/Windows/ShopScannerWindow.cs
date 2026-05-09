@@ -450,13 +450,10 @@ namespace HaCreator.MapSimulator.UI
                 _selectedIndex = _results.Count > 0 ? 0 : -1;
                 SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
                 ResetSearchResultPaging();
-                if (packetResult.ServerRowCount == 0)
-                {
-                    _exclusiveScannerRequestPending = false;
-                }
+                _exclusiveScannerRequestPending = false;
 
                 _lastScannerResultSummary =
-                    $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed.";
+                    $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed and the exclusive scanner request latch is clear.";
                 _statusMessage = _lastScannerResultSummary;
                 message = _lastScannerResultSummary;
                 RefreshRows();

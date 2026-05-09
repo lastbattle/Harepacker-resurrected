@@ -589,7 +589,8 @@ namespace HaCreator.MapSimulator.Managers
             string accountName,
             int accountId,
             int buyCharacterCount,
-            LoginExtraCharInfoResultProfile extraCharInfoResult)
+            LoginExtraCharInfoResultProfile extraCharInfoResult,
+            int fallbackWorldId = 0)
         {
             if (accountId <= 0)
             {
@@ -616,7 +617,19 @@ namespace HaCreator.MapSimulator.Managers
 
             if (statesByWorld.Count == 0)
             {
-                return false;
+                int normalizedFallbackWorldId = Math.Max(0, fallbackWorldId);
+                statesByWorld[normalizedFallbackWorldId] = new PersistedAccountState
+                {
+                    AccountName = normalizedAccountName,
+                    AccountId = accountId,
+                    WorldId = normalizedFallbackWorldId,
+                    SlotCount = 3,
+                    BuyCharacterCount = 0,
+                    NextCharacterId = 1,
+                    CashShopNxCredit = PersistedAccountState.DefaultCashShopNxCredit,
+                    ExtraCharInfoResult = CloneExtraCharInfoResultProfile(normalizedExtraCharInfoResult),
+                    Entries = new List<LoginCharacterAccountEntryState>()
+                };
             }
 
             int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(

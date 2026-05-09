@@ -452,6 +452,7 @@ namespace HaCreator.MapSimulator
 
                 bool cakePieMouseConsumed = false;
                 bool memoryGameMouseConsumed = false;
+                bool rockPaperScissorsMouseConsumed = false;
                 bool monsterCarnivalSubDialogMouseConsumed = false;
                 bool tournamentMatchTableMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
@@ -532,6 +533,31 @@ namespace HaCreator.MapSimulator
                     !tournamentMatchTableMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
                     !cakePieMouseConsumed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.Minigames.RockPaperScissors.HandleMouse(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight,
+                        newMouseState.LeftButton == ButtonState.Released && _oldMouseState.LeftButton == ButtonState.Pressed,
+                        out string rockPaperScissorsMouseMessage))
+                {
+                    rockPaperScissorsMouseConsumed = true;
+                    DrainRockPaperScissorsPendingClientPackets();
+                    if (!string.IsNullOrWhiteSpace(rockPaperScissorsMouseMessage))
+                    {
+                        _chat.AddMessage(rockPaperScissorsMouseMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
+
+
+                if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
+                    !npcOverlayResult.Consumed &&
+                    !tournamentMatchTableMouseConsumed &&
+                    !monsterCarnivalSubDialogMouseConsumed &&
+                    !cakePieMouseConsumed &&
+                    !rockPaperScissorsMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
@@ -555,6 +581,7 @@ namespace HaCreator.MapSimulator
                     !npcOverlayResult.Consumed &&
                     !cakePieMouseConsumed &&
                     !memoryGameMouseConsumed &&
+                    !rockPaperScissorsMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
                     !tournamentMatchTableMouseConsumed)
                 {

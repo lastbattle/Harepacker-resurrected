@@ -1483,8 +1483,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             recordCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordCount;
             countByteCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordCountByteCount;
-            recordByteCountsByFlag[CharacterDataSkillRecordFlag] =
-                checked(snapshot.SkillRecordRecordByteCount + snapshot.SkillRecordMasterLevelRecordByteCount);
+            recordByteCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordRecordByteCount;
 
             recordCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordCount;
             countByteCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordCountByteCount;
@@ -1574,6 +1573,46 @@ namespace HaCreator.MapSimulator.Interaction
             List<PacketCharacterDataSubsectionOwnership> entries = new();
             AddCharacterDataSubsectionOwnershipEntry(
                 entries,
+                CharacterDataStatFlag,
+                "GW_CharacterStat::Decode",
+                0,
+                0,
+                0,
+                snapshot.CharacterDataStatByteCount,
+                (snapshot.DecodedSectionFlags & CharacterDataStatFlag) != 0 ? 1 : 0,
+                (snapshot.DecodedSectionFlags & CharacterDataStatFlag) != 0);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataStatFlag,
+                "CharacterData::Decode.StatTrailer",
+                1,
+                snapshot.CharacterDataStatByteCount,
+                0,
+                snapshot.CharacterDataStatTrailerByteCount,
+                snapshot.CharacterDataStatTrailerByteCount > 0 ? 1 : 0,
+                snapshot.CharacterDataStatTrailerByteCount > 0);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                0x2UL,
+                "GW_CharacterStat::DecodeMoney",
+                0,
+                0,
+                0,
+                snapshot.Meso.HasValue ? sizeof(int) : 0,
+                snapshot.Meso.HasValue ? 1 : 0,
+                snapshot.Meso.HasValue);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                0x80UL,
+                "CharacterData::Decode.InventorySlotLimits",
+                0,
+                0,
+                0,
+                snapshot.InventorySlotLimits != null ? CharacterDataInventoryOrder.Length * sizeof(byte) : 0,
+                snapshot.InventorySlotLimits != null ? CharacterDataInventoryOrder.Length : 0,
+                snapshot.InventorySlotLimits != null);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
                 CharacterDataTwoIntValueRecordFlag,
                 "CharacterData::Decode 0x100000 two-int header",
                 0,
@@ -1583,6 +1622,55 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.TwoIntValueRecord.HasValue ? 1 : 0,
                 snapshot.TwoIntValueRecord.HasValue);
 
+            AddCharacterDataInventorySubsectionOwnershipEntries(entries, snapshot);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataSkillRecordFlag,
+                "CharacterData::Decode.SkillRecords",
+                snapshot.SkillRecordCountByteCount,
+                snapshot.SkillRecordRecordByteCount,
+                snapshot.SkillRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataSkillRecordFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataSkillExpirationFlag,
+                "CharacterData::Decode.SkillExpirationRecords",
+                snapshot.SkillExpirationRecordCountByteCount,
+                snapshot.SkillExpirationRecordByteCount,
+                snapshot.SkillExpirationRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataSkillExpirationFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataSkillCooldownFlag,
+                "CharacterData::Decode.SkillCooldownRecords",
+                snapshot.SkillCooldownRecordCountByteCount,
+                snapshot.SkillCooldownRecordByteCount,
+                snapshot.SkillCooldownRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataSkillCooldownFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataInt16ValueRecordFlag,
+                "CharacterData::Decode.Int16ValueRecords",
+                snapshot.Int16ValueRecordCountByteCount > 0 ? snapshot.Int16ValueRecordCountByteCount : snapshot.OpaqueInt16ValueRecordCountByteCount,
+                ResolveCharacterDataInt16ValueSubsectionRecordByteCount(snapshot),
+                snapshot.Int16ValueRecordNativeCount > 0 ? snapshot.Int16ValueRecordNativeCount : snapshot.OpaqueInt16ValueRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataInt16ValueRecordFlag) != 0 || (snapshot.OpaquePreMapTransferFlags & CharacterDataInt16ValueRecordFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataQuestRecordFlag,
+                "CharacterData::Decode.QuestStringRecords",
+                snapshot.QuestRecordCountByteCount,
+                snapshot.QuestRecordRecordByteCount,
+                snapshot.QuestRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataQuestRecordFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataShortFileTimeRecordFlag,
+                "CharacterData::Decode.ShortFileTimeRecords",
+                snapshot.ShortFileTimeRecordCountByteCount,
+                snapshot.ShortFileTimeRecordByteCount,
+                snapshot.ShortFileTimeRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataShortFileTimeRecordFlag) != 0);
             AddCharacterDataSubsectionOwnershipEntry(
                 entries,
                 CharacterDataMiniGameRecordFlag,
@@ -1649,6 +1737,22 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.ContinentMapTransferRecordEntries?.Count ?? 0,
                 (snapshot.DecodedSectionFlags & CharacterDataMapTransferFlag) != 0);
 
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataNewYearCardRecordFlag,
+                "GW_NewYearCardRecord::Decode",
+                snapshot.NewYearCardRecordCountByteCount,
+                snapshot.NewYearCardRecordByteCount,
+                snapshot.NewYearCardRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataNewYearCardRecordFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataQuestExRecordFlag,
+                "CharacterData::Decode.QuestExRecords",
+                snapshot.QuestExRecordCountByteCount,
+                snapshot.QuestExRecordByteCount,
+                snapshot.QuestExRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataQuestExRecordFlag) != 0);
             AddCharacterDataSubsectionOwnershipEntry(
                 entries,
                 CharacterDataWildHunterInfoFlag,
@@ -1670,7 +1774,95 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.WildHunterInfoCapturedMobRecords?.Count ?? 0,
                 snapshot.HasWildHunterInfo);
 
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataQuestCompleteRecordFlag,
+                "CharacterData::Decode.QuestCompleteRecords",
+                snapshot.QuestCompleteRecordCountByteCount,
+                snapshot.QuestCompleteRecordByteCount,
+                snapshot.QuestCompleteRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataQuestCompleteRecordFlag) != 0);
+            AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+                entries,
+                CharacterDataVisitorQuestRecordFlag,
+                "CharacterData::Decode.VisitorQuestRecords",
+                snapshot.VisitorQuestRecordCountByteCount,
+                snapshot.VisitorQuestRecordByteCount,
+                snapshot.VisitorQuestRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataVisitorQuestRecordFlag) != 0);
+
             return entries;
+        }
+
+        private static void AddCharacterDataInventorySubsectionOwnershipEntries(
+            ICollection<PacketCharacterDataSubsectionOwnership> entries,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                int itemRecordByteCount = ResolveCharacterDataSectionMapValue(snapshot.InventoryItemRecordByteCountsByFlag, inventoryFlag);
+                int itemRecordCount = ResolveCharacterDataSectionMapValue(snapshot.InventoryItemRecordCountsByFlag, inventoryFlag);
+                int terminatorByteCount = ResolveCharacterDataSectionMapValue(snapshot.InventoryTerminatorByteCountsByFlag, inventoryFlag);
+                bool isPresent = (snapshot.DecodedSectionFlags & inventoryFlag) != 0;
+                AddCharacterDataSubsectionOwnershipEntry(
+                    entries,
+                    inventoryFlag,
+                    $"CharacterData::Decode.{inventoryType}.ItemSlots",
+                    0,
+                    0,
+                    0,
+                    itemRecordByteCount,
+                    itemRecordCount,
+                    isPresent);
+                AddCharacterDataSubsectionOwnershipEntry(
+                    entries,
+                    inventoryFlag,
+                    $"CharacterData::Decode.{inventoryType}.Terminator",
+                    1,
+                    itemRecordByteCount,
+                    0,
+                    terminatorByteCount,
+                    terminatorByteCount > 0 ? 1 : 0,
+                    isPresent && terminatorByteCount > 0);
+            }
+        }
+
+        private static int ResolveCharacterDataInt16ValueSubsectionRecordByteCount(PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot.Int16ValueRecordRecordByteCount > 0)
+            {
+                return snapshot.Int16ValueRecordRecordByteCount;
+            }
+
+            if (snapshot.OpaqueInt16ValueRecordRecordByteCount > 0)
+            {
+                return snapshot.OpaqueInt16ValueRecordRecordByteCount;
+            }
+
+            return snapshot.OpaquePreMapTransferSectionByteCount;
+        }
+
+        private static void AddCharacterDataCountPrefixedSubsectionOwnershipEntry(
+            ICollection<PacketCharacterDataSubsectionOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            int countPrefixByteCount,
+            int recordByteCount,
+            int recordCount,
+            bool isPresent)
+        {
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                sectionFlag,
+                owner,
+                0,
+                0,
+                countPrefixByteCount,
+                recordByteCount,
+                recordCount,
+                isPresent);
         }
 
         private static void AddCharacterDataSubsectionOwnershipEntry(

@@ -10787,7 +10787,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "npcpool",
                 "Inspect or drive packet-owned live NPC actor lifecycle and presentation",
-                "/npcpool [status|enter <objectId> <templateId> <x> <y> [rx0 rx1 enabled]|leave <objectId>|move <objectId> <action> <chatIndex>|limited <objectId> <on|off>|special <objectId> <actionName>|packet <imitate|limiteddisable|enter|leave|controller|move|limited|special|template> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
+                "/npcpool [status|enter <objectId> <templateId> <x> <y> [rx0 rx1 enabled]|leave <objectId>|move <objectId> <action> <chatIndex>|limited <objectId> <on|off>|limiteddisable <templateId> [templateId...]|special <objectId> <actionName>|packet <imitate|limiteddisable|enter|leave|controller|move|limited|special|template> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
                 HandlePacketOwnedNpcPoolCommand);
             _chat.CommandHandler.RegisterCommand(
                 "adminshop",

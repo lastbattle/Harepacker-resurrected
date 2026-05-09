@@ -819,6 +819,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _gaugeTexture;
         private readonly IReadOnlyList<Texture2D> _selectionFrames;
         private readonly int _selectionFrameDelayMs;
+        private readonly IReadOnlyDictionary<int, Texture2D> _populationLevelBadges;
         private readonly UIObject _changeButton;
         private readonly UIObject _cancelButton;
         private readonly List<ChannelButtonEntry> _channelButtons = new List<ChannelButtonEntry>();
@@ -830,6 +831,7 @@ namespace HaCreator.MapSimulator.UI
         private int _currentChannelIndex;
         private int _selectedChannelIndex;
         private int _channelCount;
+        private int _populationLevel;
         private bool _hasAdultAccess;
         private bool _requestAllowed = true;
         private string _statusMessage;
@@ -845,6 +847,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D gaugeTexture,
             IReadOnlyList<Texture2D> selectionFrames,
             int selectionFrameDelayMs,
+            IReadOnlyDictionary<int, Texture2D> populationLevelBadges,
             UIObject changeButton,
             UIObject cancelButton,
             IEnumerable<(int channelIndex, UIObject button, Texture2D icon)> channelButtons,
@@ -859,6 +862,7 @@ namespace HaCreator.MapSimulator.UI
             _gaugeTexture = gaugeTexture;
             _selectionFrames = selectionFrames ?? Array.Empty<Texture2D>();
             _selectionFrameDelayMs = Math.Max(1, selectionFrameDelayMs);
+            _populationLevelBadges = populationLevelBadges ?? new Dictionary<int, Texture2D>();
             _changeButton = changeButton;
             _cancelButton = cancelButton;
             _worldBadges = worldBadges ?? new Dictionary<int, Texture2D>();
@@ -923,7 +927,8 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<ChannelSelectionState> channelStates,
             bool hasAdultAccess,
             bool requestAllowed = true,
-            string statusMessage = null)
+            string statusMessage = null,
+            int populationLevel = 0)
         {
             _channelStates.Clear();
             if (channelStates != null)
@@ -941,6 +946,7 @@ namespace HaCreator.MapSimulator.UI
             _currentWorldId = currentWorldId;
             _currentChannelIndex = Math.Max(0, currentChannelIndex);
             _channelCount = Math.Max(0, Math.Min(_channelStates.Count, _channelButtons.Count));
+            _populationLevel = Math.Clamp(populationLevel, 0, 255);
             _hasAdultAccess = hasAdultAccess;
             _requestAllowed = requestAllowed;
             _statusMessage = statusMessage;
@@ -1019,6 +1025,13 @@ namespace HaCreator.MapSimulator.UI
             if (_worldBadges.TryGetValue(_selectedWorldId, out Texture2D badgeTexture))
             {
                 sprite.Draw(badgeTexture, new Vector2(Position.X + 34, Position.Y + 10), Color.White);
+            }
+
+            if (_populationLevel > 0 &&
+                _populationLevelBadges.TryGetValue(_populationLevel, out Texture2D populationTexture) &&
+                populationTexture != null)
+            {
+                sprite.Draw(populationTexture, new Vector2(Position.X + 260, Position.Y + 10), Color.White);
             }
 
             if (_highlightTexture != null)

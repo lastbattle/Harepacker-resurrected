@@ -1464,8 +1464,21 @@ namespace HaCreator.MapSimulator.Entities
 
         internal void TryStartActionSpeech(string action, int currentTick)
         {
+            TryStartActionSpeech(action, currentTick, null);
+        }
+
+        internal void TryStartActionSpeech(
+            string action,
+            int currentTick,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext)
+        {
             MobAnimationSet.ActionSpeakMetadata metadata = _animationSet?.GetActionSpeakMetadata(action);
             if (metadata == null)
+            {
+                return;
+            }
+
+            if (!AreActionSpeakConditionsSatisfied(metadata.ConditionGroups, conditionContext))
             {
                 return;
             }
@@ -1474,6 +1487,7 @@ namespace HaCreator.MapSimulator.Entities
                 metadata,
                 AI?.CurrentHp ?? 0,
                 AI?.MaxHp ?? 0,
+                conditionContext,
                 () => _actionSpeakRandom.Next(100));
             if (selectedVariant == null)
             {
@@ -1572,6 +1586,27 @@ namespace HaCreator.MapSimulator.Entities
                 metadata,
                 currentHp,
                 maxHp,
+                null,
+                () =>
+                {
+                    int[] rolls = probabilityRolls ?? Array.Empty<int>();
+                    return rollIndex < rolls.Length ? rolls[rollIndex++] : 0;
+                });
+        }
+
+        internal static MobAnimationSet.ActionSpeakVariant SelectTriggeredActionSpeakVariantForTests(
+            MobAnimationSet.ActionSpeakMetadata metadata,
+            int currentHp,
+            int maxHp,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext,
+            params int[] probabilityRolls)
+        {
+            int rollIndex = 0;
+            return SelectTriggeredActionSpeakVariant(
+                metadata,
+                currentHp,
+                maxHp,
+                conditionContext,
                 () =>
                 {
                     int[] rolls = probabilityRolls ?? Array.Empty<int>();
@@ -1583,9 +1618,15 @@ namespace HaCreator.MapSimulator.Entities
             MobAnimationSet.ActionSpeakMetadata metadata,
             int currentHp,
             int maxHp,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext,
             Func<int> nextProbabilityRoll)
         {
             if (metadata == null)
+            {
+                return null;
+            }
+
+            if (!AreActionSpeakConditionsSatisfied(metadata.ConditionGroups, conditionContext))
             {
                 return null;
             }
@@ -1594,6 +1635,11 @@ namespace HaCreator.MapSimulator.Entities
             {
                 foreach (MobAnimationSet.ActionSpeakVariant variant in EnumerateActionSpeakVariantsByClientHpPhase(metadata.Variants, maxHp))
                 {
+                    if (!AreActionSpeakConditionsSatisfied(variant?.ConditionGroups, conditionContext))
+                    {
+                        continue;
+                    }
+
                     if (!IsActionSpeakHpEligible(variant, currentHp, maxHp))
                     {
                         continue;
@@ -1624,8 +1670,65 @@ namespace HaCreator.MapSimulator.Entities
                     ChatBalloon = metadata.ChatBalloon,
                     FloatNotice = metadata.FloatNotice,
                     HpThreshold = metadata.HpThreshold,
-                    Messages = metadata.Messages
+                    Messages = metadata.Messages,
+                    ConditionGroups = metadata.ConditionGroups
                 };
+        }
+
+        internal static bool AreActionSpeakConditionsSatisfiedForTests(
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext)
+        {
+            return AreActionSpeakConditionsSatisfied(conditionGroups, conditionContext);
+        }
+
+        private static bool AreActionSpeakConditionsSatisfied(
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext)
+        {
+            if (conditionGroups == null || conditionGroups.Count == 0)
+            {
+                return true;
+            }
+
+            foreach (MobAnimationSet.ActionSpeakConditionGroup group in conditionGroups)
+            {
+                if (IsActionSpeakConditionGroupSatisfied(group, conditionContext))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsActionSpeakConditionGroupSatisfied(
+            MobAnimationSet.ActionSpeakConditionGroup group,
+            MobAnimationSet.ActionSpeakConditionContext conditionContext)
+        {
+            if (group?.HasConditions != true || conditionContext == null)
+            {
+                return false;
+            }
+
+            foreach (MobAnimationSet.ActionSpeakQuestCondition questCondition in group.QuestConditions ?? Array.Empty<MobAnimationSet.ActionSpeakQuestCondition>())
+            {
+                int? actualState = conditionContext.QuestStateProvider?.Invoke(questCondition.QuestId);
+                if (!actualState.HasValue || actualState.Value != questCondition.State)
+                {
+                    return false;
+                }
+            }
+
+            foreach (int petItemId in group.RequiredPetItemIds ?? Array.Empty<int>())
+            {
+                if (conditionContext.HasPetItem?.Invoke(petItemId) != true)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool IsActionSpeakHpEligible(

@@ -166,8 +166,7 @@ namespace HaCreator.MapSimulator
             }
 
             int availableQuantity = System.Math.Max(1, slotData.Quantity);
-            bool treatSingly = inventoryType == InventoryType.EQUIP ||
-                InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
+            bool treatSingly = TrunkDialogClientParityText.TreatsAsSingleTransfer(inventoryType, slotData);
             IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps =
                 TrunkDialogClientParityText.BuildSendPutConfirmationChoreography(
                     slotData,

@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly PacketStageTransitionRuntime _packetStageTransitionRuntime = new();
+        private readonly PacketOwnedClientOptionManager _packetOwnedClientOptions = new();
         private readonly StageTransitionPacketInboxManager _stageTransitionPacketInbox = new();
         private readonly Dictionary<string, List<BaseDXDrawableItem>> _packetStageTransitionNamedObjects = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectStateMetadata> _packetStageTransitionNamedObjectMetadata = new();
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectMovingState> _packetStageTransitionNamedObjectMovingStates = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectSideLaneLifecycleSnapshot> _packetStageTransitionNamedObjectSideLaneLifecycle = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectLayerLifecycleSnapshot> _packetStageTransitionNamedObjectLayerLifecycle = new();
+        private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectAlphaPlaybackState> _packetStageTransitionNamedObjectAlphaStates = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
         private byte _packetStageTransitionBackEffectStartAlpha = byte.MaxValue;
@@ -51,6 +53,7 @@ namespace HaCreator.MapSimulator
             if (packetType == 141
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
+                UpdatePacketOwnedClientOptionsFromSetField(setFieldPacket);
                 UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
                 UpdatePacketOwnedMovePathRandomCounterOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
@@ -182,6 +185,15 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private void UpdatePacketOwnedClientOptionsFromSetField(PacketSetFieldPacket packet)
+        {
+            _packetOwnedClientOptions.DecodeOpt(packet.ClientOptions);
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is OptionMenuWindow optionMenuWindow)
+            {
+                optionMenuWindow.ApplyCommittedClientOptionValues(_packetOwnedClientOptions.Snapshot);
+            }
+        }
+
         private bool QueuePacketOwnedFieldTransfer(PacketStageFieldTransferRequest request)
         {
             if (request.MapId <= 0)
@@ -243,8 +255,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedFollowRequestOptionFromSetField(PacketSetFieldPacket packet)
         {
-            if (packet.ClientOptions == null
-                || !packet.ClientOptions.TryGetValue(FollowRequestClientOptionId, out int rawValue)
+            if (!_packetOwnedClientOptions.TryGetOpt(FollowRequestClientOptionId, out int rawValue)
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is not OptionMenuWindow optionMenuWindow)
             {
                 return;
@@ -255,8 +266,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedMovePathRandomCounterOptionFromSetField(PacketSetFieldPacket packet)
         {
-            if (packet.ClientOptions == null
-                || !packet.ClientOptions.TryGetValue(MovePathRandomCounterClientOptionId, out int rawValue))
+            if (!_packetOwnedClientOptions.TryGetOpt(MovePathRandomCounterClientOptionId, out int rawValue))
             {
                 return;
             }
@@ -836,6 +846,17 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjectMovingStates.Clear();
             _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
             _packetStageTransitionNamedObjectLayerLifecycle.Clear();
+            foreach (BaseDXDrawableItem mapObject in _packetStageTransitionNamedObjectAlphaStates.Keys.ToArray())
+            {
+                mapObject?.SetLayerAlpha(byte.MaxValue);
+            }
+
+            foreach (BaseDXDrawableItem mapObject in _packetStageTransitionNamedObjectMetadata.Keys.ToArray())
+            {
+                mapObject?.SetLayerRotationDegrees(0f);
+            }
+
+            _packetStageTransitionNamedObjectAlphaStates.Clear();
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
             ClearPacketOwnedScriptSelectablePets();
@@ -848,6 +869,7 @@ namespace HaCreator.MapSimulator
         private void UpdatePacketOwnedStageTransitionState(int currentTick)
         {
             UpdatePacketOwnedNamedObjectMovingStates(currentTick);
+            UpdatePacketOwnedNamedObjectAlphaStates(currentTick);
 
             if (_packetStageTransitionBackEffectStartTick == int.MinValue)
             {
@@ -872,6 +894,24 @@ namespace HaCreator.MapSimulator
             if (progress >= 1f)
             {
                 _packetStageTransitionBackEffectStartTick = int.MinValue;
+            }
+        }
+
+        private void UpdatePacketOwnedNamedObjectAlphaStates(int currentTick)
+        {
+            if (_packetStageTransitionNamedObjectAlphaStates.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<BaseDXDrawableItem, PacketOwnedNamedObjectAlphaPlaybackState> entry in _packetStageTransitionNamedObjectAlphaStates.ToArray())
+            {
+                if (entry.Key == null)
+                {
+                    continue;
+                }
+
+                entry.Value.Apply(entry.Key, currentTick);
             }
         }
 
@@ -964,19 +1004,29 @@ namespace HaCreator.MapSimulator
             }
 
             PacketOwnedNamedObjectVectorAnimationProfile vectorProfile = metadata.ResolveVectorAnimationProfile(stateIndex);
-            if (vectorProfile == null ||
-                !vectorProfile.TryResolveMoveVector(out targetOffsetX, out targetOffsetY, out int durationMs))
+            if (vectorProfile == null)
             {
                 return false;
             }
 
+            bool hasMoveVector = vectorProfile.TryResolveMoveVector(out targetOffsetX, out targetOffsetY, out int moveDurationMs);
+            bool hasRotation = vectorProfile.TryResolveRotation(out float targetRotationDegrees, out int rotateDurationMs);
+            if (!hasMoveVector && !hasRotation)
+            {
+                return false;
+            }
+
+            int durationMs = hasMoveVector && hasRotation
+                ? Math.Max(1, Math.Min(moveDurationMs, rotateDurationMs))
+                : hasMoveVector ? moveDurationMs : rotateDurationMs;
             movingState = new PacketOwnedNamedObjectMovingState(
                 currentTick,
                 durationMs,
                 0,
                 0,
                 targetOffsetX,
-                targetOffsetY);
+                targetOffsetY,
+                targetRotationDegrees);
             return true;
         }
 
@@ -986,7 +1036,8 @@ namespace HaCreator.MapSimulator
             int StartX,
             int StartY,
             int TargetX,
-            int TargetY)
+            int TargetY,
+            float TargetRotationDegrees = 0f)
         {
             public const int DefaultDurationMs = 4000;
 
@@ -1010,6 +1061,25 @@ namespace HaCreator.MapSimulator
                 int x = (int)Math.Round(StartX + ((TargetX - StartX) * pingPong));
                 int y = (int)Math.Round(StartY + ((TargetY - StartY) * pingPong));
                 item.Position = new Microsoft.Xna.Framework.Point(x, y);
+                item.SetLayerRotationDegrees(TargetRotationDegrees * pingPong);
+            }
+        }
+
+        private sealed record PacketOwnedNamedObjectAlphaPlaybackState(
+            PacketOwnedNamedObjectAlphaProfile AlphaProfile,
+            int StartTick)
+        {
+            public void Apply(BaseDXDrawableItem item, int currentTick)
+            {
+                if (item == null || AlphaProfile == null)
+                {
+                    return;
+                }
+
+                int frameIndex = item.GetCurrentAnimationFrameIndex(currentTick);
+                int frameElapsedMs = item.GetCurrentAnimationFrameElapsed(currentTick);
+                int frameDelayMs = item.GetCurrentAnimationFrameDelay(currentTick);
+                item.SetLayerAlpha(ResolvePacketOwnedNamedObjectLayerAlpha(AlphaProfile, frameIndex, frameElapsedMs, frameDelayMs));
             }
         }
 

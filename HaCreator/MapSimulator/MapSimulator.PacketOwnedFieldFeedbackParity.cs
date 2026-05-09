@@ -234,6 +234,7 @@ namespace HaCreator.MapSimulator
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
                 SetObjectTagStateIndex = (tag, stateIndex, transition, currentTime) => SetDynamicObjectTagState(tag, stateIndex != 0, transition, currentTime, stateIndex),
+                EnumerateFieldObstacleTags = CollectPacketOwnedFieldObstacleTags,
                 ShowSummonEffectVisual = TryShowPacketOwnedSummonEffect,
                 ShowScreenEffectVisual = TryShowPacketOwnedScreenEffect,
                 ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,
@@ -294,6 +295,11 @@ namespace HaCreator.MapSimulator
             bool armed = _packetOwnedWhisperChaseTransferArmed;
             _packetOwnedWhisperChaseTransferArmed = false;
             return armed;
+        }
+
+        private IReadOnlyCollection<string> CollectPacketOwnedFieldObstacleTags()
+        {
+            return CollectAvailableDynamicObjectTags();
         }
 
         private void EmitPacketOwnedSuppressedIncomingWhisperNotification(string sender, int currentTick)

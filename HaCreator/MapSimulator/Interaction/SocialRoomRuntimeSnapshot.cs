@@ -40,10 +40,13 @@ namespace HaCreator.MapSimulator.Interaction
         public bool MiniRoomOmokTieRequested { get; set; }
         public bool MiniRoomOmokDrawRequestSent { get; set; }
         public bool MiniRoomOmokDrawRequestSentTurn { get; set; }
+        public bool MiniRoomOmokOutgoingTiePromptPending { get; set; }
         public bool MiniRoomOmokRetreatRequested { get; set; }
         public bool MiniRoomOmokRetreatRequestSent { get; set; }
         public bool MiniRoomOmokRetreatRequestSentTurn { get; set; }
         public bool MiniRoomOmokRetreatRequestSentMatch { get; set; }
+        public bool MiniRoomOmokOutgoingRetreatPromptPending { get; set; }
+        public bool MiniRoomOmokTimeOverRequestSent { get; set; }
         public int MiniRoomOmokStoneAnimationTimeLeftMs { get; set; }
         public int MiniRoomOmokDialogEffectTimeLeftMs { get; set; }
         public string MiniRoomOmokDialogStatus { get; set; }

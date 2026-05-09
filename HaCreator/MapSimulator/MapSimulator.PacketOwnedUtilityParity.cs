@@ -5831,6 +5831,12 @@ namespace HaCreator.MapSimulator
                 case 423:
                     return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out message, source);
 
+                case LocalUtilityPacketInboxManager.ShopScannerResultClientPacketType:
+                    return TryApplyShopScannerResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.ShopScannerLinkResultClientPacketType:
+                    return TryApplyShopScannerLinkResultPayload(payload, out message);
+
                 default:
                     message = $"Unsupported local utility packet type {packetType}.";
                     return false;
@@ -19990,6 +19996,23 @@ namespace HaCreator.MapSimulator
             }
 
             string characterRejectReason = message;
+            if (TryApplyPendingVegaInventoryOperationAuthorityPayload(payload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(questStartRequestResetMessage))
+                {
+                    message = $"{message} {questStartRequestResetMessage}";
+                }
+
+                return true;
+            }
+
+            string vegaRejectReason = message;
             if (TryQueueMechanicAuthorityResultFromInventoryOperationPayload(payload, out message))
             {
                 StampPacketOwnedUtilityRequestState();
@@ -20067,6 +20090,13 @@ namespace HaCreator.MapSimulator
             else if (!string.IsNullOrWhiteSpace(characterRejectReason))
             {
                 message = characterRejectReason;
+            }
+
+            if (!string.IsNullOrWhiteSpace(vegaRejectReason))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? vegaRejectReason
+                    : $"{message} {vegaRejectReason}";
             }
 
             if (!string.IsNullOrWhiteSpace(mechanicRejectReason))
@@ -28265,6 +28295,16 @@ namespace HaCreator.MapSimulator
                 case "wishlisttransfer":
                 case "weddingwishlisttransfer":
                     applied = TryApplyWeddingWishListTransferResultPayload(payload, out message);
+                    break;
+                case "shopscanner":
+                case "shopscannerresult":
+                case "shopscanresult":
+                    applied = TryApplyShopScannerResultPayload(payload, out message);
+                    break;
+                case "shopscannerlink":
+                case "shoplinkresult":
+                case "shopscanlinkresult":
+                    applied = TryApplyShopScannerLinkResultPayload(payload, out message);
                     break;
                 default:
                     return ChatCommandHandler.CommandResult.Error(

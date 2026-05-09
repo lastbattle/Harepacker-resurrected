@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -87,6 +88,7 @@ namespace HaCreator.MapSimulator.Animation
             public int HpThreshold { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
             public IReadOnlyList<ActionSpeakVariant> Variants { get; init; }
+            public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
         }
 
         public sealed class ActionSpeakVariant
@@ -96,6 +98,29 @@ namespace HaCreator.MapSimulator.Animation
             public int FloatNotice { get; init; }
             public int HpThreshold { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
+            public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
+        }
+
+        public sealed class ActionSpeakConditionGroup
+        {
+            public IReadOnlyList<ActionSpeakQuestCondition> QuestConditions { get; init; }
+            public IReadOnlyList<int> RequiredPetItemIds { get; init; }
+
+            public bool HasConditions =>
+                (QuestConditions != null && QuestConditions.Count > 0) ||
+                (RequiredPetItemIds != null && RequiredPetItemIds.Count > 0);
+        }
+
+        public sealed class ActionSpeakQuestCondition
+        {
+            public int QuestId { get; init; }
+            public int State { get; init; }
+        }
+
+        public sealed class ActionSpeakConditionContext
+        {
+            public Func<int, int?> QuestStateProvider { get; init; }
+            public Func<int, bool> HasPetItem { get; init; }
         }
 
         public sealed class AttackInfoMetadata

@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             NewYearCardSenderSnapshot snapshot = _snapshotProvider?.Invoke()
-                ?? new NewYearCardSenderSnapshot(NewYearCardRuntime.DefaultInventoryPosition, NewYearCardRuntime.DefaultItemId, string.Empty, string.Empty, Array.Empty<string>(), string.Empty);
+                ?? new NewYearCardSenderSnapshot(NewYearCardRuntime.DefaultInventoryPosition, NewYearCardRuntime.DefaultItemId, string.Empty, string.Empty, Array.Empty<string>(), 0, 0, string.Empty);
 
             Color label = new(74, 65, 55);
             Color text = Color.Black;

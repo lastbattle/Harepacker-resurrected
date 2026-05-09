@@ -7280,6 +7280,27 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        internal static bool TryDecodeCashBuyNormalEntriesForTests(byte[] payload, out IReadOnlyList<PacketCatalogEntry> entries, out string decodeShape)
+        {
+            entries = Array.Empty<PacketCatalogEntry>();
+            decodeShape = string.Empty;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            int itemCount = reader.ReadInt32();
+            if (!TryReadCashBuyNormalEntries(reader, itemCount, out List<PacketCatalogEntry> decodedEntries, out decodeShape))
+            {
+                return false;
+            }
+
+            entries = decodedEntries;
+            return true;
+        }
+
         private static bool TryReadCashBuyNormalInventoryMutationEntries(BinaryReader reader, int itemCount, List<PacketCatalogEntry> entries)
         {
             if (reader?.BaseStream == null || entries == null)
@@ -7296,19 +7317,16 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < itemCount; i++)
             {
-                int slotIndex = Math.Max(0, (int)reader.ReadUInt16());
-                int itemId = Math.Max(0, reader.ReadInt32());
-                _ = reader.ReadUInt16();
-                PacketCatalogEntry entry = new()
+                if (!TryReadCashInventoryMutationPacketSnapshot(reader, out CashInventoryMutationPacketSnapshot snapshot))
                 {
-                    Title = $"Inventory tab {Math.Max(0, (itemId / 1_000_000) - 1).ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}",
-                    Detail = $"CCSWnd_Inventory focused tab {Math.Max(0, (itemId / 1_000_000) - 1).ToString(CultureInfo.InvariantCulture)} for item {itemId.ToString(CultureInfo.InvariantCulture)} at slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.",
-                    Seller = "CCSWnd_Inventory",
-                    PriceLabel = $"Item {itemId.ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = "Bought",
-                    ListingId = slotIndex,
-                    ItemId = itemId
-                };
+                    return false;
+                }
+
+                PacketCatalogEntry entry = BuildCashInventoryMutationPacketEntry(snapshot, "Bought");
+                entry.PacketSource = "CCashShop::OnCashItemResBuyNormalDone";
+                entry.PacketFieldSummary =
+                    $"nNumber={snapshot.Quantity.ToString(CultureInfo.InvariantCulture)}, nTI={snapshot.SlotIndex.ToString(CultureInfo.InvariantCulture)}, nItemID={snapshot.ItemId.ToString(CultureInfo.InvariantCulture)}.";
+                entry.PacketRawByteLength = sizeof(long);
                 entries.Add(entry);
             }
 

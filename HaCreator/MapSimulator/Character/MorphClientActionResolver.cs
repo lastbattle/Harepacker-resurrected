@@ -904,9 +904,16 @@ namespace HaCreator.MapSimulator.Character
             {
                 // `CActionMan::Init` seeds only raw morph actions [0,273), skipping 55.
                 // These post-table raw requests are WZ-backed rows that this parity pass
-                // has explicitly kept on the morph resolver seam.
+                // has explicitly kept on the morph resolver seam. Keep this list
+                // constrained to action names that either publish direct Morph/*.img
+                // roots or have checked Character/00002000.img / skill-side redirect
+                // aliases in the maps above.
                 "create2",
+                "create2_s",
+                "create2_f",
                 "darkTornado_pre",
+                "darkTornado",
+                "darkTornado_after",
                 "pvpko",
                 // WZ-first: these raw post-table names are direct morph action roots
                 // in Morph/2002.img, so `LoadMorphAction(template, raw)` can resolve
@@ -923,7 +930,29 @@ namespace HaCreator.MapSimulator.Character
                 "archerDoubleJump",
                 "mistEruption",
                 "dualVulcanPrep",
-                "demonGravity"
+                "darkImpale",
+                "glacialChain",
+                "piercing",
+                "flamesplash",
+                "cannonJump",
+                "jShot",
+                "strikeDual",
+                "fastest",
+                "elfTornado",
+                "deathDraw",
+                "demolitionElf",
+                "dealingRush",
+                "powerEndure",
+                "maxForce0",
+                "maxForce1",
+                "maxForce2",
+                "maxForce3",
+                "dualVulcanLoop",
+                "dualVulcanEnd",
+                "darkSpin",
+                "blessOfGaia",
+                "demonGravity",
+                "darkThrust"
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)

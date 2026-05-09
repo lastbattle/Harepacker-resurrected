@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Effects
         public const int PacketTypeStage = 2;
         public const int PacketTypeClear = 3;
         public const int PacketTypeTimeOver = 4;
+        public const int FieldSpecificDataRelayOpcode = 149;
+        public const int CurrentWrapperRelayOpcode = 163;
         internal const int TimeOverFieldSoundStringPoolId = 0x0A24;
         internal const string TimeOverFieldSoundFallbackDescriptor = "Dojang/timeOver";
         private const int TimerLayerOffsetX = -55;
@@ -148,6 +150,37 @@ namespace HaCreator.MapSimulator.Effects
         private List<DojoFrame> _clearFrames;
         private List<DojoFrame> _timeOverFrames;
         private DojoResultEffect _resultEffect = DojoResultEffect.None;
+        private static readonly DojoPacketContract[] PacketContracts =
+        {
+            new(
+                PacketTypeClock,
+                "clock",
+                new[] { "timer" },
+                "CField_Dojang::OnClock",
+                "Decode1 clock type; type 2 then Decode4 duration seconds and creates the Dojo timerboard",
+                IsClientConfirmed: true),
+            new(
+                PacketTypeStage,
+                "stage",
+                new[] { "floor" },
+                "CField_Dojang field-specific presentation",
+                "1-byte or Int32 floor index 0..32 used by the WZ-backed stage banner seam",
+                IsClientConfirmed: false),
+            new(
+                PacketTypeClear,
+                "clear",
+                new[] { "next", "nextfloor" },
+                "CField_Dojang field-specific presentation",
+                "optional transfer map id plus optional portal name; resolved against dojang_next when omitted",
+                IsClientConfirmed: false),
+            new(
+                PacketTypeTimeOver,
+                "timeover",
+                new[] { "timeout" },
+                "CField_Dojang::UpdateTimer expiry presentation",
+                "optional exit map id; unresolved targets fall back to forcedReturn/returnMap",
+                IsClientConfirmed: false)
+        };
         public bool IsActive => _isActive;
         public int Stage => _stage;
         public int Energy => _energy;
@@ -165,6 +198,7 @@ namespace HaCreator.MapSimulator.Effects
         public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
+        public static IReadOnlyList<DojoPacketContract> KnownPacketContracts => PacketContracts;
         internal static DojoHudGeometry ClientHudGeometry => new(
             PlayerGaugeOffsetX,
             MonsterGaugeOffsetX,
@@ -237,6 +271,51 @@ namespace HaCreator.MapSimulator.Effects
         public static string DescribeClockPayloadCandidates(byte[] payload)
         {
             return TryInferClockPacketType(payload, out _, out string reason) ? reason : "unknown";
+        }
+        public static bool TryResolvePacketTypeAlias(string text, out int packetType)
+        {
+            packetType = -1;
+            string normalized = text?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedPacketType)
+                && PacketContracts.Any(contract => contract.PacketType == parsedPacketType))
+            {
+                packetType = parsedPacketType;
+                return true;
+            }
+
+            foreach (DojoPacketContract contract in PacketContracts)
+            {
+                if (string.Equals(contract.Name, normalized, StringComparison.OrdinalIgnoreCase)
+                    || contract.Aliases.Any(alias => string.Equals(alias, normalized, StringComparison.OrdinalIgnoreCase)))
+                {
+                    packetType = contract.PacketType;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        public static bool IsKnownPacketType(int packetType)
+        {
+            return PacketContracts.Any(contract => contract.PacketType == packetType);
+        }
+        public static string DescribeKnownPacketTable()
+        {
+            return string.Join(
+                Environment.NewLine,
+                PacketContracts.Select(static contract =>
+                {
+                    string aliases = contract.Aliases.Count == 0
+                        ? string.Empty
+                        : $" aliases={string.Join(",", contract.Aliases)}";
+                    string proof = contract.IsClientConfirmed ? "client-confirmed" : "simulator-recovered";
+                    return $"{contract.PacketType}:{contract.Name}{aliases} [{proof}] {contract.PayloadContract} ({contract.OwnerEvidence})";
+                }));
         }
         public static bool TryInferFieldSpecificPacketType(byte[] payload, out int packetType, out string reason)
         {
@@ -1344,7 +1423,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             packetType = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, sizeof(ushort)));
-            if (packetType < PacketTypeClock || packetType > PacketTypeTimeOver)
+            if (!IsKnownPacketType(packetType))
             {
                 errorMessage = $"Dojo field-specific packet id {packetType} is outside the known Dojo packet table.";
                 return false;
@@ -1887,6 +1966,12 @@ namespace HaCreator.MapSimulator.Effects
         }
         private static string DescribePacketType(int packetType)
         {
+            DojoPacketContract contract = PacketContracts.FirstOrDefault(contract => contract.PacketType == packetType);
+            if (!string.IsNullOrWhiteSpace(contract.Name))
+            {
+                return contract.Name;
+            }
+
             return packetType switch
             {
                 PacketTypeClock => "clock",
@@ -2266,6 +2351,13 @@ namespace HaCreator.MapSimulator.Effects
             bool EnergyEmptyVisible,
             bool EnergyGaugeVisible,
             bool EnergyFullVisible);
+        public readonly record struct DojoPacketContract(
+            int PacketType,
+            string Name,
+            IReadOnlyList<string> Aliases,
+            string OwnerEvidence,
+            string PayloadContract,
+            bool IsClientConfirmed);
         private enum DojoResultEffect
         {
             None,

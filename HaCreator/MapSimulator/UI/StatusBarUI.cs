@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator.UI {
         public int TemporaryStatViewParentLayerIdentity { get; set; }
         public int TemporaryStatViewMainLayerIdentity { get; set; }
         public int TemporaryStatViewShadowLayerIdentity { get; set; }
+        public int TemporaryStatViewObjectReferenceCount { get; set; }
         public int TemporaryStatViewObjectAllocationSequence { get; set; }
         public int TemporaryStatViewParentLayerAttachSequence { get; set; }
         public int TemporaryStatViewMainLayerAttachSequence { get; set; }
@@ -96,6 +97,7 @@ namespace HaCreator.MapSimulator.UI {
         public int MainLayerAnimationSequence { get; set; }
         public int ShadowLayerAnimationSequence { get; set; }
         public string ShadowCanvasPath { get; set; }
+        public int ShadowCanvasOwnerLayerIdentity { get; set; }
         public int ShadowCanvasRemoveIndex { get; set; }
         public int ShadowCanvasInsertDelayMs { get; set; }
         public int ShadowCanvasAlphaStart { get; set; }
@@ -1135,6 +1137,7 @@ namespace HaCreator.MapSimulator.UI {
         {
             return buffEntry?.UseTemporaryStatViewArtworkOnly == true
                    && !buffEntry.IsTemporaryStatViewReleased
+                   && buffEntry.TemporaryStatViewObjectReferenceCount > 0
                    && buffEntry.TemporaryStatViewParentLayerReferenceCount > 0
                    && buffEntry.TemporaryStatViewMainLayerReferenceCount > 0
                    && buffEntry.TemporaryStatViewShadowLayerReferenceCount > 0

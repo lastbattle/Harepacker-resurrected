@@ -19342,6 +19342,7 @@ namespace HaCreator.MapSimulator
             _imeCompositionMonitor.Attach(Window.Handle);
             _chat.MessageSubmitted = HandleChatMessageSubmitted;
             _chat.ClientChatMessageAdded += HandleClientChatMessageAdded;
+            _chat.ImeCandidateSelectedRequested = TrySelectStatusBarChatImeCandidate;
             _fieldMessageBoxRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _specialFieldRuntime.SetCookieHousePointProvider(ResolveCookieHouseContextPoint);
 
@@ -21559,7 +21560,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _appliedMobSkillEffects[key] = currentTick + Math.Max(Math.Max(skill.SkillAfter, skill.EffectAfter), 2000);
+            _appliedMobSkillEffects[key] = unchecked(currentTick + Math.Max(Math.Max(skill.SkillAfter, skill.EffectAfter), 2000));
 
             return true;
 
@@ -21578,7 +21579,7 @@ namespace HaCreator.MapSimulator
             _expiredMobSkillEffectKeys.Clear();
             foreach (KeyValuePair<long, int> entry in _appliedMobSkillEffects)
             {
-                if (currentTick < entry.Value)
+                if (!HasAppliedMobSkillEffectRetentionExpired(currentTick, entry.Value))
                 {
                     continue;
                 }
@@ -21600,6 +21601,16 @@ namespace HaCreator.MapSimulator
             {
                 _appliedMobSkillEffects.Remove(_expiredMobSkillEffectKeys[i]);
             }
+        }
+
+        internal static bool HasAppliedMobSkillEffectRetentionExpiredForTests(int currentTick, int expireTick)
+        {
+            return HasAppliedMobSkillEffectRetentionExpired(currentTick, expireTick);
+        }
+
+        private static bool HasAppliedMobSkillEffectRetentionExpired(int currentTick, int expireTick)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTick, expireTick);
         }
 
 
@@ -21934,7 +21945,8 @@ namespace HaCreator.MapSimulator
                 sourceMob.CurrentX,
                 runtimeData.ElementAttribute,
                 Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)),
-                CreateMobSkillPeriodicDamageArea(sourceMob, skill.SkillId, runtimeData));
+                CreateMobSkillPeriodicDamageArea(sourceMob, skill.SkillId, runtimeData),
+                sourceOwnerId: Math.Max(0, sourceMob.PoolId));
 
             if (applied)
             {
@@ -30718,9 +30730,6 @@ namespace HaCreator.MapSimulator
         /// <returns>List of currently-entered touched reactors</returns>
         public List<ReactorItem> CheckReactorTouch(float playerX, float playerY, int playerId = 0, int currentTick = int.MinValue)
         {
-            if (_reactorPool == null)
-                return new List<ReactorItem>();
-
             _ = playerId;
 
 
@@ -30731,12 +30740,19 @@ namespace HaCreator.MapSimulator
 
 
             // Match CUserLocal::CheckReactor_Collision, which only refreshes
-            // local touch-reactor overlap once per second.
-            if (!ShouldPollReactorCollision(currentTick, _lastReactorCollisionCheckTick))
+            // local touch-reactor overlap once per second. The client advances
+            // the clock before testing whether the reactor pool singleton exists.
+            var pollDecision = ResolveReactorCollisionPollDecision(
+                currentTick,
+                _lastReactorCollisionCheckTick,
+                hasReactorPool: _reactorPool != null);
+            if (!pollDecision.ShouldAdvanceClock)
                 return new List<ReactorItem>();
 
 
             _lastReactorCollisionCheckTick = currentTick;
+            if (!pollDecision.ShouldRefreshPool)
+                return new List<ReactorItem>();
 
             List<ReactorTouchStateChange> touchStateChanges = _reactorPool.RefreshTouchReactorsAroundLocalUser(
                 playerX,
@@ -30754,6 +30770,21 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldPollReactorCollision(int currentTick, int lastCheckTick)
         {
             return unchecked(currentTick - lastCheckTick) >= ReactorCollisionCheckIntervalMs;
+        }
+
+        internal readonly record struct ReactorCollisionPollDecision(
+            bool ShouldAdvanceClock,
+            bool ShouldRefreshPool);
+
+        internal static ReactorCollisionPollDecision ResolveReactorCollisionPollDecision(
+            int currentTick,
+            int lastCheckTick,
+            bool hasReactorPool)
+        {
+            bool shouldPoll = ShouldPollReactorCollision(currentTick, lastCheckTick);
+            return new ReactorCollisionPollDecision(
+                ShouldAdvanceClock: shouldPoll,
+                ShouldRefreshPool: shouldPoll && hasReactorPool);
         }
 
         private void DispatchReactorTouchStateChanges(IReadOnlyList<ReactorTouchStateChange> touchStateChanges, int currentTick = int.MinValue)
@@ -31021,7 +31052,7 @@ namespace HaCreator.MapSimulator
                 skillLevel,
                 preferPvpLevelData: false);
             if (levelData == null
-                && IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId))
+                && IsLocalAttackAreaLifecycleOwnerBranch(ownerLane, skill.SkillId))
             {
                 // Keep explicit local owner families alive even when authored level data is absent.
                 levelData = new SkillLevelData();
@@ -31190,7 +31221,7 @@ namespace HaCreator.MapSimulator
                 return 1;
             }
 
-            if (IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId))
+            if (IsLocalAttackAreaLifecycleOwnerBranch(ownerLane, skill.SkillId))
             {
                 return 1;
             }
@@ -31540,6 +31571,14 @@ namespace HaCreator.MapSimulator
                     IsClientMesoExplosionLaneExplicitAreaSkillId(skillId),
                 _ => false
             };
+        }
+
+        private static bool IsLocalAttackAreaLifecycleOwnerBranch(
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int skillId)
+        {
+            return IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skillId)
+                   && !IsClientPresentationOnlyMagicLocalAttackAreaBranch(ownerLane, skillId);
         }
 
         private static bool IsKnownNonOwnerLocalAttackAffectedAreaSkillId(int skillId)
@@ -32294,6 +32333,12 @@ namespace HaCreator.MapSimulator
         }
 
         private bool TrySelectSkillMacroImeCandidate(int listIndex, int candidateIndex)
+        {
+            return Window != null
+                && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
+        }
+
+        private bool TrySelectStatusBarChatImeCandidate(int listIndex, int candidateIndex)
         {
             return Window != null
                 && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
@@ -43343,6 +43388,7 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerIdentity = buffEntry.TemporaryStatViewParentLayerIdentity;
             renderData.TemporaryStatViewMainLayerIdentity = buffEntry.TemporaryStatViewMainLayerIdentity;
             renderData.TemporaryStatViewShadowLayerIdentity = buffEntry.TemporaryStatViewShadowLayerIdentity;
+            renderData.TemporaryStatViewObjectReferenceCount = buffEntry.TemporaryStatViewObjectReferenceCount;
             renderData.TemporaryStatViewObjectAllocationSequence = buffEntry.TemporaryStatViewObjectAllocationSequence;
             renderData.TemporaryStatViewParentLayerAttachSequence = buffEntry.TemporaryStatViewParentLayerAttachSequence;
             renderData.TemporaryStatViewMainLayerAttachSequence = buffEntry.TemporaryStatViewMainLayerAttachSequence;
@@ -43375,6 +43421,7 @@ namespace HaCreator.MapSimulator
             renderData.MainLayerAnimationSequence = buffEntry.MainLayerAnimationSequence;
             renderData.ShadowLayerAnimationSequence = buffEntry.ShadowLayerAnimationSequence;
             renderData.ShadowCanvasPath = buffEntry.ShadowCanvasPath;
+            renderData.ShadowCanvasOwnerLayerIdentity = buffEntry.ShadowCanvasOwnerLayerIdentity;
             renderData.ShadowCanvasRemoveIndex = buffEntry.ShadowCanvasRemoveIndex;
             renderData.ShadowCanvasInsertDelayMs = buffEntry.ShadowCanvasInsertDelayMs;
             renderData.ShadowCanvasAlphaStart = buffEntry.ShadowCanvasAlphaStart;

@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator
         private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
         private const int VegaPacketOwnedEquipSnapshotMarker = 0x56514753; // "VGQS"
         private const int VegaPacketOwnedEquipSnapshotIntCount = 19;
+        private const int VegaClientEquipSnapshotStatFieldCount = 15;
+        private const int VegaClientEquipSnapshotLegacyStatFieldCount = 14;
         private const byte VegaClientInventoryOperationEquipType = (byte)InventoryType.EQUIP;
         private const byte VegaClientInventoryOperationCashType = (byte)InventoryType.CASH;
         private const byte VegaClientInventoryOperationSlotTypeEquip = 1;
@@ -962,6 +964,48 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private bool TryApplyPendingVegaInventoryOperationAuthorityPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (_pendingVegaCastState == null || payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryDecodeVegaClientInventoryOperationEquipSnapshot(
+                    payload,
+                    _pendingVegaCastState.Request.EquipItemId,
+                    _pendingVegaCastState.EncodedEquipPosition,
+                    out VegaPacketOwnedEquipSnapshot snapshot,
+                    out bool clearsExclusiveRequest,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
+            _pendingVegaCastState.PacketOwnedEquipSnapshot = snapshot;
+            if (snapshot.EquipItemToken != 0)
+            {
+                _pendingVegaCastState.PacketOwnedEquipItemTokenObserved = true;
+                _pendingVegaCastState.PacketOwnedEquipItemToken = snapshot.EquipItemToken;
+            }
+
+            _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
+            _pendingVegaCastState.PacketOwnedUpgradeState = snapshot.RemainingSlots;
+            if (clearsExclusiveRequest)
+            {
+                ClearVegaExclusiveRequestState(currTickCount);
+            }
+
+            string resetNote = clearsExclusiveRequest
+                ? " and consumed the client bExclRequestSent reset marker"
+                : string.Empty;
+            message = $"Captured packet-owned Vega equip state from CWvsContext::OnInventoryOperation for item {snapshot.ItemId}{resetNote}; the pending Vega terminal handoff will apply this client-authored equipment snapshot after the recovered result prelude.";
+            return true;
+        }
+
         private static string BuildPacketOwnedVegaResultStateNote(VegaResultDecodeState decodeState)
         {
             if (!decodeState.HasOutcomeState)
@@ -1808,6 +1852,35 @@ namespace HaCreator.MapSimulator
             return decoded;
         }
 
+        internal static bool TryDecodeVegaClientInventoryOperationEquipSnapshotForTests(
+            byte[] payload,
+            int expectedItemId,
+            int expectedEncodedEquipPosition,
+            out bool clearsExclusiveRequest,
+            out int equipItemToken,
+            out int totalSlots,
+            out int remainingSlots,
+            out int successCount,
+            out int bonusStr,
+            out int bonusWeaponAttack,
+            out string rejectReason)
+        {
+            bool decoded = TryDecodeVegaClientInventoryOperationEquipSnapshot(
+                payload,
+                expectedItemId,
+                expectedEncodedEquipPosition,
+                out VegaPacketOwnedEquipSnapshot snapshot,
+                out clearsExclusiveRequest,
+                out rejectReason);
+            equipItemToken = snapshot.EquipItemToken;
+            totalSlots = snapshot.TotalSlots;
+            remainingSlots = snapshot.RemainingSlots;
+            successCount = snapshot.SuccessCount;
+            bonusStr = snapshot.BonusSTR;
+            bonusWeaponAttack = snapshot.BonusWeaponAttack;
+            return decoded;
+        }
+
         internal static bool TryApplyPacketOwnedVegaEquipSnapshotStateForTests(
             CharacterPart equippedPart,
             int expectedItemId,
@@ -2079,6 +2152,331 @@ namespace HaCreator.MapSimulator
             equippedPart.BonusAvoidability = snapshot.BonusAvoidability;
             equippedPart.BonusSpeed = snapshot.BonusSpeed;
             equippedPart.BonusJump = snapshot.BonusJump;
+            return true;
+        }
+
+        private static bool TryDecodeVegaClientInventoryOperationEquipSnapshot(
+            byte[] payload,
+            int expectedItemId,
+            int expectedEncodedEquipPosition,
+            out VegaPacketOwnedEquipSnapshot snapshot,
+            out bool clearsExclusiveRequest,
+            out string rejectReason)
+        {
+            snapshot = default;
+            clearsExclusiveRequest = false;
+            rejectReason = null;
+            if (payload == null || payload.Length < sizeof(byte) * 2)
+            {
+                rejectReason = "Inventory-operation payload is missing the exclusive-reset and operation-count bytes.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                clearsExclusiveRequest = reader.ReadByte() != 0;
+                int operationCount = reader.ReadByte();
+                if (operationCount <= 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include any Vega equipment operation.";
+                    return false;
+                }
+
+                for (int i = 0; i < operationCount; i++)
+                {
+                    if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(byte) * 2 + sizeof(short), out rejectReason))
+                    {
+                        return false;
+                    }
+
+                    byte operationMode = reader.ReadByte();
+                    byte inventoryType = reader.ReadByte();
+                    short fromPosition = reader.ReadInt16();
+                    switch (operationMode)
+                    {
+                        case 0:
+                            if (TryReadVegaClientInventoryOperationEquipAddEntry(
+                                    reader,
+                                    inventoryType,
+                                    fromPosition,
+                                    expectedItemId,
+                                    expectedEncodedEquipPosition,
+                                    out snapshot,
+                                    out rejectReason))
+                            {
+                                return true;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(rejectReason))
+                            {
+                                return false;
+                            }
+
+                            break;
+                        case 1:
+                            if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            _ = reader.ReadInt16();
+                            break;
+                        case 2:
+                            if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            _ = reader.ReadInt16();
+                            break;
+                        case 3:
+                            break;
+                        case 4:
+                            if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(int), out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            _ = reader.ReadInt32();
+                            break;
+                        default:
+                            rejectReason = $"Inventory-operation payload used unsupported Vega operation mode {operationMode}.";
+                            return false;
+                    }
+                }
+
+                rejectReason = "Inventory-operation payload did not include a matching Vega GW_ItemSlotEquip add entry.";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                rejectReason = $"Inventory-operation payload could not be decoded for Vega equipment state: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryReadVegaClientInventoryOperationEquipAddEntry(
+            BinaryReader reader,
+            byte inventoryType,
+            short targetPosition,
+            int expectedItemId,
+            int expectedEncodedEquipPosition,
+            out VegaPacketOwnedEquipSnapshot snapshot,
+            out string rejectReason)
+        {
+            snapshot = default;
+            rejectReason = null;
+            if (inventoryType != VegaClientInventoryOperationEquipType &&
+                inventoryType != VegaClientInventoryOperationCashType)
+            {
+                return false;
+            }
+
+            if (targetPosition != expectedEncodedEquipPosition)
+            {
+                return false;
+            }
+
+            if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            int itemId = reader.ReadInt32();
+            bool hasCashSerial = reader.ReadByte() != 0;
+            long cashItemSerialNumber = 0;
+            if (hasCashSerial)
+            {
+                if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                cashItemSerialNumber = reader.ReadInt64();
+            }
+
+            long itemTokenSource = 0;
+            if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            itemTokenSource = reader.ReadInt64();
+            if (slotType != VegaClientInventoryOperationSlotTypeEquip || itemId != expectedItemId)
+            {
+                rejectReason = $"Inventory-operation Vega add entry did not match the pending equip item; slot type {slotType}, item {itemId}.";
+                return false;
+            }
+
+            long bodyStart = reader.BaseStream?.CanSeek == true ? reader.BaseStream.Position : -1;
+            if (TryReadVegaClientEquipSnapshotBody(
+                    reader,
+                    hasCashSerial,
+                    itemId,
+                    cashItemSerialNumber,
+                    itemTokenSource,
+                    VegaClientEquipSnapshotStatFieldCount,
+                    out snapshot,
+                    out rejectReason))
+            {
+                return true;
+            }
+
+            if (bodyStart >= 0)
+            {
+                reader.BaseStream.Position = bodyStart;
+                return TryReadVegaClientEquipSnapshotBody(
+                    reader,
+                    hasCashSerial,
+                    itemId,
+                    cashItemSerialNumber,
+                    itemTokenSource,
+                    VegaClientEquipSnapshotLegacyStatFieldCount,
+                    out snapshot,
+                    out rejectReason);
+            }
+
+            return false;
+        }
+
+        private static bool TryReadVegaClientEquipSnapshotBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            int itemId,
+            long cashItemSerialNumber,
+            long itemTokenSource,
+            int statFieldCount,
+            out VegaPacketOwnedEquipSnapshot snapshot,
+            out string rejectReason)
+        {
+            snapshot = default;
+            rejectReason = null;
+            if (!TryEnsureVegaInventoryOperationRemaining(
+                    reader.BaseStream,
+                    sizeof(byte) * 2 + (sizeof(short) * statFieldCount),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            int remainingSlots = reader.ReadByte();
+            int successCount = reader.ReadByte();
+            Span<short> stats = stackalloc short[VegaClientEquipSnapshotStatFieldCount];
+            for (int i = 0; i < statFieldCount; i++)
+            {
+                stats[i] = reader.ReadInt16();
+            }
+
+            if (!TryReadVegaClientMapleString(reader, out rejectReason))
+            {
+                return false;
+            }
+
+            const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (!TryEnsureVegaInventoryOperationRemaining(
+                    reader.BaseStream,
+                    equipTailLength + (hasCashSerial ? 0 : sizeof(long)) + sizeof(long) + sizeof(int),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            _ = reader.ReadInt32();
+            _ = reader.ReadInt32();
+            _ = reader.ReadInt32();
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            if (!hasCashSerial)
+            {
+                _ = reader.ReadInt64();
+            }
+
+            _ = reader.ReadInt64();
+            _ = reader.ReadInt32();
+
+            int equipItemToken = 0;
+            if (itemTokenSource != 0)
+            {
+                equipItemToken = FoldVegaSerialNumberToInt(itemTokenSource);
+            }
+            else if (cashItemSerialNumber != 0)
+            {
+                equipItemToken = FoldVegaSerialNumberToInt(cashItemSerialNumber);
+            }
+
+            snapshot = new VegaPacketOwnedEquipSnapshot(
+                equipItemToken,
+                itemId,
+                Math.Max(0, remainingSlots + successCount),
+                Math.Max(0, remainingSlots),
+                Math.Max(0, successCount),
+                stats[0],
+                stats[1],
+                stats[2],
+                stats[3],
+                stats[4],
+                stats[5],
+                stats[6],
+                stats[7],
+                stats[8],
+                stats[9],
+                stats[10],
+                stats[11],
+                stats[13],
+                stats[14]);
+            return true;
+        }
+
+        private static bool TryReadVegaClientMapleString(BinaryReader reader, out string rejectReason)
+        {
+            rejectReason = null;
+            if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(short), out rejectReason))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0)
+            {
+                rejectReason = "Inventory-operation equip title length was negative.";
+                return false;
+            }
+
+            if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, length, out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadBytes(length);
+            return true;
+        }
+
+        private static bool TryEnsureVegaInventoryOperationRemaining(Stream stream, int byteCount, out string rejectReason)
+        {
+            rejectReason = null;
+            if (stream == null || !stream.CanSeek)
+            {
+                rejectReason = "Inventory-operation stream is unavailable.";
+                return false;
+            }
+
+            if (byteCount < 0 || stream.Length - stream.Position < byteCount)
+            {
+                rejectReason = "Inventory-operation payload ended before the Vega equipment state could be decoded.";
+                return false;
+            }
+
             return true;
         }
 

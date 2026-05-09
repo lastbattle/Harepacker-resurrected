@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ParcelAlarmAnchorX = 440;
         private const int ParcelAlarmBottomOffset = 97;
         private const int ParcelAlarmStackStep = 5;
+        private const int NativeIconOffsetX = 6;
         private const int TextOffsetX = 17;
         private const int TitleOffsetY = 13;
         private const int BodyStartY = 31;
@@ -41,6 +42,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _messengerInviteFrame;
         private readonly Texture2D _messengerInviteIcon;
         private readonly Texture2D _parcelAlarmIcon;
+        private readonly IReadOnlyDictionary<string, IDXObject> _fadeYesNoFrames;
+        private readonly IReadOnlyDictionary<string, Texture2D> _fadeYesNoIcons;
         private readonly List<string> _wrappedLines = new();
         private readonly SharedFadeYesNoModalOwner _fadeYesNoOwner = new();
         private SpriteFont _font;
@@ -50,6 +53,11 @@ namespace HaCreator.MapSimulator.UI
         private string _footer = string.Empty;
         private Texture2D _icon;
         private InGameConfirmDialogPresentation _presentation = InGameConfirmDialogPresentation.Default;
+        private Color _titleColor = Color.White;
+        private Color _bodyColor = new(232, 232, 232);
+        private Color _footerColor = new(255, 228, 151);
+        private int _iconOffsetX = IconOffsetX;
+        private int _iconOffsetY = IconOffsetY;
         private int _lastAppliedSharedFadeCreatedTick = int.MinValue;
 
         public InGameConfirmDialogWindow(
@@ -61,6 +69,8 @@ namespace HaCreator.MapSimulator.UI
             IDXObject messengerInviteFrame,
             Texture2D messengerInviteIcon,
             Texture2D parcelAlarmIcon,
+            IReadOnlyDictionary<string, IDXObject> fadeYesNoFrames,
+            IReadOnlyDictionary<string, Texture2D> fadeYesNoIcons,
             int screenWidth,
             int screenHeight)
             : base(frame ?? throw new ArgumentNullException(nameof(frame)))
@@ -75,6 +85,8 @@ namespace HaCreator.MapSimulator.UI
             _messengerInviteFrame = messengerInviteFrame ?? frame;
             _messengerInviteIcon = messengerInviteIcon ?? defaultIcon;
             _parcelAlarmIcon = parcelAlarmIcon ?? defaultIcon;
+            _fadeYesNoFrames = fadeYesNoFrames ?? new Dictionary<string, IDXObject>();
+            _fadeYesNoIcons = fadeYesNoIcons ?? new Dictionary<string, Texture2D>();
             ConfigureButtons();
             CenterFrame();
         }
@@ -101,6 +113,11 @@ namespace HaCreator.MapSimulator.UI
             _presentation = presentation ?? InGameConfirmDialogPresentation.Default;
             Frame = _presentation.Frame ?? _defaultFrame;
             _icon = _presentation.Icon ?? (_presentation.ShowIcon ? _defaultIcon : null);
+            _titleColor = _presentation.TitleColor ?? Color.White;
+            _bodyColor = _presentation.BodyColor ?? new Color(232, 232, 232);
+            _footerColor = _presentation.FooterColor ?? new Color(255, 228, 151);
+            _iconOffsetX = _presentation.IconOffsetX ?? IconOffsetX;
+            _iconOffsetY = _presentation.IconOffsetY ?? IconOffsetY;
             CenterFrame();
             ConfigureButtons();
         }
@@ -226,7 +243,7 @@ namespace HaCreator.MapSimulator.UI
                 _font,
                 _title,
                 new Vector2(Position.X + TextOffsetX, Position.Y + TitleOffsetY),
-                Color.White);
+                _titleColor);
 
             float wrapWidth = ResolveBodyWrapWidth();
             float y = Position.Y + BodyStartY;
@@ -234,7 +251,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(
                     _icon,
-                    new Vector2(Position.X + IconOffsetX, Position.Y + IconOffsetY),
+                    new Vector2(Position.X + _iconOffsetX, Position.Y + _iconOffsetY),
                     Color.White);
             }
 
@@ -246,7 +263,7 @@ namespace HaCreator.MapSimulator.UI
                     _font,
                     line,
                     new Vector2(Position.X + bodyTextOffsetX, y),
-                    new Color(232, 232, 232));
+                    _bodyColor);
                 y += _font.LineSpacing;
             }
 
@@ -257,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
                     _font,
                     _footer,
                     new Vector2(Position.X + TextOffsetX, Position.Y + ResolveFooterY()),
-                    new Color(255, 228, 151));
+                    _footerColor);
             }
         }
 
@@ -331,12 +348,7 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.Title,
                 snapshot.Body,
                 snapshot.Footer,
-                snapshot.Presentation ?? fallbackPresentation ?? (snapshot.Type switch
-                {
-                    SharedFadeYesNoModalType.MessengerInvite => CreateMessengerInvitePresentation(snapshot.StackIndex),
-                    SharedFadeYesNoModalType.ParcelAlarm => CreateParcelAlarmPresentation(snapshot.StackIndex),
-                    _ => InGameConfirmDialogPresentation.Default
-                }));
+                snapshot.Presentation ?? fallbackPresentation ?? CreateSharedFadeYesNoPresentation(snapshot));
             _lastAppliedSharedFadeCreatedTick = snapshot.CreatedTick;
             ApplySharedFadeYesNoButtonLayout();
         }
@@ -453,6 +465,57 @@ namespace HaCreator.MapSimulator.UI
             return TextOffsetX + _icon.Width + IconTextGap;
         }
 
+        private InGameConfirmDialogPresentation CreateSharedFadeYesNoPresentation(SharedFadeYesNoModalSnapshot snapshot)
+        {
+            SharedFadeYesNoVisualProfile profile = SharedFadeYesNoModalOwner.ResolveVisualProfile(snapshot.Type, snapshot.QuickDelivery);
+            IDXObject frame = ResolveFadeYesNoFrame(profile.FrameName);
+            Texture2D icon = ResolveFadeYesNoIcon(profile);
+            int iconOffsetY = icon == null
+                ? IconOffsetY
+                : Math.Max(0, (profile.IconCenterHeight - icon.Height) / 2);
+
+            return new InGameConfirmDialogPresentation(
+                InGameConfirmDialogAnchorMode.BottomLeft,
+                profile.AnchorX,
+                profile.BottomOffset + (Math.Max(0, snapshot.StackIndex) * SharedFadeYesNoModalOwner.StackStep),
+                ShowIcon: icon != null,
+                Icon: icon,
+                Frame: frame,
+                TitleColor: profile.UsesBlackText ? Color.Black : Color.White,
+                BodyColor: profile.UsesBlackText ? Color.Black : new Color(232, 232, 232),
+                FooterColor: profile.UsesBlackText ? Color.Black : new Color(255, 228, 151),
+                IconOffsetX: NativeIconOffsetX,
+                IconOffsetY: iconOffsetY);
+        }
+
+        private IDXObject ResolveFadeYesNoFrame(string frameName)
+        {
+            if (!string.IsNullOrWhiteSpace(frameName)
+                && _fadeYesNoFrames.TryGetValue(frameName, out IDXObject frame)
+                && frame != null)
+            {
+                return frame;
+            }
+
+            return _defaultFrame;
+        }
+
+        private Texture2D ResolveFadeYesNoIcon(SharedFadeYesNoVisualProfile profile)
+        {
+            if (profile.SuppressesIcon || string.IsNullOrWhiteSpace(profile.IconName))
+            {
+                return null;
+            }
+
+            if (_fadeYesNoIcons.TryGetValue(profile.IconName, out Texture2D icon)
+                && icon != null)
+            {
+                return icon;
+            }
+
+            return _defaultIcon;
+        }
+
         private bool Pressed(KeyboardState current, Keys key)
         {
             return current.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
@@ -484,7 +547,12 @@ namespace HaCreator.MapSimulator.UI
         int BottomOffset,
         bool ShowIcon = false,
         Texture2D Icon = null,
-        IDXObject Frame = null)
+        IDXObject Frame = null,
+        Color? TitleColor = null,
+        Color? BodyColor = null,
+        Color? FooterColor = null,
+        int? IconOffsetX = null,
+        int? IconOffsetY = null)
     {
         public static InGameConfirmDialogPresentation Default { get; } = new(InGameConfirmDialogAnchorMode.Center, 0, 0);
     }

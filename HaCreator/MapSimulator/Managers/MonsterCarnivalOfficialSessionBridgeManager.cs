@@ -41,8 +41,36 @@ namespace HaCreator.MapSimulator.Managers
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
         private long? _currentInitializedProxySessionId;
         private short? _currentInitializedSessionVersion;
+        private InboundPacketTrace? _liveInboundCarnivalPacketEvidence;
+        private OutboundPacketTrace? _liveOutboundRequestEvidence;
 
         private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
+
+        private readonly record struct InboundPacketTrace(
+            int PacketType,
+            string Source,
+            string Summary,
+            string RawPacketHex,
+            long? ProxySessionId);
+
+        private readonly record struct OutboundPacketTrace(
+            MonsterCarnivalTab Tab,
+            int EntryIndex,
+            string Source,
+            string Summary,
+            string RawPacketHex,
+            long? ProxySessionId);
+
+        public enum LiveOwnershipVerificationState
+        {
+            Idle,
+            ReconnectPending,
+            WaitingForBothDirections,
+            WaitingForOutboundOpcode262,
+            WaitingForInboundCarnivalPacket,
+            WaitingForPairedProxySessionEvidence,
+            Complete
+        }
 
         public readonly record struct ObservedOutboundRequest(
             MonsterCarnivalTab Tab,
@@ -68,6 +96,13 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
+            HasConnectedSession,
+            HasPassiveEstablishedSocketPair,
+            IsRunning,
+            _liveOutboundRequestEvidence.HasValue,
+            _liveInboundCarnivalPacketEvidence.HasValue,
+            HasPairedCurrentLiveOwnershipEvidence());
         public string LastStatus { get; private set; } = "Monster Carnival official-session bridge inactive.";
 
         public MonsterCarnivalOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -90,6 +125,14 @@ namespace HaCreator.MapSimulator.Managers
             string initializedSession = _currentInitializedProxySessionId.HasValue
                 ? $"proxySession={_currentInitializedProxySessionId.Value}, version={_currentInitializedSessionVersion?.ToString() ?? "unknown"}"
                 : "proxySession=none";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _liveOutboundRequestEvidence.HasValue,
+                _liveInboundCarnivalPacketEvidence.HasValue,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
             return $"Monster Carnival official-session bridge {lifecycle}; {session}; {initializedSession}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; observedOutbound={ObservedOutboundRequestCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
@@ -768,6 +811,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _pendingMessages.Enqueue(message);
+            _liveInboundCarnivalPacketEvidence = new InboundPacketTrace(
+                message.PacketType,
+                $"official-session:{e.SourceEndpoint}",
+                DescribePacketType(message.PacketType),
+                Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
+                e.ProxySessionId);
             ReceivedCount++;
             LastStatus = $"Queued Monster Carnival opcode {message.PacketType} ({DescribePacketType(message.PacketType)}) from live session {e.SourceEndpoint}.";
         }
@@ -791,12 +840,20 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (TryNormalizeObservedRequestTab(tab, out MonsterCarnivalTab requestTab) && entryIndex >= 0)
                 {
+                    string source = e.SourceEndpoint;
                     _observedOutboundRequests.Enqueue(new ObservedOutboundRequest(
                         requestTab,
                         entryIndex,
-                        e.SourceEndpoint,
+                        source,
                         e.SessionVersion,
                         e.ProxySessionId));
+                    _liveOutboundRequestEvidence = new OutboundPacketTrace(
+                        requestTab,
+                        entryIndex,
+                        source,
+                        $"tab={tab} index={entryIndex}",
+                        Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
+                        e.ProxySessionId);
                     LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint} and queued it as a pending local ownership token.";
                     return;
                 }
@@ -1300,6 +1357,113 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt/inject";
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode262,
+            bool hasObservedLiveInboundCarnivalPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            if (hasConnectedSession && hasPairedLiveOwnershipEvidence)
+            {
+                return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundOpcode262 && hasObservedLiveInboundCarnivalPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence;
+            }
+
+            if (hasObservedLiveOutboundOpcode262)
+            {
+                return LiveOwnershipVerificationState.WaitingForInboundCarnivalPacket;
+            }
+
+            if (hasObservedLiveInboundCarnivalPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForOutboundOpcode262;
+            }
+
+            if (hasConnectedSession)
+            {
+                return LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            return hasPassiveEstablishedSocketPair || isRunning
+                ? LiveOwnershipVerificationState.ReconnectPending
+                : LiveOwnershipVerificationState.Idle;
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode262,
+            bool hasObservedLiveInboundCarnivalPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundOpcode262,
+                hasObservedLiveInboundCarnivalPacket,
+                hasPairedLiveOwnershipEvidence);
+            return state switch
+            {
+                LiveOwnershipVerificationState.Complete => "Live ownership verification complete: opcode 262 outbound and Monster Carnival inbound were captured in the current proxy session.",
+                LiveOwnershipVerificationState.ReconnectPending => "Live ownership verification pending reconnect: Maple must reconnect through the localhost proxy before Monster Carnival ownership can be confirmed.",
+                LiveOwnershipVerificationState.WaitingForBothDirections => "Live ownership verification in progress: waiting for opcode 262 outbound and Monster Carnival inbound traffic.",
+                LiveOwnershipVerificationState.WaitingForOutboundOpcode262 => "Live ownership verification in progress: Monster Carnival inbound captured, waiting for opcode 262 outbound.",
+                LiveOwnershipVerificationState.WaitingForInboundCarnivalPacket => "Live ownership verification in progress: opcode 262 outbound captured, waiting for Monster Carnival inbound.",
+                LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence => "Live ownership verification in progress: both directions were captured, waiting for paired current proxy-session evidence.",
+                _ => "Live ownership verification idle: start the Monster Carnival official-session bridge and capture traffic."
+            };
+        }
+
+        private string DescribeLiveOwnershipVerificationEvidence()
+        {
+            if (_liveOutboundRequestEvidence.HasValue && _liveInboundCarnivalPacketEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = _liveOutboundRequestEvidence.Value;
+                InboundPacketTrace inbound = _liveInboundCarnivalPacketEvidence.Value;
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}].";
+            }
+
+            if (_liveOutboundRequestEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = _liveOutboundRequestEvidence.Value;
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}], waiting for inbound.";
+            }
+
+            if (_liveInboundCarnivalPacketEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = _liveInboundCarnivalPacketEvidence.Value;
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundRequestOpcode}.";
+            }
+
+            return "Live ownership verification evidence: none.";
+        }
+
+        private bool HasPairedCurrentLiveOwnershipEvidence()
+        {
+            return IsSameProxySession(_currentInitializedProxySessionId, _liveOutboundRequestEvidence?.ProxySessionId)
+                && IsSameProxySession(_currentInitializedProxySessionId, _liveInboundCarnivalPacketEvidence?.ProxySessionId);
+        }
+
+        private static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        {
+            return leftProxySessionId.HasValue
+                && rightProxySessionId.HasValue
+                && leftProxySessionId.Value == rightProxySessionId.Value;
+        }
+
+        private static string FormatProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "unknown";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

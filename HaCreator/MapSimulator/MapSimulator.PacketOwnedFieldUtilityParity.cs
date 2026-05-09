@@ -747,12 +747,13 @@ namespace HaCreator.MapSimulator
             HashSet<string> candidates = new(StringComparer.OrdinalIgnoreCase);
             AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, name);
 
-            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name))
+            bool splitWhitespace = !LooksLikePacketOwnedDynamicObjectPathName(name);
+            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name, splitWhitespace: splitWhitespace))
             {
                 AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
             }
 
-            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name, splitComma: false))
+            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name, splitComma: false, splitWhitespace: splitWhitespace))
             {
                 AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
             }
@@ -760,7 +761,16 @@ namespace HaCreator.MapSimulator
             return candidates.ToArray();
         }
 
-        private static IEnumerable<string> SplitPacketOwnedDynamicObjectNameLookupTokens(string name, bool splitComma = true)
+        private static bool LooksLikePacketOwnedDynamicObjectPathName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                && (name.Contains('/', StringComparison.Ordinal) || name.Contains('\\', StringComparison.Ordinal));
+        }
+
+        private static IEnumerable<string> SplitPacketOwnedDynamicObjectNameLookupTokens(
+            string name,
+            bool splitComma = true,
+            bool splitWhitespace = false)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -770,7 +780,7 @@ namespace HaCreator.MapSimulator
             int tokenStart = -1;
             for (int i = 0; i < name.Length; i++)
             {
-                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name, i, splitComma))
+                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name, i, splitComma, splitWhitespace))
                 {
                     if (tokenStart >= 0)
                     {
@@ -793,7 +803,11 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(string value, int index, bool splitComma)
+        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(
+            string value,
+            int index,
+            bool splitComma,
+            bool splitWhitespace)
         {
             char current = value[index];
             return (splitComma
@@ -801,7 +815,8 @@ namespace HaCreator.MapSimulator
                     && !IsPacketOwnedDynamicObjectNameCoordinateComma(value, index))
                 || current == ';'
                 || current == '|'
-                || char.IsControl(current);
+                || char.IsControl(current)
+                || (splitWhitespace && char.IsWhiteSpace(current));
         }
 
         private static bool IsPacketOwnedDynamicObjectNameCoordinateComma(string value, int commaIndex)

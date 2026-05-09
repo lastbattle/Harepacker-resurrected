@@ -78,6 +78,12 @@ namespace HaCreator.MapSimulator.UI
         private const int WmLButtonDown = 0x0201;
         private const int WmLButtonUp = 0x0202;
         private const int WmLButtonDblClk = 0x0203;
+        private const int WmRButtonDown = 0x0204;
+        private const int WmRButtonUp = 0x0205;
+        private const int WmRButtonDblClk = 0x0206;
+        private const int WmMButtonDown = 0x0207;
+        private const int WmMButtonUp = 0x0208;
+        private const int WmMButtonDblClk = 0x0209;
         private const int WmMouseMove = 0x0200;
         internal const uint WsChild = 0x40000000;
         internal const uint WsVisible = 0x10000000;
@@ -726,9 +732,10 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldTreatClientEncodedKeyDownAsKeyUp(msg == WmKeyDown, clientLParam))
             {
                 bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
-                if (IsStagePassthroughVirtualKey(virtualKey))
+                if (ShouldForwardClientEditStageFunctionKeyUpToParent(virtualKey))
                 {
-                    ForwardStagePassthroughKey(virtualKey, keyDown: false, wParam, lParam);
+                    ReleaseForwardedStageFunctionKey(virtualKey);
+                    ForwardKeyToParent(WmKeyUp, wParam, lParam);
                 }
                 else if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
                 {
@@ -772,6 +779,11 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (ShouldSuppressClientUnsupportedMouseButtonMessage(msg))
+            {
+                return IntPtr.Zero;
+            }
+
             if (ShouldSuppressClientUnsupportedEditKey(msg, virtualKey, controlHeld, shiftHeld))
             {
                 if (msg == WmKeyDown)
@@ -793,9 +805,17 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(virtualKey))
+            if (msg == WmKeyUp && ShouldForwardClientEditStageFunctionKeyUpToParent(virtualKey))
             {
-                ForwardStagePassthroughKey(virtualKey, msg == WmKeyDown, wParam, lParam);
+                ReleaseForwardedStageFunctionKey(virtualKey);
+                ForwardKeyToParent(WmKeyUp, wParam, lParam);
+                UpdateImePlacement();
+                return IntPtr.Zero;
+            }
+
+            if (msg == WmKeyDown && IsStagePassthroughVirtualKey(virtualKey))
+            {
+                ForwardStagePassthroughKey(virtualKey, keyDown: true, wParam, lParam);
                 UpdateImePlacement();
                 return IntPtr.Zero;
             }
@@ -1139,6 +1159,18 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void ReleaseForwardedStageFunctionKey(int virtualKey)
+        {
+            if (!TryResolveClientStageFunctionKeyIndex(virtualKey, out int functionKeyIndex)
+                || !_forwardedStageFunctionKeyIndices.Remove(functionKeyIndex)
+                || ClientForwardedFunctionKeyStateChanged == null)
+            {
+                return;
+            }
+
+            ClientForwardedFunctionKeyStateChanged(functionKeyIndex, false);
+        }
+
         private static bool IsStagePassthroughVirtualKey(int virtualKey)
         {
             return virtualKey >= VkF1 && virtualKey <= VkF12;
@@ -1161,6 +1193,14 @@ namespace HaCreator.MapSimulator.UI
             // `CCtrlEdit::OnKey` sends VK_F1..VK_F12 to `g_pStage` directly,
             // bypassing the edit parent owner.
             return functionKeyIndex >= 0 && functionKeyIndex < CandidateListCount * 3;
+        }
+
+        internal static bool ShouldForwardClientEditStageFunctionKeyUpToParent(int virtualKey)
+        {
+            // `CCtrlEdit::OnKey` checks the signed key-up bit before its
+            // F1..F12 switch, so stage passthrough is key-down only.
+            return TryResolveClientStageFunctionKeyIndex(virtualKey, out int functionKeyIndex)
+                && ShouldForwardClientEditStageFunctionKeyToStage(functionKeyIndex);
         }
 
         internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey)
@@ -1361,6 +1401,19 @@ namespace HaCreator.MapSimulator.UI
             // `CCtrlEdit::OnMouseButton` handles only left-down and double-click,
             // while `OnMouseMove` owns drag selection. Left-up just ends capture.
             return msg is WmLButtonDown or WmMouseMove or WmLButtonUp;
+        }
+
+        internal static bool ShouldSuppressClientUnsupportedMouseButtonMessage(uint msg)
+        {
+            // The recovered `CCtrlEdit::OnMouseButton` ignores right/middle
+            // button messages; do not let the hosted EDIT apply desktop mouse
+            // selection or context behavior that the client widget never runs.
+            return msg is WmRButtonDown
+                or WmRButtonUp
+                or WmRButtonDblClk
+                or WmMButtonDown
+                or WmMButtonUp
+                or WmMButtonDblClk;
         }
 
         internal static int ResolveClientOwnedCaretHitTestY(int controlHeight)

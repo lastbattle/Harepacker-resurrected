@@ -181,18 +181,24 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<QuestPetRequirement> requirements,
                 int? recallLimit,
                 int? tamenessMinimum,
-                int? tamenessMaximum)
+                int? tamenessMaximum,
+                int? tamingMobLevelMinimum,
+                int? tamingMobLevelMaximum)
             {
                 Requirements = requirements ?? Array.Empty<QuestPetRequirement>();
                 RecallLimit = recallLimit;
                 TamenessMinimum = tamenessMinimum;
                 TamenessMaximum = tamenessMaximum;
+                TamingMobLevelMinimum = tamingMobLevelMinimum;
+                TamingMobLevelMaximum = tamingMobLevelMaximum;
             }
 
             public IReadOnlyList<QuestPetRequirement> Requirements { get; }
             public int? RecallLimit { get; }
             public int? TamenessMinimum { get; }
             public int? TamenessMaximum { get; }
+            public int? TamingMobLevelMinimum { get; }
+            public int? TamingMobLevelMaximum { get; }
         }
 
         private sealed class QuestDeliveryMetadata
@@ -354,6 +360,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? StartPetRecallLimit { get; init; }
             public int? StartPetTamenessMinimum { get; init; }
             public int? StartPetTamenessMaximum { get; init; }
+            public int? StartTamingMobLevelMinimum { get; init; }
+            public int? StartTamingMobLevelMaximum { get; init; }
             public IReadOnlyList<QuestSkillRequirement> StartSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
             public IReadOnlyList<int> StartRequiredBuffIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> StartExcludedBuffIds { get; init; } = Array.Empty<int>();
@@ -371,6 +379,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
+            public int? EndTamingMobLevelMinimum { get; init; }
+            public int? EndTamingMobLevelMaximum { get; init; }
             public int? EndFameRequirement { get; init; }
             public int? EndQuestCompleteCount { get; init; }
             public int? EndPartyQuestRankS { get; init; }
@@ -1040,7 +1050,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetRequirements,
                     definition.EndPetRecallLimit,
                     definition.EndPetTamenessMinimum,
-                    definition.EndPetTamenessMaximum),
+                    definition.EndPetTamenessMaximum,
+                    definition.EndTamingMobLevelMinimum,
+                    definition.EndTamingMobLevelMaximum),
                 issues);
             AppendSkillIssues(definition.EndSkillRequirements, issues);
             AppendTraitIssues(definition.EndTraitRequirements, build, issues);
@@ -1532,9 +1544,26 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string TryResolveCompletionTimeKeepQuestExKeptValue(int questId)
         {
-            return TryGetQuestExRecordValue(questId, out string recordValue) &&
-                   TryResolveQuestDetailRecordTokenValue(recordValue, "kept", out string keptValue)
-                ? keptValue
+            return TryGetQuestExRecordValue(questId, out string recordValue)
+                ? ResolveCompletionTimeKeepQuestExKeptValue(recordValue)
+                : string.Empty;
+        }
+
+        private static string ResolveCompletionTimeKeepQuestExKeptValue(string recordValue)
+        {
+            if (string.IsNullOrWhiteSpace(recordValue))
+            {
+                return string.Empty;
+            }
+
+            if (TryResolveQuestDetailRecordTokenValue(recordValue, "kept", out string keptValue))
+            {
+                return keptValue.Trim();
+            }
+
+            string scalarValue = recordValue.Trim();
+            return int.TryParse(scalarValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int keptSeconds)
+                ? Math.Max(0, keptSeconds).ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
         }
 
@@ -1612,6 +1641,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             return !int.TryParse(questExKeptValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int keptValue)
                    || keptValue < requiredKeepTime.Value;
+        }
+
+        internal static string ResolveCompletionTimeKeepQuestExKeptValueForTesting(string recordValue)
+        {
+            return ResolveCompletionTimeKeepQuestExKeptValue(recordValue);
         }
 
         internal static bool HasUnresolvedCompletionPvpGradeDemand(int? requiredPvpGrade)
@@ -5619,12 +5653,16 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.StartPetRequirements,
                     definition.StartPetRecallLimit,
                     definition.StartPetTamenessMinimum,
-                    definition.StartPetTamenessMaximum)
+                    definition.StartPetTamenessMaximum,
+                    definition.StartTamingMobLevelMinimum,
+                    definition.StartTamingMobLevelMaximum)
                 : CreatePetRequirementContext(
                     definition.EndPetRequirements,
                     definition.EndPetRecallLimit,
                     definition.EndPetTamenessMinimum,
-                    definition.EndPetTamenessMaximum);
+                    definition.EndPetTamenessMaximum,
+                    definition.EndTamingMobLevelMinimum,
+                    definition.EndTamingMobLevelMaximum);
             bool hasUnmetPetRequirement = HasUnmetPetRequirement(petRequirementContext);
             bool hasUnmetMesoRequirement = state == QuestStateType.Started &&
                 definition.EndMesoRequirement > 0 &&
@@ -6260,6 +6298,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (HasTamingMobLevelRequirement(context))
+            {
+                return true;
+            }
+
             return _hasCompatibleActivePetProvider?.Invoke(
                        context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
                        context.RecallLimit,
@@ -6578,7 +6621,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.StartPetRequirements,
                     definition.StartPetRecallLimit,
                     definition.StartPetTamenessMinimum,
-                    definition.StartPetTamenessMaximum),
+                    definition.StartPetTamenessMaximum,
+                    definition.StartTamingMobLevelMinimum,
+                    definition.StartTamingMobLevelMaximum),
                 lines);
             AppendActionConsumeItemRequirementLines(definition.StartActions.RewardItems, lines);
             AppendSkillRequirementLines(definition.StartSkillRequirements, lines);
@@ -6670,7 +6715,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetRequirements,
                     definition.EndPetRecallLimit,
                     definition.EndPetTamenessMinimum,
-                    definition.EndPetTamenessMaximum),
+                    definition.EndPetTamenessMaximum,
+                    definition.EndTamingMobLevelMinimum,
+                    definition.EndTamingMobLevelMaximum),
                 lines);
             AppendActionConsumeItemRequirementLines(definition.EndActions.RewardItems, lines);
             AppendSkillRequirementLines(definition.EndSkillRequirements, lines);
@@ -6882,11 +6929,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            bool isComplete = _hasCompatibleActivePetProvider?.Invoke(
-                context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
-                context.RecallLimit,
-                context.TamenessMinimum,
-                context.TamenessMaximum) == true;
+            bool isComplete = !HasTamingMobLevelRequirement(context) &&
+                _hasCompatibleActivePetProvider?.Invoke(
+                    context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
+                    context.RecallLimit,
+                    context.TamenessMinimum,
+                    context.TamenessMaximum) == true;
 
             lines.Add(new QuestLogLineSnapshot
             {
@@ -7188,7 +7236,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.StartPetRequirements,
                     definition.StartPetRecallLimit,
                     definition.StartPetTamenessMinimum,
-                    definition.StartPetTamenessMaximum),
+                    definition.StartPetTamenessMaximum,
+                    definition.StartTamingMobLevelMinimum,
+                    definition.StartTamingMobLevelMaximum),
                 issues);
             AppendEquipNeedIssues(
                 definition.StartEquipAllNeedItemIds,
@@ -7265,7 +7315,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetRequirements,
                     definition.EndPetRecallLimit,
                     definition.EndPetTamenessMinimum,
-                    definition.EndPetTamenessMaximum),
+                    definition.EndPetTamenessMaximum,
+                    definition.EndTamingMobLevelMinimum,
+                    definition.EndTamingMobLevelMaximum),
                 issues);
             AppendSkillIssues(definition.EndSkillRequirements, issues);
             AppendTraitIssues(definition.EndTraitRequirements, build, issues);
@@ -7905,6 +7957,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            if (HasTamingMobLevelRequirement(context))
+            {
+                issues.Add(BuildPetRequirementIssueText(context));
+                return;
+            }
+
             if (_hasCompatibleActivePetProvider?.Invoke(
                     context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
                     context.RecallLimit,
@@ -7967,6 +8025,16 @@ namespace HaCreator.MapSimulator.Interaction
                 constraints.Add($"tameness at most {context.TamenessMaximum.Value}");
             }
 
+            if (context.TamingMobLevelMinimum.HasValue)
+            {
+                constraints.Add($"taming-mob level at least {context.TamingMobLevelMinimum.Value}");
+            }
+
+            if (context.TamingMobLevelMaximum.HasValue)
+            {
+                constraints.Add($"taming-mob level at most {context.TamingMobLevelMaximum.Value}");
+            }
+
             return constraints.Count == 0
                 ? petText
                 : $"{petText} with {string.Join(", ", constraints)}";
@@ -7977,16 +8045,32 @@ namespace HaCreator.MapSimulator.Interaction
             return context.Requirements.Count > 0 ||
                    context.RecallLimit.HasValue ||
                    context.TamenessMinimum.HasValue ||
-                   context.TamenessMaximum.HasValue;
+                   context.TamenessMaximum.HasValue ||
+                   context.TamingMobLevelMinimum.HasValue ||
+                   context.TamingMobLevelMaximum.HasValue;
+        }
+
+        private static bool HasTamingMobLevelRequirement(QuestPetRequirementContext context)
+        {
+            return context.TamingMobLevelMinimum.HasValue ||
+                   context.TamingMobLevelMaximum.HasValue;
         }
 
         private static QuestPetRequirementContext CreatePetRequirementContext(
             IReadOnlyList<QuestPetRequirement> requirements,
             int? recallLimit,
             int? tamenessMinimum,
-            int? tamenessMaximum)
+            int? tamenessMaximum,
+            int? tamingMobLevelMinimum = null,
+            int? tamingMobLevelMaximum = null)
         {
-            return new QuestPetRequirementContext(requirements, recallLimit, tamenessMinimum, tamenessMaximum);
+            return new QuestPetRequirementContext(
+                requirements,
+                recallLimit,
+                tamenessMinimum,
+                tamenessMaximum,
+                tamingMobLevelMinimum,
+                tamingMobLevelMaximum);
         }
 
         private static int GetCurrentTraitValue(CharacterBuild build, QuestTraitType trait)
@@ -9189,7 +9273,9 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.StartPetRequirements,
                 definition.StartPetRecallLimit,
                 definition.StartPetTamenessMinimum,
-                definition.StartPetTamenessMaximum));
+                definition.StartPetTamenessMaximum,
+                definition.StartTamingMobLevelMinimum,
+                definition.StartTamingMobLevelMaximum));
             if (!string.IsNullOrWhiteSpace(petRequirementText))
             {
                 segments.Add(petRequirementText);
@@ -9855,6 +9941,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StartPetRecallLimit = ParsePetActiveLimit(startCheck),
                 StartPetTamenessMinimum = ParsePositiveInt(startCheck?["pettamenessmin"]),
                 StartPetTamenessMaximum = ParsePositiveInt(startCheck?["pettamenessmax"]),
+                StartTamingMobLevelMinimum = ParsePositiveInt(startCheck?["tamingmoblevelmin"]),
+                StartTamingMobLevelMaximum = ParsePositiveInt(startCheck?["tamingmoblevelmax"]),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
                 StartRequiredBuffIds = ParseQuestDemandIntegerList(startCheck?["buff"]),
                 StartExcludedBuffIds = ParseQuestDemandIntegerList(startCheck?["exceptbuff"]),
@@ -9873,6 +9961,8 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
+                EndTamingMobLevelMinimum = ParsePositiveInt(endCheck?["tamingmoblevelmin"]),
+                EndTamingMobLevelMaximum = ParsePositiveInt(endCheck?["tamingmoblevelmax"]),
                 EndFameRequirement = ParsePositiveInt(endCheck?["pop"]),
                 EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
                 EndPartyQuestRankS = ParseInt(endCheck?["partyQuest_S"]),

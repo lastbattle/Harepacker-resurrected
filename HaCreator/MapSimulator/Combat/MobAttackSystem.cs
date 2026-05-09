@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Combat
             public MobItem SourceMob { get; set; }
             public MobAttackEntry Attack { get; set; }
             public MobTargetInfo TargetInfo { get; set; }
+            public bool SourceFacesRight { get; set; }
             public int TriggerTime { get; set; }
             public int ExpireTime { get; set; }
             public bool Triggered { get; set; }
@@ -341,7 +342,7 @@ namespace HaCreator.MapSimulator.Combat
 
             if (!attack.IsRanged)
             {
-                QueueDirectAttack(mobItem, attack, targetInfo, currentTime);
+                QueueDirectAttack(mobItem, attack, targetInfo, currentTime, sourceFacesRight);
                 return;
             }
 
@@ -532,9 +533,14 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void QueueDirectAttack(MobItem mobItem, MobAttackEntry attack, MobTargetInfo targetInfo, int currentTime)
+        private void QueueDirectAttack(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            int currentTime,
+            bool sourceFacesRight)
         {
-            Rectangle attackArea = BuildDirectAttackArea(mobItem, attack);
+            Rectangle attackArea = BuildDirectAttackArea(mobItem, attack, sourceFacesRight);
             if (attackArea.IsEmpty)
             {
                 return;
@@ -545,6 +551,7 @@ namespace HaCreator.MapSimulator.Combat
                 SourceMob = mobItem,
                 Attack = attack,
                 TargetInfo = targetInfo?.Clone(),
+                SourceFacesRight = sourceFacesRight,
                 TriggerTime = currentTime + GetDirectAttackTriggerDelay(attack),
                 ExpireTime = currentTime + Math.Max(attack.Cooldown, 350),
             });
@@ -559,12 +566,14 @@ namespace HaCreator.MapSimulator.Combat
             int currentTime,
             PendingAttackPacketOverrides packetOverrides = null)
         {
+            bool sourceFacesRight = ResolveSourceFacesRight(mobItem, packetOverrides);
             List<GroundTargetGroup> targetGroups = BuildGroundTargetGroups(
                 mobItem,
                 attack,
                 targetX,
                 targetY,
-                packetOverrides?.AreaTargetMask ?? 0);
+                packetOverrides?.AreaTargetMask ?? 0,
+                sourceFacesRight);
             if (targetGroups.Count == 0)
             {
                 return;
@@ -907,7 +916,10 @@ namespace HaCreator.MapSimulator.Combat
                 if (!directAttack.Triggered && HasClientTickReached(currentTime, directAttack.TriggerTime))
                 {
                     directAttack.Triggered = true;
-                    Rectangle attackArea = BuildDirectAttackArea(directAttack.SourceMob, directAttack.Attack);
+                    Rectangle attackArea = BuildDirectAttackArea(
+                        directAttack.SourceMob,
+                        directAttack.Attack,
+                        directAttack.SourceFacesRight);
                     Vector2 effectPosition = new Vector2(
                         attackArea.X + attackArea.Width / 2f,
                         attackArea.Y + attackArea.Height);
@@ -1296,7 +1308,8 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             float? playerX,
             float? playerY,
-            int packetAreaTargetMask = 0)
+            int packetAreaTargetMask = 0,
+            bool sourceFacesRight = true)
         {
             var targetGroups = new List<GroundTargetGroup>();
             int areaCount = Math.Max(1, attack.AreaCount);
@@ -1304,7 +1317,13 @@ namespace HaCreator.MapSimulator.Combat
 
             if (attack.AreaCount > 0 || attack.AttackCount > 0)
             {
-                List<Vector2> slotPositions = BuildRangeSlotPositions(mobItem, attack, areaCount, playerX, playerY);
+                List<Vector2> slotPositions = BuildRangeSlotPositions(
+                    mobItem,
+                    attack,
+                    areaCount,
+                    playerX,
+                    playerY,
+                    sourceFacesRight);
                 if (slotPositions.Count == 0)
                 {
                     return targetGroups;
@@ -1692,7 +1711,13 @@ namespace HaCreator.MapSimulator.Combat
             return positions;
         }
 
-        private List<Vector2> BuildRangeSlotPositions(MobItem mobItem, MobAttackEntry attack, int slotCount, float? playerX, float? playerY)
+        private List<Vector2> BuildRangeSlotPositions(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            int slotCount,
+            float? playerX,
+            float? playerY,
+            bool sourceFacesRight)
         {
             if (slotCount <= 0)
             {
@@ -1705,8 +1730,8 @@ namespace HaCreator.MapSimulator.Combat
 
             if (attack.HasRangeBounds)
             {
-                left = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight);
-                right = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight);
+                left = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight, sourceFacesRight);
+                right = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight, sourceFacesRight);
                 baseY = GetRangeBottomY(mobItem, attack);
             }
             else
@@ -2018,6 +2043,11 @@ namespace HaCreator.MapSimulator.Combat
 
         private static Rectangle BuildDirectAttackArea(MobItem mobItem, MobAttackEntry attack)
         {
+            return BuildDirectAttackArea(mobItem, attack, ResolveLiveMobSourceFacingRight(mobItem));
+        }
+
+        private static Rectangle BuildDirectAttackArea(MobItem mobItem, MobAttackEntry attack, bool sourceFacesRight)
+        {
             if (mobItem?.MovementInfo == null || attack == null)
             {
                 return Rectangle.Empty;
@@ -2025,13 +2055,12 @@ namespace HaCreator.MapSimulator.Combat
 
             float mobX = mobItem.MovementInfo.X;
             float mobY = mobItem.MovementInfo.Y;
-            bool facingRight = mobItem.MovementInfo.FlipX;
 
             if (attack.HasRangeBounds)
             {
                 int left = attack.RangeLeft;
                 int right = attack.RangeRight;
-                if (facingRight)
+                if (sourceFacesRight)
                 {
                     left = -attack.RangeRight;
                     right = -attack.RangeLeft;
@@ -2049,7 +2078,7 @@ namespace HaCreator.MapSimulator.Combat
             int width = Math.Max(50, attack.Range);
             int height = Math.Max(60, attack.AreaHeight);
             return new Rectangle(
-                (int)mobX + (facingRight ? 0 : -width),
+                (int)mobX + (sourceFacesRight ? 0 : -width),
                 (int)mobY - height + 20,
                 width,
                 height);
@@ -2572,7 +2601,7 @@ namespace HaCreator.MapSimulator.Combat
             Rectangle targetHitbox = GetTargetHitbox(targetInfo, currentTime);
             if (!targetHitbox.IsEmpty)
             {
-                bool sourceFacesRight = sourceMob?.MovementInfo?.FlipX ?? true;
+                bool sourceFacesRight = ResolveLiveMobSourceFacingRight(sourceMob);
                 return ResolveProjectileDestinationPoint(targetHitbox, spawn.Y, sourceFacesRight);
             }
 
@@ -3951,7 +3980,7 @@ namespace HaCreator.MapSimulator.Combat
 
             if (attack.HasRangeBounds)
             {
-                return BuildDirectAttackArea(mobItem, attack);
+                return BuildDirectAttackArea(mobItem, attack, sourceFacesRight);
             }
 
             if (attack.Range <= 0)
@@ -3992,7 +4021,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             if (!attack.HasRangeBounds)
             {
-                return mobItem.CurrentX + (mobItem.MovementInfo.FlipX ? attack.Range / 2f : -attack.Range / 2f);
+                return mobItem.CurrentX + (ResolveLiveMobSourceFacingRight(mobItem) ? attack.Range / 2f : -attack.Range / 2f);
             }
 
             return (GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight) +
@@ -4011,7 +4040,7 @@ namespace HaCreator.MapSimulator.Combat
 
         private static float GetRelativeLeft(MobItem mobItem, bool hasRangeBounds, int left, int right)
         {
-            return GetRelativeLeft(mobItem, hasRangeBounds, left, right, mobItem?.MovementInfo?.FlipX ?? true);
+            return GetRelativeLeft(mobItem, hasRangeBounds, left, right, ResolveLiveMobSourceFacingRight(mobItem));
         }
 
         private static float GetRelativeLeft(MobItem mobItem, bool hasRangeBounds, int left, int right, bool sourceFacesRight)
@@ -4034,7 +4063,7 @@ namespace HaCreator.MapSimulator.Combat
 
         private static float GetRelativeRight(MobItem mobItem, bool hasRangeBounds, int left, int right)
         {
-            return GetRelativeRight(mobItem, hasRangeBounds, left, right, mobItem?.MovementInfo?.FlipX ?? true);
+            return GetRelativeRight(mobItem, hasRangeBounds, left, right, ResolveLiveMobSourceFacingRight(mobItem));
         }
 
         private static float GetRelativeRight(MobItem mobItem, bool hasRangeBounds, int left, int right, bool sourceFacesRight)
@@ -4064,12 +4093,24 @@ namespace HaCreator.MapSimulator.Combat
         {
             return ResolvePacketOwnedSourceFacing(
                 packetOverrides?.SourceFacesRight,
-                mobItem?.MovementInfo?.FlipX ?? true);
+                ResolveLiveMobSourceFacingRight(mobItem));
         }
 
         internal static bool ResolvePacketOwnedSourceFacing(bool? packetFacingRightOverride, bool fallbackFacingRight)
         {
             return packetFacingRightOverride ?? fallbackFacingRight;
+        }
+
+        internal static bool ResolveLiveMobSourceFacingRight(MobItem mobItem)
+        {
+            // BaseDXDrawableItem/MobItem render ownership: FlipX=false draws the
+            // default right-facing WZ sprite, FlipX=true mirrors it to face left.
+            return ResolveLiveMobSourceFacingRight(mobItem?.MovementInfo?.FlipX ?? false);
+        }
+
+        internal static bool ResolveLiveMobSourceFacingRight(bool flipX)
+        {
+            return !flipX;
         }
 
         private bool ShouldUseSourceAnchoredEffects(MobItem mobItem, MobAttackEntry attack)
@@ -4114,7 +4155,7 @@ namespace HaCreator.MapSimulator.Combat
             // Source-anchored mob effects should follow the mob's own facing, not the player's position.
             if (mobItem.MovementInfo != null)
             {
-                return !mobItem.MovementInfo.FlipX;
+                return mobItem.MovementInfo.FlipX;
             }
 
             if (attack.HasRangeBounds)
@@ -4123,7 +4164,7 @@ namespace HaCreator.MapSimulator.Combat
                 return rawCenter <= 0f;
             }
 
-            return !(mobItem.MovementInfo?.FlipX ?? false);
+            return false;
         }
 
         private static void GetDirectedRangeEdges(MobItem mobItem, MobAttackEntry attack, bool faceLeft, out float left, out float right)

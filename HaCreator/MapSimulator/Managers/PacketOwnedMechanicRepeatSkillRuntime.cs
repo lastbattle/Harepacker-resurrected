@@ -1785,6 +1785,12 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace(">", string.Empty, StringComparison.Ordinal)
                 .Replace(" ", string.Empty, StringComparison.Ordinal)
                 .ToLowerInvariant();
+            if (TryMapSg88IndexedCapturePathTokenToByteIndex(normalized, out int indexedByteIndex))
+            {
+                byteIndices = new[] { indexedByteIndex };
+                return true;
+            }
+
             if (normalized.StartsWith("payload", StringComparison.Ordinal))
             {
                 normalized = normalized.Substring("payload".Length);
@@ -2021,6 +2027,52 @@ namespace HaCreator.MapSimulator.Managers
                 default:
                     return false;
             }
+        }
+
+        private static bool TryMapSg88IndexedCapturePathTokenToByteIndex(string normalizedToken, out int byteIndex)
+        {
+            byteIndex = -1;
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return false;
+            }
+
+            (string Prefix, int Offset)[] indexedPrefixes =
+            {
+                ("rawpacketbyte", 0),
+                ("rawpacket", 0),
+                ("packetbyte", 0),
+                ("packet", 0),
+                ("payloadbyte", sizeof(ushort)),
+                ("payload", sizeof(ushort)),
+                ("sendbuffbyte", 0),
+                ("sendbuff", 0),
+                ("bufferbyte", 0),
+                ("buffer", 0),
+                ("bytes", 0),
+                ("byte", 0)
+            };
+
+            for (int i = 0; i < indexedPrefixes.Length; i++)
+            {
+                string prefix = indexedPrefixes[i].Prefix;
+                if (!normalizedToken.StartsWith(prefix, StringComparison.Ordinal)
+                    || normalizedToken.Length == prefix.Length)
+                {
+                    continue;
+                }
+
+                string indexToken = normalizedToken.Substring(prefix.Length);
+                if (!int.TryParse(indexToken, out int parsedIndex) || parsedIndex < 0)
+                {
+                    continue;
+                }
+
+                byteIndex = parsedIndex + indexedPrefixes[i].Offset;
+                return true;
+            }
+
+            return false;
         }
 
         private static string NormalizeSg88MismatchByteListSegment(string rawSegment)
@@ -2857,6 +2909,7 @@ namespace HaCreator.MapSimulator.Managers
             normalizedPair = null;
             byte? observed = null;
             byte? rebuilt = null;
+            byte? jsonPatchValue = null;
 
             foreach (JsonProperty property in element.EnumerateObject())
             {
@@ -2892,6 +2945,11 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                     }
                 }
+                else if (IsSg88JsonPatchReplacementValueLabel(property.Name)
+                         && TryParseSg88MismatchPairJsonByteValue(property.Value, out byte replacementByte))
+                {
+                    jsonPatchValue = replacementByte;
+                }
                 else if (IsSg88MismatchPairJsonValueContainerLabel(property.Name))
                 {
                     TryCollectSg88MismatchPairJsonObservedRebuiltValues(
@@ -2906,6 +2964,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     byteIndex = byteIndexFromName;
                 }
+            }
+
+            if (!rebuilt.HasValue && observed.HasValue && jsonPatchValue.HasValue)
+            {
+                rebuilt = jsonPatchValue;
             }
 
             if (byteIndex < 0 || !observed.HasValue || !rebuilt.HasValue)
@@ -2959,10 +3022,18 @@ namespace HaCreator.MapSimulator.Managers
 
             byte? observed = null;
             byte? rebuilt = null;
+            byte? jsonPatchValue = null;
             foreach (JsonProperty property in element.EnumerateObject())
             {
                 if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName))
                 {
+                    if (IsSg88JsonPatchReplacementValueLabel(property.Name)
+                        && TryParseSg88MismatchPairJsonByteValue(property.Value, out byte replacementByte))
+                    {
+                        jsonPatchValue = replacementByte;
+                        continue;
+                    }
+
                     if (IsSg88MismatchPairJsonValueContainerLabel(property.Name))
                     {
                         TryCollectSg88MismatchPairJsonObservedRebuiltValues(
@@ -2991,6 +3062,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (!rebuilt.HasValue && observed.HasValue && jsonPatchValue.HasValue)
+            {
+                rebuilt = jsonPatchValue;
+            }
+
             if (!observed.HasValue || !rebuilt.HasValue)
             {
                 return false;
@@ -2998,6 +3074,21 @@ namespace HaCreator.MapSimulator.Managers
 
             normalizedPair = $"byte{byteIndex}:0x{observed.Value:X2}->0x{rebuilt.Value:X2}";
             return true;
+        }
+
+        private static bool IsSg88JsonPatchReplacementValueLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "value" or "replacement" or "replacementvalue";
         }
 
         private static bool TryResolveSg88ReplayParityMismatchPairJsonArray(

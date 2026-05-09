@@ -252,6 +252,38 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            // IDA `CActionMan::LoadTamingMobAction` special-cases raw 47
+            // (`arrowEruption`) before vehicle gating: ordinary 190 mounts have their
+            // companion input cleared and produce no taming-mob frames, portable-chair
+            // rides keep the raw-48 path, and other vehicles fall through to stand.
+            if (string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase))
+            {
+                if (VehicleItemId / 1000 == PortableChairRideFamily)
+                {
+                    foreach (string candidate in EnumeratePortableChairRideCandidates())
+                    {
+                        if (seen.Add(candidate) && IsActionAllowedForVehicle(candidate))
+                        {
+                            yield return candidate;
+                        }
+                    }
+
+                    yield break;
+                }
+
+                if (VehicleItemId / 10000 == 190)
+                {
+                    yield break;
+                }
+
+                if (seen.Add("stand1") && IsActionAllowedForVehicle("stand1"))
+                {
+                    yield return "stand1";
+                }
+
+                yield break;
+            }
+
             if (VehicleItemId / 1000 == PortableChairRideFamily)
             {
                 foreach (string candidate in EnumeratePortableChairRideCandidates())

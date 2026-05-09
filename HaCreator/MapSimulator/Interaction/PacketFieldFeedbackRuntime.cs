@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<byte, int, int, bool> PlaySummonEffectSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
         internal Func<string, int, int, int?, bool> SetObjectTagStateIndex { get; init; }
+        internal Func<IReadOnlyCollection<string>> EnumerateFieldObstacleTags { get; init; }
         internal Func<byte, int, int, bool> ShowSummonEffectVisual { get; init; }
         internal Func<string, bool> ShowScreenEffectVisual { get; init; }
         internal Func<int, int, int, bool> ShowRewardRouletteVisual { get; init; }
@@ -1208,12 +1209,33 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyObstacleReset(int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
         {
-            int resetCount = _obstacleStates.Count;
-            foreach (string tag in _obstacleStates.Keys.ToList())
+            HashSet<string> resetTags = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string tag in _obstacleStates.Keys)
+            {
+                if (!string.IsNullOrWhiteSpace(tag))
+                {
+                    resetTags.Add(tag);
+                }
+            }
+
+            IReadOnlyCollection<string> knownObstacleTags = callbacks?.EnumerateFieldObstacleTags?.Invoke();
+            if (knownObstacleTags != null)
+            {
+                foreach (string tag in knownObstacleTags)
+                {
+                    if (!string.IsNullOrWhiteSpace(tag))
+                    {
+                        resetTags.Add(tag.Trim());
+                    }
+                }
+            }
+
+            foreach (string tag in resetTags)
             {
                 ApplyObjectStateIndex(tag, 0, currentTick, callbacks);
             }
 
+            int resetCount = resetTags.Count;
             _obstacleStates.Clear();
             _statusMessage = resetCount == 0
                 ? "No packet-owned obstacle states were active."

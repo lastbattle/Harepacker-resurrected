@@ -11,8 +11,8 @@ namespace HaCreator.MapSimulator.UI
         TradeInvite = 2,
         CashTradeInvite = 3,
         NewMemo = 4,
-        ExpeditionApply = 5,
-        PartyInvite = 6,
+        PartyInvite = 5,
+        AllianceInvite = 6,
         QuestClear = 7,
         GuildInvite = 8,
         UserAlarm = 9,
@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator.UI
         FamilyInvite = 12,
         PartyApply = 13,
         ExpeditionInvite = 14,
-        AllianceInvite = 15,
+        ExpeditionApply = 15,
         FollowRequest = 16,
         NewYearCardArrived = 17,
         Generic = 1000
@@ -49,6 +49,18 @@ namespace HaCreator.MapSimulator.UI
         int CancelY,
         bool ShowsOkButton);
 
+    internal readonly record struct SharedFadeYesNoVisualProfile(
+        string FrameName,
+        string IconName,
+        int NativeWidth,
+        int NativeHeight,
+        int AnchorX,
+        int BottomOffset,
+        int IconX,
+        int IconCenterHeight,
+        bool UsesBlackText = false,
+        bool SuppressesIcon = false);
+
     internal sealed record SharedFadeYesNoModalRequest(
         SharedFadeYesNoModalType Type,
         string Title,
@@ -71,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
         string DrawRoute,
         SharedFadeYesNoButtonLayout ButtonLayout,
         bool OnceClicked,
+        bool QuickDelivery,
         string Title,
         string Body,
         string Footer,
@@ -83,6 +96,13 @@ namespace HaCreator.MapSimulator.UI
         internal const int DefaultLifetimeMilliseconds = 6000;
         internal const int FadeInMilliseconds = 120;
         internal const int FadeOutMilliseconds = 120;
+        internal const int InviteAnchorX = 389;
+        internal const int AlarmAnchorX = 440;
+        internal const int ExpeditionInviteAnchorX = 349;
+        internal const int InviteBottomOffset = 113;
+        internal const int AlarmBottomOffset = 97;
+        internal const int PartyQuestBottomOffset = 107;
+        internal const int StackStep = 5;
 
         private static readonly ISet<SharedFadeYesNoModalType> WideButtonTypes = new HashSet<SharedFadeYesNoModalType>
         {
@@ -271,6 +291,7 @@ namespace HaCreator.MapSimulator.UI
                     "CUIFadeYesNo::Draw inactive",
                     ResolveButtonLayout(SharedFadeYesNoModalType.Generic, quickDelivery: false),
                     false,
+                    false,
                     string.Empty,
                     string.Empty,
                     string.Empty,
@@ -289,10 +310,54 @@ namespace HaCreator.MapSimulator.UI
                 ResolveDrawRoute(ActiveType),
                 ResolveButtonLayout(ActiveType, _activeRequest.QuickDelivery),
                 _onceClicked,
+                _activeRequest.QuickDelivery,
                 _activeRequest.Title ?? string.Empty,
                 _activeRequest.Body ?? string.Empty,
                 _activeRequest.Footer ?? string.Empty,
                 _activeRequest.Presentation);
+        }
+
+        internal static SharedFadeYesNoVisualProfile ResolveVisualProfile(SharedFadeYesNoModalType type, bool quickDelivery)
+        {
+            return type switch
+            {
+                SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1"),
+                SharedFadeYesNoModalType.TradeInvite => InviteProfile("backgrnd", "icon2"),
+                SharedFadeYesNoModalType.CashTradeInvite => AlarmProfile("backgrnd6", "icon9", 160, 44),
+                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 155, 44, suppressesIcon: true),
+                SharedFadeYesNoModalType.ExpeditionApply => InviteProfile("backgrnd9", "icon0"),
+                SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5"),
+                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 155, 44),
+                SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5"),
+                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 155, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 155, 44),
+                SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoVisualProfile(
+                    "backgrnd5",
+                    null,
+                    155,
+                    51,
+                    AlarmAnchorX,
+                    PartyQuestBottomOffset,
+                    6,
+                    37,
+                    UsesBlackText: true,
+                    SuppressesIcon: true),
+                SharedFadeYesNoModalType.FamilyInvite => InviteProfile("backgrnd", "icon8"),
+                SharedFadeYesNoModalType.PartyApply => InviteProfile("backgrnd7", "icon5"),
+                SharedFadeYesNoModalType.ExpeditionInvite => new SharedFadeYesNoVisualProfile(
+                    "backgrnd8",
+                    "icon0",
+                    246,
+                    60,
+                    ExpeditionInviteAnchorX,
+                    InviteBottomOffset,
+                    6,
+                    37),
+                SharedFadeYesNoModalType.AllianceInvite => InviteProfile("backgrnd", "icon5"),
+                SharedFadeYesNoModalType.FollowRequest => InviteProfile("backgrnd9", null, suppressesIcon: true),
+                SharedFadeYesNoModalType.NewYearCardArrived => AlarmProfile("backgrnd2", "icon7", 155, 44),
+                _ => InviteProfile("backgrnd", "icon0")
+            };
         }
 
         internal static SharedFadeYesNoButtonLayout ResolveButtonLayout(
@@ -361,9 +426,11 @@ namespace HaCreator.MapSimulator.UI
                 return "CFadeWnd/CUIFadeYesNo owner inactive.";
             }
 
+            SharedFadeYesNoVisualProfile visualProfile = ResolveVisualProfile(snapshot.Type, snapshot.QuickDelivery);
+
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}; phase={1}; stack={2}; pending={3}; lifetime={4}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}.",
+                "{0}; phase={1}; stack={2}; pending={3}; lifetime={4}; frame={11}({12}x{13}); icon={14}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}.",
                 snapshot.DrawRoute,
                 snapshot.Phase,
                 snapshot.StackIndex,
@@ -374,7 +441,57 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.ButtonLayout.OkY,
                 snapshot.ButtonLayout.CancelId,
                 snapshot.ButtonLayout.CancelY,
-                snapshot.ButtonLayout.ShowsOkButton);
+                snapshot.ButtonLayout.ShowsOkButton,
+                visualProfile.FrameName,
+                visualProfile.NativeWidth,
+                visualProfile.NativeHeight,
+                visualProfile.IconName ?? "none");
+        }
+
+        private static SharedFadeYesNoVisualProfile InviteProfile(
+            string frameName,
+            string iconName,
+            int nativeWidth = 206,
+            int nativeHeight = 60,
+            bool suppressesIcon = false)
+        {
+            return new SharedFadeYesNoVisualProfile(
+                frameName,
+                iconName,
+                nativeWidth,
+                nativeHeight,
+                InviteAnchorX,
+                InviteBottomOffset,
+                6,
+                TypeUsesTallIconCenter(frameName, iconName) ? 53 : 37,
+                SuppressesIcon: suppressesIcon);
+        }
+
+        private static SharedFadeYesNoVisualProfile AlarmProfile(
+            string frameName,
+            string iconName,
+            int nativeWidth,
+            int nativeHeight,
+            bool suppressesIcon = false)
+        {
+            return new SharedFadeYesNoVisualProfile(
+                frameName,
+                iconName,
+                nativeWidth,
+                nativeHeight,
+                AlarmAnchorX,
+                AlarmBottomOffset,
+                6,
+                37,
+                SuppressesIcon: suppressesIcon);
+        }
+
+        private static bool TypeUsesTallIconCenter(string frameName, string iconName)
+        {
+            return string.Equals(frameName, "backgrnd", StringComparison.Ordinal)
+                && (string.Equals(iconName, "icon1", StringComparison.Ordinal)
+                    || string.Equals(iconName, "icon8", StringComparison.Ordinal)
+                    || string.Equals(iconName, "icon0", StringComparison.Ordinal));
         }
 
         private static bool IsSameModalPayload(

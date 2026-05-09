@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18486;
         public const short OutboundCheckPasswordOpcode = 1;
         public const short OutboundCheckUserLimitOpcode = 6;
+        public const short OutboundReturnToTitleOpcode = 12;
+        public const short OutboundViewAllCharacterOpcode = 13;
         public const short OutboundCheckDuplicateIdOpcode = 21;
         public const short OutboundNewCharacterOpcode = 22;
         public const short OutboundNewCharacterSaleOpcode = 23;
@@ -340,6 +342,14 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendViewAllCharacterRequest(bool includeTitleReturn, byte gameStartMode, out string status)
+        {
+            return TrySendPacket(
+                BuildViewAllCharacterPacket(includeTitleReturn, gameStartMode),
+                $"Injected login opcode {OutboundViewAllCharacterOpcode} for ViewAllChar through the live session",
+                out status);
+        }
+
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
         {
             if (string.IsNullOrWhiteSpace(request.CharacterName))
@@ -407,6 +417,19 @@ namespace HaCreator.MapSimulator.Managers
             return writer.ToArray();
         }
 
+        public static byte[] BuildViewAllCharacterPacket(bool includeTitleReturn, byte gameStartMode)
+        {
+            PacketWriter writer = new();
+            if (includeTitleReturn)
+            {
+                writer.WriteShort(OutboundReturnToTitleOpcode);
+            }
+
+            writer.WriteShort(OutboundViewAllCharacterOpcode);
+            writer.WriteByte(gameStartMode);
+            return writer.ToArray();
+        }
+
         public static byte[] BuildNewCharacterPacket(LoginNewCharacterRequest request)
         {
             PacketWriter writer = new();
@@ -456,6 +479,43 @@ namespace HaCreator.MapSimulator.Managers
             writer.WriteMapleString((secondaryPassword ?? string.Empty).Trim());
             writer.WriteInt(characterId);
             return writer.ToArray();
+        }
+
+        public static bool TryParseClientMachineId(string text, out byte[] machineId, out string error)
+        {
+            machineId = Array.Empty<byte>();
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = $"Client machine id requires {ClientMachineIdLength} bytes of hex data.";
+                return false;
+            }
+
+            string normalized = new(text
+                .Where(ch => !char.IsWhiteSpace(ch) && ch != '-' && ch != ':' && ch != ',')
+                .ToArray());
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[2..];
+            }
+
+            if (normalized.Length != ClientMachineIdLength * 2 || normalized.Any(ch => !Uri.IsHexDigit(ch)))
+            {
+                error = $"Client machine id requires exactly {ClientMachineIdLength} hex bytes.";
+                return false;
+            }
+
+            try
+            {
+                machineId = Convert.FromHexString(normalized);
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = "Client machine id hex data is invalid.";
+                return false;
+            }
         }
 
         public void Dispose()

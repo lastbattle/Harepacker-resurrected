@@ -268,7 +268,8 @@ namespace HaCreator.MapSimulator.Managers
                 string passiveEvidence = DescribePassiveInboundEvidence();
                 string outboundSamples = DescribeObservedOutboundSamples();
                 string inboundSamples = DescribeObservedInboundSamples();
-                return $"{_ownerName} recovered-table verification: {recoveredCoverage}; {outboundCoverage}; observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; {ownerBranchCoverage}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
+                string ownerBranchSamples = DescribeOwnerBranchSamples();
+                return $"{_ownerName} recovered-table verification: {recoveredCoverage}; {outboundCoverage}; observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; {ownerBranchCoverage}; {ownerBranchSamples}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
             }
         }
 
@@ -1257,6 +1258,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
+                byte[] recoveredResultCodes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMapleTvSendResultCodes()
+                    .OrderBy(code => code)
+                    .ToArray();
+                byte[] missingResultCodes = recoveredResultCodes
+                    .Where(code => !_observedMapleTvSendResultCodes.Contains(code))
+                    .ToArray();
                 string[] missingBranches = new[]
                     {
                         PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode,
@@ -1275,7 +1282,10 @@ namespace HaCreator.MapSimulator.Managers
                 string resultCodes = _observedMapleTvSendResultCodes.Count == 0
                     ? "none"
                     : string.Join("/", _observedMapleTvSendResultCodes.OrderBy(code => code));
-                return $"MapleTV branch coverage missing={(missingBranches.Length == 0 ? "none" : string.Join("/", missingBranches))}; send-result codes={resultCodes}";
+                string missingCodes = missingResultCodes.Length == 0
+                    ? "none"
+                    : string.Join("/", missingResultCodes);
+                return $"MapleTV branch coverage missing={(missingBranches.Length == 0 ? "none" : string.Join("/", missingBranches))}; send-result code coverage observed={resultCodes} missing={missingCodes}";
             }
 
             if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
@@ -1283,7 +1293,14 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] recoveredSubtypes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerInboundSubtypes()
                     .OrderBy(subtype => subtype)
                     .ToArray();
+                byte staticInviteSubtype = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerStaticInviteSubtype();
+                byte[] recoveredInstanceSubtypes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerInstanceInboundSubtypes()
+                    .OrderBy(subtype => subtype)
+                    .ToArray();
                 byte[] missingSubtypes = recoveredSubtypes
+                    .Where(subtype => !_observedMessengerInboundSubtypes.Contains(subtype))
+                    .ToArray();
+                byte[] missingInstanceSubtypes = recoveredInstanceSubtypes
                     .Where(subtype => !_observedMessengerInboundSubtypes.Contains(subtype))
                     .ToArray();
                 string observed = _observedMessengerInboundSubtypes.Count == 0
@@ -1292,10 +1309,61 @@ namespace HaCreator.MapSimulator.Managers
                 string missing = missingSubtypes.Length == 0
                     ? "none"
                     : string.Join("/", missingSubtypes);
-                return $"Messenger subtype coverage observed={observed} missing={missing}";
+                string instanceObserved = string.Join(
+                    "/",
+                    _observedMessengerInboundSubtypes
+                        .Where(subtype => recoveredInstanceSubtypes.Contains(subtype))
+                        .OrderBy(subtype => subtype));
+                if (string.IsNullOrWhiteSpace(instanceObserved))
+                {
+                    instanceObserved = "none";
+                }
+
+                string instanceMissing = missingInstanceSubtypes.Length == 0
+                    ? "none"
+                    : string.Join("/", missingInstanceSubtypes);
+                string staticInvite = _observedMessengerInboundSubtypes.Contains(staticInviteSubtype)
+                    ? "observed"
+                    : "missing";
+                return $"Messenger subtype coverage observed={observed} missing={missing}; static invite subtype 3={staticInvite}; live-instance subtype coverage observed={instanceObserved} missing={instanceMissing}";
             }
 
             return "owner branch coverage not modeled";
+        }
+
+        private string DescribeOwnerBranchSamples()
+        {
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_observedMapleTvResultCodePayloadSamples.Count == 0)
+                {
+                    return "MapleTV send-result samples=none";
+                }
+
+                return "MapleTV send-result samples "
+                    + string.Join(
+                        ", ",
+                        _observedMapleTvResultCodePayloadSamples
+                            .OrderBy(entry => entry.Key)
+                            .Select(entry => $"code {entry.Key} payload={entry.Value}"));
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_observedMessengerSubtypePayloadSamples.Count == 0)
+                {
+                    return "Messenger subtype samples=none";
+                }
+
+                return "Messenger subtype samples "
+                    + string.Join(
+                        ", ",
+                        _observedMessengerSubtypePayloadSamples
+                            .OrderBy(entry => entry.Key)
+                            .Select(entry => $"subtype {entry.Key} payload={entry.Value}"));
+            }
+
+            return "owner branch samples not modeled";
         }
 
         private string DescribeObservedOutboundSamples()

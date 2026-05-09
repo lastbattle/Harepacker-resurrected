@@ -1645,7 +1645,9 @@ namespace HaCreator.MapSimulator.Character
             float sourceX = 0f,
             int elementAttribute = 0,
             int recastLeadTimeMs = 0,
-            Rectangle? periodicDamageArea = null)
+            Rectangle? periodicDamageArea = null,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             if (Player == null)
             {
@@ -1659,7 +1661,9 @@ namespace HaCreator.MapSimulator.Character
                 sourceX,
                 elementAttribute,
                 recastLeadTimeMs,
-                periodicDamageArea) == true;
+                periodicDamageArea,
+                sourceOwnerId,
+                sourceAreaObjectId) == true;
         }
 
         internal bool TryApplyMobSkillBlockingStatus(int skillId, int skillLevel, MobSkillRuntimeData runtimeData, int currentTime)

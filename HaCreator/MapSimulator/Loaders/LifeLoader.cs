@@ -80,6 +80,7 @@ namespace HaCreator.MapSimulator.Loaders
             public int DirectCanvasFrameCount { get; init; }
             public int FrameMetadataCount { get; init; }
             public bool HasActionSpeakMetadata { get; init; }
+            public int ActionSpeakConditionGroupCount { get; init; }
             public bool AppendsReversePlayback { get; init; }
             public bool UsesClientSlotOwner { get; init; }
         }
@@ -1490,6 +1491,9 @@ namespace HaCreator.MapSimulator.Loaders
                 : normalizedActionName;
             int? slot = usesClientSlotOwner ? clientActionSlot : null;
 
+            MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata =
+                BuildMobActionSpeakMetadata(actionProperty?["speak"]);
+
             return new MobActionNativeCacheTrace
             {
                 TemplateId = normalizedTemplateId,
@@ -1501,7 +1505,8 @@ namespace HaCreator.MapSimulator.Loaders
                     : $"{normalizedTemplateId}:authored:{canonicalActionName}",
                 DirectCanvasFrameCount = CountMobActionFrameCanvasesForTests(actionProperty),
                 FrameMetadataCount = CountMobActionFrameMetadataForTests(actionProperty),
-                HasActionSpeakMetadata = BuildMobActionSpeakMetadata(actionProperty?["speak"]) != null,
+                HasActionSpeakMetadata = actionSpeakMetadata != null,
+                ActionSpeakConditionGroupCount = actionSpeakMetadata?.ConditionGroups?.Count ?? 0,
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
                 UsesClientSlotOwner = usesClientSlotOwner
             };
@@ -1890,6 +1895,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             List<string> messages = ReadMobSpeakMessages(speakNode);
             IReadOnlyList<MobAnimationSet.ActionSpeakVariant> variants = ReadMobSpeakVariants(speakNode);
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups =
+                ReadMobSpeakConditionGroups(speakNode?["con"]);
             if (messages.Count == 0 && (variants == null || variants.Count == 0))
             {
                 return null;
@@ -1909,7 +1916,8 @@ namespace HaCreator.MapSimulator.Loaders
                 Messages = messages.Count > 0
                     ? messages
                     : variants.SelectMany(variant => variant.Messages ?? Array.Empty<string>()).ToArray(),
-                Variants = variants
+                Variants = variants,
+                ConditionGroups = conditionGroups
             };
         }
 
@@ -1970,11 +1978,99 @@ namespace HaCreator.MapSimulator.Loaders
                     ChatBalloon = Math.Max(0, ReadOptionalInt(variantNode, parentChatBalloon, "chataBalloon", "chatBalloon")),
                     FloatNotice = Math.Max(0, ReadOptionalInt(variantNode, parentFloatNotice, "floatNotice")),
                     HpThreshold = Math.Max(0, ReadOptionalInt(variantNode, parentHpThreshold, "hp")),
-                    Messages = messages
+                    Messages = messages,
+                    ConditionGroups = ReadMobSpeakConditionGroups(variantNode["con"])
                 });
             }
 
             return variants;
+        }
+
+        private static IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> ReadMobSpeakConditionGroups(
+            WzImageProperty conProperty)
+        {
+            if (WzInfoTools.GetRealProperty(conProperty) is not WzSubProperty conNode ||
+                conNode.WzProperties == null)
+            {
+                return Array.Empty<MobAnimationSet.ActionSpeakConditionGroup>();
+            }
+
+            var groups = new List<MobAnimationSet.ActionSpeakConditionGroup>();
+            foreach (WzImageProperty childProperty in conNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                MobAnimationSet.ActionSpeakConditionGroup group =
+                    ReadMobSpeakConditionGroup(WzInfoTools.GetRealProperty(childProperty));
+                if (group?.HasConditions == true)
+                {
+                    groups.Add(group);
+                }
+            }
+
+            return groups;
+        }
+
+        private static MobAnimationSet.ActionSpeakConditionGroup ReadMobSpeakConditionGroup(
+            WzImageProperty groupProperty)
+        {
+            if (groupProperty is not WzSubProperty groupNode)
+            {
+                return null;
+            }
+
+            var questConditions = new List<MobAnimationSet.ActionSpeakQuestCondition>();
+            var petItemIds = new List<int>();
+
+            foreach (WzImageProperty conditionProperty in
+                     (IEnumerable<WzImageProperty>)groupNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                WzImageProperty resolvedCondition = WzInfoTools.GetRealProperty(conditionProperty);
+                if (resolvedCondition == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(resolvedCondition.Name, "quest", StringComparison.OrdinalIgnoreCase) &&
+                    resolvedCondition is WzSubProperty questNode)
+                {
+                    int questId = ReadOptionalInt(questNode, 0, "questID", "questId", "id");
+                    int state = ReadOptionalInt(questNode, 0, "state");
+                    if (questId > 0)
+                    {
+                        questConditions.Add(new MobAnimationSet.ActionSpeakQuestCondition
+                        {
+                            QuestId = questId,
+                            State = state
+                        });
+                    }
+                }
+                else if (string.Equals(resolvedCondition.Name, "pet", StringComparison.OrdinalIgnoreCase))
+                {
+                    int petItemId = ReadIntValue(resolvedCondition);
+                    if (petItemId > 0)
+                    {
+                        petItemIds.Add(petItemId);
+                    }
+                }
+            }
+
+            return new MobAnimationSet.ActionSpeakConditionGroup
+            {
+                QuestConditions = questConditions,
+                RequiredPetItemIds = petItemIds
+            };
+        }
+
+        private static int ReadIntValue(WzImageProperty property)
+        {
+            return WzInfoTools.GetRealProperty(property) switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty when longProperty.Value <= int.MaxValue && longProperty.Value >= int.MinValue => (int)longProperty.Value,
+                _ => 0
+            };
         }
 
         private static string ResolveMobOverlayLayerZ(WzCanvasProperty canvasProperty)
@@ -2613,12 +2709,14 @@ namespace HaCreator.MapSimulator.Loaders
                     texturePool, UserScreenScaleFactor, device);
             }
 
-            return new NpcItem(
+            NpcItem npcItem = new(
                 npcInstance,
                 animationSet,
                 nameTooltip,
                 npcDescTooltip,
                 LoadNpcIdleSpeech(source?["info"]?["speak"]));
+            npcItem.MarkMapleTvPresentationAvailable(source?["info"]?["MapleTV"]?.GetInt() != 0);
+            return npcItem;
         }
 
         private static IReadOnlyList<string> LoadNpcIdleSpeech(WzImageProperty speakProperty)

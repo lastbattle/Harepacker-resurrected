@@ -67,6 +67,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientEmployeeFrameAdvanceStepMs = 30;
         private const int ClientEmployeeCacheSweepIntervalMs = 60000;
         private const int ClientEmployeeCacheEntryLifetimeMs = 300000;
+        private const int ClientActionManSweepCacheAddress = 0x415F60;
+        private const int ClientActionManSweepCacheIntervalCompareAddress = 0x415F9B;
+        private const int ClientActionManEmployeeImgEntrySweepAddress = 0x4163C7;
+        private const int ClientActionManEmployeeActionEntrySweepAddress = 0x41643F;
 
         private static readonly Color SignHeadlineColor = new(255, 242, 176);
         private static readonly Color SignDetailColor = new(244, 244, 244);
@@ -1040,6 +1044,36 @@ namespace HaCreator.MapSimulator.Interaction
             return HasCacheEntryExpired(lastAccessTickMs, currentTickMs);
         }
 
+        internal static int ResolveClientEmployeeCacheSweepIntervalMsForTesting()
+        {
+            return ClientEmployeeCacheSweepIntervalMs;
+        }
+
+        internal static int ResolveClientEmployeeCacheEntryLifetimeMsForTesting()
+        {
+            return ClientEmployeeCacheEntryLifetimeMs;
+        }
+
+        internal static int ResolveClientActionManSweepCacheAddressForTesting()
+        {
+            return ClientActionManSweepCacheAddress;
+        }
+
+        internal static int ResolveClientActionManSweepCacheIntervalCompareAddressForTesting()
+        {
+            return ClientActionManSweepCacheIntervalCompareAddress;
+        }
+
+        internal static int ResolveClientActionManEmployeeImgEntrySweepAddressForTesting()
+        {
+            return ClientActionManEmployeeImgEntrySweepAddress;
+        }
+
+        internal static int ResolveClientActionManEmployeeActionEntrySweepAddressForTesting()
+        {
+            return ClientActionManEmployeeActionEntrySweepAddress;
+        }
+
         internal static int DecodeEmployeeActionCacheTemplateIdForTesting(uint cacheKey)
         {
             return DecodeEmployeeActionCacheTemplateId(cacheKey);
@@ -1975,6 +2009,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string ResolveMiniRoomBoardEffectCanvasNameForTesting(WzImageProperty frameProperty)
         {
             return ResolveMiniRoomBoardEffectCanvas(frameProperty)?.Name;
+        }
+
+        internal static (float? X, float? Y) ResolveMiniRoomBoardEffectOriginForTesting(WzImageProperty frameProperty)
+        {
+            WzImageProperty resolvedFrame = ResolveLinkedProperty(frameProperty);
+            WzCanvasProperty canvas = ResolveMiniRoomBoardEffectCanvas(frameProperty);
+            Vector2? origin = GetAuthoredPropertyOriginVector(resolvedFrame) ?? GetAuthoredCanvasOriginVector(canvas);
+            return origin.HasValue ? (origin.Value.X, origin.Value.Y) : (null, null);
         }
 
         private static int ResolveMiniRoomBoardEffectFrameDelay(int? frameDelay, int? canvasDelay)

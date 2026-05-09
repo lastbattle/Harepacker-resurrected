@@ -238,6 +238,10 @@ namespace HaCreator.MapSimulator.Managers
                             ViewAllCharRosterProfile?.LoginOpt ?? false);
                     }
                     break;
+
+                case LoginViewAllCharResultKind.Error:
+                    ResetViewAllAggregation();
+                    break;
             }
         }
 

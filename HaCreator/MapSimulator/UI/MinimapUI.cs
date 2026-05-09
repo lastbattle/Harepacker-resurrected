@@ -1916,7 +1916,8 @@ namespace HaCreator.MapSimulator.UI
             return npc?.NpcInstance != null
                 && IsClientNpcHoverCandidateForTesting(
                     npc.NpcInstance.NpcInfo?.HideName == true,
-                    npc.NpcInstance.Hide);
+                    npc.NpcInstance.Hide,
+                    npc.PacketEnabled);
         }
 
         private void ResetHoverTargets()
@@ -2083,13 +2084,22 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool IsClientNpcHoverCandidateForTesting(bool templateHidesName)
         {
-            return IsClientNpcHoverCandidateForTesting(templateHidesName, MapleBool.False);
+            return IsClientNpcHoverCandidateForTesting(templateHidesName, MapleBool.False, true);
         }
 
         internal static bool IsClientNpcHoverCandidateForTesting(bool templateHidesName, MapleBool instanceHideFlag)
         {
+            return IsClientNpcHoverCandidateForTesting(templateHidesName, instanceHideFlag, true);
+        }
+
+        internal static bool IsClientNpcHoverCandidateForTesting(
+            bool templateHidesName,
+            MapleBool instanceHideFlag,
+            bool packetEnabled)
+        {
             return !templateHidesName
-                && IsClientOptionalBoolZeroOrMissingForTesting(instanceHideFlag);
+                && IsClientOptionalBoolZeroOrMissingForTesting(instanceHideFlag)
+                && packetEnabled;
         }
 
         private static bool IsClientPortalHoverCandidate(PortalItem portal)

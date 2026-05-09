@@ -531,7 +531,7 @@ namespace HaCreator.MapSimulator.Physics
                     writer.Write(ClampToShort(element.FootholdId));
                     break;
                 case 9:
-                    writer.Write((byte)0);
+                    writer.Write(element.StatChanged ? (byte)1 : (byte)0);
                     writesCommonMoveSuffix = false;
                     break;
                 case 11:
@@ -619,7 +619,7 @@ namespace HaCreator.MapSimulator.Physics
                     element.FootholdId = reader.ReadInt16();
                     break;
                 case 9:
-                    reader.ReadByte();
+                    element.StatChanged = reader.ReadByte() != 0;
                     readsCommonMoveSuffix = false;
                     break;
                 case 11:

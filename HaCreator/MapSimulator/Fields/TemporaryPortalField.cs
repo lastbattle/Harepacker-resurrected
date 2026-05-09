@@ -353,8 +353,8 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeRemotePortalStatus(int currentMapId)
         {
-            int townPortalCount = _remoteTownPortals.Values.Count(state => state.MapId == currentMapId);
-            int openGateCount = _remoteOpenGates.Values.Count(state => state.MapId == currentMapId);
+            int townPortalCount = _remoteTownPortals.Values.Count(state => IsActiveRemoteTownPortalPoolEntry(state, currentMapId));
+            int openGateCount = _remoteOpenGates.Values.Count(state => IsActiveRemoteOpenGatePoolEntry(state, currentMapId));
             return $"Remote portal pools: town={townPortalCount}, opengate={openGateCount}";
         }
 
@@ -2703,8 +2703,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool ShouldApplyRemoteTownPortalRemove(RemoteTownPortalState state, int currentMapId)
         {
-            return state.Phase != RemoteTownPortalVisualPhase.Removing
-                   && ShouldApplyRemoteTownPortalRemove(state.MapId, currentMapId);
+            return IsActiveRemoteTownPortalPoolEntry(state, currentMapId);
         }
 
         private static bool ShouldApplyRemoteOpenGateRemove(int stateMapId, int currentMapId)
@@ -2715,6 +2714,17 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         private static bool ShouldApplyRemoteOpenGateRemove(RemoteOpenGateState state, int currentMapId)
+        {
+            return IsActiveRemoteOpenGatePoolEntry(state, currentMapId);
+        }
+
+        private static bool IsActiveRemoteTownPortalPoolEntry(RemoteTownPortalState state, int currentMapId)
+        {
+            return state.Phase != RemoteTownPortalVisualPhase.Removing
+                   && ShouldApplyRemoteTownPortalRemove(state.MapId, currentMapId);
+        }
+
+        private static bool IsActiveRemoteOpenGatePoolEntry(RemoteOpenGateState state, int currentMapId)
         {
             return state.Phase != RemoteOpenGateVisualPhase.Removing
                    && ShouldApplyRemoteOpenGateRemove(state.MapId, currentMapId);
@@ -4570,6 +4580,25 @@ namespace HaCreator.MapSimulator.Fields
             return ShouldApplyRemoteTownPortalRemove(state, currentMapId);
         }
 
+        internal static bool IsActiveRemoteTownPortalPoolEntryForTesting(
+            int stateMapId,
+            int currentMapId,
+            RemoteTownPortalVisualPhase phase)
+        {
+            RemoteTownPortalState state = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: stateMapId,
+                X: 0,
+                Y: 0,
+                Destination: null,
+                Phase: phase,
+                PhaseStartedAt: 0,
+                RemovalState: null,
+                RemovalSnapshot: null);
+            return IsActiveRemoteTownPortalPoolEntry(state, currentMapId);
+        }
+
         internal static bool ShouldApplyRemoteOpenGateRemoveForTesting(int stateMapId, int currentMapId)
         {
             return ShouldApplyRemoteOpenGateRemove(stateMapId, currentMapId);
@@ -4591,6 +4620,24 @@ namespace HaCreator.MapSimulator.Fields
                 Phase: phase,
                 PhaseStartedAt: 0);
             return ShouldApplyRemoteOpenGateRemove(state, currentMapId);
+        }
+
+        internal static bool IsActiveRemoteOpenGatePoolEntryForTesting(
+            int stateMapId,
+            int currentMapId,
+            RemoteOpenGateVisualPhase phase)
+        {
+            RemoteOpenGateState state = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: stateMapId,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: phase,
+                PhaseStartedAt: 0);
+            return IsActiveRemoteOpenGatePoolEntry(state, currentMapId);
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

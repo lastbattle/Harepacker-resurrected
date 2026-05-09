@@ -8,5 +8,6 @@ namespace HaCreator.MapSimulator
         LoginNoticeBar = 3,
         InGameFadeYesNo = 4,
         UtilDlgNotice = 5,
+        FieldMessageBoxChalkboardCompose = 6,
     }
 }

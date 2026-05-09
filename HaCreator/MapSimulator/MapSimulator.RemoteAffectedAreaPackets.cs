@@ -568,7 +568,9 @@ namespace HaCreator.MapSimulator
                     runtimeData,
                     currentTime,
                     area.WorldBounds.Center.X,
-                    area.ElementAttribute) == true;
+                    area.ElementAttribute,
+                    sourceOwnerId: area.OwnerId,
+                    sourceAreaObjectId: area.ObjectId) == true;
                 if (applied)
                 {
                     _playerManager?.PlayMobSkillHitEffect(area.SkillId, Math.Max(1, area.SkillLevel), currentTime);

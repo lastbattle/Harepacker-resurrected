@@ -28,7 +28,27 @@ namespace HaCreator.MapSimulator.Character
             int LayerObjectId,
             int ListNodeObjectId,
             int RegisteredAnimationObjectId,
-            int ParentUnderFaceLayerObjectId);
+            int ParentUnderFaceLayerObjectId,
+            IReadOnlyList<ShadowPartnerLayerNativeOperation> NativeOperations);
+
+        public enum ShadowPartnerLayerNativeOperationKind
+        {
+            AddRefParentUnderFaceLayer,
+            AddRefHelperLayerObject,
+            InsertLayerListNodeUnderFace,
+            AddRefRegisteredAnimation,
+            ReleaseRegisteredAnimation,
+            ReleaseLayerListNode,
+            ReleaseHelperLayerObject,
+            ReleaseParentUnderFaceLayer
+        }
+
+        public readonly record struct ShadowPartnerLayerNativeOperation(
+            ShadowPartnerLayerNativeOperationKind Kind,
+            int Sequence,
+            int ObjectId,
+            int RelatedObjectId,
+            int ReferenceDelta);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -3432,7 +3452,76 @@ namespace HaCreator.MapSimulator.Character
                 layerObjectId,
                 layerObjectId + ShadowPartnerLayerListNodeSalt,
                 usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
-                ShadowPartnerUnderFaceParentLayerObjectId);
+                ShadowPartnerUnderFaceParentLayerObjectId,
+                BuildShadowPartnerLayerNativeOperations(
+                    layerObjectId,
+                    layerObjectId + ShadowPartnerLayerListNodeSalt,
+                    usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
+                    ShadowPartnerUnderFaceParentLayerObjectId));
+        }
+
+        private static IReadOnlyList<ShadowPartnerLayerNativeOperation> BuildShadowPartnerLayerNativeOperations(
+            int layerObjectId,
+            int listNodeObjectId,
+            int registeredAnimationObjectId,
+            int parentUnderFaceLayerObjectId)
+        {
+            var operations = new List<ShadowPartnerLayerNativeOperation>(registeredAnimationObjectId > 0 ? 8 : 6);
+            int sequence = 0;
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.AddRefParentUnderFaceLayer,
+                ++sequence,
+                parentUnderFaceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 1));
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.AddRefHelperLayerObject,
+                ++sequence,
+                layerObjectId,
+                parentUnderFaceLayerObjectId,
+                ReferenceDelta: 1));
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.InsertLayerListNodeUnderFace,
+                ++sequence,
+                listNodeObjectId,
+                parentUnderFaceLayerObjectId,
+                ReferenceDelta: 1));
+
+            if (registeredAnimationObjectId > 0)
+            {
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.AddRefRegisteredAnimation,
+                    ++sequence,
+                    registeredAnimationObjectId,
+                    layerObjectId,
+                    ReferenceDelta: 1));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ReleaseRegisteredAnimation,
+                    ++sequence,
+                    registeredAnimationObjectId,
+                    layerObjectId,
+                    ReferenceDelta: -1));
+            }
+
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.ReleaseLayerListNode,
+                ++sequence,
+                listNodeObjectId,
+                parentUnderFaceLayerObjectId,
+                ReferenceDelta: -1));
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.ReleaseHelperLayerObject,
+                ++sequence,
+                layerObjectId,
+                parentUnderFaceLayerObjectId,
+                ReferenceDelta: -1));
+            operations.Add(new ShadowPartnerLayerNativeOperation(
+                ShadowPartnerLayerNativeOperationKind.ReleaseParentUnderFaceLayer,
+                ++sequence,
+                parentUnderFaceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: -1));
+            return operations;
         }
 
         internal static WzImageProperty ResolveClientActionManInitPieceOwnerNode(
@@ -4826,23 +4915,26 @@ namespace HaCreator.MapSimulator.Character
             string actionName,
             IReadOnlySet<string> supportedRawActionNames)
         {
-            if (string.IsNullOrWhiteSpace(actionName)
-                || supportedRawActionNames == null
-                || supportedRawActionNames.Count == 0)
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (ClientActionDataFallbackOnlyActionNames.Contains(actionName))
+            {
+                return supportedRawActionNames != null
+                       && supportedRawActionNames.Count > 0
+                       && supportedRawActionNames.Contains(actionName);
+            }
+
+            if (supportedRawActionNames == null || supportedRawActionNames.Count == 0)
             {
                 return true;
             }
 
             if (!SupportedRawActionCanonicalNames.TryGetValue(actionName, out string canonicalActionName))
             {
-                if (ClientActionDataFallbackOnlyActionNames.Contains(actionName))
-                {
-                    return supportedRawActionNames.Contains(actionName);
-                }
-
                 return !IsClientInitializedShadowPartnerRawActionName(actionName)
-                       || supportedRawActionNames == null
-                       || supportedRawActionNames.Count == 0
                        || supportedRawActionNames.Contains(actionName);
             }
 

@@ -2935,9 +2935,13 @@ namespace HaCreator.MapSimulator.Interaction
                 maxStackSize = ResolveBundleMaxStack(itemId, bundleInventoryType);
             }
 
+            isTreatSingly = slotType == 2 && IsTreatSingly(itemId, baseExpirationTime, maxStackSize);
+
+            // CStoreBankDlg::SetItems copies nStock from GW_ItemSlotBase::GetItemNumber:
+            // equip/pet rows return 1, while bundle rows return the decoded nNumber.
             return slotType switch
             {
-                2 => (isTreatSingly = IsTreatSingly(itemId, baseExpirationTime, maxStackSize)) ? 1 : Math.Max(1, quantity),
+                2 => Math.Max(1, quantity),
                 _ => 1
             };
         }

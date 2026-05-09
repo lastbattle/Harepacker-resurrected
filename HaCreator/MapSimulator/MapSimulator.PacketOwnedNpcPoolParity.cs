@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator
                 ChangeController = ApplyPacketNpcChangeController,
                 Move = ApplyPacketNpcMove,
                 UpdateLimitedInfo = ApplyPacketNpcLimitedInfo,
+                UpdateLimitedDisableInfo = ApplyPacketNpcLimitedDisableInfo,
                 SetSpecialAction = ApplyPacketNpcSpecialAction,
                 ImitateData = ApplyPacketNpcImitateData,
                 TemplatePacket = (payload, _) => new PacketNpcPoolApplyResult(
@@ -74,7 +75,7 @@ namespace HaCreator.MapSimulator
                     packet.FootholdId,
                     packet.Rx0,
                     packet.Rx1,
-                    packet.Enabled,
+                    packet.Enabled && !_packetOwnedNpcPoolRuntime.DisabledTemplateIds.Contains(packet.TemplateId),
                     existing.PacketControllerOwnedByLocalUser);
                 return new PacketNpcPoolApplyResult(
                     true,
@@ -154,7 +155,7 @@ namespace HaCreator.MapSimulator
                     init.FootholdId,
                     init.Rx0,
                     init.Rx1,
-                    init.Enabled,
+                    init.Enabled && !_packetOwnedNpcPoolRuntime.DisabledTemplateIds.Contains(init.TemplateId),
                     localController: true);
             }
 
@@ -189,6 +190,36 @@ namespace HaCreator.MapSimulator
             return new PacketNpcPoolApplyResult(
                 true,
                 $"CNpc::OnUpdateLimitedInfo marked object {packet.ObjectId} {state} and reset its action layer/effect marker.");
+        }
+
+        private PacketNpcPoolApplyResult ApplyPacketNpcLimitedDisableInfo(PacketNpcLimitedDisableInfoPacket packet, int currentTick)
+        {
+            HashSet<string> disabledTemplateIds = (packet.DisabledTemplateIds ?? Array.Empty<int>())
+                .Select(NormalizeNpcTemplateId)
+                .ToHashSet(StringComparer.Ordinal);
+            int disabled = 0;
+            int enabled = 0;
+            foreach (NpcItem npc in EnumerateLiveNpcs())
+            {
+                string templateId = NormalizeNpcTemplateId(npc?.NpcInstance?.NpcInfo?.ID);
+                bool shouldEnable = !disabledTemplateIds.Contains(templateId);
+                if (npc.PacketEnabled != shouldEnable)
+                {
+                    npc.ApplyPacketLimitedInfo(shouldEnable, currentTick);
+                    if (shouldEnable)
+                    {
+                        enabled++;
+                    }
+                    else
+                    {
+                        disabled++;
+                    }
+                }
+            }
+
+            return new PacketNpcPoolApplyResult(
+                true,
+                $"CNpcPool::OnUpdateLimitedDisableInfo retained {disabledTemplateIds.Count.ToString(CultureInfo.InvariantCulture)} disabled template id(s), disabled {disabled.ToString(CultureInfo.InvariantCulture)} live NPC(s), and re-enabled {enabled.ToString(CultureInfo.InvariantCulture)} live NPC(s).");
         }
 
         private PacketNpcPoolApplyResult ApplyPacketNpcSpecialAction(PacketNpcSpecialActionPacket packet, int currentTick)
@@ -293,7 +324,7 @@ namespace HaCreator.MapSimulator
                 packet.FootholdId,
                 packet.Rx0,
                 packet.Rx1,
-                packet.Enabled,
+                packet.Enabled && !_packetOwnedNpcPoolRuntime.DisabledTemplateIds.Contains(packet.TemplateId),
                 localController);
             return npc;
         }
@@ -385,7 +416,7 @@ namespace HaCreator.MapSimulator
                     bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
                     if (args.Length < 2 || !NpcPoolPacketInboxManager.TryParsePacketType(args[1], out int packetType))
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcpool packet <imitate|limiteddisable|enter|leave|controller|move|limited|special|template> [payloadhex=..|payloadb64=..]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcpool packet <imitate|limiteddisable|enter|leave|controller|move|limited|special|template> [payloadhex=..|payloadb64=..]");
                     }
 
                     byte[] payload = Array.Empty<byte>();
@@ -452,6 +483,27 @@ namespace HaCreator.MapSimulator
                         PacketNpcPoolPacketKind.UpdateLimitedInfo,
                         PacketNpcPoolRuntime.BuildLimitedInfoPayload(limitedObjectId, enabled));
 
+                case "limiteddisable":
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcpool limiteddisable <templateId> [templateId...]");
+                    }
+
+                    var disabledTemplateIds = new List<int>();
+                    foreach (string templateIdArg in args.Skip(1))
+                    {
+                        if (!int.TryParse(templateIdArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out int disabledTemplateId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /npcpool limiteddisable <templateId> [templateId...]");
+                        }
+
+                        disabledTemplateIds.Add(disabledTemplateId);
+                    }
+
+                    return ApplyBuiltNpcPoolPayload(
+                        PacketNpcPoolPacketKind.UpdateLimitedDisableInfo,
+                        PacketNpcPoolRuntime.BuildLimitedDisableInfoPayload(disabledTemplateIds.ToArray()));
+
                 case "special":
                     if (args.Length < 3 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int specialObjectId))
                     {
@@ -463,7 +515,7 @@ namespace HaCreator.MapSimulator
                         PacketNpcPoolRuntime.BuildSpecialActionPayload(specialObjectId, string.Join(" ", args.Skip(2))));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcpool [status|enter <objectId> <templateId> <x> <y> [rx0 rx1 enabled]|leave <objectId>|move <objectId> <action> <chatIndex>|limited <objectId> <on|off>|special <objectId> <actionName>|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcpool [status|enter <objectId> <templateId> <x> <y> [rx0 rx1 enabled]|leave <objectId>|move <objectId> <action> <chatIndex>|limited <objectId> <on|off>|limiteddisable <templateId> [templateId...]|special <objectId> <actionName>|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]");
             }
         }
 

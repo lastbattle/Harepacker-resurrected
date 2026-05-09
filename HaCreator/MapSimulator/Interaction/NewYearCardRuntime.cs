@@ -45,10 +45,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NameListScrollBarRange = 100;
         internal const int SearchResultX = 353;
         internal const int SearchResultY = 0;
+        internal const int SearchResultWidth = 165;
+        internal const int SearchResultHeight = 106;
         internal const int SearchResultFirstTextX = 368;
         internal const int SearchResultFirstTextY = 24;
         internal const int SearchResultRowHeight = 15;
         internal const int SearchResultBottomY = 99;
+        internal const int SearchResultVisibleRows = 5;
         internal const int ReadCloseButtonX = 91;
         internal const int ReadCloseButtonY = 231;
         internal const int SenderTargetMaxChars = 12;
@@ -65,6 +68,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastStatus = "New Year Card sender/read dialog runtime idle.";
         private int _inventoryPosition = DefaultInventoryPosition;
         private int _itemId = DefaultItemId;
+        private int _selectedSearchResultIndex;
+        private int _firstVisibleSearchResultIndex;
 
         internal NewYearCardRuntime()
         {
@@ -87,6 +92,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _targetName,
                 _memo,
                 _searchResults.ToArray(),
+                _selectedSearchResultIndex,
+                _firstVisibleSearchResultIndex,
                 _lastStatus);
         }
 
@@ -136,6 +143,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string normalizedQuery = NormalizeName(query, string.Empty);
             _searchResults.Clear();
+            _selectedSearchResultIndex = 0;
+            _firstVisibleSearchResultIndex = 0;
 
             if (string.IsNullOrWhiteSpace(normalizedQuery))
             {
@@ -162,9 +171,65 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _targetName = _searchResults[index];
+            _selectedSearchResultIndex = index;
+            EnsureSelectedSearchResultVisible();
             message = $"Selected New Year Card receiver '{_targetName}' from CNewYearCardReceiverSearchResult.";
             _lastStatus = message;
             return true;
+        }
+
+        internal string ScrollSearchResults(int delta)
+        {
+            int maxFirstVisibleIndex = GetMaxFirstVisibleSearchResultIndex();
+            _firstVisibleSearchResultIndex = Math.Clamp(
+                _firstVisibleSearchResultIndex + delta,
+                0,
+                maxFirstVisibleIndex);
+            _lastStatus = $"CNewYearCardReceiverSearchResult name-list scrollbar moved to first row {_firstVisibleSearchResultIndex + 1} of {_searchResults.Count}.";
+            return _lastStatus;
+        }
+
+        internal string ApplyCompletion(NewYearCardCompletionKind kind, string targetName = null, string senderName = null, string memo = null)
+        {
+            switch (kind)
+            {
+                case NewYearCardCompletionKind.SendSuccess:
+                    string target = NormalizeName(targetName, _targetName);
+                    if (!string.IsNullOrEmpty(target))
+                    {
+                        _targetName = target;
+                    }
+
+                    _lastStatus = NewYearCardClientText.ResolveSendSuccessNotice(DisplayTargetName);
+                    return _lastStatus;
+
+                case NewYearCardCompletionKind.ReceiveSuccess:
+                    if (!string.IsNullOrWhiteSpace(senderName) || !string.IsNullOrWhiteSpace(targetName) || memo != null)
+                    {
+                        ConfigureReadView(senderName ?? _senderName, targetName ?? _targetName, memo ?? _memo);
+                    }
+
+                    _lastStatus = NewYearCardClientText.ResolveReceiveSuccessNotice();
+                    return _lastStatus;
+
+                case NewYearCardCompletionKind.DeleteSuccess:
+                    _lastStatus = NewYearCardClientText.ResolveDeleteSuccessNotice();
+                    return _lastStatus;
+
+                case NewYearCardCompletionKind.NoFreeSlot:
+                case NewYearCardCompletionKind.NoCardToSend:
+                case NewYearCardCompletionKind.WrongInventory:
+                case NewYearCardCompletionKind.TargetNotFound:
+                case NewYearCardCompletionKind.IncoherentData:
+                case NewYearCardCompletionKind.DatabaseError:
+                case NewYearCardCompletionKind.UnknownError:
+                    _lastStatus = NewYearCardClientText.ResolveFailureNotice(kind);
+                    return _lastStatus;
+
+                default:
+                    _lastStatus = $"Unhandled New Year Card completion kind {kind}.";
+                    return _lastStatus;
+            }
         }
 
         internal NewYearCardSendRequest BuildSendRequest()
@@ -178,21 +243,21 @@ namespace HaCreator.MapSimulator.Interaction
             request = null;
             if (string.IsNullOrWhiteSpace(_targetName))
             {
-                message = "Cannot find such character !";
+                message = NewYearCardClientText.ResolveFailureNotice(NewYearCardCompletionKind.TargetNotFound);
                 _lastStatus = message;
                 return false;
             }
 
             if (string.Equals(_senderName, _targetName, StringComparison.OrdinalIgnoreCase))
             {
-                message = "You cannot send a card to yourself !";
+                message = NewYearCardClientText.ResolveCannotSendToSelfNotice();
                 _lastStatus = message;
                 return false;
             }
 
             if (string.IsNullOrEmpty(_memo) && !confirmedEmptyMemo)
             {
-                message = "The client prompts before sending a New Year Card with an empty memo.";
+                message = NewYearCardClientText.ResolveEmptyMemoPrompt();
                 _lastStatus = message;
                 return false;
             }
@@ -219,6 +284,26 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private string DisplayTargetName => string.IsNullOrWhiteSpace(_targetName) ? "(empty)" : _targetName;
+
+        private int GetMaxFirstVisibleSearchResultIndex()
+        {
+            return Math.Max(0, _searchResults.Count - SearchResultVisibleRows);
+        }
+
+        private void EnsureSelectedSearchResultVisible()
+        {
+            int maxFirstVisibleIndex = GetMaxFirstVisibleSearchResultIndex();
+            if (_selectedSearchResultIndex < _firstVisibleSearchResultIndex)
+            {
+                _firstVisibleSearchResultIndex = _selectedSearchResultIndex;
+            }
+            else if (_selectedSearchResultIndex >= _firstVisibleSearchResultIndex + SearchResultVisibleRows)
+            {
+                _firstVisibleSearchResultIndex = _selectedSearchResultIndex - SearchResultVisibleRows + 1;
+            }
+
+            _firstVisibleSearchResultIndex = Math.Clamp(_firstVisibleSearchResultIndex, 0, maxFirstVisibleIndex);
+        }
 
         private static byte[] EncodeSendPayload(int inventoryPosition, int itemId, string targetName, string memo)
         {
@@ -354,6 +439,8 @@ namespace HaCreator.MapSimulator.Interaction
         string TargetName,
         string Memo,
         IReadOnlyList<string> SearchResults,
+        int SelectedSearchResultIndex,
+        int FirstVisibleSearchResultIndex,
         string LastStatus);
 
     internal sealed record NewYearCardReadSnapshot(
@@ -369,4 +456,18 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         string TargetName,
         string Memo);
+
+    internal enum NewYearCardCompletionKind
+    {
+        SendSuccess,
+        ReceiveSuccess,
+        DeleteSuccess,
+        NoFreeSlot,
+        NoCardToSend,
+        WrongInventory,
+        TargetNotFound,
+        IncoherentData,
+        DatabaseError,
+        UnknownError
+    }
 }

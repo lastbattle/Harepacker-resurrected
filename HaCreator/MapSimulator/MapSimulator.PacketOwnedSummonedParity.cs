@@ -147,9 +147,21 @@ namespace HaCreator.MapSimulator
             int ownerCharacterId,
             out int ownerTeam)
         {
-            return TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
-                carnivalVisible,
-                carnivalLocalTeam,
+            if (TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
+                    carnivalVisible,
+                    carnivalLocalTeam,
+                    out ownerTeam))
+            {
+                return true;
+            }
+
+            return TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+                coconutTeamResolved,
+                coconutLocalTeam,
+                partyRaidActive,
+                partyRaidTeamColor,
+                localPlayerId,
+                ownerCharacterId,
                 out ownerTeam);
         }
 
@@ -162,6 +174,18 @@ namespace HaCreator.MapSimulator
             int ownerCharacterId,
             out int ownerTeam)
         {
+            if (coconutTeamResolved)
+            {
+                ownerTeam = coconutLocalTeam == 1 ? 1 : 0;
+                return true;
+            }
+
+            if (partyRaidActive)
+            {
+                ownerTeam = partyRaidTeamColor == PartyRaidTeamColor.Blue ? 1 : 0;
+                return true;
+            }
+
             ownerTeam = default;
             return false;
         }

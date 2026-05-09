@@ -539,6 +539,7 @@ namespace HaCreator.MapSimulator.Managers
             int CharacterId,
             int PayloadLength,
             string Source,
+            bool IsOfficialSession,
             string Reason);
 
         private sealed class PortableChairRecordOpcodeEvidence
@@ -557,10 +558,21 @@ namespace HaCreator.MapSimulator.Managers
             public int PacketType { get; }
             public string Operation { get; }
             public int ObservationCount { get; private set; }
+            public int OfficialSessionObservationCount { get; private set; }
+            public bool HasOfficialSessionObservation => OfficialSessionObservationCount > 0;
+            public bool HasExtendedAddPayload => string.Equals(Operation, "add", StringComparison.OrdinalIgnoreCase)
+                && _payloadLengths.Contains(sizeof(int) * 4);
+            public bool HasCompactRemovePayload => string.Equals(Operation, "remove", StringComparison.OrdinalIgnoreCase)
+                && _payloadLengths.Contains(sizeof(int));
 
             public void Record(int characterId, int payloadLength, string source, string reason)
             {
                 ObservationCount++;
+                if (IsOfficialSessionSource(source))
+                {
+                    OfficialSessionObservationCount++;
+                }
+
                 if (characterId > 0)
                 {
                     _characterIds.Add(characterId);
@@ -597,7 +609,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? "none"
                     : string.Join("|", _reasons.OrderBy(reason => reason, StringComparer.OrdinalIgnoreCase).Take(2));
 
-                return $"{Operation}(type={RemoteUserPacketInboxManager.DescribePacketType(PacketType)}; count={ObservationCount}; owners={owners}; payloadBytes={payloadLengths}; sources={sources}; reasons={reasons})";
+                return $"{Operation}(type={RemoteUserPacketInboxManager.DescribePacketType(PacketType)}; count={ObservationCount}; official={OfficialSessionObservationCount}; owners={owners}; payloadBytes={payloadLengths}; sources={sources}; reasons={reasons})";
             }
         }
 
@@ -626,7 +638,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected Maple session {RemoteHost}:{RemotePort}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; portableChairRecordProof={DescribePortableChairRecordOpcodeEvidence()}; portableChairRecordOrder={DescribePortableChairRecordCaptureOrder()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; portableChairRecordProof={DescribePortableChairRecordOpcodeEvidence()}; portableChairRecordProofStatus={DescribePortableChairRecordProofStatus()}; portableChairRecordOrder={DescribePortableChairRecordCaptureOrder()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -689,7 +701,7 @@ namespace HaCreator.MapSimulator.Managers
                 return string.Join(
                     ", ",
                     _portableChairRecordCaptureOrder.Select(entry =>
-                        $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}({entry.PayloadLength}b; source={entry.Source}; reason={entry.Reason})"));
+                        $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}({entry.PayloadLength}b; source={(entry.IsOfficialSession ? "official" : "manual-or-local")}:{entry.Source}; reason={entry.Reason})"));
             }
         }
 
@@ -716,6 +728,65 @@ namespace HaCreator.MapSimulator.Managers
                             return $"{entry.Key}[{evidence}]";
                         }));
             }
+        }
+
+        private string DescribePortableChairRecordProofStatus()
+        {
+            lock (_sync)
+            {
+                if (_portableChairRecordOpcodeEvidenceByBuild.Count == 0)
+                {
+                    return "awaiting official-session add/remove capture";
+                }
+
+                return string.Join(
+                    ", ",
+                    _portableChairRecordOpcodeEvidenceByBuild
+                        .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(entry => DescribePortableChairRecordProofStatusForBuild(entry.Key, entry.Value)));
+            }
+        }
+
+        private static string DescribePortableChairRecordProofStatusForBuild(
+            string buildTag,
+            Dictionary<ushort, PortableChairRecordOpcodeEvidence> evidenceByOpcode)
+        {
+            KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>? addEvidence = evidenceByOpcode
+                .Where(entry =>
+                    entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd
+                    && entry.Value.HasOfficialSessionObservation
+                    && entry.Value.HasExtendedAddPayload)
+                .OrderBy(entry => entry.Key)
+                .Cast<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>?>()
+                .FirstOrDefault();
+            KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>? removeEvidence = evidenceByOpcode
+                .Where(entry =>
+                    entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove
+                    && entry.Value.HasOfficialSessionObservation
+                    && entry.Value.HasCompactRemovePayload)
+                .OrderBy(entry => entry.Key)
+                .Cast<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>?>()
+                .FirstOrDefault();
+
+            if (addEvidence.HasValue && removeEvidence.HasValue)
+            {
+                string distinct = addEvidence.Value.Key == removeEvidence.Value.Key
+                    ? "conflict:same-opcode"
+                    : "candidate:add-remove-pair";
+                return $"{buildTag}:{distinct} add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}";
+            }
+
+            if (addEvidence.HasValue)
+            {
+                return $"{buildTag}:official-extended-add-only add={addEvidence.Value.Key}; awaiting compact remove";
+            }
+
+            if (removeEvidence.HasValue)
+            {
+                return $"{buildTag}:official-compact-remove-only remove={removeEvidence.Value.Key}; awaiting extended add";
+            }
+
+            return $"{buildTag}:manual-or-incomplete evidence only; awaiting official-session extended add and compact remove";
         }
 
         public string DescribePendingTutorInferenceMappings()
@@ -2029,6 +2100,7 @@ namespace HaCreator.MapSimulator.Managers
                 characterId,
                 payload?.Length ?? 0,
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
+                IsOfficialSessionSource(source),
                 string.IsNullOrWhiteSpace(reason) ? "captured dispatch" : reason));
             RememberPortableChairRecordOpcodeEvidenceNoLock(
                 buildTag,

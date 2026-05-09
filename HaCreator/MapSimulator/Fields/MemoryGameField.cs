@@ -135,6 +135,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientPromptButtonWidth = 64;
         private const int ClientPromptButtonHeight = 22;
         private const int ClientDialogLeaveUpdateArgument = 2;
+        private const byte ClientEnterResultAckState = 1;
         private const uint ClientDialogUpdateButtonOne = 1;
         private const uint ClientDialogUpdateButtonTwo = 2;
         private const uint ClientDialogUpdateButtonEight = 8;
@@ -246,6 +247,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _clientPromptLayerCreateCount;
         private int _clientPromptLayerReleaseCount;
         private int _lastClientPromptResponseSubtype;
+        private int _clientReadyButtonReleaseCount;
+        private int _clientStartButtonDisableCount;
 
 
         public enum RoomStage
@@ -404,6 +407,8 @@ namespace HaCreator.MapSimulator.Fields
         public int ClientPromptLayerCreateCount => _clientPromptLayerCreateCount;
         public int ClientPromptLayerReleaseCount => _clientPromptLayerReleaseCount;
         public int LastClientPromptResponseSubtype => _lastClientPromptResponseSubtype;
+        public int ClientReadyButtonReleaseCount => _clientReadyButtonReleaseCount;
+        public int ClientStartButtonDisableCount => _clientStartButtonDisableCount;
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
         public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
@@ -2080,10 +2085,15 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            byte ackState = packetBytes != null && packetBytes.Length > 1
-                ? packetBytes[1]
-                : (byte)0;
-            message = $"Enter-result ack packet (11) sent with state {ackState}.";
+            if (_localPlayerIndex != 0)
+            {
+                message = "Enter-result ack packet (11) is only emitted by the Match Cards room owner branch.";
+                return false;
+            }
+
+            _clientReadyButtonReleaseCount++;
+            _clientStartButtonDisableCount++;
+            message = $"Enter-result ack packet (11) sent with state {ClientEnterResultAckState}.";
             return true;
         }
 
@@ -3430,11 +3440,27 @@ namespace HaCreator.MapSimulator.Fields
                 // CMemoryGameDlg::SendClaimGiveUp encodes subtype 52 as one-byte payload.
                 // CMemoryGameDlg::SendTieRequest encodes subtype 50 as one-byte payload.
                 // CMemoryGameDlg::OnTieRequest encodes subtype 51 with one decision byte (0/1).
+                // CMemoryGameDlg::OnEnterResult encodes subtype 11 with owner ack byte 1.
                 // CMemoryGameDlg::Update encodes subtype 63 as one-byte payload when the local timer expires.
                 case MiniRoomBaseLeavePacketType:
                     if (packetLength != 1)
                     {
                         message = $"Leave packet (10) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientEnterResultAckPacketType:
+                    if (packetLength != 2)
+                    {
+                        message = $"Enter-result ack packet (11) requires two bytes (11 01), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    if (packetBytes[1] != ClientEnterResultAckState)
+                    {
+                        message = $"Enter-result ack packet (11) used invalid state byte {packetBytes[1]}; expected 1.";
                         return false;
                     }
 
@@ -3622,6 +3648,7 @@ namespace HaCreator.MapSimulator.Fields
             return packetBytes[0] switch
             {
                 MiniRoomBaseLeavePacketType => true,
+                MemoryGameClientEnterResultAckPacketType => true,
                 MemoryGameTieRequestPacketType => true,
                 MemoryGameTieResultPacketType => true,
                 MemoryGameClientGiveUpPacketType => true,

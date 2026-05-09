@@ -37,6 +37,20 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ShakeOffsetMagnitude = 5;
         internal const int SendDialogRowMax = 4;
         internal const int SendDialogMaxLineWidth = 97;
+        internal const int SendDialogFontHeight = 15;
+        internal const int SendDialogEditX = 48;
+        internal const int SendDialogEditY = 81;
+        internal const int SendDialogEditWidth = 107;
+        internal const int SendDialogEditHeight = 60;
+        internal const int SendDialogOkButtonX = 52;
+        internal const int SendDialogOkButtonY = 170;
+        internal const int SendDialogCancelButtonX = 102;
+        internal const int SendDialogCancelButtonY = 170;
+        internal const int SendDialogWhisperCheckX = 10;
+        internal const int SendDialogWhisperCheckY = 147;
+        internal const int SendDialogWhisperCheckWidth = 14;
+        internal const int SendDialogWhisperCheckHeight = 14;
+        internal const bool SendDialogInitialWhisperChecked = true;
 
         private static readonly IReadOnlyDictionary<int, AvatarMegaphoneItemProfile> FallbackProfiles =
             new Dictionary<int, AvatarMegaphoneItemProfile>
@@ -182,7 +196,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeSendDialogOwner()
         {
-            return "CUIAvatarMegaphone sender dialog: StringPool 0x0FAE frame, BtOk(52,170), BtCancel(102,170), MLEdit(48,81,107x60), rowMax=4, maxLineWidth=97, CheckWhisper(10,147,14x14).";
+            return $"CUIAvatarMegaphone sender dialog: StringPool 0x0FAE frame, StringPool 0x0FAF control path, BtOk({SendDialogOkButtonX},{SendDialogOkButtonY}), BtCancel({SendDialogCancelButtonX},{SendDialogCancelButtonY}), MLEdit({SendDialogEditX},{SendDialogEditY},{SendDialogEditWidth}x{SendDialogEditHeight}), fontHeight={SendDialogFontHeight}, rowMax={SendDialogRowMax}, maxLineWidth={SendDialogMaxLineWidth}, CheckWhisper({SendDialogWhisperCheckX},{SendDialogWhisperCheckY},{SendDialogWhisperCheckWidth}x{SendDialogWhisperCheckHeight}), initialChecked=1.";
         }
 
         internal static string JoinFragmentsForDialogEdit(IEnumerable<string> fragments)

@@ -103,7 +103,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonedUOL",
             "summonedUol",
             "summonUOL",
-            "summonUol"
+            "summonUol",
+            "m_sSummonedUOL",
+            "m_sSummonedUol",
+            "p_sSummonedUOL",
+            "p_sSummonedUol"
         };
         private static readonly string[] ClientSummonedUolTableWrapperNames =
         {
@@ -126,8 +130,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             "skillid",
             "nskillid",
+            "mnskillid",
             "currentskillid",
+            "mncurrentskillid",
             "sourceskillid",
+            "mnsourceskillid",
             "currentskill",
             "sourceskill",
             "currentid",
@@ -9769,6 +9776,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            foreach (string formattedPath in EnumerateClientSkillAssetStringPoolFormattedUolPaths(value, contextPathParts))
+            {
+                if (!string.IsNullOrWhiteSpace(formattedPath) && yieldedPaths.Add(formattedPath))
+                {
+                    yield return formattedPath;
+                }
+            }
+
             foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(value))
             {
                 normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
@@ -9785,6 +9800,192 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return fallbackRootPath;
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumerateClientSkillAssetStringPoolFormattedUolPaths(
+            string value,
+            string[] contextPathParts)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || contextPathParts == null
+                || contextPathParts.Length == 0)
+            {
+                yield break;
+            }
+
+            string format = NormalizeClientSummonedUolEncodedPathSyntax(value).Trim();
+            if (format.IndexOf('%') < 0)
+            {
+                yield break;
+            }
+
+            int contextSkillId = ResolveClientSummonedUolFallbackContextSkillId(contextPathParts);
+            if (contextSkillId <= 0)
+            {
+                yield break;
+            }
+
+            int formatSpecifierCount = CountClientSkillAssetIntegerFormatSpecifiers(format);
+            if (formatSpecifierCount != 2 && formatSpecifierCount != 3)
+            {
+                yield break;
+            }
+
+            int[] arguments;
+            if (formatSpecifierCount == 2)
+            {
+                arguments = new[]
+                {
+                    contextSkillId / 10000,
+                    contextSkillId
+                };
+            }
+            else
+            {
+                if (!TryResolveClientSkillAssetUolVariantLevel(
+                        contextPathParts,
+                        out _,
+                        out int variantLevel))
+                {
+                    yield break;
+                }
+
+                arguments = new[]
+                {
+                    contextSkillId / 10000,
+                    contextSkillId,
+                    variantLevel
+                };
+            }
+
+            string formattedPath = FormatClientSkillAssetIntegerUolPath(format, arguments);
+            string normalizedPath = NormalizeClientSummonedUolPath(formattedPath);
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                yield return normalizedPath;
+            }
+        }
+
+        private static int CountClientSkillAssetIntegerFormatSpecifiers(string format)
+        {
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < format.Length; i++)
+            {
+                if (format[i] != '%')
+                {
+                    continue;
+                }
+
+                if (i + 1 < format.Length && format[i + 1] == '%')
+                {
+                    i++;
+                    continue;
+                }
+
+                int specifierEnd = FindClientSkillAssetIntegerFormatSpecifierEnd(format, i);
+                if (specifierEnd < 0)
+                {
+                    return -1;
+                }
+
+                count++;
+                i = specifierEnd;
+            }
+
+            return count;
+        }
+
+        private static string FormatClientSkillAssetIntegerUolPath(string format, IReadOnlyList<int> arguments)
+        {
+            if (string.IsNullOrWhiteSpace(format)
+                || arguments == null
+                || arguments.Count == 0)
+            {
+                return null;
+            }
+
+            var formatted = new System.Text.StringBuilder(format.Length + 16);
+            int argumentIndex = 0;
+            for (int i = 0; i < format.Length; i++)
+            {
+                char current = format[i];
+                if (current != '%')
+                {
+                    formatted.Append(current);
+                    continue;
+                }
+
+                if (i + 1 < format.Length && format[i + 1] == '%')
+                {
+                    formatted.Append('%');
+                    i++;
+                    continue;
+                }
+
+                int specifierEnd = FindClientSkillAssetIntegerFormatSpecifierEnd(format, i);
+                if (specifierEnd < 0 || argumentIndex >= arguments.Count)
+                {
+                    return null;
+                }
+
+                int width = ParseClientSkillAssetIntegerFormatWidth(format, i + 1, specifierEnd);
+                string argumentText = width > 0
+                    ? arguments[argumentIndex].ToString($"D{width}", CultureInfo.InvariantCulture)
+                    : arguments[argumentIndex].ToString(CultureInfo.InvariantCulture);
+                formatted.Append(argumentText);
+                argumentIndex++;
+                i = specifierEnd;
+            }
+
+            return argumentIndex == arguments.Count
+                ? formatted.ToString()
+                : null;
+        }
+
+        private static int FindClientSkillAssetIntegerFormatSpecifierEnd(string format, int percentIndex)
+        {
+            if (string.IsNullOrWhiteSpace(format)
+                || percentIndex < 0
+                || percentIndex >= format.Length
+                || format[percentIndex] != '%')
+            {
+                return -1;
+            }
+
+            int index = percentIndex + 1;
+            if (index < format.Length && format[index] == '0')
+            {
+                index++;
+            }
+
+            while (index < format.Length && char.IsDigit(format[index]))
+            {
+                index++;
+            }
+
+            return index < format.Length && format[index] == 'd'
+                ? index
+                : -1;
+        }
+
+        private static int ParseClientSkillAssetIntegerFormatWidth(string format, int startIndex, int endIndex)
+        {
+            if (string.IsNullOrWhiteSpace(format)
+                || startIndex < 0
+                || endIndex <= startIndex)
+            {
+                return 0;
+            }
+
+            string widthText = format.Substring(startIndex, endIndex - startIndex).TrimStart('0');
+            return int.TryParse(widthText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int width)
+                ? Math.Max(0, width)
+                : 0;
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolFallbackRootPathsFromValue(

@@ -180,7 +180,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool isLocked = false,
             bool isClaimed = false,
             int itemId = 0,
-            int? packetSlotIndex = null)
+            int? packetSlotIndex = null,
+            int bundleSetCount = 0)
         {
             OwnerName = string.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
             ItemId = itemId > 0 ? itemId : ResolveItemIdByName(itemName);
@@ -191,6 +192,7 @@ namespace HaCreator.MapSimulator.Interaction
             IsLocked = isLocked;
             IsClaimed = isClaimed;
             PacketSlotIndex = packetSlotIndex >= 0 ? packetSlotIndex : null;
+            BundleSetCount = Math.Max(1, bundleSetCount > 0 ? bundleSetCount : Quantity);
         }
 
         public string OwnerName { get; }
@@ -202,14 +204,16 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsLocked { get; private set; }
         public bool IsClaimed { get; private set; }
         public int? PacketSlotIndex { get; private set; }
+        public int BundleSetCount { get; private set; }
 
-        public void Update(string detail, int quantity, int mesoAmount, bool isLocked, bool isClaimed)
+        public void Update(string detail, int quantity, int mesoAmount, bool isLocked, bool isClaimed, int bundleSetCount = 0)
         {
             Detail = detail ?? string.Empty;
             Quantity = Math.Max(1, quantity);
             MesoAmount = Math.Max(0, mesoAmount);
             IsLocked = isLocked;
             IsClaimed = isClaimed;
+            BundleSetCount = Math.Max(1, bundleSetCount > 0 ? bundleSetCount : Quantity);
         }
 
         public void UpdatePacketIdentity(int itemId, int? packetSlotIndex)

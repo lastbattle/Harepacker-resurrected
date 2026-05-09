@@ -64,6 +64,12 @@ namespace HaCreator.MapSimulator.UI
         public string EffectPath { get; init; } = string.Empty;
     }
 
+    public sealed class InventoryMobPreviewItem
+    {
+        public int MobId { get; init; }
+        public int Probability { get; init; }
+    }
+
     public readonly struct SkillBookUseMetadata
     {
         public SkillBookUseMetadata(
@@ -1131,6 +1137,89 @@ namespace HaCreator.MapSimulator.UI
             return items;
         }
 
+        public static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItems(int itemId, int limit = 8)
+        {
+            if (itemId <= 0)
+            {
+                return Array.Empty<InventoryMobPreviewItem>();
+            }
+
+            return ResolveMobPreviewItems(ResolveLinkedSubProperty(LoadItemProperty(itemId)?["mob"]), limit);
+        }
+
+        private static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItems(WzSubProperty mobProperty, int limit)
+        {
+            if (mobProperty?.WzProperties == null)
+            {
+                return Array.Empty<InventoryMobPreviewItem>();
+            }
+
+            List<(int Index, InventoryMobPreviewItem Entry)> indexedEntries = new();
+            foreach (WzImageProperty child in mobProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzImageProperty linkedChild = child.GetLinkedWzImageProperty();
+                InventoryMobPreviewItem entry = linkedChild is WzSubProperty structuredEntry
+                    ? BuildMobPreviewItem(structuredEntry)
+                    : BuildMobPreviewItem(linkedChild ?? child);
+                if (entry.MobId <= 0)
+                {
+                    continue;
+                }
+
+                indexedEntries.Add((index, entry));
+            }
+
+            indexedEntries.Sort((left, right) => left.Index.CompareTo(right.Index));
+            int maxItems = limit <= 0 ? RewardPreviewLineLimit : limit;
+            List<InventoryMobPreviewItem> items = new(Math.Min(indexedEntries.Count, maxItems));
+            for (int i = 0; i < indexedEntries.Count && items.Count < maxItems; i++)
+            {
+                items.Add(indexedEntries[i].Entry);
+            }
+
+            return items;
+        }
+
+        private static InventoryMobPreviewItem BuildMobPreviewItem(WzImageProperty property)
+        {
+            int mobId = GetIntOrStringValue(property);
+            return mobId > 0
+                ? new InventoryMobPreviewItem { MobId = mobId }
+                : new InventoryMobPreviewItem();
+        }
+
+        private static InventoryMobPreviewItem BuildMobPreviewItem(WzSubProperty entry)
+        {
+            if (entry == null)
+            {
+                return new InventoryMobPreviewItem();
+            }
+
+            int mobId = GetIntOrStringValue(entry["id"]);
+            if (mobId <= 0)
+            {
+                mobId = GetIntOrStringValue(entry["mob"]);
+            }
+
+            if (mobId <= 0)
+            {
+                mobId = GetIntOrStringValue(entry["mobID"]);
+            }
+
+            return mobId > 0
+                ? new InventoryMobPreviewItem
+                {
+                    MobId = mobId,
+                    Probability = Math.Max(0, GetIntOrStringValue(entry["prob"]))
+                }
+                : new InventoryMobPreviewItem();
+        }
+
         private static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(WzSubProperty itemProperty, string groupName, int limit)
         {
             if (itemProperty == null)
@@ -1218,6 +1307,53 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return TryResolveRootEffectFirstCanvas(LoadItemProperty(itemId), out canvas);
+        }
+
+        public static bool TryResolveMobPreviewCanvas(InventoryMobPreviewItem mobItem, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (mobItem == null || mobItem.MobId <= 0)
+            {
+                return false;
+            }
+
+            WzImage mobImage = global::HaCreator.Program.FindImage(
+                "Mob",
+                mobItem.MobId.ToString("D7", CultureInfo.InvariantCulture) + ".img");
+            if (mobImage == null)
+            {
+                return false;
+            }
+
+            mobImage.ParseImage();
+            if (TryResolveMobFirstCanvas(mobImage, out canvas))
+            {
+                return true;
+            }
+
+            string linkedMobId = (mobImage["info"]?["link"] as WzStringProperty)?.Value?.Trim();
+            if (string.IsNullOrWhiteSpace(linkedMobId))
+            {
+                return false;
+            }
+
+            WzImage linkedMobImage = global::HaCreator.Program.FindImage("Mob", linkedMobId + ".img");
+            if (linkedMobImage == null)
+            {
+                return false;
+            }
+
+            linkedMobImage.ParseImage();
+            return TryResolveMobFirstCanvas(linkedMobImage, out canvas);
+        }
+
+        private static bool TryResolveMobFirstCanvas(WzImage mobImage, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            return mobImage != null
+                   && (TryResolveCanvasAtPath(mobImage, "stand/0", out canvas)
+                       || TryResolveCanvasAtPath(mobImage, "move/0", out canvas)
+                       || TryResolveCanvasAtPath(mobImage, "fly/0", out canvas));
         }
 
         private static bool TryResolveRootEffectFirstCanvas(WzSubProperty itemProperty, out WzCanvasProperty canvas)
@@ -5594,6 +5730,13 @@ namespace HaCreator.MapSimulator.UI
             int limit = 8)
         {
             return ResolveRewardPreviewItems(rewardProperty, limit);
+        }
+
+        public static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItemsForTests(
+            WzSubProperty mobProperty,
+            int limit = 8)
+        {
+            return ResolveMobPreviewItems(mobProperty, limit);
         }
 
         public static bool TryResolveEffectPathForTests(string effectPath, out string imagePath, out string propertyPath)

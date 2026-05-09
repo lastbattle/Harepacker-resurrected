@@ -284,7 +284,9 @@ namespace HaCreator.MapSimulator.Character
             float sourceX,
             int elementAttribute,
             int recastLeadTimeMs,
-            Rectangle? periodicDamageArea)
+            Rectangle? periodicDamageArea,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             if (_player == null || runtimeData == null)
             {
@@ -317,17 +319,19 @@ namespace HaCreator.MapSimulator.Character
                         1,
                         recastLeadTimeMs: recastLeadTimeMs,
                         sourceSkillId: ResolveSourceSkillId(skillId, runtimeData),
-                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData));
+                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId: sourceOwnerId,
+                        sourceAreaObjectId: sourceAreaObjectId);
                 case 120:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Seal, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Seal, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 121:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Darkness, runtimeData, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Darkness, runtimeData, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 122:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Weakness, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Weakness, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 123:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Stun, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Stun, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 124:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Curse, runtimeData, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Curse, runtimeData, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 125:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Poison,
@@ -337,9 +341,11 @@ namespace HaCreator.MapSimulator.Character
                         ResolvePeriodicTickInterval(runtimeData, 1000),
                         recastLeadTimeMs: recastLeadTimeMs,
                         sourceSkillId: ResolveSourceSkillId(skillId, runtimeData),
-                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData));
+                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId: sourceOwnerId,
+                        sourceAreaObjectId: sourceAreaObjectId);
                 case 126:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Slow, runtimeData, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Slow, runtimeData, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 127:
                     if (_skills?.ActiveBuffs == null || _skills.ActiveBuffs.Count == 0)
                     {
@@ -351,11 +357,11 @@ namespace HaCreator.MapSimulator.Character
                 case 129:
                     bool teleported = _teleportToSpawn != null;
                     _teleportToSpawn?.Invoke();
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Banish, runtimeData, currentTime, 1, recastLeadTimeMs) || teleported;
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Banish, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId) || teleported;
                 case 128:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Attract, runtimeData, currentTime, ResolveSeduceDirection(runtimeData, sourceX), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Attract, runtimeData, currentTime, ResolveSeduceDirection(runtimeData, sourceX), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 131:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Freeze, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Freeze, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 132:
                     return HasAuthoredPeriodicDamage(runtimeData)
                         ? ApplyPeriodicDamageStatus(
@@ -367,10 +373,12 @@ namespace HaCreator.MapSimulator.Character
                             runtimeData.Count,
                             recastLeadTimeMs,
                             ResolveSourceSkillId(skillId, runtimeData),
-                            ResolveSourceSkillLevel(runtimeData))
-                        : ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.ReverseInput, runtimeData, currentTime, 1, recastLeadTimeMs);
+                            ResolveSourceSkillLevel(runtimeData),
+                            sourceOwnerId,
+                            sourceAreaObjectId)
+                        : ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.ReverseInput, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 133:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Undead, runtimeData, currentTime, ResolveValue(runtimeData, 100), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Undead, runtimeData, currentTime, ResolveValue(runtimeData, 100), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 134:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.PainMark,
@@ -381,13 +389,15 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.Count,
                         recastLeadTimeMs,
                         ResolveSourceSkillId(skillId, runtimeData),
-                        ResolveSourceSkillLevel(runtimeData));
+                        ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId,
+                        sourceAreaObjectId);
                 case 135:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.StopPotion, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.StopPotion, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 136:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.StopMotion, runtimeData, currentTime, 1, recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.StopMotion, runtimeData, currentTime, 1, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 137:
-                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Fear, runtimeData, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs);
+                    return ApplyMobSkillStatus(skillId, PlayerMobStatusEffect.Fear, runtimeData, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 138:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Burn,
@@ -398,7 +408,9 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.Count,
                         recastLeadTimeMs,
                         ResolveSourceSkillId(skillId, runtimeData),
-                        ResolveSourceSkillLevel(runtimeData));
+                        ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId,
+                        sourceAreaObjectId);
                 case 171:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Bomb,
@@ -410,10 +422,12 @@ namespace HaCreator.MapSimulator.Character
                         recastLeadTimeMs,
                         ResolveSourceSkillId(skillId, runtimeData),
                         ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId,
+                        sourceAreaObjectId,
                         periodicDamageArea: periodicDamageArea);
                 case 172:
                 case 173:
-                    return ApplyPolymorphStatus(skillId, runtimeData, currentTime, recastLeadTimeMs);
+                    return ApplyPolymorphStatus(skillId, runtimeData, currentTime, recastLeadTimeMs, sourceOwnerId, sourceAreaObjectId);
                 case 799:
                     return ApplyStatus(
                         PlayerMobStatusEffect.BattlefieldFlag,
@@ -422,7 +436,9 @@ namespace HaCreator.MapSimulator.Character
                         ResolveValue(runtimeData, 1),
                         recastLeadTimeMs: recastLeadTimeMs,
                         sourceSkillId: ResolveSourceSkillId(skillId, runtimeData),
-                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData));
+                        sourceSkillLevel: ResolveSourceSkillLevel(runtimeData),
+                        sourceOwnerId: sourceOwnerId,
+                        sourceAreaObjectId: sourceAreaObjectId);
                 default:
                     return false;
             }
@@ -938,7 +954,9 @@ namespace HaCreator.MapSimulator.Character
             MobSkillRuntimeData runtimeData,
             int currentTime,
             int value,
-            int recastLeadTimeMs = 0)
+            int recastLeadTimeMs = 0,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             if (runtimeData == null)
             {
@@ -952,7 +970,9 @@ namespace HaCreator.MapSimulator.Character
                 value,
                 recastLeadTimeMs: recastLeadTimeMs,
                 sourceSkillId: ResolveSourceSkillId(skillId, runtimeData),
-                sourceSkillLevel: ResolveSourceSkillLevel(runtimeData));
+                sourceSkillLevel: ResolveSourceSkillLevel(runtimeData),
+                sourceOwnerId: sourceOwnerId,
+                sourceAreaObjectId: sourceAreaObjectId);
         }
 
         private bool ApplyPeriodicDamageStatus(
@@ -972,7 +992,13 @@ namespace HaCreator.MapSimulator.Character
             return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId, periodicDamageArea);
         }
 
-        private bool ApplyPolymorphStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, int recastLeadTimeMs = 0)
+        private bool ApplyPolymorphStatus(
+            int skillId,
+            MobSkillRuntimeData runtimeData,
+            int currentTime,
+            int recastLeadTimeMs = 0,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             int morphTemplateId = runtimeData?.X ?? 0;
             if (morphTemplateId <= 0)
@@ -1003,7 +1029,9 @@ namespace HaCreator.MapSimulator.Character
                 morphTemplateId,
                 recastLeadTimeMs: recastLeadTimeMs,
                 sourceSkillId: ResolveSourceSkillId(skillId, runtimeData),
-                sourceSkillLevel: ResolveSourceSkillLevel(runtimeData));
+                sourceSkillLevel: ResolveSourceSkillLevel(runtimeData),
+                sourceOwnerId: sourceOwnerId,
+                sourceAreaObjectId: sourceAreaObjectId);
             return true;
         }
 

@@ -28,8 +28,13 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<TransportationPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
+        private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private bool _hasObservedLiveInboundTransportPacket;
+        private bool _hasObservedLiveOutboundFieldInitRequest;
+        private InboundPacketTrace? _liveInboundTransportPacketEvidence;
+        private OutboundPacketTrace? _liveOutboundFieldInitRequestEvidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -37,12 +42,31 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        internal readonly record struct InboundPacketTrace(
+            int Opcode,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source,
+            long? ProxySessionId);
         public readonly record struct OutboundPacketTrace(
             int Opcode,
             int PayloadLength,
             string PayloadHex,
             string RawPacketHex,
-            string Source);
+            string Source,
+            long? ProxySessionId = null);
+        public enum LiveOwnershipVerificationState
+        {
+            Idle,
+            ReconnectPending,
+            WaitingForBothDirections,
+            WaitingForOutboundFieldInitRequest,
+            WaitingForInboundTransportPacket,
+            WaitingForPairedProxySessionEvidence,
+            Complete
+        }
+
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -61,6 +85,15 @@ namespace HaCreator.MapSimulator.Managers
         public int LastQueuedOpcode { get; private set; } = -1;
         public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
         public int PendingPacketCount => _pendingOutboundPackets.Count;
+        internal bool HasObservedLiveInboundTransportPacket => _hasObservedLiveInboundTransportPacket;
+        internal bool HasObservedLiveOutboundFieldInitRequest => _hasObservedLiveOutboundFieldInitRequest;
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
+            HasConnectedSession,
+            HasPassiveEstablishedSocketPair,
+            IsRunning,
+            _hasObservedLiveOutboundFieldInitRequest,
+            _hasObservedLiveInboundTransportPacket,
+            HasPairedCurrentLiveOwnershipEvidence());
         public string LastStatus { get; private set; } = "Transport official-session bridge inactive.";
 
         public TransportationOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -86,7 +119,15 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={DescribeOutboundPacket(LastQueuedOpcode, LastQueuedRawPacket)}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Transport official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundFieldInitRequest,
+                _hasObservedLiveInboundTransportPacket,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
+            return $"Transport official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {verification} {evidence} {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -108,7 +149,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"{DescribeOutboundPacket(entry.Opcode, Convert.FromHexString(entry.RawPacketHex))} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"{DescribeOutboundPacket(entry.Opcode, Convert.FromHexString(entry.RawPacketHex))} payloadLen={entry.PayloadLength} source={entry.Source} proxySession={FormatProxySessionId(entry.ProxySessionId)} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -1121,7 +1162,126 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _recentOutboundPackets.Dequeue();
                 }
+
+                if (trace.Opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode)
+                {
+                    _hasObservedLiveOutboundFieldInitRequest = true;
+                    _liveOutboundFieldInitRequestEvidence = trace;
+                }
             }
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundFieldInitRequest,
+            bool hasObservedLiveInboundTransportPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            if (hasConnectedSession && hasPairedLiveOwnershipEvidence)
+            {
+                return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundFieldInitRequest && hasObservedLiveInboundTransportPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence;
+            }
+
+            if (hasObservedLiveOutboundFieldInitRequest)
+            {
+                return LiveOwnershipVerificationState.WaitingForInboundTransportPacket;
+            }
+
+            if (hasObservedLiveInboundTransportPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForOutboundFieldInitRequest;
+            }
+
+            if (hasConnectedSession)
+            {
+                return LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            return hasPassiveEstablishedSocketPair || isRunning
+                ? LiveOwnershipVerificationState.ReconnectPending
+                : LiveOwnershipVerificationState.Idle;
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundFieldInitRequest,
+            bool hasObservedLiveInboundTransportPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundFieldInitRequest,
+                hasObservedLiveInboundTransportPacket,
+                hasPairedLiveOwnershipEvidence);
+            return state switch
+            {
+                LiveOwnershipVerificationState.Complete => "Live ownership verification complete: field-init outbound and transport inbound were captured in the current proxy session.",
+                LiveOwnershipVerificationState.ReconnectPending => "Live ownership verification pending reconnect: Maple must reconnect through the localhost proxy before transport packet ownership can be confirmed.",
+                LiveOwnershipVerificationState.WaitingForBothDirections => "Live ownership verification in progress: waiting for field-init outbound and transport inbound traffic.",
+                LiveOwnershipVerificationState.WaitingForOutboundFieldInitRequest => "Live ownership verification in progress: transport inbound captured, waiting for field-init outbound.",
+                LiveOwnershipVerificationState.WaitingForInboundTransportPacket => "Live ownership verification in progress: field-init outbound captured, waiting for transport inbound.",
+                LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence => "Live ownership verification in progress: both directions were captured, waiting for paired current proxy-session evidence.",
+                _ => "Live ownership verification idle: start the transport official-session bridge and capture traffic."
+            };
+        }
+
+        private string DescribeLiveOwnershipVerificationEvidence()
+        {
+            lock (_sync)
+            {
+                if (_liveOutboundFieldInitRequestEvidence.HasValue && _liveInboundTransportPacketEvidence.HasValue)
+                {
+                    OutboundPacketTrace outbound = _liveOutboundFieldInitRequestEvidence.Value;
+                    InboundPacketTrace inbound = _liveInboundTransportPacketEvidence.Value;
+                    return $"Live ownership verification evidence: outbound proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}; inbound proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
+                }
+
+                if (_liveOutboundFieldInitRequestEvidence.HasValue)
+                {
+                    OutboundPacketTrace outbound = _liveOutboundFieldInitRequestEvidence.Value;
+                    return $"Live ownership verification evidence: outbound proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}.";
+                }
+
+                if (_liveInboundTransportPacketEvidence.HasValue)
+                {
+                    InboundPacketTrace inbound = _liveInboundTransportPacketEvidence.Value;
+                    return $"Live ownership verification evidence: inbound proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
+                }
+            }
+
+            return "Live ownership verification evidence: none.";
+        }
+
+        private bool HasPairedCurrentLiveOwnershipEvidence()
+        {
+            lock (_sync)
+            {
+                return IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveOutboundFieldInitRequestEvidence?.ProxySessionId)
+                    && IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveInboundTransportPacketEvidence?.ProxySessionId);
+            }
+        }
+
+        private static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        {
+            return leftProxySessionId.HasValue
+                && rightProxySessionId.HasValue
+                && leftProxySessionId.Value == rightProxySessionId.Value;
+        }
+
+        private static string FormatProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "unknown";
         }
 
         private static string BuildPayloadPreview(byte[] payload)

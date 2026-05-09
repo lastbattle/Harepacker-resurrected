@@ -591,6 +591,8 @@ namespace HaCreator.MapSimulator.Pools
             public int LayerListNodeObjectId { get; set; }
             public int RegisteredAnimationObjectId { get; set; }
             public int ParentUnderFaceLayerObjectId { get; set; }
+            internal IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation> LayerNativeOperations { get; set; } =
+                Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
         }
 
         public sealed class RemotePacketOwnedEmotionState
@@ -1372,6 +1374,7 @@ namespace HaCreator.MapSimulator.Pools
         private int _nameTagRedrawSerial;
         private int? _localPortableChairPreferredPairCharacterId;
         private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<int, RemoteUserRelationshipRecord>> _relationshipRecordsByOwnerCharacterId = new();
+        private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<int, RemoteUserRelationshipRecord>> _relationshipPairLookupStateByOwnerCharacterId = new();
         private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<RemoteRelationshipRecordDispatchKey, int>> _relationshipRecordOwnerByDispatchKey = new();
         private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
@@ -2999,6 +3002,8 @@ namespace HaCreator.MapSimulator.Pools
                 ? unchecked(currentTime - restoredAnimationElapsedMs)
                 : currentTime;
             actor.CarryItemEffectLayerHandleId = NextRemoteCarryItemEffectLayerHandleId();
+            actor.CarryItemEffectTokenLayerHandleIds =
+                BuildCarryItemEffectTokenLayerHandleIdsForParity(normalizedCarryItemEffectId.Value);
             UpdateCarryItemEffectLayerAdmissionForParity(actor);
         }
 
@@ -3349,9 +3354,24 @@ namespace HaCreator.MapSimulator.Pools
 
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
+            Dictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable = GetRelationshipPairLookupStateTable(packet.RelationshipType);
             Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable = GetRelationshipRecordDispatchOwnerTable(packet.RelationshipType);
-            if (!TryNormalizeRelationshipRecordAdd(packet, recordTable, dispatchTable, out RemoteUserRelationshipRecord normalizedRecord, out string normalizeMessage))
+            RememberRelationshipPairLookupState(packet.RelationshipType, ownerCharacterId.Value, packet.RelationshipRecord, pairLookupStateTable);
+            if (!TryNormalizeRelationshipRecordAdd(
+                    packet,
+                    recordTable,
+                    pairLookupStateTable,
+                    dispatchTable,
+                    out RemoteUserRelationshipRecord normalizedRecord,
+                    out string normalizeMessage))
             {
+                if (packet.PayloadKind == RemoteRelationshipRecordAddPayloadKind.PairLookup
+                    && packet.RelationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                {
+                    message = normalizeMessage;
+                    return true;
+                }
+
                 message = normalizeMessage;
                 return false;
             }
@@ -3390,6 +3410,7 @@ namespace HaCreator.MapSimulator.Pools
         private static bool TryNormalizeRelationshipRecordAdd(
             RemoteUserRelationshipRecordPacket packet,
             IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable,
             IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable,
             out RemoteUserRelationshipRecord normalizedRecord,
             out string message)
@@ -3409,21 +3430,31 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            RemoteUserRelationshipRecord ownerPairLookupState = normalizedRecord;
+            bool hasOwnerPairLookupState =
+                TryGetActiveRelationshipPairLookupState(ownerCharacterId, normalizedRecord, pairLookupStateTable, out ownerPairLookupState);
             long? pairLookupSerial = packet.PairLookupSerial;
             if (!pairLookupSerial.HasValue
                 || !TryResolvePairLookupMatchedOwnerCharacterId(
                     ownerCharacterId,
                     pairLookupSerial.Value,
                     recordTable,
+                    pairLookupStateTable,
                     dispatchTable,
                     out int matchedOwnerCharacterId)
                 || matchedOwnerCharacterId <= 0
                 || matchedOwnerCharacterId == ownerCharacterId
-                || !recordTable.TryGetValue(matchedOwnerCharacterId, out RemoteUserRelationshipRecord matchedRecord)
+                || !TryGetActiveRelationshipPairLookupState(
+                    matchedOwnerCharacterId,
+                    recordTable.TryGetValue(matchedOwnerCharacterId, out RemoteUserRelationshipRecord matchedRecordFromTable)
+                        ? matchedRecordFromTable
+                        : default,
+                    pairLookupStateTable,
+                    out RemoteUserRelationshipRecord matchedRecord)
                 || !matchedRecord.IsActive)
             {
                 message = pairLookupSerial.HasValue
-                    ? $"{packet.RelationshipType} pair-item lookup serial {pairLookupSerial.Value} did not match an active partner record."
+                    ? $"{packet.RelationshipType} pair-item lookup state remembered for owner {ownerCharacterId}; serial {pairLookupSerial.Value} did not yet match an active partner record."
                     : $"{packet.RelationshipType} pair-item lookup add requires a valid pair-item serial.";
                 return false;
             }
@@ -3431,14 +3462,16 @@ namespace HaCreator.MapSimulator.Pools
             bool hasExistingOwnerRecord = recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
                 && existingRecord.IsActive;
             long? ownerItemSerial = hasExistingOwnerRecord
-                ? existingRecord.ItemSerial
+                ? ResolveRelationshipRecordSerialForOwner(ownerCharacterId, existingRecord)
+                : hasOwnerPairLookupState
+                    ? ResolveRelationshipRecordSerialForOwner(ownerCharacterId, ownerPairLookupState)
                 : null;
             if (!ownerItemSerial.HasValue && packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
             {
                 ownerItemSerial = packet.DispatchKey.Serial;
             }
 
-            long? matchedItemSerial = matchedRecord.ItemSerial;
+            long? matchedItemSerial = ResolveRelationshipRecordSerialForOwner(matchedOwnerCharacterId, matchedRecord);
             if (!ownerItemSerial.HasValue || !matchedItemSerial.HasValue)
             {
                 message = $"{packet.RelationshipType} pair-item lookup add requires both matched users to have item serial state.";
@@ -3460,6 +3493,8 @@ namespace HaCreator.MapSimulator.Pools
                     ? normalizedRecord.ItemId
                     : hasExistingOwnerRecord
                         ? existingRecord.ItemId
+                        : hasOwnerPairLookupState && ownerPairLookupState.ItemId > 0
+                            ? ownerPairLookupState.ItemId
                         : matchedRecord.ItemId,
                 ItemSerial = entryOwnerItemSerial,
                 PairItemSerial = entryPairItemSerial,
@@ -3467,6 +3502,54 @@ namespace HaCreator.MapSimulator.Pools
                 PairCharacterId = entryPairCharacterId
             };
             return true;
+        }
+
+        private static bool TryGetActiveRelationshipPairLookupState(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord primaryRecord,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            relationshipRecord = primaryRecord;
+            if (relationshipRecord.IsActive
+                && relationshipRecord.ItemSerial.HasValue
+                && relationshipRecord.PairItemSerial.HasValue)
+            {
+                return true;
+            }
+
+            if (pairLookupStateTable != null
+                && ownerCharacterId > 0
+                && pairLookupStateTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord storedRecord)
+                && storedRecord.IsActive
+                && storedRecord.ItemSerial.HasValue
+                && storedRecord.PairItemSerial.HasValue)
+            {
+                relationshipRecord = storedRecord;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static long? ResolveRelationshipRecordSerialForOwner(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (ownerCharacterId > 0)
+            {
+                if (relationshipRecord.CharacterId.GetValueOrDefault() == ownerCharacterId)
+                {
+                    return relationshipRecord.ItemSerial;
+                }
+
+                if (relationshipRecord.PairCharacterId.GetValueOrDefault() == ownerCharacterId)
+                {
+                    return relationshipRecord.PairItemSerial;
+                }
+            }
+
+            return relationshipRecord.ItemSerial ?? relationshipRecord.PairItemSerial;
         }
 
         private static bool IsPairLookupPacketOwnerCanonicalOwner(
@@ -3498,6 +3581,7 @@ namespace HaCreator.MapSimulator.Pools
             int ownerCharacterId,
             long pairLookupSerial,
             IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable,
             IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable,
             out int matchedOwnerCharacterId)
         {
@@ -3505,6 +3589,22 @@ namespace HaCreator.MapSimulator.Pools
             if (recordTable != null)
             {
                 foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable)
+                {
+                    if (entry.Key == ownerCharacterId
+                        || !entry.Value.IsActive
+                        || entry.Value.PairItemSerial != pairLookupSerial)
+                    {
+                        continue;
+                    }
+
+                    matchedOwnerCharacterId = entry.Key;
+                    return true;
+                }
+            }
+
+            if (pairLookupStateTable != null)
+            {
+                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in pairLookupStateTable)
                 {
                     if (entry.Key == ownerCharacterId
                         || !entry.Value.IsActive
@@ -8414,14 +8514,19 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            EnsureCarryItemEffectTokenLayerHandlesForParity(actor);
             if (ShouldSuppressCarryItemEffectForParity(actor))
             {
                 actor.CarryItemEffectLayerHandleRefCount = 0;
+                actor.CarryItemEffectTokenLayerHandleRefCounts =
+                    BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: false);
                 actor.CarryItemEffectLayerSuppressed = true;
                 return;
             }
 
             actor.CarryItemEffectLayerHandleRefCount = 1;
+            actor.CarryItemEffectTokenLayerHandleRefCounts =
+                BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: true);
             actor.CarryItemEffectLayerSuppressed = false;
         }
 
@@ -8433,7 +8538,75 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.CarryItemEffectLayerHandleRefCount = 0;
+            actor.CarryItemEffectTokenLayerHandleRefCounts =
+                BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: false);
             actor.CarryItemEffectLayerSuppressed = true;
+        }
+
+        private static void EnsureCarryItemEffectTokenLayerHandlesForParity(RemoteUserActor actor)
+        {
+            if (actor?.CarryItemEffectId is not int carryItemEffectId || carryItemEffectId <= 0)
+            {
+                return;
+            }
+
+            (int totalTokenCount, _) = ResolveCarryItemEffectTokenCounts(carryItemEffectId);
+            if (totalTokenCount <= 0)
+            {
+                actor.CarryItemEffectTokenLayerHandleIds = Array.Empty<int>();
+                actor.CarryItemEffectTokenLayerHandleRefCounts = Array.Empty<int>();
+                return;
+            }
+
+            if (actor.CarryItemEffectTokenLayerHandleIds != null
+                && actor.CarryItemEffectTokenLayerHandleIds.Count == totalTokenCount
+                && actor.CarryItemEffectTokenLayerHandleIds.All(static handleId => handleId > 0))
+            {
+                return;
+            }
+
+            actor.CarryItemEffectTokenLayerHandleIds =
+                BuildCarryItemEffectTokenLayerHandleIdsForParity(carryItemEffectId);
+        }
+
+        internal static IReadOnlyList<int> BuildCarryItemEffectTokenLayerHandleIdsForParity(int carryItemEffectId)
+        {
+            (int totalTokenCount, _) = ResolveCarryItemEffectTokenCounts(carryItemEffectId);
+            if (totalTokenCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var handles = new int[totalTokenCount];
+            for (int i = 0; i < handles.Length; i++)
+            {
+                handles[i] = NextRemoteCarryItemEffectLayerHandleId();
+            }
+
+            return handles;
+        }
+
+        internal static IReadOnlyList<int> BuildCarryItemEffectTokenLayerRefCountsForParity(
+            IReadOnlyList<int> tokenLayerHandleIds,
+            bool admitted)
+        {
+            if (tokenLayerHandleIds == null || tokenLayerHandleIds.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var refCounts = new int[tokenLayerHandleIds.Count];
+            if (!admitted)
+            {
+                return refCounts;
+            }
+
+            for (int i = 0; i < tokenLayerHandleIds.Count; i++)
+            {
+                refCounts[i] = tokenLayerHandleIds[i] > 0 ? 1 : 0;
+            }
+
+            return refCounts;
         }
 
         private static void UpdateCompletedSetItemEffectLayerAdmissionForParity(RemoteUserActor actor)
@@ -11076,6 +11249,11 @@ namespace HaCreator.MapSimulator.Pools
                 _relationshipRecordsByOwnerCharacterId[relationshipType] = new Dictionary<int, RemoteUserRelationshipRecord>();
             }
 
+            if (!_relationshipPairLookupStateByOwnerCharacterId.ContainsKey(relationshipType))
+            {
+                _relationshipPairLookupStateByOwnerCharacterId[relationshipType] = new Dictionary<int, RemoteUserRelationshipRecord>();
+            }
+
             if (!_relationshipRecordOwnerByDispatchKey.ContainsKey(relationshipType))
             {
                 _relationshipRecordOwnerByDispatchKey[relationshipType] = new Dictionary<RemoteRelationshipRecordDispatchKey, int>();
@@ -11093,6 +11271,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 table.Clear();
             }
+
+            foreach (Dictionary<int, RemoteUserRelationshipRecord> table in _relationshipPairLookupStateByOwnerCharacterId.Values)
+            {
+                table.Clear();
+            }
         }
 
         private Dictionary<int, RemoteUserRelationshipRecord> GetRelationshipRecordTable(RemoteRelationshipOverlayType relationshipType)
@@ -11105,6 +11288,36 @@ namespace HaCreator.MapSimulator.Pools
         {
             EnsureRelationshipRecordTable(relationshipType);
             return _relationshipRecordOwnerByDispatchKey[relationshipType];
+        }
+
+        private Dictionary<int, RemoteUserRelationshipRecord> GetRelationshipPairLookupStateTable(RemoteRelationshipOverlayType relationshipType)
+        {
+            EnsureRelationshipRecordTable(relationshipType);
+            return _relationshipPairLookupStateByOwnerCharacterId[relationshipType];
+        }
+
+        private static void RememberRelationshipPairLookupState(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord,
+            IDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable)
+        {
+            if (pairLookupStateTable == null
+                || ownerCharacterId <= 0
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !relationshipRecord.IsActive
+                || !relationshipRecord.ItemSerial.HasValue
+                || !relationshipRecord.PairItemSerial.HasValue)
+            {
+                return;
+            }
+
+            pairLookupStateTable[ownerCharacterId] = relationshipRecord with
+            {
+                CharacterId = relationshipRecord.CharacterId.GetValueOrDefault() > 0
+                    ? relationshipRecord.CharacterId
+                    : ownerCharacterId
+            };
         }
 
         private void RegisterRelationshipRecordDispatchKey(
@@ -11194,6 +11407,7 @@ namespace HaCreator.MapSimulator.Pools
             IDictionary<int, RemoteUserRelationshipRecord> recordTable)
         {
             recordTable?.Remove(ownerCharacterId);
+            GetRelationshipPairLookupStateTable(relationshipType).Remove(ownerCharacterId);
             RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
             if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
             {
@@ -13960,6 +14174,11 @@ namespace HaCreator.MapSimulator.Pools
                     RemoteTemporaryStatAffectedLayerTransitionDurationMs,
                     startAlpha: 0f,
                     endAlpha: 1f);
+                if (ownerFamily != RemoteTemporaryStatAvatarEffectOwnerFamily.Aura
+                    && !existingState.IsTerminated)
+                {
+                    existingState.ReleaseAffectedLayerReference();
+                }
             }
 
             return nextState;
@@ -14042,6 +14261,10 @@ namespace HaCreator.MapSimulator.Pools
                     RemoteTemporaryStatAffectedLayerTransitionDurationMs,
                     startAlpha: 0f,
                     endAlpha: 1f);
+                if (!existingState.IsTerminated)
+                {
+                    existingState.ReleaseAffectedLayerReference();
+                }
             }
 
             return nextState;
@@ -16155,6 +16378,8 @@ namespace HaCreator.MapSimulator.Pools
             presentation.LayerListNodeObjectId = choreography.ListNodeObjectId;
             presentation.RegisteredAnimationObjectId = choreography.RegisteredAnimationObjectId;
             presentation.ParentUnderFaceLayerObjectId = choreography.ParentUnderFaceLayerObjectId;
+            presentation.LayerNativeOperations = choreography.NativeOperations
+                ?? Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
         }
 
         private static void ApplyRemoteShadowPartnerSameActionPresentationTransition(
@@ -17910,6 +18135,8 @@ namespace HaCreator.MapSimulator.Pools
         public int CarryItemEffectAppliedTime { get; set; } = int.MinValue;
         public int CarryItemEffectLayerHandleId { get; set; }
         public int CarryItemEffectLayerHandleRefCount { get; set; }
+        public IReadOnlyList<int> CarryItemEffectTokenLayerHandleIds { get; set; } = Array.Empty<int>();
+        public IReadOnlyList<int> CarryItemEffectTokenLayerHandleRefCounts { get; set; } = Array.Empty<int>();
         public bool CarryItemEffectLayerSuppressed { get; set; } = true;
         public int CompletedSetItemId { get; set; }
         public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;

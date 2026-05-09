@@ -25,7 +25,8 @@ namespace HaCreator.MapSimulator.Interaction
         string LocationSummary,
         int Channel,
         bool IsOnline,
-        bool IsLocalPlayer);
+        bool IsLocalPlayer,
+        int CharacterId = 0);
 
     internal readonly record struct ExpeditionPartySeed(
         int PartyIndex,
@@ -256,6 +257,54 @@ namespace HaCreator.MapSimulator.Interaction
             return ApplyExpeditionRemovedInternal(removalKind, packetOwned, null, ResolveExpeditionRemovalRetCode(removalKind, retCode));
         }
 
+        internal bool TryResolveExpeditionMemberCharacterId(
+            string characterName,
+            int partyIndex,
+            out int characterId,
+            out string reason)
+        {
+            characterId = 0;
+            reason = null;
+            if (!_expeditionIntermediary.HasActiveExpedition)
+            {
+                reason = "No expedition roster is active.";
+                return false;
+            }
+
+            ExpeditionMemberState member = null;
+            if (!string.IsNullOrWhiteSpace(characterName))
+            {
+                string resolvedName = characterName.Trim();
+                member = _expeditionIntermediary.Parties
+                    .SelectMany(party => party.Members)
+                    .FirstOrDefault(candidate => string.Equals(candidate.Name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                ExpeditionPartyState party = _expeditionIntermediary.Parties
+                    .FirstOrDefault(candidate => candidate.PartyIndex == Math.Max(0, partyIndex));
+                member = party?.Members.FirstOrDefault(candidate => candidate.CharacterId > 0)
+                    ?? party?.Members.FirstOrDefault();
+            }
+
+            if (member == null)
+            {
+                reason = string.IsNullOrWhiteSpace(characterName)
+                    ? $"No member was found in expedition party {Math.Max(0, partyIndex) + 1}."
+                    : $"No expedition member named {characterName.Trim()} was found.";
+                return false;
+            }
+
+            if (member.CharacterId <= 0)
+            {
+                reason = $"Expedition member {member.Name} has no packet character id; apply a packet roster snapshot or pass charid=.";
+                return false;
+            }
+
+            characterId = member.CharacterId;
+            return true;
+        }
+
         internal bool HasActiveExpedition()
         {
             return _expeditionIntermediary.HasActiveExpedition;
@@ -450,7 +499,8 @@ namespace HaCreator.MapSimulator.Interaction
                         string.IsNullOrWhiteSpace(member.LocationSummary) ? _locationSummary : member.LocationSummary.Trim(),
                         Math.Max(1, member.Channel),
                         member.IsOnline,
-                        member.IsLocalPlayer));
+                        member.IsLocalPlayer,
+                        Math.Max(0, member.CharacterId)));
                 }
             }
 
@@ -614,6 +664,11 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class ExpeditionMemberState
         {
             public ExpeditionMemberState(string name, string roleLabel, int level, string locationSummary, int channel, bool isOnline, bool isLocalPlayer)
+                : this(name, roleLabel, level, locationSummary, channel, isOnline, isLocalPlayer, 0)
+            {
+            }
+
+            public ExpeditionMemberState(string name, string roleLabel, int level, string locationSummary, int channel, bool isOnline, bool isLocalPlayer, int characterId)
             {
                 Name = name;
                 RoleLabel = roleLabel;
@@ -622,6 +677,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Channel = channel;
                 IsOnline = isOnline;
                 IsLocalPlayer = isLocalPlayer;
+                CharacterId = Math.Max(0, characterId);
             }
 
             public string Name { get; }
@@ -631,6 +687,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int Channel { get; }
             public bool IsOnline { get; }
             public bool IsLocalPlayer { get; }
+            public int CharacterId { get; }
         }
 
         private sealed class ExpeditionInviteState

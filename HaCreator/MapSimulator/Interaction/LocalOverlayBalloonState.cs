@@ -74,10 +74,15 @@ namespace HaCreator.MapSimulator.Interaction
                 _avatarMessage = null;
             }
 
-            while (_fieldMessages.Count > 0 && !_fieldMessages[0].IsActive(currentTickCount))
+            for (int i = _fieldMessages.Count - 1; i >= 0; i--)
             {
-                DisposeMessage(_fieldMessages[0]);
-                _fieldMessages.RemoveAt(0);
+                if (_fieldMessages[i]?.IsActive(currentTickCount) == true)
+                {
+                    continue;
+                }
+
+                DisposeMessage(_fieldMessages[i]);
+                _fieldMessages.RemoveAt(i);
             }
         }
 

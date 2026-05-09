@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort FamilyPrivilegeListOpcode = 104;
         internal const ushort FamilySetPrivilegeOpcode = 107;
         internal const ushort FamilyChartRequestOpcode = 169;
+        internal const ushort FamilyRegisterJuniorRequestOpcode = 171;
+        internal const ushort FamilyUnregisterJuniorRequestOpcode = 172;
+        internal const ushort FamilyUnregisterParentRequestOpcode = 173;
         internal const ushort FamilyUsePrivilegeRequestOpcode = 175;
         internal const ushort FamilySetPreceptRequestOpcode = 176;
         internal const ushort ExpeditionInboundResultOpcode = 64;
@@ -63,6 +66,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly ushort[] FamilyOutboundOpcodeSet =
         {
             FamilyChartRequestOpcode,
+            FamilyRegisterJuniorRequestOpcode,
+            FamilyUnregisterJuniorRequestOpcode,
+            FamilyUnregisterParentRequestOpcode,
             FamilyUsePrivilegeRequestOpcode,
             FamilySetPreceptRequestOpcode
         };
@@ -390,7 +396,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string inboundSet = string.Join("/", FamilyInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
             string outboundSet = string.Join("/", FamilyOutboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
-            return $"Recovered family packet table: inbound opcodes {inboundSet} to CWvsContext family handlers (98: CUIFamilyChart::DecodeLocalChart, 99: OnFamilyInfoResult, 100: OnFamilyResult, 104: OnFamilyPrivilegeList, 107: OnFamilySetPrivilege); outbound opcodes {outboundSet} cover CWvsContext::SendFamilyChartRequest (169), SendUseFamilyPrivilege (175), and SendSetFamilyPrecept (176). Family chart requests expect DecodeLocalChart/OnFamilyInfoResult (98/99), privilege requests expect OnFamilyResult or OnFamilySetPrivilege (100/107), and precept requests expect OnFamilyResult (100). Junior registration and unregister request opcodes remain intentionally unregistered until client proof is recovered.";
+            return $"Recovered family packet table: inbound opcodes {inboundSet} to CWvsContext family handlers (98: CUIFamilyChart::DecodeLocalChart, 99: OnFamilyInfoResult, 100: OnFamilyResult, 104: OnFamilyPrivilegeList, 107: OnFamilySetPrivilege); outbound opcodes {outboundSet} cover CWvsContext::SendFamilyChartRequest (169), SendRegisterJunior (171), SendUnregisterJunior (172), SendUnregisterParent (173), SendUseFamilyPrivilege (175), and SendSetFamilyPrecept (176). Family chart requests expect DecodeLocalChart/OnFamilyInfoResult (98/99), management requests expect OnFamilyResult (100), privilege requests expect OnFamilyResult or OnFamilySetPrivilege (100/107), and precept requests expect OnFamilyResult (100).";
         }
 
         internal static string DescribeExpeditionRecoveredPacketTable()
@@ -440,6 +446,15 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 if (requestOpcode == FamilySetPreceptRequestOpcode)
+                {
+                    expectedInboundOpcodes = new[] { (int)FamilyResultOpcode };
+                    expectationSummary = "expect CWvsContext::OnFamilyResult (opcode 100)";
+                    return true;
+                }
+
+                if (requestOpcode == FamilyRegisterJuniorRequestOpcode
+                    || requestOpcode == FamilyUnregisterJuniorRequestOpcode
+                    || requestOpcode == FamilyUnregisterParentRequestOpcode)
                 {
                     expectedInboundOpcodes = new[] { (int)FamilyResultOpcode };
                     expectationSummary = "expect CWvsContext::OnFamilyResult (opcode 100)";

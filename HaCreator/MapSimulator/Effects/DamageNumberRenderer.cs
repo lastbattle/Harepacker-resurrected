@@ -1208,6 +1208,7 @@ namespace HaCreator.MapSimulator.Effects
                 visual.DamageString,
                 compositionTrace.CanvasSettings,
                 ResolveRecoveredCompositeSurfaceSettings(),
+                BuildRecoveredEffectHpOwnerSelectionTrace(visual),
                 preparedSources,
                 temporaryCanvasOperations,
                 keepsOverlayOnSeparateLayer,
@@ -1219,6 +1220,63 @@ namespace HaCreator.MapSimulator.Effects
                 keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
                 keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
                 overlayLayerPositionOffsetY);
+        }
+
+        internal static CanvasLayerRecoveredEffectHpOwnerSelectionTrace BuildRecoveredEffectHpOwnerSelectionTrace(
+            PreparedDamageNumberVisual visual)
+        {
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands =
+                visual?.CompositionTrace.InsertCanvasCommands
+                ?? Array.Empty<PreparedDamageNumberCompositionInsertCommand>();
+            string largeOwnerSetName = null;
+            string smallOwnerSetName = null;
+            bool firstDigitUsesLargeOwner = false;
+            bool tailDigitsUseSmallOwner = false;
+            bool usesSpecialTextOwner = visual?.MissSprite.HasValue == true;
+
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                PreparedDamageNumberCompositionInsertCommand command = insertCommands[i];
+                if (command.UseLargeDigitSet)
+                {
+                    largeOwnerSetName ??= command.SourceSetName;
+                    if (i == 0)
+                    {
+                        firstDigitUsesLargeOwner = true;
+                    }
+                }
+                else
+                {
+                    smallOwnerSetName ??= command.SourceSetName;
+                    if (i > 0)
+                    {
+                        tailDigitsUseSmallOwner = true;
+                    }
+                }
+            }
+
+            if (usesSpecialTextOwner)
+            {
+                smallOwnerSetName ??= insertCommands.Length > 0
+                    ? insertCommands[0].SourceSetName
+                    : DamageNumberSpecialTextOwnerSetName;
+            }
+
+            bool usesRedCriticalOwnerSplit =
+                string.Equals(largeOwnerSetName, "NoCri1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(smallOwnerSetName, "NoCri0", StringComparison.OrdinalIgnoreCase);
+            bool specialTextOwnerIsAuthoredNoRed0 = usesSpecialTextOwner
+                && string.Equals(smallOwnerSetName, DamageNumberSpecialTextOwnerSetName, StringComparison.OrdinalIgnoreCase);
+
+            return new CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+                largeOwnerSetName,
+                smallOwnerSetName,
+                firstDigitUsesLargeOwner,
+                tailDigitsUseSmallOwner,
+                usesRedCriticalOwnerSplit,
+                usesSpecialTextOwner,
+                usesSpecialTextOwner ? DamageNumberSpecialTextOwnerSetName : null,
+                specialTextOwnerIsAuthoredNoRed0);
         }
 
         internal static CanvasLayerRecoveredCompositeSurfaceSettings ResolveRecoveredCompositeSurfaceSettings()

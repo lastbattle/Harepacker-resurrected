@@ -350,8 +350,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         AddAlphaVectorRef,
         RelMoveAlpha,
         ReleaseAlphaVectorRef,
+        ClearRelMoveArgumentVariant,
         RemoveAllCanvases,
         ReleaseRemovedCanvasRef,
+        ClearRemoveCanvasArgumentVariant,
         ClearLoadCanvasArgumentVariant
     }
 
@@ -369,6 +371,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         int RemoveCanvasIndex = 0,
         int InsertCanvasResultVariantRefDelta = 0,
         int LoadCanvasArgumentVariantOrdinal = -1,
+        int RelMoveArgumentVariantOrdinal = -1,
+        int RemoveCanvasArgumentVariantOrdinal = -1,
         AfterimageLoadCanvasArguments? LoadCanvasArguments = null);
 
     public readonly record struct AfterimageLoadCanvasArguments(
@@ -2286,9 +2290,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ParentRepeatLayerObjectId { get; init; }
         public int SourceLayerObjectId { get; init; }
         public int SimulatedListNodeObjectId { get; init; }
+        public int SimulatedOriginVectorObjectId { get; init; }
+        public int SimulatedAlphaVectorObjectId { get; init; }
         public int SimulatedSourceCanvasObjectId { get; init; }
+        public int SimulatedInsertCanvasSequence { get; init; }
+        public int SimulatedAnimateMode { get; init; }
+        public int SimulatedAnimateSequence { get; init; }
+        public int SimulatedRegisterRepeatAnimationSequence { get; init; }
         public int SimulatedRepeatLayerRefCount { get; set; }
         public int SimulatedListNodeRefCount { get; set; }
+        public int SimulatedOriginVectorRefCount { get; set; }
+        public int SimulatedAlphaVectorRefCount { get; set; }
         public int SimulatedSourceCanvasRefCount { get; set; }
         public int SimulatedRegisteredAnimationStateRefCount { get; set; }
         public int SimulatedReleaseTime { get; private set; }
@@ -2335,6 +2347,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             SimulatedRepeatLayerRefCount = 0;
             SimulatedListNodeRefCount = 0;
+            SimulatedOriginVectorRefCount = 0;
+            SimulatedAlphaVectorRefCount = 0;
             SimulatedSourceCanvasRefCount = 0;
             SimulatedRegisteredAnimationStateRefCount = 0;
         }
@@ -2737,6 +2751,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastBodyContactTime { get; set; } = int.MinValue;
         public int LastBodyContactRelativeMotionX { get; set; }
         public bool? LastBodyContactHitFacingRight { get; set; }
+        public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
         public int HitPeriodRemainingMs { get; set; }
         public int LastHitPeriodUpdateTime { get; set; } = int.MinValue;

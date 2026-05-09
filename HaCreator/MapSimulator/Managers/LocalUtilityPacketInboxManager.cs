@@ -68,6 +68,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int AdminShopResultClientPacketType = 366;
         public const int AdminShopOpenClientPacketType = 367;
+        public const int ShopScannerResultClientPacketType = 73;
+        public const int ShopScannerLinkResultClientPacketType = 74;
         public const int OpenClassCompetitionPagePacketType = 250;
         public const int MakerResultClientPacketType = PacketOwnedItemMakerResultRuntime.ClientPacketType;
         public const int OpenUiClientPacketType = 251;
@@ -440,6 +442,24 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("adminshop367", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = AdminShopOpenClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("shopscanner", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscannerresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscanresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuishopscannerresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ShopScannerResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("shopscannerlink", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscannerlinkresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("shopscanlinkresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuishopscanresultlink", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ShopScannerLinkResultClientPacketType;
                 return true;
             }
 
@@ -1210,6 +1230,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == MakerResultClientPacketType
                 || packetType == AdminShopResultClientPacketType
                 || packetType == AdminShopOpenClientPacketType
+                || packetType == ShopScannerResultClientPacketType
+                || packetType == ShopScannerLinkResultClientPacketType
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
@@ -1411,6 +1433,8 @@ namespace HaCreator.MapSimulator.Managers
                 MakerResultClientPacketType => "OnMakerResult(248)",
                 AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
                 AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
+                ShopScannerResultClientPacketType => "CUIShopScanner::OnResult(73)",
+                ShopScannerLinkResultClientPacketType => "CUIShopScanResult::OnShopLinkResult(74)",
                 OpenUiClientPacketType => "OpenUI(251)",
                 OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
                 SetDirectionModeClientPacketType => "SetDirectionMode(253)",

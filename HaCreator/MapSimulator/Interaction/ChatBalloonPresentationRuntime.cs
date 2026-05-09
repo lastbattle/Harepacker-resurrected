@@ -16,11 +16,107 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class ChatBalloonPresentationRuntime
     {
+        private ChatBalloonPresentationLayerState _chatState;
+        private ChatBalloonMiniRoomBalloonState _miniRoomState;
         private ChatBalloonADBoardState _adBoardState;
 
+        public bool HasChatBalloon => _chatState != null;
+        public bool HasMiniRoomBalloon => _miniRoomState != null;
         public bool HasADBoardBalloon => _adBoardState != null;
 
+        public ChatBalloonPresentationLayerState ChatState => _chatState;
+        public ChatBalloonMiniRoomBalloonState MiniRoomState => _miniRoomState;
         public ChatBalloonADBoardState ADBoardState => _adBoardState;
+
+        public ChatBalloonNativeCompositionTrace MakeBalloon(
+            string text,
+            int balloonType,
+            int skinIndex,
+            bool dead,
+            int adjustCoordY,
+            int timeoutMs,
+            int currentTickCount)
+        {
+            int normalizedType = balloonType <= 0 ? 1004 : balloonType;
+            _chatState = new ChatBalloonPresentationLayerState(
+                ChatBalloonPresentationEntrypoint.MakeBalloon,
+                text ?? string.Empty,
+                normalizedType,
+                ResolveOrdinaryBalloonSkinPath(normalizedType, skinIndex, dead),
+                adjustCoordY,
+                timeoutMs,
+                currentTickCount,
+                usesScreenLayer: false);
+            return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeBalloon);
+        }
+
+        public ChatBalloonNativeCompositionTrace MakeScreenBalloon(
+            string text,
+            int chatBalloonColor,
+            int timeoutMs,
+            int currentTickCount)
+        {
+            _chatState = new ChatBalloonPresentationLayerState(
+                ChatBalloonPresentationEntrypoint.MakeScreenBalloon,
+                text ?? string.Empty,
+                1005,
+                "UI/ChatBalloon.img/0",
+                adjustCoordY: 0,
+                timeoutMs,
+                currentTickCount,
+                usesScreenLayer: true,
+                chatBalloonColor);
+            return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeScreenBalloon);
+        }
+
+        public ChatBalloonNativeCompositionTrace MakeMiniRoomBalloon(
+            byte miniRoomType,
+            string title,
+            int adjustCoordY,
+            bool isPrivate,
+            byte spec,
+            byte maxUsers,
+            byte currentUsers,
+            bool isGameOn,
+            Func<string, float> measureWidth,
+            int currentTickCount)
+        {
+            ChatBalloonMiniRoomIconKind icon = ChatBalloonPresentationRules.ResolveMiniRoomIcon(miniRoomType);
+            ChatBalloonMiniRoomPrivacyIconKind privacyIcon = ChatBalloonPresentationRules.ResolveMiniRoomPrivacyIcon(
+                isPrivate,
+                spec);
+            ChatBalloonMiniRoomStatusKind status = ChatBalloonPresentationRules.ResolveMiniRoomStatus(
+                currentUsers,
+                maxUsers,
+                isGameOn);
+            IReadOnlyList<string> titleLines = ChatBalloonPresentationRules.ResolveMiniRoomTitleLines(
+                title,
+                measureWidth,
+                ChatBalloonPresentationRules.MiniRoomTitleClientLineWidth);
+            ChatBalloonMiniRoomBackground background = ResolveMiniRoomBackground(miniRoomType, spec);
+            int preSharedAdjustY = ResolveMiniRoomPreSharedAdjustY(miniRoomType, spec, adjustCoordY);
+            _miniRoomState = new ChatBalloonMiniRoomBalloonState(
+                miniRoomType,
+                title ?? string.Empty,
+                titleLines,
+                titleLines.Count > 1,
+                icon,
+                privacyIcon,
+                status,
+                ChatBalloonPresentationRules.FormatMiniRoomCount(currentUsers),
+                ChatBalloonPresentationRules.FormatMiniRoomCount(maxUsers),
+                spec,
+                background,
+                new Rectangle(
+                    -background.Width / 2,
+                    -background.Height + preSharedAdjustY,
+                    background.Width,
+                    background.Height),
+                preSharedAdjustY,
+                adjustCoordY,
+                currentTickCount);
+            return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeMiniRoomBalloon);
+        }
 
         public ChatBalloonNativeCompositionTrace MakeADBoardBalloon(
             string text,
@@ -43,6 +139,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeADBoardBalloon);
+        }
+
+        public bool RefreshTimeout(int currentTickCount)
+        {
+            if (_chatState == null || !_chatState.IsExpired(currentTickCount))
+            {
+                return false;
+            }
+
+            _chatState = null;
+            return true;
         }
 
         public ChatBalloonADBoardButtonCanvasKind ADBoardMouseMove(Point point)
@@ -106,6 +213,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void DestroyMiniRoomBalloon()
         {
+            _miniRoomState = null;
+        }
+
+        public Rectangle GetMiniRoomBalloonRect()
+        {
+            return _miniRoomState?.LayerBounds ?? Rectangle.Empty;
+        }
+
+        public void DestroyADBoardBalloon()
+        {
             _adBoardState = null;
         }
 
@@ -122,7 +239,21 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_adBoardState == null)
             {
-                return "CChatBalloon ADBoard inactive.";
+                return _miniRoomState == null
+                    ? "CChatBalloon inactive."
+                    : string.Format(
+                        CultureInfo.InvariantCulture,
+                        "CChatBalloon MiniRoom active: type={0}, skin={1}, rect=({2},{3},{4},{5}), icon={6}, privacy={7}, status={8}, abbreviated={9}.",
+                        _miniRoomState.MiniRoomType,
+                        _miniRoomState.Background.Path,
+                        _miniRoomState.LayerBounds.X,
+                        _miniRoomState.LayerBounds.Y,
+                        _miniRoomState.LayerBounds.Width,
+                        _miniRoomState.LayerBounds.Height,
+                        _miniRoomState.Icon,
+                        _miniRoomState.PrivacyIcon,
+                        _miniRoomState.Status,
+                        _miniRoomState.IsAbbreviated);
             }
 
             Rectangle buttonBounds = GetADBoardButtonRect();
@@ -203,6 +334,16 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal static ChatBalloonMiniRoomBackground ResolveMiniRoomBackgroundForTesting(byte miniRoomType, byte spec)
+        {
+            return ResolveMiniRoomBackground(miniRoomType, spec);
+        }
+
+        internal static int ResolveMiniRoomPreSharedAdjustYForTesting(byte miniRoomType, byte spec, int adjustCoordY)
+        {
+            return ResolveMiniRoomPreSharedAdjustY(miniRoomType, spec, adjustCoordY);
+        }
+
         internal static Rectangle NormalizeLayerBoundsForTesting(Rectangle layerBounds)
         {
             return NormalizeLayerBounds(layerBounds);
@@ -230,6 +371,171 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Clamp(requestedOffset.X, 0, maxX),
                 Math.Clamp(requestedOffset.Y, 0, maxY));
         }
+
+        private static ChatBalloonMiniRoomBackground ResolveMiniRoomBackground(byte miniRoomType, byte spec)
+        {
+            if (miniRoomType is 3 or 4 or 5)
+            {
+                int skinIndex = Math.Clamp((int)spec, 0, 6);
+                if (skinIndex <= 0)
+                {
+                    skinIndex = 1;
+                }
+
+                return skinIndex == 0
+                    ? ChatBalloonMiniRoomBackground.Default
+                    : new ChatBalloonMiniRoomBackground(
+                        $"UI/ChatBalloon.img/miniroom/PSSkin/{skinIndex}",
+                        skinIndex,
+                        156,
+                        159,
+                        new Point(21, 29));
+            }
+
+            return miniRoomType == 0
+                ? ChatBalloonMiniRoomBackground.Default
+                : ChatBalloonMiniRoomBackground.Pointed;
+        }
+
+        private static int ResolveMiniRoomPreSharedAdjustY(byte miniRoomType, byte spec, int adjustCoordY)
+        {
+            return miniRoomType == 5 || (miniRoomType == 4 && spec > 0)
+                ? adjustCoordY + 7
+                : 0;
+        }
+
+        private static string ResolveOrdinaryBalloonSkinPath(int balloonType, int skinIndex, bool dead)
+        {
+            if (dead)
+            {
+                return "UI/ChatBalloon.img/dead";
+            }
+
+            return balloonType switch
+            {
+                1003 => "UI/ChatBalloon.img/adboard/0",
+                1004 => $"UI/ChatBalloon.img/{Math.Max(0, skinIndex)}",
+                1005 => "UI/ChatBalloon.img/0",
+                _ => $"UI/ChatBalloon.img/{Math.Max(0, skinIndex)}"
+            };
+        }
+    }
+
+    internal sealed class ChatBalloonPresentationLayerState
+    {
+        internal ChatBalloonPresentationLayerState(
+            ChatBalloonPresentationEntrypoint entrypoint,
+            string text,
+            int balloonType,
+            string skinPath,
+            int adjustCoordY,
+            int timeoutMs,
+            int createdAtTick,
+            bool usesScreenLayer,
+            int fontColorArgb = 0)
+        {
+            Entrypoint = entrypoint;
+            Text = text ?? string.Empty;
+            BalloonType = balloonType;
+            SkinPath = skinPath ?? string.Empty;
+            AdjustCoordY = adjustCoordY;
+            TimeoutMs = Math.Max(0, timeoutMs);
+            CreatedAtTick = currentTickNormalize(createdAtTick);
+            UsesScreenLayer = usesScreenLayer;
+            FontColorArgb = fontColorArgb;
+
+            static int currentTickNormalize(int tick) => tick;
+        }
+
+        public ChatBalloonPresentationEntrypoint Entrypoint { get; }
+        public string Text { get; }
+        public int BalloonType { get; }
+        public string SkinPath { get; }
+        public int AdjustCoordY { get; }
+        public int TimeoutMs { get; }
+        public int CreatedAtTick { get; }
+        public bool UsesScreenLayer { get; }
+        public int FontColorArgb { get; }
+
+        public bool IsExpired(int currentTickCount)
+        {
+            return TimeoutMs > 0 && unchecked(currentTickCount - CreatedAtTick) >= TimeoutMs;
+        }
+    }
+
+    internal sealed class ChatBalloonMiniRoomBalloonState
+    {
+        internal ChatBalloonMiniRoomBalloonState(
+            byte miniRoomType,
+            string title,
+            IReadOnlyList<string> titleLines,
+            bool isAbbreviated,
+            ChatBalloonMiniRoomIconKind icon,
+            ChatBalloonMiniRoomPrivacyIconKind privacyIcon,
+            ChatBalloonMiniRoomStatusKind status,
+            string currentUserText,
+            string maxUserText,
+            byte spec,
+            ChatBalloonMiniRoomBackground background,
+            Rectangle layerBounds,
+            int preSharedAdjustY,
+            int sharedAdjustY,
+            int createdAtTick)
+        {
+            MiniRoomType = miniRoomType;
+            Title = title ?? string.Empty;
+            TitleLines = (titleLines ?? Array.Empty<string>()).ToArray();
+            IsAbbreviated = isAbbreviated;
+            Icon = icon;
+            PrivacyIcon = privacyIcon;
+            Status = status;
+            CurrentUserText = currentUserText ?? string.Empty;
+            MaxUserText = maxUserText ?? string.Empty;
+            Spec = spec;
+            Background = background;
+            LayerBounds = layerBounds;
+            PreSharedAdjustY = preSharedAdjustY;
+            SharedAdjustY = sharedAdjustY;
+            CreatedAtTick = createdAtTick;
+        }
+
+        public byte MiniRoomType { get; }
+        public string Title { get; }
+        public IReadOnlyList<string> TitleLines { get; }
+        public bool IsAbbreviated { get; }
+        public ChatBalloonMiniRoomIconKind Icon { get; }
+        public ChatBalloonMiniRoomPrivacyIconKind PrivacyIcon { get; }
+        public ChatBalloonMiniRoomStatusKind Status { get; }
+        public string CurrentUserText { get; }
+        public string MaxUserText { get; }
+        public byte Spec { get; }
+        public ChatBalloonMiniRoomBackground Background { get; }
+        public Rectangle LayerBounds { get; }
+        public int PreSharedAdjustY { get; }
+        public int SharedAdjustY { get; }
+        public int CreatedAtTick { get; }
+    }
+
+    internal readonly record struct ChatBalloonMiniRoomBackground(
+        string Path,
+        int SkinIndex,
+        int Width,
+        int Height,
+        Point? Origin)
+    {
+        internal static ChatBalloonMiniRoomBackground Default { get; } = new(
+            "UI/ChatBalloon.img/miniroom/backgrnd",
+            0,
+            112,
+            63,
+            new Point(0, 0));
+
+        internal static ChatBalloonMiniRoomBackground Pointed { get; } = new(
+            "UI/ChatBalloon.img/miniroom/backgrnd2",
+            0,
+            112,
+            63,
+            new Point(0, 0));
     }
 
     internal sealed class ChatBalloonADBoardState

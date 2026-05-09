@@ -43,6 +43,9 @@ namespace HaCreator.MapSimulator.Entities
         private string _temporaryAction;
         private int _temporaryActionRemainingMs;
         private string _lastLimitedEffectKey;
+        private int _lastLimitedEffectStringPoolId = -1;
+        private int _lastActionLayerResetTick = -1;
+        private int _lastChatBalloonClearTick = -1;
         private string _imitatedName;
         private byte[] _imitatedAvatarLookPayload = Array.Empty<byte>();
 
@@ -57,9 +60,15 @@ namespace HaCreator.MapSimulator.Entities
         public int LastPacketMoveAction { get; private set; }
         public int LastPacketChatIndex { get; private set; } = -1;
         public string LastSpecialAction { get; private set; }
+        public int LastSpecialActionClientActionId { get; private set; } = -1;
         public string LastLimitedEffectKey => _lastLimitedEffectKey;
+        public int LastLimitedEffectStringPoolId => _lastLimitedEffectStringPoolId;
+        public int LastActionLayerResetTick => _lastActionLayerResetTick;
+        public int LastChatBalloonClearTick => _lastChatBalloonClearTick;
         public string ImitatedName => _imitatedName;
         public IReadOnlyList<byte> ImitatedAvatarLookPayload => _imitatedAvatarLookPayload;
+        public bool HasImitatedLook => !string.IsNullOrWhiteSpace(_imitatedName) || _imitatedAvatarLookPayload.Length > 0;
+        public bool HasMapleTvPresentation { get; private set; }
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -236,6 +245,7 @@ namespace HaCreator.MapSimulator.Entities
             MovementInfo?.ApplyPacketPosition(x, y, rx0, rx1, moveAction);
             SetRenderPositionOverride(x, y);
             ApplyPacketMoveAction(moveAction);
+            ResetPacketActionLayer();
         }
 
         public void ApplyPacketMove(int oneTimeAction, int chatIndex)
@@ -284,7 +294,10 @@ namespace HaCreator.MapSimulator.Entities
         {
             bool changed = PacketEnabled != enabled;
             PacketEnabled = enabled;
-            _lastLimitedEffectKey = enabled ? "StringPool:0x1154" : "StringPool:0x1155";
+            _lastLimitedEffectStringPoolId = enabled ? 0x1154 : 0x1155;
+            _lastLimitedEffectKey = $"StringPool:0x{_lastLimitedEffectStringPoolId:X4}";
+            _lastChatBalloonClearTick = currentTick;
+            ResetPacketActionLayer(currentTick);
             if (changed)
             {
                 SetAction(AnimationKeys.Stand);
@@ -298,7 +311,8 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            string resolvedAction = GetAvailableActions()
+            IReadOnlyList<string> availableActions = GetAvailableActions();
+            string resolvedAction = availableActions
                 .FirstOrDefault(action => string.Equals(action, actionName, StringComparison.OrdinalIgnoreCase));
             if (string.IsNullOrWhiteSpace(resolvedAction))
             {
@@ -306,6 +320,16 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             LastSpecialAction = resolvedAction;
+            List<string> templateActions = availableActions
+                .Where(action => !string.Equals(action, AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase)
+                                 && !string.Equals(action, "default", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            int templateActionIndex = templateActions
+                .TakeWhile(action => !string.Equals(action, resolvedAction, StringComparison.OrdinalIgnoreCase))
+                .Count();
+            LastSpecialActionClientActionId = templateActions.Any(action => string.Equals(action, resolvedAction, StringComparison.OrdinalIgnoreCase))
+                ? templateActionIndex + 2
+                : -1;
             SetTemporaryAction(resolvedAction, Math.Max(GetActionTotalDurationMs(resolvedAction), 180));
             return true;
         }
@@ -314,6 +338,11 @@ namespace HaCreator.MapSimulator.Entities
         {
             _imitatedName = string.IsNullOrWhiteSpace(name) ? null : name;
             _imitatedAvatarLookPayload = avatarLookPayload?.ToArray() ?? Array.Empty<byte>();
+        }
+
+        public void MarkMapleTvPresentationAvailable(bool available)
+        {
+            HasMapleTvPresentation = available;
         }
 
         public void ReplaceNameTooltip(NameTooltipItem tooltip)
@@ -447,6 +476,14 @@ namespace HaCreator.MapSimulator.Entities
 
         private bool HasTemporaryActionOverride =>
             _temporaryActionRemainingMs > 0 && !string.IsNullOrWhiteSpace(_temporaryAction);
+
+        private void ResetPacketActionLayer(int currentTick = -1)
+        {
+            _temporaryAction = null;
+            _temporaryActionRemainingMs = 0;
+            _lastActionLayerResetTick = currentTick;
+            SetAction(AnimationKeys.Stand);
+        }
 
         private void UpdateTemporaryAction(int deltaTimeMs)
         {

@@ -540,6 +540,44 @@ namespace HaCreator.MapSimulator.Managers
             return (float)Math.Clamp(nativeVolume / 100.0d, 0.0d, 1.0d);
         }
 
+        internal static float ResolveClientPositionVolumeScale(
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY)
+        {
+            if (!listenerX.HasValue || !listenerY.HasValue)
+            {
+                return 0.4f;
+            }
+
+            double dx = listenerX.Value - sourceX;
+            double dy = listenerY.Value - sourceY;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+            if (distance < 250.0d)
+            {
+                return 1f;
+            }
+
+            if (distance <= 1000.0d)
+            {
+                return (float)Math.Clamp((120.0d - distance * 0.08d) / 100.0d, 0.4d, 1.0d);
+            }
+
+            return 0.4f;
+        }
+
+        internal static float ResolveClientPositionedStartVolumeScale(
+            float startVolumeScale,
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY)
+        {
+            return ResolveClientStartVolumeScale(startVolumeScale)
+                * ResolveClientPositionVolumeScale(listenerX, listenerY, sourceX, sourceY);
+        }
+
         internal static BgmRequestAction ResolveBgmRequestAction(
             string currentPath,
             string requestedPath,

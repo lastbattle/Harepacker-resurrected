@@ -248,11 +248,16 @@ namespace HaCreator.MapSimulator
                     selected);
             if (selected)
             {
+                mapObject.SetLayerAlpha(byte.MaxValue);
+                mapObject.SetLayerRotationDegrees(0f);
                 return;
             }
 
             _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
             _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
+            _packetStageTransitionNamedObjectAlphaStates.Remove(mapObject);
+            mapObject.SetLayerAlpha(byte.MinValue);
+            mapObject.SetLayerRotationDegrees(0f);
             mapObject.Position = Point.Zero;
             mapObject.ApplyMapObjectAnimationRepeatMode(-1, currentTick);
         }
@@ -323,6 +328,20 @@ namespace HaCreator.MapSimulator
             {
                 _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
                 mapObject.Position = Point.Zero;
+                mapObject.SetLayerRotationDegrees(0f);
+            }
+
+            PacketOwnedNamedObjectAlphaProfile alphaProfile = metadata.ResolveAlphaProfile(stateIndex);
+            if (alphaProfile != null)
+            {
+                PacketOwnedNamedObjectAlphaPlaybackState alphaState = new(alphaProfile, currTickCount);
+                _packetStageTransitionNamedObjectAlphaStates[mapObject] = alphaState;
+                alphaState.Apply(mapObject, currTickCount);
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectAlphaStates.Remove(mapObject);
+                mapObject.SetLayerAlpha(byte.MaxValue);
             }
 
             PacketOwnedNamedObjectSideLaneLifecycleSnapshot sideLaneSnapshot =
@@ -937,6 +956,55 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static byte ResolvePacketOwnedNamedObjectLayerAlpha(
+            PacketOwnedNamedObjectAlphaProfile alphaProfile,
+            int frameIndex,
+            int frameElapsedMs,
+            int frameDelayMs)
+        {
+            if (alphaProfile == null)
+            {
+                return byte.MaxValue;
+            }
+
+            PacketOwnedNamedObjectAlphaRange alphaRange = null;
+            if (frameIndex >= 0 &&
+                alphaProfile.FrameAlphaByIndex != null &&
+                alphaProfile.FrameAlphaByIndex.TryGetValue(frameIndex, out PacketOwnedNamedObjectAlphaRange frameAlpha) &&
+                frameAlpha != null)
+            {
+                alphaRange = frameAlpha;
+            }
+
+            alphaRange ??= alphaProfile.SharedAlpha;
+            if (alphaRange == null)
+            {
+                return byte.MaxValue;
+            }
+
+            return ResolvePacketOwnedNamedObjectLayerAlpha(alphaRange, frameElapsedMs, frameDelayMs);
+        }
+
+        internal static byte ResolvePacketOwnedNamedObjectLayerAlpha(
+            PacketOwnedNamedObjectAlphaRange alphaRange,
+            int frameElapsedMs,
+            int frameDelayMs)
+        {
+            if (alphaRange == null)
+            {
+                return byte.MaxValue;
+            }
+
+            if (alphaRange.StartAlpha == alphaRange.EndAlpha)
+            {
+                return alphaRange.StartAlpha;
+            }
+
+            float progress = Math.Clamp(frameElapsedMs / (float)Math.Max(1, frameDelayMs), 0f, 1f);
+            int resolved = (int)Math.Round(alphaRange.StartAlpha + ((alphaRange.EndAlpha - alphaRange.StartAlpha) * progress));
+            return (byte)Math.Clamp(resolved, byte.MinValue, byte.MaxValue);
+        }
+
         internal sealed record PacketOwnedNamedObjectAlphaRange(byte StartAlpha, byte EndAlpha)
         {
             public static PacketOwnedNamedObjectAlphaRange FromWzProperty(WzImageProperty property)
@@ -1054,6 +1122,13 @@ namespace HaCreator.MapSimulator
                 }
 
                 return targetOffsetX != 0 || targetOffsetY != 0;
+            }
+
+            public bool TryResolveRotation(out float targetRotationDegrees, out int durationMs)
+            {
+                durationMs = Math.Max(1, MovePeriodMs);
+                targetRotationDegrees = Rotate;
+                return Math.Abs(targetRotationDegrees) > float.Epsilon;
             }
 
             public string BuildDebugText()

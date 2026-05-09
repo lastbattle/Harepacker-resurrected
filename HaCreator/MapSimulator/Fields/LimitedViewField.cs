@@ -82,8 +82,10 @@ namespace HaCreator.MapSimulator.Fields
             AcquireViewrangeCanvas,
             ResolvePreviousSmallDarkPatchRectangle,
             AcquirePreviousSmallDarkPatchDestinationCanvas,
+            InitializePreviousSmallDarkPatchCopyVariant,
             PreparePreviousSmallDarkPatchRestoreCopy,
             RestorePreviousSmallDarkPatch,
+            ClearPreviousSmallDarkPatchCopyVariant,
             ClearPreviousMaskHistory,
             ResolveLocalUserPosition,
             QueryLocalUserVectorX,
@@ -100,6 +102,7 @@ namespace HaCreator.MapSimulator.Fields
             SkipViewrangeCopyOutsideDarkLayer,
             CaptureCurrentSmallDarkPatch,
             AcquireCopyDestinationCanvas,
+            InitializeRemoveAlphaCopyVariant,
             PrepareRemoveAlphaViewrangeCopy,
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
@@ -110,7 +113,11 @@ namespace HaCreator.MapSimulator.Fields
             QueryRemoteUserVectorX,
             QueryRemoteUserVectorY,
             CopyRemoteViewrange,
-            AppendPreviousMaskHistory
+            ClearRemoveAlphaCopyVariant,
+            AppendPreviousMaskHistory,
+            ReleaseGraphicsCenterVector,
+            ReleaseActiveUserVector,
+            ReleaseDarkLayerCanvas
         }
 
         internal readonly struct ClientOwnedRemoteViewrangeTarget
@@ -1332,6 +1339,16 @@ namespace HaCreator.MapSimulator.Fields
                         destinationWidth: sourceWidth,
                         destinationHeight: sourceHeight));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.InitializePreviousSmallDarkPatchCopyVariant,
+                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        i,
+                        sourceWidth: sourceWidth,
+                        sourceHeight: sourceHeight,
+                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
+                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
+                        destinationWidth: sourceWidth,
+                        destinationHeight: sourceHeight));
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.PreparePreviousSmallDarkPatchRestoreCopy,
                         NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
                         i,
@@ -1355,6 +1372,16 @@ namespace HaCreator.MapSimulator.Fields
                         destinationHeight: sourceHeight,
                         usesRemoveAlphaCopy: false,
                         copyFunctionName: ClientOwnedCanvasCopyFunctionName));
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.ClearPreviousSmallDarkPatchCopyVariant,
+                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        i,
+                        sourceWidth: sourceWidth,
+                        sourceHeight: sourceHeight,
+                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
+                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
+                        destinationWidth: sourceWidth,
+                        destinationHeight: sourceHeight));
                 }
             }
 
@@ -1452,6 +1479,20 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ReleaseGraphicsCenterVector,
+                Vector2.Zero,
+                -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ReleaseActiveUserVector,
+                Vector2.Zero,
+                -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ReleaseDarkLayerCanvas,
+                Vector2.Zero,
+                -1,
+                destinationWidth: ClientOwnedDarkCanvasWidth,
+                destinationHeight: ClientOwnedDarkCanvasHeight));
             return operations;
         }
 
@@ -1583,6 +1624,19 @@ namespace HaCreator.MapSimulator.Fields
                 destinationWidth: effectiveDestinationRect.Width,
                 destinationHeight: effectiveDestinationRect.Height));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.InitializeRemoveAlphaCopyVariant,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height,
+                usesRemoveAlphaCopy: true));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
                 normalizedTopLeft,
                 maskIndex,
@@ -1597,6 +1651,19 @@ namespace HaCreator.MapSimulator.Fields
                 usesRemoveAlphaCopy: true));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 copyKind,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height,
+                usesRemoveAlphaCopy: true));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ClearRemoveAlphaCopyVariant,
                 normalizedTopLeft,
                 maskIndex,
                 sourceX: effectiveSourceRect.X,
@@ -1799,7 +1866,9 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas:
                     case ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle:
                     case ClientOwnedDrawViewrangeOperationKind.AcquirePreviousSmallDarkPatchDestinationCanvas:
+                    case ClientOwnedDrawViewrangeOperationKind.InitializePreviousSmallDarkPatchCopyVariant:
                     case ClientOwnedDrawViewrangeOperationKind.PreparePreviousSmallDarkPatchRestoreCopy:
+                    case ClientOwnedDrawViewrangeOperationKind.ClearPreviousSmallDarkPatchCopyVariant:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
                     case ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorX:
                     case ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorY:
@@ -1814,6 +1883,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.SkipViewrangeCopyOutsideDarkLayer:
                     case ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch:
                     case ClientOwnedDrawViewrangeOperationKind.AcquireCopyDestinationCanvas:
+                    case ClientOwnedDrawViewrangeOperationKind.InitializeRemoveAlphaCopyVariant:
                     case ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
@@ -1822,6 +1892,10 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition:
                     case ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorX:
                     case ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorY:
+                    case ClientOwnedDrawViewrangeOperationKind.ClearRemoveAlphaCopyVariant:
+                    case ClientOwnedDrawViewrangeOperationKind.ReleaseGraphicsCenterVector:
+                    case ClientOwnedDrawViewrangeOperationKind.ReleaseActiveUserVector:
+                    case ClientOwnedDrawViewrangeOperationKind.ReleaseDarkLayerCanvas:
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:
                         DrawClientOwnedSmallDarkPatch(spriteBatch, operation.TopLeft, fogColor);

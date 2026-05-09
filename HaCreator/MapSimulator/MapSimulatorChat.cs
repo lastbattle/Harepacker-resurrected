@@ -196,6 +196,7 @@ namespace HaCreator.MapSimulator
         internal string LastOutgoingWhisperTarget => _lastOutgoingWhisperTarget;
         internal Func<string> ClipboardTextGetter { get; set; } = TryGetSystemClipboardText;
         internal Action<string> ClipboardTextSetter { get; set; } = TrySetSystemClipboardText;
+        internal Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
 
         private enum ChatSubmitDisposition
         {
@@ -537,6 +538,19 @@ namespace HaCreator.MapSimulator
                 && ShouldForwardClientEditPageKeyToParent(newKeyboardState))
             {
                 return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && !IsWhisperTargetPickerModalDropdownNavigating()
+                && TryResolveClientEditImeCandidateKeyboardSelection(
+                    _imeCandidateListState,
+                    newKeyboardState,
+                    oldKeyboardState,
+                    out int candidateListIndex,
+                    out int candidateIndex))
+            {
+                ImeCandidateSelectedRequested?.Invoke(candidateListIndex, candidateIndex);
+                return true;
             }
 
             // CCtrlEdit::OnKey handles Shift+Delete as ExtractSelection(1), not DeleteString.
@@ -3411,6 +3425,32 @@ namespace HaCreator.MapSimulator
             // edit-owned candidate child exists. Other arrows keep their existing
             // edit/history/combo owner paths in this modeled status-bar seam.
             return key == Keys.Down && candidateListState?.HasCandidates == true;
+        }
+
+        internal static bool TryResolveClientEditImeCandidateKeyboardSelection(
+            ImeCandidateListState candidateListState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            out int listIndex,
+            out int candidateIndex)
+        {
+            listIndex = candidateListState?.ListIndex ?? -1;
+            candidateIndex = -1;
+            if (candidateListState?.HasCandidates != true || listIndex < 0)
+            {
+                return false;
+            }
+
+            bool WasPressed(KeyboardState currentState, Keys key)
+            {
+                return currentState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+            }
+
+            candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                candidateListState,
+                newKeyboardState,
+                WasPressed);
+            return candidateIndex >= 0;
         }
 
         internal static ImeCandidateListState ResolveClientEditImeCandidateDownKeySelection(

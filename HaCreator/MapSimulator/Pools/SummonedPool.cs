@@ -2064,9 +2064,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            float deltaTimeSeconds = state.LastPassiveMovementUpdateTime == int.MinValue
-                ? 0f
-                : SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, state.LastPassiveMovementUpdateTime) / 1000f;
+            float deltaTimeSeconds = PacketOwnedSummonUpdateRules.ResolveClientPassiveUpdateDeltaTimeSeconds(
+                currentTime,
+                state.LastPassiveMovementUpdateTime);
             state.LastPassiveMovementUpdateTime = currentTime;
 
             summon.PreviousPositionX = summon.PositionX;
@@ -6351,9 +6351,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(
                 NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(effectPath));
-            foreach (string rawToken in normalizedEffectPath.Split(
-                         new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' },
-                         StringSplitOptions.RemoveEmptyEntries))
+            foreach (string rawToken in SplitPacketMobAttackGeneralEffectTokens(normalizedEffectPath))
             {
                 foreach (string expandedToken in ExpandPacketMobAttackGeneralEffectArrowChainTokens(rawToken))
                 {
@@ -8209,8 +8207,7 @@ namespace HaCreator.MapSimulator.Pools
 
             string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(
                 NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(effectPath));
-            string[] rawTokens = normalizedEffectPath
-                .Split(new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] rawTokens = SplitPacketMobAttackGeneralEffectTokens(normalizedEffectPath);
             if (rawTokens.Length == 0)
             {
                 return Array.Empty<string>();
@@ -8233,6 +8230,77 @@ namespace HaCreator.MapSimulator.Pools
             return normalizedTokens
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static string[] SplitPacketMobAttackGeneralEffectTokens(string effectPath)
+        {
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            var tokens = new List<string>();
+            int tokenStart = 0;
+            bool inQuote = false;
+            char quoteChar = '\0';
+            for (int i = 0; i < effectPath.Length; i++)
+            {
+                char current = effectPath[i];
+                if ((current == '"' || current == '\'') && (i == 0 || effectPath[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (inQuote || !IsPacketMobAttackGeneralEffectTokenDelimiter(current))
+                {
+                    continue;
+                }
+
+                if (i > tokenStart)
+                {
+                    string token = effectPath.Substring(tokenStart, i - tokenStart).Trim();
+                    if (!string.IsNullOrWhiteSpace(token))
+                    {
+                        tokens.Add(token);
+                    }
+                }
+
+                tokenStart = i + 1;
+            }
+
+            if (tokenStart < effectPath.Length)
+            {
+                string token = effectPath.Substring(tokenStart).Trim();
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    tokens.Add(token);
+                }
+            }
+
+            return tokens.ToArray();
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectTokenDelimiter(char value)
+        {
+            return value == '|'
+                   || value == ';'
+                   || value == ','
+                   || value == '&'
+                   || value == '\r'
+                   || value == '\n'
+                   || value == '\t'
+                   || value == ' ';
         }
 
         private static bool TryResolvePacketMobAttackGeneralEffectSourceSequenceFrameIndex(

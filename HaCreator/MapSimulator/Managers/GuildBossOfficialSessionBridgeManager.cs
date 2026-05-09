@@ -98,7 +98,7 @@ namespace HaCreator.MapSimulator.Managers
             IsRunning,
             _hasObservedLiveOutboundOpcode259,
             _hasObservedLiveInboundGuildBossPacket,
-            HasPairedLiveOwnershipEvidence());
+            HasPairedCurrentLiveOwnershipEvidence());
         public int RecentInboundPacketCount
         {
             get
@@ -150,7 +150,7 @@ namespace HaCreator.MapSimulator.Managers
                 IsRunning,
                 _hasObservedLiveOutboundOpcode259,
                 _hasObservedLiveInboundGuildBossPacket,
-                HasPairedLiveOwnershipEvidence());
+                HasPairedCurrentLiveOwnershipEvidence());
             string evidence = DescribeLiveOwnershipVerificationEvidence();
             return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; {inboundHistory}; {outboundHistory}. {verification} {evidence} {LastStatus}";
         }
@@ -642,6 +642,30 @@ namespace HaCreator.MapSimulator.Managers
             return TryVerifyPassiveEstablishedSession(out status);
         }
 
+        public bool TryVerifyLiveOwnership(out string status)
+        {
+            string passiveStatus = null;
+            if (HasPassiveEstablishedSocketPair && !HasConnectedSession)
+            {
+                TryVerifyPassiveEstablishedSession(out passiveStatus);
+            }
+
+            LiveOwnershipVerificationState state = CurrentLiveOwnershipVerificationState;
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundOpcode259,
+                _hasObservedLiveInboundGuildBossPacket,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
+            status = string.IsNullOrWhiteSpace(passiveStatus)
+                ? $"{verification} {evidence}"
+                : $"{passiveStatus} {verification} {evidence}";
+            LastStatus = status;
+            return state == LiveOwnershipVerificationState.Complete;
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -1022,7 +1046,7 @@ namespace HaCreator.MapSimulator.Managers
             bool hasObservedLiveInboundGuildBossPacket,
             bool hasPairedLiveOwnershipEvidence)
         {
-            if (hasPairedLiveOwnershipEvidence)
+            if (hasConnectedSession && hasPairedLiveOwnershipEvidence)
             {
                 return LiveOwnershipVerificationState.Complete;
             }
@@ -1135,9 +1159,12 @@ namespace HaCreator.MapSimulator.Managers
             {
                 InboundPacketTrace inbound = inboundEvidence.Value;
                 OutboundPacketTrace outbound = outboundEvidence.Value;
-                string pairLabel = IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
+                long? currentProxySessionId = _roleSessionProxy.CurrentProxySessionId;
+                string pairLabel = IsPairedCurrentProxySession(currentProxySessionId, outbound.ProxySessionId, inbound.ProxySessionId)
                     ? $"paired proxySession={outbound.ProxySessionId.Value}"
-                    : $"unpaired proxy sessions outbound={FormatProxySessionId(outbound.ProxySessionId)} inbound={FormatProxySessionId(inbound.ProxySessionId)}";
+                    : IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
+                        ? $"stale paired proxySession={FormatProxySessionId(outbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}"
+                        : $"unpaired proxy sessions outbound={FormatProxySessionId(outbound.ProxySessionId)} inbound={FormatProxySessionId(inbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}";
                 return $"Live ownership verification evidence: {pairLabel} outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
 
@@ -1192,16 +1219,26 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private bool HasPairedLiveOwnershipEvidence()
+        private bool HasPairedCurrentLiveOwnershipEvidence()
         {
             lock (_sync)
             {
                 return _liveInboundGuildBossPacketEvidence.HasValue
                     && _liveOutboundOpcode259Evidence.HasValue
-                    && IsSameProxySession(
+                    && IsPairedCurrentProxySession(
+                        _roleSessionProxy.CurrentProxySessionId,
                         _liveOutboundOpcode259Evidence.Value.ProxySessionId,
                         _liveInboundGuildBossPacketEvidence.Value.ProxySessionId);
             }
+        }
+
+        internal static bool IsPairedCurrentProxySession(
+            long? currentProxySessionId,
+            long? outboundProxySessionId,
+            long? inboundProxySessionId)
+        {
+            return IsSameProxySession(currentProxySessionId, outboundProxySessionId)
+                && IsSameProxySession(currentProxySessionId, inboundProxySessionId);
         }
 
         internal static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)

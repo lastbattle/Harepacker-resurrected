@@ -147,6 +147,8 @@ namespace HaCreator.MapSimulator.Companions
                 bool capturedKeyPadMemoryFromOfficialSession,
                 bool officialSessionKeyPadMemoryByteProven,
                 bool officialSessionTailKeyPadMemoryByteProven,
+                bool officialSessionRecentFullTailKeyPadMemoryByteProven,
+                string officialSessionRecentFullTailKeyPadMemorySource,
                 bool hasRecentOfficialSessionFullTailCapture,
                 bool recentOfficialSessionFullTailByteProven,
                 string recentOfficialSessionFullTailSource,
@@ -172,6 +174,8 @@ namespace HaCreator.MapSimulator.Companions
                 CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
                 OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
                 OfficialSessionTailKeyPadMemoryByteProven = officialSessionTailKeyPadMemoryByteProven;
+                OfficialSessionRecentFullTailKeyPadMemoryByteProven = officialSessionRecentFullTailKeyPadMemoryByteProven;
+                OfficialSessionRecentFullTailKeyPadMemorySource = officialSessionRecentFullTailKeyPadMemorySource;
                 HasRecentOfficialSessionFullTailCapture = hasRecentOfficialSessionFullTailCapture;
                 RecentOfficialSessionFullTailByteProven = recentOfficialSessionFullTailByteProven;
                 RecentOfficialSessionFullTailSource = recentOfficialSessionFullTailSource;
@@ -198,6 +202,8 @@ namespace HaCreator.MapSimulator.Companions
             public bool CapturedKeyPadMemoryFromOfficialSession { get; }
             public bool OfficialSessionKeyPadMemoryByteProven { get; }
             public bool OfficialSessionTailKeyPadMemoryByteProven { get; }
+            public bool OfficialSessionRecentFullTailKeyPadMemoryByteProven { get; }
+            public string OfficialSessionRecentFullTailKeyPadMemorySource { get; }
             public bool HasRecentOfficialSessionFullTailCapture { get; }
             public bool RecentOfficialSessionFullTailByteProven { get; }
             public string RecentOfficialSessionFullTailSource { get; }
@@ -1858,6 +1864,11 @@ namespace HaCreator.MapSimulator.Companions
             bool officialSessionTailKeyPadMemoryByteProven = capturedTailKeyPadMemoryStatesMatch
                 && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession
                 && _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession;
+            bool officialSessionRecentFullTailKeyPadMemoryByteProven =
+                TryFindRecentOfficialSessionFullTailKeyPadMemoryCapture(
+                    _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates,
+                    hasCapturedKeyPadMemoryStates,
+                    out ClientDragonFlushTailCaptureRecord recentFullTailKeyPadMemoryCapture);
             bool hasRecentOfficialSessionFullTailCapture = TryFindRecentOfficialSessionFullTailCapture(
                 simulatorTail,
                 hasSimulatorTail,
@@ -1886,6 +1897,8 @@ namespace HaCreator.MapSimulator.Companions
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession
                     && keyPadMemoryStatesMatch,
                 officialSessionTailKeyPadMemoryByteProven,
+                officialSessionRecentFullTailKeyPadMemoryByteProven,
+                recentFullTailKeyPadMemoryCapture?.Source,
                 hasRecentOfficialSessionFullTailCapture,
                 recentFullTailMatched,
                 recentFullTailCapture?.Source,
@@ -1945,6 +1958,35 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return capture != null;
+        }
+
+        private bool TryFindRecentOfficialSessionFullTailKeyPadMemoryCapture(
+            IReadOnlyList<byte> keyPadMemoryStates,
+            bool hasKeyPadMemoryStates,
+            out ClientDragonFlushTailCaptureRecord capture)
+        {
+            capture = null;
+            if (!hasKeyPadMemoryStates
+                || !_lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession)
+            {
+                return false;
+            }
+
+            foreach (ClientDragonFlushTailCaptureRecord candidate in _recentCapturedVecCtrlEndUpdateActiveFlushTails)
+            {
+                if (candidate?.HasBounds != true || !candidate.FromOfficialSession)
+                {
+                    continue;
+                }
+
+                if (AreClientDragonFlushKeyPadStatesEqual(candidate.Tail.KeyPadStates, keyPadMemoryStates))
+                {
+                    capture = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool IsClientDragonOfficialSessionCaptureSource(string source)
@@ -2031,6 +2073,8 @@ namespace HaCreator.MapSimulator.Companions
 
             return comparison.OfficialSessionTailKeyPadMemoryByteProven
                 ? "Official-session m_aKeyPadState memory byte proof matched the simulator tail and captured flush-tail keypad bytes."
+                : comparison.OfficialSessionRecentFullTailKeyPadMemoryByteProven
+                    ? $"Official-session m_aKeyPadState memory byte proof matched the simulator tail and recent full flush-tail keypad bytes from {comparison.OfficialSessionRecentFullTailKeyPadMemorySource}."
                 : "Official-session m_aKeyPadState memory byte proof matched the simulator tail; captured flush-tail keypad byte proof still pending.";
         }
 

@@ -636,7 +636,8 @@ namespace HaCreator.MapSimulator.Pools
         MinimapUI.HelperMarkerType? MarkerType,
         bool ShowDirectionOverlay,
         bool AppliesTrackedUserState = true,
-        bool DirectionOverlayOnly = false);
+        bool DirectionOverlayOnly = false,
+        MinimapUI.DirectionArrow? DirectionOverlay = null);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
@@ -3353,12 +3354,14 @@ namespace HaCreator.MapSimulator.Pools
                     && TryResolveDefaultHelperAncillaryMarkerFallback(indexedMarkerName))
                 {
                     bool directionOverlayOnly = IsDirectionOnlyHelperMarkerName(indexedMarkerName);
+                    TryResolveDirectionOnlyHelperMarkerDirection(indexedMarkerName, out MinimapUI.DirectionArrow? directionOverlay);
                     packet = new RemoteUserHelperPacket(
                         characterId,
                         MarkerType: null,
                         ShowDirectionOverlay: directionOverlayOnly || payload[5] != 0,
                         AppliesTrackedUserState: directionOverlayOnly,
-                        DirectionOverlayOnly: directionOverlayOnly);
+                        DirectionOverlayOnly: directionOverlayOnly,
+                        DirectionOverlay: directionOverlay);
                     return true;
                 }
 
@@ -4135,12 +4138,14 @@ namespace HaCreator.MapSimulator.Pools
             if (TryResolveDefaultHelperAncillaryMarkerFallback(markerName))
             {
                 bool directionOverlayOnly = IsDirectionOnlyHelperMarkerName(markerName);
+                TryResolveDirectionOnlyHelperMarkerDirection(markerName, out MinimapUI.DirectionArrow? directionOverlay);
                 packet = new RemoteUserHelperPacket(
                     characterId,
                     MarkerType: null,
                     directionOverlayOnly || showDirectionOverlay,
                     AppliesTrackedUserState: directionOverlayOnly,
-                    DirectionOverlayOnly: directionOverlayOnly);
+                    DirectionOverlayOnly: directionOverlayOnly,
+                    DirectionOverlay: directionOverlay);
                 return true;
             }
 
@@ -4255,6 +4260,13 @@ namespace HaCreator.MapSimulator.Pools
             return IsDirectionOnlyHelperMarkerName(markerName);
         }
 
+        internal static bool TryResolveDirectionOnlyHelperMarkerDirectionForTesting(
+            string markerName,
+            out MinimapUI.DirectionArrow? direction)
+        {
+            return TryResolveDirectionOnlyHelperMarkerDirection(markerName, out direction);
+        }
+
         private static bool IsDirectionOnlyHelperMarkerName(string markerName)
         {
             if (string.IsNullOrWhiteSpace(markerName))
@@ -4265,6 +4277,33 @@ namespace HaCreator.MapSimulator.Pools
             string normalizedMarkerName = NormalizeHelperMarkerName(markerName);
             return !string.IsNullOrWhiteSpace(normalizedMarkerName)
                 && KnownMinimapIconDirectionAncillaryMarkerNames.Contains(normalizedMarkerName);
+        }
+
+        private static bool TryResolveDirectionOnlyHelperMarkerDirection(
+            string markerName,
+            out MinimapUI.DirectionArrow? direction)
+        {
+            direction = null;
+            if (string.IsNullOrWhiteSpace(markerName))
+            {
+                return false;
+            }
+
+            string normalizedMarkerName = NormalizeHelperMarkerName(markerName);
+            direction = normalizedMarkerName switch
+            {
+                "nw" or "arrowupleft" => MinimapUI.DirectionArrow.NorthWest,
+                "n" or "arrowup" => MinimapUI.DirectionArrow.North,
+                "ne" or "arrowupright" => MinimapUI.DirectionArrow.NorthEast,
+                "w" or "arrowleft" => MinimapUI.DirectionArrow.West,
+                "e" or "arrowright" => MinimapUI.DirectionArrow.East,
+                "sw" or "arrowdownleft" => MinimapUI.DirectionArrow.SouthWest,
+                "s" or "arrowdown" => MinimapUI.DirectionArrow.South,
+                "se" or "arrowdownright" => MinimapUI.DirectionArrow.SouthEast,
+                _ => null
+            };
+
+            return direction.HasValue;
         }
 
         private static bool HasHelperMarkerPathSegment(string[] segments, string expectedSegment)

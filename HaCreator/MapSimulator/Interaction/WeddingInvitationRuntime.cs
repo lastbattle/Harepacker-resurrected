@@ -47,6 +47,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PrimaryAcceptButtonWzOriginY = -213;
         internal const int PrimaryAcceptButtonWidth = 57;
         internal const int PrimaryAcceptButtonHeight = 23;
+        internal const bool AcceptButtonAcceptFocus = true;
+        internal const bool AcceptButtonDrawBack = false;
+        internal const bool AcceptButtonAnimateOnce = false;
         internal const string PriorOwnerTypeName = EngagementProposalRuntime.ClientOwnerTypeName;
         internal const int PriorOwnerCloseRetValue = 1;
         internal const int AcceptButtonControlId = 1;
@@ -134,7 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
             _useClientDialogSurface = true;
             _style = ResolvePacketOpenStyle(clientDialogType);
             _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(_style);
-            _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Packet-owned presentation now prefers CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(clientDialogType):X} => {_dialogUolText} ({ResolveClientDialogAssetPath(clientDialogType)}) over the simulator-only style preview surface; style fallback={_style}. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
+            _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Packet-owned presentation records CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(clientDialogType):X} => {_dialogUolText} ({ResolveClientDialogAssetPath(clientDialogType)}) and uses the WZ-backed {_style} invitation canvas when that client dialog canvas is not present in the mounted data. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
             message = _statusMessage;
             return true;
         }
@@ -293,6 +296,9 @@ namespace HaCreator.MapSimulator.Interaction
                 InvitationAssetSize = (InvitationAssetWidth, InvitationAssetHeight),
                 PrimaryAcceptButtonWzOrigin = (PrimaryAcceptButtonWzOriginX, PrimaryAcceptButtonWzOriginY),
                 PrimaryAcceptButtonSize = (PrimaryAcceptButtonWidth, PrimaryAcceptButtonHeight),
+                AcceptButtonAcceptFocus = AcceptButtonAcceptFocus,
+                AcceptButtonDrawBack = AcceptButtonDrawBack,
+                AcceptButtonAnimateOnce = AcceptButtonAnimateOnce,
                 ClosesPriorOwnerOnOpen = true,
                 PriorOwnerTypeName = PriorOwnerTypeName,
                 PriorOwnerCloseRetValue = PriorOwnerCloseRetValue,
@@ -557,6 +563,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool ModalReturnIgnored { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
         public bool UseClientDialogInvitationSurface { get; init; }
+        public bool AcceptButtonAcceptFocus { get; init; }
+        public bool AcceptButtonDrawBack { get; init; }
+        public bool AcceptButtonAnimateOnce { get; init; }
         public WeddingInvitationStyle Style { get; init; }
         public int ClientCreateDialogAutoSeparated { get; init; }
         public (int X, int Y) ClientCreateDialogPosition { get; init; }

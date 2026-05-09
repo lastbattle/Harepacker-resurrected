@@ -793,6 +793,7 @@ namespace HaCreator.MapSimulator.Pools
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
+        private Func<float, float, (int page, int zMass)?> _getPacketLayerFootholdMetadata;
         private Func<int, Vector2?> _sourcePositionResolver;
         #endregion
 
@@ -820,6 +821,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetClientPickupBlockEvaluator(Func<DropItem, bool> callback) => _clientPickupBlockEvaluator = callback;
         public void SetPickupActorNameResolver(Func<DropPickupActorKind, int, bool, string> callback) => _pickupActorNameResolver = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
+        public void SetPacketLayerFootholdMetadataLookup(Func<float, float, (int page, int zMass)?> lookup) => _getPacketLayerFootholdMetadata = lookup;
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
         public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
         public void SetPacketItemVisualResolver(Func<string, IReadOnlyList<IDXObject>> resolver) => _packetItemVisualResolver = resolver;
@@ -2745,7 +2747,8 @@ namespace HaCreator.MapSimulator.Pools
             ApplyPacketDropPresentation(drop, packet);
 
             drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
-            ApplyPacketDropLayerOrdering(drop, packet, page: 0, zMass: 0);
+            (int page, int zMass) layerMetadata = ResolvePacketDropLayerMetadata(packet.TargetX, packet.TargetY);
+            ApplyPacketDropLayerOrdering(drop, packet, layerMetadata.page, layerMetadata.zMass);
             drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
                 ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
                 : 0;
@@ -2869,6 +2872,14 @@ namespace HaCreator.MapSimulator.Pools
             drop.PacketLayerPage = page;
             drop.PacketLayerZMass = zMass;
             drop.PacketLayerZ = ResolvePacketDropLayerZ(packet.EnterType, packet.ElevateLayer, page, zMass);
+        }
+
+        private (int page, int zMass) ResolvePacketDropLayerMetadata(float x, float y)
+        {
+            (int page, int zMass)? metadata = _getPacketLayerFootholdMetadata?.Invoke(x, y);
+            return metadata.HasValue
+                ? (Math.Max(0, metadata.Value.page), Math.Max(0, metadata.Value.zMass))
+                : (0, 0);
         }
 
         internal static int ResolvePacketDropLayerZ(byte enterType, bool elevateLayer, int page, int zMass)

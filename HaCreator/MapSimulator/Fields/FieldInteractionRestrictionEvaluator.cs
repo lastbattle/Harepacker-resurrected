@@ -1304,15 +1304,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static FieldType? GetInfoFieldType(MapInfo mapInfo)
         {
-            if (mapInfo?.fieldType.HasValue == true)
-            {
-                return mapInfo.fieldType.Value;
-            }
-
-            int? fieldTypeValue = GetInfoInt(mapInfo, "fieldType");
-            return fieldTypeValue.HasValue
-                ? (FieldType)fieldTypeValue.Value
-                : null;
+            return MapInfoFieldTypeResolver.Resolve(mapInfo);
         }
 
         private static bool IsNonDefaultFieldType(MapInfo mapInfo)

@@ -119,6 +119,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
+        private readonly Dictionary<int, Texture2D[]> _mobPreviewTextureCache = new();
         private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
 
         private InventoryUI _inventory;
@@ -933,7 +934,8 @@ namespace HaCreator.MapSimulator.UI
             if (PacketOwnedPutItemRequested != null)
             {
                 int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, selected.MaxStackSize);
-                bool isStackable = IsStackable(inventoryType, maxStackSize);
+                bool treatSingly = TrunkDialogClientParityText.TreatsAsSingleTransfer(inventoryType, selected);
+                bool isStackable = !treatSingly && IsStackable(inventoryType, maxStackSize);
                 int availableQuantity = Math.Max(1, selected.Quantity);
                 if (isStackable && availableQuantity > 1)
                 {

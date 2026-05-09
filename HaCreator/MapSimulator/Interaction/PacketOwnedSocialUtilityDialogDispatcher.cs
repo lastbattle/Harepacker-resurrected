@@ -1015,8 +1015,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            bool treatSingly = inventoryType == InventoryType.EQUIP
-                || InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
+            bool treatSingly = TrunkDialogClientParityText.TreatsAsSingleTransfer(inventoryType, slotData);
             int availableQuantity = Math.Max(1, slotData.Quantity);
             int normalizedQuantity;
             if (treatSingly)
@@ -1069,7 +1068,9 @@ namespace HaCreator.MapSimulator.Interaction
             string askCountSummary = askCountShown
                 ? $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)} is part of the accepted choreography."
                 : "No AskItemCount branch (client treat-singly path).";
-            string quantitySummary = normalizedQuantity == availableQuantity
+            string quantitySummary = treatSingly
+                ? $"native treat-singly count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
+                : normalizedQuantity == availableQuantity
                 ? $"full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
                 : $"partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}";
             StatusMessage =

@@ -343,6 +343,8 @@ namespace HaCreator.MapSimulator.Character
             public int LayerListNodeObjectId { get; set; }
             public int RegisteredAnimationObjectId { get; set; }
             public int ParentUnderFaceLayerObjectId { get; set; }
+            public IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation> LayerNativeOperations { get; set; } =
+                Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
         }
 
         private sealed class MirrorImageState
@@ -393,6 +395,8 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasOverlayParentObjectId { get; set; }
             public int LastInsertCanvasOverlayInsertionIndex { get; set; } = int.MinValue;
             public int LastInsertCanvasOverlaySiblingSignature { get; set; }
+            public int LastInsertCanvasUnderFaceParentObjectId { get; set; }
+            public int LastInsertCanvasUnderFaceParentSignature { get; set; }
             public int LastInsertCanvasPreparedLayerFilter { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerColor { get; set; }
@@ -6526,6 +6530,8 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasOverlayParentObjectId = 0,
                     LastInsertCanvasOverlayInsertionIndex = int.MinValue,
                     LastInsertCanvasOverlaySiblingSignature = 0,
+                    LastInsertCanvasUnderFaceParentObjectId = 0,
+                    LastInsertCanvasUnderFaceParentSignature = 0,
                     LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
                     LastInsertCanvasPostReparentListNodeSignature = 0,
                     PreparedFacingRight = false,
@@ -6744,6 +6750,8 @@ namespace HaCreator.MapSimulator.Character
             int liveOverlaySiblingSignature = ComputeMirrorImageOverlaySiblingSignature(
                 frame,
                 preparedLayer.OverlayTargetLayer);
+            int liveUnderFaceParentObjectId = ResolveMirrorImageUnderFaceParentObjectId(frame);
+            int liveUnderFaceParentSignature = ComputeMirrorImageUnderFaceParentSignature(frame);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -6779,6 +6787,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasOverlayInsertionIndex,
                 liveOverlaySiblingSignature,
                 preparedLayer.LastInsertCanvasOverlaySiblingSignature,
+                liveUnderFaceParentObjectId,
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId,
+                liveUnderFaceParentSignature,
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature,
                 preparedLayer.PreparedLayerFilter,
                 preparedLayer.LastInsertCanvasPreparedLayerFilter,
                 preparedLayer.PreparedLayerZ,
@@ -6812,6 +6824,8 @@ namespace HaCreator.MapSimulator.Character
                     overlayParentObjectId: liveOverlayParentObjectId,
                     overlayInsertionIndex: liveOverlayInsertionIndex,
                     overlaySiblingSignature: liveOverlaySiblingSignature,
+                    underFaceParentObjectId: liveUnderFaceParentObjectId,
+                    underFaceParentSignature: liveUnderFaceParentSignature,
                     preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime,
                     postReparentListNodeSignature: ComputeMirrorImagePostInsertParentListNodeSignature(
                         preparedLayer.PreparedLayerObjectId,
@@ -7068,6 +7082,8 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
             preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
             preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
+            preparedLayer.LastInsertCanvasUnderFaceParentObjectId = 0;
+            preparedLayer.LastInsertCanvasUnderFaceParentSignature = 0;
             preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7097,6 +7113,8 @@ namespace HaCreator.MapSimulator.Character
             int overlayParentObjectId = 0,
             int overlayInsertionIndex = int.MinValue,
             int overlaySiblingSignature = 0,
+            int underFaceParentObjectId = 0,
+            int underFaceParentSignature = 0,
             int preparedLayerRelMoveEndTime = int.MinValue,
             int postReparentListNodeSignature = 0)
         {
@@ -7128,6 +7146,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
                 preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
                 preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId = 0;
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7152,6 +7172,14 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasOverlaySiblingSignature = ResolveMirrorImageLastInsertCanvasOverlaySiblingSignature(
                 preparedLayer.LastInsertCanvasOverlaySiblingSignature,
                 overlaySiblingSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasUnderFaceParentObjectId = ResolveMirrorImageLastInsertCanvasUnderFaceParentObjectId(
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId,
+                underFaceParentObjectId,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasUnderFaceParentSignature = ResolveMirrorImageLastInsertCanvasUnderFaceParentSignature(
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature,
+                underFaceParentSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedSourceCanvasSignature = ResolveMirrorImageLastInsertedSourceSignature(
                 preparedLayer.LastInsertedSourceCanvasSignature,
@@ -7737,6 +7765,26 @@ namespace HaCreator.MapSimulator.Character
                 : existingOverlaySiblingSignature;
         }
 
+        internal static int ResolveMirrorImageLastInsertCanvasUnderFaceParentObjectId(
+            int existingUnderFaceParentObjectId,
+            int currentUnderFaceParentObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentUnderFaceParentObjectId != 0
+                ? currentUnderFaceParentObjectId
+                : existingUnderFaceParentObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasUnderFaceParentSignature(
+            int existingUnderFaceParentSignature,
+            int currentUnderFaceParentSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentUnderFaceParentSignature != 0
+                ? currentUnderFaceParentSignature
+                : existingUnderFaceParentSignature;
+        }
+
         internal static int ComputeMirrorImagePostInsertParentListNodeSignature(
             int preparedLayerObjectId,
             int overlayParentObjectId,
@@ -7841,6 +7889,36 @@ namespace HaCreator.MapSimulator.Character
             AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex);
             AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex + 1);
             return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageUnderFaceParentObjectId(AssembledFrame frame)
+        {
+            IReadOnlyList<AssembledPart> underFaceParts = ResolveMirrorImageUnderFaceSourceParts(frame);
+            return underFaceParts != null ? RuntimeHelpers.GetHashCode(underFaceParts) : 0;
+        }
+
+        internal static int ComputeMirrorImageUnderFaceParentSignature(AssembledFrame frame)
+        {
+            IReadOnlyList<AssembledPart> underFaceParts = ResolveMirrorImageUnderFaceSourceParts(frame);
+            if (underFaceParts == null)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add((int)AvatarRenderLayer.UnderFace);
+            signature.Add(RuntimeHelpers.GetHashCode(underFaceParts));
+            signature.Add(underFaceParts.Count);
+            signature.Add(ComputeMirrorImageSourceLayerSignature(underFaceParts));
+            return signature.ToHashCode();
+        }
+
+        private static IReadOnlyList<AssembledPart> ResolveMirrorImageUnderFaceSourceParts(AssembledFrame frame)
+        {
+            int underFaceLayerIndex = (int)AvatarRenderLayer.UnderFace;
+            return frame?.AvatarRenderLayers != null && (uint)underFaceLayerIndex < (uint)frame.AvatarRenderLayers.Length
+                ? frame.AvatarRenderLayers[underFaceLayerIndex]
+                : null;
         }
 
         private static void AddMirrorImageOverlaySiblingPartIdentity(
@@ -8189,6 +8267,10 @@ namespace HaCreator.MapSimulator.Character
             int lastInsertCanvasOverlayInsertionIndex = int.MinValue,
             int overlaySiblingSignature = 0,
             int lastInsertCanvasOverlaySiblingSignature = 0,
+            int underFaceParentObjectId = 0,
+            int lastInsertCanvasUnderFaceParentObjectId = 0,
+            int underFaceParentSignature = 0,
+            int lastInsertCanvasUnderFaceParentSignature = 0,
             int preparedLayerFilter = int.MinValue,
             int lastInsertCanvasPreparedLayerFilter = int.MinValue,
             int preparedLayerZ = int.MinValue,
@@ -8300,6 +8382,12 @@ namespace HaCreator.MapSimulator.Character
             bool overlaySiblingChanged = overlaySiblingSignature != 0
                 && lastInsertCanvasOverlaySiblingSignature != 0
                 && overlaySiblingSignature != lastInsertCanvasOverlaySiblingSignature;
+            bool underFaceParentObjectChanged = underFaceParentObjectId != 0
+                && lastInsertCanvasUnderFaceParentObjectId != 0
+                && underFaceParentObjectId != lastInsertCanvasUnderFaceParentObjectId;
+            bool underFaceParentSignatureChanged = underFaceParentSignature != 0
+                && lastInsertCanvasUnderFaceParentSignature != 0
+                && underFaceParentSignature != lastInsertCanvasUnderFaceParentSignature;
             bool preparedLayerFilterChanged = preparedLayerFilter != int.MinValue
                 && lastInsertCanvasPreparedLayerFilter != int.MinValue
                 && preparedLayerFilter != lastInsertCanvasPreparedLayerFilter;
@@ -8334,6 +8422,8 @@ namespace HaCreator.MapSimulator.Character
                 || overlayParentObjectChanged
                 || overlayInsertionIndexChanged
                 || overlaySiblingChanged
+                || underFaceParentObjectChanged
+                || underFaceParentSignatureChanged
                 || preparedLayerFilterChanged
                 || preparedLayerZChanged
                 || preparedLayerColorChanged
@@ -8370,6 +8460,10 @@ namespace HaCreator.MapSimulator.Character
                 && (overlayInsertionIndex == int.MinValue || lastInsertCanvasOverlayInsertionIndex == int.MinValue);
             bool overlaySiblingMetadataMissing = (overlaySiblingSignature != 0 || lastInsertCanvasOverlaySiblingSignature != 0)
                 && (overlaySiblingSignature == 0 || lastInsertCanvasOverlaySiblingSignature == 0);
+            bool underFaceParentObjectMetadataMissing = (underFaceParentObjectId != 0 || lastInsertCanvasUnderFaceParentObjectId != 0)
+                && (underFaceParentObjectId == 0 || lastInsertCanvasUnderFaceParentObjectId == 0);
+            bool underFaceParentSignatureMetadataMissing = (underFaceParentSignature != 0 || lastInsertCanvasUnderFaceParentSignature != 0)
+                && (underFaceParentSignature == 0 || lastInsertCanvasUnderFaceParentSignature == 0);
             bool preparedLayerFilterMetadataMissing = (preparedLayerFilter != int.MinValue || lastInsertCanvasPreparedLayerFilter != int.MinValue)
                 && (preparedLayerFilter == int.MinValue || lastInsertCanvasPreparedLayerFilter == int.MinValue);
             bool preparedLayerZMetadataMissing = (preparedLayerZ != int.MinValue || lastInsertCanvasPreparedLayerZ != int.MinValue)
@@ -8394,6 +8488,8 @@ namespace HaCreator.MapSimulator.Character
                 || overlayParentObjectMetadataMissing
                 || overlayInsertionIndexMetadataMissing
                 || overlaySiblingMetadataMissing
+                || underFaceParentObjectMetadataMissing
+                || underFaceParentSignatureMetadataMissing
                 || preparedLayerFilterMetadataMissing
                 || preparedLayerZMetadataMissing
                 || preparedLayerColorMetadataMissing
@@ -9831,6 +9927,8 @@ namespace HaCreator.MapSimulator.Character
             _activeShadowPartner.LayerListNodeObjectId = choreography.ListNodeObjectId;
             _activeShadowPartner.RegisteredAnimationObjectId = choreography.RegisteredAnimationObjectId;
             _activeShadowPartner.ParentUnderFaceLayerObjectId = choreography.ParentUnderFaceLayerObjectId;
+            _activeShadowPartner.LayerNativeOperations = choreography.NativeOperations
+                ?? Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
         }
 
         private string GetShadowPartnerObservedPlayerActionName()

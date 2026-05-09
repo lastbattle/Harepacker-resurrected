@@ -46,7 +46,10 @@ namespace HaCreator.MapSimulator.Interaction
         byte ClaimType,
         string Context,
         string ChatLog,
-        bool IncludesChatLog);
+        bool IsChatClaim)
+    {
+        public bool IncludesChatLog => IsChatClaim && !string.IsNullOrWhiteSpace(ChatLog);
+    }
 
     internal readonly record struct MessengerClaimResultPacket(
         bool Succeeded,
@@ -203,13 +206,27 @@ namespace HaCreator.MapSimulator.Interaction
             string context,
             string chatLog = null)
         {
+            return BuildClaimRequestPayload(
+                targetCharacterName,
+                claimType,
+                context,
+                !string.IsNullOrWhiteSpace(chatLog),
+                chatLog);
+        }
+
+        public static byte[] BuildClaimRequestPayload(
+            string targetCharacterName,
+            byte claimType,
+            string context,
+            bool isChatClaim,
+            string chatLog = null)
+        {
             PacketWriter writer = new();
-            bool includeChatLog = !string.IsNullOrWhiteSpace(chatLog);
-            writer.WriteByte(includeChatLog ? (byte)1 : (byte)0);
+            writer.WriteByte(isChatClaim ? (byte)1 : (byte)0);
             writer.WriteMapleString(NormalizeText(targetCharacterName));
             writer.WriteByte(claimType);
             writer.WriteMapleString(NormalizeText(context));
-            if (includeChatLog)
+            if (isChatClaim)
             {
                 writer.WriteMapleString(NormalizeText(chatLog));
             }
@@ -469,7 +486,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 118:
                     if (TryParseClientClaimRequest(payload, out MessengerClientClaimRequestPacket claimPacket, out _))
                     {
-                        summary = claimPacket.IncludesChatLog
+                        summary = claimPacket.IsChatClaim
                             ? $"CWvsContext::SendClaimRequest target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context} chatLog={claimPacket.ChatLog}"
                             : $"CWvsContext::SendClaimRequest target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context}";
                         return true;
@@ -960,11 +977,11 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload.ToArray());
-                bool includesChatLog = reader.ReadByte() != 0;
+                bool isChatClaim = reader.ReadByte() != 0;
                 string targetCharacterName = reader.ReadMapleString().Trim();
                 byte claimType = reader.ReadByte();
                 string context = reader.ReadMapleString().Trim();
-                string chatLog = includesChatLog ? reader.ReadMapleString().Trim() : string.Empty;
+                string chatLog = isChatClaim ? reader.ReadMapleString().Trim() : string.Empty;
                 if (string.IsNullOrWhiteSpace(targetCharacterName))
                 {
                     error = "Messenger claim request target name is empty.";
@@ -976,7 +993,7 @@ namespace HaCreator.MapSimulator.Interaction
                     claimType,
                     context,
                     chatLog,
-                    includesChatLog);
+                    isChatClaim);
                 return true;
             }
             catch (Exception ex)

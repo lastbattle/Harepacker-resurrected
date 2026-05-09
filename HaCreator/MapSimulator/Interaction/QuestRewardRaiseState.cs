@@ -43,6 +43,10 @@ namespace HaCreator.MapSimulator.Interaction
         public bool ClientPutItemRequestPending { get; set; }
         public bool HasClientPutItemRequestTick { get; set; }
         public int LastClientPutItemRequestTick { get; set; }
+        public bool HasLevelUpAnimation { get; set; }
+        public int LevelUpAnimationStartTick { get; set; }
+        public int LevelUpPreviousQrData { get; set; }
+        public int LevelUpCurrentQrData { get; set; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
 
@@ -112,11 +116,37 @@ namespace HaCreator.MapSimulator.Interaction
             ClientPutItemRequestPending = false;
         }
 
+        internal void BeginLevelUpAnimation(int previousQrData, int currentQrData, int currentTick)
+        {
+            if (currentQrData <= previousQrData)
+            {
+                return;
+            }
+
+            HasLevelUpAnimation = true;
+            LevelUpAnimationStartTick = currentTick;
+            LevelUpPreviousQrData = Math.Max(0, previousQrData);
+            LevelUpCurrentQrData = Math.Max(0, currentQrData);
+        }
+
+        internal void ClearLevelUpAnimation()
+        {
+            HasLevelUpAnimation = false;
+        }
+
+        internal bool IsLevelUpAnimationActive(int currentTick)
+        {
+            return HasLevelUpAnimation
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, LevelUpAnimationStartTick) < ClientLevelUpAnimationFadeMs;
+        }
+
         internal static bool HasClientPutItemThrottleElapsed(int currentTick, int lastRequestTick, bool hasLastRequestTick = false)
         {
             return (!hasLastRequestTick && lastRequestTick == 0)
                 || ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, lastRequestTick) >= ClientPutItemThrottleMs;
         }
+
+        internal const int ClientLevelUpAnimationFadeMs = 480;
 
         private static IEnumerable<int> EnumerateEnabledDropItemIds(QuestRewardChoicePrompt prompt)
         {
@@ -277,7 +307,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ReusedOwnerIdentityOnOpen = ReusedOwnerIdentityOnOpen,
                 ClientPutItemRequestPending = ClientPutItemRequestPending,
                 HasClientPutItemRequestTick = HasClientPutItemRequestTick,
-                LastClientPutItemRequestTick = LastClientPutItemRequestTick
+                LastClientPutItemRequestTick = LastClientPutItemRequestTick,
+                HasLevelUpAnimation = HasLevelUpAnimation,
+                LevelUpAnimationStartTick = LevelUpAnimationStartTick,
+                LevelUpPreviousQrData = LevelUpPreviousQrData,
+                LevelUpCurrentQrData = LevelUpCurrentQrData
             };
 
             foreach (KeyValuePair<int, int> selectedItem in SelectedItemsByGroup)

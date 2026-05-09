@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewParentLayerIdentity { get; set; }
         public int TemporaryStatViewMainLayerIdentity { get; set; }
         public int TemporaryStatViewShadowLayerIdentity { get; set; }
+        public int TemporaryStatViewObjectReferenceCount { get; set; }
         public int TemporaryStatViewObjectAllocationSequence { get; set; }
         public int TemporaryStatViewParentLayerAttachSequence { get; set; }
         public int TemporaryStatViewMainLayerAttachSequence { get; set; }
@@ -56,11 +57,18 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
+        public int SetLeftSequence { get; set; }
+        public int SetLeftPreviousValue { get; set; }
+        public int SetLeftNewValue { get; set; }
+        public int SetLeftThresholdValue { get; set; }
+        public bool SetLeftUsedVehicleThreshold { get; set; }
+        public bool SetLeftTriggeredLowAnimation { get; set; }
         public int ShadowIndex { get; set; }
         public int ShadowIndexUpdateSequence { get; set; }
         public int MainLayerAnimationSequence { get; set; }
         public int ShadowLayerAnimationSequence { get; set; }
         public string ShadowCanvasPath { get; set; }
+        public int ShadowCanvasOwnerLayerIdentity { get; set; }
         public int ShadowCanvasRemoveIndex { get; set; }
         public int ShadowCanvasInsertDelayMs { get; set; }
         public int ShadowCanvasAlphaStart { get; set; }

@@ -90,6 +90,21 @@ namespace HaCreator.MapSimulator.UI
             public string PacketStateSignature { get; init; } = string.Empty;
         }
 
+        public sealed class OneADayRuntimeSnapshot
+        {
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public NumberCanvasRuntimeState NumberCanvasRuntime { get; init; }
+            public RewardSessionRuntimeState RewardSessionRuntime { get; init; }
+            public IReadOnlyList<OneADayOwnerState.SelectorEntryState> SelectorEntries { get; init; } = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+            public IReadOnlyList<OneADayOwnerState.CounterSlotState> CounterSlots { get; init; } = Array.Empty<OneADayOwnerState.CounterSlotState>();
+            public IReadOnlyList<OneADayOwnerState.PlateButtonState> PlateButtons { get; init; } = Array.Empty<OneADayOwnerState.PlateButtonState>();
+            public string CounterText { get; init; } = string.Empty;
+            public string SessionState { get; init; } = string.Empty;
+            public int SelectorRevision { get; init; }
+            public int CounterRevision { get; init; }
+            public int RewardSessionRevision { get; init; }
+        }
+
         public sealed class LockerOwnerState
         {
             public string AccountLabel { get; init; } = string.Empty;
@@ -550,6 +565,25 @@ namespace HaCreator.MapSimulator.UI
         {
             return _oneADayRuntimeSeeded
                 && _oneADayLastPacketRewardSessionByte == (packetRewardSessionByte & 0xFF);
+        }
+        public OneADayRuntimeSnapshot GetOneADayRuntimeSnapshotForTests(bool forceRefresh = false)
+        {
+            SyncOneADayOwnerState(forceRefresh);
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            return new OneADayRuntimeSnapshot
+            {
+                SelectorRuntime = BuildOneADaySelectorControlRuntimeSnapshot(state),
+                NumberCanvasRuntime = BuildOneADayNumberCanvasRuntimeSnapshot(state),
+                RewardSessionRuntime = BuildOneADayRewardSessionRuntimeSnapshot(state),
+                SelectorEntries = _oneADaySelectorRuntime ?? Array.Empty<OneADayOwnerState.SelectorEntryState>(),
+                CounterSlots = _oneADayCounterRuntime ?? Array.Empty<OneADayOwnerState.CounterSlotState>(),
+                PlateButtons = _oneADayPlateButtonRuntime ?? Array.Empty<OneADayOwnerState.PlateButtonState>(),
+                CounterText = _oneADayCounterObject.CounterText ?? string.Empty,
+                SessionState = _oneADaySessionState ?? string.Empty,
+                SelectorRevision = _oneADaySelectorObject.Revision,
+                CounterRevision = _oneADayCounterObject.Revision,
+                RewardSessionRevision = _oneADayRewardSessionObject.Revision
+            };
         }
         public string CurrentOwnerStatusMessage => _statusMessage;
 
@@ -3257,6 +3291,88 @@ namespace HaCreator.MapSimulator.UI
             _oneADayRewardSessionObject.CountdownDeadlineTick = countdownDeadlineTick;
             _oneADayRewardSessionObject.PacketStateSignature = packetStateSignature;
             _oneADayRewardSessionObject.Revision = revision;
+        }
+
+        private SelectorControlRuntimeState BuildOneADaySelectorControlRuntimeSnapshot(OneADayOwnerState state)
+        {
+            int selectorCount = Math.Max(1, _oneADaySelectorObject.SelectorCount);
+            return new SelectorControlRuntimeState
+            {
+                ControlId = _oneADaySelectorObject.ControlId,
+                InitArg = _oneADaySelectorObject.InitArg,
+                Position = _oneADaySelectorObject.Position,
+                StartX = _oneADaySelectorObject.StartX,
+                StartY = _oneADaySelectorObject.StartY,
+                StartWidth = _oneADaySelectorObject.StartWidth,
+                StartHeight = _oneADaySelectorObject.StartHeight,
+                ActiveIndex = Math.Clamp(_oneADaySelectorObject.ActiveSelectorIndex, 0, selectorCount - 1),
+                VisibleOffset = 0,
+                VisibleCount = selectorCount,
+                TotalCount = selectorCount,
+                NormalColor = _oneADaySelectorObject.NormalColor,
+                SelectedColor = _oneADaySelectorObject.SelectedColor,
+                OutlineColor = _oneADaySelectorObject.OutlineColor,
+                FocusLabel = ResolveOneADaySelectorFocusLabel(),
+                Labels = (_oneADaySelectorRuntime ?? Array.Empty<OneADayOwnerState.SelectorEntryState>())
+                    .Select(entry => entry.Label ?? string.Empty)
+                    .ToArray()
+            };
+        }
+
+        private NumberCanvasRuntimeState BuildOneADayNumberCanvasRuntimeSnapshot(OneADayOwnerState state)
+        {
+            int expectedCanvasCount = Math.Max(1, _oneADayCounterObject.ExpectedDigitCanvasCount);
+            int loadedCanvasCount = Math.Clamp(_oneADayCounterObject.DigitCanvasCount, 0, expectedCanvasCount);
+            bool[] digitReadyStates = new bool[expectedCanvasCount];
+            string[] canvasNames = new string[expectedCanvasCount];
+            for (int i = 0; i < expectedCanvasCount; i++)
+            {
+                digitReadyStates[i] = (_oneADayCounterObject.DigitCanvasMask & (1 << i)) != 0;
+                canvasNames[i] = i.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return new NumberCanvasRuntimeState
+            {
+                SourceStringPoolId = state?.NumberCanvasStringPoolId ?? 0x16A7,
+                ExpectedCanvasCount = expectedCanvasCount,
+                LoadedCanvasCount = loadedCanvasCount,
+                ReadyMask = _oneADayCounterObject.DigitCanvasMask,
+                RenderedText = _oneADayCounterObject.CounterText ?? string.Empty,
+                DigitReadyStates = digitReadyStates,
+                CanvasNames = canvasNames
+            };
+        }
+
+        private RewardSessionRuntimeState BuildOneADayRewardSessionRuntimeSnapshot(OneADayOwnerState state)
+        {
+            return new RewardSessionRuntimeState
+            {
+                PacketOwned = _oneADayRewardSessionObject.PacketOwned,
+                SessionByte = _oneADayRewardSessionObject.SessionByte,
+                SessionByteOffset = _oneADayRewardSessionPacketOwned ? _oneADayLastPacketRewardSessionByteOffset : -1,
+                IsPending = _oneADayRewardSessionObject.IsPending,
+                SelectorIndex = _oneADaySelectorIndex,
+                ShortcutHelpActive = _oneADayShortcutHelpActive,
+                PreviousLaneEnabled = HasOneADayPreviousLane(state),
+                HistoryEntryCount = Math.Max(0, state?.HistoryEntries?.Count ?? 0),
+                PayloadLength = Math.Max(0, state?.PacketPayloadLength ?? 0),
+                DecodedByteLength = Math.Max(0, state?.PacketDecodedByteLength ?? 0),
+                TrailingByteCount = Math.Max(0, state?.PacketTrailingByteCount ?? 0),
+                TrailingPayloadHex = state?.PacketTrailingPayloadHex ?? string.Empty,
+                PacketStateSignature = _oneADayRewardSessionObject.PacketStateSignature ?? string.Empty
+            };
+        }
+
+        private string ResolveOneADaySelectorFocusLabel()
+        {
+            if (_oneADaySelectorRuntime == null || _oneADaySelectorRuntime.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            OneADayOwnerState.SelectorEntryState activeEntry = _oneADaySelectorRuntime
+                .FirstOrDefault(entry => entry != null && entry.Index == _oneADaySelectorIndex);
+            return activeEntry?.Label ?? string.Empty;
         }
 
         private string ResolveOneADayPlateName(OneADayOwnerState state)

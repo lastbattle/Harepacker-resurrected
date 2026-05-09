@@ -399,9 +399,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankTitles(IReadOnlyList<string> rankTitles, int guildId)
         {
-            if (TryBuildGuildScopedResultIgnore(
+            if (TryBuildNoGuildContextOwnedResultIgnore(
                     (byte)SocialListClientGuildResultKind.RankTitles,
-                    guildId,
                     "rank titles",
                     out string ignoredMessage))
             {
@@ -413,7 +412,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Client guild-result rank-title payload did not include any titles.";
             }
 
-            RememberPacketGuildId(guildId);
             _guildRankTitles.Clear();
             for (int i = 0; i < rankTitles.Count; i++)
             {

@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool TerminateRequested { get; set; }
             public bool IsTerminated { get; internal set; }
             public int SimulatedAnimationStateId { get; internal set; }
+            public int SimulatedMotionBlurListNodeId { get; internal set; }
             public int SimulatedOverlayLayerHandleId { get; internal set; }
             public int SimulatedOverlayLayerHandleRefCount { get; internal set; }
             public IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode { get; internal set; }
@@ -127,6 +128,8 @@ namespace HaCreator.MapSimulator.Animation
                 = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
             public IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> SimulatedAnimationStateReferenceOperations { get; private set; }
                 = Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>();
+            public IReadOnlyList<SecondaryMotionBlurOwnerListOperation> SimulatedOwnerListOperations { get; private set; }
+                = Array.Empty<SecondaryMotionBlurOwnerListOperation>();
             private int _simulatedOverlaySnapshotRefCount;
             private readonly Dictionary<int, int> _simulatedLayerOwnerRefCountsByHandle = new();
             private readonly Dictionary<int, int> _simulatedLayerSnapshotRefCountsByHandle = new();
@@ -134,6 +137,8 @@ namespace HaCreator.MapSimulator.Animation
             private int _simulatedAnimationStateReferenceCount;
             private bool _simulatedMotionBlurOwnerAnimationStateReferenceHeld;
             private bool _simulatedSpectrumOwnerAnimationStateReferenceHeld;
+            private bool _simulatedMotionBlurListNodeHeld;
+            private bool _simulatedMotionBlurListNodeTerminateRecorded;
             internal static readonly int[] ClientLayerCopyOrder =
             {
                 (int)AvatarRenderLayer.Face,
@@ -198,6 +203,71 @@ namespace HaCreator.MapSimulator.Animation
                     SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
+            internal void CaptureRegisteredOwnerListNode(
+                int delayMs,
+                int intervalMs,
+                byte alpha,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (SimulatedMotionBlurListNodeId <= 0)
+                {
+                    SimulatedMotionBlurListNodeId = SimulatedMotionBlurIdentitySource.NextListNodeId();
+                }
+
+                _simulatedMotionBlurListNodeHeld = true;
+                _simulatedMotionBlurListNodeTerminateRecorded = false;
+                var operations = new List<SecondaryMotionBlurOwnerListOperation>
+                {
+                    SecondaryMotionBlurOwnerListOperation.Create(
+                        SecondaryMotionBlurOwnerListOperationKind.AddMotionBlurListNode,
+                        SimulatedMotionBlurListNodeId,
+                        SimulatedAnimationStateId,
+                        ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                        delayMs,
+                        intervalMs,
+                        alpha)
+                };
+
+                if (SimulatedOverlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                        SecondaryMotionBlurOwnerListOperationKind.CopyOverlayToListNode,
+                        SimulatedMotionBlurListNodeId,
+                        SimulatedAnimationStateId,
+                        ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                        delayMs,
+                        intervalMs,
+                        alpha));
+                }
+
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.CopyLayerArrayToListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.StoreTimingAndAlpha,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.CopyAnimationStateToListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
             internal void ReleaseRegisteredLayerReferences()
             {
                 var operations = SimulatedLayerReferenceOperations?.ToList()
@@ -256,6 +326,7 @@ namespace HaCreator.MapSimulator.Animation
                     .ToDictionary(static entry => entry.Key, static _ => 0);
                 SimulatedLayerReferenceOperations =
                     SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                ReleaseOwnerListNode();
             }
 
             internal void ReleaseSnapshotLayerReferences(SecondaryMotionBlurSnapshotTrace trace)
@@ -501,6 +572,7 @@ namespace HaCreator.MapSimulator.Animation
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                CaptureOwnerListTerminateRequest();
                 ReleaseAnimationStateReferences();
                 ReleaseRegisteredLayerReferences();
             }
@@ -522,7 +594,68 @@ namespace HaCreator.MapSimulator.Animation
                     SimulatedLayerReferenceOperations?.ToArray()
                     ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>(),
                     SimulatedAnimationStateReferenceOperations?.ToArray()
-                    ?? Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>());
+                    ?? Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>(),
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedOwnerListOperations?.ToArray()
+                    ?? Array.Empty<SecondaryMotionBlurOwnerListOperation>());
+            }
+
+            internal void CaptureOwnerListTerminateRequest()
+            {
+                if (!_simulatedMotionBlurListNodeHeld
+                    || _simulatedMotionBlurListNodeTerminateRecorded
+                    || SimulatedMotionBlurListNodeId <= 0)
+                {
+                    return;
+                }
+
+                _simulatedMotionBlurListNodeTerminateRecorded = true;
+                var operations = SimulatedOwnerListOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurOwnerListOperation>();
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.RequestTerminateAnimationState,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
+            private void ReleaseOwnerListNode()
+            {
+                if (!_simulatedMotionBlurListNodeHeld || SimulatedMotionBlurListNodeId <= 0)
+                {
+                    return;
+                }
+
+                _simulatedMotionBlurListNodeHeld = false;
+                var operations = SimulatedOwnerListOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurOwnerListOperation>();
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.RemoveMotionBlurListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
+            private static int ResolveRegisteredLayerSlotCount(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    return 0;
+                }
+
+                int count = 0;
+                foreach ((_, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId > 0)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
             }
 
             private void CaptureRegisteredAnimationStateReference()
@@ -744,7 +877,9 @@ namespace HaCreator.MapSimulator.Animation
             IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode,
             IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedRegistrationArgumentReferenceOperations,
             IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations,
-            IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> SimulatedAnimationStateReferenceOperations);
+            IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> SimulatedAnimationStateReferenceOperations,
+            int SimulatedMotionBlurListNodeId,
+            IReadOnlyList<SecondaryMotionBlurOwnerListOperation> SimulatedOwnerListOperations);
 
         internal readonly record struct SecondaryMotionBlurSnapshotTrace(
             int StartTime,
@@ -778,6 +913,64 @@ namespace HaCreator.MapSimulator.Animation
             ReleaseReturnTemporary,
             TerminateSpectrumOwner,
             ReleaseMotionBlurOwner
+        }
+
+        internal enum SecondaryMotionBlurOwnerListOperationKind
+        {
+            AddMotionBlurListNode,
+            CopyOverlayToListNode,
+            CopyLayerArrayToListNode,
+            StoreTimingAndAlpha,
+            CopyAnimationStateToListNode,
+            RequestTerminateAnimationState,
+            RemoveMotionBlurListNode
+        }
+
+        internal readonly record struct SecondaryMotionBlurOwnerListOperation(
+            SecondaryMotionBlurOwnerListOperationKind Kind,
+            int SimulatedMotionBlurListNodeId,
+            int SimulatedAnimationStateId,
+            int CapturedLayerSlotCount,
+            int DelayMs,
+            int IntervalMs,
+            byte Alpha,
+            int OperationIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurOwnerListOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurOwnerListOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurOwnerListOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurOwnerListOperation>();
+                foreach (SecondaryMotionBlurOwnerListOperation operation in operations)
+                {
+                    ordered.Add(operation with { OperationIndex = ordered.Count });
+                }
+
+                return ordered;
+            }
+
+            public static SecondaryMotionBlurOwnerListOperation Create(
+                SecondaryMotionBlurOwnerListOperationKind kind,
+                int listNodeId,
+                int animationStateId,
+                int capturedLayerSlotCount = 0,
+                int delayMs = 0,
+                int intervalMs = 0,
+                byte alpha = 0)
+            {
+                return new SecondaryMotionBlurOwnerListOperation(
+                    kind,
+                    Math.Max(0, listNodeId),
+                    Math.Max(0, animationStateId),
+                    Math.Max(0, capturedLayerSlotCount),
+                    Math.Max(0, delayMs),
+                    Math.Max(0, intervalMs),
+                    alpha);
+            }
         }
 
         internal readonly record struct SecondaryMotionBlurAnimationStateReferenceOperation(
@@ -1154,6 +1347,28 @@ namespace HaCreator.MapSimulator.Animation
                 fallbackFlip,
                 currentTimeMs,
                 AnimationOneTimeOwner.ClientOwnedCollisionCustomImpact,
+                initialElapsedMs);
+        }
+
+        internal void AddClientOwnedBoundJumpGeneralEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.ClientOwnedBoundJumpGeneralEffect,
+                zOrder,
                 initialElapsedMs);
         }
 
@@ -1694,6 +1909,40 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 zOrder,
                 getPosition,
+                getFlip: null,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddClientOwnedBasicOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int zOrder,
+            int initialElapsedMs)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreateClientOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                zOrder,
+                getPosition: null,
                 getFlip: null,
                 owner,
                 AnimationOneTimePlaybackMode.GA_STOP,
@@ -4443,7 +4692,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedLevelUp = 23,
         ClientOwnedCollisionVerticalJump = 24,
         ClientOwnedCollisionCustomImpact = 25,
-        PacketOwnedRemoteSkillUse = 26
+        PacketOwnedRemoteSkillUse = 26,
+        ClientOwnedBoundJumpGeneralEffect = 27
     }
 
     internal enum AnimationFallingOwner
@@ -5042,6 +5292,7 @@ namespace HaCreator.MapSimulator.Animation
         string FormattedText,
         CanvasLayerRecoveredCanvasSettings CanvasSettings,
         CanvasLayerRecoveredCompositeSurfaceSettings CompositeSurfaceSettings,
+        CanvasLayerRecoveredEffectHpOwnerSelectionTrace OwnerSelectionTrace,
         CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
         CanvasLayerRecoveredTemporaryCanvasOperation[] TemporaryCanvasOperations,
         bool KeepsOverlayOnSeparateLayer,
@@ -5053,6 +5304,22 @@ namespace HaCreator.MapSimulator.Animation
         int OverlaySourceWidth,
         int OverlaySourceHeight,
         int OverlayLayerPositionOffsetY);
+
+    /// <summary>
+    /// Recovered CAnimationDisplayer::Effect_HP family-owner selection.
+    /// The first digit is read from the large owner, later digits from the small owner;
+    /// red critical damage swaps both owners to NoCri1/NoCri0 while non-red families stay
+    /// on their color owner.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+        string LargeOwnerSetName,
+        string SmallOwnerSetName,
+        bool FirstDigitUsesLargeOwner,
+        bool TailDigitsUseSmallOwner,
+        bool UsesRedCriticalOwnerSplit,
+        bool UsesSpecialTextOwner,
+        string SpecialTextOwnerSetName,
+        bool SpecialTextOwnerIsAuthoredNoRed0);
 
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
@@ -7124,7 +7391,7 @@ namespace HaCreator.MapSimulator.Animation
                 itemId,
                 clientEquipIndex,
                 normalizedVariantIndices);
-            int allocatedItemEffectCount = normalizedVariantIndices.Count;
+            int allocatedItemEffectCount = 1;
             return new FollowItemEffectRecoveredNativeOwnerState(
                 itemId,
                 clientEquipIndex,
@@ -7159,13 +7426,14 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var handles = new int[effectVariantIndices.Count];
+            int sharedHandle = BuildRecoveredNativeItemEffectHandleId(
+                itemId,
+                clientEquipIndex,
+                effectVariantIndex: 0,
+                variantOrdinal: 0);
             for (int ordinal = 0; ordinal < handles.Length; ordinal++)
             {
-                handles[ordinal] = BuildRecoveredNativeItemEffectHandleId(
-                    itemId,
-                    clientEquipIndex,
-                    effectVariantIndices[ordinal],
-                    ordinal);
+                handles[ordinal] = sharedHandle;
             }
 
             return handles;
@@ -7325,7 +7593,7 @@ namespace HaCreator.MapSimulator.Animation
                 effectVariantIndex,
                 variantOrdinal,
                 simulatedItemEffectHandleId,
-                variantOrdinal);
+                ownerState.ClientEquipIndex);
         }
 
         private static int ResolveRecoveredNativeItemEffectHandleId(

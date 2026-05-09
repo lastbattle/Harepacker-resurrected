@@ -4595,9 +4595,18 @@ namespace HaCreator.MapSimulator
             int metadataDurationMs,
             int actionDurationMs)
         {
-            return ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(
-                metadataDurationMs,
-                actionDurationMs);
+            int clampedActionDurationMs = Math.Max(0, actionDurationMs);
+            if (clampedActionDurationMs > 0)
+            {
+                // Client evidence (`RESERVEDINFO::Update`, type 4):
+                // only the row-local action name is consumed before CAvatar::SetOneTimeAction.
+                // Row duration belongs to visual/area reserved rows, not one-time action release.
+                return clampedActionDurationMs;
+            }
+
+            return Math.Max(
+                1,
+                AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs);
         }
 
         private bool TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(int targetFieldId, int currentTime)
@@ -6118,6 +6127,24 @@ namespace HaCreator.MapSimulator
                 effectUol);
         }
 
+        private static string BuildAnimationDisplayerClientOwnedBoundJumpGeneralEffectOwnerSlotKey(
+            int sourceSkillId,
+            string effectUol,
+            Vector2 worldOrigin,
+            bool flip)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "aux.clientOwnedBoundJumpGeneralEffect.oneTime",
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}:{1}:{2}:{3}:{4}",
+                    Math.Max(0, sourceSkillId),
+                    effectUol?.Trim(),
+                    (int)MathF.Round(worldOrigin.X),
+                    (int)MathF.Round(worldOrigin.Y),
+                    flip ? 1 : 0));
+        }
+
         private static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
@@ -6852,6 +6879,19 @@ namespace HaCreator.MapSimulator
             return BuildAnimationDisplayerLocalPacketOwnedLevelUpOwnerSlotKey(effectUol);
         }
 
+        internal static string BuildAnimationDisplayerClientOwnedBoundJumpGeneralEffectOwnerSlotKeyForTesting(
+            int sourceSkillId,
+            string effectUol,
+            Vector2 worldOrigin,
+            bool flip)
+        {
+            return BuildAnimationDisplayerClientOwnedBoundJumpGeneralEffectOwnerSlotKey(
+                sourceSkillId,
+                effectUol,
+                worldOrigin,
+                flip);
+        }
+
         internal static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKeyForTesting(string effectUol)
         {
             return BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(effectUol);
@@ -7142,13 +7182,34 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _animationEffects.AddOneTime(
-                animation.ToTextureFrames(),
+            List<IDXObject> frames = animation.ToTextureFrames();
+            int currentTime = request.RequestTime > 0 ? request.RequestTime : currTickCount;
+            string sourceUol = request.EffectPath.Trim();
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(localCharacterId);
+            bool ownerFacingRight = ResolveAnimationDisplayerLocalPacketOwnedFacingRight(localCharacterId);
+            int initialElapsedMs = ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeInitialElapsed(
+                localCharacterId,
+                BuildAnimationDisplayerClientOwnedBoundJumpGeneralEffectOwnerSlotKey(
+                    request.SourceSkillId,
+                    sourceUol,
+                    request.WorldOrigin,
+                    request.Flip),
+                sourceUol,
+                ownerActionName,
+                ownerFacingRight,
+                currentTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+
+            _animationEffects.AddClientOwnedBoundJumpGeneralEffect(
+                frames,
+                sourceUol,
                 request.WorldOrigin.X,
                 request.WorldOrigin.Y,
                 flip: request.Flip,
-                currentTimeMs: request.RequestTime > 0 ? request.RequestTime : currTickCount,
-                zOrder: request.ZOrder);
+                currentTimeMs: currentTime,
+                zOrder: request.ZOrder,
+                initialElapsedMs: initialElapsedMs);
             return true;
         }
 

@@ -684,6 +684,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.ShopScannerResultClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.ShopScannerLinkResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.ItemUpgradeResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.VegaResultClientPacketType
                 || packetType == MapleTvRuntime.PacketTypeSetMessage
@@ -730,6 +732,8 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType => "ClassCompetitionAuthCache(291)",
                 LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
                 LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
+                LocalUtilityPacketInboxManager.ShopScannerResultClientPacketType => "CUIShopScanner::OnResult(73)",
+                LocalUtilityPacketInboxManager.ShopScannerLinkResultClientPacketType => "CUIShopScanResult::OnShopLinkResult(74)",
                 LocalUtilityPacketInboxManager.ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
                 LocalUtilityPacketInboxManager.VegaResultClientPacketType => "CUIVega::OnVegaResult(429)",
                 MapleTvRuntime.PacketTypeSetMessage => "CMapleTVMan::OnSetMessage(405)",

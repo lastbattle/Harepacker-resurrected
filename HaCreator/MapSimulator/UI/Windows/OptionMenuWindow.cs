@@ -161,6 +161,39 @@ namespace HaCreator.MapSimulator.UI
             public Action<bool> SetValue { get; }
         }
 
+        private readonly struct ClientGameOptionRowDefinition
+        {
+            public ClientGameOptionRowDefinition(int configId, int clientY, string label, string description)
+            {
+                ConfigId = configId;
+                ClientY = clientY;
+                Label = label;
+                Description = description;
+            }
+
+            public int ConfigId { get; }
+            public int ClientY { get; }
+            public string Label { get; }
+            public string Description { get; }
+        }
+
+        private static readonly ClientGameOptionRowDefinition[] ClientGameOptionRowDefinitions =
+        {
+            new(1001, 23, "Whisper", "Accept whisper requests from other players."),
+            new(1002, 41, "Friend", "Allow friend requests from the social owner."),
+            new(1003, 59, "Messenger", "Allow messenger invites."),
+            new(1004, 77, "Exchange", "Allow trade requests."),
+            new(1005, 95, "Party", "Allow party invitations."),
+            new(1006, 113, "Party Search", "Allow party-search invitations."),
+            new(1007, 131, "Expedition", "Allow expedition invitations."),
+            new(1010, 149, "Guild Talk", "Allow guild chat notices."),
+            new(1009, 167, "Guild Invite", "Allow guild invitations."),
+            new(1012, 185, "Alliance Talk", "Allow alliance chat notices."),
+            new(1011, 203, "Alliance Invite", "Allow alliance invitations."),
+            new(1013, 221, "Family", "Allow family requests."),
+            new(1014, 239, "Follow Request", "Allow escort and follow requests."),
+        };
+
         private sealed class JoypadRow
         {
             public JoypadRow(
@@ -418,6 +451,23 @@ namespace HaCreator.MapSimulator.UI
         public void SetCommittedClientOptionValue(int configId, bool value)
         {
             _committedClientOptionValues[configId] = value;
+        }
+
+        public void ApplyCommittedClientOptionValues(IReadOnlyDictionary<uint, int> clientOptions)
+        {
+            if (clientOptions == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < ClientGameOptionRowDefinitions.Length; i++)
+            {
+                int configId = ClientGameOptionRowDefinitions[i].ConfigId;
+                if (clientOptions.TryGetValue((uint)configId, out int rawValue))
+                {
+                    _committedClientOptionValues[configId] = rawValue != 0;
+                }
+            }
         }
 
         public override void Show()
@@ -1254,22 +1304,14 @@ namespace HaCreator.MapSimulator.UI
 
         private List<OptionRow> BuildClientOptionRows()
         {
-            return new List<OptionRow>
+            List<OptionRow> rows = new();
+            for (int i = 0; i < ClientGameOptionRowDefinitions.Length; i++)
             {
-                CreateClientOptionRow(1001, 23, "Whisper", "Accept whisper requests from other players."),
-                CreateClientOptionRow(1002, 41, "Friend", "Allow friend requests from the social owner."),
-                CreateClientOptionRow(1003, 59, "Messenger", "Allow messenger invites."),
-                CreateClientOptionRow(1004, 77, "Exchange", "Allow trade requests."),
-                CreateClientOptionRow(1005, 95, "Party", "Allow party invitations."),
-                CreateClientOptionRow(1006, 113, "Party Search", "Allow party-search invitations."),
-                CreateClientOptionRow(1007, 131, "Expedition", "Allow expedition invitations."),
-                CreateClientOptionRow(1010, 149, "Guild Talk", "Allow guild chat notices."),
-                CreateClientOptionRow(1009, 167, "Guild Invite", "Allow guild invitations."),
-                CreateClientOptionRow(1012, 185, "Alliance Talk", "Allow alliance chat notices."),
-                CreateClientOptionRow(1011, 203, "Alliance Invite", "Allow alliance invitations."),
-                CreateClientOptionRow(1013, 221, "Family", "Allow family requests."),
-                CreateClientOptionRow(1014, 239, "Follow Request", "Allow escort and follow requests."),
-            };
+                ClientGameOptionRowDefinition definition = ClientGameOptionRowDefinitions[i];
+                rows.Add(CreateClientOptionRow(definition.ConfigId, definition.ClientY, definition.Label, definition.Description));
+            }
+
+            return rows;
         }
 
         private OptionRow CreateClientOptionRow(int configId, int clientY, string label, string description)

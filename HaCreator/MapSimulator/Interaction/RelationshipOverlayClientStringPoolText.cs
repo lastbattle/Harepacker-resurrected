@@ -7,6 +7,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NewYearCardVectorClassStringPoolId = 0x03D2;
         internal const int NewYearCardEffectTemplateStringPoolId = 0x09AB;
         internal const int NewYearCardDefaultItemId = 4300000;
+        internal const int NewYearCardMidpointOffsetY = -20;
+        internal const int NewYearCardRatioNumerator = 2;
+        internal const int NewYearCardRatioDenominator = 2;
+        internal const int NewYearCardLoadLayerAlpha = 255;
 
         private const string NewYearCardVectorClassFallback = "Shape2D#Vector2D";
         private const string NewYearCardEffectTemplateFallback = "Effect/ItemEff.img/%d";
@@ -27,5 +31,28 @@ namespace HaCreator.MapSimulator.Interaction
                 out _);
             return string.Format(CultureInfo.InvariantCulture, format, itemId);
         }
+
+        public static NewYearCardLoadLayerSpec ResolveNewYearCardLoadLayerSpec(
+            int itemId = NewYearCardDefaultItemId)
+        {
+            int resolvedItemId = itemId > 0 ? itemId : NewYearCardDefaultItemId;
+            return new NewYearCardLoadLayerSpec(
+                resolvedItemId,
+                ResolveNewYearCardVectorClass(),
+                ResolveNewYearCardEffectPath(resolvedItemId),
+                NewYearCardMidpointOffsetY,
+                NewYearCardRatioNumerator,
+                NewYearCardRatioDenominator,
+                NewYearCardLoadLayerAlpha);
+        }
     }
+
+    internal readonly record struct NewYearCardLoadLayerSpec(
+        int ItemId,
+        string VectorClass,
+        string EffectPath,
+        int MidpointOffsetY,
+        int RatioNumerator,
+        int RatioDenominator,
+        int Alpha);
 }

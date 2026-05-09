@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Managers
         private const string MassacreSkillSessionKeyFallback = "massacre_skill";
         private const int MaxNestedRelayDepth = 8;
         private const int MaxRecentInboundPackets = 32;
+        private const int MaxRecentOutboundPackets = 32;
         private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
         private const string AttachCommandUsage = "/massacre session attach <remotePort> [processName|pid] [localPort]";
         private const string AttachProxyCommandUsage = "/massacre session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";
@@ -55,10 +56,12 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<byte[]> _pendingOutboundPackets = new();
         private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly object _sync = new();
         private readonly MassacreSessionValueInfoState _sessionValueInfoState = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private InboundPacketTrace? _liveRecoveredInboundEvidence;
+        private OutboundPacketTrace? _liveOutboundInjectionEvidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public MassacreOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -84,6 +87,23 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source);
+        internal readonly record struct OutboundPacketTrace(
+            int Opcode,
+            int PayloadLength,
+            short? SessionVersion,
+            long? ProxySessionId,
+            string RawPacketHex,
+            string Source);
+        public enum LiveOwnershipVerificationState
+        {
+            Idle,
+            ReconnectPending,
+            WaitingForBothDirections,
+            WaitingForOutboundInjection,
+            WaitingForDecodedInbound,
+            WaitingForPairedProxySessionEvidence,
+            Complete
+        }
 
         internal sealed class MassacreSessionValueInfoState
         {
@@ -174,6 +194,15 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         internal bool HasLiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence.HasValue;
         internal InboundPacketTrace? LiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence;
+        internal bool HasLiveOutboundInjectionEvidence => _liveOutboundInjectionEvidence.HasValue;
+        internal OutboundPacketTrace? LiveOutboundInjectionEvidence => _liveOutboundInjectionEvidence;
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
+            HasConnectedSession,
+            HasPassiveEstablishedSocketPair,
+            IsRunning,
+            HasLiveOutboundInjectionEvidence,
+            HasLiveRecoveredInboundEvidence,
+            HasPairedCurrentLiveOwnershipEvidence());
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
@@ -198,7 +227,15 @@ namespace HaCreator.MapSimulator.Managers
             string sent = SentCount > 0
                 ? $"sent={SentCount}; lastSent={Convert.ToHexString(LastSentRawPacket)}"
                 : "sent=0";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; pendingOutbound={PendingOutboundPacketCount}; queued={QueuedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                HasLiveOutboundInjectionEvidence,
+                HasLiveRecoveredInboundEvidence,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string verificationEvidence = DescribeLiveOwnershipVerificationEvidence();
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; pendingOutbound={PendingOutboundPacketCount}; queued={QueuedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {verification} {verificationEvidence} {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -696,6 +733,13 @@ namespace HaCreator.MapSimulator.Managers
             SentCount++;
             LastSentRawPacket = clonedRawPacket;
             int opcode = TryDecodePacketOpcode(clonedRawPacket);
+            _liveOutboundInjectionEvidence = new OutboundPacketTrace(
+                opcode,
+                Math.Max(0, clonedRawPacket.Length - sizeof(ushort)),
+                null,
+                _roleSessionProxy.CurrentProxySessionId,
+                Convert.ToHexString(clonedRawPacket),
+                "simulator-injection");
             status = $"Injected Massacre outbound opcode 0x{opcode:X4} ({clonedRawPacket.Length} byte(s)) through the live official-session bridge.";
             LastStatus = status;
             return true;
@@ -1543,6 +1587,113 @@ namespace HaCreator.MapSimulator.Managers
         {
             string owner = trace.IsDecodedOwner ? "decoded" : "undecoded";
             return $"{owner} opcode=0x{trace.Opcode:X4} packetType={trace.PacketType} kind={trace.Kind} payloadLen={trace.PayloadLength} source={trace.Source}";
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundInjection,
+            bool hasObservedLiveDecodedInbound,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            if (hasConnectedSession && hasPairedLiveOwnershipEvidence)
+            {
+                return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundInjection && hasObservedLiveDecodedInbound)
+            {
+                return LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence;
+            }
+
+            if (hasObservedLiveOutboundInjection)
+            {
+                return LiveOwnershipVerificationState.WaitingForDecodedInbound;
+            }
+
+            if (hasObservedLiveDecodedInbound)
+            {
+                return LiveOwnershipVerificationState.WaitingForOutboundInjection;
+            }
+
+            if (hasConnectedSession)
+            {
+                return LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            return hasPassiveEstablishedSocketPair || isRunning
+                ? LiveOwnershipVerificationState.ReconnectPending
+                : LiveOwnershipVerificationState.Idle;
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundInjection,
+            bool hasObservedLiveDecodedInbound,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundInjection,
+                hasObservedLiveDecodedInbound,
+                hasPairedLiveOwnershipEvidence);
+            return state switch
+            {
+                LiveOwnershipVerificationState.Complete => "Live ownership verification complete: outbound injection and decoded Massacre inbound were captured in the current proxy session.",
+                LiveOwnershipVerificationState.ReconnectPending => "Live ownership verification pending reconnect: Maple must reconnect through the localhost proxy before Massacre ownership can be confirmed.",
+                LiveOwnershipVerificationState.WaitingForBothDirections => "Live ownership verification in progress: waiting for outbound injection and decoded Massacre inbound traffic.",
+                LiveOwnershipVerificationState.WaitingForOutboundInjection => "Live ownership verification in progress: decoded Massacre inbound captured, waiting for outbound injection.",
+                LiveOwnershipVerificationState.WaitingForDecodedInbound => "Live ownership verification in progress: outbound injection captured, waiting for decoded Massacre inbound.",
+                LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence => "Live ownership verification in progress: both directions were captured, waiting for paired current proxy-session evidence.",
+                _ => "Live ownership verification idle: start the Massacre official-session bridge and capture traffic."
+            };
+        }
+
+        private string DescribeLiveOwnershipVerificationEvidence()
+        {
+            if (_liveOutboundInjectionEvidence.HasValue && _liveRecoveredInboundEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = _liveOutboundInjectionEvidence.Value;
+                InboundPacketTrace inbound = _liveRecoveredInboundEvidence.Value;
+                return $"Live ownership verification evidence: outbound[opcode=0x{outbound.Opcode:X4} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}] inbound[opcode=0x{inbound.Opcode:X4} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}].";
+            }
+
+            if (_liveOutboundInjectionEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = _liveOutboundInjectionEvidence.Value;
+                return $"Live ownership verification evidence: outbound[opcode=0x{outbound.Opcode:X4} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}], waiting for decoded inbound.";
+            }
+
+            if (_liveRecoveredInboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = _liveRecoveredInboundEvidence.Value;
+                return $"Live ownership verification evidence: inbound[opcode=0x{inbound.Opcode:X4} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}], waiting for outbound injection.";
+            }
+
+            return "Live ownership verification evidence: none.";
+        }
+
+        private bool HasPairedCurrentLiveOwnershipEvidence()
+        {
+            return IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveOutboundInjectionEvidence?.ProxySessionId)
+                && IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveRecoveredInboundEvidence?.ProxySessionId);
+        }
+
+        private static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        {
+            return leftProxySessionId.HasValue
+                && rightProxySessionId.HasValue
+                && leftProxySessionId.Value == rightProxySessionId.Value;
+        }
+
+        private static string FormatProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "unknown";
         }
 
         private static int TryDecodePacketOpcode(byte[] rawPacket)

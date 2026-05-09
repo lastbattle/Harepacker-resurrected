@@ -523,7 +523,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 targetLayerObjectId,
                 ClientRemoveAllCanvasesIndex);
 
-            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 12) + 10)
+            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 12) + 13)
             {
                 new(
                     AfterimageLayerReferenceOperationKind.AddTargetLayerRef,
@@ -539,7 +539,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 new(
                     AfterimageLayerReferenceOperationKind.ReleaseAlphaVectorRef,
                     targetLayerObjectId,
-                    AlphaVectorRefDelta: -1),
+                    AlphaVectorRefDelta: -1)
+            };
+
+            AddRelMoveArgumentVariantCleanupOperations(operations, targetLayerObjectId);
+            operations.AddRange(new AfterimageLayerReferenceOperation[]
+            {
                 new(
                     AfterimageLayerReferenceOperationKind.RemoveAllCanvases,
                     targetLayerObjectId,
@@ -550,7 +555,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                     targetLayerObjectId,
                     CanvasObjectId: removedCanvasCollectionObjectId,
                     CanvasRefDelta: -1,
-                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex),
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex)
+            });
+            AddRemoveCanvasArgumentVariantCleanupOperations(
+                operations,
+                targetLayerObjectId,
+                removedCanvasCollectionObjectId,
+                ClientRemoveAllCanvasesIndex);
+            operations.AddRange(new AfterimageLayerReferenceOperation[]
+            {
                 new(
                     AfterimageLayerReferenceOperationKind.AddAfterimageUolRef,
                     targetLayerObjectId,
@@ -562,7 +575,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     targetLayerObjectId,
                     RawActionCode: rawActionCode,
                     ActionName: actionName)
-            };
+            });
 
             if (frames != null && frames.Count > 0)
             {
@@ -686,6 +699,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static void AddRelMoveArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientRelMoveArgumentVariantCount; ordinal++)
+            {
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearRelMoveArgumentVariant,
+                    targetLayerObjectId,
+                    RelMoveArgumentVariantOrdinal: ordinal));
+            }
+        }
+
+        private static void AddRemoveCanvasArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int removedCanvasCollectionObjectId,
+            int removeCanvasIndex)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ClearRemoveCanvasArgumentVariant,
+                targetLayerObjectId,
+                removedCanvasCollectionObjectId,
+                RemoveCanvasIndex: removeCanvasIndex,
+                RemoveCanvasArgumentVariantOrdinal: 0));
+        }
+
+        public const int ClientRelMoveArgumentVariantCount = 2;
+        public const int ClientRemoveCanvasArgumentVariantCount = 1;
         public const int ClientLoadCanvasArgumentVariantCount = 5;
 
         internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)

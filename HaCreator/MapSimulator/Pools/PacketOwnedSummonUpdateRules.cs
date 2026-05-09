@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Pools
     internal static class PacketOwnedSummonUpdateRules
     {
         private const byte ClientTeslaForcedMoveAction = 0x2A;
+        private const int ClientPassiveUpdateStepMs = 30;
         private const int TeslaCoilSkillId = 35111002;
 
         public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
@@ -141,6 +142,21 @@ namespace HaCreator.MapSimulator.Pools
                     MoveTowards(summon.PositionY, targetPosition.Y, 300f * deltaTimeSeconds)),
                 _ => targetPosition
             };
+        }
+
+        internal static float ResolveClientPassiveUpdateDeltaTimeSeconds(
+            int currentTime,
+            int lastPassiveMovementUpdateTime)
+        {
+            if (lastPassiveMovementUpdateTime == int.MinValue
+                || SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, lastPassiveMovementUpdateTime) <= 0)
+            {
+                return 0f;
+            }
+
+            // CVecCtrl::UpdatePassive dispatches the passive vec-ctrl update with a
+            // fixed 30 ms step; the client does not scale this by render-frame delta.
+            return ClientPassiveUpdateStepMs / 1000f;
         }
 
         public static bool ShouldUseAnchorBoundPassiveFallback(ActiveSummon summon)

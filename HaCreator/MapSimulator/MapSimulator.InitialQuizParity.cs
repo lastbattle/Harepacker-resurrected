@@ -36,6 +36,11 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerOkButtonTop = 199;
         private const int InitialQuizOwnerOkButtonWidth = 47;
         private const int InitialQuizOwnerOkButtonHeight = 18;
+        private const int InitialQuizOwnerCreateWndLayer = 10;
+        private const int InitialQuizOwnerCreateWndShow = 1;
+        private const int InitialQuizOwnerCreateWndOption = 0;
+        private const int InitialQuizOwnerCreateWndEnable = 1;
+        private const string InitialQuizOwnerCreateWndOrigin = "Origin_CC";
         private const float InitialQuizOwnerTextScale = 0.44f;
         private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
         private const float InitialQuizOwnerLabelTextScale = 0.39f;
@@ -257,6 +262,20 @@ namespace HaCreator.MapSimulator
                 OkButtonFrameOriginY: 0,
                 OkButtonResourcePath: null);
         }
+
+        internal readonly record struct InitialQuizOwnerWindowCreateSnapshot(
+            bool Created,
+            int WindowX,
+            int WindowY,
+            int WindowWidth,
+            int WindowHeight,
+            int Layer,
+            int Show,
+            int Option,
+            int Enable,
+            string Origin,
+            int BackgroundStringPoolId,
+            string BackgroundResourcePath);
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
         {
@@ -1457,8 +1476,10 @@ namespace HaCreator.MapSimulator
 
         internal static Rectangle ResolveInitialQuizOwnerBounds(int renderWidth, int renderHeight, int ownerWidth, int ownerHeight)
         {
-            int resolvedWidth = ownerWidth > 0 ? ownerWidth : InitialQuizOwnerWidth;
-            int resolvedHeight = ownerHeight > 0 ? ownerHeight : InitialQuizOwnerHeight;
+            InitialQuizOwnerWindowCreateSnapshot createSnapshot =
+                BuildInitialQuizOwnerWindowCreateSnapshot(ownerWidth, ownerHeight);
+            int resolvedWidth = createSnapshot.WindowWidth;
+            int resolvedHeight = createSnapshot.WindowHeight;
             return new Rectangle(
                 (renderWidth - resolvedWidth) / 2,
                 (renderHeight - resolvedHeight) / 2,
@@ -1898,6 +1919,34 @@ namespace HaCreator.MapSimulator
                 OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
                     InitialQuizOwnerOkButtonStringPoolId,
                     "UI/UIWindow2.img/InitialQuiz/BtOK"));
+        }
+
+        internal static InitialQuizOwnerWindowCreateSnapshot BuildInitialQuizOwnerWindowCreateSnapshot(
+            int backgroundWidth,
+            int backgroundHeight)
+        {
+            int resolvedWidth = backgroundWidth > 0 ? backgroundWidth : InitialQuizOwnerWidth;
+            int resolvedHeight = backgroundHeight > 0 ? backgroundHeight : InitialQuizOwnerHeight;
+            return new InitialQuizOwnerWindowCreateSnapshot(
+                Created: true,
+                WindowX: DivideTowardZero(resolvedWidth, -2),
+                WindowY: DivideTowardZero(resolvedHeight, -2),
+                WindowWidth: resolvedWidth,
+                WindowHeight: resolvedHeight,
+                Layer: InitialQuizOwnerCreateWndLayer,
+                Show: InitialQuizOwnerCreateWndShow,
+                Option: InitialQuizOwnerCreateWndOption,
+                Enable: InitialQuizOwnerCreateWndEnable,
+                Origin: InitialQuizOwnerCreateWndOrigin,
+                BackgroundStringPoolId: InitialQuizBackgroundUolStringPoolId,
+                BackgroundResourcePath: MapleStoryStringPool.GetOrFallback(
+                    InitialQuizBackgroundUolStringPoolId,
+                    "UI/UIWindow2.img/InitialQuiz/backgrnd"));
+        }
+
+        private static int DivideTowardZero(int dividend, int divisor)
+        {
+            return dividend / divisor;
         }
 
         internal static Rectangle ResolveInitialQuizOwnerOkButtonVisualBounds(

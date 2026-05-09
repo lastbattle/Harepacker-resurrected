@@ -225,7 +225,9 @@ namespace HaCreator.MapSimulator.Interaction
         string ExplicitBranchSummary = null,
         string GuildName = null,
         IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null,
-        bool ClearsGuildData = false);
+        bool ClearsGuildData = false,
+        int GuildDialogPartyId = 0,
+        string GuildDialogMasterName = null);
 
     internal readonly record struct SocialListClientGuildMemberEntry(
         int MemberId,
@@ -986,11 +988,11 @@ namespace HaCreator.MapSimulator.Interaction
                                 0,
                                 null,
                                 null,
-                                RawSubtype: rawSubtype,
-                                UsesSharedResultNoticeFallback: false,
-                                ExplicitBranchSummary: "Client OnGuildResult(3) followed the party-boss create-guild branch.");
-                            return true;
-                        }
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: false,
+                            ExplicitBranchSummary: "Client OnGuildResult(3) followed the party-boss create-guild branch.");
+                        return true;
+                    }
 
                         int partyId = reader.ReadInt32();
                         string masterName = reader.HasRemaining ? reader.ReadString16().Trim() : string.Empty;
@@ -1019,7 +1021,10 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             RawSubtype: rawSubtype,
                             UsesSharedResultNoticeFallback: false,
-                            ExplicitBranchSummary: summary);
+                            ExplicitBranchSummary: summary,
+                            GuildName: guildName,
+                            GuildDialogPartyId: Math.Max(0, partyId),
+                            GuildDialogMasterName: masterName);
                         return true;
                     }
 
@@ -1298,14 +1303,13 @@ namespace HaCreator.MapSimulator.Interaction
 
                     case SocialListClientGuildResultKind.RankTitles:
                     {
-                        int guildId = reader.ReadInt32();
                         string[] titles = new string[5];
                         for (int i = 0; i < titles.Length; i++)
                         {
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), Array.Empty<SocialListClientGuildMemberEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(kind, 0, Array.Empty<GuildRankingSeedEntry>(), Array.Empty<SocialListClientGuildMemberEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 
