@@ -43,6 +43,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MiniRoomLayoutBaselineSignboardOriginY = 17;
         private const int MiniRoomLayoutLegacyIconX = 12;
         private const int MiniRoomLayoutLegacyIconY = 83;
+        private const int MiniRoomLayoutLegacyPrivacyIconX = 66;
+        private const int MiniRoomLayoutLegacyPrivacyIconY = 83;
         private const int MiniRoomLayoutLegacyCurrentCountX = 29;
         private const int MiniRoomLayoutLegacyCurrentCountY = 85;
         private const int MiniRoomLayoutLegacyMaxCountX = 46;
@@ -52,8 +54,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MiniRoomLayoutLegacyTitleCenterX = 78;
         private const int MiniRoomLayoutLegacyHeadlineY = 42;
         private const int MiniRoomLayoutLegacyOwnerY = 61;
-        private const int MiniRoomTitleClientLineWidth = 100;
-        private const int MiniRoomTitleSecondLineOffsetY = 14;
         private const float MiniRoomCountTextFallbackScale = 0.38f;
         private const int NameTagVerticalOffset = 8;
         private const int NameTagMinimumWidth = 58;
@@ -1727,7 +1727,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PointedBackground = LoadUiCanvasTexture(miniRoomSource["backgrnd2"] as WzCanvasProperty, device),
                 Background = LoadUiCanvasTexture(miniRoomSource["backgrnd"] as WzCanvasProperty, device),
+                OmokIcon = LoadUiCanvasTexture(miniRoomSource["Omok"] as WzCanvasProperty, device),
+                MemoryGameIcons = LoadIndexedTextures(miniRoomSource["MemoryGame"] as WzSubProperty, device, 3),
                 PersonalShopIcon = LoadUiCanvasTexture(miniRoomSource["PersonalShop"] as WzCanvasProperty, device),
+                LockIcon = LoadUiCanvasTexture(miniRoomSource["Lock"] as WzCanvasProperty, device),
+                UnlockIcon = LoadUiCanvasTexture(miniRoomSource["Unlock"] as WzCanvasProperty, device),
                 Able = LoadUiCanvasTexture(miniRoomSource["Able"] as WzCanvasProperty, device),
                 Disable = LoadUiCanvasTexture(miniRoomSource["Disable"] as WzCanvasProperty, device),
                 Progress = LoadUiCanvasTexture(miniRoomSource["Progress"] as WzCanvasProperty, device),
@@ -2098,9 +2102,16 @@ namespace HaCreator.MapSimulator.Interaction
             spriteBatch.Draw(boardTexture, boardPosition, Color.White);
             DrawTemplateMiniRoomBoardEffect(spriteBatch, boardAnchor, _activeMiniRoomBoardAssets, tickCount);
 
-            if (assets.PersonalShopIcon != null)
+            Texture2D roomIcon = ResolveMiniRoomIconTexture(_activeSnapshot, assets);
+            if (roomIcon != null)
             {
-                spriteBatch.Draw(assets.PersonalShopIcon, new Vector2(boardX + layout.IconX, boardY + layout.IconY), Color.White);
+                spriteBatch.Draw(roomIcon, new Vector2(boardX + layout.IconX, boardY + layout.IconY), Color.White);
+            }
+
+            Texture2D privacyIcon = ResolveMiniRoomPrivacyIconTexture(_activeSnapshot, assets);
+            if (privacyIcon != null)
+            {
+                spriteBatch.Draw(privacyIcon, new Vector2(boardX + layout.PrivacyIconX, boardY + layout.PrivacyIconY), Color.White);
             }
 
             DrawMiniRoomBalloonCount(
@@ -2245,6 +2256,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal static (
             int IconX,
             int IconY,
+            int PrivacyIconX,
+            int PrivacyIconY,
             int CurrentCountX,
             int CurrentCountY,
             int MaxCountX,
@@ -2271,6 +2284,8 @@ namespace HaCreator.MapSimulator.Interaction
             return (
                 layout.IconX,
                 layout.IconY,
+                layout.PrivacyIconX,
+                layout.PrivacyIconY,
                 layout.CurrentCountX,
                 layout.CurrentCountY,
                 layout.MaxCountX,
@@ -2298,6 +2313,20 @@ namespace HaCreator.MapSimulator.Interaction
                     MiniRoomLayoutBaselineSignboardOriginX),
                 IconY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyIconY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
+                PrivacyIconX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyPrivacyIconX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
+                PrivacyIconY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyPrivacyIconY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
                     useTemplateLayoutScaling,
@@ -2422,6 +2451,62 @@ namespace HaCreator.MapSimulator.Interaction
             return assets.PointedBackground ?? assets.Background;
         }
 
+        private static Texture2D ResolveMiniRoomIconTexture(
+            SocialRoomFieldActorSnapshot snapshot,
+            MiniRoomBalloonAssets assets)
+        {
+            return ResolveMiniRoomIconKind(snapshot) switch
+            {
+                ChatBalloonMiniRoomIconKind.Omok => assets?.OmokIcon,
+                ChatBalloonMiniRoomIconKind.MemoryGame => ResolveMemoryGameMiniRoomIcon(snapshot, assets),
+                ChatBalloonMiniRoomIconKind.PersonalShop => assets?.PersonalShopIcon,
+                _ => null
+            };
+        }
+
+        private static Texture2D ResolveMemoryGameMiniRoomIcon(
+            SocialRoomFieldActorSnapshot snapshot,
+            MiniRoomBalloonAssets assets)
+        {
+            Texture2D[] icons = assets?.MemoryGameIcons;
+            if (icons == null || icons.Length == 0)
+            {
+                return null;
+            }
+
+            int index = Math.Clamp(ResolveMiniRoomSpec(snapshot), 0, icons.Length - 1);
+            return icons[index] ?? icons.FirstOrDefault(texture => texture != null);
+        }
+
+        private static Texture2D ResolveMiniRoomPrivacyIconTexture(
+            SocialRoomFieldActorSnapshot snapshot,
+            MiniRoomBalloonAssets assets)
+        {
+            return ResolveMiniRoomPrivacyIconKind(snapshot) switch
+            {
+                ChatBalloonMiniRoomPrivacyIconKind.Lock => assets?.LockIcon,
+                ChatBalloonMiniRoomPrivacyIconKind.Unlock => assets?.UnlockIcon,
+                _ => null
+            };
+        }
+
+        private static ChatBalloonMiniRoomIconKind ResolveMiniRoomIconKind(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return ChatBalloonPresentationRules.ResolveMiniRoomIcon(snapshot?.MiniRoomType ?? 0);
+        }
+
+        private static ChatBalloonMiniRoomPrivacyIconKind ResolveMiniRoomPrivacyIconKind(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return ChatBalloonMiniRoomPrivacyIconKind.None;
+            }
+
+            return ChatBalloonPresentationRules.ResolveMiniRoomPrivacyIcon(
+                IsPrivateMiniRoomBalloon(snapshot),
+                ResolveMiniRoomSpec(snapshot));
+        }
+
         private static Texture2D ResolveMiniRoomStatusTexture(
             SocialRoomFieldActorSnapshot snapshot,
             MiniRoomBalloonAssets assets,
@@ -2433,6 +2518,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string statusName = ResolveMiniRoomStatusTextureName(snapshot, templateAssets);
+            if (string.Equals(statusName, "Progress", StringComparison.Ordinal))
+            {
+                return assets.Progress;
+            }
+
             if (string.Equals(statusName, "Disable", StringComparison.Ordinal))
             {
                 return assets.Disable;
@@ -2457,9 +2547,26 @@ namespace HaCreator.MapSimulator.Interaction
 
             byte maxUsers = ResolveMiniRoomMaxUsers(snapshot, templateAssets);
             byte currentUsers = ResolveMiniRoomCurrentUsers(snapshot);
-            return maxUsers > 0 && currentUsers >= maxUsers
-                ? "Disable"
-                : "Able";
+            return ChatBalloonPresentationRules.ResolveMiniRoomStatus(
+                currentUsers,
+                maxUsers,
+                IsMiniRoomGameInProgress(snapshot)) switch
+            {
+                ChatBalloonMiniRoomStatusKind.Progress => "Progress",
+                ChatBalloonMiniRoomStatusKind.Disable => "Disable",
+                ChatBalloonMiniRoomStatusKind.Able => "Able",
+                _ => string.Empty
+            };
+        }
+
+        private static bool IsMiniRoomGameInProgress(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return snapshot?.MiniRoomType is 1 or 2 && ResolveMiniRoomSpec(snapshot) > 0;
+        }
+
+        private static bool IsPrivateMiniRoomBalloon(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return snapshot?.MiniRoomType is 4 or 5 && ResolveMiniRoomSpec(snapshot) == 0;
         }
 
         private static int ResolveMiniRoomBalloonVerticalAdjustment(SocialRoomFieldActorSnapshot snapshot)
@@ -2616,7 +2723,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<string> headlineLines = ResolveMiniRoomBalloonTitleLines(
                     headline,
                     text => font.MeasureString(text).X * HeadlineScale,
-                    MiniRoomTitleClientLineWidth);
+                    ChatBalloonPresentationRules.MiniRoomTitleClientLineWidth);
                 for (int i = 0; i < headlineLines.Count; i++)
                 {
                     string line = headlineLines[i];
@@ -2630,8 +2737,8 @@ namespace HaCreator.MapSimulator.Interaction
                         font,
                         line,
                         new Vector2(
-                            boardX + layout.TitleCenterX - (headlineSize.X / 2f),
-                            boardY + layout.HeadlineY + (i * MiniRoomTitleSecondLineOffsetY)),
+                             boardX + layout.TitleCenterX - (headlineSize.X / 2f),
+                             boardY + layout.HeadlineY + (i * ChatBalloonPresentationRules.MiniRoomTitleSecondLineOffsetY)),
                         Color.Black,
                         0f,
                         Vector2.Zero,
@@ -2662,57 +2769,7 @@ namespace HaCreator.MapSimulator.Interaction
             Func<string, float> measureWidth,
             float maxLineWidth)
         {
-            string normalizedTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
-            if (string.IsNullOrWhiteSpace(normalizedTitle))
-            {
-                return Array.Empty<string>();
-            }
-
-            if (measureWidth == null || maxLineWidth <= 0f || measureWidth(normalizedTitle) <= maxLineWidth)
-            {
-                return new[] { normalizedTitle };
-            }
-
-            int firstLineLength = ResolveLongestMiniRoomTitlePrefixLength(normalizedTitle, measureWidth, maxLineWidth);
-            if (firstLineLength <= 0 || firstLineLength >= normalizedTitle.Length)
-            {
-                return new[] { normalizedTitle };
-            }
-
-            string firstLine = normalizedTitle[..firstLineLength].TrimEnd();
-            string remainingTitle = normalizedTitle[firstLineLength..].TrimStart();
-            if (string.IsNullOrWhiteSpace(remainingTitle))
-            {
-                return new[] { firstLine };
-            }
-
-            int secondLineLength = ResolveLongestMiniRoomTitlePrefixLength(remainingTitle, measureWidth, maxLineWidth);
-            string secondLine = secondLineLength > 0 && secondLineLength < remainingTitle.Length
-                ? remainingTitle[..secondLineLength].TrimEnd()
-                : remainingTitle;
-            return string.IsNullOrWhiteSpace(secondLine)
-                ? new[] { firstLine }
-                : new[] { firstLine, secondLine };
-        }
-
-        private static int ResolveLongestMiniRoomTitlePrefixLength(
-            string text,
-            Func<string, float> measureWidth,
-            float maxLineWidth)
-        {
-            int bestLength = 0;
-            for (int length = 1; length <= text.Length; length++)
-            {
-                string candidate = text[..length];
-                if (measureWidth(candidate) > maxLineWidth)
-                {
-                    break;
-                }
-
-                bestLength = length;
-            }
-
-            return bestLength;
+            return ChatBalloonPresentationRules.ResolveMiniRoomTitleLines(title, measureWidth, maxLineWidth);
         }
 
         internal static IReadOnlyList<string> ResolveMiniRoomBalloonTitleLinesForTesting(
@@ -2724,6 +2781,16 @@ namespace HaCreator.MapSimulator.Interaction
                 title,
                 text => text?.Length ?? 0,
                 normalizedMaxCharacters);
+        }
+
+        internal static string ResolveMiniRoomIconNameForTesting(byte miniRoomType)
+        {
+            return ChatBalloonPresentationRules.ResolveMiniRoomIcon(miniRoomType).ToString();
+        }
+
+        internal static string ResolveMiniRoomPrivacyIconNameForTesting(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return ResolveMiniRoomPrivacyIconKind(snapshot).ToString();
         }
 
         private static string ExtractOwnerName(string detail)
@@ -3345,18 +3412,25 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class MiniRoomBalloonAssets
         {
             public Texture2D Background { get; init; }
+            public Vector2? BackgroundOrigin { get; init; }
             public Texture2D PointedBackground { get; init; }
+            public Vector2? PointedBackgroundOrigin { get; init; }
+            public Texture2D OmokIcon { get; init; }
+            public Texture2D[] MemoryGameIcons { get; init; } = Array.Empty<Texture2D>();
             public Texture2D PersonalShopIcon { get; init; }
+            public Texture2D LockIcon { get; init; }
+            public Texture2D UnlockIcon { get; init; }
             public Texture2D Able { get; init; }
             public Texture2D Disable { get; init; }
             public Texture2D Progress { get; init; }
             public Texture2D[] ShopBoards { get; init; } = Array.Empty<Texture2D>();
+            public Vector2?[] ShopBoardOrigins { get; init; } = Array.Empty<Vector2?>();
             public Texture2D[] CurrentCountDigits { get; init; } = Array.Empty<Texture2D>();
             public Texture2D[] MaxCountDigits { get; init; } = Array.Empty<Texture2D>();
 
             public bool IsLoaded =>
                 (PointedBackground != null || Background != null || ShopBoards.Any(texture => texture != null))
-                && PersonalShopIcon != null
+                && (OmokIcon != null || MemoryGameIcons.Any(texture => texture != null) || PersonalShopIcon != null)
                 && Able != null
                 && Disable != null
                 && Progress != null
@@ -3364,11 +3438,15 @@ namespace HaCreator.MapSimulator.Interaction
                 && MaxCountDigits.Length >= 5;
         }
 
+        private readonly record struct MiniRoomBoardTextureAsset(Texture2D Texture, Vector2? Origin, bool UseTemplateLayoutScaling);
+
         private readonly record struct EmployeeMiniRoomBoardEffectFrame(Texture2D Texture, int DelayMs, Vector2? Origin);
 
         private readonly record struct MiniRoomBalloonLayout(
             int IconX,
             int IconY,
+            int PrivacyIconX,
+            int PrivacyIconY,
             int CurrentCountX,
             int CurrentCountY,
             int MaxCountX,

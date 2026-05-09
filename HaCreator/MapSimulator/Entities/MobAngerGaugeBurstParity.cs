@@ -190,6 +190,26 @@ namespace HaCreator.MapSimulator.Entities
                 && hasActiveAnimationDisplayer;
         }
 
+        public static bool HasResolvableOwnerEffectPath(
+            string mobTemplateId,
+            string loadedEffectPath)
+        {
+            return !string.IsNullOrWhiteSpace(mobTemplateId)
+                || !string.IsNullOrWhiteSpace(NormalizeLoadedEffectPath(loadedEffectPath));
+        }
+
+        public static bool CanRegisterOwnerBurstCandidate(
+            IReadOnlyList<IDXObject> frames,
+            string mobTemplateId,
+            string loadedEffectPath,
+            bool hasActiveAnimationDisplayer)
+        {
+            return frames != null
+                && frames.Count > 0
+                && HasResolvableOwnerEffectPath(mobTemplateId, loadedEffectPath)
+                && hasActiveAnimationDisplayer;
+        }
+
         public static int ResolveOwnerTriggerDelayMs(MobAttackEntry currentAttack)
         {
             if (currentAttack?.IsSpecialAttack != true
@@ -218,6 +238,32 @@ namespace HaCreator.MapSimulator.Entities
         {
             repeatIntervalMs = 0;
             if (!CanRegisterOwnerBurst(frames, effectPath, hasActiveAnimationDisplayer))
+            {
+                return false;
+            }
+
+            repeatIntervalMs = ResolveRepeatIntervalMs(
+                frames,
+                currentAttack,
+                configuredSpecialAttackAfterMs);
+            return repeatIntervalMs > 0;
+        }
+
+        public static bool TryResolveOwnerRegistrationCandidateCadence(
+            IReadOnlyList<IDXObject> frames,
+            string mobTemplateId,
+            string loadedEffectPath,
+            bool hasActiveAnimationDisplayer,
+            MobAttackEntry currentAttack,
+            int configuredSpecialAttackAfterMs,
+            out int repeatIntervalMs)
+        {
+            repeatIntervalMs = 0;
+            if (!CanRegisterOwnerBurstCandidate(
+                    frames,
+                    mobTemplateId,
+                    loadedEffectPath,
+                    hasActiveAnimationDisplayer))
             {
                 return false;
             }

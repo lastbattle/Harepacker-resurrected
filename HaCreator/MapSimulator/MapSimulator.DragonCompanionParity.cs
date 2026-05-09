@@ -60,20 +60,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            byte[] rawPacket = e.RawPacket ?? Array.Empty<byte>();
-            if (rawPacket.Length > 0)
-            {
-                dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
-                    rawPacket,
-                    opcodeFramed: true,
-                    BuildDragonCompanionObservedClientOutboundSource(e),
-                    out _);
-                return;
-            }
-
-            dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+            dragonRuntime.TryRecordClientDragonEndUpdateActiveObservedOutboundCapture(
+                e.RawPacket ?? Array.Empty<byte>(),
                 e.Payload ?? Array.Empty<byte>(),
-                opcodeFramed: false,
                 BuildDragonCompanionObservedClientOutboundSource(e),
                 out _);
         }

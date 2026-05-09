@@ -1604,12 +1604,12 @@ namespace HaCreator.MapSimulator.AI
             _statusEntries[effect] = new MobStatusEntry
             {
                 Effect = effect,
-                ExpirationTime = currentTick + durationMs,
+                ExpirationTime = unchecked(currentTick + durationMs),
                 Value = NormalizeStatusValue(effect, value),
                 SecondaryValue = secondaryValue,
                 TertiaryValue = tertiaryValue,
                 TickIntervalMs = Math.Max(1, tickIntervalMs),
-                NextTickTime = currentTick + Math.Max(1, tickIntervalMs),
+                NextTickTime = unchecked(currentTick + Math.Max(1, tickIntervalMs)),
                 SourceSkillId = sourceSkillId,
                 SourceSkillLevel = Math.Max(0, sourceSkillLevel)
             };
@@ -1781,7 +1781,7 @@ namespace HaCreator.MapSimulator.AI
             foreach (var kvp in _statusEntries)
             {
                 MobStatusEntry entry = kvp.Value;
-                if (currentTick >= entry.ExpirationTime)
+                if (HasClientTickReached(currentTick, entry.ExpirationTime))
                 {
                     expiredEffects.Add(kvp.Key);
                     continue;
@@ -1789,10 +1789,10 @@ namespace HaCreator.MapSimulator.AI
 
                 if (IsDotEffect(entry.Effect) &&
                     entry.Value > 0 &&
-                    currentTick >= entry.NextTickTime)
+                    HasClientTickReached(currentTick, entry.NextTickTime))
                 {
                     ApplyStatusTickDamage(entry.Effect, entry.Value, currentTick);
-                    entry.NextTickTime = currentTick + entry.TickIntervalMs;
+                    entry.NextTickTime = unchecked(currentTick + entry.TickIntervalMs);
                 }
             }
 
@@ -1813,7 +1813,12 @@ namespace HaCreator.MapSimulator.AI
 
             if (_statusEntries.TryGetValue(effect, out MobStatusEntry entry))
             {
-                return Math.Max(0, entry.ExpirationTime - currentTick);
+                if (HasClientTickReached(currentTick, entry.ExpirationTime))
+                {
+                    return 0;
+                }
+
+                return Math.Max(0, unchecked(entry.ExpirationTime - currentTick));
             }
             return 0;
         }

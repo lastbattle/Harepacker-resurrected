@@ -754,9 +754,9 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!IsCurrentInitializedProxySession(e.ProxySessionId))
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
             {
-                LastStatus = $"Ignored stale live Monster Carnival server packet from proxy session {e.ProxySessionId?.ToString() ?? "unknown"}; current initialized session is {_currentInitializedProxySessionId?.ToString() ?? "none"}.";
+                LastStatus = $"Ignored stale live Monster Carnival server packet from proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}; current initialized session is {DescribeProxySession(_currentInitializedProxySessionId, _currentInitializedSessionVersion)}.";
                 return;
             }
 
@@ -783,9 +783,9 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOutboundRequestPacket(e.RawPacket, out int tab, out int entryIndex))
             {
                 RecordRecentPacket(OutboundRequestOpcode, e.RawPacket, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
-                if (!IsCurrentInitializedProxySession(e.ProxySessionId))
+                if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
                 {
-                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}; ignored it as stale ownership evidence for proxy session {e.ProxySessionId?.ToString() ?? "unknown"}.";
+                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}; ignored it as stale ownership evidence for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}.";
                     return;
                 }
 
@@ -945,13 +945,14 @@ namespace HaCreator.MapSimulator.Managers
 
         private int ClearSessionScopedEvidenceForInitializedProxySession(long? proxySessionId, short? sessionVersion)
         {
-            if (!proxySessionId.HasValue || _currentInitializedProxySessionId == proxySessionId)
+            if (!proxySessionId.HasValue)
             {
-                if (proxySessionId.HasValue)
-                {
-                    _currentInitializedSessionVersion = sessionVersion;
-                }
+                return 0;
+            }
 
+            if (_currentInitializedProxySessionId == proxySessionId
+                && _currentInitializedSessionVersion == sessionVersion)
+            {
                 return 0;
             }
 
@@ -972,11 +973,24 @@ namespace HaCreator.MapSimulator.Managers
             return cleared;
         }
 
-        private bool IsCurrentInitializedProxySession(long? proxySessionId)
+        private bool IsCurrentInitializedProxySession(long? proxySessionId, short? sessionVersion)
         {
-            return proxySessionId.HasValue
-                   && _currentInitializedProxySessionId.HasValue
-                   && _currentInitializedProxySessionId.Value == proxySessionId.Value;
+            if (!proxySessionId.HasValue
+                || !_currentInitializedProxySessionId.HasValue
+                || _currentInitializedProxySessionId.Value != proxySessionId.Value)
+            {
+                return false;
+            }
+
+            return !_currentInitializedSessionVersion.HasValue
+                   || (sessionVersion.HasValue && _currentInitializedSessionVersion.Value == sessionVersion.Value);
+        }
+
+        private static string DescribeProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            string sessionId = proxySessionId?.ToString() ?? "unknown";
+            string version = sessionVersion?.ToString() ?? "unknown";
+            return $"{sessionId}/v{version}";
         }
 
         private void LastSentRecord(byte[] rawPacket, MonsterCarnivalTab tab, int entryIndex)

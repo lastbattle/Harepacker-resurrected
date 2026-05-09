@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<PendingResultExpectation> _pendingResultExpectations = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private bool _useRecoveredInboundOpcodeTable;
+        private long? _currentInitializedProxySessionId;
+        private short? _currentInitializedSessionVersion;
 
         private readonly record struct PendingResultExpectation(
             int RequestOpcode,
@@ -89,13 +91,16 @@ namespace HaCreator.MapSimulator.Managers
                 : AutoDetectedInboundTradingRoomOpcode > 0
                     ? $"auto-detected inbound opcode={AutoDetectedInboundTradingRoomOpcode}"
                 : "inbound opcode unset";
+            string initializedSession = _currentInitializedProxySessionId.HasValue
+                ? $"proxySession={_currentInitializedProxySessionId.Value}, version={_currentInitializedSessionVersion?.ToString() ?? "unknown"}"
+                : "proxySession=none";
             int pendingExpectationCount;
             lock (_sync)
             {
                 pendingExpectationCount = _pendingResultExpectations.Count;
             }
 
-            return $"Trading-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundCrc={ForwardedOutboundCrcCount}; injected={SentCount}; expectedRequests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={pendingExpectationCount}; {inboundOpcode}. {LastStatus}";
+            return $"Trading-room official-session bridge {lifecycle}; {session}; {initializedSession}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundCrc={ForwardedOutboundCrcCount}; injected={SentCount}; expectedRequests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={pendingExpectationCount}; {inboundOpcode}. {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -361,9 +366,26 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            if (e == null || e.IsInit)
+            if (e == null)
             {
+                return;
+            }
+
+            if (e.IsInit)
+            {
+                int cleared = ClearSessionScopedEvidenceForInitializedProxySession(e.ProxySessionId, e.SessionVersion);
                 LastStatus = _roleSessionProxy.LastStatus;
+                if (cleared > 0)
+                {
+                    LastStatus = $"Trading-room official-session bridge initialized Maple crypto for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)} and cleared {cleared} stale session-scoped evidence item(s).";
+                }
+
+                return;
+            }
+
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
+            {
+                LastStatus = $"Ignored stale live trading-room server packet from proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}; current initialized session is {DescribeProxySession(_currentInitializedProxySessionId, _currentInitializedSessionVersion)}.";
                 return;
             }
 
@@ -384,9 +406,30 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            if (e == null || e.IsInit)
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.IsInit)
             {
                 LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
+            {
+                if (TryDecodeOpcode(e.RawPacket, out int staleOpcode, out byte[] stalePayload)
+                    && staleOpcode == OutboundTradingRoomOpcode
+                    && stalePayload.Length > 0)
+                {
+                    LastStatus = $"Forwarded live trading-room outbound opcode {staleOpcode} subtype {stalePayload[0]} from {e.SourceEndpoint}; ignored it as stale request/result evidence for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}.";
+                }
+                else
+                {
+                    LastStatus = _roleSessionProxy.LastStatus;
+                }
+
                 return;
             }
 
@@ -530,6 +573,8 @@ namespace HaCreator.MapSimulator.Managers
             LastSentOpcode = -1;
             AutoDetectedInboundTradingRoomOpcode = 0;
             _useRecoveredInboundOpcodeTable = false;
+            _currentInitializedProxySessionId = null;
+            _currentInitializedSessionVersion = null;
             _expectedResultRequestCount = 0;
             _expectedResultMatchCount = 0;
             _expectedResultMismatchCount = 0;
@@ -626,6 +671,61 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsTradingRoomInboundSubtype(byte packetType)
         {
             return packetType is 15 or 16 or 17 or 20 or 21;
+        }
+
+        private int ClearSessionScopedEvidenceForInitializedProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            if (!proxySessionId.HasValue)
+            {
+                return 0;
+            }
+
+            if (_currentInitializedProxySessionId == proxySessionId
+                && _currentInitializedSessionVersion == sessionVersion)
+            {
+                return 0;
+            }
+
+            _currentInitializedProxySessionId = proxySessionId;
+            _currentInitializedSessionVersion = sessionVersion;
+            int cleared = 0;
+            while (_pendingMessages.TryDequeue(out _))
+            {
+                cleared++;
+            }
+
+            lock (_sync)
+            {
+                cleared += _recentOutboundPackets.Count;
+                cleared += _pendingResultExpectations.Count;
+                _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
+            }
+
+            return cleared;
+        }
+
+        private bool IsCurrentInitializedProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            if (!_currentInitializedProxySessionId.HasValue)
+            {
+                return true;
+            }
+
+            if (!proxySessionId.HasValue || _currentInitializedProxySessionId.Value != proxySessionId.Value)
+            {
+                return false;
+            }
+
+            return !_currentInitializedSessionVersion.HasValue
+                   || (sessionVersion.HasValue && _currentInitializedSessionVersion.Value == sessionVersion.Value);
+        }
+
+        private static string DescribeProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            string sessionId = proxySessionId?.ToString() ?? "unknown";
+            string version = sessionVersion?.ToString() ?? "unknown";
+            return $"{sessionId}/v{version}";
         }
 
         private bool ShouldQueueInboundTradingRoomPacket(int opcode, byte[] payload, out string detail)

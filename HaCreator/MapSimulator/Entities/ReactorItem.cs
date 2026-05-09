@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _lastStateTick;
         private IDXObject[] _transientFrames;
         private int[] _transientFrameDelays;
+        private Rectangle[] _transientSourceBounds;
         private WzImageProperty _transientHitLayerSourceProperty;
         private int _transientHitLayerSourceState = -1;
         private int _transientHitLayerProperEventIndex = -1;
@@ -577,6 +578,7 @@ namespace HaCreator.MapSimulator.Entities
 
             IDXObject[] transientFrames = ResolveTransientHitFrames(frames, state);
             _transientFrameDelays = ResolveLoadLayerFrameDelays(sourceProperty, transientFrames);
+            _transientSourceBounds = ResolveLoadLayerFrameBounds(sourceProperty);
             if (transientFrames.Length > 0)
             {
                 _transientFrames = transientFrames;
@@ -604,6 +606,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             _transientFrames = null;
             _transientFrameDelays = null;
+            _transientSourceBounds = null;
             _transientHitLayerSourceProperty = null;
             _transientHitLayerSourceState = -1;
             _transientHitLayerProperEventIndex = -1;
@@ -1068,6 +1071,85 @@ namespace HaCreator.MapSimulator.Entities
             }
         }
 
+        private static Rectangle[] ResolveLoadLayerFrameBounds(WzImageProperty sourceProperty)
+        {
+            List<Rectangle> sourceBounds = new List<Rectangle>();
+            CollectLoadLayerFrameBounds(WzInfoTools.GetRealProperty(sourceProperty), sourceBounds);
+            if (sourceBounds.Count == 0)
+            {
+                WzImageProperty nestedHit = WzInfoTools.GetRealProperty(sourceProperty)?["hit"];
+                CollectLoadLayerFrameBounds(WzInfoTools.GetRealProperty(nestedHit), sourceBounds);
+            }
+
+            return sourceBounds.ToArray();
+        }
+
+        private static void CollectLoadLayerFrameBounds(
+            WzImageProperty property,
+            ICollection<Rectangle> bounds)
+        {
+            WzImageProperty realProperty = WzInfoTools.GetRealProperty(property);
+            if (realProperty == null)
+            {
+                return;
+            }
+
+            if (realProperty is WzCanvasProperty canvasProperty)
+            {
+                if (TryResolveCanvasBounds(canvasProperty, out Rectangle canvasBounds))
+                {
+                    bounds.Add(canvasBounds);
+                }
+
+                return;
+            }
+
+            if (realProperty is not WzSubProperty subProperty)
+            {
+                return;
+            }
+
+            if (subProperty.WzProperties.Count == 1)
+            {
+                CollectLoadLayerFrameBounds(subProperty.WzProperties[0], bounds);
+                return;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(subProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    return;
+                }
+
+                CollectLoadLayerFrameBounds(frameProperty, bounds);
+            }
+        }
+
+        private static bool TryResolveCanvasBounds(
+            WzCanvasProperty canvasProperty,
+            out Rectangle bounds)
+        {
+            int width = canvasProperty.PngProperty?.Width ?? 0;
+            int height = canvasProperty.PngProperty?.Height ?? 0;
+            if (width <= 0 || height <= 0)
+            {
+                bounds = default;
+                return false;
+            }
+
+            var origin = WzInfoTools.GetRealProperty(canvasProperty["origin"]) as WzVectorProperty;
+            int originX = origin?.X?.Value ?? 0;
+            int originY = origin?.Y?.Value ?? 0;
+            bounds = new Rectangle(
+                -originX,
+                -originY,
+                Math.Max(1, width),
+                Math.Max(1, height));
+            return true;
+        }
+
         private IReadOnlyList<int> ResolveTransientFrameDelays(IReadOnlyList<IDXObject> frames)
         {
             return _transientFrameDelays != null && _transientFrameDelays.Length > 0
@@ -1273,6 +1355,19 @@ namespace HaCreator.MapSimulator.Entities
 
             if (frame == null)
             {
+                if (_transientSourceBounds != null && _transientSourceBounds.Length > 0)
+                {
+                    int sourceFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
+                        _transientFrameIndex,
+                        _transientSourceBounds.Length);
+                    Rectangle sourceBounds = _transientSourceBounds[sourceFrameIndex];
+                    return new Rectangle(
+                        _currentWorldX + sourceBounds.X,
+                        _currentWorldY + sourceBounds.Y,
+                        sourceBounds.Width,
+                        sourceBounds.Height);
+                }
+
                 int fallbackX = _currentWorldX;
                 int fallbackY = _currentWorldY;
                 int fallbackWidth = Math.Max(1, ReactorInstance?.Width ?? 1);

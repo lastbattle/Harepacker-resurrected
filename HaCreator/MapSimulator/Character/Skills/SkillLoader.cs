@@ -199,6 +199,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             "requiredskilllevel",
             "requiredlevel"
         };
+        private static readonly string[] ClientSkillAssetSupplementalVariantBranchNames =
+        {
+            "level",
+            "Level",
+            "LEVEL",
+            "levelData",
+            "LevelData",
+            "LEVELDATA",
+            "CharLevel",
+            "charLevel",
+            "CHARLEVEL",
+            "CharLevelData",
+            "charLevelData",
+            "CHARLEVELDATA",
+            "CharacterLevel",
+            "characterLevel",
+            "CHARACTERLEVEL",
+            "CharacterLevelData",
+            "characterLevelData",
+            "CHARACTERLEVELDATA"
+        };
         private static readonly string[] ClientTileUolPropertyNames =
         {
             "sTileUOL",
@@ -6790,7 +6811,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
-            foreach (string branchName in new[] { "level", "CharLevel" })
+            foreach (string branchName in ClientSkillAssetSupplementalVariantBranchNames)
             {
                 WzImageProperty branchNode = skillNode[branchName];
                 if (branchNode == null)

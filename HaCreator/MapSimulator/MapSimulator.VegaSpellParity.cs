@@ -7,6 +7,9 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 
 namespace HaCreator.MapSimulator
 {
@@ -29,6 +32,9 @@ namespace HaCreator.MapSimulator
         private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
         private const int VegaPacketOwnedEquipSnapshotMarker = 0x56514753; // "VGQS"
         private const int VegaPacketOwnedEquipSnapshotIntCount = 19;
+        private const byte VegaClientInventoryOperationEquipType = (byte)InventoryType.EQUIP;
+        private const byte VegaClientInventoryOperationCashType = (byte)InventoryType.CASH;
+        private const byte VegaClientInventoryOperationSlotTypeEquip = 1;
         private const string VegaResultLoopSoundKeyPrefix = "PacketOwnedSound:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
@@ -2163,10 +2169,18 @@ namespace HaCreator.MapSimulator
             }
 
             string soundKey = BuildVegaResultLoopSoundKey(resolvedDescriptor);
-            _soundManager.RegisterSound(soundKey, soundProperty);
-            _soundManager.PlayLoopingSound(soundKey);
-            _vegaResultLoopSoundActive = true;
-            _vegaResultLoopSoundInstanceKey = soundKey;
+            if (_soundManager.TryPlayClientSoundEffect(
+                    soundKey,
+                    soundProperty,
+                    startVolumeScale: 1f,
+                    loop: true,
+                    suppressWhileActive: false,
+                    out _,
+                    out _))
+            {
+                _vegaResultLoopSoundActive = true;
+                _vegaResultLoopSoundInstanceKey = soundKey;
+            }
         }
 
         private void StopVegaResultLoopSound()

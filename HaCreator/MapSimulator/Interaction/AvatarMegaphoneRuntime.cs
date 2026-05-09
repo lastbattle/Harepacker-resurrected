@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultItemId = 5390000;
         private const int PanelWidth = 225;
         private const int PanelOffscreenPadding = 100;
+        private const int ByeOffscreenX = 1124;
         private const int SlideDurationMs = 325;
         private const int NameFadeDurationMs = 1500;
         private const string PreviewActionName = "stand1";
@@ -34,6 +35,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PreviewY = 85;
         private const int ShakeStepMs = 65;
         private const int ShakeOffsetMagnitude = 5;
+        internal const int SendDialogRowMax = 4;
+        internal const int SendDialogMaxLineWidth = 97;
 
         private static readonly IReadOnlyDictionary<int, AvatarMegaphoneItemProfile> FallbackProfiles =
             new Dictionary<int, AvatarMegaphoneItemProfile>
@@ -84,7 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             AvatarMegaphoneLayout layout = BuildLayout(currentTick, screenWidth);
-            return $"Avatar megaphone active: item {_activePresentation.ItemId} ({_activePresentation.ItemProfile.ResourcePath}), sender '{_activePresentation.Sender}', x={layout.PanelX}, alpha={layout.NameAlpha}, whisper={(_activePresentation.Whisper ? 1 : 0)}, channel={_activePresentation.ChannelId}. {_statusMessage}";
+            return $"Avatar megaphone active: item {_activePresentation.ItemId} ({_activePresentation.ItemProfile.ResourcePath}), sender '{_activePresentation.Sender}', x={layout.PanelX}, alpha={layout.NameAlpha}, whisper={(_activePresentation.Whisper ? 1 : 0)}, channel={_activePresentation.ChannelId}, slideTarget={ResolveClientTargetX(screenWidth)}, byeTarget={ByeOffscreenX}. {_statusMessage}";
         }
 
         internal string LoadSample(CharacterBuild build, string mapName)
@@ -177,6 +180,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal string DescribeSendDialogOwner()
+        {
+            return "CUIAvatarMegaphone sender dialog: StringPool 0x0FAE frame, BtOk(52,170), BtCancel(102,170), MLEdit(48,81,107x60), rowMax=4, maxLineWidth=97, CheckWhisper(10,147,14x14).";
+        }
+
         internal static string JoinFragmentsForDialogEdit(IEnumerable<string> fragments)
         {
             if (fragments == null)
@@ -207,23 +215,90 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            string[] rawLines = text
-                .Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n')
-                .Split('\n');
-
-            string[] fragments = new string[Math.Min(4, rawLines.Length)];
-            for (int i = 0; i < fragments.Length; i++)
+            List<string> rows = new(SendDialogRowMax);
+            foreach (string paragraph in text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n'))
             {
-                fragments[i] = rawLines[i] ?? string.Empty;
+                AppendWrappedDialogRows(rows, paragraph ?? string.Empty);
+                if (rows.Count >= SendDialogRowMax)
+                {
+                    break;
+                }
             }
 
-            if (rawLines.Length > 4)
+            return rows
+                .Take(SendDialogRowMax)
+                .ToArray();
+        }
+
+        internal static string NormalizeDialogInputForClientRows(string text)
+        {
+            string[] rows = SplitDialogTextIntoFragments(text);
+            return JoinFragmentsForDialogEdit(rows);
+        }
+
+        private static void AppendWrappedDialogRows(List<string> rows, string paragraph)
+        {
+            if (rows.Count >= SendDialogRowMax)
             {
-                fragments[3] = string.Join(" ", rawLines.Skip(3).Where(line => !string.IsNullOrEmpty(line)));
+                return;
             }
 
-            return fragments;
+            if (string.IsNullOrEmpty(paragraph))
+            {
+                rows.Add(string.Empty);
+                return;
+            }
+
+            string remaining = paragraph;
+            while (remaining.Length > 0 && rows.Count < SendDialogRowMax)
+            {
+                int take = ResolveDialogRowCharCount(remaining, SendDialogMaxLineWidth);
+                if (take <= 0)
+                {
+                    break;
+                }
+
+                rows.Add(remaining[..take]);
+                remaining = remaining[take..];
+            }
+        }
+
+        private static int ResolveDialogRowCharCount(string text, int maxWidth)
+        {
+            int width = 0;
+            int lastSoftBreak = -1;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char ch = text[i];
+                int charWidth = EstimateDialogCharWidth(ch);
+                if (width + charWidth > maxWidth)
+                {
+                    return lastSoftBreak > 0 ? lastSoftBreak : Math.Max(1, i);
+                }
+
+                width += charWidth;
+                if (char.IsWhiteSpace(ch) || ch is '-' or '/' or '\\')
+                {
+                    lastSoftBreak = i + 1;
+                }
+            }
+
+            return text.Length;
+        }
+
+        private static int EstimateDialogCharWidth(char ch)
+        {
+            if (ch == '\t')
+            {
+                return 18;
+            }
+
+            if (char.IsWhiteSpace(ch))
+            {
+                return 4;
+            }
+
+            return ch > 0xFF ? 12 : 6;
         }
 
         internal bool TryActivate(int currentTick, out string chatLogLine, out string message)
@@ -401,29 +476,45 @@ namespace HaCreator.MapSimulator.Interaction
 
         private AvatarMegaphoneLayout BuildLayout(int currentTick, int screenWidth)
         {
-            int targetX = screenWidth - PanelWidth;
-            int offscreenX = screenWidth + PanelOffscreenPadding;
+            int targetX = ResolveClientTargetX(screenWidth);
+            int helloOffscreenX = ResolveClientHelloOffscreenX(screenWidth);
 
             if (_dismissStartedAt != int.MinValue)
             {
-                float dismissProgress = MathHelper.Clamp((currentTick - _dismissStartedAt) / (float)SlideDurationMs, 0f, 1f);
-                int dismissX = (int)Math.Round(MathHelper.Lerp(targetX, offscreenX, dismissProgress));
+                int dismissDurationMs = ResolveClientByeDurationMs(screenWidth);
+                float dismissProgress = MathHelper.Clamp((currentTick - _dismissStartedAt) / (float)dismissDurationMs, 0f, 1f);
+                int dismissX = (int)Math.Round(MathHelper.Lerp(targetX, ByeOffscreenX, dismissProgress));
                 return new AvatarMegaphoneLayout(dismissX, 255);
             }
 
             int elapsed = Math.Max(0, currentTick - _presentationStartedAt);
             float enterProgress = MathHelper.Clamp(elapsed / (float)SlideDurationMs, 0f, 1f);
-            int panelX = (int)Math.Round(MathHelper.Lerp(offscreenX, targetX, enterProgress));
+            int panelX = (int)Math.Round(MathHelper.Lerp(helloOffscreenX, targetX, enterProgress));
             panelX += ResolveShakeOffset(elapsed);
             int nameAlpha = Math.Clamp((int)Math.Round(255f * MathHelper.Clamp(elapsed / (float)NameFadeDurationMs, 0f, 1f)), 0, 255);
             return new AvatarMegaphoneLayout(panelX, nameAlpha);
+        }
+
+        internal static int ResolveClientTargetX(int screenWidth)
+        {
+            return screenWidth - PanelWidth;
+        }
+
+        internal static int ResolveClientHelloOffscreenX(int screenWidth)
+        {
+            return screenWidth + PanelOffscreenPadding;
+        }
+
+        internal static int ResolveClientByeDurationMs(int screenWidth)
+        {
+            return Math.Max(1, Math.Abs(ByeOffscreenX - ResolveClientTargetX(screenWidth)));
         }
 
         private static int ResolveShakeOffset(int elapsedMs)
         {
             for (int i = 1; i <= 6; i++)
             {
-                int start = i * ShakeStepMs;
+                int start = SlideDurationMs + (i * ShakeStepMs);
                 int end = start + ShakeStepMs;
                 if (elapsedMs >= start && elapsedMs < end)
                 {

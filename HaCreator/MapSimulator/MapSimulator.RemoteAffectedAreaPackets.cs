@@ -680,7 +680,11 @@ namespace HaCreator.MapSimulator
 
             if (shouldReplayLocalPlayerTick)
             {
-                ApplyRemoteHostileAffectedAreaToLocalPlayer(localPlayerHostileSkillRuntimes, currentTime);
+                ApplyRemoteHostileAffectedAreaToLocalPlayer(
+                    area.ObjectId,
+                    area.OwnerId,
+                    localPlayerHostileSkillRuntimes,
+                    currentTime);
             }
 
             if (!shouldReplayMobTick || skillManager == null)
@@ -1362,6 +1366,8 @@ namespace HaCreator.MapSimulator
         }
 
         private void ApplyRemoteHostileAffectedAreaToLocalPlayer(
+            int areaObjectId,
+            int ownerId,
             RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes,
             int currentTime)
         {
@@ -1394,7 +1400,9 @@ namespace HaCreator.MapSimulator
                 _playerManager.TryApplyRemoteAffectedAreaPlayerSkillStatus(
                     hostileSkillRuntimes[i].Skill,
                     hostileSkillRuntimes[i].LevelData,
-                    currentTime);
+                    currentTime,
+                    ownerId,
+                    areaObjectId);
             }
         }
 

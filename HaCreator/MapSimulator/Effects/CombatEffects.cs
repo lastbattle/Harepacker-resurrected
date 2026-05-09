@@ -10,6 +10,7 @@ using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -1026,13 +1027,18 @@ namespace HaCreator.MapSimulator.Effects
 
             // Skip regular mob HP bar if this mob has a boss HP bar at top of screen
             // Bosses with hpTagColor only show the top-screen HP bar, not the regular one
-            if (hasBossHpBar)
+            if (!ShouldShowRegularMobHpBar(mobData, hasBossHpBar))
             {
                 // Check if the WZ-based boss HP bar is tracking this mob
                 if (_useWzBossHPBar && _bossHPBarUI != null && _bossHPBarUI.HasBossHPBar(poolId))
                     return;
                 // Check if the fallback system is tracking this mob
                 if (_bossHPBars.Exists(b => b.Boss?.PoolId == poolId))
+                    return;
+
+                // damagedByMob encounter actors use their own client visual state instead
+                // of the ordinary delayed HP indicator.
+                if (mobData?.DamagedByMob == true)
                     return;
             }
 
@@ -1191,6 +1197,14 @@ namespace HaCreator.MapSimulator.Effects
                 // Only show HP bar if mob has taken damage
                 if (mob.AI.CurrentHp < mob.AI.MaxHp)
                 {
+                    var mobData = mob.MobInstance?.MobInfo?.MobData;
+                    bool hasBossHpBar = mobData != null && mobData.HpTagColor > 0;
+                    if (!ShouldShowRegularMobHpBar(mobData, hasBossHpBar))
+                    {
+                        _mobHPBars.Remove(mob.PoolId);
+                        continue;
+                    }
+
                     if (!_mobHPBars.ContainsKey(mob.PoolId))
                     {
                         // Auto-create HP bar for damaged mobs
@@ -1220,6 +1234,22 @@ namespace HaCreator.MapSimulator.Effects
                     }
                 }
             }
+        }
+
+        internal static bool ShouldShowRegularMobHpBarForTesting(MobData mobData, bool hasBossHpBar)
+        {
+            return ShouldShowRegularMobHpBar(mobData, hasBossHpBar);
+        }
+
+        private static bool ShouldShowRegularMobHpBar(MobData mobData, bool hasBossHpBar)
+        {
+            if (hasBossHpBar)
+            {
+                return false;
+            }
+
+            // Client CMob::Update skips the regular delayed HP indicator lane for bDamagedByMob.
+            return mobData?.DamagedByMob != true;
         }
         #endregion
 

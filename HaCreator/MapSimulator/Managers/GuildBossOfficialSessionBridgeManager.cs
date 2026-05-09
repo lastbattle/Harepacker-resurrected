@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using System.Net.NetworkInformation;
 using System.Net;
 using System.Net.Sockets;
@@ -55,14 +56,16 @@ namespace HaCreator.MapSimulator.Managers
             int PayloadLength,
             string Source,
             string Summary,
-            string RawPacketHex);
+            string RawPacketHex,
+            long? ProxySessionId);
         internal readonly record struct OutboundPacketTrace(
             int Opcode,
             int Sequence,
             int PayloadLength,
             string Source,
             string Summary,
-            string RawPacketHex);
+            string RawPacketHex,
+            long? ProxySessionId);
         public enum LiveOwnershipVerificationState
         {
             Idle,
@@ -70,6 +73,7 @@ namespace HaCreator.MapSimulator.Managers
             WaitingForBothDirections,
             WaitingForOutboundOpcode259,
             WaitingForInboundGuildBossPacket,
+            WaitingForPairedProxySessionEvidence,
             Complete
         }
 
@@ -93,7 +97,8 @@ namespace HaCreator.MapSimulator.Managers
             HasPassiveEstablishedSocketPair,
             IsRunning,
             _hasObservedLiveOutboundOpcode259,
-            _hasObservedLiveInboundGuildBossPacket);
+            _hasObservedLiveInboundGuildBossPacket,
+            HasPairedLiveOwnershipEvidence());
         public int RecentInboundPacketCount
         {
             get
@@ -144,7 +149,8 @@ namespace HaCreator.MapSimulator.Managers
                 HasPassiveEstablishedSocketPair,
                 IsRunning,
                 _hasObservedLiveOutboundOpcode259,
-                _hasObservedLiveInboundGuildBossPacket);
+                _hasObservedLiveInboundGuildBossPacket,
+                HasPairedLiveOwnershipEvidence());
             string evidence = DescribeLiveOwnershipVerificationEvidence();
             return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; {inboundHistory}; {outboundHistory}. {verification} {evidence} {LastStatus}";
         }
@@ -166,7 +172,7 @@ namespace HaCreator.MapSimulator.Managers
                   + string.Join(
                       Environment.NewLine,
                       inbound.Select((trace, index) =>
-                          $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} summary={trace.Summary} raw={trace.RawPacketHex}"));
+                          $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
             string outboundText = outbound.Length == 0
                 ? $"Outbound opcode {OutboundPulleyRequestOpcode}: none captured or queued."
                 : "Outbound opcode traces:"
@@ -174,7 +180,7 @@ namespace HaCreator.MapSimulator.Managers
                   + string.Join(
                       Environment.NewLine,
                       outbound.Select((trace, index) =>
-                          $"{index + 1}. opcode={trace.Opcode} sequence={trace.Sequence} payload={trace.PayloadLength} source={trace.Source} summary={trace.Summary} raw={trace.RawPacketHex}"));
+                          $"{index + 1}. opcode={trace.Opcode} sequence={trace.Sequence} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
 
             return $"{inboundText}{Environment.NewLine}{outboundText}";
         }
@@ -686,7 +692,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
-                RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject"));
+                RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject", _roleSessionProxy.CurrentProxySessionId));
                 status = flushed > 0
                     ? $"Flushed {flushed} queued Guild Boss opcode {OutboundPulleyRequestOpcode} request(s), then injected opcode {OutboundPulleyRequestOpcode} into live session."
                     : $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
@@ -738,7 +744,7 @@ namespace HaCreator.MapSimulator.Managers
             byte[] rawPacket = BuildPulleyRequestPacket();
             _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, rawPacket));
             QueuedCount++;
-            RecordOutboundTrace(BuildOutboundTrace(rawPacket, request.Sequence, "simulator-queue"));
+            RecordOutboundTrace(BuildOutboundTrace(rawPacket, request.Sequence, "simulator-queue", proxySessionId: null));
             status = HasPassiveEstablishedSocketPair
                 ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} while observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost to flush it after the proxied handshake initializes."
                 : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
@@ -818,7 +824,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}"));
+            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}", e.ProxySessionId));
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
@@ -840,7 +846,7 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
                 && opcode == OutboundPulleyRequestOpcode)
             {
-                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, $"official-session:{e.SourceEndpoint}"));
+                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
                 LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint}.";
             }
         }
@@ -892,7 +898,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
-                RecordOutboundTrace(BuildOutboundTrace(pending.RawPacket, pending.Request.Sequence, "official-session:proxy-flush"));
+                RecordOutboundTrace(BuildOutboundTrace(pending.RawPacket, pending.Request.Sequence, "official-session:proxy-flush", _roleSessionProxy.CurrentProxySessionId));
                 flushed++;
             }
 
@@ -999,9 +1005,31 @@ namespace HaCreator.MapSimulator.Managers
             bool hasObservedLiveOutboundOpcode259,
             bool hasObservedLiveInboundGuildBossPacket)
         {
-            if (hasObservedLiveOutboundOpcode259 && hasObservedLiveInboundGuildBossPacket)
+            return ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundOpcode259,
+                hasObservedLiveInboundGuildBossPacket,
+                hasObservedLiveOutboundOpcode259 && hasObservedLiveInboundGuildBossPacket);
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode259,
+            bool hasObservedLiveInboundGuildBossPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            if (hasPairedLiveOwnershipEvidence)
             {
                 return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundOpcode259 && hasObservedLiveInboundGuildBossPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence;
             }
 
             if (hasObservedLiveOutboundOpcode259)
@@ -1034,12 +1062,30 @@ namespace HaCreator.MapSimulator.Managers
             bool hasObservedLiveOutboundOpcode259,
             bool hasObservedLiveInboundGuildBossPacket)
         {
+            return DescribeLiveOwnershipVerificationStatus(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundOpcode259,
+                hasObservedLiveInboundGuildBossPacket,
+                hasObservedLiveOutboundOpcode259 && hasObservedLiveInboundGuildBossPacket);
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode259,
+            bool hasObservedLiveInboundGuildBossPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
             LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
                 hasConnectedSession,
                 hasPassiveEstablishedSocketPair,
                 isRunning,
                 hasObservedLiveOutboundOpcode259,
-                hasObservedLiveInboundGuildBossPacket);
+                hasObservedLiveInboundGuildBossPacket,
+                hasPairedLiveOwnershipEvidence);
             if (state == LiveOwnershipVerificationState.Complete)
             {
                 return $"Live ownership verification complete: proxied opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were both captured.";
@@ -1067,6 +1113,11 @@ namespace HaCreator.MapSimulator.Managers
                 return $"Live ownership verification in progress: opcode {OutboundPulleyRequestOpcode} outbound captured, waiting for proxied opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound.";
             }
 
+            if (state == LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence)
+            {
+                return $"Live ownership verification in progress: opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were captured in separate proxy sessions, waiting for both directions in one initialized Maple session.";
+            }
+
             return $"Live ownership verification idle: start a Guild Boss session bridge and capture opcode {OutboundPulleyRequestOpcode}/{PacketTypeHealerMove}/{PacketTypePulleyStateChange} traffic.";
         }
 
@@ -1084,19 +1135,22 @@ namespace HaCreator.MapSimulator.Managers
             {
                 InboundPacketTrace inbound = inboundEvidence.Value;
                 OutboundPacketTrace outbound = outboundEvidence.Value;
-                return $"Live ownership verification evidence: paired proxied capture outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
+                string pairLabel = IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
+                    ? $"paired proxySession={outbound.ProxySessionId.Value}"
+                    : $"unpaired proxy sessions outbound={FormatProxySessionId(outbound.ProxySessionId)} inbound={FormatProxySessionId(inbound.ProxySessionId)}";
+                return $"Live ownership verification evidence: {pairLabel} outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
 
             if (outboundEvidence.HasValue)
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
-                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange}.";
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}], waiting for inbound opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange}.";
             }
 
             if (inboundEvidence.HasValue)
             {
                 InboundPacketTrace inbound = inboundEvidence.Value;
-                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundPulleyRequestOpcode}.";
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundPulleyRequestOpcode}.";
             }
 
             return "Live ownership verification evidence: none.";
@@ -1138,7 +1192,31 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source)
+        private bool HasPairedLiveOwnershipEvidence()
+        {
+            lock (_sync)
+            {
+                return _liveInboundGuildBossPacketEvidence.HasValue
+                    && _liveOutboundOpcode259Evidence.HasValue
+                    && IsSameProxySession(
+                        _liveOutboundOpcode259Evidence.Value.ProxySessionId,
+                        _liveInboundGuildBossPacketEvidence.Value.ProxySessionId);
+            }
+        }
+
+        internal static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        {
+            return leftProxySessionId.HasValue
+                && rightProxySessionId.HasValue
+                && leftProxySessionId.Value == rightProxySessionId.Value;
+        }
+
+        private static string FormatProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString(CultureInfo.InvariantCulture) : "unknown";
+        }
+
+        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source, long? proxySessionId)
         {
             string summary = $"opcode={opcode} payload={payloadLength}";
             return new InboundPacketTrace(
@@ -1147,10 +1225,11 @@ namespace HaCreator.MapSimulator.Managers
                 payloadLength,
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
                 summary,
-                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()));
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                proxySessionId);
         }
 
-        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source)
+        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source, long? proxySessionId)
         {
             int payloadLength = rawPacket == null ? 0 : Math.Max(0, rawPacket.Length - sizeof(short));
             string summary = sequence > 0
@@ -1162,7 +1241,8 @@ namespace HaCreator.MapSimulator.Managers
                 payloadLength,
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-local" : source,
                 summary,
-                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()));
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                proxySessionId);
         }
 
         private static bool IsLiveProxiedSource(string source)

@@ -52,6 +52,8 @@ namespace HaCreator.MapSimulator.UI
             public int ItemCount { get; init; }
             public Point Position { get; init; }
             public int Width { get; init; }
+            public int RuntimeWidth { get; init; }
+            public int CanvasItemCount { get; init; }
             public bool SameWidth { get; init; }
             public int NormalStringPoolId { get; init; }
             public int SelectedStringPoolId { get; init; }
@@ -138,6 +140,8 @@ namespace HaCreator.MapSimulator.UI
             public int TabX { get; init; } = 17;
             public int TabY { get; init; } = 28;
             public int TabWidth { get; init; } = 156;
+            public int TabRuntimeWidth { get; init; }
+            public int TabCanvasItemCount { get; init; } = 5;
             public bool TabSameWidth { get; init; } = true;
             public int TabNormalStringPoolId { get; init; } = 0xC94;
             public int TabSelectedStringPoolId { get; init; } = 0xC95;
@@ -435,6 +439,8 @@ namespace HaCreator.MapSimulator.UI
             public int ItemCount { get; set; }
             public Point Position { get; set; }
             public int Width { get; set; }
+            public int RuntimeWidth { get; set; }
+            public int CanvasItemCount { get; set; }
             public bool SameWidth { get; set; }
             public int NormalStringPoolId { get; set; }
             public int SelectedStringPoolId { get; set; }
@@ -883,7 +889,7 @@ namespace HaCreator.MapSimulator.UI
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"Tab UOL 0x{state.TabNormalStringPoolId:X}/0x{state.TabSelectedStringPoolId:X}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                $"Tab UOL 0x{state.TabNormalStringPoolId:X}/0x{state.TabSelectedStringPoolId:X} canvases {state.TabCanvasItemCount.ToString(CultureInfo.InvariantCulture)} runtimeW {state.TabRuntimeWidth.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -2525,8 +2531,10 @@ namespace HaCreator.MapSimulator.UI
             bool tabChanged =
                 _inventoryTabObject.ControlId != state.TabControlId
                 || _inventoryTabObject.ItemCount != state.TabItemCount
+                || _inventoryTabObject.CanvasItemCount != state.TabCanvasItemCount
                 || _inventoryTabObject.Position != new Point(state.TabX, state.TabY)
                 || _inventoryTabObject.Width != state.TabWidth
+                || _inventoryTabObject.RuntimeWidth != state.TabRuntimeWidth
                 || _inventoryTabObject.SameWidth != state.TabSameWidth
                 || _inventoryTabObject.NormalStringPoolId != state.TabNormalStringPoolId
                 || _inventoryTabObject.SelectedStringPoolId != state.TabSelectedStringPoolId
@@ -2534,8 +2542,10 @@ namespace HaCreator.MapSimulator.UI
 
             _inventoryTabObject.ControlId = state.TabControlId;
             _inventoryTabObject.ItemCount = state.TabItemCount;
+            _inventoryTabObject.CanvasItemCount = state.TabCanvasItemCount;
             _inventoryTabObject.Position = new Point(state.TabX, state.TabY);
             _inventoryTabObject.Width = state.TabWidth;
+            _inventoryTabObject.RuntimeWidth = state.TabRuntimeWidth;
             _inventoryTabObject.SameWidth = state.TabSameWidth;
             _inventoryTabObject.NormalStringPoolId = state.TabNormalStringPoolId;
             _inventoryTabObject.SelectedStringPoolId = state.TabSelectedStringPoolId;

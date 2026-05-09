@@ -64,13 +64,34 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return SubmitPendingGuildDialogRequest(new GuildDialogPendingRequest(
-                GuildDialogPendingRequestKind.CreateGuild,
-                "Create guild",
+                GuildDialogPendingRequestKind.CreateGuildAgreement,
+                "Create guild agreement",
                 string.IsNullOrWhiteSpace(acceptance.MasterName) ? _playerName : acceptance.MasterName.Trim(),
                 acceptance.GuildName.Trim(),
                 null,
-                DefaultGuildCreateCostMesos,
+                0,
                 acceptance.AcceptedAtUtc,
+                _packetGuildUiRevision,
+                _packetGuildMarkRevision,
+                _packetGuildPointsAndLevelRevision,
+                _packetGuildRosterRevision));
+        }
+
+        internal string SubmitCreateGuildNameRequest(string guildName)
+        {
+            if (string.IsNullOrWhiteSpace(guildName))
+            {
+                return NotifyGuildDialogSocialChatObserved("Create guild request needs a guild name.");
+            }
+
+            return SubmitPendingGuildDialogRequest(new GuildDialogPendingRequest(
+                GuildDialogPendingRequestKind.CreateGuild,
+                "Create guild",
+                _playerName,
+                guildName.Trim(),
+                null,
+                DefaultGuildCreateCostMesos,
+                DateTimeOffset.UtcNow,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,

@@ -604,7 +604,8 @@ namespace HaCreator.MapSimulator
                 inputValue: initialText,
                 softKeyboardType: SoftKeyboardKeyboardType.FreeText,
                 inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
-                trackDirectionModeOwner: true);
+                trackDirectionModeOwner: true,
+                primaryButtonEnabled: ShouldEnableFieldMessageBoxChalkboardDialogPrimary(initialText));
             message = $"{message} Opened the managed chalkboard compose owner through the shared CUtilDlgEx-style input dialog.";
             return true;
         }
@@ -616,10 +617,21 @@ namespace HaCreator.MapSimulator
             if (updated)
             {
                 _loginUtilityDialogInputValue = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+                _loginUtilityDialogPrimaryEnabled = ShouldEnableFieldMessageBoxChalkboardDialogPrimary(_loginUtilityDialogInputValue);
                 SyncLoginUtilityDialogWindow();
             }
 
             return updated;
+        }
+
+        private static bool ShouldEnableFieldMessageBoxChalkboardDialogPrimary(string text)
+        {
+            return !string.IsNullOrWhiteSpace(text);
+        }
+
+        internal static bool ShouldEnableFieldMessageBoxChalkboardDialogPrimaryForTesting(string text)
+        {
+            return ShouldEnableFieldMessageBoxChalkboardDialogPrimary(text);
         }
 
         private bool TrySubmitFieldMessageBoxChalkboardDialog(out string message)

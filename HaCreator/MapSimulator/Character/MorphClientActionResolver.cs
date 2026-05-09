@@ -908,6 +908,19 @@ namespace HaCreator.MapSimulator.Character
                 "create2",
                 "darkTornado_pre",
                 "pvpko",
+                // WZ-first: these raw post-table names are direct morph action roots
+                // in Morph/2002.img, so `LoadMorphAction(template, raw)` can resolve
+                // them without falling through a body-only alias.
+                "iceAttack1",
+                "iceAttack2",
+                "iceSmash",
+                "iceTempest",
+                "iceChop",
+                "icePanic",
+                "iceDoubleJump",
+                // WZ-first: Morph/1003.img and Morph/1103.img publish this direct
+                // jump action root while raw 273/ride2 stays outside the admitted gate.
+                "archerDoubleJump",
                 "mistEruption",
                 "dualVulcanPrep",
                 "demonGravity"

@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.UI
 
         protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
         {
-            yield return new Rectangle(Position.X + 353, Position.Y, 165, 188);
+            yield return new Rectangle(Position.X + NewYearCardRuntime.SearchResultX, Position.Y + NewYearCardRuntime.SearchResultY, 165, 188);
         }
 
         protected override void DrawContents(
@@ -65,8 +65,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 skeletonMeshRenderer,
                 gameTime,
-                Position.X + 353,
-                Position.Y,
+                Position.X + NewYearCardRuntime.SearchResultX,
+                Position.Y + NewYearCardRuntime.SearchResultY,
                 Color.White,
                 false,
                 drawReflectionInfo);
@@ -97,12 +97,13 @@ namespace HaCreator.MapSimulator.UI
             int row = 0;
             foreach (string name in snapshot.SearchResults ?? Array.Empty<string>())
             {
-                if (row >= 5)
+                int rowY = NewYearCardRuntime.SearchResultFirstTextY + (row * NewYearCardRuntime.SearchResultRowHeight);
+                if (rowY >= NewYearCardRuntime.SearchResultBottomY)
                 {
                     break;
                 }
 
-                DrawWindowText(sprite, Truncate(name, 16), new Vector2(Position.X + 368, Position.Y + 24 + (row * 15)), text, 0.4f, 118);
+                DrawWindowText(sprite, Truncate(name, 16), new Vector2(Position.X + NewYearCardRuntime.SearchResultFirstTextX, Position.Y + rowY), text, 0.4f, 118);
                 row++;
             }
 

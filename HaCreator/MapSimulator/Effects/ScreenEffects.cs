@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator.Effects
         private byte _stageTransitionTargetRedTone = byte.MaxValue;
         private byte _stageTransitionTargetGreenTone = byte.MaxValue;
         private byte _stageTransitionTargetBlueTone = byte.MaxValue;
+        private StageTransitionToneRelMoveTrace _lastStageTransitionToneRelMoveTrace;
 
         /// <summary>
         /// Whether a fade effect is currently active
@@ -339,6 +340,7 @@ namespace HaCreator.MapSimulator.Effects
             _stageTransitionTargetGreenTone,
             _stageTransitionTargetBlueTone,
             _stageTransitionFadeInEndTime);
+        internal StageTransitionToneRelMoveTrace LastStageTransitionToneRelMoveTrace => _lastStageTransitionToneRelMoveTrace;
 
         /// <summary>
         /// Update the fade effect
@@ -373,24 +375,36 @@ namespace HaCreator.MapSimulator.Effects
 
         private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
         {
+            bool resetPendingFadeInTone = false;
             if (targetTone == byte.MaxValue && IsTickBefore(currentTimeMs, _stageTransitionFadeInEndTime))
             {
                 _stageTransitionRedTone = 0;
                 _stageTransitionGreenTone = 0;
                 _stageTransitionBlueTone = 0;
+                resetPendingFadeInTone = true;
             }
 
             byte currentTone = GetCurrentToneLevel();
             if (currentTone == targetTone)
             {
-                CompleteImmediateStageTransitionToneFade(targetTone, currentTimeMs, onComplete);
+                CompleteImmediateStageTransitionToneFade(
+                    targetTone,
+                    currentTimeMs,
+                    Math.Max(0, durationMs),
+                    resetPendingFadeInTone,
+                    onComplete);
                 return;
             }
 
             int scaledDuration = ScaleStageTransitionDuration(durationMs, currentTone, targetTone);
             if (scaledDuration == 0)
             {
-                CompleteImmediateStageTransitionToneFade(targetTone, currentTimeMs, onComplete);
+                CompleteImmediateStageTransitionToneFade(
+                    targetTone,
+                    currentTimeMs,
+                    Math.Max(0, durationMs),
+                    resetPendingFadeInTone,
+                    onComplete);
                 return;
             }
 
@@ -404,6 +418,19 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _stageTransitionFadeInEndTime = currentTimeMs + scaledDuration;
             }
+            _lastStageTransitionToneRelMoveTrace = new StageTransitionToneRelMoveTrace(
+                IsFadeIn: targetTone == byte.MaxValue,
+                ResetPendingFadeInTone: resetPendingFadeInTone,
+                CurrentTimeMs: currentTimeMs,
+                BaseDurationMs: Math.Max(0, durationMs),
+                ScaledDurationMs: scaledDuration,
+                EndTimeMs: currentTimeMs + scaledDuration,
+                StartRedTone: _stageTransitionStartRedTone,
+                StartGreenBlueXTone: _stageTransitionStartGreenTone,
+                StartGreenBlueYTone: _stageTransitionStartBlueTone,
+                TargetRedTone: targetTone,
+                TargetGreenBlueXTone: targetTone,
+                TargetGreenBlueYTone: targetTone);
 
             StartFade(
                 1.0f - (currentTone / 255f),
@@ -415,8 +442,16 @@ namespace HaCreator.MapSimulator.Effects
             _stageTransitionToneFadeActive = true;
         }
 
-        private void CompleteImmediateStageTransitionToneFade(byte targetTone, int currentTimeMs, Action onComplete)
+        private void CompleteImmediateStageTransitionToneFade(
+            byte targetTone,
+            int currentTimeMs,
+            int baseDurationMs,
+            bool resetPendingFadeInTone,
+            Action onComplete)
         {
+            byte startRedTone = _stageTransitionRedTone;
+            byte startGreenTone = _stageTransitionGreenTone;
+            byte startBlueTone = _stageTransitionBlueTone;
             _fadeActive = false;
             _fadeAlpha = 1.0f - (targetTone / 255f);
             _fadeStartAlpha = _fadeAlpha;
@@ -431,6 +466,19 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _stageTransitionFadeInEndTime = currentTimeMs;
             }
+            _lastStageTransitionToneRelMoveTrace = new StageTransitionToneRelMoveTrace(
+                IsFadeIn: targetTone == byte.MaxValue,
+                ResetPendingFadeInTone: resetPendingFadeInTone,
+                CurrentTimeMs: currentTimeMs,
+                BaseDurationMs: baseDurationMs,
+                ScaledDurationMs: 0,
+                EndTimeMs: currentTimeMs,
+                StartRedTone: startRedTone,
+                StartGreenBlueXTone: startGreenTone,
+                StartGreenBlueYTone: startBlueTone,
+                TargetRedTone: targetTone,
+                TargetGreenBlueXTone: targetTone,
+                TargetGreenBlueYTone: targetTone);
             LastFadeCompletionTimeMs = currentTimeMs;
             onComplete?.Invoke();
         }
@@ -913,6 +961,7 @@ namespace HaCreator.MapSimulator.Effects
             _stageTransitionToneFadeActive = false;
             _stageTransitionFadeInEndTime = 0;
             SetStageTransitionToneChannels(byte.MaxValue);
+            _lastStageTransitionToneRelMoveTrace = default;
             _flashActive = false;
             _flashAlpha = 0;
             StopMotionBlur();
@@ -928,6 +977,20 @@ namespace HaCreator.MapSimulator.Effects
         byte TargetGreenTone,
         byte TargetBlueTone,
         int FadeInEndTime);
+
+    internal readonly record struct StageTransitionToneRelMoveTrace(
+        bool IsFadeIn,
+        bool ResetPendingFadeInTone,
+        int CurrentTimeMs,
+        int BaseDurationMs,
+        int ScaledDurationMs,
+        int EndTimeMs,
+        byte StartRedTone,
+        byte StartGreenBlueXTone,
+        byte StartGreenBlueYTone,
+        byte TargetRedTone,
+        byte TargetGreenBlueXTone,
+        byte TargetGreenBlueYTone);
 
     internal readonly record struct ScreenTrembleRecoveredState(
         double Force,

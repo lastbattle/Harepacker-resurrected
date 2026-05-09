@@ -303,6 +303,12 @@ namespace HaCreator.MapSimulator.UI
             return _searchResultSessionPageIndex;
         }
 
+        public int GetWishlistSearchResultSessionDisplayPageIndex()
+        {
+            int remotePageIndex = GetPacketOwnedWishlistSearchRemotePageIndex();
+            return remotePageIndex >= 0 ? remotePageIndex : _searchResultSessionPageIndex;
+        }
+
         public int GetWishlistSearchResultSessionToken()
         {
             return _searchResultSessionToken;
@@ -314,6 +320,12 @@ namespace HaCreator.MapSimulator.UI
             return liveResults.Count == 0
                 ? 0
                 : (int)Math.Ceiling(liveResults.Count / (float)ResultSessionPageSize);
+        }
+
+        public int GetWishlistSearchResultSessionDisplayPageCount()
+        {
+            int remotePageCount = GetPacketOwnedWishlistSearchRemotePageCount();
+            return remotePageCount > 0 ? remotePageCount : GetWishlistSearchResultSessionPageCount();
         }
 
         public int GetWishlistSearchResultSessionResultCount()
@@ -347,8 +359,9 @@ namespace HaCreator.MapSimulator.UI
 
         public bool CanMoveWishlistSearchResultSessionPage(int delta)
         {
-            int pageCount = GetWishlistSearchResultSessionPageCount();
-            int targetPage = _searchResultSessionPageIndex + delta;
+            int pageCount = GetWishlistSearchResultSessionDisplayPageCount();
+            int pageIndex = GetWishlistSearchResultSessionDisplayPageIndex();
+            int targetPage = pageIndex + delta;
             return pageCount > 0 && targetPage >= 0 && targetPage < pageCount;
         }
 
@@ -358,6 +371,38 @@ namespace HaCreator.MapSimulator.UI
             List<AdminShopDialogUI.WishlistSearchResult> liveResults = GetLiveWishlistSearchResultSessionResults();
             if (liveResults.Count == 0)
             {
+                _statusMessage = message;
+                return false;
+            }
+
+            int remotePageIndex = GetPacketOwnedWishlistSearchRemotePageIndex();
+            int remotePageCount = GetPacketOwnedWishlistSearchRemotePageCount();
+            if (remotePageIndex >= 0 && remotePageCount > 0)
+            {
+                int targetRemotePage = Math.Clamp(remotePageIndex + delta, 0, remotePageCount - 1);
+                if (targetRemotePage == remotePageIndex)
+                {
+                    message = $"SearchItemName stayed on remote packet page {remotePageIndex + 1} / {remotePageCount}.";
+                    _statusMessage = message;
+                    return false;
+                }
+
+                if (_sourceDialog.TryStagePacketOwnedWishlistSearchRemotePageRequest(
+                        _searchQuery,
+                        _selectedCategoryKey,
+                        _selectedPriceRangeIndex,
+                        targetRemotePage,
+                        out message))
+                {
+                    _searchResults.Clear();
+                    _selectedResultIndex = -1;
+                    _resultScrollOffset = 0;
+                    ClearWishlistSearchResultSession();
+                    _statusMessage = message;
+                    UpdatePopupButtons();
+                    return true;
+                }
+
                 _statusMessage = message;
                 return false;
             }
@@ -2030,6 +2075,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _ = GetLiveWishlistSearchResultSessionResults();
+        }
+
+        private int GetPacketOwnedWishlistSearchRemotePageIndex()
+        {
+            if (_sourceDialog == null)
+            {
+                return -1;
+            }
+
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
+            return _sourceDialog.GetPacketOwnedWishlistSearchRemotePageIndex(
+                clientSearchQuery,
+                _selectedCategoryKey,
+                _selectedPriceRangeIndex);
+        }
+
+        private int GetPacketOwnedWishlistSearchRemotePageCount()
+        {
+            if (_sourceDialog == null)
+            {
+                return 0;
+            }
+
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
+            return _sourceDialog.GetPacketOwnedWishlistSearchRemotePageCount(
+                clientSearchQuery,
+                _selectedCategoryKey,
+                _selectedPriceRangeIndex);
         }
 
         private void AdvanceWishlistSearchResultSessionToken()

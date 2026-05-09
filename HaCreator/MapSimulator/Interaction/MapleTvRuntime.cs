@@ -612,6 +612,19 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            MapleTvAudienceMode audienceMode = GetCurrentAudienceMode();
+            if (audienceMode == MapleTvAudienceMode.ReceiverRequired && string.IsNullOrWhiteSpace(_receiverName))
+            {
+                error = "MapleTV client send request requires a receiver for this dedication item.";
+                return false;
+            }
+
+            if (_useReceiver && string.IsNullOrWhiteSpace(_receiverName))
+            {
+                error = "MapleTV client send request receiver mode is enabled but the receiver name is empty.";
+                return false;
+            }
+
             PacketWriter writer = new();
             writer.WriteInt(Math.Max(0, currentTick));
             writer.WriteShort(inventoryPosition);

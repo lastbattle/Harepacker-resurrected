@@ -100,6 +100,8 @@ namespace HaCreator.MapSimulator.Character
             public int AppliedCount { get; set; }
             public int SourceSkillId { get; set; }
             public int SourceSkillLevel { get; set; }
+            public int SourceOwnerId { get; set; }
+            public int SourceAreaObjectId { get; set; }
             public Rectangle? PeriodicDamageArea { get; set; }
         }
 
@@ -133,7 +135,7 @@ namespace HaCreator.MapSimulator.Character
                     IsPeriodicDamageStatus(entry.Effect)
                     && entry.Value > 0
                     && entry.TickIntervalMs > 0
-                    && currentTime >= entry.NextTickTime;
+                    && HasStatusTickReached(currentTime, entry.NextTickTime);
                 if (shouldApplyPeriodicDamage)
                 {
                     bool targetInsideDamageArea =
@@ -161,7 +163,7 @@ namespace HaCreator.MapSimulator.Character
                         }
                     }
 
-                    entry.NextTickTime = currentTime + entry.TickIntervalMs;
+                    entry.NextTickTime = unchecked(currentTime + entry.TickIntervalMs);
                 }
             }
 
@@ -408,7 +410,7 @@ namespace HaCreator.MapSimulator.Character
                         recastLeadTimeMs,
                         ResolveSourceSkillId(skillId, runtimeData),
                         ResolveSourceSkillLevel(runtimeData),
-                        periodicDamageArea);
+                        periodicDamageArea: periodicDamageArea);
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(skillId, runtimeData, currentTime, recastLeadTimeMs);
@@ -429,7 +431,9 @@ namespace HaCreator.MapSimulator.Character
         public bool TryApplyRemoteAffectedAreaPlayerSkill(
             SkillData skill,
             SkillLevelData levelData,
-            int currentTime)
+            int currentTime,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             if (_player == null || skill == null || levelData == null)
             {
@@ -470,14 +474,18 @@ namespace HaCreator.MapSimulator.Character
                         status.TickIntervalMs,
                         status.RemainingCount,
                         sourceSkillId: sourceSkillId,
-                        sourceSkillLevel: sourceSkillLevel)
+                        sourceSkillLevel: sourceSkillLevel,
+                        sourceOwnerId: sourceOwnerId,
+                        sourceAreaObjectId: sourceAreaObjectId)
                     : ApplyStatus(
                         status.Effect,
                         status.DurationMs,
                         currentTime,
                         status.Value,
                         sourceSkillId: sourceSkillId,
-                        sourceSkillLevel: sourceSkillLevel);
+                        sourceSkillLevel: sourceSkillLevel,
+                        sourceOwnerId: sourceOwnerId,
+                        sourceAreaObjectId: sourceAreaObjectId);
 
                 applied |= statusApplied;
             }
@@ -626,6 +634,29 @@ namespace HaCreator.MapSimulator.Character
 
             sourceSkillId = 0;
             sourceSkillLevel = 0;
+            return false;
+        }
+
+        internal bool TryGetStatusSourceContext(
+            PlayerMobStatusEffect effect,
+            out int sourceSkillId,
+            out int sourceSkillLevel,
+            out int sourceOwnerId,
+            out int sourceAreaObjectId)
+        {
+            if (_entries.TryGetValue(effect, out PlayerMobStatusEntry entry))
+            {
+                sourceSkillId = entry.SourceSkillId;
+                sourceSkillLevel = entry.SourceSkillLevel;
+                sourceOwnerId = entry.SourceOwnerId;
+                sourceAreaObjectId = entry.SourceAreaObjectId;
+                return true;
+            }
+
+            sourceSkillId = 0;
+            sourceSkillLevel = 0;
+            sourceOwnerId = 0;
+            sourceAreaObjectId = 0;
             return false;
         }
 
@@ -838,7 +869,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            remainingDurationMs = Math.Max(0, entry.ExpirationTime - currentTime);
+            remainingDurationMs = ResolveStatusRemainingDurationMs(currentTime, entry.ExpirationTime);
             if (remainingDurationMs <= 0)
             {
                 return false;
@@ -894,9 +925,11 @@ namespace HaCreator.MapSimulator.Character
             int tickIntervalMs = 0,
             int recastLeadTimeMs = 0,
             int sourceSkillId = 0,
-            int sourceSkillLevel = 0)
+            int sourceSkillLevel = 0,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0, recastLeadTimeMs, sourceSkillId, sourceSkillLevel);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId);
         }
 
         private bool ApplyMobSkillStatus(
@@ -932,9 +965,11 @@ namespace HaCreator.MapSimulator.Character
             int recastLeadTimeMs = 0,
             int sourceSkillId = 0,
             int sourceSkillLevel = 0,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0,
             Rectangle? periodicDamageArea = null)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, periodicDamageArea);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId, periodicDamageArea);
         }
 
         private bool ApplyPolymorphStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, int recastLeadTimeMs = 0)
@@ -982,6 +1017,8 @@ namespace HaCreator.MapSimulator.Character
             int recastLeadTimeMs,
             int sourceSkillId = 0,
             int sourceSkillLevel = 0,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0,
             Rectangle? periodicDamageArea = null)
         {
             if (effect == PlayerMobStatusEffect.None || durationMs <= 0)
@@ -999,19 +1036,23 @@ namespace HaCreator.MapSimulator.Character
                     Nullable.Equals(existingEntry.PeriodicDamageArea, periodicDamageArea);
                 int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(durationMs, recastLeadTimeMs);
                 if (sameRuntimeState
-                    && !ShouldAllowNoOpStatusRefreshRecast(existingEntry.ExpirationTime - currentTime, refreshLeadTimeMs))
+                    && !ShouldAllowNoOpStatusRefreshRecast(
+                        ResolveStatusRemainingDurationMs(currentTime, existingEntry.ExpirationTime),
+                        refreshLeadTimeMs))
                 {
                     return false;
                 }
 
-                existingEntry.ExpirationTime = currentTime + durationMs;
+                existingEntry.ExpirationTime = unchecked(currentTime + durationMs);
                 existingEntry.Value = value;
                 existingEntry.TickIntervalMs = tickIntervalMs;
-                existingEntry.NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0;
+                existingEntry.NextTickTime = tickIntervalMs > 0 ? unchecked(currentTime + tickIntervalMs) : 0;
                 existingEntry.RemainingCount = clampedCount;
                 existingEntry.AppliedCount = clampedCount;
                 existingEntry.SourceSkillId = sourceSkillId;
                 existingEntry.SourceSkillLevel = sourceSkillLevel;
+                existingEntry.SourceOwnerId = sourceOwnerId;
+                existingEntry.SourceAreaObjectId = sourceAreaObjectId;
                 existingEntry.PeriodicDamageArea = periodicDamageArea;
                 return true;
             }
@@ -1020,14 +1061,16 @@ namespace HaCreator.MapSimulator.Character
             _entries[effect] = new PlayerMobStatusEntry
             {
                 Effect = effect,
-                ExpirationTime = currentTime + durationMs,
+                ExpirationTime = unchecked(currentTime + durationMs),
                 Value = value,
                 TickIntervalMs = tickIntervalMs,
-                NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0,
+                NextTickTime = tickIntervalMs > 0 ? unchecked(currentTime + tickIntervalMs) : 0,
                 RemainingCount = appliedCount,
                 AppliedCount = appliedCount,
                 SourceSkillId = sourceSkillId,
                 SourceSkillLevel = sourceSkillLevel,
+                SourceOwnerId = sourceOwnerId,
+                SourceAreaObjectId = sourceAreaObjectId,
                 PeriodicDamageArea = periodicDamageArea
             };
             return true;
@@ -1125,7 +1168,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            int remainingDurationMs = existingEntry.ExpirationTime - currentTime;
+            int remainingDurationMs = ResolveStatusRemainingDurationMs(currentTime, existingEntry.ExpirationTime);
             return ShouldAllowNoOpStatusRefreshRecast(remainingDurationMs, refreshLeadTimeMs);
         }
 
@@ -1175,7 +1218,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return existingEntry.Value != morphTemplateId
-                   || ShouldAllowNoOpStatusRefreshRecast(existingEntry.ExpirationTime - currentTime, refreshLeadTimeMs);
+                   || ShouldAllowNoOpStatusRefreshRecast(
+                       ResolveStatusRemainingDurationMs(currentTime, existingEntry.ExpirationTime),
+                       refreshLeadTimeMs);
         }
 
         internal static int ResolveStatusRefreshLeadTimeMs(int durationMs, int recastLeadTimeMs)
@@ -1255,7 +1300,7 @@ namespace HaCreator.MapSimulator.Character
             List<PlayerMobStatusEffect> expiredEffects = null;
             foreach (KeyValuePair<PlayerMobStatusEffect, PlayerMobStatusEntry> pair in _entries)
             {
-                if (currentTime < pair.Value.ExpirationTime)
+                if (!HasStatusTickReached(currentTime, pair.Value.ExpirationTime))
                 {
                     continue;
                 }
@@ -1278,6 +1323,31 @@ namespace HaCreator.MapSimulator.Character
         private static int ResolveTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
         {
             return runtimeData.IntervalMs > 0 ? runtimeData.IntervalMs : fallbackMs;
+        }
+
+        internal static bool HasStatusTickReachedForTesting(int currentTime, int targetTime)
+        {
+            return HasStatusTickReached(currentTime, targetTime);
+        }
+
+        internal static int ResolveStatusRemainingDurationMsForTesting(int currentTime, int expirationTime)
+        {
+            return ResolveStatusRemainingDurationMs(currentTime, expirationTime);
+        }
+
+        private static int ResolveStatusRemainingDurationMs(int currentTime, int expirationTime)
+        {
+            if (HasStatusTickReached(currentTime, expirationTime))
+            {
+                return 0;
+            }
+
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(expirationTime, currentTime);
+        }
+
+        private static bool HasStatusTickReached(int currentTime, int targetTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, targetTime);
         }
 
         internal static int ResolvePeriodicTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)

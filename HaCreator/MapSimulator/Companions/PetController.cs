@@ -1257,22 +1257,34 @@ namespace HaCreator.MapSimulator.Companions
             PetAutoSpeechEvent eventType,
             int currentTime)
         {
-            if (activePets == null)
+            return DispatchClientPetAutoSpeakingByEvent(
+                activePets?.Count ?? 0,
+                slotIndex => activePets[slotIndex] != null,
+                slotIndex => activePets[slotIndex].TryTriggerAutoSpeechEvent(eventType, currentTime));
+        }
+
+        internal static int DispatchClientPetAutoSpeakingByEvent(
+            int activePetSlotCapacity,
+            Func<int, bool> hasActivePetAtSlot,
+            Func<int, bool> autoSpeakingByEvent)
+        {
+            if (activePetSlotCapacity <= 0 ||
+                hasActivePetAtSlot == null ||
+                autoSpeakingByEvent == null)
             {
                 return 0;
             }
 
             int triggeredCount = 0;
-            int slotCount = Math.Min(activePets.Count, ClientMaxActivePetSlots);
+            int slotCount = Math.Min(activePetSlotCapacity, ClientMaxActivePetSlots);
             for (int i = 0; i < slotCount; i++)
             {
-                PetRuntime pet = activePets[i];
-                if (pet == null)
+                if (!hasActivePetAtSlot(i))
                 {
                     break;
                 }
 
-                if (pet.TryTriggerAutoSpeechEvent(eventType, currentTime))
+                if (autoSpeakingByEvent(i))
                 {
                     triggeredCount++;
                 }

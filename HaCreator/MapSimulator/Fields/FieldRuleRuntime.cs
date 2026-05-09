@@ -59,7 +59,7 @@ namespace HaCreator.MapSimulator.Fields
             _allowedItems = ResolveInfoIntList(mapInfo, "allowedItem", mapInfo?.allowedItem);
             _protectItems = ResolveInfoIntList(mapInfo, "protectItem", mapInfo?.protectItem);
             _moveLimit = ResolveMoveLimit(mapInfo);
-            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoIntWithCopiedBranchFallback(mapInfo, "consumeItemCoolTime") ?? 0);
+            _consumeItemCoolTimeSeconds = FieldInteractionRestrictionEvaluator.GetConsumeItemCooldownSeconds(mapInfo);
             _mapInfo = mapInfo;
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
@@ -321,11 +321,6 @@ namespace HaCreator.MapSimulator.Fields
             if (_allowedItems.Count > 0)
             {
                 messages.Add($"Allowed-item rule active ({_allowedItems.Count} item(s)): {FormatItemPreview(_allowedItems)}.");
-            }
-
-            if (_consumeItemCoolTimeSeconds > 0)
-            {
-                messages.Add($"Consumable item cooldown active: {_consumeItemCoolTimeSeconds}s between use-item activations.");
             }
 
             IReadOnlyList<string> itemRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit);

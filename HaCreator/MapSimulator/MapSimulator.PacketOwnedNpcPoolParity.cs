@@ -170,10 +170,10 @@ namespace HaCreator.MapSimulator
                 return new PacketNpcPoolApplyResult(true, $"CNpc::OnMove ignored missing object {packet.ObjectId}.");
             }
 
-            npc.ApplyPacketMove(packet.OneTimeAction, packet.ChatIndex);
+            npc.ApplyPacketMove(packet.OneTimeAction, packet.ChatIndex, packet.MovePathElements);
             return new PacketNpcPoolApplyResult(
                 true,
-                $"CNpc::OnMove applied action {packet.OneTimeAction} chat {packet.ChatIndex} to object {packet.ObjectId}; move-path bytes={packet.MovePathPayload?.Length ?? 0}.");
+                $"CNpc::OnMove applied action {packet.OneTimeAction} chat {packet.ChatIndex} to object {packet.ObjectId}; move-path bytes={packet.MovePathPayload?.Length ?? 0}, decoded={packet.MovePathElements?.Count ?? 0}.");
         }
 
         private PacketNpcPoolApplyResult ApplyPacketNpcLimitedInfo(PacketNpcLimitedInfoPacket packet, int currentTick)
@@ -223,6 +223,18 @@ namespace HaCreator.MapSimulator
                     }
 
                     npc.ApplyImitatedLook(entry.Name, entry.AvatarLookPayload?.ToArray());
+                    if (!string.IsNullOrWhiteSpace(entry.Name) && _texturePool != null && GraphicsDevice != null)
+                    {
+                        npc.ReplaceNameTooltip(MapSimulatorLoader.CreateNPCMobNameTooltip(
+                            entry.Name.Trim(),
+                            npc.CurrentX,
+                            npc.CurrentY,
+                            System.Drawing.Color.FromArgb(255, 255, 255, 0),
+                            _texturePool,
+                            UserScreenScaleFactor,
+                            GraphicsDevice));
+                    }
+
                     applied++;
                 }
             }

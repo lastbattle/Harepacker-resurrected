@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechOwnerMaxTextWidth = 220;
         private const int MobActionSpeechScreenMaxTextWidth = 360;
         private const int MobActionSpeechNativeScreenCenterY = 100;
+        private const int MobActionSpeechNativeScreenWidth = 800;
         private const int MobActionSpeechNativeScreenBalloonType = 1005;
         private const int MobActionSpeechNativeOwnerBalloonType = 1004;
         private const int MobActionSpeechNativeScreenLayerOption = unchecked((int)0xC00616FC);
@@ -383,7 +384,7 @@ namespace HaCreator.MapSimulator
             int safeWidth = Math.Max(0, renderWidth);
             int safeHeight = Math.Max(0, renderHeight);
             int x = Math.Max(0, (safeWidth - boxWidth) / 2);
-            int nativeY = MobActionSpeechNativeScreenCenterY - (boxHeight / 2);
+            int nativeY = ResolveMobActionSpeechNativeScreenLayerY(boxHeight);
             int maxY = Math.Max(0, safeHeight - boxHeight);
             int y = Math.Max(0, Math.Min(maxY, nativeY));
             return new Rectangle(x, y, Math.Max(1, boxWidth), Math.Max(1, boxHeight));
@@ -397,6 +398,9 @@ namespace HaCreator.MapSimulator
             public string SkinPath { get; init; }
             public bool UsesScreenLayer { get; init; }
             public int ScreenLayerOption { get; init; }
+            public int ScreenWidth { get; init; }
+            public int ScreenLayerX { get; init; }
+            public int ScreenLayerY { get; init; }
             public int ScreenCenterY { get; init; }
             public bool UsesOwnerOverlayLayer { get; init; }
             public bool IncludesOwnerArrow { get; init; }
@@ -419,18 +423,41 @@ namespace HaCreator.MapSimulator
                 chatBalloon,
                 floatNotice,
                 authoredSkinLoaded,
-                isScreenNotice);
+                isScreenNotice,
+                1,
+                1);
+        }
+
+        internal static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTraceForTests(
+            int chatBalloon,
+            int floatNotice,
+            bool authoredSkinLoaded,
+            bool isScreenNotice,
+            int nativeCanvasWidth,
+            int nativeCanvasHeight)
+        {
+            return BuildMobActionSpeechNativeCompositionTrace(
+                chatBalloon,
+                floatNotice,
+                authoredSkinLoaded,
+                isScreenNotice,
+                nativeCanvasWidth,
+                nativeCanvasHeight);
         }
 
         private static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTrace(
             int chatBalloon,
             int floatNotice,
             bool authoredSkinLoaded,
-            bool isScreenNotice)
+            bool isScreenNotice,
+            int nativeCanvasWidth,
+            int nativeCanvasHeight)
         {
             int normalizedChatBalloon = Math.Max(0, chatBalloon);
             bool usesFloatNotice = IsMobActionSpeechFloatNotice(floatNotice);
             bool useScreenLayer = isScreenNotice || usesFloatNotice;
+            int safeNativeCanvasWidth = Math.Max(1, nativeCanvasWidth);
+            int safeNativeCanvasHeight = Math.Max(1, nativeCanvasHeight);
             IReadOnlyList<string> lifetimeOperations = useScreenLayer
                 ? new[]
                 {
@@ -470,6 +497,9 @@ namespace HaCreator.MapSimulator
                 SkinPath = ResolveMobActionSpeechBalloonSkinPathForTests(normalizedChatBalloon),
                 UsesScreenLayer = useScreenLayer,
                 ScreenLayerOption = useScreenLayer ? MobActionSpeechNativeScreenLayerOption : 0,
+                ScreenWidth = useScreenLayer ? MobActionSpeechNativeScreenWidth : 0,
+                ScreenLayerX = useScreenLayer ? ResolveMobActionSpeechNativeScreenLayerX(safeNativeCanvasWidth) : 0,
+                ScreenLayerY = useScreenLayer ? ResolveMobActionSpeechNativeScreenLayerY(safeNativeCanvasHeight) : 0,
                 ScreenCenterY = useScreenLayer ? MobActionSpeechNativeScreenCenterY : 0,
                 UsesOwnerOverlayLayer = !useScreenLayer,
                 IncludesOwnerArrow = authoredSkinLoaded && !useScreenLayer,
@@ -481,6 +511,16 @@ namespace HaCreator.MapSimulator
                 AssignsLayerChat = useScreenLayer,
                 NativeLifetimeOperations = lifetimeOperations
             };
+        }
+
+        internal static int ResolveMobActionSpeechNativeScreenLayerX(int canvasWidth)
+        {
+            return (MobActionSpeechNativeScreenWidth - Math.Max(1, canvasWidth)) / 2;
+        }
+
+        internal static int ResolveMobActionSpeechNativeScreenLayerY(int canvasHeight)
+        {
+            return MobActionSpeechNativeScreenCenterY - (Math.Max(1, canvasHeight) / 2);
         }
 
         internal sealed class MobActionSpeechSkinMetrics

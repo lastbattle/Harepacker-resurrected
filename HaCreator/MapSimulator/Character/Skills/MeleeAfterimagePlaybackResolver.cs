@@ -519,7 +519,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             int? rawActionCode)
         {
             IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
-            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 5) + 10)
+            int removedCanvasCollectionObjectId = ResolveRemovedCanvasCollectionObjectId(
+                targetLayerObjectId,
+                ClientRemoveAllCanvasesIndex);
+
+            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 12) + 10)
             {
                 new(
                     AfterimageLayerReferenceOperationKind.AddTargetLayerRef,
@@ -539,10 +543,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 new(
                     AfterimageLayerReferenceOperationKind.RemoveAllCanvases,
                     targetLayerObjectId,
+                    CanvasObjectId: removedCanvasCollectionObjectId,
                     RemoveCanvasIndex: ClientRemoveAllCanvasesIndex),
                 new(
                     AfterimageLayerReferenceOperationKind.ReleaseRemovedCanvasRef,
                     targetLayerObjectId,
+                    CanvasObjectId: removedCanvasCollectionObjectId,
                     CanvasRefDelta: -1,
                     RemoveCanvasIndex: ClientRemoveAllCanvasesIndex),
                 new(
@@ -604,6 +610,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
+                        InsertCanvasResultVariantRefDelta: 1,
                         LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ClearInsertCanvasResultVariant,
@@ -611,7 +618,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasObjectId,
                         canvasOrdinal,
                         frameRawActionCode,
-                        frameActionName));
+                        frameActionName,
+                        InsertCanvasResultVariantRefDelta: -1));
+                    AddLoadCanvasArgumentVariantCleanupOperations(
+                        operations,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
                         targetLayerObjectId,
@@ -644,6 +659,34 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return operations;
         }
+
+        private static void AddLoadCanvasArgumentVariantCleanupOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int canvasObjectId,
+            int canvasOrdinal,
+            int? rawActionCode,
+            string actionName)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientLoadCanvasArgumentVariantCount; ordinal++)
+            {
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearLoadCanvasArgumentVariant,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasArgumentVariantOrdinal: ordinal));
+            }
+        }
+
+        public const int ClientLoadCanvasArgumentVariantCount = 5;
 
         internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)
         {
@@ -871,6 +914,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 hash = (hash * 31) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveRemovedCanvasCollectionObjectId(int targetLayerObjectId, int removeCanvasIndex)
+        {
+            if (targetLayerObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 23;
+                hash = (hash * 37) + targetLayerObjectId;
+                hash = (hash * 37) + removeCanvasIndex;
                 return hash == 0 ? 1 : hash;
             }
         }

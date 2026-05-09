@@ -105,6 +105,18 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static Texture2D CreatePixelTexture(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = new Texture2D(device, 1, 1);
+            texture.SetData(new[] { Color.White });
+            return texture;
+        }
+
         private static WzSubProperty ResolveUiSubPropertyFromStringPoolPath(int stringPoolId, params string[] fallbackPathSegments)
         {
             string path = MapleStoryStringPool.GetOrNull(stringPoolId);
@@ -2631,6 +2643,9 @@ namespace HaCreator.MapSimulator.Loaders
             manager.RegisterLazyWindow(MapSimulatorWindowNames.WeddingInvitation, m => RegisterWeddingInvitationWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 3))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.WeddingWishList, m => RegisterWeddingWishListWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 3))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.MapleTv, m => RegisterMapleTvWindow(m, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.NewYearCardSender, m => RegisterNewYearCardSenderWindow(m, uiWindow1Image, basicImage, soundUIImage, device));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.NewYearCardRead, m => RegisterNewYearCardReadWindow(m, uiWindow1Image, basicImage, soundUIImage, device));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.AvatarMegaphoneSendDialog, m => RegisterAvatarMegaphoneSendDialogWindow(m, uiWindow1Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 2))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemMaker, m => RegisterItemMakerWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 5))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.BookCollection, m => RegisterBookCollectionWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 5))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemUpgrade, m => RegisterItemUpgradeWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 6))));
@@ -4369,6 +4384,27 @@ namespace HaCreator.MapSimulator.Loaders
                 manager.RegisterCustomWindow(mapleTvWindow);
             }
         }
+
+        private static void RegisterAvatarMegaphoneSendDialogWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.AvatarMegaphoneSendDialog) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateAvatarMegaphoneSendDialogWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
         private static void RegisterEngagementProposalWindow(
             UIWindowManager manager,
             WzImage uiWindow1Image,
@@ -4613,11 +4649,11 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(entrustedShopProperty, "BtArrange", clickSound, overSound, device), runtime.ArrangeEntrustedShop);
             window.BindButton(LoadButton(entrustedShopProperty, "BtCoin", clickSound, overSound, device), runtime.ClaimEntrustedShopEarnings);
             window.BindButton(LoadButton(entrustedShopProperty, "BtItem", clickSound, overSound, device), () => runtime.TryAutoListEntrustedShopItem(out _));
-            window.BindButton(LoadButton(entrustedShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _));
-            window.BindButton(LoadButton(entrustedShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _));
+            window.BindButton(LoadButton(entrustedShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _), () => runtime.CanRequestEntrustedVisitListDialog);
+            window.BindButton(LoadButton(entrustedShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _), () => runtime.CanRequestEntrustedBlacklistDialog);
             window.BindButton(LoadButton(memberShopProperty, "BtTested", clickSound, overSound, device), () => runtime.TryRenewEntrustedPermit(24 * 60, out _));
-            window.BindButton(LoadButton(memberShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _));
-            window.BindButton(LoadButton(memberShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _));
+            window.BindButton(LoadButton(memberShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _), () => runtime.CanRequestEntrustedVisitListDialog);
+            window.BindButton(LoadButton(memberShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _), () => runtime.CanRequestEntrustedBlacklistDialog);
             window.BindButton(LoadButton(memberShopProperty, "BtOK", clickSound, overSound, device), runtime.ToggleEntrustedLedgerMode);
             window.BindButton(LoadButton(memberShopProperty, "BtCancel", clickSound, overSound, device), window.Hide);
             ConfigureEntrustedChildDialog(
@@ -7616,6 +7652,200 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static void RegisterNewYearCardSenderWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.NewYearCardSender) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateNewYearCardSenderWindow(uiWindow1Image, basicImage, soundUIImage, device);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static void RegisterNewYearCardReadWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.NewYearCardRead) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateNewYearCardReadWindow(uiWindow1Image, basicImage, soundUIImage, device);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static UIWindowBase CreateNewYearCardSenderWindow(
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            WzSubProperty sourceProperty = uiWindow1Image?["NewYearsCard"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            Texture2D searchResultTexture = LoadCanvasTexture(sourceProperty, "backgrnd2", device);
+            if (frameTexture == null || searchResultTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.NewYearCardSender,
+                    "New Year Card",
+                    $"Fallback owner for CUINewYearCardSenderDlg. Missing WZ art: {NewYearCardRuntime.SenderBackgroundPath} or {NewYearCardRuntime.SenderSearchResultBackgroundPath}.",
+                    new Point(NewYearCardRuntime.SenderWindowX, NewYearCardRuntime.SenderWindowY));
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject searchButton = LoadButton(sourceProperty, "BtSearch", btClickSound, btOverSound, device);
+            UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
+
+            NewYearCardSenderWindow window = new NewYearCardSenderWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                new DXObject(0, 0, searchResultTexture, 0),
+                new Point(NewYearCardRuntime.SenderWindowX, NewYearCardRuntime.SenderWindowY));
+
+            if (searchButton != null)
+            {
+                searchButton.X = NewYearCardRuntime.SenderSearchButtonX;
+                searchButton.Y = NewYearCardRuntime.SenderSearchButtonY;
+            }
+
+            if (okButton != null)
+            {
+                okButton.X = NewYearCardRuntime.SenderOkButtonX;
+                okButton.Y = NewYearCardRuntime.SenderOkButtonY;
+            }
+
+            if (cancelButton != null)
+            {
+                cancelButton.X = NewYearCardRuntime.SenderCancelButtonX;
+                cancelButton.Y = NewYearCardRuntime.SenderCancelButtonY;
+            }
+
+            window.InitializeControls(searchButton, okButton, cancelButton);
+            return window;
+        }
+
+        private static UIWindowBase CreateNewYearCardReadWindow(
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            WzSubProperty sourceProperty = uiWindow1Image?["NewYearsCard"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd3", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.NewYearCardRead,
+                    "New Year Card",
+                    $"Fallback owner for CUINewYearCardDlg. Missing WZ art: {NewYearCardRuntime.ReadBackgroundPath}.",
+                    new Point(NewYearCardRuntime.ReadWindowX, NewYearCardRuntime.ReadWindowY));
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject closeButton = LoadButton(sourceProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton != null)
+            {
+                closeButton.X = NewYearCardRuntime.ReadCloseButtonX;
+                closeButton.Y = NewYearCardRuntime.ReadCloseButtonY;
+            }
+
+            NewYearCardReadWindow window = new NewYearCardReadWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                new Point(NewYearCardRuntime.ReadWindowX, NewYearCardRuntime.ReadWindowY));
+            window.InitializeCloseButton(closeButton);
+            return window;
+        }
+
+        private static UIWindowBase CreateAvatarMegaphoneSendDialogWindow(
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty sourceProperty = uiWindow1Image?["AvatarMegaphone"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AvatarMegaphoneSendDialog,
+                    "Avatar Megaphone",
+                    "Fallback owner for the CUIAvatarMegaphone send dialog.",
+                    position);
+            }
+
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AvatarMegaphoneSendDialog,
+                    "Avatar Megaphone",
+                    "AvatarMegaphone/backgrnd was unavailable, so the simulator is using a placeholder window instead.",
+                    position);
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
+            if (okButton == null || cancelButton == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AvatarMegaphoneSendDialog,
+                    "Avatar Megaphone",
+                    "AvatarMegaphone OK/Cancel controls were unavailable in this UI dataset.",
+                    position);
+            }
+
+            WzSubProperty checkBoxProperty = basicImage?["CheckBox"] as WzSubProperty;
+            AvatarMegaphoneSendDialogWindow window = new AvatarMegaphoneSendDialogWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                CreatePixelTexture(device),
+                LoadCanvasTexture(checkBoxProperty, "0", device),
+                LoadCanvasTexture(checkBoxProperty, "1", device),
+                position);
+
+            // CUIAvatarMegaphone::OnCreate places these controls at fixed client coordinates.
+            okButton.X = 52;
+            okButton.Y = 170;
+            cancelButton.X = 102;
+            cancelButton.Y = 170;
+            window.InitializeControls(okButton, cancelButton);
+            return window;
+        }
+
         private static EngagementProposalWindow CreateEngagementProposalWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
@@ -7995,16 +8225,34 @@ namespace HaCreator.MapSimulator.Loaders
                 chatFrames[2] = heartChatFrames;
             }
 
+            IReadOnlyList<MapleTvAnimationFrame> onFrames = LoadMapleTvAnimationFrames(mapleTvImage["TVon"] as WzSubProperty, device);
+            IReadOnlyList<MapleTvAnimationFrame> basicFrames = LoadMapleTvAnimationFrames(mapleTvImage["TVbasic"] as WzSubProperty, device);
+            IReadOnlyList<MapleTvAnimationFrame> offFrames = LoadMapleTvAnimationFrames(mapleTvImage["TVoff"] as WzSubProperty, device);
+            IReadOnlyList<MapleTvAnimationFrame>[] mediaFrameGroups = mediaFrames.Values.ToArray();
+            int clientSurfaceWidth = MapleTvWindow.ResolveClientSurfaceWidthFromFrames(
+                240,
+                mediaFrameGroups.Concat(new[] { onFrames, basicFrames, offFrames }).ToArray());
+            int clientMediaSurfaceHeight = MapleTvWindow.ResolveClientSurfaceHeightFromFrames(
+                180,
+                mediaFrameGroups);
+            int clientIdleSurfaceHeight = MapleTvWindow.ResolveClientSurfaceHeightFromFrames(
+                90,
+                onFrames,
+                basicFrames,
+                offFrames);
 
             return new MapleTvVisualAssets(
-                LoadMapleTvAnimationFrames(mapleTvImage["TVon"] as WzSubProperty, device),
-                LoadMapleTvAnimationFrames(mapleTvImage["TVbasic"] as WzSubProperty, device),
-                LoadMapleTvAnimationFrames(mapleTvImage["TVoff"] as WzSubProperty, device),
+                onFrames,
+                basicFrames,
+                offFrames,
                 chatFrames,
                 mediaFrames,
                 ResolveDefaultMapleTvMediaIndex(mediaFrames, explicitWzDefaultMediaIndex),
                 mediaFrames.Keys.ToArray(),
-                explicitWzDefaultMediaIndex);
+                explicitWzDefaultMediaIndex,
+                clientSurfaceWidth,
+                clientMediaSurfaceHeight,
+                clientIdleSurfaceHeight);
         }
 
 

@@ -40,6 +40,7 @@ public static class ClientShootAmmoResolver
     private const int SpecialArrowWeaponItemId = 1472063;
     private const int FirePelletItemFamily = 2331;
     private const int IcePelletItemFamily = 2332;
+    private const int ClientSupportBulletItemIdBase = 2069999;
 
     public static bool TryResolveSelection(
         IReadOnlyList<InventorySlotData> useSlots,
@@ -50,6 +51,27 @@ public static class ClientShootAmmoResolver
         int requiredSkillAmmoItemId,
         out ShootAmmoSelection selection)
     {
+        return TryResolveSelection(
+            useSlots,
+            cashSlots,
+            weaponCode,
+            weaponItemId,
+            requiredAmmoCount,
+            requiredSkillAmmoItemId,
+            activeBulletSupportValue: 0,
+            out selection);
+    }
+
+    public static bool TryResolveSelection(
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
+        int activeBulletSupportValue,
+        out ShootAmmoSelection selection)
+    {
         selection = new ShootAmmoSelection();
         int normalizedRequiredAmmoCount = requiredAmmoCount > 0 ? requiredAmmoCount : 1;
         int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
@@ -57,6 +79,30 @@ public static class ClientShootAmmoResolver
         bool excludeElementalPelletFallbacks = true;
 
         TryResolveCashAmmoSlot(cashSlots, weaponCode, weaponItemId, out int cashSlotIndex, out int cashItemId);
+
+        int supportBulletItemId = ResolveClientSupportBulletItemId(activeBulletSupportValue);
+        if (supportBulletItemId > 0)
+        {
+            int supportBulletSlotIndex = FindSlotIndexByItemId(
+                useSlots,
+                supportBulletItemId,
+                preferredClientSlotPosition: 0,
+                minimumQuantity: 1);
+            selection = new ShootAmmoSelection
+            {
+                UseSlotIndex = supportBulletSlotIndex,
+                UseItemId = supportBulletItemId,
+                CashSlotIndex = cashSlotIndex,
+                CashItemId = cashItemId,
+                QueuedUseSlotIndex = ToClientSlotPosition(supportBulletSlotIndex),
+                QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
+            };
+
+            if (supportBulletSlotIndex >= 0)
+            {
+                return true;
+            }
+        }
 
         if (usesClientSpecialPelletSkill
             && TryResolveSpecialPelletUseAmmoSlot(
@@ -200,19 +246,39 @@ public static class ClientShootAmmoResolver
         int weaponItemId,
         int requiredSkillAmmoItemId)
     {
+        return RefreshQueuedSelectionSlotMetadata(
+            queuedSelection,
+            useSlots,
+            cashSlots,
+            weaponCode,
+            weaponItemId,
+            requiredSkillAmmoItemId,
+            activeBulletSupportValue: 0);
+    }
+
+    public static ShootAmmoSelection RefreshQueuedSelectionSlotMetadata(
+        ShootAmmoSelection queuedSelection,
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        int requiredSkillAmmoItemId,
+        int activeBulletSupportValue)
+    {
         if (queuedSelection == null)
         {
             return null;
         }
 
         int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
+        int supportBulletItemId = ResolveClientSupportBulletItemId(activeBulletSupportValue);
         int queuedUseItemId = NormalizeQueuedUseItemIdForClientSpecialPelletSkill(
-            queuedSelection.UseItemId,
+            supportBulletItemId > 0 ? supportBulletItemId : queuedSelection.UseItemId,
             normalizedRequiredSkillAmmoItemId);
 
         int refreshedUseSlotIndex = -1;
         if (queuedUseItemId > 0
-            && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedUseItemId))
+            && (supportBulletItemId > 0 || IsCompatibleBulletItem(weaponCode, weaponItemId, queuedUseItemId)))
         {
             int resolvedUseSlotIndex = FindSlotIndexByItemId(
                 useSlots,
@@ -268,13 +334,39 @@ public static class ClientShootAmmoResolver
         bool requiresUseAmmo,
         out ShootAmmoSelection refreshedSelection)
     {
+        return TryRefreshQueuedSelectionForExecution(
+            queuedSelection,
+            useSlots,
+            cashSlots,
+            weaponCode,
+            weaponItemId,
+            requiredAmmoCount,
+            requiredSkillAmmoItemId,
+            activeBulletSupportValue: 0,
+            requiresUseAmmo,
+            out refreshedSelection);
+    }
+
+    public static bool TryRefreshQueuedSelectionForExecution(
+        ShootAmmoSelection queuedSelection,
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
+        int activeBulletSupportValue,
+        bool requiresUseAmmo,
+        out ShootAmmoSelection refreshedSelection)
+    {
         refreshedSelection = RefreshQueuedSelectionSlotMetadata(
             queuedSelection,
             useSlots,
             cashSlots,
             weaponCode,
             weaponItemId,
-            requiredSkillAmmoItemId);
+            requiredSkillAmmoItemId,
+            activeBulletSupportValue);
         if (queuedSelection == null)
         {
             return !requiresUseAmmo;
@@ -284,13 +376,19 @@ public static class ClientShootAmmoResolver
         if (requiresUseAmmo)
         {
             int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
+            int supportBulletItemId = ResolveClientSupportBulletItemId(activeBulletSupportValue);
             bool usesClientSpecialPelletSkill = IsClientSpecialPelletSkillAmmoItem(normalizedRequiredSkillAmmoItemId);
             int queuedUseItemId = NormalizeQueuedUseItemIdForClientSpecialPelletSkill(
-                queuedSelection.UseItemId,
+                supportBulletItemId > 0 ? supportBulletItemId : queuedSelection.UseItemId,
                 normalizedRequiredSkillAmmoItemId);
             int refreshedRequiredSkillAmmoItemId = normalizedRequiredSkillAmmoItemId;
             bool excludeElementalPellets = true;
-            if (usesClientSpecialPelletSkill)
+            if (supportBulletItemId > 0)
+            {
+                refreshedRequiredSkillAmmoItemId = 0;
+                excludeElementalPellets = false;
+            }
+            else if (usesClientSpecialPelletSkill)
             {
                 bool queuedElementalPellet = IsElementalPelletItem(queuedUseItemId);
                 refreshedRequiredSkillAmmoItemId = queuedElementalPellet ? normalizedRequiredSkillAmmoItemId : 0;
@@ -306,6 +404,7 @@ public static class ClientShootAmmoResolver
                     refreshedRequiredSkillAmmoItemId,
                     queuedSelection.QueuedUseSlotIndex,
                     excludeElementalPellets,
+                    allowSupportBulletItem: supportBulletItemId > 0,
                     out int refreshedUseSlotIndex))
             {
                 refreshedSelection = new ShootAmmoSelection
@@ -462,10 +561,35 @@ public static class ClientShootAmmoResolver
         bool excludeElementalPellets,
         out int slotIndex)
     {
+        return TryResolveUseAmmoSlotByItemId(
+            useSlots,
+            weaponCode,
+            weaponItemId,
+            itemId,
+            requiredAmmoCount,
+            requiredSkillAmmoItemId,
+            preferredClientSlotPosition,
+            excludeElementalPellets,
+            allowSupportBulletItem: false,
+            out slotIndex);
+    }
+
+    private static bool TryResolveUseAmmoSlotByItemId(
+        IReadOnlyList<InventorySlotData> useSlots,
+        int weaponCode,
+        int weaponItemId,
+        int itemId,
+        int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
+        int preferredClientSlotPosition,
+        bool excludeElementalPellets,
+        bool allowSupportBulletItem,
+        out int slotIndex)
+    {
         slotIndex = -1;
         if (useSlots == null
             || itemId <= 0
-            || !IsCompatibleBulletItem(weaponCode, weaponItemId, itemId)
+            || (!allowSupportBulletItem && !IsCompatibleBulletItem(weaponCode, weaponItemId, itemId))
             || (excludeElementalPellets && IsElementalPelletItem(itemId))
             || !MatchesRequiredSkillAmmoItem(requiredSkillAmmoItemId, itemId))
         {
@@ -665,6 +789,13 @@ public static class ClientShootAmmoResolver
                && normalizedRequiredSkillAmmoItemId / 1000 == IcePelletItemFamily
             ? normalizedRequiredSkillAmmoItemId
             : queuedUseItemId;
+    }
+
+    internal static int ResolveClientSupportBulletItemId(int activeBulletSupportValue)
+    {
+        return activeBulletSupportValue > 0
+            ? ClientSupportBulletItemIdBase + activeBulletSupportValue
+            : 0;
     }
 
     private static bool IsCompatibleBulletItem(int weaponCode, int weaponItemId, int itemId)

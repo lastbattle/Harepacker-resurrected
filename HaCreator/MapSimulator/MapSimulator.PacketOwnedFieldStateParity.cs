@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -650,6 +651,10 @@ namespace HaCreator.MapSimulator
             IReadOnlyDictionary<int, int> AuthoredStateRepeatByIndex,
             PacketOwnedNamedObjectMotionProfile BaseMotionProfile,
             IReadOnlyDictionary<int, PacketOwnedNamedObjectMotionProfile> AuthoredStateMotionByIndex,
+            PacketOwnedNamedObjectVectorAnimationProfile BaseVectorAnimationProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectVectorAnimationProfile> AuthoredStateVectorAnimationByIndex,
+            PacketOwnedNamedObjectAlphaProfile BaseAlphaProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectAlphaProfile> AuthoredStateAlphaByIndex,
             IReadOnlyDictionary<int, PacketOwnedNamedObjectMetadataLane> AuthoredStateMetadataLanesByIndex,
             PacketOwnedNamedObjectMetadataLane MetadataLanes,
             IReadOnlySet<int> AuthoredStateIndexes)
@@ -699,9 +704,27 @@ namespace HaCreator.MapSimulator
                 return BaseMotionProfile;
             }
 
+            public PacketOwnedNamedObjectVectorAnimationProfile ResolveVectorAnimationProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateVectorAnimationByIndex != null &&
+                    AuthoredStateVectorAnimationByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectVectorAnimationProfile vectorProfile) &&
+                    vectorProfile != null)
+                {
+                    return vectorProfile;
+                }
+
+                return BaseVectorAnimationProfile;
+            }
+
             public PacketOwnedNamedObjectMetadataLane ResolveMetadataLanes(int stateIndex)
             {
                 PacketOwnedNamedObjectMetadataLane lanes = MetadataLanes;
+                if (ResolveVectorAnimationProfile(stateIndex) != null)
+                {
+                    lanes |= PacketOwnedNamedObjectMetadataLane.ChangingObject;
+                }
+
                 if (stateIndex >= 0 &&
                     AuthoredStateMetadataLanesByIndex != null &&
                     AuthoredStateMetadataLanesByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectMetadataLane stateLanes))
@@ -731,6 +754,18 @@ namespace HaCreator.MapSimulator
                 if (motionProfile != null)
                 {
                     parts.Add($"selectedMotion={motionProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectVectorAnimationProfile vectorProfile = ResolveVectorAnimationProfile(stateIndex);
+                if (vectorProfile != null)
+                {
+                    parts.Add($"selectedVectorMotion={vectorProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectAlphaProfile alphaProfile = ResolveAlphaProfile(stateIndex);
+                if (alphaProfile != null)
+                {
+                    parts.Add($"selectedAlpha={alphaProfile.BuildDebugText()}");
                 }
 
                 PacketOwnedNamedObjectMetadataLane selectedLanes = ResolveMetadataLanes(stateIndex);
@@ -772,6 +807,26 @@ namespace HaCreator.MapSimulator
                         parts.Add($"stateMotion={string.Join("/", AuthoredStateMotionByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
                     }
 
+                    if (BaseVectorAnimationProfile != null)
+                    {
+                        parts.Add($"baseVectorMotion={BaseVectorAnimationProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateVectorAnimationByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateVectorMotion={string.Join("/", AuthoredStateVectorAnimationByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
+                    if (BaseAlphaProfile != null)
+                    {
+                        parts.Add($"baseAlpha={BaseAlphaProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateAlphaByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateAlpha={string.Join("/", AuthoredStateAlphaByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
                     if (AuthoredStateMetadataLanesByIndex?.Count > 0)
                     {
                         parts.Add($"stateMetadata={string.Join("/", AuthoredStateMetadataLanesByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{FormatMetadataLanes(pair.Value)}"))}");
@@ -796,6 +851,19 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            public PacketOwnedNamedObjectAlphaProfile ResolveAlphaProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateAlphaByIndex != null &&
+                    AuthoredStateAlphaByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectAlphaProfile alphaProfile) &&
+                    alphaProfile != null)
+                {
+                    return alphaProfile;
+                }
+
+                return BaseAlphaProfile;
+            }
+
             private static string FormatMetadataLanes(PacketOwnedNamedObjectMetadataLane lanes)
             {
                 List<string> names = new();
@@ -815,6 +883,222 @@ namespace HaCreator.MapSimulator
                 }
 
                 return names.Count == 0 ? "none" : string.Join("/", names);
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectAlphaProfile(
+            PacketOwnedNamedObjectAlphaRange SharedAlpha,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectAlphaRange> FrameAlphaByIndex)
+        {
+            public static PacketOwnedNamedObjectAlphaProfile FromWzProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                PacketOwnedNamedObjectAlphaRange sharedAlpha = PacketOwnedNamedObjectAlphaRange.FromWzProperty(property);
+                Dictionary<int, PacketOwnedNamedObjectAlphaRange> frameAlphaByIndex = new();
+                foreach (WzImageProperty child in property.WzProperties)
+                {
+                    if (!int.TryParse(child?.Name, NumberStyles.None, CultureInfo.InvariantCulture, out int frameIndex) ||
+                        frameIndex < 0)
+                    {
+                        continue;
+                    }
+
+                    PacketOwnedNamedObjectAlphaRange frameAlpha = PacketOwnedNamedObjectAlphaRange.FromWzProperty(child);
+                    if (frameAlpha != null)
+                    {
+                        frameAlphaByIndex[frameIndex] = frameAlpha;
+                    }
+                }
+
+                return sharedAlpha != null || frameAlphaByIndex.Count > 0
+                    ? new PacketOwnedNamedObjectAlphaProfile(sharedAlpha, frameAlphaByIndex)
+                    : null;
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (SharedAlpha != null)
+                {
+                    parts.Add($"shared={SharedAlpha.BuildDebugText()}");
+                }
+
+                if (FrameAlphaByIndex?.Count > 0)
+                {
+                    parts.Add($"frames={string.Join("|", FrameAlphaByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                }
+
+                return parts.Count == 0 ? "none" : string.Join(";", parts);
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectAlphaRange(byte StartAlpha, byte EndAlpha)
+        {
+            public static PacketOwnedNamedObjectAlphaRange FromWzProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                int? sharedAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "alpha", out int alphaValue)
+                    ? alphaValue
+                    : null;
+                int? startAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "a0", out int a0Value)
+                    ? a0Value
+                    : sharedAlpha;
+                int? endAlpha = TryReadPacketOwnedNamedObjectIntProperty(property, "a1", out int a1Value)
+                    ? a1Value
+                    : sharedAlpha;
+                if (!startAlpha.HasValue && !endAlpha.HasValue)
+                {
+                    return null;
+                }
+
+                byte start = (byte)Math.Clamp(startAlpha ?? endAlpha ?? byte.MaxValue, byte.MinValue, byte.MaxValue);
+                byte end = (byte)Math.Clamp(endAlpha ?? startAlpha ?? start, byte.MinValue, byte.MaxValue);
+                return new PacketOwnedNamedObjectAlphaRange(start, end);
+            }
+
+            public string BuildDebugText()
+            {
+                return StartAlpha == EndAlpha
+                    ? StartAlpha.ToString(CultureInfo.InvariantCulture)
+                    : $"{StartAlpha.ToString(CultureInfo.InvariantCulture)}->{EndAlpha.ToString(CultureInfo.InvariantCulture)}";
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectVectorAnimationProfile(
+            int MoveType,
+            int MoveWidth,
+            int MoveHeight,
+            int MovePeriodMs,
+            bool CenterStart,
+            int Rotate)
+        {
+            public const int DefaultMoveWidth = 100;
+            public const int DefaultMoveHeight = 100;
+            public const int DefaultMovePeriodMs = 5000;
+
+            public static PacketOwnedNamedObjectVectorAnimationProfile FromWzProperty(WzImageProperty property)
+            {
+                WzImageProperty frameProperty = ResolveFirstFrameProperty(property);
+                if (frameProperty == null)
+                {
+                    return null;
+                }
+
+                int moveType = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveType", out int moveTypeValue)
+                    ? moveTypeValue
+                    : 0;
+                int rotate = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "rotate", out int rotateValue)
+                    ? rotateValue
+                    : 0;
+                if (moveType == 0 && rotate == 0)
+                {
+                    return null;
+                }
+
+                int moveWidth = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveW", out int moveWidthValue)
+                    ? moveWidthValue
+                    : DefaultMoveWidth;
+                int moveHeight = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveH", out int moveHeightValue)
+                    ? moveHeightValue
+                    : DefaultMoveHeight;
+                int movePeriod = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "moveP", out int movePeriodValue)
+                    ? movePeriodValue
+                    : DefaultMovePeriodMs;
+                bool centerStart = TryReadPacketOwnedNamedObjectIntProperty(frameProperty, "centerStart", out int centerStartValue) &&
+                    centerStartValue != 0;
+
+                return new PacketOwnedNamedObjectVectorAnimationProfile(
+                    moveType,
+                    moveWidth,
+                    moveHeight,
+                    Math.Max(1, movePeriod),
+                    centerStart,
+                    rotate);
+            }
+
+            public bool TryResolveMoveVector(out int targetOffsetX, out int targetOffsetY, out int durationMs)
+            {
+                durationMs = Math.Max(1, MovePeriodMs);
+                targetOffsetX = 0;
+                targetOffsetY = 0;
+                switch (MoveType)
+                {
+                    case 1:
+                        targetOffsetX = MoveWidth;
+                        break;
+                    case 2:
+                        targetOffsetY = MoveHeight;
+                        break;
+                    case 3:
+                        targetOffsetX = MoveWidth;
+                        targetOffsetY = MoveHeight;
+                        break;
+                    default:
+                        return false;
+                }
+
+                if (CenterStart)
+                {
+                    targetOffsetX /= 2;
+                    targetOffsetY /= 2;
+                }
+
+                return targetOffsetX != 0 || targetOffsetY != 0;
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new()
+                {
+                    $"moveType={MoveType.ToString(CultureInfo.InvariantCulture)}"
+                };
+                if (MoveWidth != DefaultMoveWidth)
+                {
+                    parts.Add($"moveW={MoveWidth.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (MoveHeight != DefaultMoveHeight)
+                {
+                    parts.Add($"moveH={MoveHeight.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (MovePeriodMs != DefaultMovePeriodMs)
+                {
+                    parts.Add($"moveP={MovePeriodMs.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (CenterStart)
+                {
+                    parts.Add("centerStart");
+                }
+
+                if (Rotate != 0)
+                {
+                    parts.Add($"rotate={Rotate.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                return string.Join("/", parts);
+            }
+
+            private static WzImageProperty ResolveFirstFrameProperty(WzImageProperty property)
+            {
+                property = WzInfoTools.GetRealProperty(property);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                return WzInfoTools.GetRealProperty(property["0"]) ?? property;
             }
         }
 

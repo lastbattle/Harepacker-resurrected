@@ -44,6 +44,20 @@ namespace HaCreator.MapSimulator.Managers
             return writer.ToArray();
         }
 
+        public static byte[] BuildCheckSpwResult(byte resultCode, byte? secondaryCode = null, string textValue = null)
+        {
+            using PacketWriter writer = new();
+            writer.Write(resultCode);
+            if (secondaryCode.HasValue)
+            {
+                writer.Write(secondaryCode.Value);
+            }
+
+            WriteMapleString(writer, textValue);
+            writer.Flush();
+            return writer.ToArray();
+        }
+
         private static void WriteMapleString(PacketWriter writer, string value)
         {
             if (string.IsNullOrEmpty(value))

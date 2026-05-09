@@ -8,22 +8,22 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class SocialListOutboundRequestCodec
     {
         private const byte FriendAddSubtype = 1;
-        private const byte FriendDeleteSubtype = 2;
+        private const byte FriendDeleteSubtype = 3;
         private const byte PartyCreateSubtype = 1;
         private const byte PartyInviteSubtype = 4;
-        private const byte PartyWithdrawSubtype = 12;
-        private const byte PartyKickSubtype = 13;
-        private const byte PartyChangeBossSubtype = 21;
+        private const byte PartyWithdrawSubtype = 2;
+        private const byte PartyKickSubtype = 5;
+        private const byte PartyChangeBossSubtype = 6;
         private const byte GuildInviteSubtype = 5;
-        private const byte GuildWithdrawSubtype = 6;
-        private const byte GuildKickSubtype = 7;
-        private const byte GuildGradeChangeSubtype = 29;
-        private const byte AllianceInviteSubtype = 4;
-        private const byte AllianceWithdrawSubtype = 6;
-        private const byte AllianceKickSubtype = 7;
-        private const byte AllianceGradeChangeSubtype = 10;
-        private const byte BlacklistAddSubtype = 1;
-        private const byte BlacklistDeleteSubtype = 2;
+        private const byte GuildWithdrawSubtype = 7;
+        private const byte GuildKickSubtype = 8;
+        private const byte GuildGradeChangeSubtype = 14;
+        private const byte AllianceInviteSubtype = 3;
+        private const byte AllianceWithdrawSubtype = 2;
+        private const byte AllianceKickSubtype = 6;
+        private const byte AllianceGradeChangeSubtype = 9;
+        private const byte BlacklistAddSubtype = 31;
+        private const byte BlacklistDeleteSubtype = 32;
 
         internal static bool TryBuild(
             SocialListOutboundRequestDraft draft,
@@ -116,6 +116,8 @@ namespace HaCreator.MapSimulator.Interaction
                     WriteMapleString(stream, draft.GroupName);
                     break;
                 case SocialListOutboundRequestKind.FriendDelete:
+                    WriteInt32(stream, Math.Max(0, draft.MemberId));
+                    break;
                 case SocialListOutboundRequestKind.PartyInvite:
                 case SocialListOutboundRequestKind.GuildInvite:
                 case SocialListOutboundRequestKind.AllianceInvite:
@@ -125,20 +127,32 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
                 case SocialListOutboundRequestKind.PartyKick:
                 case SocialListOutboundRequestKind.PartyChangeBoss:
+                    WriteInt32(stream, Math.Max(0, draft.MemberId));
+                    break;
                 case SocialListOutboundRequestKind.GuildKick:
-                case SocialListOutboundRequestKind.AllianceKick:
                     WriteInt32(stream, Math.Max(0, draft.MemberId));
                     WriteMapleString(stream, draft.TargetName);
                     break;
-                case SocialListOutboundRequestKind.GuildGradeChange:
+                case SocialListOutboundRequestKind.GuildWithdraw:
+                    WriteInt32(stream, Math.Max(0, draft.MemberId));
+                    WriteMapleString(stream, draft.TargetName);
+                    break;
+                case SocialListOutboundRequestKind.AllianceKick:
+                    WriteInt32(stream, Math.Max(0, draft.MemberId));
+                    WriteInt32(stream, Math.Max(0, draft.SecondaryValue));
+                    break;
                 case SocialListOutboundRequestKind.AllianceGradeChange:
                     WriteInt32(stream, Math.Max(0, draft.MemberId));
                     stream.WriteByte(unchecked((byte)Math.Clamp(draft.Value, -1, 1)));
-                    WriteMapleString(stream, draft.TargetName);
+                    break;
+                case SocialListOutboundRequestKind.GuildGradeChange:
+                    WriteInt32(stream, Math.Max(0, draft.MemberId));
+                    stream.WriteByte((byte)Math.Clamp(draft.Value, 1, 5));
+                    break;
+                case SocialListOutboundRequestKind.PartyWithdraw:
+                    stream.WriteByte(0);
                     break;
                 case SocialListOutboundRequestKind.PartyCreate:
-                case SocialListOutboundRequestKind.PartyWithdraw:
-                case SocialListOutboundRequestKind.GuildWithdraw:
                 case SocialListOutboundRequestKind.AllianceWithdraw:
                     break;
             }

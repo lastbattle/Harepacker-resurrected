@@ -149,8 +149,8 @@ namespace HaCreator.MapSimulator.Interaction
                 "guild remove" => selectedEntry?.IsLocalPlayer == true
                     ? new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildWithdraw, selectedName, selectedMemberId)
                     : new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildKick, selectedName, selectedMemberId),
-                "guild grade up" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, 1),
-                "guild grade down" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, -1),
+                "guild grade up" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, ResolveGuildGradeChangeTarget(selectedEntry, up: true)),
+                "guild grade down" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, ResolveGuildGradeChangeTarget(selectedEntry, up: false)),
                 "alliance invite" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceInvite, selectedName, selectedMemberId),
                 "alliance remove" => selectedEntry?.IsLocalPlayer == true
                     ? new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceWithdraw, selectedName, selectedMemberId)
@@ -161,6 +161,12 @@ namespace HaCreator.MapSimulator.Interaction
                 "blacklist delete" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistDelete, selectedName, selectedMemberId),
                 _ => new SocialListOutboundRequestDraft(ResolveFallbackOutboundKind(tab), selectedName, selectedMemberId)
             };
+        }
+
+        private static int ResolveGuildGradeChangeTarget(SocialEntryState selectedEntry, bool up)
+        {
+            int currentGrade = Math.Clamp(selectedEntry?.ClientGuildGrade ?? 3, 1, 5);
+            return Math.Clamp(up ? currentGrade - 1 : currentGrade + 1, 1, 5);
         }
 
         private static SocialListOutboundRequestKind ResolveFallbackOutboundKind(SocialListTab tab)

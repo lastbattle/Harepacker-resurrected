@@ -429,8 +429,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string soundKey = $"WeaponSfx:{sfx.Trim()}:{WeaponSfxAttackSoundName}";
-            _soundManager.RegisterSound(soundKey, sound);
-            _soundManager.PlaySound(soundKey);
+            _soundManager.TryPlayClientSoundEffect(
+                soundKey,
+                sound,
+                startVolumeScale: 1f,
+                loop: false,
+                suppressWhileActive: false,
+                out _,
+                out _);
         }
 
         internal WzBinaryProperty ResolveClientOwnedWeaponSfx(string sfx)
@@ -945,12 +951,16 @@ namespace HaCreator.MapSimulator.Character
         internal bool TryApplyRemoteAffectedAreaPlayerSkillStatus(
             SkillData skill,
             SkillLevelData levelData,
-            int currentTime)
+            int currentTime,
+            int sourceOwnerId = 0,
+            int sourceAreaObjectId = 0)
         {
             return _mobStatusController?.TryApplyRemoteAffectedAreaPlayerSkill(
                 skill,
                 levelData,
-                currentTime) == true;
+                currentTime,
+                sourceOwnerId,
+                sourceAreaObjectId) == true;
         }
 
         internal void PlayMobSkillHitEffect(int skillId, int skillLevel, int currentTime)

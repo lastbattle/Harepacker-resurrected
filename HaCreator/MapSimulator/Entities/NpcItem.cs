@@ -2,6 +2,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -239,9 +240,34 @@ namespace HaCreator.MapSimulator.Entities
 
         public void ApplyPacketMove(int oneTimeAction, int chatIndex)
         {
+            ApplyPacketMove(oneTimeAction, chatIndex, null);
+        }
+
+        public void ApplyPacketMove(int oneTimeAction, int chatIndex, IReadOnlyList<MovePathElement> movePathElements)
+        {
             LastPacketMoveAction = oneTimeAction;
             LastPacketChatIndex = chatIndex;
             ApplyPacketMoveAction(oneTimeAction);
+            if (movePathElements?.Count > 0)
+            {
+                MovementInfo?.ApplyPacketMovePath(movePathElements);
+                MovePathElement tail = movePathElements.Last();
+                for (int i = movePathElements.Count - 1; i >= 0; i--)
+                {
+                    MovePathElement candidate = movePathElements[i];
+                    if (candidate.X != 0 || candidate.Y != 0)
+                    {
+                        SetRenderPositionOverride(candidate.X, candidate.Y);
+                        break;
+                    }
+                }
+
+                if (tail.FootholdId != 0)
+                {
+                    PacketFootholdId = tail.FootholdId;
+                }
+            }
+
             if (oneTimeAction >= 0)
             {
                 string actionName = NpcClientActionSetLoader.ResolveClientActionName(
@@ -288,6 +314,11 @@ namespace HaCreator.MapSimulator.Entities
         {
             _imitatedName = string.IsNullOrWhiteSpace(name) ? null : name;
             _imitatedAvatarLookPayload = avatarLookPayload?.ToArray() ?? Array.Empty<byte>();
+        }
+
+        public void ReplaceNameTooltip(NameTooltipItem tooltip)
+        {
+            _nameTooltip = tooltip;
         }
 
         public void ClearRenderPositionOverride()
@@ -467,11 +498,6 @@ namespace HaCreator.MapSimulator.Entities
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (!PacketEnabled)
-            {
-                return;
-            }
-
             // Calculate position offset from movement
             int positionOffsetX = 0;
             int positionOffsetY = 0;
@@ -509,7 +535,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             // Draw name tooltip
-            if (_nameTooltip != null)
+            if (PacketEnabled && _nameTooltip != null)
             {
                 _nameTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
                     adjustedMapShiftX, adjustedMapShiftY, centerX, centerY,
@@ -519,7 +545,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             // Draw description tooltip
-            if (_npcDescTooltip != null)
+            if (PacketEnabled && _npcDescTooltip != null)
             {
                 _npcDescTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
                     adjustedMapShiftX, adjustedMapShiftY, centerX, centerY,

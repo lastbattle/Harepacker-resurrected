@@ -452,6 +452,7 @@ namespace HaCreator.MapSimulator
 
                 bool cakePieMouseConsumed = false;
                 bool memoryGameMouseConsumed = false;
+                bool monsterCarnivalSubDialogMouseConsumed = false;
                 bool tournamentMatchTableMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
                 {
@@ -487,6 +488,29 @@ namespace HaCreator.MapSimulator
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.Minigames.MonsterCarnival.HandleSeason2SubDialogMouseClick(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        currTickCount,
+                        out string monsterCarnivalSubDialogMouseMessage))
+                {
+                    monsterCarnivalSubDialogMouseConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(monsterCarnivalSubDialogMouseMessage))
+                    {
+                        _chat.AddMessage(monsterCarnivalSubDialogMouseMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
+
+
+                if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
+                    !npcOverlayResult.Consumed &&
+                    !tournamentMatchTableMouseConsumed &&
+                    !monsterCarnivalSubDialogMouseConsumed &&
+                    newMouseState.LeftButton == ButtonState.Released &&
+                    _oldMouseState.LeftButton == ButtonState.Pressed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
                     _specialFieldRuntime.SpecialEffects.CakePie.HandleMouseClick(
                         new Point(newMouseState.X, newMouseState.Y),
                         _renderParams.RenderWidth,
@@ -506,6 +530,7 @@ namespace HaCreator.MapSimulator
                     !dedicatedOwnerMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
+                    !monsterCarnivalSubDialogMouseConsumed &&
                     !cakePieMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
@@ -530,6 +555,7 @@ namespace HaCreator.MapSimulator
                     !npcOverlayResult.Consumed &&
                     !cakePieMouseConsumed &&
                     !memoryGameMouseConsumed &&
+                    !monsterCarnivalSubDialogMouseConsumed &&
                     !tournamentMatchTableMouseConsumed)
                 {
                     // Avoid leaking the overlay-dismissal click into world interactions while
@@ -563,6 +589,8 @@ namespace HaCreator.MapSimulator
             _weddingWishListController.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);
+            _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            _avatarMegaphoneRuntime.Update(currTickCount);
             FlushPendingMapleTvSendResultFeedback(currTickCount);
 
 

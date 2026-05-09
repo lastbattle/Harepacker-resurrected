@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator
             string enabledText = _expeditionIntermediaryOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
             string opcodeText = $"{_expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode} inbound / {ExpeditionIntermediaryPacketTable.OutboundRequestOpcode} outbound";
+            string recoveredOpcodeText = PacketOwnedSocialUtilityPacketTable.DescribeRecoveredInboundOpcodeSet("Expedition");
             string configuredTarget = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery
                 ? _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.HasValue
                     ? $"discover remote port {_expeditionIntermediaryOfficialSessionBridgeConfiguredRemotePort} with local port {_expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.Value}"
@@ -129,7 +130,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _expeditionIntermediaryOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_expeditionIntermediaryOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_expeditionIntermediaryOfficialSessionBridgeConfiguredListenPort}";
-            return $"Expedition intermediary session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, opcode {opcodeText}. {_expeditionIntermediaryOfficialSessionBridge.DescribeStatus()}";
+            return $"Expedition intermediary session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, opcode {opcodeText}. {recoveredOpcodeText} {_expeditionIntermediaryOfficialSessionBridge.DescribeStatus()}";
         }
 
         private bool CanAutoSendExpeditionOutboundRequest()

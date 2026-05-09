@@ -696,6 +696,8 @@ namespace HaCreator.MapSimulator
         private const string LoginEntryGameInSoundWzPath = "Sound/Game.img/GameIn";
         private const string MemoryGameReadyClickSoundKey = "MemoryGameReadyClick";
         private const int MemoryGameReadyClickSoundStringPoolId = 0x649;
+        private const string MemoryGameTimerWarningSoundKey = "MemoryGameTimerWarning";
+        private const int MemoryGameTimerWarningSoundStringPoolId = 0x648;
         private const int MiniGameSoundPrefixStringPoolId = 0x8C4;
         private const int ViewAllCharWorldSelectFallbackStringPoolId = 0xFBD;
         private const int ViewAllCharFailureStringPoolId = 0xFBE;
@@ -861,6 +863,7 @@ namespace HaCreator.MapSimulator
         private LoginUtilityDialogVisualStyle _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogFrameVariant _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+        private bool _loginUtilityDialogPrimaryEnabled = true;
         private bool _loginUtilityDialogTracksDirectionModeOwner;
         private int _loginUtilityDialogTargetIndex = -1;
         private int? _loginUtilityDialogNoticeTextIndex;
@@ -924,6 +927,7 @@ namespace HaCreator.MapSimulator
             mapTransferWindow.WorldMapRequested = HandleMapTransferWorldMapRequested;
             mapTransferWindow.ManualMapMoveRequested = MoveToManualMapTransferDestination;
             mapTransferWindow.PromptMapLabelResolver = ResolveMapTransferPromptLabel;
+            mapTransferWindow.RegisterConfirmationPreflight = CanOpenMapTransferRegisterConfirmation;
             mapTransferWindow.SetRegisterPromptMapId(_mapTransferManualDestination?.MapId ?? (_mapBoard?.MapInfo?.id ?? 0));
             mapTransferWindow.SetCurrentMapName(GetCurrentMapTransferDisplayName());
             mapTransferWindow.SetStatusMessage(GetMapTransferStatusMessage());
@@ -1755,43 +1759,23 @@ namespace HaCreator.MapSimulator
 
         private void RegisterCurrentMapTransferDestination(MapTransferUI.DestinationEntry selectedEntry)
         {
-            if (!TryResolveMapTransferRegisterTarget(out int targetMapId, out string targetDisplayName))
+            if (!TryPrepareMapTransferRegisterRequest(
+                    selectedEntry,
+                    showClientPreflightNotice: true,
+                    out CharacterBuild activeBuild,
+                    out MapTransferDestinationBook destinationBook,
+                    out int targetMapId,
+                    out int targetSlotIndex,
+                    out string targetDisplayName))
             {
                 return;
             }
-
-            CharacterBuild activeBuild = GetActiveMapTransferCharacterBuild();
-            MapTransferDestinationBook destinationBook = GetCurrentMapTransferDestinationBook();
-            IReadOnlyList<int> snapshotFieldList = _mapTransferRuntime.SnapshotFieldList(activeBuild, destinationBook);
-            int targetSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
-            if (targetSlotIndex < 0 && !HasMapTransferEmptySlot(snapshotFieldList))
-            {
-                _chat.AddMessage(MapTransferClientParityText.ResolveRegisterListFullNotice(), new Color(255, 228, 151), Environment.TickCount);
-                RefreshMapTransferWindow();
-                return;
-            }
-
-            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
-            if (targetMapId == currentMapId)
-            {
-                if (TryFindMapTransferSlot(snapshotFieldList, targetMapId, out int existingSlotIndex))
-                {
-                    _chat.AddMessage(MapTransferClientParityText.ResolveCurrentMapAlreadyRegisteredNotice(), new Color(255, 228, 151), Environment.TickCount);
-                    RefreshMapTransferWindow();
-                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI focusWindow)
-                    {
-                        focusWindow.SetSelectedDestinationFocus(targetMapId, existingSlotIndex);
-                    }
-
-                    return;
-                }
-            }
-
 
             if (!string.IsNullOrWhiteSpace(targetDisplayName))
             {
                 _mapTransferTitleCache[targetMapId] = targetDisplayName;
             }
+
             MapTransferRuntimeRequest request = new()
             {
                 Type = MapTransferRuntimeRequestType.Register,
@@ -1852,6 +1836,91 @@ namespace HaCreator.MapSimulator
             {
                 _chat.AddMessage(dispatchStatus, new Color(180, 220, 255), Environment.TickCount);
             }
+        }
+
+        private bool CanOpenMapTransferRegisterConfirmation(MapTransferUI.DestinationEntry selectedEntry)
+        {
+            return TryPrepareMapTransferRegisterRequest(
+                selectedEntry,
+                showClientPreflightNotice: true,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _);
+        }
+
+        private bool TryPrepareMapTransferRegisterRequest(
+            MapTransferUI.DestinationEntry selectedEntry,
+            bool showClientPreflightNotice,
+            out CharacterBuild activeBuild,
+            out MapTransferDestinationBook destinationBook,
+            out int targetMapId,
+            out int targetSlotIndex,
+            out string targetDisplayName)
+        {
+            activeBuild = null;
+            destinationBook = GetCurrentMapTransferDestinationBook();
+            targetMapId = 0;
+            targetSlotIndex = -1;
+            targetDisplayName = string.Empty;
+
+            if (!TryResolveMapTransferRegisterTarget(out targetMapId, out targetDisplayName))
+            {
+                return false;
+            }
+
+            activeBuild = GetActiveMapTransferCharacterBuild();
+            IReadOnlyList<int> snapshotFieldList = _mapTransferRuntime.SnapshotFieldList(activeBuild, destinationBook);
+            targetSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
+
+            if (targetSlotIndex < 0 && !HasMapTransferEmptySlot(snapshotFieldList))
+            {
+                if (showClientPreflightNotice)
+                {
+                    _chat.AddMessage(MapTransferClientParityText.ResolveRegisterListFullNotice(), new Color(255, 228, 151), Environment.TickCount);
+                    RefreshMapTransferWindow();
+                }
+
+                return false;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+            if (targetMapId == currentMapId &&
+                TryFindMapTransferSlot(snapshotFieldList, targetMapId, out int existingSlotIndex))
+            {
+                if (showClientPreflightNotice)
+                {
+                    _chat.AddMessage(MapTransferClientParityText.ResolveCurrentMapAlreadyRegisteredNotice(), new Color(255, 228, 151), Environment.TickCount);
+                    RefreshMapTransferWindow();
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI focusWindow)
+                    {
+                        focusWindow.SetSelectedDestinationFocus(targetMapId, existingSlotIndex);
+                    }
+                }
+
+                return false;
+            }
+
+            if (!IsClientMapTransferRegisterMapFamily(targetMapId))
+            {
+                if (showClientPreflightNotice)
+                {
+                    _chat.AddMessage(MapTransferClientParityText.ResolveCannotSaveDestinationNotice(), new Color(255, 228, 151), Environment.TickCount);
+                    RefreshMapTransferWindow();
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool IsClientMapTransferRegisterMapFamily(int mapId)
+        {
+            return mapId > 0 &&
+                   mapId / 100_000_000 != 0 &&
+                   (mapId / 1_000_000) % 100 != 9;
         }
 
         private bool TryResolveMapTransferRegisterTarget(
@@ -4153,6 +4222,52 @@ namespace HaCreator.MapSimulator
         {
             WireMapleTvWindowData();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MapleTv);
+        }
+
+        private void WireAvatarMegaphoneSendDialogData()
+        {
+            if (uiWindowManager?.GetOrRegisterWindow(MapSimulatorWindowNames.AvatarMegaphoneSendDialog) is not AvatarMegaphoneSendDialogWindow dialogWindow)
+            {
+                return;
+            }
+
+            _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            dialogWindow.SetSnapshotProvider(_avatarMegaphoneRuntime.BuildSendDialogSnapshot);
+            dialogWindow.SetActions(
+                (text, whisper) =>
+                {
+                    string draftMessage = _avatarMegaphoneRuntime.ApplySendDialogDraft(text, whisper);
+                    string publishMessage = PublishAvatarMegaphoneDraft();
+                    ShowUtilityFeedbackMessage(publishMessage);
+                    return publishMessage.StartsWith("Avatar megaphone activated", StringComparison.Ordinal)
+                        ? publishMessage
+                        : draftMessage;
+                },
+                () => ShowUtilityFeedbackMessage("Closed avatar megaphone send dialog."));
+            dialogWindow.SetFont(_fontChat);
+        }
+
+        private void ShowAvatarMegaphoneSendDialog()
+        {
+            WireAvatarMegaphoneSendDialogData();
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.AvatarMegaphoneSendDialog);
+        }
+
+        private string PublishAvatarMegaphoneDraft()
+        {
+            _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            if (!_avatarMegaphoneRuntime.TryActivate(currTickCount, out string chatLogLine, out string message))
+            {
+                return message;
+            }
+
+            _chat?.AddClientChatMessage(chatLogLine, currTickCount, 18);
+            if (_avatarMegaphoneRuntime.ShouldTriggerTremble)
+            {
+                _screenEffects.TriggerTremble(10, false, 0, 0, true, currTickCount);
+            }
+
+            return message;
         }
 
 
@@ -14828,7 +14943,7 @@ namespace HaCreator.MapSimulator
 
                 ResolveLoginRosterAccountId(),
 
-                null,
+                ResolvePersistedLoginExtraCharInfoResult(),
 
                 _loginAccountStorageExpansionHistory);
             SyncPacketOwnedAccountCharacterCountFromRoster();
@@ -14894,7 +15009,7 @@ namespace HaCreator.MapSimulator
                 _loginAccountSpwEnabled,
                 _loginAccountSecondaryPassword,
                 ResolveLoginRosterAccountId(),
-                null,
+                ResolvePersistedLoginExtraCharInfoResult(),
                 _loginAccountStorageExpansionHistory);
         }
 
@@ -15864,6 +15979,11 @@ namespace HaCreator.MapSimulator
             if (utilityDialogWindow.IsVisible)
             {
                 _loginUtilityDialogInputValue = utilityDialogWindow.InputValue ?? string.Empty;
+                if (_loginUtilityDialogAction == LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose)
+                {
+                    _loginUtilityDialogPrimaryEnabled = ShouldEnableFieldMessageBoxChalkboardDialogPrimary(_loginUtilityDialogInputValue);
+                    _fieldMessageBoxRuntime.TrySetChalkboardDialogText(_loginUtilityDialogInputValue, out _);
+                }
             }
 
 
@@ -15882,7 +16002,8 @@ namespace HaCreator.MapSimulator
                 _loginUtilityDialogSoftKeyboardType,
                 _loginUtilityDialogVisualStyle,
                 _loginUtilityDialogFrameVariant,
-                _loginUtilityDialogInputBoundsOverride);
+                _loginUtilityDialogInputBoundsOverride,
+                _loginUtilityDialogPrimaryEnabled);
             if (_loginUtilityDialogTracksDirectionModeOwner)
             {
                 ShowWindow(
@@ -15916,7 +16037,8 @@ namespace HaCreator.MapSimulator
             Rectangle? inputBoundsOverride = null,
             string returnWindowName = null,
             bool trackDirectionModeOwner = false,
-            bool hasExplicitTrackDirectionModeOwner = false)
+            bool hasExplicitTrackDirectionModeOwner = false,
+            bool primaryButtonEnabled = true)
         {
             if (!string.IsNullOrWhiteSpace(returnWindowName))
             {
@@ -15941,6 +16063,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogInputMasked = inputMasked;
             _loginUtilityDialogInputMaxLength = Math.Max(0, inputMaxLength);
             _loginUtilityDialogInputValue = inputValue ?? string.Empty;
+            _loginUtilityDialogPrimaryEnabled = primaryButtonEnabled;
             _loginUtilityDialogSoftKeyboardType = softKeyboardType;
             _loginUtilityDialogVisualStyle = visualStyle;
             _loginUtilityDialogFrameVariant = ResolveLoginUtilityDialogFrameVariant(
@@ -16133,6 +16256,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
             _loginUtilityDialogTracksDirectionModeOwner = false;
             _loginUtilityDialogInputValue = string.Empty;
+            _loginUtilityDialogPrimaryEnabled = true;
             _loginUtilityDialogInputBoundsOverride = null;
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow utilityDialogWindow)
             {
@@ -21249,7 +21373,7 @@ namespace HaCreator.MapSimulator
 
                 int pickupIntervalMs = ResolveMobDropPickupIntervalMs(dropItemPeriodSeconds);
                 if (_lastMobPickupTimes.TryGetValue(mob.PoolId, out int lastPickupTime)
-                    && currentTime - lastPickupTime < pickupIntervalMs)
+                    && !HasMobDropPickupIntervalElapsed(currentTime, lastPickupTime, pickupIntervalMs))
                 {
                     continue;
                 }
@@ -21291,6 +21415,16 @@ namespace HaCreator.MapSimulator
             return dropItemPeriodSeconds > 0
                 ? Math.Clamp(dropItemPeriodSeconds, 1, 60) * 1000
                 : DEFAULT_MOB_PICKUP_INTERVAL_MS;
+        }
+
+        internal static bool HasMobDropPickupIntervalElapsedForTests(int currentTime, int lastPickupTime, int pickupIntervalMs)
+        {
+            return HasMobDropPickupIntervalElapsed(currentTime, lastPickupTime, pickupIntervalMs);
+        }
+
+        private static bool HasMobDropPickupIntervalElapsed(int currentTime, int lastPickupTime, int pickupIntervalMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, lastPickupTime) >= Math.Max(0, pickupIntervalMs);
         }
 
         private static bool TryResolveMobPickupTemplateId(MobItem mob, out int mobTemplateId)
@@ -28888,6 +29022,7 @@ namespace HaCreator.MapSimulator
                 marker.WorldY = remoteMarker.WorldY;
                 marker.MarkerType = remoteMarker.MarkerType;
                 marker.ShowDirectionOverlay = remoteMarker.ShowDirectionOverlay;
+                marker.DirectionOverlayOnly = remoteMarker.DirectionOverlayOnly;
                 string remoteMarkerName = remoteMarker.TooltipText;
                 TryRecordPacketOwnedMinimapMarkerNameForSuppression(packetOwnedHelperNames, remoteMarkerName);
                 marker.TooltipText = !string.IsNullOrWhiteSpace(remoteMarkerName)
@@ -28926,6 +29061,7 @@ namespace HaCreator.MapSimulator
                 marker.WorldY = position.Y;
                 marker.MarkerType = ResolveMinimapTrackedUserMarkerType(state);
                 marker.ShowDirectionOverlay = true;
+                marker.DirectionOverlayOnly = false;
                 marker.TooltipText = BuildMinimapTrackedUserTooltipText(state);
             }
 
@@ -30074,6 +30210,11 @@ namespace HaCreator.MapSimulator
         private void PlayMemoryGameReadyClickSE()
         {
             _soundManager?.PlaySound(MemoryGameReadyClickSoundKey);
+        }
+
+        private void PlayMemoryGameTimerWarningSE()
+        {
+            _soundManager?.PlaySound(MemoryGameTimerWarningSoundKey);
         }
 
 
@@ -33335,15 +33476,16 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalUpInteract(int currentTime)
         {
-            if (ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown())
+            PassiveTransferFieldHorizontalOnKeyDownDecision horizontalOnKeyDownDecision =
+                EvaluatePassiveTransferFieldHorizontalOnKeyDown();
+            if (horizontalOnKeyDownDecision.ShouldClearQueuedRetry)
             {
-                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForHorizontalQueuedCancel(true))
+                if (horizontalOnKeyDownDecision.ShouldStopSkillMacro)
                 {
                     StopSkillMacroForHandleUpKeyDown();
                 }
 
-                ConsumePassiveTransferRequestFromLifecycleOwner(
-                    PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown);
+                ConsumePassiveTransferRequestFromLifecycleOwner(horizontalOnKeyDownDecision.ClearOwner);
             }
 
             PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
@@ -33563,29 +33705,35 @@ namespace HaCreator.MapSimulator
             ClearPassiveTransferRequest();
         }
 
-        private bool ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown()
+        private PassiveTransferFieldHorizontalOnKeyDownDecision EvaluatePassiveTransferFieldHorizontalOnKeyDown()
         {
             PlayerInput input = _playerManager?.Input;
             if (input == null)
             {
-                return false;
+                return PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
+                    _passiveTransferRequestPending,
+                    leftKeyPressed: false,
+                    rightKeyPressed: false);
             }
 
-            return ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown(
+            return EvaluatePassiveTransferFieldHorizontalOnKeyDown(
                 input,
                 _passiveTransferRequestPending);
         }
 
-        internal static bool ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown(
+        internal static PassiveTransferFieldHorizontalOnKeyDownDecision EvaluatePassiveTransferFieldHorizontalOnKeyDown(
             PlayerInput input,
             bool hasPendingRequest)
         {
             if (input == null)
             {
-                return false;
+                return PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
+                    hasPendingRequest,
+                    leftKeyPressed: false,
+                    rightKeyPressed: false);
             }
 
-            return PassiveTransferFieldReadinessEvaluator.ShouldCancelQueuedRetryOnHorizontalKeyDown(
+            return PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
                 hasPendingRequest,
                 input.IsPressed(InputAction.MoveLeft),
                 input.IsPressed(InputAction.MoveRight));
@@ -34749,7 +34897,10 @@ namespace HaCreator.MapSimulator
         internal static bool IsCollisionCustomImpactPortalField(MapleLib.WzLib.WzStructure.Data.FieldType? fieldType, int mapId)
         {
             return mapId == ChaosZakumPortalSessionFallbackFieldId
-                || fieldType is MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_PARTYRAID
+                || fieldType is MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_BATTLEFIELD
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_SPACEGAGA
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_WITCHTOWER
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_PARTYRAID
                 or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_PARTYRAID_BOSS
                 or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_CHAOSZAKUM
                 or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_WAITINGPARTYQUEST
@@ -43211,6 +43362,7 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewShadowLayerOrdinal = buffEntry.TemporaryStatViewShadowLayerOrdinal;
             renderData.IsTemporaryStatViewReleased = buffEntry.IsTemporaryStatViewReleased;
             renderData.TemporaryStatViewReleaseTime = buffEntry.TemporaryStatViewReleaseTime;
+            renderData.TemporaryStatViewTerminalReleaseSequence = buffEntry.TemporaryStatViewTerminalReleaseSequence;
             renderData.TemporaryStatViewObjectReleaseSequence = buffEntry.TemporaryStatViewObjectReleaseSequence;
             renderData.TemporaryStatViewParentLayerReleaseSequence = buffEntry.TemporaryStatViewParentLayerReleaseSequence;
             renderData.TemporaryStatViewMainLayerReleaseSequence = buffEntry.TemporaryStatViewMainLayerReleaseSequence;
@@ -44048,6 +44200,21 @@ namespace HaCreator.MapSimulator
                 gameTime,
                 _renderParams.RenderWidth,
                 tickCount);
+        }
+
+        private void DrawAvatarMegaphoneOverlay(int tickCount)
+        {
+            if (_gameState.HideUIMode)
+            {
+                return;
+            }
+
+            _avatarMegaphoneRuntime.Draw(
+                _spriteBatch,
+                _fontChat,
+                GraphicsDevice,
+                tickCount,
+                _renderParams.RenderWidth);
         }
 
 

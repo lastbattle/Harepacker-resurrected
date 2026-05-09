@@ -58,10 +58,10 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class ExpeditionIntermediaryPacketTable
     {
         // IDA v95: CWvsContext::OnPacket case 64 dispatches CWvsContext::OnExpedtionResult.
-        public const ushort InboundResultOpcode = 64;
+        public const ushort InboundResultOpcode = PacketOwnedSocialUtilityPacketTable.ExpeditionInboundResultOpcode;
 
         // IDA v95: ExpeditionIntermediary::SendExp* creates COutPacket(147) for all expedition requests below.
-        public const ushort OutboundRequestOpcode = 147;
+        public const ushort OutboundRequestOpcode = PacketOwnedSocialUtilityPacketTable.ExpeditionOutboundRequestOpcode;
 
         public const byte OutboundCreateRequest = 49;
         public const byte OutboundInviteRequest = 50;
@@ -144,7 +144,8 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Recovered result codes: {ResultFullSnapshotDraft}/{ResultFullSnapshot}/{ResultFullSnapshotAccepted}=full snapshots, {ResultModified}=party modified, " +
                 $"{ResultInvite}=invite, {ResultResponseInvite}=invite response, {ResultNoticeJoined}/{ResultNoticeLeft}/{ResultNoticeRemoved}=notices, " +
                 $"{ResultMasterChanged}=master changed, {ResultRemovedLeaveEarly}/{ResultRemovedLeave}/{ResultRemovedDisband}/{ResultRemovedKicked}=removals, " +
-                $"{ResultIgnoredAlreadyChanged}/{ResultIgnoredRequestFailed}/{ResultIgnoredModifiedFailure}=non-mutating returns.";
+                $"{ResultIgnoredAlreadyChanged}/{ResultIgnoredRequestFailed}/{ResultIgnoredModifiedFailure}=non-mutating returns. " +
+                PacketOwnedSocialUtilityPacketTable.DescribeRecoveredPacketTable("Expedition");
         }
     }
 

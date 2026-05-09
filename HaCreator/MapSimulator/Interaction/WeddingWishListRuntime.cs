@@ -695,8 +695,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 if (!_hasPendingInputRequest)
                 {
-                    message = "Wedding wish-list input result arrived, but no SendWishListInput request is pending.";
-                    return false;
+                    Open(WeddingWishListDialogMode.Give);
+                    _statusMessage = $"Applied CWishListGiveDlg::OnPacket subtype {ClientGiveDialogOpenSubtype} and opened the WZ-backed give dialog owner.";
+                    message = _statusMessage;
+                    return true;
                 }
 
                 _hasPendingInputRequest = false;

@@ -1848,7 +1848,7 @@ namespace HaCreator.MapSimulator.Pools
                 IsPacketOwned = true,
                 PacketLeavePending = false,
                 PacketHitStartTime = 0,
-                PacketStateEndTime = currentTick + 800,
+                PacketStateEndTime = ResolvePacketEnterStateEndTime(currentTick),
                 PacketAnimationEndTime = 0,
                 PacketAnimationSourceState = -1,
                 PacketHitAnimationState = -1,

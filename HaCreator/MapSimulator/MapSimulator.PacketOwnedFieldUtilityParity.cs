@@ -435,7 +435,7 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                ClearPacketOwnedFootholdMovingStateForPacketParity(platform);
+                ApplyPacketOwnedFootholdStateWithoutMovingStateForPacketParity(platform);
             }
         }
 
@@ -630,6 +630,13 @@ namespace HaCreator.MapSimulator
             platform.CurrentWaypointIndex = 0;
             platform.DeltaX = 0f;
             platform.DeltaY = 0f;
+        }
+
+        internal static void ApplyPacketOwnedFootholdStateWithoutMovingStateForPacketParity(DynamicPlatform platform)
+        {
+            // Client evidence: CField::OnFootHoldInfo only touches MOVING_OBJ_INFO
+            // when the decoded state is 2; state-only packets leave prior moving
+            // coordinates and reverse flags available for OnRequestFootHoldInfo.
         }
 
         private static long SquaredDistance(int x1, int y1, int x2, int y2)

@@ -315,6 +315,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte PersonalShopBasePacketType = 25;
         private const byte PersonalShopSoldItemResultPacketType = 26;
         private const byte PersonalShopMoveItemToInventoryPacketType = 27;
+        private const byte PersonalShopKickTimedOutVisitorPacketType = 29;
         private const byte EntrustedShopArrangeItemResultPacketType = 40;
         private const byte EntrustedShopWithdrawAllResultPacketType = 42;
         private const byte EntrustedShopWithdrawMoneyResultPacketType = 44;
@@ -338,6 +339,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int OmokIncomingTiePromptStringPoolId = 0x1D9;
         private const int OmokOutgoingTiePromptStringPoolId = 0x1DA;
         private const int OmokTieDeclinedStringPoolId = 0x1DB;
+        private const int OmokRetreatAlreadyRequestedStringPoolId = 0x1DC;
         private const int OmokIncomingRetreatPromptStringPoolId = 0x1DD;
         private const int OmokOutgoingRetreatPromptStringPoolId = 0x1DE;
         private const int OmokRetreatDeclinedStringPoolId = 0x1DF;
@@ -691,6 +693,12 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
         public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && !_miniRoomOmokRetreatRequestSentMatch && CountLocalOmokStones() > 0;
         public bool CanMiniRoomOmokGiveUp => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public bool CanRequestEntrustedVisitListDialog => Kind == SocialRoomKind.EntrustedShop
+            && _miniRoomLocalSeatIndex == 0
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList;
+        public bool CanRequestEntrustedBlacklistDialog => Kind == SocialRoomKind.EntrustedShop
+            && _miniRoomLocalSeatIndex == 0
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
@@ -1352,7 +1360,10 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (_miniRoomOmokTimeFloor <= 0 && IsMiniRoomOmokLocalTurn)
                 {
-                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::Update would send mini-room packet 63 as soon as the local turn clock expired.";
+                    PublishMiniRoomOmokOutboundPacket(
+                        OmokTimeOverPacketType,
+                        "COmokDlg::Update",
+                        "COmokDlg::Update sent opcode 144 subtype 63 as soon as the local turn clock expired.");
                     SetOmokDialogStatus("COmokDlg::Update exhausted the local Omok timer and is waiting on packet 63.", 1500);
                     stateChanged = true;
                 }
@@ -1697,6 +1708,57 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryDispatchPacketBytes(packetBytes, tickCount, out message);
+        }
+
+        public bool TryBuildPersonalShopKickTimedOutVisitorRawPacket(int seatIndex, out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "CPersonalShopDlg::Update timeout requests only apply to personal-shop rooms.";
+                return false;
+            }
+
+            if (_miniRoomLocalSeatIndex != 0)
+            {
+                message = "CPersonalShopDlg::Update only sends timeout-removal requests while the local user owns the shop.";
+                return false;
+            }
+
+            int normalizedSeatIndex = Math.Clamp(seatIndex, 1, 3);
+            string visitorName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            if (normalizedSeatIndex >= _occupants.Count
+                || IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex])
+                || string.IsNullOrWhiteSpace(visitorName))
+            {
+                message = $"No visitor is present at personal-shop seat {normalizedSeatIndex} for the client timeout-removal request.";
+                return false;
+            }
+
+            rawPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildPersonalShopKickTimedOutVisitorOutboundPacket(
+                (byte)normalizedSeatIndex,
+                visitorName);
+            message = $"Built CPersonalShopDlg::Update timeout-removal request: opcode 144 subtype {PersonalShopKickTimedOutVisitorPacketType}, seat {normalizedSeatIndex}, user '{visitorName}'. IDA 0x69b340 sends this after visitor enter-time exceeds 0x36EE80 ms.";
+            return true;
+        }
+
+        public bool MarkPersonalShopKickTimedOutVisitorRequestSent(int seatIndex, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop)
+            {
+                message = "Only personal-shop rooms can mark timed-out visitor removal requests.";
+                return false;
+            }
+
+            int normalizedSeatIndex = Math.Clamp(seatIndex, 1, 3);
+            string visitorName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            RoomState = "Visitor timeout request";
+            StatusMessage = $"CPersonalShopDlg::Update sent timeout-removal request for seat {normalizedSeatIndex} ({visitorName}) through opcode 144 subtype {PersonalShopKickTimedOutVisitorPacketType}; waiting for the server-owned CMiniRoomBaseDlg::OnLeaveBase update.";
+            PersistState();
+            message = StatusMessage;
+            return true;
         }
 
         private bool TryDispatchMiniRoomBaseOwnedPacket(PacketReader reader, byte packetType, int tickCount, out string message)
@@ -6654,7 +6716,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyMerchantShopFullRefreshPacket(byte[] payload, out string message)
         {
-            if (!TryDecodeMerchantShopFullRefreshPayload(payload, out List<MerchantPacketItemRow> rows, out message))
+            int? refreshedEntrustedMoney = null;
+            byte[] refreshPayload = payload;
+            List<MerchantPacketItemRow> rows;
+            if (Kind == SocialRoomKind.EntrustedShop &&
+                payload != null &&
+                payload.Length > sizeof(int) &&
+                TryDecodeMerchantShopFullRefreshPayload(payload.AsSpan(sizeof(int)).ToArray(), out List<MerchantPacketItemRow> entrustedRows, out _))
+            {
+                refreshedEntrustedMoney = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+                refreshPayload = payload.AsSpan(sizeof(int)).ToArray();
+                rows = entrustedRows;
+            }
+            else if (!TryDecodeMerchantShopFullRefreshPayload(refreshPayload, out rows, out message))
             {
                 return false;
             }
@@ -6688,14 +6762,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NormalizeActiveMerchantPacketSlots();
+            if (refreshedEntrustedMoney.HasValue)
+            {
+                MesoAmount = Math.Max(0, refreshedEntrustedMoney.Value);
+            }
+
             RoomState = Kind == SocialRoomKind.EntrustedShop ? "Updating sale list" : "Closed for setup";
             ModeName = Kind == SocialRoomKind.EntrustedShop ? "Restock" : "Repricing";
             EnsureMerchantPacketNotes();
-            _notes[0] = $"CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s).";
+            _notes[0] = refreshedEntrustedMoney.HasValue
+                ? $"CEntrustedShopDlg::OnRefresh refreshed m_nMoney to {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s)."
+                : $"CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s).";
             _notes[1] = rows.Count == 0
                 ? "The server refresh cleared every client-visible merchant row."
                 : $"First refreshed row: {ResolveItemName(rows[0].Item.ItemId)} x{Math.Max(1, (int)rows[0].Number)} for {Math.Max(0, rows[0].Price):N0} meso.";
-            StatusMessage = $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
+            StatusMessage = refreshedEntrustedMoney.HasValue
+                ? $"CEntrustedShopDlg::OnRefresh applied leading m_nMoney {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase."
+                : $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -7846,7 +7929,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialRoomKind.PersonalShop,
                 "Personal Shop",
                 "ExplorerGM",
-                capacity: 3,
+                capacity: 4,
                 mesoAmount: 1250000,
                 occupants: new[]
                 {
@@ -8226,7 +8309,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_miniRoomOmokRetreatRequestSentMatch)
             {
-                message = ResolveOmokString(OmokTieDeclinedStringPoolId, "Your opponent denied your request for a tie.");
+                message = ResolveOmokString(OmokRetreatAlreadyRequestedStringPoolId, "You can only request a handicap once per game.");
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
                 return false;
             }
 

@@ -1320,10 +1320,9 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add(stateLabel);
             }
 
-            parts.Add($"Fund {FormatCompactMeso(_guildFundMeso)}");
-
             if (_isInGuild)
             {
+                parts.Add($"Fund {FormatCompactMeso(_guildFundMeso)}");
                 parts.Add($"GP {FormatCompactGuildPoints(_guildPoints)}");
                 parts.Add(CanManageSkills() ? $"SP {_availablePoints}" : "View only");
             }

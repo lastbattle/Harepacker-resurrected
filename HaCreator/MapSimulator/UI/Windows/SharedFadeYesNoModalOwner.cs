@@ -73,7 +73,8 @@ namespace HaCreator.MapSimulator.UI
         bool OnceClicked,
         string Title,
         string Body,
-        string Footer);
+        string Footer,
+        InGameConfirmDialogPresentation Presentation);
 
     internal sealed class SharedFadeYesNoModalOwner
     {
@@ -131,6 +132,12 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (IsSameModalPayload(_activeRequest, request))
+            {
+                Show(request, currentTick);
+                return true;
+            }
+
             _pendingRequests.Enqueue(request);
             return false;
         }
@@ -172,6 +179,7 @@ namespace HaCreator.MapSimulator.UI
                     _activeRequest = null;
                     _phase = SharedFadeYesNoModalPhase.Closed;
                     _phaseTick = int.MinValue;
+                    TryActivateNext(currentTick);
                 }
 
                 return false;
@@ -265,7 +273,8 @@ namespace HaCreator.MapSimulator.UI
                     false,
                     string.Empty,
                     string.Empty,
-                    string.Empty);
+                    string.Empty,
+                    null);
             }
 
             return new SharedFadeYesNoModalSnapshot(
@@ -282,7 +291,8 @@ namespace HaCreator.MapSimulator.UI
                 _onceClicked,
                 _activeRequest.Title ?? string.Empty,
                 _activeRequest.Body ?? string.Empty,
-                _activeRequest.Footer ?? string.Empty);
+                _activeRequest.Footer ?? string.Empty,
+                _activeRequest.Presentation);
         }
 
         internal static SharedFadeYesNoButtonLayout ResolveButtonLayout(
@@ -353,7 +363,7 @@ namespace HaCreator.MapSimulator.UI
 
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}; phase={1}; stack={2}; lifetime={3}; buttons OK:{4}@({5},{6}) Cancel:{7}@({5},{8}); OKVisible={9}.",
+                "{0}; phase={1}; stack={2}; pending={3}; lifetime={4}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}.",
                 snapshot.DrawRoute,
                 snapshot.Phase,
                 snapshot.StackIndex,
@@ -365,6 +375,20 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.ButtonLayout.CancelId,
                 snapshot.ButtonLayout.CancelY,
                 snapshot.ButtonLayout.ShowsOkButton);
+        }
+
+        private static bool IsSameModalPayload(
+            SharedFadeYesNoModalRequest current,
+            SharedFadeYesNoModalRequest candidate)
+        {
+            return current != null
+                && candidate != null
+                && current.Type == candidate.Type
+                && current.StackIndex == candidate.StackIndex
+                && current.QuickDelivery == candidate.QuickDelivery
+                && string.Equals(current.Title, candidate.Title, StringComparison.Ordinal)
+                && string.Equals(current.Body, candidate.Body, StringComparison.Ordinal)
+                && string.Equals(current.Footer, candidate.Footer, StringComparison.Ordinal);
         }
     }
 }

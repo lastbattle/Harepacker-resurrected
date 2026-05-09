@@ -1363,9 +1363,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            reviveWindow.Position = ReviveOwnerRuntime.ResolveNativeWindowPosition(
+            Rectangle nativeBounds = ReviveOwnerRuntime.ResolveNativeWindowBounds(
                 _renderParams.RenderWidth,
                 _renderParams.RenderHeight);
+            reviveWindow.Position = nativeBounds.Location;
         }
 
         private string DispatchReviveOwnerTransferFieldRequest(ReviveOwnerTransferRequest request)

@@ -534,6 +534,7 @@ namespace HaCreator.MapSimulator.UI
         private string _packetOwnedWishlistPendingSearchQuery = string.Empty;
         private string _packetOwnedWishlistPendingSearchCategoryKey = "all";
         private int _packetOwnedWishlistPendingSearchPriceRangeIndex = -1;
+        private int _packetOwnedWishlistPendingSearchRemotePageIndex = -1;
         private readonly Dictionary<string, WishlistSearchResult> _packetOwnedWishlistSearchResultsByEntryKey = new(StringComparer.Ordinal);
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
@@ -2049,8 +2050,8 @@ namespace HaCreator.MapSimulator.UI
                 Query = _packetOwnedWishlistPendingSearchQuery ?? string.Empty,
                 CategoryKey = _packetOwnedWishlistPendingSearchCategoryKey ?? "all",
                 PriceRangeIndex = _packetOwnedWishlistPendingSearchPriceRangeIndex,
+                RemotePageIndex = _packetOwnedWishlistPendingSearchRemotePageIndex,
                 RemoteTotalCount = -1,
-                RemotePageIndex = -1,
                 RemotePageSize = -1,
                 UsedFallbackRequestContext = true,
                 ItemIds = Array.Empty<int>(),
@@ -2144,6 +2145,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedWishlistPendingSearchQuery = string.Empty;
             _packetOwnedWishlistPendingSearchCategoryKey = "all";
             _packetOwnedWishlistPendingSearchPriceRangeIndex = -1;
+            _packetOwnedWishlistPendingSearchRemotePageIndex = -1;
             _packetOwnedAdminShopSession.ClearPendingWishlistSearch();
         }
 
@@ -2570,6 +2572,26 @@ namespace HaCreator.MapSimulator.UI
             return details;
         }
 
+        public int GetPacketOwnedWishlistSearchRemotePageIndex(string query, string categoryKey, int priceRangeIndex)
+        {
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            return _packetOwnedAdminShopSession.IsActive
+                && snapshot != null
+                && MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex)
+                ? snapshot.RemotePageIndex
+                : -1;
+        }
+
+        public int GetPacketOwnedWishlistSearchRemotePageCount(string query, string categoryKey, int priceRangeIndex)
+        {
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            return _packetOwnedAdminShopSession.IsActive
+                && snapshot != null
+                && MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex)
+                ? ResolvePacketOwnedWishlistRemotePageCount(snapshot)
+                : 0;
+        }
+
         public void StagePacketOwnedWishlistSearchRequest(string query, string categoryKey, int priceRangeIndex)
         {
             if (!_packetOwnedAdminShopSession.IsActive)
@@ -2592,6 +2614,7 @@ namespace HaCreator.MapSimulator.UI
                 ? "all"
                 : categoryKey.Trim();
             _packetOwnedWishlistPendingSearchPriceRangeIndex = Math.Max(-1, priceRangeIndex);
+            _packetOwnedWishlistPendingSearchRemotePageIndex = -1;
             ClearPacketOwnedWishlistSearchSnapshot();
             _packetOwnedAdminShopSession.RecordPendingWishlistSearch(
                 _packetOwnedWishlistPendingSearchRequestId,
@@ -2602,6 +2625,70 @@ namespace HaCreator.MapSimulator.UI
                 "CUIAdminShopWishList::SearchItemName updated the owner-local no-space query, toggled the search-result child, reset it, and invalidated it without sending an admin-shop opcode 74 request.");
 
             AdvancePacketOwnedWishlistSearchStateToken();
+        }
+
+        public bool TryStagePacketOwnedWishlistSearchRemotePageRequest(
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            int remotePageIndex,
+            out string message)
+        {
+            message = "Packet-authored wishlist paging is unavailable.";
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            if (!_packetOwnedAdminShopSession.IsActive
+                || snapshot == null
+                || !MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex))
+            {
+                return false;
+            }
+
+            int remotePageCount = ResolvePacketOwnedWishlistRemotePageCount(snapshot);
+            int currentRemotePageIndex = Math.Max(0, snapshot.RemotePageIndex);
+            if (remotePageCount <= 0 || snapshot.RemotePageIndex < 0)
+            {
+                message = "Packet-authored wishlist paging metadata is unresolved.";
+                return false;
+            }
+
+            int targetRemotePageIndex = Math.Clamp(remotePageIndex, 0, remotePageCount - 1);
+            if (targetRemotePageIndex == currentRemotePageIndex)
+            {
+                message = $"SearchItemName stayed on remote packet page {currentRemotePageIndex + 1} / {remotePageCount}.";
+                return false;
+            }
+
+            string normalizedQuery = BuildClientWishlistSearchQuery(query?.Trim());
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
+            {
+                message = "Packet-authored wishlist paging needs the active SearchItemName query.";
+                return false;
+            }
+
+            _packetOwnedWishlistSearchRequestCounter = _packetOwnedWishlistSearchRequestCounter == int.MaxValue
+                ? 1
+                : _packetOwnedWishlistSearchRequestCounter + 1;
+            _packetOwnedWishlistPendingSearchRequestId = _packetOwnedWishlistSearchRequestCounter;
+            _packetOwnedWishlistPendingSearchQuery = normalizedQuery;
+            _packetOwnedWishlistPendingSearchCategoryKey = string.IsNullOrWhiteSpace(categoryKey)
+                ? "all"
+                : categoryKey.Trim();
+            _packetOwnedWishlistPendingSearchPriceRangeIndex = Math.Max(-1, priceRangeIndex);
+            _packetOwnedWishlistPendingSearchRemotePageIndex = targetRemotePageIndex;
+            ClearPacketOwnedWishlistSearchSnapshot();
+            _packetOwnedAdminShopSession.RecordPendingWishlistSearch(
+                _packetOwnedWishlistPendingSearchRequestId,
+                _packetOwnedWishlistPendingSearchQuery,
+                _packetOwnedWishlistPendingSearchCategoryKey,
+                _packetOwnedWishlistPendingSearchPriceRangeIndex,
+                _packetOwnedWishlistPendingSearchRemotePageIndex);
+            _packetOwnedAdminShopSession.SetLastOwnerState(
+                $"CUIAdminShopWishListSearchResult requested remote packet page {targetRemotePageIndex + 1} / {remotePageCount}; the result child is waiting for the next packet 366 subtype 4 WLSR snapshot.");
+            AdvancePacketOwnedWishlistSearchStateToken();
+            message = $"SearchItemName requested remote packet page {targetRemotePageIndex + 1} / {remotePageCount}. Waiting for packet 366 subtype 4.";
+            _footerMessage = message;
+            UpdateActionButtonStates();
+            return true;
         }
 
         public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
@@ -6088,6 +6175,21 @@ namespace HaCreator.MapSimulator.UI
                 ? snapshot.RemotePageSize.ToString(CultureInfo.InvariantCulture)
                 : "?";
             return $"remote page {pageLabel}, size {pageSizeLabel}, total {totalLabel}";
+        }
+
+        private static int ResolvePacketOwnedWishlistRemotePageCount(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            if (snapshot.RemoteTotalCount >= 0 && snapshot.RemotePageSize > 0)
+            {
+                return Math.Max(0, (int)Math.Ceiling(snapshot.RemoteTotalCount / (double)snapshot.RemotePageSize));
+            }
+
+            return snapshot.RemotePageIndex >= 0 ? snapshot.RemotePageIndex + 1 : 0;
         }
 
         private string BuildPacketOwnedWishlistSearchSessionOnlySummary(

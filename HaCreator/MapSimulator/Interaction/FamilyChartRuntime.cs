@@ -334,6 +334,19 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"{selectedMember.Name} cannot be removed from the simulator family tree.";
             }
 
+            if (IsSelectedMemberLocalParent(selectedMember))
+            {
+                if (RequiresPacketOwnedManagementCompletion())
+                {
+                    _pendingManagementRequest = PendingFamilyManagementRequest.CreateUnregisterParent(
+                        selectedMember.Id,
+                        selectedMember.Name);
+                    return $"Sent a packet-shaped parent-unregister request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before detaching the local family parent.";
+                }
+
+                return UnregisterLocalParentCore(selectedMember);
+            }
+
             if (RequiresPacketOwnedManagementCompletion())
             {
                 _pendingManagementRequest = PendingFamilyManagementRequest.CreateRemove(
@@ -417,6 +430,12 @@ namespace HaCreator.MapSimulator.Interaction
                     opcode = FamilyPacketCodec.UnregisterJuniorRequestOpcode;
                     payload = FamilyPacketCodec.BuildUnregisterJuniorRequestPayload(pendingRequest.MemberId);
                     description = $"CWvsContext::SendUnregisterJunior {pendingRequest.MemberName} (#{pendingRequest.MemberId})";
+                    return true;
+
+                case FamilyManagementRequestKind.UnregisterParent:
+                    opcode = FamilyPacketCodec.UnregisterParentRequestOpcode;
+                    payload = FamilyPacketCodec.BuildUnregisterParentRequestPayload();
+                    description = $"CWvsContext::SendUnregisterParent {pendingRequest.MemberName} (#{pendingRequest.MemberId})";
                     return true;
 
                 case FamilyManagementRequestKind.Precept:
@@ -778,6 +797,26 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedMemberId = LocalPlayerId;
             _selectedEmptyTreeSlot = -1;
             string message = $"Removed {selectedMember.Name}'s simulator family branch.";
+            NotifySocialChatObserved(message);
+            return message;
+        }
+
+        private string UnregisterLocalParentCore(FamilyMemberState parentMember)
+        {
+            FamilyMemberState localMember = GetClientLocalMember();
+            if (parentMember == null || localMember == null || localMember.ParentId != parentMember.Id)
+            {
+                return "The selected family member is not the local member's registered parent.";
+            }
+
+            parentMember.Children.Remove(localMember.Id);
+            localMember.ParentId = null;
+            _familyHeadId = localMember.Id;
+            _selectedMemberId = localMember.Id;
+            _selectedEmptyTreeSlot = -1;
+            NormalizeRosterState();
+
+            string message = $"Unregistered {parentMember.Name} as the local family parent.";
             NotifySocialChatObserved(message);
             return message;
         }
@@ -1585,7 +1624,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanRemoveSelected(FamilyMemberState selectedMember)
         {
-            if (!CanRemoveMembers() || selectedMember == null || selectedMember.Id == FamilyHeadId || IsClientLocalMember(selectedMember.Id))
+            if (!CanRemoveMembers() || selectedMember == null || IsClientLocalMember(selectedMember.Id))
+            {
+                return false;
+            }
+
+            if (IsSelectedMemberLocalParent(selectedMember))
+            {
+                return true;
+            }
+
+            if (selectedMember.Id == FamilyHeadId)
             {
                 return false;
             }
@@ -1598,6 +1647,13 @@ namespace HaCreator.MapSimulator.Interaction
             List<int> branchMembers = new();
             CollectBranchMemberIds(selectedMember.Id, branchMembers);
             return !branchMembers.Any(IsClientLocalMember);
+        }
+
+        private bool IsSelectedMemberLocalParent(FamilyMemberState selectedMember)
+        {
+            FamilyMemberState localMember = GetClientLocalMember();
+            return selectedMember != null
+                && localMember?.ParentId == selectedMember.Id;
         }
 
         private bool CanExecuteEntitlement(FamilyMemberState selectedMember)
@@ -1769,6 +1825,14 @@ namespace HaCreator.MapSimulator.Interaction
                     case FamilyManagementRequestKind.RemoveMember:
                         string removedMessage = RemoveMemberFromPacket(pendingRequest.MemberId);
                         message = $"Applied packet-owned family removal completion for {pendingRequest.MemberName}. {removedMessage}";
+                        _pendingManagementRequest = null;
+                        return true;
+
+                    case FamilyManagementRequestKind.UnregisterParent:
+                        FamilyMemberState parentMember = GetMember(pendingRequest.MemberId);
+                        message = parentMember == null
+                            ? $"Family parent-unregister completion arrived, but parent #{pendingRequest.MemberId} is no longer present."
+                            : UnregisterLocalParentCore(parentMember);
                         _pendingManagementRequest = null;
                         return true;
 
@@ -2284,6 +2348,18 @@ namespace HaCreator.MapSimulator.Interaction
                 || (_packetChartIsMine == true
                     && _packetChartLocalMemberId.HasValue
                     && _packetChartLocalMemberId.Value == memberId);
+        }
+
+        private FamilyMemberState GetClientLocalMember()
+        {
+            if (_packetChartIsMine == true
+                && _packetChartLocalMemberId.HasValue
+                && _members.TryGetValue(_packetChartLocalMemberId.Value, out FamilyMemberState packetLocalMember))
+            {
+                return packetLocalMember;
+            }
+
+            return GetMember(LocalPlayerId);
         }
 
         private static string FormatPacketLocation(int channelId, int loginMinutes)
@@ -2806,6 +2882,15 @@ namespace HaCreator.MapSimulator.Interaction
                     string.Empty,
                     default);
 
+            public static PendingFamilyManagementRequest CreateUnregisterParent(
+                int memberId,
+                string memberName) => new(
+                    FamilyManagementRequestKind.UnregisterParent,
+                    memberId,
+                    memberName,
+                    string.Empty,
+                    default);
+
             public static PendingFamilyManagementRequest CreatePrecept(string precept) => new(
                 FamilyManagementRequestKind.Precept,
                 0,
@@ -2818,6 +2903,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             JuniorEntry,
             RemoveMember,
+            UnregisterParent,
             Precept
         }
     }

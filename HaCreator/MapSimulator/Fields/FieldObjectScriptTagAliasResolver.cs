@@ -108,8 +108,16 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*assign\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ObjectValuesAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*values\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayFactoryAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Array\s*\.\s*(?<method>of|from)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex CollectionConstructorAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:new\s+)?(?<method>Set|Array)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         internal readonly record struct PublishedTagMutation(
@@ -605,6 +613,34 @@ namespace HaCreator.MapSimulator.Fields
                         continue;
                     }
 
+                    string arrayElement = StripOuterBalancedParentheses(elements[i]?.Trim());
+                    if (arrayElement.StartsWith("...", StringComparison.Ordinal)
+                        && TryParseCollectionFactoryCall(arrayElement[3..], out string spreadFactoryMethod, out IReadOnlyList<string> spreadFactoryArguments))
+                    {
+                        var spreadFactoryAliases = new List<string>();
+                        AppendCollectionFactoryAliasArguments(
+                            spreadFactoryAliases,
+                            spreadFactoryMethod,
+                            spreadFactoryArguments,
+                            objectMemberAliasMap);
+                        for (int spreadFactoryAliasIndex = 0; spreadFactoryAliasIndex < spreadFactoryAliases.Count; spreadFactoryAliasIndex++)
+                        {
+                            string resolvedSpreadFactoryAlias = ResolveAssignmentAliasCandidate(
+                                spreadFactoryAliases[spreadFactoryAliasIndex],
+                                localAliasMap,
+                                objectMemberAliasMap);
+                            if (!IsPotentialFunctionAliasName(resolvedSpreadFactoryAlias))
+                            {
+                                continue;
+                            }
+
+                            string spreadMemberKey = GetNextArrayMemberIndex(memberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            memberAliasMap[spreadMemberKey] = resolvedSpreadFactoryAlias;
+                        }
+
+                        continue;
+                    }
+
                     string resolvedAlias = ResolveAssignmentAliasCandidate(
                         elements[i],
                         localAliasMap,
@@ -809,6 +845,21 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach ((string TargetName, string SourceName) valuesAssignment in EnumerateObjectValuesAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(valuesAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(valuesAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(valuesAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    valuesAssignment.TargetName);
+                CopyObjectValuesAsArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
+            }
+
             foreach ((string TargetName, string SourceName, IReadOnlyList<string> Arguments) concatAssignment in EnumerateArrayConcatAliasAssignments(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(concatAssignment.TargetName)
@@ -888,6 +939,25 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     SortArrayMemberAliases(targetMemberAliasMap);
                 }
+            }
+
+            foreach ((string TargetName, string MethodName, IReadOnlyList<string> Arguments) collectionConstructor in EnumerateCollectionConstructorAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(collectionConstructor.TargetName)
+                    || collectionConstructor.Arguments.Count == 0)
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    collectionConstructor.TargetName);
+                CopyCollectionFactoryAliasArguments(
+                    targetMemberAliasMap,
+                    collectionConstructor.MethodName,
+                    collectionConstructor.Arguments,
+                    localAliasMap,
+                    objectMemberAliasMap);
             }
 
             foreach ((string TargetName, string MethodName, IReadOnlyList<string> Arguments) arrayFactoryAssignment in EnumerateArrayFactoryAliasAssignments(scriptName))
@@ -1507,6 +1577,47 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static IEnumerable<(string TargetName, string SourceName)> EnumerateObjectValuesAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ObjectValuesAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                var arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+                if (arguments.Count != 1)
+                {
+                    continue;
+                }
+
+                string sourceName = NormalizeFunctionAliasArgument(arguments[0]).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(sourceName))
+                {
+                    yield return (targetName, sourceName);
+                }
+            }
+        }
+
         private static IEnumerable<(string TargetName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateArrayFactoryAliasAssignments(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -1540,17 +1651,50 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static int GetNextArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        private static IEnumerable<(string TargetName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateCollectionConstructorAliasAssignments(string value)
         {
-            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in CollectionConstructorAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value);
+                if (!IsPotentialFunctionAliasName(targetName) || string.IsNullOrWhiteSpace(methodName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                string argumentText = value[(openIndex + 1)..closeIndex];
+                yield return (targetName, methodName, new List<string>(SplitFunctionArguments(argumentText)));
+            }
+        }
+
+        private static int GetNextArrayMemberIndex(IEnumerable<KeyValuePair<string, string>> memberAliasMap)
+        {
+            if (memberAliasMap == null)
             {
                 return 0;
             }
 
             int nextIndex = 0;
-            foreach (string key in memberAliasMap.Keys)
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
             {
-                if (int.TryParse(key, out int parsedIndex) && parsedIndex >= nextIndex)
+                if (int.TryParse(memberAlias.Key, out int parsedIndex) && parsedIndex >= nextIndex)
                 {
                     nextIndex = parsedIndex + 1;
                 }
@@ -1645,6 +1789,27 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
+                if (argument.StartsWith("...", StringComparison.Ordinal)
+                    && TryParseCollectionFactoryCall(argument[3..], out string spreadFactoryMethod, out IReadOnlyList<string> spreadFactoryArguments))
+                {
+                    AppendCollectionFactoryAliasArguments(
+                        flattenedArguments,
+                        spreadFactoryMethod,
+                        spreadFactoryArguments,
+                        objectMemberAliasMap);
+                    continue;
+                }
+
+                if (TryParseCollectionFactoryCall(argument, out string factoryMethod, out IReadOnlyList<string> factoryArguments))
+                {
+                    AppendCollectionFactoryAliasArguments(
+                        flattenedArguments,
+                        factoryMethod,
+                        factoryArguments,
+                        objectMemberAliasMap);
+                    continue;
+                }
+
                 if (argument.Length >= 2 && argument[0] == '[' && argument[^1] == ']')
                 {
                     IReadOnlyList<string> arrayElements = SplitTopLevelByComma(argument[1..^1]);
@@ -1660,6 +1825,150 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return flattenedArguments;
+        }
+
+        private static void CopyCollectionFactoryAliasArguments(
+            IDictionary<string, string> targetMemberAliasMap,
+            string methodName,
+            IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (targetMemberAliasMap == null || arguments == null || arguments.Count == 0)
+            {
+                return;
+            }
+
+            var aliasArguments = new List<string>();
+            AppendCollectionFactoryAliasArguments(
+                aliasArguments,
+                methodName,
+                arguments,
+                objectMemberAliasMap);
+            for (int argumentIndex = 0; argumentIndex < aliasArguments.Count; argumentIndex++)
+            {
+                string resolvedAlias = ResolveAssignmentAliasCandidate(
+                    aliasArguments[argumentIndex],
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!IsPotentialFunctionAliasName(resolvedAlias))
+                {
+                    continue;
+                }
+
+                string memberKey = GetNextArrayMemberIndex(targetMemberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                targetMemberAliasMap[memberKey] = resolvedAlias;
+            }
+        }
+
+        private static void AppendCollectionFactoryAliasArguments(
+            ICollection<string> targetArguments,
+            string methodName,
+            IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (targetArguments == null || arguments == null || arguments.Count == 0)
+            {
+                return;
+            }
+
+            string normalizedMethodName = NormalizeFunctionAliasArgument(methodName);
+            if (normalizedMethodName.Equals("Set", StringComparison.OrdinalIgnoreCase)
+                && arguments.Count == 1)
+            {
+                string sourceName = NormalizeFunctionAliasArgument(arguments[0]).TrimEnd(';');
+                if (objectMemberAliasMap != null
+                    && objectMemberAliasMap.TryGetValue(sourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    foreach ((_, string aliasName) in EnumerateArrayMemberAliasesInIndexOrder(sourceMemberAliasMap))
+                    {
+                        if (!ContainsOrdinalIgnoreCase(targetArguments, aliasName))
+                        {
+                            targetArguments.Add(aliasName);
+                        }
+                    }
+
+                    return;
+                }
+            }
+
+            IReadOnlyList<string> aliasArguments = FlattenArrayAliasArguments(arguments, objectMemberAliasMap);
+            for (int argumentIndex = 0; argumentIndex < aliasArguments.Count; argumentIndex++)
+            {
+                string aliasArgument = aliasArguments[argumentIndex];
+                if (normalizedMethodName.Equals("Array", StringComparison.OrdinalIgnoreCase)
+                    && aliasArguments.Count == 1
+                    && int.TryParse(
+                        StripOuterBalancedParentheses(aliasArgument).Trim(),
+                        System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out _))
+                {
+                    continue;
+                }
+
+                if (normalizedMethodName.Equals("Set", StringComparison.OrdinalIgnoreCase)
+                    && ContainsOrdinalIgnoreCase(targetArguments, aliasArgument))
+                {
+                    continue;
+                }
+
+                targetArguments.Add(aliasArgument);
+            }
+        }
+
+        private static bool ContainsOrdinalIgnoreCase(IEnumerable<string> values, string candidate)
+        {
+            if (values == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            foreach (string value in values)
+            {
+                if (string.Equals(value, candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryParseCollectionFactoryCall(
+            string value,
+            out string methodName,
+            out IReadOnlyList<string> arguments)
+        {
+            methodName = string.Empty;
+            arguments = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            if (normalizedValue.StartsWith("new ", StringComparison.Ordinal))
+            {
+                normalizedValue = normalizedValue[4..].TrimStart();
+            }
+
+            int openIndex = FindTrailingCallOpenParenthesis(normalizedValue);
+            if (openIndex <= 0 || FindMatchingCloseParenthesis(normalizedValue, openIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string candidateMethodName = NormalizeFunctionAliasArgument(normalizedValue[..openIndex]).TrimEnd(';');
+            if (!candidateMethodName.Equals("Set", StringComparison.OrdinalIgnoreCase)
+                && !candidateMethodName.Equals("Array", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            methodName = candidateMethodName;
+            arguments = new List<string>(SplitFunctionArguments(normalizedValue[(openIndex + 1)..^1]));
+            return arguments.Count > 0;
         }
 
         private static bool TryResolveInlineAssignmentAliasCandidates(
@@ -1861,6 +2170,22 @@ namespace HaCreator.MapSimulator.Fields
             {
                 string memberKey = GetNextArrayMemberIndex(targetMemberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 targetMemberAliasMap[memberKey] = aliasName;
+            }
+        }
+
+        private static void CopyObjectValuesAsArrayMemberAliases(
+            Dictionary<string, string> targetMemberAliasMap,
+            IReadOnlyDictionary<string, string> sourceMemberAliasMap)
+        {
+            if (targetMemberAliasMap == null || sourceMemberAliasMap == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, string> sourceMemberAlias in sourceMemberAliasMap)
+            {
+                string memberKey = GetNextArrayMemberIndex(targetMemberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                targetMemberAliasMap[memberKey] = sourceMemberAlias.Value;
             }
         }
 

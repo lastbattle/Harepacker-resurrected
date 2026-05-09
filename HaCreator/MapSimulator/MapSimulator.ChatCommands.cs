@@ -2213,6 +2213,8 @@ namespace HaCreator.MapSimulator
 
         private void RegisterChatCommands()
         {
+            RegisterNewYearCardChatCommands();
+
             _chat.CommandHandler.RegisterCommand(
                 "login",
                 "Show the login bootstrap runtime state",
@@ -4226,6 +4228,16 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SetGuildDialogMesoBalance(mesos));
                             }
 
+                            if (string.Equals(args[2], "create", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog create <guildName>");
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SubmitCreateGuildNameRequest(string.Join(' ', args.Skip(3))));
+                            }
+
                             if (string.Equals(args[2], "approve", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(args[2], "accept", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(args[2], "reject", StringComparison.OrdinalIgnoreCase)
@@ -4237,7 +4249,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ResolvePendingGuildDialogRequest(approved, summary));
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog <status|balance [mesos]|create <guildName>|approve [summary]|reject [summary]>");
                         }
 
                         return ChatCommandHandler.CommandResult.Error(
@@ -8174,7 +8186,7 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "authority", StringComparison.OrdinalIgnoreCase))
                             {
-                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyPermissionPacket(guildBbsPacketPayload));
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyPermissionPacket(guildBbsPacketPayload, _playerManager?.Player?.Build?.Id ?? 0));
                             }
 
                             if (string.Equals(args[1], "cash", StringComparison.OrdinalIgnoreCase))
@@ -8201,7 +8213,7 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "authority", StringComparison.OrdinalIgnoreCase))
                             {
-                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyPermissionPacket(guildBbsRawPayload));
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyPermissionPacket(guildBbsRawPayload, _playerManager?.Player?.Build?.Id ?? 0));
                             }
 
                             if (string.Equals(args[1], "cash", StringComparison.OrdinalIgnoreCase))
@@ -8946,6 +8958,26 @@ namespace HaCreator.MapSimulator
                             idaOwner: "CPersonalShopDlg::SetRet(nRet=2)");
                     }
 
+                    bool TrySendPersonalShopTimedOutVisitorRequest(int seatIndex, out string packetMessage)
+                    {
+                        packetMessage = null;
+                        if (!runtime.TryBuildPersonalShopKickTimedOutVisitorRawPacket(seatIndex, out byte[] rawPacket, out string buildMessage))
+                        {
+                            packetMessage = buildMessage;
+                            return false;
+                        }
+
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeStatus))
+                        {
+                            packetMessage = $"{buildMessage}{Environment.NewLine}{bridgeStatus}";
+                            return false;
+                        }
+
+                        runtime.MarkPersonalShopKickTimedOutVisitorRequestSent(seatIndex, out string runtimeMessage);
+                        packetMessage = $"{buildMessage}{Environment.NewLine}{bridgeStatus}{Environment.NewLine}{runtimeMessage}";
+                        return true;
+                    }
+
                     bool TrySendEntrustedShopCloseRequest(out string packetMessage)
                     {
                         bool ownerSeat = runtime.MiniRoomLocalSeatIndex <= 0;
@@ -9200,10 +9232,24 @@ namespace HaCreator.MapSimulator
                                     return Dispatch(SocialRoomPacketType.CloseRoom, out string closeMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(closeMessage)
                                         : ChatCommandHandler.CommandResult.Error(closeMessage);
+                                case "timeout":
+                                    if (!packetMode)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Personal-shop timeout removal is packet-owned. Use /socialroom personalshop packet timeout <seat>.");
+                                    }
+
+                                    if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int timeoutSeat))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop packet timeout <seat>");
+                                    }
+
+                                    return TrySendPersonalShopTimedOutVisitorRequest(timeoutSeat, out string timeoutPacketMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(timeoutPacketMessage)
+                                        : ChatCommandHandler.CommandResult.Error(timeoutPacketMessage);
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|timeout <seat>|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -9394,8 +9440,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(lockMessage)
                                         : ChatCommandHandler.CommandResult.Error(lockMessage);
                                 case "accept":
-                                    runtime.SubmitTradingRoomClaimButton();
-                                    return ChatCommandHandler.CommandResult.Ok(runtime.StatusMessage);
+                                    return ChatCommandHandler.CommandResult.Error("Trading-room acceptance is not a recovered CTradingRoomDlg::OnPacket branch. Use lock/subtype 17 and subtype 20 CRC packets for parity, or previewaccept for the simulator-only settlement preview.");
                                 case "remoteofferitem":
                                     if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int remoteTradeItemId))
                                     {
@@ -9422,9 +9467,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(remoteTradeMesoMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteTradeMesoMessage);
                                 case "remotelock":
-                                    return (packetMode
-                                            ? DispatchTradingRoomPacketOwnedTrade(out string remoteLockMessage)
-                                            : runtime.ToggleTradeLock(out remoteLockMessage, remoteParty: true))
+                                    return DispatchTradingRoomPacketOwnedTrade(out string remoteLockMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(remoteLockMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteLockMessage);
                                 case "remoteaccept":
@@ -9857,7 +9900,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
+                "/family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -9885,12 +9928,20 @@ namespace HaCreator.MapSimulator
 
 
                             return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.SelectMemberById(selectedMemberId));
+                        case "junior":
+                        case "addjunior":
+                            return ChatCommandHandler.CommandResult.Ok(
+                                AppendFamilyManagementRequestDispatch(_familyChartRuntime.AddJunior()));
+                        case "remove":
+                        case "bye":
+                            return ChatCommandHandler.CommandResult.Ok(
+                                AppendFamilyManagementRequestDispatch(_familyChartRuntime.RemoveSelectedMember()));
                         case "precept":
                             return ChatCommandHandler.CommandResult.Ok(
-                                _familyChartRuntime.SetPrecept(
+                                AppendFamilyManagementRequestDispatch(_familyChartRuntime.SetPrecept(
                                     args.Length >= 2
                                         ? string.Join(" ", args.Skip(1))
-                                        : string.Empty));
+                                        : string.Empty)));
                         case "session":
                             return HandleFamilySessionCommand(args.Skip(1).ToArray());
                         case "packet":
@@ -10131,7 +10182,7 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyClientMessage))
                                 : ChatCommandHandler.CommandResult.Error(familyClientMessage);
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
                     }
                 });
 
@@ -10731,7 +10782,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
-                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
+                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|attrrate <value>|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "npcpool",
@@ -11080,6 +11131,96 @@ namespace HaCreator.MapSimulator
                         default:
                             return ChatCommandHandler.CommandResult.Error(
                                 "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw|session] [...]");
+                    }
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "avatarmegaphone",
+                "Inspect or drive the avatar megaphone sender dialog and presentation owner",
+                "/avatarmegaphone [open|status|sample|sender <name>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]",
+                args =>
+                {
+                    _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+                    if (args.Length == 0)
+                    {
+                        ShowAvatarMegaphoneSendDialog();
+                        return ChatCommandHandler.CommandResult.Info(_avatarMegaphoneRuntime.DescribeStatus(currTickCount, _renderParams.RenderWidth));
+                    }
+
+                    string action = args[0].ToLowerInvariant();
+                    switch (action)
+                    {
+                        case "open":
+                        case "dialog":
+                            ShowAvatarMegaphoneSendDialog();
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.DescribeSendDialogOwner());
+
+                        case "status":
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{_avatarMegaphoneRuntime.DescribeStatus(currTickCount, _renderParams.RenderWidth)}{Environment.NewLine}{_avatarMegaphoneRuntime.DescribeSendDialogOwner()}");
+
+                        case "sample":
+                            ShowAvatarMegaphoneSendDialog();
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _avatarMegaphoneRuntime.LoadSample(
+                                    _playerManager?.Player?.Build,
+                                    GetCurrentMapTransferDisplayName()));
+
+                        case "sender":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone sender <name>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetSender(string.Join(" ", args.Skip(1))));
+
+                        case "item":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int itemId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone item <itemId>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetItem(itemId));
+
+                        case "line":
+                            if (args.Length < 3 || !int.TryParse(args[1], out int lineNumber))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone line <1-4> <text>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetDraftLine(lineNumber, string.Join(" ", args.Skip(2))));
+
+                        case "whisper":
+                            if (args.Length < 2 || !TryParsePacketOwnedBooleanToken(args[1], out bool whisper))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone whisper <on|off>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetWhisper(whisper));
+
+                        case "channel":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int channelId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone channel <id>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetChannel(channelId));
+
+                        case "send":
+                        case "publish":
+                        {
+                            string message = PublishAvatarMegaphoneDraft();
+                            return message.StartsWith("Avatar megaphone activated", StringComparison.Ordinal)
+                                ? ChatCommandHandler.CommandResult.Ok(message)
+                                : ChatCommandHandler.CommandResult.Error(message);
+                        }
+
+                        case "clear":
+                        case "bye":
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.Clear());
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]");
                     }
                 });
 

@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<string, bool, string> _okHandler;
         private Action _cancelHandler;
         private KeyboardState _previousKeyboardState;
+        private MouseState _previousMouseState;
         private string _editText = string.Empty;
         private bool _whisperChecked = true;
         private bool _isEditing = true;
@@ -76,6 +77,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperChecked = snapshot.WhisperChecked;
             _isEditing = true;
             _previousKeyboardState = Keyboard.GetState();
+            _previousMouseState = Mouse.GetState();
             base.Show();
         }
 
@@ -102,14 +104,16 @@ namespace HaCreator.MapSimulator.UI
             if (checkBounds.Contains(mouseState.X, mouseState.Y))
             {
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
-                if (mouseState.LeftButton == ButtonState.Pressed)
+                if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
                 {
                     _whisperChecked = !_whisperChecked;
                 }
 
+                _previousMouseState = mouseState;
                 return true;
             }
 
+            _previousMouseState = mouseState;
             return base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
         }
 
@@ -253,6 +257,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 _editText = _editText[..MaxInputCharacters];
             }
+
+            _editText = AvatarMegaphoneRuntime.NormalizeDialogInputForClientRows(_editText);
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

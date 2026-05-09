@@ -533,7 +533,7 @@ namespace HaCreator.MapSimulator
                         args.Length > 2 ? args[2] : null,
                         out DamageColorType colorType))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|blue|violet|0|1|2]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|violet|0|2]");
                 }
 
                 return TryRegisterAnimationDisplayerCombatFeedback(
@@ -1487,15 +1487,40 @@ namespace HaCreator.MapSimulator
 
         internal static string ResolveAnimationDisplayerCombatFeedbackEffectUol(string specialTextName, DamageColorType colorType)
         {
-            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            string baseEffectUol = colorType switch
+            {
+                DamageColorType.Red => AnimationDisplayerRedCombatFeedbackEffectBaseUol,
+                DamageColorType.Violet => AnimationDisplayerVioletCombatFeedbackEffectBaseUol,
+                _ => null
+            };
+            if (string.IsNullOrWhiteSpace(baseEffectUol))
             {
                 return null;
             }
 
-            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            if (!IsAnimationDisplayerCombatFeedbackSpecialTextAvailableForColor(resolvedSpecialTextName, colorType))
+            {
+                return null;
+            }
+
             return CombineAnimationDisplayerEffectUol(
-                AnimationDisplayerRedCombatFeedbackEffectBaseUol,
+                baseEffectUol,
                 resolvedSpecialTextName);
+        }
+
+        internal static bool IsAnimationDisplayerCombatFeedbackSpecialTextAvailableForColor(
+            string specialTextName,
+            DamageColorType colorType)
+        {
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            return colorType switch
+            {
+                DamageColorType.Red => DamageNumberRenderer.IsSupportedSpecialTextName(resolvedSpecialTextName),
+                DamageColorType.Violet => !string.Equals(resolvedSpecialTextName, "shot", StringComparison.OrdinalIgnoreCase)
+                    && DamageNumberRenderer.IsSupportedSpecialTextName(resolvedSpecialTextName),
+                _ => false
+            };
         }
 
         internal static string ResolveAnimationDisplayerCombatFeedbackFrameCacheKey(
@@ -2641,12 +2666,6 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                if (encodedColorType == 1)
-                {
-                    colorType = DamageColorType.Blue;
-                    return true;
-                }
-
                 if (encodedColorType == 2)
                 {
                     colorType = DamageColorType.Violet;
@@ -2665,12 +2684,6 @@ namespace HaCreator.MapSimulator
             if (string.Equals(normalized, "violet", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Violet;
-                return true;
-            }
-
-            if (string.Equals(normalized, "blue", StringComparison.OrdinalIgnoreCase))
-            {
-                colorType = DamageColorType.Blue;
                 return true;
             }
 
@@ -3390,7 +3403,8 @@ namespace HaCreator.MapSimulator
                     SourceVariantCount = ResolveAnimationDisplayerFollowSourceVariantCount(
                         followDefinition,
                         followFrameVariants),
-                    SourceVariantIndices = followDefinition?.EffectVariantIndices
+                    SourceVariantIndices = followDefinition?.EffectVariantIndices,
+                    SourceUsesAnimateEffect = usesAnimateEffect
                 });
 
             return followId >= 0;
@@ -3730,8 +3744,9 @@ namespace HaCreator.MapSimulator
             }
 
             Vector2 fallbackPosition = player.Physics.GetPosition();
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddClientOwnedCollisionVerticalJump(
                 frames,
+                CollisionVerticalJumpEffectUol,
                 () => _playerManager?.Player?.Physics?.GetPosition() ?? fallbackPosition,
                 () => _playerManager?.Player?.FacingRight ?? player.FacingRight,
                 fallbackPosition.X,
@@ -3755,8 +3770,9 @@ namespace HaCreator.MapSimulator
 
             Vector2 fallbackPosition = player.Physics.GetPosition();
             bool clientFlip = velocityX != 0d;
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddClientOwnedCollisionCustomImpact(
                 frames,
+                CollisionVerticalJumpEffectUol,
                 () => _playerManager?.Player?.Physics?.GetPosition() ?? fallbackPosition,
                 () => velocityX != 0d,
                 fallbackPosition.X,
@@ -7654,30 +7670,16 @@ namespace HaCreator.MapSimulator
                         ResolveAnimationDisplayerOneTimeFrameDurationMs(adjustedFrames))
                     : 0;
 
-                if (branchOwnerPosition != null || branchOwnerFacingRight != null)
-                {
-                    _animationEffects.AddOneTimeAttached(
-                        adjustedFrames,
-                        branchOwnerPosition,
-                        branchOwnerFacingRight,
-                        branchX,
-                        branchY,
-                        branchFacingRight,
-                        currentTime,
-                        initialElapsedMs: initialElapsedMs);
-                }
-                else
-                {
-                    _animationEffects.AddOneTimeAttached(
-                        adjustedFrames,
-                        null,
-                        null,
-                        branchX,
-                        branchY,
-                        branchFacingRight,
-                        currentTime,
-                        initialElapsedMs: initialElapsedMs);
-                }
+                _animationEffects.AddPacketOwnedRemoteSkillUse(
+                    adjustedFrames,
+                    effectUol,
+                    branchOwnerPosition,
+                    branchOwnerFacingRight,
+                    branchX,
+                    branchY,
+                    branchFacingRight,
+                    currentTime,
+                    initialElapsedMs: initialElapsedMs);
 
                 registered = true;
             }

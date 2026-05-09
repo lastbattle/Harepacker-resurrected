@@ -317,6 +317,20 @@ namespace HaCreator.MapSimulator
                 _soundManager.RegisterSound(MemoryGameReadyClickSoundKey, miniGameReadySound);
             }
 
+            string miniGameTimerSuffix = MapleStoryStringPool.GetOrFallback(
+                MemoryGameTimerWarningSoundStringPoolId,
+                "Timer");
+            string miniGameTimerDescriptor = string.Concat(miniGameSoundPrefix, miniGameTimerSuffix);
+            if (TryResolvePacketOwnedWzSound(
+                    miniGameTimerDescriptor,
+                    "MiniGame.img",
+                    out WzBinaryProperty miniGameTimerSound,
+                    out _,
+                    strictClientSoundFamily: true))
+            {
+                _soundManager.RegisterSound(MemoryGameTimerWarningSoundKey, miniGameTimerSound);
+            }
+
 
             // Load meso icons from Item.wz/Special/0900.img
 
@@ -786,6 +800,7 @@ namespace HaCreator.MapSimulator
                 BuildAriantArenaRemoteCharacter,
                 _playerManager?.Loader);
             _specialFieldRuntime.Minigames.MemoryGame.SetReadyClickSoundCallback(PlayMemoryGameReadyClickSE);
+            _specialFieldRuntime.Minigames.MemoryGame.SetTimerWarningSoundCallback(PlayMemoryGameTimerWarningSE);
 
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
@@ -2227,6 +2242,8 @@ namespace HaCreator.MapSimulator
             statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollPositionRequested = firstVisibleIndex => _chat.SetWhisperTargetPickerModalComboDropdownFirstVisibleIndex(firstVisibleIndex);
             statusBarChatUI.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
             statusBarChatUI.ImeCandidateListRefreshedRequested = state => _chat.HandleImeCandidateList(state);
+            statusBarChatUI.ImeCandidateSelectedRequested = (listIndex, candidateIndex) =>
+                WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window?.Handle ?? IntPtr.Zero, listIndex, candidateIndex);
         }
     }
 }

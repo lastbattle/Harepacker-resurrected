@@ -1395,6 +1395,11 @@ namespace HaCreator.MapSimulator
                 WheelRange = 140,
                 HasNumberFont = true,
                 TabControlId = CashShopInventoryTabControlId,
+                TabItemCount = 4,
+                TabCanvasItemCount = 5,
+                TabRuntimeWidth = 0,
+                TabNormalStringPoolId = 0xC94,
+                TabSelectedStringPoolId = 0xC95,
                 ScrollBarControlId = CashShopInventoryScrollBarControlId,
                 ScrollBarUpButtonId = 1,
                 ScrollBarDownButtonId = 0,
@@ -1418,7 +1423,7 @@ namespace HaCreator.MapSimulator
                     ActionKey = "BtExEquip",
                     ControlId = 0x3EA,
                     NativeButtonId = 0x3EA,
-                    StringPoolUolId = 0xC94,
+                    StringPoolUolId = 0x4E2,
                     Position = new Microsoft.Xna.Framework.Point(176, 27),
                     Width = 64,
                     Height = 22,
@@ -1430,7 +1435,7 @@ namespace HaCreator.MapSimulator
                     ActionKey = "BtExConsume",
                     ControlId = 0x3EB,
                     NativeButtonId = 0x3EB,
-                    StringPoolUolId = 0xC94,
+                    StringPoolUolId = 0x4E3,
                     Position = new Microsoft.Xna.Framework.Point(176, 54),
                     Width = 64,
                     Height = 22,
@@ -1442,7 +1447,7 @@ namespace HaCreator.MapSimulator
                     ActionKey = "BtExInstall",
                     ControlId = 0x3EC,
                     NativeButtonId = 0x3EC,
-                    StringPoolUolId = 0xC94,
+                    StringPoolUolId = 0x4E4,
                     Position = new Microsoft.Xna.Framework.Point(176, 81),
                     Width = 64,
                     Height = 22,
@@ -1454,7 +1459,7 @@ namespace HaCreator.MapSimulator
                     ActionKey = "BtExEtc",
                     ControlId = 0x3ED,
                     NativeButtonId = 0x3ED,
-                    StringPoolUolId = 0xC94,
+                    StringPoolUolId = 0x4E5,
                     Position = new Microsoft.Xna.Framework.Point(176, 108),
                     Width = 64,
                     Height = 22,
@@ -1466,7 +1471,7 @@ namespace HaCreator.MapSimulator
                     ActionKey = "BtExTrunk",
                     ControlId = 0x3EF,
                     NativeButtonId = 0x3EF,
-                    StringPoolUolId = 0,
+                    StringPoolUolId = 0x4E7,
                     Position = new Microsoft.Xna.Framework.Point(176, 135),
                     Width = 64,
                     Height = 22,
@@ -3540,6 +3545,10 @@ namespace HaCreator.MapSimulator
                 bool applied = cashShopStageWindow.TryApplyPacket(packetType, payload, currTickCount, out message);
                 bool storageApplied = TryApplyCashShopStorageExpansionPacketResult(packetType, payload, out string storageMessage);
                 bool balanceApplied = TryApplyCashShopBalancePacket(packetType, payload, out string balanceMessage);
+                bool extraCharacterEntitlementApplied = TryApplyCashShopExtraCharacterEntitlementPacketResult(
+                    packetType,
+                    cashShopStageWindow,
+                    out string extraCharacterEntitlementMessage);
                 if (packetType == 384)
                 {
                     TryFocusCashServiceCommodity(_lastPacketOwnedCommoditySerialNumber);
@@ -3551,8 +3560,12 @@ namespace HaCreator.MapSimulator
                     TryPlayCashGachaponOwnerAnimation(cashShopStageWindow, currTickCount);
                 }
 
-                message = CombineCashServicePacketMessages(message, storageMessage, balanceMessage);
-                return applied || storageApplied || balanceApplied;
+                message = CombineCashServicePacketMessages(
+                    message,
+                    storageMessage,
+                    balanceMessage,
+                    extraCharacterEntitlementMessage);
+                return applied || storageApplied || balanceApplied || extraCharacterEntitlementApplied;
             }
 
             OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.ItemTradingCenter, resetStageSession: false);
@@ -3563,6 +3576,52 @@ namespace HaCreator.MapSimulator
             }
 
             return mtsStageWindow.TryApplyPacket(packetType, payload, currTickCount, out message);
+        }
+
+        private bool TryApplyCashShopExtraCharacterEntitlementPacketResult(
+            int packetType,
+            CashServiceStageWindow cashShopStageWindow,
+            out string message)
+        {
+            message = null;
+            if (packetType != 384 || cashShopStageWindow == null)
+            {
+                return false;
+            }
+
+            int resultSubtype = cashShopStageWindow.CashItemResultSubtype;
+            if (resultSubtype != 88 && resultSubtype != 115)
+            {
+                return false;
+            }
+
+            int? accountId = ResolveLoginRosterAccountId();
+            if (!accountId.HasValue || accountId.Value <= 0)
+            {
+                message = "Cash Shop buy-character count reached CCashShop, but no authenticated login account id is available for the client extra-character gate.";
+                return false;
+            }
+
+            int buyCharacterCount = Math.Max(0, cashShopStageWindow.CashBuyCharacterCount);
+            _loginBackendSessionManager.SetAuthenticatedAccountId(accountId.Value);
+            _loginBackendSessionManager.ApplyAuthoritativeBuyCharacterCountSnapshot(buyCharacterCount, accountId.Value);
+            _loginPacketExtraCharInfoResultProfile = _loginBackendSessionManager.SnapshotExtraCharInfoResult();
+            _loginCanHaveExtraCharacter = _loginBackendSessionManager.CanHaveExtraCharacter;
+            SyncActiveLoginRosterExtraCharacterEntitlement();
+
+            LoginExtraCharInfoResultProfile extraCharInfoResult = ResolvePersistedLoginExtraCharInfoResult();
+            _loginCharacterAccountStore.UpdateExtraCharacterEntitlementForAccount(
+                ResolveLoginRosterAccountName(),
+                accountId.Value,
+                _loginCanHaveExtraCharacter ? 1 : 0,
+                extraCharInfoResult);
+
+            string owner = resultSubtype == 115
+                ? "CCashShop::OnCashItemResIncBuyCharacterCountDone"
+                : "CCashShop::OnCashItemResLoadLockerDone";
+            string gateState = _loginCanHaveExtraCharacter ? "enabled" : "denied";
+            message = $"{owner} refreshed the account-owned extra-character gate to {gateState} from buy-count {buyCharacterCount.ToString(CultureInfo.InvariantCulture)}.";
+            return true;
         }
 
         private void TryOpenCashShopModalOwnerForPacket(CashServiceStageWindow stageWindow, int packetType)

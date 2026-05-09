@@ -653,6 +653,69 @@ namespace HaCreator.MapSimulator.UI
             return CreateBaseSurfaceBounds(surfaceWidth, mediaSurfaceHeight);
         }
 
+        internal static int ResolveClientSurfaceWidthFromFrames(
+            int fallbackWidth,
+            params IReadOnlyList<MapleTvAnimationFrame>[] frameGroups)
+        {
+            int resolvedWidth = Math.Max(1, fallbackWidth);
+            if (frameGroups == null)
+            {
+                return resolvedWidth;
+            }
+
+            foreach (IReadOnlyList<MapleTvAnimationFrame> frames in frameGroups)
+            {
+                if (frames == null)
+                {
+                    continue;
+                }
+
+                foreach (MapleTvAnimationFrame frame in frames)
+                {
+                    if (frame?.Width > 0
+                        && frame.Offset.X == 0
+                        && frame.Width > resolvedWidth)
+                    {
+                        resolvedWidth = frame.Width;
+                    }
+                }
+            }
+
+            return resolvedWidth;
+        }
+
+        internal static int ResolveClientSurfaceHeightFromFrames(
+            int fallbackHeight,
+            params IReadOnlyList<MapleTvAnimationFrame>[] frameGroups)
+        {
+            int resolvedHeight = Math.Max(1, fallbackHeight);
+            if (frameGroups == null)
+            {
+                return resolvedHeight;
+            }
+
+            foreach (IReadOnlyList<MapleTvAnimationFrame> frames in frameGroups)
+            {
+                if (frames == null)
+                {
+                    continue;
+                }
+
+                foreach (MapleTvAnimationFrame frame in frames)
+                {
+                    if (frame?.Height > 0
+                        && frame.Offset.X == 0
+                        && frame.Offset.Y < 0
+                        && Math.Abs(frame.Offset.Y) > resolvedHeight)
+                    {
+                        resolvedHeight = Math.Abs(frame.Offset.Y);
+                    }
+                }
+            }
+
+            return resolvedHeight;
+        }
+
         private static Rectangle NormalizeBounds(Rectangle bounds)
         {
             return bounds.Width <= 0 || bounds.Height <= 0

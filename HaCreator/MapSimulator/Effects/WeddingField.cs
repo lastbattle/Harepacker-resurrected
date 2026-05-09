@@ -2551,7 +2551,25 @@ namespace HaCreator.MapSimulator.Effects
                 return relationshipRecord;
             }
 
+            RemoteUserRelationshipRecord existingOwnerRecord = default;
+            bool hasExistingOwnerRecord =
+                TryResolveParticipantForTemporaryStats(
+                    ownerCharacterId,
+                    out WeddingRemoteParticipant ownerParticipant,
+                    out _)
+                && ownerParticipant.AvatarModifiedState.HasValue
+                && (existingOwnerRecord = GetRelationshipRecord(
+                    ownerParticipant.AvatarModifiedState.Value,
+                    relationshipType)).IsActive;
+
             long? ownerItemSerial = relationshipRecord.ItemSerial;
+            if (!ownerItemSerial.HasValue && hasExistingOwnerRecord)
+            {
+                ownerItemSerial = ResolveWeddingRelationshipRecordSerialForOwner(
+                    ownerCharacterId,
+                    existingOwnerRecord);
+            }
+
             if (!ownerItemSerial.HasValue
                 && dispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
             {
@@ -2572,7 +2590,11 @@ namespace HaCreator.MapSimulator.Effects
                 matchedRecord);
             return relationshipRecord with
             {
-                ItemId = relationshipRecord.ItemId > 0 ? relationshipRecord.ItemId : matchedRecord.ItemId,
+                ItemId = relationshipRecord.ItemId > 0
+                    ? relationshipRecord.ItemId
+                    : hasExistingOwnerRecord && existingOwnerRecord.ItemId > 0
+                        ? existingOwnerRecord.ItemId
+                        : matchedRecord.ItemId,
                 ItemSerial = packetOwnerIsCanonicalOwner ? ownerItemSerial.Value : matchedItemSerial.Value,
                 PairItemSerial = packetOwnerIsCanonicalOwner ? matchedItemSerial.Value : ownerItemSerial.Value,
                 CharacterId = packetOwnerIsCanonicalOwner ? ownerCharacterId : matchedOwnerCharacterId,

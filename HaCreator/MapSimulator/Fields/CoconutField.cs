@@ -65,8 +65,14 @@ namespace HaCreator.MapSimulator.Fields
         private const int ScoreDigitSpacing = 4;
         private const int TimerDigitSpacing = 1;
         private const int ClientBoardRedrawIntervalMs = 150;
+        private const int BoardBackgroundStringPoolId = 0x0B08;
+        private const int ScoreFontStringPoolId = 0x0B09;
+        private const int TimerFontStringPoolId = 0x0B0A;
         private const int ScoreFormatStringPoolId = 0x0B02;
         private const int TimerFormatStringPoolId = 0x0B0C;
+        private const string BoardBackgroundFallbackPath = "Map/Obj/etc.img/coconut/backgrnd";
+        private const string ScoreFontFallbackPath = "Map/Obj/etc.img/coconut/fontScore";
+        private const string TimerFontFallbackPath = "Map/Obj/etc.img/coconut/fontTime";
         #region Nested Types
         public enum CoconutState
         {
@@ -335,6 +341,9 @@ namespace HaCreator.MapSimulator.Fields
         internal static Point GetBoardScoreTeam0AnchorForParity() => new Point(Team0ScoreX, ScoreY);
         internal static Point GetBoardScoreTeam1AnchorForParity() => new Point(Team1ScoreX, ScoreY);
         internal static Point GetBoardTimerAnchorForParity() => new Point(TimerX, TimerY);
+        internal static string ResolveClientBoardBackgroundResourcePathForParity() => ResolveClientBoardBackgroundResourcePath();
+        internal static string ResolveClientScoreFontResourcePathForParity() => ResolveClientScoreFontResourcePath();
+        internal static string ResolveClientTimerFontResourcePathForParity() => ResolveClientTimerFontResourcePath();
         internal static string FormatClientBoardScoreForParity(int score) => FormatClientBoardScore(score);
         internal int ResolveClientBoardTimeRemainingForParity(int currentTick) => ResolveClientBoardTimeRemaining(currentTick);
         internal string FormatClientBoardTimerForParity(int currentTick) => FormatClientBoardTimer(ResolveClientBoardTimeRemaining(currentTick));
@@ -442,7 +451,7 @@ namespace HaCreator.MapSimulator.Fields
                 new ClientBoardLayerOperation(
                     ClientBoardLayerOperationKind.LoadBoardCanvasResource,
                     new Point(BoardWidth, BoardHeight),
-                    "Map/Obj/etc.img/coconut/backgrnd"),
+                    ResolveClientBoardBackgroundResourcePath()),
                 new ClientBoardLayerOperation(
                     ClientBoardLayerOperationKind.CreateBoardCanvas,
                     new Point(BoardWidth, BoardHeight)),
@@ -570,6 +579,30 @@ namespace HaCreator.MapSimulator.Fields
                 format,
                 normalizedSeconds / 60,
                 normalizedSeconds % 60);
+        }
+
+        private static string ResolveClientBoardBackgroundResourcePath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                BoardBackgroundStringPoolId,
+                BoardBackgroundFallbackPath,
+                appendFallbackSuffix: false);
+        }
+
+        private static string ResolveClientScoreFontResourcePath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ScoreFontStringPoolId,
+                ScoreFontFallbackPath,
+                appendFallbackSuffix: false);
+        }
+
+        private static string ResolveClientTimerFontResourcePath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                TimerFontStringPoolId,
+                TimerFontFallbackPath,
+                appendFallbackSuffix: false);
         }
 
         #region Initialization

@@ -36,14 +36,27 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MemoEditY = 105;
         internal const int MemoEditWidth = 333;
         internal const int MemoEditHeight = 45;
+        internal const int MemoEditMaxLineWidth = 323;
+        internal const int MemoEditFontHeight = 14;
         internal const int NameListScrollBarX = 498;
         internal const int NameListScrollBarY = 7;
         internal const int NameListScrollBarHeight = 93;
+        internal const int NameListScrollBarWheelRange = 100;
+        internal const int NameListScrollBarRange = 100;
+        internal const int SearchResultX = 353;
+        internal const int SearchResultY = 0;
+        internal const int SearchResultFirstTextX = 368;
+        internal const int SearchResultFirstTextY = 24;
+        internal const int SearchResultRowHeight = 15;
+        internal const int SearchResultBottomY = 99;
         internal const int ReadCloseButtonX = 91;
         internal const int ReadCloseButtonY = 231;
         internal const int SenderTargetMaxChars = 12;
         internal const int SenderMemoMaxChars = 120;
         internal const int SenderMemoMaxRows = 3;
+        internal const string SenderBackgroundPath = "UI/UIWindow.img/NewYearsCard/backgrnd";
+        internal const string SenderSearchResultBackgroundPath = "UI/UIWindow.img/NewYearsCard/backgrnd2";
+        internal const string ReadBackgroundPath = "UI/UIWindow.img/NewYearsCard/backgrnd3";
 
         private readonly List<string> _searchResults = new();
         private string _senderName = "Player";
@@ -230,12 +243,22 @@ namespace HaCreator.MapSimulator.Interaction
         private static string NormalizeName(string value, string fallback)
         {
             string normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-            return normalized ?? string.Empty;
+            if (string.IsNullOrEmpty(normalized))
+            {
+                return string.Empty;
+            }
+
+            return normalized.Length <= SenderTargetMaxChars
+                ? normalized
+                : normalized.Substring(0, SenderTargetMaxChars);
         }
 
         private static string NormalizeMemo(string value)
         {
-            return (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+            string normalized = (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+            return normalized.Length <= SenderMemoMaxChars
+                ? normalized
+                : normalized.Substring(0, SenderMemoMaxChars);
         }
 
         private static IReadOnlyList<string> WrapMemoForReadDialog(string memo)
@@ -254,14 +277,14 @@ namespace HaCreator.MapSimulator.Interaction
                 foreach (string word in words)
                 {
                     string candidate = string.IsNullOrEmpty(line) ? word : $"{line} {word}";
-                    if (line.Length > 0 && candidate.Length > 28)
+                    if (line.Length > 0 && EstimateBasicFontPixelWidth(candidate) > MemoWrapWidth)
                     {
                         lines.Add(line);
-                        line = word;
+                        AddOversizedWordSegments(lines, word, MemoWrapWidth, ref line);
                     }
                     else
                     {
-                        line = candidate;
+                        AddOversizedWordSegments(lines, candidate, MemoWrapWidth, ref line);
                     }
                 }
 
@@ -272,6 +295,56 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return lines.Take(6).ToArray();
+        }
+
+        private static void AddOversizedWordSegments(List<string> lines, string candidate, int maxWidth, ref string line)
+        {
+            if (EstimateBasicFontPixelWidth(candidate) <= maxWidth)
+            {
+                line = candidate;
+                return;
+            }
+
+            string segment = string.Empty;
+            foreach (char c in candidate)
+            {
+                string next = segment + c;
+                if (segment.Length > 0 && EstimateBasicFontPixelWidth(next) > maxWidth)
+                {
+                    lines.Add(segment);
+                    segment = c.ToString();
+                }
+                else
+                {
+                    segment = next;
+                }
+            }
+
+            line = segment;
+        }
+
+        internal static int EstimateBasicFontPixelWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            int width = 0;
+            foreach (char c in text)
+            {
+                width += c switch
+                {
+                    ' ' => 4,
+                    '\t' => 12,
+                    'i' or 'l' or 'I' or '!' or '.' or ',' or ':' or ';' or '\'' => 3,
+                    'm' or 'w' or 'M' or 'W' or '@' => 9,
+                    >= '\u2E80' => 12,
+                    _ => 6
+                };
+            }
+
+            return width;
         }
     }
 

@@ -4881,6 +4881,14 @@ namespace HaCreator.MapSimulator.UI
                 ? $"Cancelled sale listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)} from the packet-owned sale owner."
                 : "Cancelled the focused packet-owned sale listing.";
             message = $"CITC::OnCancelSaleItemDone removed {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused sale row")} from the sale owner.";
+            AppendItcMutationResultPacketEntry(
+                payload,
+                bodyOffset: 1,
+                ownerName: "CITC::OnCancelSaleItemDone",
+                seller: "CITC sale owner",
+                stateLabel: "Cancel sale",
+                listingId: removedEntry?.ListingId ?? listingIdHint,
+                detail: message);
             UpdateItcSelectionFromPrimaryList(_itcSalePacketEntries);
             return true;
         }
@@ -4913,6 +4921,14 @@ namespace HaCreator.MapSimulator.UI
                 $"Purchase listing {(movedEntry?.ListingId ?? _itcNormalItemSelectedListingId).ToString(CultureInfo.InvariantCulture)} moved into inventory tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.";
             message =
                 $"CITC::OnMoveITCPurchaseItemLtoSDone moved {(movedEntry != null ? $"listing {movedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused purchase row")} into tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.";
+            AppendItcMutationResultPacketEntry(
+                payload,
+                bodyOffset: 1,
+                ownerName: "CITC::OnMoveITCPurchaseItemLtoSDone",
+                seller: "CITC purchase owner",
+                stateLabel: "Move purchase",
+                listingId: movedEntry?.ListingId ?? listingIdHint,
+                detail: message);
             UpdateItcSelectionFromPrimaryList(_itcPurchasePacketEntries);
             return true;
         }
@@ -4955,6 +4971,14 @@ namespace HaCreator.MapSimulator.UI
             };
 
             message = $"{ownerName} left {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored wish row(s) active.";
+            AppendItcMutationResultPacketEntry(
+                payload,
+                bodyOffset: 1,
+                ownerName: ownerName,
+                seller: "CITC wish owner",
+                stateLabel: addSelectedCatalogEntry ? "Wish add" : "Wish remove",
+                listingId: focusedCatalogEntry?.ListingId ?? removedWishEntry?.ListingId ?? listingIdHint,
+                detail: string.Join(" ", new[] { message, _noticeState }.Where(part => !string.IsNullOrWhiteSpace(part))));
             UpdateItcSelectionFromPrimaryList(_itcWishPacketEntries);
             return true;
         }
@@ -4987,6 +5011,14 @@ namespace HaCreator.MapSimulator.UI
                 ? $"Purchased listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)} from the {(fromWishList ? "wish-sale" : "main list")} owner."
                 : $"Purchased the focused {(fromWishList ? "wish-sale" : "main-list")} row.";
             message = $"{ownerName} completed for {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused row")} and refreshed the packet-owned {(fromWishList ? "wish-sale" : "catalog")} owner.";
+            AppendItcMutationResultPacketEntry(
+                payload,
+                bodyOffset: 1,
+                ownerName: ownerName,
+                seller: fromWishList ? "CITC wish owner" : "CITC list owner",
+                stateLabel: fromWishList ? "Buy wish" : "Buy item",
+                listingId: removedEntry?.ListingId ?? listingIdHint,
+                detail: string.Join(" ", new[] { message, _noticeState }.Where(part => !string.IsNullOrWhiteSpace(part))));
             UpdateItcSelectionFromPrimaryList(fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries);
             return true;
         }
@@ -5004,12 +5036,28 @@ namespace HaCreator.MapSimulator.UI
                 _itcSaleItemCount = _itcSalePacketEntries.Count;
                 _noticeState = $"Registered listing {saleEntry.ListingId.ToString(CultureInfo.InvariantCulture)} for sale.";
                 message = $"CITC::OnNormalItemResRegisterSaleEntryDone registered listing {saleEntry.ListingId.ToString(CultureInfo.InvariantCulture)}.";
+                AppendItcMutationResultPacketEntry(
+                    payload,
+                    bodyOffset: 1,
+                    ownerName: "CITC::OnNormalItemResRegisterSaleEntryDone",
+                    seller: "CITC sale owner",
+                    stateLabel: "Register sale",
+                    listingId: saleEntry.ListingId,
+                    detail: message);
                 UpdateItcSelectionFromPrimaryList(_itcPacketCatalogEntries);
                 return true;
             }
 
             _noticeState = "Register-sale done was received without a focused listing.";
             message = "CITC::OnNormalItemResRegisterSaleEntryDone completed, but no focused listing could be resolved.";
+            AppendItcMutationResultPacketEntry(
+                payload,
+                bodyOffset: 1,
+                ownerName: "CITC::OnNormalItemResRegisterSaleEntryDone",
+                seller: "CITC sale owner",
+                stateLabel: "Register sale",
+                listingId: ResolveItcListingIdHintFromPayload(payload, 1, _itcPacketCatalogEntries, _itcSalePacketEntries),
+                detail: message);
             return true;
         }
 
@@ -7689,6 +7737,46 @@ namespace HaCreator.MapSimulator.UI
             using BinaryReader reader = new(stream);
             stream.Position = offset;
             return TryDecodeTrailingItcItemEntries(reader, maxCount);
+        }
+
+        private void AppendItcMutationResultPacketEntry(
+            byte[] payload,
+            int bodyOffset,
+            string ownerName,
+            string seller,
+            string stateLabel,
+            int listingId,
+            string detail)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            string normalizedOwnerName = string.IsNullOrWhiteSpace(ownerName)
+                ? "CITC mutation"
+                : ownerName.Trim();
+            int offset = Math.Clamp(bodyOffset, 0, packetPayload.Length);
+            int bodyLength = Math.Max(0, packetPayload.Length - offset);
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = normalizedOwnerName,
+                Detail = string.IsNullOrWhiteSpace(detail)
+                    ? $"{normalizedOwnerName} retained its packet-owned mutation body."
+                    : detail.Trim(),
+                Seller = string.IsNullOrWhiteSpace(seller) ? "CITC" : seller,
+                PriceLabel = listingId > 0
+                    ? $"Listing {listingId.ToString(CultureInfo.InvariantCulture)}"
+                    : bodyLength > 0
+                        ? $"Offset {offset.ToString(CultureInfo.InvariantCulture)}"
+                        : string.Empty,
+                StateLabel = string.IsNullOrWhiteSpace(stateLabel) ? "Mutation" : stateLabel,
+                ListingId = Math.Max(0, listingId),
+                PacketSource = normalizedOwnerName,
+                PacketFieldSummary = bodyLength > 0
+                    ? BuildItcRawTailFieldSummary(packetPayload, offset)
+                    : BuildRawPayloadFieldSummary(packetPayload, includeSubtypeByte: true),
+                PacketRawByteLength = bodyLength,
+                PacketPayloadRawHex = bodyLength > 0
+                    ? BuildItcRawTailHexSummary(packetPayload, offset)
+                    : BuildRawPayloadHexSummary(packetPayload)
+            });
         }
 
         private string AppendItcRawTailResultEntryIfNeeded(

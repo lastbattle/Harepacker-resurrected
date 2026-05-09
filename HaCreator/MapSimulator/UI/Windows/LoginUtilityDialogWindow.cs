@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.UI
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogVisualStyle _visualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogFrameVariant _frameVariant = LoginUtilityDialogFrameVariant.Default;
+        private bool _primaryButtonEnabled = true;
         private KeyboardState _previousKeyboardState;
         private bool _inputMasked;
         private int _inputMaxLength;
@@ -131,7 +132,7 @@ namespace HaCreator.MapSimulator.UI
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => _softKeyboardType;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _inputValue?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => _inputMaxLength;
-        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => HasInputField && _inputFocused && _drawPrimaryButtonLabel;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => HasInputField && _inputFocused && IsPrimaryActionEnabled;
         string ISoftKeyboardHost.GetSoftKeyboardText() => _inputValue ?? string.Empty;
 
         public event Action PrimaryRequested;
@@ -165,7 +166,8 @@ namespace HaCreator.MapSimulator.UI
             SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric,
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
             LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
-            Rectangle? inputBoundsOverride = null)
+            Rectangle? inputBoundsOverride = null,
+            bool primaryButtonEnabled = true)
         {
             _title = title ?? string.Empty;
             _body = body ?? string.Empty;
@@ -183,6 +185,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardType = softKeyboardType;
             _visualStyle = visualStyle;
             _frameVariant = frameVariant;
+            _primaryButtonEnabled = primaryButtonEnabled;
             Frame = ResolveFrame(frameVariant);
             CenterFrame(Frame);
             _inputBoundsOverride = inputBoundsOverride;
@@ -192,6 +195,12 @@ namespace HaCreator.MapSimulator.UI
                 ClearInputFocus();
             }
             ConfigureButtons();
+        }
+
+        public void SetPrimaryButtonEnabled(bool enabled)
+        {
+            _primaryButtonEnabled = enabled;
+            ApplyPrimaryButtonEnabledState();
         }
 
         public override void Update(GameTime gameTime)
@@ -206,7 +215,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (Pressed(keyboardState, Keys.Enter))
+            if (Pressed(keyboardState, Keys.Enter) && IsPrimaryActionEnabled)
             {
                 PrimaryRequested?.Invoke();
             }
@@ -383,6 +392,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (primaryButton)
                 {
+                    if (!IsPrimaryActionEnabled)
+                    {
+                        return;
+                    }
+
                     PrimaryRequested?.Invoke();
                 }
                 else
@@ -458,6 +472,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 PositionButton(_activePrimaryButton, ResolveSingleButtonLayoutPosition(_activePrimaryButton), ResolveButtonY(_activePrimaryButton));
             }
+
+            ApplyPrimaryButtonEnabledState();
         }
 
         private (int PrimaryX, int SecondaryX) ResolveTwoButtonLayoutPositions()
@@ -571,6 +587,13 @@ namespace HaCreator.MapSimulator.UI
             button.Y = y;
             button.SetVisible(true);
             button.SetEnabled(true);
+        }
+
+        private bool IsPrimaryActionEnabled => _drawPrimaryButtonLabel && _primaryButtonEnabled;
+
+        private void ApplyPrimaryButtonEnabledState()
+        {
+            _activePrimaryButton?.SetEnabled(_primaryButtonEnabled);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)
@@ -782,7 +805,7 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;
-            if (!HasInputField || !_inputFocused || !_drawPrimaryButtonLabel)
+            if (!HasInputField || !_inputFocused || !IsPrimaryActionEnabled)
             {
                 errorMessage = "This dialog cannot be submitted.";
                 return false;

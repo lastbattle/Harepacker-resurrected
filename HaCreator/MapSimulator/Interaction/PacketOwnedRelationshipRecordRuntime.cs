@@ -309,7 +309,9 @@ namespace HaCreator.MapSimulator.Interaction
                 RemoteUserRelationshipRecordPacket addPacket = new(
                     relationshipType,
                     normalizedRecord,
-                    ResolveAvatarModifiedDispatchKey(relationshipType, avatarModifiedPacket.CharacterId, normalizedRecord));
+                    ResolveAvatarModifiedDispatchKey(relationshipType, avatarModifiedPacket.CharacterId, normalizedRecord),
+                    ResolveAvatarModifiedPayloadKind(relationshipType, normalizedRecord),
+                    ResolveAvatarModifiedPairLookupSerial(relationshipType, normalizedRecord));
                 bool applied = TryApplyDecodedAdd(addPacket, remoteUserPool, currentTime, source, out string addMessage);
                 if (!applied)
                 {
@@ -392,6 +394,28 @@ namespace HaCreator.MapSimulator.Interaction
                             : characterId),
                 _ => default
             };
+        }
+
+        private static RemoteRelationshipRecordAddPayloadKind ResolveAvatarModifiedPayloadKind(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            // CUserRemote::OnAvatarModified feeds CUserPool::OnCoupleRecordAdd
+            // and OnFriendRecordAdd with the user's own item serial; the pool
+            // then scans partner pair-item serial fields to create the entry.
+            return relationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship
+                   && relationshipRecord.ItemSerial.HasValue
+                ? RemoteRelationshipRecordAddPayloadKind.PairLookup
+                : RemoteRelationshipRecordAddPayloadKind.ExpandedRecord;
+        }
+
+        private static long? ResolveAvatarModifiedPairLookupSerial(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            return relationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship
+                ? relationshipRecord.ItemSerial
+                : null;
         }
 
         private static string DescribePacketKind(int packetType)

@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewShadowLayerOrdinal { get; set; }
         public bool IsTemporaryStatViewReleased { get; set; }
         public int TemporaryStatViewReleaseTime { get; set; } = int.MinValue;
+        public int TemporaryStatViewTerminalReleaseSequence { get; set; }
         public int TemporaryStatViewObjectReleaseSequence { get; set; }
         public int TemporaryStatViewParentLayerReleaseSequence { get; set; }
         public int TemporaryStatViewMainLayerReleaseSequence { get; set; }

@@ -103,7 +103,9 @@ namespace HaCreator.MapSimulator.Managers
             int resolvedAccountId = accountId.HasValue && accountId.Value > 0
                 ? accountId.Value
                 : AuthenticatedAccountId.GetValueOrDefault();
-            if (resolvedAccountId <= 0)
+            if (resolvedAccountId <= 0 ||
+                !AuthenticatedAccountId.HasValue ||
+                AuthenticatedAccountId.Value != resolvedAccountId)
             {
                 return false;
             }
@@ -205,10 +207,7 @@ namespace HaCreator.MapSimulator.Managers
                     break;
 
                 case LoginViewAllCharResultKind.Characters:
-                    if (profile.Entries != null)
-                    {
-                        _viewAllEntries.AddRange(profile.Entries.Where(entry => entry != null));
-                    }
+                    ReplaceViewAllWorldRoster(profile);
 
                     if (ViewAllRemainingServerCount > 0)
                     {
@@ -217,12 +216,10 @@ namespace HaCreator.MapSimulator.Managers
 
                     if (ViewAllRemainingServerCount <= 0)
                     {
-                        ViewAllCharRosterProfile = CreateRosterProfile(
-                            _viewAllEntries,
-                            _viewAllEntries.Count,
+                        RebuildViewAllRosterProfile(
+                            ResolveViewAllAggregateSlotCount(),
                             CanHaveExtraCharacter ? 1 : 0,
                             profile.LoginOpt ?? ViewAllCharRosterProfile?.LoginOpt ?? false);
-                        CacheViewAllWorldProfiles(ViewAllCharRosterProfile);
                     }
                     break;
 
@@ -232,14 +229,13 @@ namespace HaCreator.MapSimulator.Managers
                         ViewAllRemainingServerCount--;
                     }
 
-                    if (ViewAllRemainingServerCount <= 0 && _viewAllEntries.Count > 0)
+                    if (ViewAllRemainingServerCount <= 0 &&
+                        (_viewAllEntries.Count > 0 || _viewAllProfilesByWorld.Count > 0))
                     {
-                        ViewAllCharRosterProfile ??= CreateRosterProfile(
-                            _viewAllEntries,
-                            _viewAllEntries.Count,
+                        RebuildViewAllRosterProfile(
+                            ResolveViewAllAggregateSlotCount(),
                             CanHaveExtraCharacter ? 1 : 0,
-                            false);
-                        CacheViewAllWorldProfiles(ViewAllCharRosterProfile);
+                            ViewAllCharRosterProfile?.LoginOpt ?? false);
                     }
                     break;
             }
@@ -668,6 +664,7 @@ namespace HaCreator.MapSimulator.Managers
                 _lastExtraCharInfoResultProfile != null &&
                 AuthenticatedAccountId.HasValue &&
                 AuthenticatedAccountId.Value == _lastExtraCharInfoResultProfile.AccountId &&
+                _lastExtraCharInfoResultProfile.ResultFlag == 0 &&
                 _lastExtraCharInfoResultProfile.CanHaveExtraCharacter;
             return SetExtraCharacterEntitlement(canHaveExtraCharacter);
         }
@@ -831,6 +828,93 @@ namespace HaCreator.MapSimulator.Managers
             {
                 ViewAllCharRosterProfile = CloneProfile(profile);
             }
+        }
+
+        private void ReplaceViewAllWorldRoster(LoginViewAllCharResultPacketProfile profile)
+        {
+            if (profile == null || profile.Kind != LoginViewAllCharResultKind.Characters)
+            {
+                return;
+            }
+
+            int worldId = Math.Max(0, profile.WorldId ?? ActiveWorldId);
+            if (profile.WorldId.HasValue)
+            {
+                ActiveWorldId = worldId;
+            }
+
+            LoginSelectWorldCharacterEntry[] worldEntries = profile.Entries?
+                .Where(entry => entry != null)
+                .Select(entry => CloneEntryForWorld(entry, worldId))
+                .ToArray()
+                ?? Array.Empty<LoginSelectWorldCharacterEntry>();
+            LoginSelectWorldResultProfile previousWorldProfile = _viewAllProfilesByWorld.TryGetValue(worldId, out LoginSelectWorldResultProfile storedWorldProfile)
+                ? storedWorldProfile
+                : null;
+            LoginSelectWorldResultProfile selectWorldProfile = _selectWorldProfilesByWorld.TryGetValue(worldId, out LoginSelectWorldResultProfile storedSelectWorldProfile)
+                ? storedSelectWorldProfile
+                : worldId == ActiveWorldId ? SelectWorldRosterProfile : null;
+            int slotCount = Math.Max(
+                worldEntries.Length,
+                ResolveRosterSlotCount(previousWorldProfile, selectWorldProfile));
+            int buyCharacterCount = NormalizeBuyCharacterCount(ResolveRosterBuyCharacterCount(previousWorldProfile, selectWorldProfile));
+            bool loginOpt = profile.LoginOpt
+                            ?? previousWorldProfile?.LoginOpt
+                            ?? selectWorldProfile?.LoginOpt
+                            ?? false;
+
+            _viewAllProfilesByWorld[worldId] = CreateRosterProfile(
+                worldEntries,
+                slotCount,
+                buyCharacterCount,
+                loginOpt);
+            RebuildViewAllEntriesFromWorldProfiles();
+        }
+
+        private void RebuildViewAllEntriesFromWorldProfiles()
+        {
+            _viewAllEntries.Clear();
+            foreach (LoginSelectWorldCharacterEntry entry in _viewAllProfilesByWorld
+                         .OrderBy(profile => profile.Key)
+                         .SelectMany(profile => profile.Value?.Entries ?? Array.Empty<LoginSelectWorldCharacterEntry>())
+                         .Where(entry => entry != null))
+            {
+                _viewAllEntries.Add(CloneEntry(entry));
+            }
+
+            ViewAllExpectedCharacterCount = Math.Max(ViewAllExpectedCharacterCount, _viewAllEntries.Count);
+        }
+
+        private void RebuildViewAllRosterProfile(int slotCount, int buyCharacterCount, bool loginOpt)
+        {
+            RebuildViewAllEntriesFromWorldProfiles();
+            ViewAllCharRosterProfile = CreateRosterProfile(
+                _viewAllEntries,
+                slotCount,
+                NormalizeBuyCharacterCount(buyCharacterCount),
+                loginOpt);
+
+            if (_viewAllProfilesByWorld.TryGetValue(ActiveWorldId, out LoginSelectWorldResultProfile activeWorldProfile))
+            {
+                ViewAllCharRosterProfile = CloneProfile(activeWorldProfile);
+            }
+        }
+
+        private int ResolveViewAllAggregateSlotCount()
+        {
+            int slotCount = 0;
+            foreach (LoginSelectWorldResultProfile profile in _viewAllProfilesByWorld.Values)
+            {
+                if (profile == null)
+                {
+                    continue;
+                }
+
+                slotCount = Math.Max(slotCount, Math.Max(profile.Entries?.Count ?? 0, profile.SlotCount));
+            }
+
+            slotCount = Math.Max(slotCount, ResolveRosterSlotCount(ViewAllCharRosterProfile, SelectWorldRosterProfile));
+            return Math.Max(slotCount, _viewAllEntries.Count);
         }
 
         private static LoginSelectWorldResultProfile CreateWorldSpecificViewAllRoster(

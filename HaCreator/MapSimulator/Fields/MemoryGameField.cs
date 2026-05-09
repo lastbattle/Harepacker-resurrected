@@ -222,6 +222,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastWinnerIndex = -1;
         private bool _turnWarningEnabled;
         private bool _turnWarningShown;
+        private int _lastTurnWarningSecond = -1;
         private string _title = "Match Cards";
         private string _statusMessage = "Open a MiniRoom to begin.";
         private MemoryGamePacketType? _lastPacketType;
@@ -231,6 +232,7 @@ namespace HaCreator.MapSimulator.Fields
         private MemoryGamePromptState _pendingPrompt;
         private string _statusMessageBeforePrompt;
         private Action _readyClickSoundCallback;
+        private Action _timerWarningSoundCallback;
         private Action _participantEnterSoundCallback;
         private bool _localTieRequestSent;
         private bool _localTieRequestSentThisTurn;
@@ -468,6 +470,11 @@ namespace HaCreator.MapSimulator.Fields
             _readyClickSoundCallback = callback;
         }
 
+        public void SetTimerWarningSoundCallback(Action callback)
+        {
+            _timerWarningSoundCallback = callback;
+        }
+
         public void SetParticipantEnterSoundCallback(Action callback)
         {
             _participantEnterSoundCallback = callback;
@@ -630,6 +637,7 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
             _turnWarningEnabled = true;
             _turnWarningShown = false;
+            _lastTurnWarningSecond = -1;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             message = _statusMessage;
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round started.");
@@ -712,6 +720,7 @@ namespace HaCreator.MapSimulator.Fields
                 _scores[_currentTurnIndex]++;
                 _revealedCardIndices.Clear();
                 _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+                _lastTurnWarningSecond = -1;
                 _localTieRequestSentThisTurn = false;
 
 
@@ -1178,6 +1187,7 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameCancelReadyPacketType => TryApplyOutgoingReadyRequest(isReady: false, out message),
                 MemoryGameClientBanOrTurnUpCardPacketType => TryApplyClientBanOrTurnUpCardPacket(packetBytes, tickCount, out message),
                 MemoryGameStartPacketType => TryApplyOutgoingStartRequest(out message),
+                MemoryGameTimeOverPacketType => TryApplyOutgoingTimeOverRequest(out message),
                 _ => FailOfficialClientPacket(packetType, out message)
             };
 
@@ -1320,6 +1330,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_stage == RoomStage.Playing)
             {
+                UpdateClientTimerWarningSound(tickCount);
+
                 if (_pendingHideTick > 0 && tickCount >= _pendingHideTick)
                 {
                     ResolveMismatch();
@@ -1328,6 +1340,12 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (_turnDeadlineTick > 0 && tickCount >= _turnDeadlineTick && _pendingHideTick <= 0)
                 {
+                    TryDispatchOfficialClientPacket(
+                        new[] { MemoryGameTimeOverPacketType },
+                        tickCount,
+                        out _,
+                        enforcePromptFlow: false,
+                        relayOutboundTransport: true);
                     AdvanceTurn(tickCount);
                     _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
                     SyncMiniRoomRuntime();
@@ -1572,6 +1590,9 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = 0;
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
+            _turnWarningEnabled = false;
+            _turnWarningShown = false;
+            _lastTurnWarningSecond = -1;
             _title = "Match Cards";
             _statusMessage = "Open a MiniRoom to begin.";
             _stage = RoomStage.Hidden;
@@ -1663,6 +1684,27 @@ namespace HaCreator.MapSimulator.Fields
         {
             _currentTurnIndex = _currentTurnIndex == 0 ? 1 : 0;
             _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+            _lastTurnWarningSecond = -1;
+        }
+
+        private void UpdateClientTimerWarningSound(int tickCount)
+        {
+            if (!_turnWarningEnabled
+                || _turnDeadlineTick <= 0
+                || _currentTurnIndex != _localPlayerIndex)
+            {
+                return;
+            }
+
+            int remainingSeconds = Math.Max(0, (_turnDeadlineTick - tickCount + 999) / 1000);
+            if (remainingSeconds <= 0 || remainingSeconds > 9 || remainingSeconds == _lastTurnWarningSecond)
+            {
+                return;
+            }
+
+            _lastTurnWarningSecond = remainingSeconds;
+            _turnWarningShown = true;
+            _timerWarningSoundCallback?.Invoke();
         }
 
 
@@ -1689,6 +1731,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
@@ -1735,6 +1778,7 @@ namespace HaCreator.MapSimulator.Fields
             _scores[1] = 0;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _localTieRequestSent = false;
@@ -1763,6 +1807,7 @@ namespace HaCreator.MapSimulator.Fields
             _currentTurnIndex = 0;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
@@ -2146,6 +2191,18 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private bool TryApplyOutgoingTimeOverRequest(out string message)
+        {
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Time-over packets (63) are only valid while Match Cards is in play.";
+                return false;
+            }
+
+            message = "Time-over packet (63) sent.";
+            return true;
+        }
+
         private bool TryApplyOutgoingStartRequest(out string message)
         {
             if (!HasClientStartTarget())
@@ -2183,6 +2240,7 @@ namespace HaCreator.MapSimulator.Fields
             _stage = RoomStage.Playing;
             _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
             _turnDeadlineTick = tickCount + (200 * cardCount) + 11500;
+            _lastTurnWarningSecond = -1;
             _resultExpireTick = 0;
             _readyStates[0] = false;
             _readyStates[1] = false;
@@ -2236,6 +2294,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentTurnIndex = resultOwner;
                 _turnDeadlineTick = tickCount + 11600;
+                _lastTurnWarningSecond = -1;
                 _localTieRequestSentThisTurn = false;
                 _statusMessage = $"Mismatch pending. {_playerNames[_currentTurnIndex]} takes the next turn after flip-back.";
                 _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Packet mismatch received. Waiting for time-over flip-back.");
@@ -2255,6 +2314,7 @@ namespace HaCreator.MapSimulator.Fields
                 _scores[scoringPlayerIndex]++;
                 _currentTurnIndex = scoringPlayerIndex;
                 _turnDeadlineTick = tickCount + 10000;
+                _lastTurnWarningSecond = -1;
                 _revealedCardIndices.Clear();
                 _localTieRequestSentThisTurn = false;
                 _statusMessage = $"{_playerNames[scoringPlayerIndex]} found a pair.";
@@ -2290,6 +2350,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
             _turnDeadlineTick = tickCount + 10000;
+            _lastTurnWarningSecond = -1;
             _statusMessage = ResolveMiniRoomGameMessage(1, ResolveParticipantName(_currentTurnIndex));
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Time-over packet returned the board to the next turn.");
             SyncMiniRoomRuntime();
@@ -2304,6 +2365,7 @@ namespace HaCreator.MapSimulator.Fields
             _stage = RoomStage.Result;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
             _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
@@ -3368,6 +3430,7 @@ namespace HaCreator.MapSimulator.Fields
                 // CMemoryGameDlg::SendClaimGiveUp encodes subtype 52 as one-byte payload.
                 // CMemoryGameDlg::SendTieRequest encodes subtype 50 as one-byte payload.
                 // CMemoryGameDlg::OnTieRequest encodes subtype 51 with one decision byte (0/1).
+                // CMemoryGameDlg::Update encodes subtype 63 as one-byte payload when the local timer expires.
                 case MiniRoomBaseLeavePacketType:
                     if (packetLength != 1)
                     {
@@ -3459,6 +3522,15 @@ namespace HaCreator.MapSimulator.Fields
                     if (packetLength != 1)
                     {
                         message = $"Start packet (61) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTimeOverPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Time-over packet (63) requires a single-byte payload, but received {packetLength} byte(s).";
                         return false;
                     }
 
@@ -3559,6 +3631,7 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameCancelReadyPacketType => true,
                 MemoryGameClientBanOrTurnUpCardPacketType => true,
                 MemoryGameStartPacketType => true,
+                MemoryGameTimeOverPacketType => true,
                 _ => false
             };
         }

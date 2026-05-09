@@ -604,7 +604,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!TryDecodeInboundMessengerPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", MessengerOpcode, _additionalInboundOpcodes, out MessengerOfficialSessionBridgeMessage message))
+            if (!TryDecodeInboundMessengerPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", MessengerOpcode, GetActiveAdditionalInboundOpcodes(MessengerOpcode), out MessengerOfficialSessionBridgeMessage message))
             {
                 RecordPassiveInboundPacket(e.RawPacket);
                 LastStatus = _roleSessionProxy.LastStatus;
@@ -928,6 +928,24 @@ namespace HaCreator.MapSimulator.Managers
             return _defaultOutboundOpcode == 0 && _additionalOutboundOpcodes.Count == 0
                 || _defaultOutboundOpcode > 0 && opcode == _defaultOutboundOpcode
                 || _additionalOutboundOpcodes.Contains((ushort)opcode);
+        }
+
+        private HashSet<ushort> GetActiveAdditionalInboundOpcodes(ushort primaryOpcode)
+        {
+            return GetActiveInboundOpcodes(primaryOpcode)
+                .Where(opcode => opcode != primaryOpcode)
+                .ToHashSet();
+        }
+
+        private ushort[] GetActiveInboundOpcodes(ushort primaryOpcode)
+        {
+            return new[] { primaryOpcode }
+                .Concat(_additionalInboundOpcodes)
+                .Concat(PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes(_ownerName))
+                .Where(opcode => opcode > 0)
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
         }
 
         private static int FindMatchingExpectationIndex(
@@ -1337,12 +1355,13 @@ namespace HaCreator.MapSimulator.Managers
 
         private string DescribeInboundOpcodeSet(ushort primaryOpcode)
         {
-            if (_additionalInboundOpcodes.Count == 0)
+            ushort[] activeOpcodes = GetActiveInboundOpcodes(primaryOpcode);
+            if (activeOpcodes.Length <= 1)
             {
-                return primaryOpcode.ToString();
+                return activeOpcodes.Length == 0 ? "none" : activeOpcodes[0].ToString();
             }
 
-            return string.Join(",", new[] { primaryOpcode }.Concat(_additionalInboundOpcodes).Distinct().OrderBy(opcode => opcode));
+            return string.Join(",", activeOpcodes);
         }
 
         private void ResetInboundState()

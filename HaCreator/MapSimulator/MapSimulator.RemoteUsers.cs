@@ -451,10 +451,17 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error($"Remote character {characterId} does not exist.");
             }
 
-            return _remoteUserPool.TrySetHelperMarker(helperPacket.CharacterId, helperPacket.MarkerType, helperPacket.ShowDirectionOverlay, out string message)
+            return _remoteUserPool.TrySetHelperMarker(
+                helperPacket.CharacterId,
+                helperPacket.MarkerType,
+                helperPacket.ShowDirectionOverlay,
+                helperPacket.DirectionOverlayOnly,
+                out string message)
                 ? ChatCommandHandler.CommandResult.Ok(helperPacket.MarkerType.HasValue
                     ? $"Remote user {characterId} helper marker set to {helperPacket.MarkerType.Value}."
-                    : $"Remote user {characterId} helper marker cleared.")
+                    : helperPacket.DirectionOverlayOnly
+                        ? $"Remote user {characterId} helper marker set to direction overlay only."
+                        : $"Remote user {characterId} helper marker cleared.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
@@ -1792,7 +1799,12 @@ namespace HaCreator.MapSimulator
                         return true;
                     }
 
-                    bool helperApplied = _remoteUserPool.TrySetHelperMarker(helperPacket.CharacterId, helperPacket.MarkerType, helperPacket.ShowDirectionOverlay, out string helperMessage);
+                    bool helperApplied = _remoteUserPool.TrySetHelperMarker(
+                        helperPacket.CharacterId,
+                        helperPacket.MarkerType,
+                        helperPacket.ShowDirectionOverlay,
+                        helperPacket.DirectionOverlayOnly,
+                        out string helperMessage);
                     result = helperApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {helperPacket.CharacterId}."
                         : helperMessage;

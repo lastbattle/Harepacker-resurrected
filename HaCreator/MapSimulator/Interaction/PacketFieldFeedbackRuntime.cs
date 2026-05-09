@@ -929,10 +929,7 @@ namespace HaCreator.MapSimulator.Interaction
                             && !hiddenFieldResult
                             && HasWhisperTransferTarget(value, callbacks)
                             && hasTransferPosition;
-                        bool chaseTransferArmed = subtype == 9
-                            && result == 1
-                            && hasTransferPosition
-                            && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
+                        bool chaseTransferArmed = callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         bool transferRequestDispatched = false;
                         if (canRequestChaseTransfer
                             && chaseTransferArmed)
@@ -2184,7 +2181,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return callbacks.IsBlockedFriendName(sender);
+            return callbacks.IsBlockedFriendName(sender.Trim());
         }
 
         private static bool ShouldSuppressIncomingWhisper(string sender, PacketFieldFeedbackCallbacks callbacks)

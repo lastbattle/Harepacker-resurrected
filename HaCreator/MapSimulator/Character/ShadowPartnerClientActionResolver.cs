@@ -2843,6 +2843,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (rawActionCode.HasValue
+                && IsClientInitializedShadowPartnerRawActionCode(rawActionCode.Value)
                 && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out rawActionName)
                 && !string.IsNullOrWhiteSpace(rawActionName))
             {
@@ -3395,6 +3396,12 @@ namespace HaCreator.MapSimulator.Character
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                   && IsClientInitializedShadowPartnerRawActionCode(rawActionCode);
+        }
+
+        internal static bool IsClientInitializedShadowPartnerRawActionCode(int rawActionCode)
+        {
+            return rawActionCode >= 0
                    && rawActionCode < ClientInitializedShadowPartnerActionCodeLimitExclusive
                    && !ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode);
         }
@@ -4022,8 +4029,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (rawActionCode.HasValue
-                && (rawActionCode.Value >= ClientInitializedShadowPartnerActionCodeLimitExclusive
-                    || ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value)
+                && (!IsClientInitializedShadowPartnerRawActionCode(rawActionCode.Value)
                     || !IsSupportedRawActionCodeForFamily(rawActionCode.Value, supportedRawActionNames)))
             {
                 return false;

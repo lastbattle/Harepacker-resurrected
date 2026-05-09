@@ -61,6 +61,9 @@ namespace HaCreator.MapSimulator.Interaction
         private int _deleteRequestedTick = int.MinValue;
         private int _deleteDestroyReadyTick = int.MinValue;
         private int _sessionOwnedLeaveRequestTick = int.MinValue;
+        private byte _claimServerOpenTime;
+        private byte _claimServerCloseTime;
+        private bool _claimServerConnected = true;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 
@@ -1046,9 +1049,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            string resultText = MessengerClientParityText.FormatOfficialClaimResult(
+                packet.ResultCode,
+                packet.Succeeded,
+                packet.RemainingClaimCount,
+                _claimServerOpenTime,
+                _claimServerCloseTime);
             if (!packet.CompletesPendingRequest)
             {
-                message = $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode}: {packet.ResultText}";
+                message = $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode}: {resultText}";
+                _lastActionSummary = message;
+                AddSystemLog(message);
                 RecordPacketSummary(
                     $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode} without completing the pending Messenger claim.");
                 StartBlink(Environment.TickCount);
@@ -1056,7 +1067,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool applied = _pendingClaimRequests.Count > 0;
-            message = ResolveSessionOwnedClaimRequest(packet.Succeeded, packet.ResultText);
+            if (!applied)
+            {
+                message = $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode} with no pending Messenger claim: {resultText}";
+                _lastActionSummary = message;
+                AddSystemLog(message);
+                RecordPacketSummary(
+                    $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode} success={(packet.Succeeded ? 1 : 0)} remainingClaimCount={packet.RemainingClaimCount} without a pending Messenger claim.");
+                StartBlink(Environment.TickCount);
+                return true;
+            }
+
+            message = ResolveSessionOwnedClaimRequest(packet.Succeeded, resultText);
             if (applied)
             {
                 RecordPacketSummary(
@@ -1064,6 +1086,43 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return applied;
+        }
+
+        internal bool TryApplyOfficialClaimServerAvailableTimePayload(byte[] payload, out string message)
+        {
+            if (!MessengerPacketCodec.TryParseOfficialClaimServerAvailableTime(payload ?? Array.Empty<byte>(), out MessengerOfficialClaimServerAvailableTimePacket packet, out string error))
+            {
+                message = error ?? "Messenger claim-server available-time payload could not be decoded.";
+                return false;
+            }
+
+            _claimServerOpenTime = packet.OpenTime;
+            _claimServerCloseTime = packet.CloseTime;
+            message = $"Applied CWvsContext::OnSetClaimSvrAvailableTime open={packet.OpenTime} close={packet.CloseTime}.";
+            _lastActionSummary = message;
+            AddSystemLog(message);
+            RecordPacketSummary(message);
+            StartBlink(Environment.TickCount);
+            return true;
+        }
+
+        internal bool TryApplyOfficialClaimServerStatusChangedPayload(byte[] payload, out string message)
+        {
+            if (!MessengerPacketCodec.TryParseOfficialClaimServerStatusChanged(payload ?? Array.Empty<byte>(), out MessengerOfficialClaimServerStatusChangedPacket packet, out string error))
+            {
+                message = error ?? "Messenger claim-server status payload could not be decoded.";
+                return false;
+            }
+
+            _claimServerConnected = packet.Connected;
+            message = packet.Connected
+                ? "Applied CWvsContext::OnClaimSvrStatusChanged: claim server connected."
+                : "Applied CWvsContext::OnClaimSvrStatusChanged: claim server disconnected.";
+            _lastActionSummary = message;
+            AddSystemLog(message);
+            RecordPacketSummary(message);
+            StartBlink(Environment.TickCount);
+            return true;
         }
 
         internal bool TryObserveOfficialClientRequest(

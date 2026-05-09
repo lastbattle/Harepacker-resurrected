@@ -398,6 +398,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasPreparedLayerColor { get; set; }
             public int LastInsertCanvasPreparedLayerTargetOffsetSignature { get; set; }
             public int LastInsertCanvasPreparedLayerRelMoveEndTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasPostReparentListNodeSignature { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -6526,6 +6527,7 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasOverlayInsertionIndex = int.MinValue,
                     LastInsertCanvasOverlaySiblingSignature = 0,
                     LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
+                    LastInsertCanvasPostReparentListNodeSignature = 0,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6786,7 +6788,13 @@ namespace HaCreator.MapSimulator.Character
                 ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
                 preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
                 preparedLayer.PreparedRelMoveEndTime,
-                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime);
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime,
+                ComputeMirrorImagePostInsertParentListNodeSignature(
+                    preparedLayer.PreparedLayerObjectId,
+                    liveOverlayParentObjectId,
+                    liveOverlayInsertionIndex,
+                    liveOverlaySiblingSignature),
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6804,7 +6812,12 @@ namespace HaCreator.MapSimulator.Character
                     overlayParentObjectId: liveOverlayParentObjectId,
                     overlayInsertionIndex: liveOverlayInsertionIndex,
                     overlaySiblingSignature: liveOverlaySiblingSignature,
-                    preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime);
+                    preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime,
+                    postReparentListNodeSignature: ComputeMirrorImagePostInsertParentListNodeSignature(
+                        preparedLayer.PreparedLayerObjectId,
+                        liveOverlayParentObjectId,
+                        liveOverlayInsertionIndex,
+                        liveOverlaySiblingSignature));
             }
 
             return shouldUseLiveSourceLayer;
@@ -7060,6 +7073,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
             preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
             preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
+            preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -7083,7 +7097,8 @@ namespace HaCreator.MapSimulator.Character
             int overlayParentObjectId = 0,
             int overlayInsertionIndex = int.MinValue,
             int overlaySiblingSignature = 0,
-            int preparedLayerRelMoveEndTime = int.MinValue)
+            int preparedLayerRelMoveEndTime = int.MinValue,
+            int postReparentListNodeSignature = 0)
         {
             if (preparedLayer == null)
             {
@@ -7118,6 +7133,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7208,6 +7224,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = ResolveMirrorImageLastInsertCanvasPreparedLayerRelMoveEndTime(
                 preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime,
                 preparedLayerRelMoveEndTime,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPostReparentListNodeSignature = ResolveMirrorImageLastInsertCanvasPostReparentListNodeSignature(
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature,
+                postReparentListNodeSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -7717,6 +7737,38 @@ namespace HaCreator.MapSimulator.Character
                 : existingOverlaySiblingSignature;
         }
 
+        internal static int ComputeMirrorImagePostInsertParentListNodeSignature(
+            int preparedLayerObjectId,
+            int overlayParentObjectId,
+            int overlayInsertionIndex,
+            int overlaySiblingSignature)
+        {
+            if (preparedLayerObjectId <= 0
+                || overlayParentObjectId == 0
+                || overlayInsertionIndex == int.MinValue
+                || overlaySiblingSignature == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(preparedLayerObjectId);
+            signature.Add(overlayParentObjectId);
+            signature.Add(overlayInsertionIndex);
+            signature.Add(overlaySiblingSignature);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPostReparentListNodeSignature(
+            int existingPostReparentListNodeSignature,
+            int currentPostReparentListNodeSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPostReparentListNodeSignature != 0
+                ? currentPostReparentListNodeSignature
+                : existingPostReparentListNodeSignature;
+        }
+
         internal static int ResolveMirrorImageOverlayParentObjectId(
             AssembledFrame frame,
             AvatarRenderLayer overlayTargetLayer)
@@ -8146,7 +8198,9 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerTargetOffsetSignature = 0,
             int lastInsertCanvasPreparedLayerTargetOffsetSignature = 0,
             int preparedLayerRelMoveEndTime = int.MinValue,
-            int lastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue)
+            int lastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
+            int postReparentListNodeSignature = 0,
+            int lastInsertCanvasPostReparentListNodeSignature = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -8261,6 +8315,9 @@ namespace HaCreator.MapSimulator.Character
             bool preparedLayerRelMoveEndTimeChanged = preparedLayerRelMoveEndTime != int.MinValue
                 && lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue
                 && preparedLayerRelMoveEndTime != lastInsertCanvasPreparedLayerRelMoveEndTime;
+            bool postReparentListNodeChanged = postReparentListNodeSignature != 0
+                && lastInsertCanvasPostReparentListNodeSignature != 0
+                && postReparentListNodeSignature != lastInsertCanvasPostReparentListNodeSignature;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
@@ -8282,6 +8339,7 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerColorChanged
                 || preparedLayerTargetOffsetChanged
                 || preparedLayerRelMoveEndTimeChanged
+                || postReparentListNodeChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
             {
@@ -8322,6 +8380,8 @@ namespace HaCreator.MapSimulator.Character
                 && (preparedLayerTargetOffsetSignature == 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature == 0);
             bool preparedLayerRelMoveEndTimeMetadataMissing = (preparedLayerRelMoveEndTime != int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue)
                 && (preparedLayerRelMoveEndTime == int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime == int.MinValue);
+            bool postReparentListNodeMetadataMissing = (postReparentListNodeSignature != 0 || lastInsertCanvasPostReparentListNodeSignature != 0)
+                && (postReparentListNodeSignature == 0 || lastInsertCanvasPostReparentListNodeSignature == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
                 || sourceCanvasSignatureMetadataMissing
@@ -8338,7 +8398,8 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerZMetadataMissing
                 || preparedLayerColorMetadataMissing
                 || preparedLayerTargetOffsetMetadataMissing
-                || preparedLayerRelMoveEndTimeMetadataMissing;
+                || preparedLayerRelMoveEndTimeMetadataMissing
+                || postReparentListNodeMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -9565,7 +9626,7 @@ namespace HaCreator.MapSimulator.Character
                 currentTime);
 
             if (!string.IsNullOrWhiteSpace(_activeShadowPartner.PendingActionName)
-                && currentTime >= _activeShadowPartner.PendingActionReadyTime)
+                && ShouldReleaseShadowPartnerPendingActionForParity(currentTime, _activeShadowPartner.PendingActionReadyTime))
             {
                 string pendingActionName = _activeShadowPartner.PendingActionName;
                 SkillAnimation pendingPlaybackAnimation = _activeShadowPartner.PendingPlaybackAnimation;
@@ -11407,6 +11468,15 @@ namespace HaCreator.MapSimulator.Character
                 previousObservedRawActionCode);
         }
 
+        internal static bool ShouldReleaseShadowPartnerPendingActionForTesting(int currentTime, int pendingActionReadyTime)
+        {
+            return ShouldReleaseShadowPartnerPendingActionForParity(currentTime, pendingActionReadyTime);
+        }
+
+        private static bool ShouldReleaseShadowPartnerPendingActionForParity(int currentTime, int pendingActionReadyTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, pendingActionReadyTime);
+        }
         internal static bool ShouldForceShadowPartnerAttackReplayForTriggerForTesting(
             int observedActionTriggerTime,
             int previousReplayTriggerTime)
@@ -12625,12 +12695,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (mountPart.TamingMobActionFrameOwner != null)
-            {
-                return mountPart.TamingMobActionFrameOwner.SupportsAction(mountPart, actionName);
-            }
-
-            return mountPart.GetAnimation(actionName) != null;
+            // `SetRidingVehicle` reaches taming-mob frames through the vehicle-owned
+            // loader path. Do not let bare WZ roots bypass that owner at this seam.
+            return mountPart.TamingMobActionFrameOwner?.SupportsAction(mountPart, actionName) == true;
         }
 
         private static bool IsAutomaticTamingMobTransitionAction(string actionName)

@@ -1701,6 +1701,50 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
+        internal bool TryRecordClientDragonEndUpdateActiveObservedOutboundCapture(
+            IReadOnlyList<byte> rawPacket,
+            IReadOnlyList<byte> payload,
+            string source,
+            out string message)
+        {
+            string resolvedSource = string.IsNullOrWhiteSpace(source)
+                ? "official-session:outbound"
+                : source.Trim();
+
+            if (rawPacket != null && rawPacket.Count > 0)
+            {
+                if (TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                        rawPacket,
+                        resolvedSource,
+                        out message))
+                {
+                    return true;
+                }
+
+                string rawError = message;
+                if (payload != null && payload.Count > 0
+                    && TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                        payload,
+                        opcodeFramed: false,
+                        resolvedSource + " payload-fallback",
+                        out message))
+                {
+                    return true;
+                }
+
+                message = string.IsNullOrWhiteSpace(rawError)
+                    ? "Observed dragon move packet could not be decoded."
+                    : rawError;
+                return false;
+            }
+
+            return TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                payload ?? Array.Empty<byte>(),
+                opcodeFramed: false,
+                resolvedSource,
+                out message);
+        }
+
         internal bool TryRecordClientDragonEndUpdateActiveKeyPadStateCapture(
             IReadOnlyList<byte> bytes,
             bool packedNibbles,

@@ -10,7 +10,12 @@ namespace HaCreator.MapSimulator.Interaction
         None = 0,
         Omok,
         MemoryGame,
-        PersonalShop,
+        PersonalShop
+    }
+
+    internal enum ChatBalloonMiniRoomPrivacyIconKind
+    {
+        None = 0,
         Lock,
         Unlock
     }
@@ -62,20 +67,27 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        internal static ChatBalloonMiniRoomIconKind ResolveMiniRoomIcon(byte miniRoomType, byte spec, bool isPrivate)
+        internal static ChatBalloonMiniRoomIconKind ResolveMiniRoomIcon(byte miniRoomType)
         {
-            if (isPrivate)
-            {
-                return ChatBalloonMiniRoomIconKind.Lock;
-            }
-
             return miniRoomType switch
             {
                 1 => ChatBalloonMiniRoomIconKind.Omok,
                 2 => ChatBalloonMiniRoomIconKind.MemoryGame,
                 3 or 4 or 5 => ChatBalloonMiniRoomIconKind.PersonalShop,
-                _ => spec > 0 ? ChatBalloonMiniRoomIconKind.Unlock : ChatBalloonMiniRoomIconKind.None
+                _ => ChatBalloonMiniRoomIconKind.None
             };
+        }
+
+        internal static ChatBalloonMiniRoomPrivacyIconKind ResolveMiniRoomPrivacyIcon(bool isPrivate, byte spec)
+        {
+            if (isPrivate)
+            {
+                return ChatBalloonMiniRoomPrivacyIconKind.Lock;
+            }
+
+            return spec > 0
+                ? ChatBalloonMiniRoomPrivacyIconKind.Unlock
+                : ChatBalloonMiniRoomPrivacyIconKind.None;
         }
 
         internal static ChatBalloonMiniRoomStatusKind ResolveMiniRoomStatus(

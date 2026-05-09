@@ -433,6 +433,16 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                if (_passiveEstablishedSession.HasValue
+                    && IsSameEstablishedSession(_passiveEstablishedSession.Value, candidate))
+                {
+                    LastStatus =
+                        $"Massacre official-session bridge is already observing established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}; keeping passive ownership and {PendingOutboundPacketCount} queued outbound packet(s). " +
+                        "Reconnect through the localhost proxy for live packet ownership.";
+                    status = LastStatus;
+                    return true;
+                }
+
                 StopInternal(clearPending: false);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
@@ -505,6 +515,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                bool candidateStillEstablished = IsEstablishedSessionStillPresent(candidate);
                 if (IsRunning
                     && MatchesDiscoveredTargetConfiguration(
                         ListenPort,
@@ -514,29 +525,77 @@ namespace HaCreator.MapSimulator.Managers
                         candidate.RemoteEndpoint,
                         autoSelectListenPort))
                 {
-                    _passiveEstablishedSession = candidate;
+                    _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
                     status =
-                        $"Massacre official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                        candidateStillEstablished
+                            ? $"Massacre official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}."
+                            : $"Massacre official-session bridge remains armed for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; selected socket pair is no longer established, keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
                     LastStatus = status;
                     return true;
                 }
 
                 StopInternal(clearPending: false);
-                _passiveEstablishedSession = candidate;
+                _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
                 {
-                    _passiveEstablishedSession = candidate;
-                    LastStatus = $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
+                    string passiveStatus = candidateStillEstablished
+                        ? $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed."
+                        : $"Selected Massacre Maple socket pair is no longer established; reconnect proxy startup failed for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}.";
+                    LastStatus = $"{passiveStatus} {startStatus}";
                     status = LastStatus;
                     return false;
                 }
 
                 LastStatus =
-                    $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    (candidateStillEstablished
+                        ? $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}. "
+                        : $"Selected Massacre Maple socket pair is no longer established; armed reconnect proxy for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. ") +
                     $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover Massacre decrypt/inject ownership for clock/context/result traffic through the existing bridge seam and flush {PendingOutboundPacketCount} queued outbound packet(s).";
                 status = LastStatus;
                 return true;
+            }
+        }
+
+        public bool TryVerifyPassiveEstablishedSession(out string status)
+        {
+            lock (_sync)
+            {
+                if (HasConnectedSession)
+                {
+                    status = "Massacre official-session bridge owns a proxied Maple session; passive socket-pair verification is not needed.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                if (!_passiveEstablishedSession.HasValue)
+                {
+                    status = IsRunning
+                        ? $"Massacre official-session bridge is armed on 127.0.0.1:{ListenPort}; no passive established socket pair is currently attached."
+                        : "Massacre official-session bridge has no passive established socket pair to verify.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+                IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                    candidate.RemoteEndpoint.Port,
+                    candidate.ProcessId,
+                    candidate.ProcessName);
+                if (ContainsMatchingEstablishedSession(candidates, candidate))
+                {
+                    status = $"Verified passive Massacre Maple socket pair is still established: {DescribeEstablishedSession(candidate)}. Proxy reconnect is still required for decrypt/inject ownership.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                _passiveEstablishedSession = null;
+                status = IsRunning
+                    ? $"Passive Massacre Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Keeping reconnect proxy armed on 127.0.0.1:{ListenPort} with {PendingOutboundPacketCount} queued outbound packet(s)."
+                    : $"Passive Massacre Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Cleared passive ownership and retained {PendingOutboundPacketCount} queued outbound packet(s) for the next reconnect-armed session.";
+                LastStatus = status;
+                return false;
             }
         }
 
@@ -644,10 +703,23 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool TryQueueOutboundRawPacket(byte[] rawPacket, out string status)
         {
-            if (!IsRunning && !HasAttachedClient && !HasPassiveEstablishedSocketPair)
+            if (!IsRunning && !HasAttachedClient)
             {
-                status = "Massacre official-session bridge has no active Maple session and is not armed for deferred outbound injection.";
-                LastStatus = status;
+                if (!HasPassiveEstablishedSocketPair)
+                {
+                    status = "Massacre official-session bridge has no active Maple session and is not armed for deferred outbound injection.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (!TryVerifyPassiveEstablishedSession(out status))
+                {
+                    return false;
+                }
+            }
+            else if (HasPassiveEstablishedSocketPair && !TryVerifyPassiveEstablishedSession(out _) && !IsRunning)
+            {
+                status = LastStatus;
                 return false;
             }
 
@@ -1620,6 +1692,40 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
+        }
+
+        private static bool IsSameEstablishedSession(SessionDiscoveryCandidate left, SessionDiscoveryCandidate right)
+        {
+            return left.ProcessId == right.ProcessId
+                && string.Equals(left.ProcessName, right.ProcessName, StringComparison.OrdinalIgnoreCase)
+                && Equals(left.LocalEndpoint, right.LocalEndpoint)
+                && Equals(left.RemoteEndpoint, right.RemoteEndpoint);
+        }
+
+        internal static bool ContainsMatchingEstablishedSession(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            SessionDiscoveryCandidate expected)
+        {
+            if (candidates == null || expected.LocalEndpoint == null || expected.RemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return candidates.Any(candidate => IsSameEstablishedSession(candidate, expected));
+        }
+
+        private static bool IsEstablishedSessionStillPresent(SessionDiscoveryCandidate candidate)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                candidate.RemoteEndpoint.Port,
+                candidate.ProcessId,
+                candidate.ProcessName);
+            return ContainsMatchingEstablishedSession(candidates, candidate);
         }
 
         internal static bool TryResolveDiscoveryCandidate(

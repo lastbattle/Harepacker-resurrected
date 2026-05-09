@@ -1,8 +1,12 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,6 +21,7 @@ namespace HaCreator.MapSimulator
     {
         private int _nextQuestRewardRaiseRequestId = 1;
         private readonly QuestRewardRaiseManagerRuntime _questRewardRaiseManager = new();
+        private readonly Dictionary<string, Texture2D> _questRewardRaiseOwnerSurfaceTextureCache = new(StringComparer.OrdinalIgnoreCase);
 
         private void WireQuestRewardRaiseWindow()
         {
@@ -27,6 +32,7 @@ namespace HaCreator.MapSimulator
 
             raiseWindow.SetFont(_fontChat);
             raiseWindow.SetItemIconProvider(LoadInventoryItemIcon);
+            raiseWindow.SetRaiseOwnerSurfaceProvider(LoadQuestRewardRaiseOwnerSurface);
             raiseWindow.SelectionConfirmed -= HandleQuestRewardRaiseSelectionConfirmed;
             raiseWindow.SelectionConfirmed += HandleQuestRewardRaiseSelectionConfirmed;
             raiseWindow.PlacementConfirmed -= HandleQuestRewardRaisePlacementConfirmed;
@@ -645,6 +651,161 @@ namespace HaCreator.MapSimulator
             return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName) && !string.IsNullOrWhiteSpace(resolvedName)
                 ? resolvedName
                 : $"Item #{Math.Max(0, itemId)}";
+        }
+
+        private Texture2D LoadQuestRewardRaiseOwnerSurface(string uiData, int qrData)
+        {
+            if (GraphicsDevice == null || string.IsNullOrWhiteSpace(uiData))
+            {
+                return null;
+            }
+
+            if (!TryResolveQuestRewardRaiseUiDataCanvas(uiData, qrData, out WzCanvasProperty canvas, out string cacheKey)
+                || canvas == null
+                || string.IsNullOrWhiteSpace(cacheKey))
+            {
+                return null;
+            }
+
+            if (_questRewardRaiseOwnerSurfaceTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+            if (texture != null)
+            {
+                _questRewardRaiseOwnerSurfaceTextureCache[cacheKey] = texture;
+            }
+
+            return texture;
+        }
+
+        private static bool TryResolveQuestRewardRaiseUiDataCanvas(
+            string uiData,
+            int qrData,
+            out WzCanvasProperty canvas,
+            out string cacheKey)
+        {
+            canvas = null;
+            cacheKey = null;
+            if (!TryParseQuestRewardRaiseUiDataPath(uiData, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage uiImage = Program.FindImage("ui", imageName);
+            if (uiImage == null)
+            {
+                return false;
+            }
+
+            uiImage.ParseImage();
+            WzImageProperty resolvedProperty = ResolveQuestRewardRaiseUiProperty(uiImage, propertyPath);
+            if (resolvedProperty is WzCanvasProperty directCanvas)
+            {
+                canvas = directCanvas;
+                cacheKey = $"{imageName}/{propertyPath}";
+                return true;
+            }
+
+            if (resolvedProperty is not WzSubProperty frameListProperty)
+            {
+                return false;
+            }
+
+            int frameIndex = ResolveQuestRewardRaiseUiFrameIndex(frameListProperty, qrData);
+            if (frameIndex < 0 || frameListProperty[frameIndex.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+            {
+                return false;
+            }
+
+            canvas = frameCanvas;
+            cacheKey = $"{imageName}/{propertyPath}/{frameIndex.ToString(CultureInfo.InvariantCulture)}";
+            return true;
+        }
+
+        private static bool TryParseQuestRewardRaiseUiDataPath(string uiData, out string imageName, out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+
+            string normalized = uiData?.Trim().Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3 || !segments[0].Equals("UI", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string imageToken = segments[1];
+            imageName = imageToken.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                ? imageToken
+                : $"{imageToken}.img";
+            propertyPath = string.Join('/', segments.Skip(2));
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static WzImageProperty ResolveQuestRewardRaiseUiProperty(WzImage uiImage, string propertyPath)
+        {
+            if (uiImage == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            string[] segments = propertyPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                current = i == 0
+                    ? uiImage[segments[i]]
+                    : (current as WzSubProperty)?[segments[i]];
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current;
+        }
+
+        private static int ResolveQuestRewardRaiseUiFrameIndex(WzSubProperty frameListProperty, int qrData)
+        {
+            if (frameListProperty?.WzProperties == null || frameListProperty.WzProperties.Count == 0)
+            {
+                return -1;
+            }
+
+            int requestedFrame = Math.Max(0, qrData);
+            int nearestLowerOrEqual = -1;
+            int firstFrame = int.MaxValue;
+            int lastFrame = -1;
+            foreach (WzImageProperty child in frameListProperty.WzProperties)
+            {
+                if (child is not WzCanvasProperty
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                {
+                    continue;
+                }
+
+                firstFrame = Math.Min(firstFrame, frameIndex);
+                lastFrame = Math.Max(lastFrame, frameIndex);
+                if (frameIndex <= requestedFrame)
+                {
+                    nearestLowerOrEqual = Math.Max(nearestLowerOrEqual, frameIndex);
+                }
+            }
+
+            if (nearestLowerOrEqual >= 0)
+            {
+                return nearestLowerOrEqual;
+            }
+
+            return firstFrame != int.MaxValue ? firstFrame : lastFrame;
         }
 
         private static string BuildQuestRewardRaiseOpenSummary(QuestRewardRaiseState activeRaise)

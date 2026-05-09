@@ -1455,6 +1455,7 @@ namespace HaCreator.MapSimulator.Pools
                 ClearRemoteTemporaryStatAvatarEffectStates(actor);
                 ReleaseCarryItemEffectLayerReferenceForParity(actor);
                 ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
+                ReleaseRelationshipOverlayLayerReferencesForParity(actor);
                 ClearRemoteTransientItemEffectStates(actor);
                 ClearRemoteDragonCompanionState(actor);
                 ClearRemotePreparedSkillState(actor);
@@ -1490,6 +1491,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
+                    ReleaseRelationshipOverlayLayerReferencesForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
                     ClearRemotePreparedSkillState(actor);
@@ -1526,6 +1528,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
+                    ReleaseRelationshipOverlayLayerReferencesForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
                     ClearRemotePreparedSkillState(actor);
@@ -2532,7 +2535,12 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        public bool TrySetHelperMarker(int characterId, MinimapUI.HelperMarkerType? markerType, bool showDirectionOverlay, out string message)
+        public bool TrySetHelperMarker(
+            int characterId,
+            MinimapUI.HelperMarkerType? markerType,
+            bool showDirectionOverlay,
+            bool directionOverlayOnly,
+            out string message)
         {
             message = null;
             if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
@@ -2544,6 +2552,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.HelperMarkerType = markerType;
             actor.HasPacketAuthoredHelperState = true;
             actor.ShowDirectionOverlay = showDirectionOverlay;
+            actor.HelperDirectionOverlayOnly = directionOverlayOnly;
             return true;
         }
 
@@ -3140,6 +3149,7 @@ namespace HaCreator.MapSimulator.Pools
                     existingOverlay.OwnerFacingRight,
                     ResolveRemoteTemporaryStatTickElapsedMs(currentTime, existingOverlay.StartTime),
                     currentTime);
+                existingOverlay.ReleaseVisibleLayerReference();
             }
 
             bool hasRestoredAnimationElapsed = TryRestoreRemoteAuxiliaryLayerOwnerCounter(
@@ -3165,8 +3175,10 @@ namespace HaCreator.MapSimulator.Pools
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
                 OwnerActionName = ownerActionName,
-                OwnerFacingRight = ownerFacingRight
+                OwnerFacingRight = ownerFacingRight,
+                SimulatedOwnerLayerHandleId = NextRemoteRelationshipOverlayLayerHandleId()
             };
+            UpdateRelationshipOverlayLayerAdmissionForParity(actor, relationshipType);
             return true;
         }
 
@@ -5812,6 +5824,7 @@ namespace HaCreator.MapSimulator.Pools
             ClearRemoteTemporaryStatAvatarEffectStates(actor);
             ReleaseCarryItemEffectLayerReferenceForParity(actor);
             ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
+            ReleaseRelationshipOverlayLayerReferencesForParity(actor);
             ClearRemoteTransientItemEffectStates(actor);
             ClearRemoteDragonCompanionState(actor);
             ClearRemotePreparedSkillState(actor);
@@ -5872,6 +5885,7 @@ namespace HaCreator.MapSimulator.Pools
                 UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
                 UpdateCarryItemEffectLayerAdmissionForParity(actor);
                 UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
+                UpdateRelationshipOverlayLayerAdmissionsForParity(actor);
                 UpdateTransientItemEffects(actor, currentTime);
                 UpdateTransientSkillUseAvatarEffects(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
@@ -7508,6 +7522,7 @@ namespace HaCreator.MapSimulator.Pools
                         actor?.HiddenLikeClient == true,
                         actor?.HelperMarkerType.HasValue == true,
                         actor?.HasPacketAuthoredHelperState == true,
+                        actor?.HelperDirectionOverlayOnly == true,
                         hasRelationshipHelperFallback,
                         actor?.BattlefieldTeamId))
                 {
@@ -7529,6 +7544,9 @@ namespace HaCreator.MapSimulator.Pools
                 marker.ShowDirectionOverlay = ResolvePacketAuthoredMinimapShowDirectionOverlay(
                     actor.ShowDirectionOverlay,
                     actor.BattlefieldTeamId);
+                marker.DirectionOverlayOnly = actor.HelperDirectionOverlayOnly
+                    && !actor.HelperMarkerType.HasValue
+                    && !actor.BattlefieldTeamId.HasValue;
                 marker.TooltipText = actor.Name;
             }
 
@@ -7540,12 +7558,14 @@ namespace HaCreator.MapSimulator.Pools
             bool hiddenLikeClient,
             bool hasExplicitHelperMarker,
             bool hasPacketAuthoredHelperState,
+            bool directionOverlayOnly,
             bool hasRelationshipHelperFallback,
             int? battlefieldTeamId)
         {
             return isVisibleInWorld
                 && !hiddenLikeClient
                 && (hasExplicitHelperMarker
+                    || directionOverlayOnly
                     || battlefieldTeamId.HasValue
                     || (!hasPacketAuthoredHelperState && hasRelationshipHelperFallback));
         }
@@ -8445,6 +8465,53 @@ namespace HaCreator.MapSimulator.Pools
             actor.CompletedSetItemEffectLayerSuppressed = true;
         }
 
+        private static void UpdateRelationshipOverlayLayerAdmissionsForParity(RemoteUserActor actor)
+        {
+            if (actor?.RelationshipOverlays == null || actor.RelationshipOverlays.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteRelationshipOverlayType relationshipType in actor.RelationshipOverlays.Keys.ToArray())
+            {
+                UpdateRelationshipOverlayLayerAdmissionForParity(actor, relationshipType);
+            }
+        }
+
+        private static void UpdateRelationshipOverlayLayerAdmissionForParity(
+            RemoteUserActor actor,
+            RemoteRelationshipOverlayType relationshipType)
+        {
+            if (actor?.RelationshipOverlays == null
+                || !actor.RelationshipOverlays.TryGetValue(relationshipType, out RemoteRelationshipOverlayState overlay)
+                || overlay == null
+                || overlay.SimulatedOwnerLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            if (UsesClientRelationshipAdmission(relationshipType) && IsRelationshipOverlaySuppressed(actor))
+            {
+                overlay.ReleaseVisibleLayerReference();
+                return;
+            }
+
+            overlay.CaptureVisibleLayerReference();
+        }
+
+        private static void ReleaseRelationshipOverlayLayerReferencesForParity(RemoteUserActor actor)
+        {
+            if (actor?.RelationshipOverlays == null || actor.RelationshipOverlays.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteRelationshipOverlayState overlay in actor.RelationshipOverlays.Values)
+            {
+                overlay?.ReleaseVisibleLayerReference();
+            }
+        }
+
         private void DrawRelationshipOverlay(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -9022,6 +9089,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            existingOverlay.ReleaseVisibleLayerReference();
             actor.RelationshipOverlays.Remove(relationshipType);
         }
 
@@ -9627,7 +9695,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            while (currentTime >= state.NextSampleTime)
+            while (ShouldSampleRemoteActiveEffectMotionBlurForParity(currentTime, state.NextSampleTime))
             {
                 AssembledFrame frame = actor.GetFrameAtTimeForRendering(state.NextSampleTime);
                 if (frame != null
@@ -9657,7 +9725,7 @@ namespace HaCreator.MapSimulator.Pools
                     });
                 }
 
-                state.NextSampleTime += Math.Max(1, state.Definition.IntervalMs);
+                state.NextSampleTime = unchecked(state.NextSampleTime + Math.Max(1, state.Definition.IntervalMs));
             }
 
             for (int i = state.Snapshots.Count - 1; i >= 0; i--)
@@ -10103,6 +10171,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteRelationshipOverlayLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         private static int NextRemoteTemporaryStatAffectedLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -10158,6 +10231,11 @@ namespace HaCreator.MapSimulator.Pools
             return NextRemoteCompletedSetItemEffectLayerHandleId();
         }
 
+        internal static int NextRemoteRelationshipOverlayLayerHandleIdForTesting()
+        {
+            return NextRemoteRelationshipOverlayLayerHandleId();
+        }
+
         internal static int NextRemoteDragonCompanionLayerHandleIdForTesting()
         {
             return NextRemoteDragonCompanionLayerHandleId();
@@ -10192,6 +10270,16 @@ namespace HaCreator.MapSimulator.Pools
                 fallbackFacingRight,
                 sampleTime);
             return (sample.Position, sample.FacingRight);
+        }
+
+        internal static bool ShouldSampleRemoteActiveEffectMotionBlurForTesting(int currentTime, int nextSampleTime)
+        {
+            return ShouldSampleRemoteActiveEffectMotionBlurForParity(currentTime, nextSampleTime);
+        }
+
+        private static bool ShouldSampleRemoteActiveEffectMotionBlurForParity(int currentTime, int nextSampleTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, nextSampleTime);
         }
 
         internal static IReadOnlyList<AssembledPart> ResolveRemoteActiveEffectMotionBlurLayerParts(
@@ -12729,6 +12817,26 @@ namespace HaCreator.MapSimulator.Pools
             UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
         }
 
+        internal static void UpdateRelationshipOverlayLayerAdmissionForTesting(
+            RemoteUserActor actor,
+            int relationshipType)
+        {
+            RemoteRelationshipOverlayType family = relationshipType switch
+            {
+                1 => RemoteRelationshipOverlayType.Couple,
+                2 => RemoteRelationshipOverlayType.Friendship,
+                3 => RemoteRelationshipOverlayType.NewYearCard,
+                4 => RemoteRelationshipOverlayType.Marriage,
+                _ => RemoteRelationshipOverlayType.Generic
+            };
+            UpdateRelationshipOverlayLayerAdmissionForParity(actor, family);
+        }
+
+        internal static void ReleaseRelationshipOverlayLayerReferencesForTesting(RemoteUserActor actor)
+        {
+            ReleaseRelationshipOverlayLayerReferencesForParity(actor);
+        }
+
         internal static string ResolveRemoteQuestDeliveryOwnerNameForTesting()
         {
             return RemoteQuestDeliveryActionOwnerName;
@@ -14762,6 +14870,16 @@ namespace HaCreator.MapSimulator.Pools
                 previousObservedActionTriggerTime);
         }
 
+        internal static bool ShouldReleaseRemoteShadowPartnerPendingActionForTesting(int currentTime, int pendingActionReadyTime)
+        {
+            return ShouldReleaseRemoteShadowPartnerPendingActionForParity(currentTime, pendingActionReadyTime);
+        }
+
+        private static bool ShouldReleaseRemoteShadowPartnerPendingActionForParity(int currentTime, int pendingActionReadyTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, pendingActionReadyTime);
+        }
+
         internal static bool ShouldForceRemoteShadowPartnerAttackReplayForTriggerForTesting(
             int observedActionTriggerTime,
             int previousReplayTriggerTime)
@@ -15731,7 +15849,7 @@ namespace HaCreator.MapSimulator.Pools
                 currentTime);
 
             if (!string.IsNullOrWhiteSpace(presentation.PendingActionName)
-                && currentTime >= presentation.PendingActionReadyTime)
+                && ShouldReleaseRemoteShadowPartnerPendingActionForParity(currentTime, presentation.PendingActionReadyTime))
             {
                 string pendingActionName = presentation.PendingActionName;
                 SkillAnimation pendingPlaybackAnimation = presentation.PendingPlaybackAnimation;
@@ -17712,6 +17830,7 @@ namespace HaCreator.MapSimulator.Pools
         public MinimapUI.HelperMarkerType? HelperMarkerType { get; set; }
         public bool HasPacketAuthoredHelperState { get; set; }
         public bool ShowDirectionOverlay { get; set; } = true;
+        public bool HelperDirectionOverlayOnly { get; set; }
         public int? BattlefieldTeamId { get; set; }
         public RemotePreparedSkillState PreparedSkill { get; set; }
         public CharacterPart PortableChairPreviousMount { get; set; }
@@ -18053,6 +18172,21 @@ namespace HaCreator.MapSimulator.Pools
         public int StartTime { get; init; }
         public string OwnerActionName { get; init; }
         public bool OwnerFacingRight { get; init; }
+        public int SimulatedOwnerLayerHandleId { get; init; }
+        public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+        public bool IsSimulatedOwnerLayerSuppressed { get; private set; } = true;
+
+        public void CaptureVisibleLayerReference()
+        {
+            SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
+            IsSimulatedOwnerLayerSuppressed = SimulatedOwnerLayerHandleRefCount == 0;
+        }
+
+        public void ReleaseVisibleLayerReference()
+        {
+            SimulatedOwnerLayerHandleRefCount = 0;
+            IsSimulatedOwnerLayerSuppressed = true;
+        }
     }
 
     internal readonly struct RemoteDragonHudFrameMetrics

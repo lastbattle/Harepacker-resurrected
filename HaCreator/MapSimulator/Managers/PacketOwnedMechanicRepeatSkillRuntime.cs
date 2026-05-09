@@ -2369,7 +2369,8 @@ namespace HaCreator.MapSimulator.Managers
             AddSg88PacketComparisonMismatchPairs(
                 observedBytes,
                 rebuiltBytes,
-                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                observedPayload,
+                rebuiltPayload,
                 normalizedByByte);
             return true;
         }
@@ -2610,7 +2611,8 @@ namespace HaCreator.MapSimulator.Managers
             AddSg88PacketComparisonMismatchPairs(
                 observedBytes,
                 rebuiltBytes,
-                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                observedPayload,
+                rebuiltPayload,
                 normalizedByByte);
             return true;
         }
@@ -2669,7 +2671,8 @@ namespace HaCreator.MapSimulator.Managers
             AddSg88PacketComparisonMismatchPairs(
                 observedBytes,
                 rebuiltBytes,
-                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                observedPayload,
+                rebuiltPayload,
                 normalizedByByte);
         }
 
@@ -2736,7 +2739,8 @@ namespace HaCreator.MapSimulator.Managers
         private static void AddSg88PacketComparisonMismatchPairs(
             byte[] observedBytes,
             byte[] rebuiltBytes,
-            int byteIndexOffset,
+            bool observedPayload,
+            bool rebuiltPayload,
             IDictionary<int, string> normalizedByByte)
         {
             if (observedBytes == null || rebuiltBytes == null || normalizedByByte == null)
@@ -2744,16 +2748,34 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            int comparedLength = Math.Min(observedBytes.Length, rebuiltBytes.Length);
+            ReadOnlySpan<byte> observedSpan = observedBytes;
+            ReadOnlySpan<byte> rebuiltSpan = rebuiltBytes;
+            int byteIndexOffset = 0;
+            if (observedPayload && rebuiltPayload)
+            {
+                byteIndexOffset = sizeof(ushort);
+            }
+            else if (observedPayload && !rebuiltPayload && rebuiltSpan.Length >= sizeof(ushort))
+            {
+                rebuiltSpan = rebuiltSpan[sizeof(ushort)..];
+                byteIndexOffset = sizeof(ushort);
+            }
+            else if (!observedPayload && rebuiltPayload && observedSpan.Length >= sizeof(ushort))
+            {
+                observedSpan = observedSpan[sizeof(ushort)..];
+                byteIndexOffset = sizeof(ushort);
+            }
+
+            int comparedLength = Math.Min(observedSpan.Length, rebuiltSpan.Length);
             for (int i = 0; i < comparedLength; i++)
             {
-                if (observedBytes[i] == rebuiltBytes[i])
+                if (observedSpan[i] == rebuiltSpan[i])
                 {
                     continue;
                 }
 
                 int byteIndex = i + byteIndexOffset;
-                normalizedByByte[byteIndex] = $"byte{byteIndex}:0x{observedBytes[i]:X2}->0x{rebuiltBytes[i]:X2}";
+                normalizedByByte[byteIndex] = $"byte{byteIndex}:0x{observedSpan[i]:X2}->0x{rebuiltSpan[i]:X2}";
             }
         }
 

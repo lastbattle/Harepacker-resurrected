@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int TemporaryStatViewShadowLayerOrdinal { get; init; }
             public bool IsTemporaryStatViewReleased { get; init; }
             public int TemporaryStatViewReleaseTime { get; init; } = int.MinValue;
+            public int TemporaryStatViewTerminalReleaseSequence { get; init; }
             public int TemporaryStatViewObjectReleaseSequence { get; init; }
             public int TemporaryStatViewParentLayerReleaseSequence { get; init; }
             public int TemporaryStatViewMainLayerReleaseSequence { get; init; }
@@ -204,6 +205,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool HasBulletAnimationOwnerTickReached(int currentTime, int targetTime)
         {
             return ResolveBulletAnimationOwnerTickElapsedMs(currentTime, targetTime) >= 0;
+        }
+
+        internal static bool HasBulletAnimationOwnerTickPassed(int currentTime, int targetTime)
+        {
+            return ResolveBulletAnimationOwnerTickElapsedMs(currentTime, targetTime) > 0;
         }
 
         internal static bool IsBulletAnimationOwnerTickInRange(int currentTime, int startTime, int endTime)
@@ -781,6 +787,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string BlessBuffLabel = "Bless";
         private const string MapleWarriorBuffLabel = "MapleWarrior";
         private const string DashBuffLabel = "Dash";
+        private const string CombatOrdersBuffLabel = "CombatOrders";
+        private const string InfinityBuffLabel = "Infinity";
+        private const string FinalCutBuffLabel = "FinalCut";
 
         private static readonly IReadOnlyDictionary<string, int> ClientSecondaryStatSortOrderCatalog =
             BuildClientSecondaryStatSortOrderCatalog(
@@ -843,9 +852,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [InvincibleBuffLabel] = CreateTemporaryStatPresentation(InvincibleBuffLabel, "Invincible", null, ResolveClientSecondaryStatSortOrder("Invincible", 160), 160),
                 [SoulArrowBuffLabel] = CreateTemporaryStatPresentation(SoulArrowBuffLabel, "Soul Arrow", null, ResolveClientSecondaryStatSortOrder("SoulArrow", 170), 170),
                 [BlessBuffLabel] = CreateTemporaryStatPresentation(BlessBuffLabel, "Bless", null, 175, 175),
+                [CombatOrdersBuffLabel] = CreateTemporaryStatPresentation(CombatOrdersBuffLabel, "Combat Orders", null, 176, 176),
                 [ComboBuffLabel] = CreateTemporaryStatPresentation(ComboBuffLabel, "Combo", null, ResolveClientSecondaryStatSortOrder("ComboCounter", 180), 180),
                 [ChargeBuffLabel] = CreateTemporaryStatPresentation(ChargeBuffLabel, "Charge", null, ResolveClientSecondaryStatSortOrder("WeaponCharge", 190), 190),
                 [HolySymbolBuffLabel] = CreateTemporaryStatPresentation(HolySymbolBuffLabel, "Holy Symbol", null, ResolveClientSecondaryStatSortOrder("HolySymbol", 200), 200),
+                [InfinityBuffLabel] = CreateTemporaryStatPresentation(InfinityBuffLabel, "Infinity", null, 205, 205),
+                [FinalCutBuffLabel] = CreateTemporaryStatPresentation(FinalCutBuffLabel, "Final Cut", null, 206, 206),
                 [ExperienceBuffLabel] = CreateTemporaryStatPresentation(ExperienceBuffLabel, "EXP Rate", null, ResolveClientSecondaryStatSortOrder("HolySymbol", 200), 200),
                 [MesoUpBuffLabel] = CreateTemporaryStatPresentation(MesoUpBuffLabel, "Meso Up", null, ResolveClientSecondaryStatSortOrder("MesoUp", 210), 210),
                 [MesoRateBuffLabel] = CreateTemporaryStatPresentation(MesoRateBuffLabel, "Meso Rate", null, ResolveClientSecondaryStatSortOrder("MesoUp", 210), 210),
@@ -918,7 +930,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             (MagicGuardBuffLabel, new[] { "magic guard", "damage dealt to you affects your mp instead of your hp" }),
             (BlessBuffLabel, new[] { "bless", "blessing" }),
             (MapleWarriorBuffLabel, new[] { "maple warrior", "echo of hero", "echo of the hero" }),
-            (DashBuffLabel, new[] { "dash activation", "temporarily boost speed and jump" })
+            (DashBuffLabel, new[] { "dash activation", "temporarily boost speed and jump" }),
+            (CombatOrdersBuffLabel, new[] { "combat orders", "bonus skill level", "all skill levels" }),
+            (InfinityBuffLabel, new[] { "infinity", "use skills without spending mana", "damage of all attack magic" }),
+            (FinalCutBuffLabel, new[] { "final cut", "damage bonus for a while", "damage increase" })
         };
 
         private static readonly IReadOnlyDictionary<string, string[]> AuthoredPropertyTemporaryStatLabels =
@@ -2658,6 +2673,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ClientDoActiveSkillDefaultExclRequestThrottleMs = 300;
         private const int ClientDoActiveSkillTownPortalExclRequestThrottleMs = 200;
         private const int ClientDoActiveSkillSmokeShellExclRequestThrottleMs = 1000;
+        private const int ClientDoActiveSkillSummonMonsterExclRequestThrottleMs = 1000;
         private const int ClientPrepareIncorrectWeaponStringPoolId = 0x1127;
         private const int ClientPrepareNoWeaponStringPoolId = 0x0B4C;
         private const int ClientPrepareArrowAmmoStringPoolId = 0x0B4F;
@@ -3447,6 +3463,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (ShouldRejectClientDoActiveTeslaCoilMaxCountWithoutMessage(skill, _summons))
+            {
+                return true;
+            }
+
             if (ShouldRejectClientDoActiveSummonActionAppointedStateWithoutMessage(
                     skill,
                     _player?.IsPlayingClientOwnedOneTimeAction == true))
@@ -3596,7 +3617,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(skill)
                    || ShouldRejectClientSmoothingMovingShootPrepareStateWithoutMessage(skill)
                    || ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessage(skill)
+                   || ShouldRejectClientDoActiveSkillForActiveSerialAttack(_queuedSerialAttack?.SkillId)
                    || ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(skill, currentTime);
+        }
+
+        internal static bool ShouldRejectClientDoActiveSkillForActiveSerialAttack(int? activeSerialAttackSkillId)
+        {
+            // Client evidence: CUserLocal::DoActiveSkill rejects while
+            // m_serialAttack.nSkillID is 4341005 before entering the normal
+            // active-skill dispatch table.
+            return activeSerialAttackSkillId == 4341005;
         }
 
         private bool ShouldRejectClientDoActivePrepareFamilyPreWeaponRestrictionStateWithoutMessage(SkillData skill, int currentTime)
@@ -3840,6 +3870,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static bool ShouldRejectClientDoActiveTeslaCoilMaxCountWithoutMessage(
+            SkillData skill,
+            IEnumerable<ActiveSummon> activeSummons)
+        {
+            if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Summon
+                || skill?.SkillId != TESLA_COIL_SKILL_ID
+                || activeSummons == null)
+            {
+                return false;
+            }
+
+            int activeTeslaCoilCount = activeSummons.Count(
+                summon => summon?.SkillId == TESLA_COIL_SKILL_ID && !summon.IsPendingRemoval);
+            return activeTeslaCoilCount >= 3;
         }
 
         private static bool HasClientActionAppointedSkillSurface(SkillData skill)
@@ -4787,7 +4833,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int maxValue,
             int currentTime = 0,
             bool hasTemporaryObject = true,
-            bool recordPassiveTemporaryStatUpdate = true)
+            bool recordPassiveTemporaryStatUpdate = true,
+            bool preservePassiveTemporaryStatMaxValue = false)
         {
             if (skillId <= 0)
             {
@@ -4814,7 +4861,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     maxValue,
                     currentTime,
                     previousState,
-                    hasTemporaryObject);
+                    hasTemporaryObject,
+                    preservePassiveTemporaryStatMaxValue);
                 if (passiveState == null)
                 {
                     ClearCooldownPresentationState(skillId, currentTime);
@@ -4845,7 +4893,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int maxValue,
             int currentTime,
             PassiveVehicleTemporaryStatState previousState,
-            bool hasTemporaryObject)
+            bool hasTemporaryObject,
+            bool preserveExistingMaxValue = false)
         {
             int normalizedCurrentValue = Math.Max(0, currentValue);
             if (skillId <= 0 || normalizedCurrentValue <= 0 || !hasTemporaryObject)
@@ -4861,9 +4910,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? previousState.UpdateSequence + 1
                 : 1;
             int resolvedMaxValue = continuesSameObject
-                ? Math.Max(
-                    normalizedCurrentValue,
-                    Math.Max(previousState.MaxValue, Math.Max(0, maxValue)))
+                ? preserveExistingMaxValue
+                    ? Math.Max(normalizedCurrentValue, previousState.MaxValue)
+                    : Math.Max(
+                        normalizedCurrentValue,
+                        Math.Max(previousState.MaxValue, Math.Max(0, maxValue)))
                 : Math.Max(normalizedCurrentValue, maxValue);
             int alertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(resolvedMaxValue);
             int shadowIndex = ResolvePassiveVehicleDurabilityShadowIndexForParity(
@@ -5191,6 +5242,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewShadowLayerOrdinal = passiveState?.TemporaryStatViewShadowLayerOrdinal ?? 3,
                 IsTemporaryStatViewReleased = passiveState?.IsTemporaryStatViewReleased ?? false,
                 TemporaryStatViewReleaseTime = passiveState?.TemporaryStatViewReleaseTime ?? int.MinValue,
+                TemporaryStatViewTerminalReleaseSequence = Math.Max(0, passiveState?.TemporaryStatViewTerminalReleaseSequence ?? 0),
                 TemporaryStatViewObjectReleaseSequence = Math.Max(0, passiveState?.TemporaryStatViewObjectReleaseSequence ?? 0),
                 TemporaryStatViewParentLayerReleaseSequence = Math.Max(0, passiveState?.TemporaryStatViewParentLayerReleaseSequence ?? 0),
                 TemporaryStatViewMainLayerReleaseSequence = Math.Max(0, passiveState?.TemporaryStatViewMainLayerReleaseSequence ?? 0),
@@ -5411,6 +5463,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewShadowLayerOrdinal = previousState.TemporaryStatViewShadowLayerOrdinal,
                 IsTemporaryStatViewReleased = true,
                 TemporaryStatViewReleaseTime = currentTime,
+                TemporaryStatViewTerminalReleaseSequence =
+                    Math.Max(0, previousState.TemporaryStatViewTerminalReleaseSequence) + 1,
                 TemporaryStatViewObjectReleaseSequence = objectReleaseSequence,
                 TemporaryStatViewParentLayerReleaseSequence = parentReleaseSequence,
                 TemporaryStatViewMainLayerReleaseSequence = mainReleaseSequence,
@@ -7338,9 +7392,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             int validStartTime,
             int currentTime)
         {
-            return validCount > 0
-                   && currentTime >= validStartTime
-                   && currentTime - validStartTime <= CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS;
+            if (validCount <= 0 || validStartTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(currentTime - validStartTime);
+            return elapsed >= 0 && elapsed <= CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS;
         }
 
         internal static bool UsesClientOwnedVehicleTrackingSkill(SkillData skill)
@@ -13424,6 +13482,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ClientDoActiveSkillSmokeShellExclRequestThrottleMs;
             }
 
+            if (IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill))
+            {
+                // `CUserLocal::DoActiveSkill_SummonMonster@0x93eff0` rejects
+                // repeated exclusive requests until one second has elapsed.
+                return ClientDoActiveSkillSummonMonsterExclRequestThrottleMs;
+            }
+
             return ResolveDoActiveSkillExecutionLane(skill) switch
             {
                 ClientDoActiveSkillExecutionLane.TownPortal => ClientDoActiveSkillTownPortalExclRequestThrottleMs,
@@ -13697,6 +13762,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ShouldRejectClientDoActiveSummonActionAppointedStateWithoutMessage(
                 skill,
                 hasActiveClientOwnedOneTimeAction);
+        }
+
+        internal static bool ShouldRejectClientDoActiveTeslaCoilMaxCountWithoutMessageForTesting(
+            SkillData skill,
+            IEnumerable<ActiveSummon> activeSummons)
+        {
+            return ShouldRejectClientDoActiveTeslaCoilMaxCountWithoutMessage(skill, activeSummons);
         }
 
         internal static string ResolveClientDoActiveSkillActionAppointedActionNameForTesting(
@@ -15232,6 +15304,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldBlockRocketBoosterLaunchForActiveClientEndState(_rocketBoosterState != null))
+            {
+                return false;
+            }
+
             if (ShouldBlockClientBoundJumpForActiveClientFlight(_clientBoundJumpFlightActive))
             {
                 return false;
@@ -15253,6 +15330,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return (_fieldSkillRestrictionEvaluator == null || _fieldSkillRestrictionEvaluator(skill))
                    && ResolveRocketBoosterLaunchVerticalSpeed(skill, GetSkillLevel(skill.SkillId)) > 0f;
+        }
+
+        internal static bool ShouldBlockRocketBoosterLaunchForActiveClientEndState(bool hasActiveRocketBoosterState)
+        {
+            // `TryDoingRocketBoosterEnd` keeps the Rocket Booster state alive through
+            // the 500 ms recovery-effect window after clearing the stored vertical
+            // launch marker, so local relaunch is not admitted until the end state
+            // has been cleared.
+            return hasActiveRocketBoosterState;
         }
 
         private bool CanMaintainRocketBooster(SkillData skill, int currentTime)
@@ -20037,6 +20123,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : FindActiveProjectile(owner?.ProjectileId ?? 0);
 
                 SyncBulletAnimationOwner(owner, projectile, currentTime);
+                TryMarkBulletAnimationOwnerMainLayerInitializationFailure(owner, currentTime);
                 UpdateBulletAnimationOwnerAfterimages(owner, currentTime);
 
                 if (ShouldRemoveBulletAnimationOwner(owner, currentTime))
@@ -20051,8 +20138,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasAfterimages = owner?.AfterimageLayers?.Any(layer => layer?.IsExpired(currentTime) == false) == true;
             bool beforeStart = owner?.Presentation != null
                                && !HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.StartTime);
+            bool initializationFailed = owner?.MainLayerInitializationFailed == true
+                                        && HasBulletAnimationOwnerTickPassed(
+                                            currentTime,
+                                            owner.Presentation?.StartTime ?? currentTime);
             bool finished = owner?.Presentation == null
-                || HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.EndTime);
+                || HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.EndTime)
+                || initializationFailed;
             return !beforeStart && finished && !hasAfterimages;
         }
 
@@ -20364,7 +20456,32 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return owner?.Presentation?.HasAfterimage == true
                    && owner.MainLayerAvailable
+                   && !owner.MainLayerInitializationFailed
                    && owner.CanDrawMainAnimation(currentTime);
+        }
+
+        internal static void TryMarkBulletAnimationOwnerMainLayerInitializationFailure(
+            ActiveBulletAnimationOwner owner,
+            int currentTime)
+        {
+            if (!ShouldFailBulletAnimationOwnerMainLayerInitialization(owner, currentTime))
+            {
+                return;
+            }
+
+            owner.MainLayerInitializationFailed = true;
+            owner.MainLayerAvailable = false;
+        }
+
+        internal static bool ShouldFailBulletAnimationOwnerMainLayerInitialization(
+            ActiveBulletAnimationOwner owner,
+            int currentTime)
+        {
+            return owner?.Presentation != null
+                   && !owner.MainLayerInitializationFailed
+                   && HasBulletAnimationOwnerTickPassed(currentTime, owner.Presentation.StartTime)
+                   && !HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.EndTime)
+                   && (owner.Presentation.Animation?.Frames?.Count ?? 0) <= 0;
         }
 
         internal static int ResolveBulletAnimationOwnerMainLayerObjectId(int ownerId)
@@ -20848,7 +20965,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             List<ActiveSummon> sameSkillSummons = _summons
-                .Where(summon => summon?.SkillId == skill.SkillId)
+                .Where(summon => summon?.SkillId == skill.SkillId && !summon.IsPendingRemoval)
                 .ToList();
             int maxConcurrentSummons = ResolveMaxConcurrentSummons(skill, levelData);
 
@@ -20869,8 +20986,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             else if (skill.SkillId == TESLA_COIL_SKILL_ID && sameSkillSummons.Count >= maxConcurrentSummons)
             {
-                RemoveSummonsBySkill(skill.SkillId);
-                sameSkillSummons.Clear();
+                return;
             }
 
             int durationMs = ResolveSummonDurationMs(skill, levelData, level);
@@ -21620,15 +21736,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
-                if (!IsMobAttackable(mob)
-                    || mob.AI?.IsTargetingSummoned != true
-                    || mob.AI.Target.TargetId != summon.ObjectId)
-                {
-                    continue;
-                }
-
                 Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
-                if (mobHitbox.IsEmpty || !mobHitbox.Intersects(summonHitbox))
+                if (!IsClientBodyAttackMobCandidateForSummonRuntime(
+                        IsMobAttackable(mob),
+                        mob.AI?.IsDead == true,
+                        summon.ObjectId,
+                        mobHitbox,
+                        summonHitbox,
+                        mob.AI?.IsDazzled == true))
                 {
                     continue;
                 }
@@ -21641,6 +21756,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        internal static bool IsClientBodyAttackMobCandidateForSummonRuntime(
+            bool isMobAttackable,
+            bool mobIsDead,
+            int summonObjectId,
+            Rectangle mobHitbox,
+            Rectangle summonHitbox,
+            bool mobIsDazzled = false)
+        {
+            return isMobAttackable
+                   && PacketOwnedSummonUpdateRules.IsClientBodyAttackMobCandidate(
+                       mobIsDead,
+                       summonObjectId,
+                       mobHitbox,
+                       summonHitbox,
+                       mobIsDazzled);
         }
 
         internal static SkillAnimation ResolveClientTargetHitAnimation(
@@ -29552,6 +29684,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
+                if (activeTemporaryStatsByLabel.ContainsKey(CombatOrdersBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        CombatOrdersBuffLabel))
+                {
+                    labels = new[] { CombatOrdersBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(InfinityBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        InfinityBuffLabel))
+                {
+                    labels = new[] { InfinityBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(FinalCutBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        FinalCutBuffLabel))
+                {
+                    labels = new[] { FinalCutBuffLabel };
+                    return true;
+                }
+
                 if (activeTemporaryStatsByLabel.ContainsKey(ComboBarrierBuffLabel)
                     && activeTemporaryStatsByLabel.ContainsKey(DamageReductionBuffLabel))
                 {
@@ -29661,6 +29820,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                     labels = new[] { AuraBuffLabel };
                     return true;
                 }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(InfinityBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        InfinityBuffLabel))
+                {
+                    labels = new[] { InfinityBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(FinalCutBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        FinalCutBuffLabel))
+                {
+                    labels = new[] { FinalCutBuffLabel };
+                    return true;
+                }
             }
 
             if (string.Equals(propertyName, "z", StringComparison.OrdinalIgnoreCase))
@@ -29714,6 +29891,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                         AuraBuffLabel))
                 {
                     labels = new[] { AuraBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(InfinityBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        InfinityBuffLabel))
+                {
+                    labels = new[] { InfinityBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(FinalCutBuffLabel)
+                    && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        FinalCutBuffLabel))
+                {
+                    labels = new[] { FinalCutBuffLabel };
                     return true;
                 }
             }
@@ -29857,7 +30052,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(contextualFamilyOwnerLabel, InvincibleBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, PowerGuardBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, MesoGuardBuffLabel, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(contextualFamilyOwnerLabel, AuraBuffLabel, StringComparison.OrdinalIgnoreCase);
+                || string.Equals(contextualFamilyOwnerLabel, AuraBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contextualFamilyOwnerLabel, CombatOrdersBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contextualFamilyOwnerLabel, InfinityBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contextualFamilyOwnerLabel, FinalCutBuffLabel, StringComparison.OrdinalIgnoreCase);
             if (!isPayloadlessNoDirectFamily)
             {
                 return false;
@@ -29904,6 +30102,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool isW = string.Equals(propertyName, "w", StringComparison.OrdinalIgnoreCase);
             bool isT = string.Equals(propertyName, "t", StringComparison.OrdinalIgnoreCase);
             bool isProp = string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase);
+            bool isDamage = string.Equals(propertyName, "damage", StringComparison.OrdinalIgnoreCase);
             bool isMorph = string.Equals(propertyName, "morph", StringComparison.OrdinalIgnoreCase);
             bool isPad = string.Equals(propertyName, "pad", StringComparison.OrdinalIgnoreCase);
             bool isAcc = string.Equals(propertyName, "acc", StringComparison.OrdinalIgnoreCase);
@@ -30059,6 +30258,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                     InvincibleBuffLabel))
             {
                 label = InvincibleBuffLabel;
+                return true;
+            }
+
+            if (isX
+                && activeTemporaryStatsByLabel.ContainsKey(CombatOrdersBuffLabel)
+                && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                    activeTemporaryStatsByLabel,
+                    CombatOrdersBuffLabel))
+            {
+                label = CombatOrdersBuffLabel;
+                return true;
+            }
+
+            if ((isX || isY || isZ || isProp || isDamage)
+                && activeTemporaryStatsByLabel.ContainsKey(InfinityBuffLabel)
+                && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                    activeTemporaryStatsByLabel,
+                    InfinityBuffLabel))
+            {
+                label = InfinityBuffLabel;
+                return true;
+            }
+
+            if ((isX || isY || isZ || isDamage)
+                && activeTemporaryStatsByLabel.ContainsKey(FinalCutBuffLabel)
+                && !HasCompetingNoDirectPlaceholderTemporaryStatPayloads(
+                    activeTemporaryStatsByLabel,
+                    FinalCutBuffLabel))
+            {
+                label = FinalCutBuffLabel;
                 return true;
             }
 
@@ -31085,6 +31314,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             TrackIfMissing(temporaryStats, isDash, DashBuffLabel);
             TrackIfMissing(temporaryStats, isDash && hasLevelData && (levelData.Speed > 0 || levelData.X > 0), "Speed");
             TrackIfMissing(temporaryStats, isDash && hasLevelData && (levelData.Jump > 0 || levelData.Y > 0), "Jump");
+
+            TrackIfMissing(
+                temporaryStats,
+                ContainsAny(combinedText, "combat orders", "bonus skill level", "all skill levels"),
+                CombatOrdersBuffLabel);
+            TrackIfMissing(
+                temporaryStats,
+                ContainsAny(combinedText, "infinity", "use skills without spending mana", "damage of all attack magic"),
+                InfinityBuffLabel);
+            TrackIfMissing(
+                temporaryStats,
+                skill?.SkillId == FinalCutSkillId || ContainsAny(combinedText, "final cut", "damage bonus for a while", "damage increase"),
+                FinalCutBuffLabel);
 
             bool isHolySymbol = ContainsAny(combinedText, "holy symbol");
             TrackIfMissing(temporaryStats, isHolySymbol, HolySymbolBuffLabel);
@@ -33256,7 +33498,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome && !hasSwallowState;
+            return swallowFamilyOutcome;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

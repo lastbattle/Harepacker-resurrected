@@ -615,11 +615,12 @@ namespace HaCreator.MapSimulator.Pools
             X = startPosition.X;
             Y = startPosition.Y;
             PickupDurationMs = Math.Max(1, durationMs);
-            UsePickupAbsorbMotion = targetPosition.HasValue;
-            PickupTargetX = targetPosition?.X ?? X;
-            PickupTargetY = targetPosition?.Y ?? GroundY - 30f;
+            bool usePacketAbsorbFallback = useClientPacketAbsorbMotion;
+            UsePickupAbsorbMotion = targetPosition.HasValue || usePacketAbsorbFallback;
+            PickupTargetX = targetPosition?.X ?? (usePacketAbsorbFallback ? startPosition.X : X);
+            PickupTargetY = targetPosition?.Y ?? (usePacketAbsorbFallback ? startPosition.Y : GroundY - 30f);
             PickupTargetPositionResolver = targetPositionResolver;
-            UseClientPacketAbsorbMotion = useClientPacketAbsorbMotion && targetPosition.HasValue;
+            UseClientPacketAbsorbMotion = useClientPacketAbsorbMotion && UsePickupAbsorbMotion;
             RemovalFadeDurationMs = 0;
         }
 

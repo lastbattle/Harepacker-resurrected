@@ -3196,7 +3196,12 @@ namespace HaCreator.MapSimulator.Interaction
                         usedReplacement,
                         evaluation == BackwardUpdateCashItemPositionEvaluation.OutOfRange,
                         evaluation == BackwardUpdateCashItemPositionEvaluation.SlotOverflow,
-                        evaluation == BackwardUpdateCashItemPositionEvaluation.Collision);
+                        evaluation == BackwardUpdateCashItemPositionEvaluation.Collision,
+                        slot.DecodedByteCount,
+                        slot.FieldByteCounts,
+                        slot.NativeIndex,
+                        slot.SectionRecordStartOffset,
+                        slot.SectionRecordEndOffset);
                     mutationSequenceForType.Add(mutation);
                     aggregatedMutationSequence.Add(mutation);
                     mutationEffectivePositionsForType[slot.CashItemSerialNumber] = effectivePosition;
@@ -5835,7 +5840,12 @@ namespace HaCreator.MapSimulator.Interaction
         bool UsedFallbackReplacement,
         bool WasOutOfRange,
         bool WasSlotOverflow,
-        bool WasCollision);
+        bool WasCollision,
+        int CarriedItemRecordByteCount = 0,
+        IReadOnlyDictionary<string, int> CarriedItemFieldByteCounts = null,
+        int NativeIndex = -1,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataTwoIntValueRecord(
         int Value1,

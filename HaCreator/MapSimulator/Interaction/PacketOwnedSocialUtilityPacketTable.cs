@@ -28,6 +28,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort FamilyChartRequestOpcode = 169;
         internal const ushort FamilyUsePrivilegeRequestOpcode = 175;
         internal const ushort FamilySetPreceptRequestOpcode = 176;
+        internal const ushort ExpeditionInboundResultOpcode = 64;
+        internal const ushort ExpeditionOutboundRequestOpcode = 147;
 
         private static readonly ushort[] MessengerInboundOpcodeSet =
         {
@@ -64,6 +66,8 @@ namespace HaCreator.MapSimulator.Interaction
             FamilyUsePrivilegeRequestOpcode,
             FamilySetPreceptRequestOpcode
         };
+        private static readonly ushort[] ExpeditionInboundOpcodeSet = { ExpeditionInboundResultOpcode };
+        private static readonly ushort[] ExpeditionOutboundOpcodeSet = { ExpeditionOutboundRequestOpcode };
 
         private static readonly IReadOnlyDictionary<byte, string> MessengerInboundSubtypeHandlers =
             new Dictionary<byte, string>
@@ -122,6 +126,41 @@ namespace HaCreator.MapSimulator.Interaction
                 [49] = "CEntrustedShopDlg::DeleteBlackList"
             };
 
+        private static readonly IReadOnlyDictionary<byte, string> ExpeditionInboundResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [57] = "ExpeditionIntermediary::OnPacketExpNoti_Get draft snapshot",
+                [58] = "ExpeditionIntermediary::OnPacketExpNoti_Removed early leave",
+                [59] = "ExpeditionIntermediary::OnPacketExpNoti_Get snapshot",
+                [60] = "ExpeditionIntermediary::OnPacketExpNoti_Notice joined",
+                [61] = "ExpeditionIntermediary::OnPacketExpNoti_Get accepted snapshot",
+                [62] = "ExpeditionIntermediary::OnPacket non-mutating already-changed notice",
+                [63] = "ExpeditionIntermediary::OnPacket non-mutating request-failed notice",
+                [64] = "ExpeditionIntermediary::OnPacketExpNoti_Notice left",
+                [65] = "ExpeditionIntermediary::OnPacketExpNoti_Removed leave",
+                [66] = "ExpeditionIntermediary::OnPacketExpNoti_Notice removed",
+                [67] = "ExpeditionIntermediary::OnPacketExpNoti_Removed disband",
+                [68] = "ExpeditionIntermediary::OnPacketExpNoti_Removed kicked",
+                [69] = "ExpeditionIntermediary::OnPacketExpNoti_MasterChanged",
+                [70] = "ExpeditionIntermediary::OnPacketExpNoti_Modified",
+                [71] = "ExpeditionIntermediary::OnPacket non-mutating modified-failure notice",
+                [72] = "ExpeditionIntermediary::OnPacketExpNoti_Invite",
+                [73] = "ExpeditionIntermediary::OnPacketExpNoti_ResponseInvite"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> ExpeditionOutboundRequestHandlers =
+            new Dictionary<byte, string>
+            {
+                [49] = "ExpeditionIntermediary::SendExpCreatePacket create/register",
+                [50] = "ExpeditionIntermediary::SendExpInvitePacket admission/invite",
+                [51] = "ExpeditionIntermediary::SendResponseInvitePacket invite-response",
+                [52] = "ExpeditionIntermediary withdraw/disband request",
+                [53] = "ExpeditionIntermediary kick/remove request",
+                [54] = "ExpeditionIntermediary change-master request",
+                [55] = "ExpeditionIntermediary change-party-boss request",
+                [56] = "ExpeditionIntermediary relocate-party request"
+            };
+
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerInboundSubtypeHandlers()
         {
             return MessengerInboundSubtypeHandlers;
@@ -170,6 +209,16 @@ namespace HaCreator.MapSimulator.Interaction
             return MerchantOutboundSubtypeHandlers;
         }
 
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredExpeditionInboundResultHandlers()
+        {
+            return ExpeditionInboundResultHandlers;
+        }
+
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredExpeditionOutboundRequestHandlers()
+        {
+            return ExpeditionOutboundRequestHandlers;
+        }
+
         internal static bool IsRecoveredMerchantInboundSubtype(byte subtype)
         {
             return MerchantInboundSubtypeHandlers.ContainsKey(subtype);
@@ -190,6 +239,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
             {
                 return FamilyInboundOpcodeSet;
+            }
+
+            if (string.Equals(ownerName, "Expedition", StringComparison.OrdinalIgnoreCase))
+            {
+                return ExpeditionInboundOpcodeSet;
             }
 
             return MessengerInboundOpcodeSet;
@@ -221,6 +275,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
             {
                 return FamilyOutboundOpcodeSet;
+            }
+
+            if (string.Equals(ownerName, "Expedition", StringComparison.OrdinalIgnoreCase))
+            {
+                return ExpeditionOutboundOpcodeSet;
             }
 
             return MessengerOutboundOpcodeSet;
@@ -289,6 +348,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return DescribeFamilyRecoveredPacketTable();
             }
 
+            if (string.Equals(ownerName, "Expedition", StringComparison.OrdinalIgnoreCase))
+            {
+                return DescribeExpeditionRecoveredPacketTable();
+            }
+
             return DescribeMessengerRecoveredPacketTable();
         }
 
@@ -327,6 +391,19 @@ namespace HaCreator.MapSimulator.Interaction
             string inboundSet = string.Join("/", FamilyInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
             string outboundSet = string.Join("/", FamilyOutboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
             return $"Recovered family packet table: inbound opcodes {inboundSet} to CWvsContext family handlers (98: CUIFamilyChart::DecodeLocalChart, 99: OnFamilyInfoResult, 100: OnFamilyResult, 104: OnFamilyPrivilegeList, 107: OnFamilySetPrivilege); outbound opcodes {outboundSet} cover CWvsContext::SendFamilyChartRequest (169), SendUseFamilyPrivilege (175), and SendSetFamilyPrecept (176). Family chart requests expect DecodeLocalChart/OnFamilyInfoResult (98/99), privilege requests expect OnFamilyResult or OnFamilySetPrivilege (100/107), and precept requests expect OnFamilyResult (100). Junior registration and unregister request opcodes remain intentionally unregistered until client proof is recovered.";
+        }
+
+        internal static string DescribeExpeditionRecoveredPacketTable()
+        {
+            string inboundSet = string.Join("/", ExpeditionInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string outboundSet = string.Join("/", ExpeditionOutboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string inboundResults = string.Join(
+                ", ",
+                ExpeditionInboundResultHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            string outboundRequests = string.Join(
+                ", ",
+                ExpeditionOutboundRequestHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            return $"Recovered Expedition packet table: inbound opcode {inboundSet} to CWvsContext::OnExpedtionResult -> ExpeditionIntermediary::OnPacket (retCodes {inboundResults}); outbound opcode {outboundSet} from ExpeditionIntermediary request send-family (request codes {outboundRequests}).";
         }
 
         internal static bool TryBuildRecoveredResultExpectation(
@@ -455,6 +532,46 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (requestOpcode == ExpeditionOutboundRequestOpcode && payload.Length > 0)
+            {
+                byte expeditionRequestCode = payload[0];
+                expectedInboundOpcodes = new[] { (int)ExpeditionInboundResultOpcode };
+                switch (expeditionRequestCode)
+                {
+                    case 49:
+                        expectedInboundSubtypes = new byte[] { 57, 59, 61, 62, 63 };
+                        expectationSummary = "expect ExpeditionIntermediary::OnPacket get/accepted snapshot or non-mutating request failure (retCodes 57/59/61/62/63)";
+                        return true;
+                    case 50:
+                        expectedInboundSubtypes = new byte[] { 60, 70, 73 };
+                        expectationSummary = "expect ExpeditionIntermediary admission/invite response, roster notice, or party modified result (retCodes 60/70/73)";
+                        return true;
+                    case 51:
+                        expectedInboundSubtypes = new byte[] { 61, 63, 73 };
+                        expectationSummary = "expect ExpeditionIntermediary invite-response result or accepted snapshot (retCodes 61/63/73)";
+                        return true;
+                    case 52:
+                        expectedInboundSubtypes = new byte[] { 64, 65, 67 };
+                        expectationSummary = "expect ExpeditionIntermediary withdraw/disband notice or removal (retCodes 64/65/67)";
+                        return true;
+                    case 53:
+                        expectedInboundSubtypes = new byte[] { 66, 68, 70 };
+                        expectationSummary = "expect ExpeditionIntermediary kick/remove notice, removed branch, or roster modification (retCodes 66/68/70)";
+                        return true;
+                    case 54:
+                        expectedInboundSubtypes = new byte[] { 69 };
+                        expectationSummary = "expect ExpeditionIntermediary master-changed result (retCode 69)";
+                        return true;
+                    case 55:
+                    case 56:
+                        expectedInboundSubtypes = new byte[] { 70, 71 };
+                        expectationSummary = "expect ExpeditionIntermediary party mutation or modified-failure result (retCodes 70/71)";
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
             if (requestOpcode == MessengerClaimRequestOpcode)
             {
                 expectedInboundOpcodes = new[] { (int)MessengerClaimResultOpcode };
@@ -570,6 +687,19 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 branchSummary = $"CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket subtype {inboundSubtype}";
+                return true;
+            }
+
+            if (inboundOpcode == ExpeditionInboundResultOpcode && payload.Length > 0)
+            {
+                inboundSubtype = payload[0];
+                if (ExpeditionInboundResultHandlers.TryGetValue(inboundSubtype, out string expeditionHandlerName))
+                {
+                    branchSummary = $"{expeditionHandlerName} (retCode {inboundSubtype})";
+                    return true;
+                }
+
+                branchSummary = $"ExpeditionIntermediary::OnPacket retCode {inboundSubtype}";
                 return true;
             }
 

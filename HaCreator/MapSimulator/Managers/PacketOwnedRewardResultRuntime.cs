@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int RandomMesoBagStatusBarChatType = 12;
         public const int RandomMesoBagStatusBarChannelId = -1;
         public const int RandomMesoBagSoundVolume = 100;
+        public const bool UtilDlgNoticeAutoSeparated = true;
+        public const bool UtilDlgNoticeTightLine = false;
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
         private const int UtilDlgNoticeBackgroundStringPoolId = 0x03D0;

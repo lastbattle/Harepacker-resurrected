@@ -55,7 +55,7 @@ namespace HaCreator.MapSimulator.Combat
 
             public Rectangle GetHitbox(int currentTime)
             {
-                if (currentTime < LaunchTime)
+                if (!HasClientTickReached(currentTime, LaunchTime))
                 {
                     return Rectangle.Empty;
                 }
@@ -261,7 +261,7 @@ namespace HaCreator.MapSimulator.Combat
                 return null;
             }
 
-            if (packetOverrides?.ExpireTime > 0 && currentTime >= packetOverrides.ExpireTime)
+            if (HasClientTickReachedOptional(currentTime, packetOverrides?.ExpireTime ?? 0))
             {
                 _pendingAttackPacketOverrides.Remove(mobPoolId);
                 return null;
@@ -643,7 +643,7 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = _scheduledMobVisualEffects.Count - 1; i >= 0; i--)
             {
                 ScheduledMobVisualEffect effect = _scheduledMobVisualEffects[i];
-                if (currentTime < effect.TriggerTime)
+                if (!HasClientTickReached(currentTime, effect.TriggerTime))
                 {
                     continue;
                 }
@@ -658,7 +658,7 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = _scheduledMobAttachedVisualEffects.Count - 1; i >= 0; i--)
             {
                 ScheduledMobAttachedVisualEffect effect = _scheduledMobAttachedVisualEffects[i];
-                if (currentTime < effect.TriggerTime)
+                if (!HasClientTickReached(currentTime, effect.TriggerTime))
                 {
                     continue;
                 }
@@ -680,7 +680,7 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = _scheduledMobFallingEffects.Count - 1; i >= 0; i--)
             {
                 ScheduledMobFallingEffect effect = _scheduledMobFallingEffects[i];
-                if (currentTime < effect.TriggerTime)
+                if (!HasClientTickReached(currentTime, effect.TriggerTime))
                 {
                     continue;
                 }
@@ -709,7 +709,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (currentTime < projectile.LaunchTime)
+                if (!HasClientTickReached(currentTime, projectile.LaunchTime))
                 {
                     continue;
                 }
@@ -743,7 +743,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (currentTime < projectile.ExpireTime)
+                if (!HasClientTickReached(currentTime, projectile.ExpireTime))
                 {
                     continue;
                 }
@@ -819,7 +819,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (!groundAttack.Triggered && currentTime >= groundAttack.TriggerTime)
+                if (!groundAttack.Triggered && HasClientTickReached(currentTime, groundAttack.TriggerTime))
                 {
                     groundAttack.Triggered = true;
                     bool usesLockedTarget = UsesLockedTargetResolution(groundAttack.Attack, groundAttack.TargetInfo);
@@ -886,7 +886,7 @@ namespace HaCreator.MapSimulator.Combat
                     }
                 }
 
-                if (currentTime >= groundAttack.ExpireTime)
+                if (HasClientTickReached(currentTime, groundAttack.ExpireTime))
                 {
                     _activeMobGroundAttacks.RemoveAt(i);
                 }
@@ -904,7 +904,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (!directAttack.Triggered && currentTime >= directAttack.TriggerTime)
+                if (!directAttack.Triggered && HasClientTickReached(currentTime, directAttack.TriggerTime))
                 {
                     directAttack.Triggered = true;
                     Rectangle attackArea = BuildDirectAttackArea(directAttack.SourceMob, directAttack.Attack);
@@ -976,7 +976,7 @@ namespace HaCreator.MapSimulator.Combat
                     }
                 }
 
-                if (currentTime >= directAttack.ExpireTime)
+                if (HasClientTickReached(currentTime, directAttack.ExpireTime))
                 {
                     _activeMobDirectAttacks.RemoveAt(i);
                 }
@@ -2671,18 +2671,25 @@ namespace HaCreator.MapSimulator.Combat
             int expireTime,
             int currentTime)
         {
-            if (currentTime <= launchTime)
+            if (!HasClientTickReached(currentTime, launchTime))
             {
                 return launchPoint;
             }
 
-            if (expireTime <= launchTime)
+            if (!HasClientTickReached(expireTime, launchTime))
+            {
+                return targetPoint;
+            }
+
+            int elapsedMs = ResolveClientTickElapsed(currentTime, launchTime);
+            int durationMs = ResolveClientTickElapsed(expireTime, launchTime);
+            if (durationMs <= 0)
             {
                 return targetPoint;
             }
 
             float progress = MathHelper.Clamp(
-                (currentTime - launchTime) / (float)(expireTime - launchTime),
+                elapsedMs / (float)durationMs,
                 0f,
                 1f);
             return Vector2.Lerp(launchPoint, targetPoint, progress);
@@ -2755,7 +2762,7 @@ namespace HaCreator.MapSimulator.Combat
 
         internal static bool ShouldDrawGroundWarning(int currentTime, int warningStartTime)
         {
-            return currentTime >= warningStartTime;
+            return HasClientTickReached(currentTime, warningStartTime);
         }
 
         internal static List<Vector2> ExtractPacketProjectileLanePoints(
@@ -2798,7 +2805,7 @@ namespace HaCreator.MapSimulator.Combat
                 return null;
             }
 
-            if (packetOverrides.ExpireTime > 0 && currentTime >= packetOverrides.ExpireTime)
+            if (HasClientTickReachedOptional(currentTime, packetOverrides.ExpireTime))
             {
                 _pendingAttackPacketOverrides.Remove(mobItem.PoolId);
                 return null;
@@ -3031,7 +3038,7 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            if (triggerTime <= currentTime)
+            if (HasClientTickReached(currentTime, triggerTime))
             {
                 animationEffects?.AddOneTime(frames, position.X, position.Y, flip, currentTime);
                 return;
@@ -3061,7 +3068,7 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            if (triggerTime <= currentTime)
+            if (HasClientTickReached(currentTime, triggerTime))
             {
                 animationEffects?.AddOneTimeAttached(
                     frames,
@@ -3662,7 +3669,7 @@ namespace HaCreator.MapSimulator.Combat
                 return 0;
             }
 
-            int elapsed = Math.Max(0, currentTime - startTime);
+            int elapsed = ResolveClientTickElapsed(currentTime, startTime);
             for (int i = 0; i < frames.Count; i++)
             {
                 int delay = Math.Max(1, frames[i]?.Delay ?? 1);
@@ -4152,7 +4159,7 @@ namespace HaCreator.MapSimulator.Combat
             _expiredScheduledActionKeys.Clear();
             foreach (var pair in _scheduledMobActions)
             {
-                if (currentTime >= pair.Value)
+                if (HasClientTickReached(currentTime, pair.Value))
                 {
                     _expiredScheduledActionKeys.Add(pair.Key);
                 }
@@ -4171,7 +4178,7 @@ namespace HaCreator.MapSimulator.Combat
             var expiredOverrideMobIds = new List<int>();
             foreach (var pair in _pendingAttackPacketOverrides)
             {
-                if (pair.Value?.ExpireTime > 0 && currentTime >= pair.Value.ExpireTime)
+                if (HasClientTickReachedOptional(currentTime, pair.Value?.ExpireTime ?? 0))
                 {
                     expiredOverrideMobIds.Add(pair.Key);
                 }
@@ -4196,7 +4203,7 @@ namespace HaCreator.MapSimulator.Combat
                 return null;
             }
 
-            if (currentTime < projectile.LaunchTime)
+            if (!HasClientTickReached(currentTime, projectile.LaunchTime))
             {
                 return null;
             }
@@ -4206,7 +4213,7 @@ namespace HaCreator.MapSimulator.Combat
                 return projectile.Frames[0];
             }
 
-            int relativeTime = Math.Max(0, currentTime - projectile.LaunchTime);
+            int relativeTime = ResolveClientTickElapsed(currentTime, projectile.LaunchTime);
             return GetFrameAtTime(projectile.Frames, relativeTime, loop: true);
         }
 
@@ -4222,7 +4229,7 @@ namespace HaCreator.MapSimulator.Combat
                 return frames[0];
             }
 
-            int relativeTime = Math.Max(0, currentTime - startTime);
+            int relativeTime = ResolveClientTickElapsed(currentTime, startTime);
             return GetFrameAtTime(frames, relativeTime, loop: true);
         }
 
@@ -4272,6 +4279,21 @@ namespace HaCreator.MapSimulator.Combat
             duration = ResolveSequenceDuration(frames);
             _frameCycleDurationCache[frames] = duration;
             return duration;
+        }
+
+        internal static bool HasClientTickReached(int currentTime, int targetTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, targetTime);
+        }
+
+        internal static bool HasClientTickReachedOptional(int currentTime, int targetTime)
+        {
+            return targetTime != 0 && HasClientTickReached(currentTime, targetTime);
+        }
+
+        internal static int ResolveClientTickElapsed(int currentTime, int startTime)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, startTime);
         }
 
         private static void CopyItems<T>(IReadOnlyList<T> source, List<T> destination)

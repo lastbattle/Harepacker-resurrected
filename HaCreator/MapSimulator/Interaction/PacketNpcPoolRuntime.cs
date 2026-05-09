@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using HaCreator.MapSimulator.Physics;
 
 using BinaryReader = MapleLib.PacketLib.PacketReader;
 using BinaryWriter = MapleLib.PacketLib.PacketWriter;
@@ -44,7 +45,8 @@ namespace HaCreator.MapSimulator.Interaction
         int ObjectId,
         int OneTimeAction,
         int ChatIndex,
-        byte[] MovePathPayload);
+        byte[] MovePathPayload,
+        IReadOnlyList<MovePathElement> MovePathElements);
 
     internal readonly record struct PacketNpcLimitedInfoPacket(int ObjectId, bool Enabled);
 
@@ -308,7 +310,17 @@ namespace HaCreator.MapSimulator.Interaction
                 reader.ReadInt32(),
                 ReadSignedByte(reader),
                 ReadSignedByte(reader),
-                ReadRemainingBytes(stream));
+                ReadRemainingBytes(stream),
+                Array.Empty<MovePathElement>());
+            if (packet.MovePathPayload.Length > 0
+                && CMovePathClientPacketCodec.TryDecode(
+                    packet.MovePathPayload,
+                    out IReadOnlyList<MovePathElement> movePathElements,
+                    out _))
+            {
+                packet = packet with { MovePathElements = movePathElements };
+            }
+
             return callbacks.Move?.Invoke(packet, currentTick)
                 ?? new PacketNpcPoolApplyResult(false, "CNpcPool::OnNpcPacket/OnMove routed without a simulator handler.");
         }

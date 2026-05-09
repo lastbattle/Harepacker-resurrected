@@ -74,7 +74,7 @@ namespace HaCreator.MapSimulator
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
         internal readonly record struct PacketOwnedAntiMacroNoticeMapping(int StringPoolId, string AvatarCanvasPath);
         internal readonly record struct PacketOwnedAntiMacroChatMapping(int StringPoolId, bool SaveScreenshot);
-        private enum PacketOwnedAntiMacroSubmitTransportPath
+        internal enum PacketOwnedAntiMacroSubmitTransportPath
         {
             None = 0,
             SimulatorOwned,
@@ -793,15 +793,17 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
             bool wasAwaitingResult,
             bool authoritativeRoundTrip,
-            bool hasPendingAuthoritativeSubmitTransport)
+            bool hasPendingSubmitResolution)
         {
             // A local/synthetic 1011 result can still drive the visible notice/chat
-            // branch, but it must not validate the SetRet-shaped submit. Completion
-            // requires the bridge-correlated official-session result; otherwise keep
-            // the submit wait alive until the same timeout budget expires.
+            // branch, but it must not validate the SetRet-shaped submit. `SetRet`
+            // has already closed the owner and sent opcode 117 through CClientSocket;
+            // completion requires a bridge-correlated official-session result.
+            // Otherwise keep the submit wait alive until the same timeout budget
+            // expires, even when the fallback transport was only simulator-owned.
             return wasAwaitingResult
                 && !authoritativeRoundTrip
-                && hasPendingAuthoritativeSubmitTransport;
+                && hasPendingSubmitResolution;
         }
 
         internal static bool ShouldExpirePacketOwnedAntiMacroAwaitingResult(int remainingMs)
@@ -825,6 +827,39 @@ namespace HaCreator.MapSimulator
                 && (bridgeHasQueuedPacket
                     || bridgeHasSentPacketAfterTrackedSubmit
                     || bridgeHasObservedClientOutboundPacketAfterTrackedSubmit);
+        }
+
+        internal static bool HasPendingPacketOwnedAntiMacroSubmitResolutionState(
+            PacketOwnedAntiMacroSubmitTransportPath transportPath,
+            bool isAwaitingResult,
+            bool hasSubmittedRawPacket,
+            bool hasSubmittedTick,
+            bool hasPendingAuthoritativeSubmitTransport,
+            bool packetOutboxHasSentPacket,
+            bool deferredPacketOutboxHasQueuedPacket,
+            bool deferredPacketOutboxHasSentPacket)
+        {
+            if (!isAwaitingResult
+                || transportPath == PacketOwnedAntiMacroSubmitTransportPath.None
+                || !hasSubmittedTick
+                || !hasSubmittedRawPacket)
+            {
+                return false;
+            }
+
+            if (hasPendingAuthoritativeSubmitTransport)
+            {
+                return true;
+            }
+
+            return transportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned => true,
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox => packetOutboxHasSentPacket,
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox
+                    => deferredPacketOutboxHasQueuedPacket || deferredPacketOutboxHasSentPacket,
+                _ => false
+            };
         }
 
         private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
@@ -887,6 +922,35 @@ namespace HaCreator.MapSimulator
                 bridgeHasObservedClientOutboundPacket);
         }
 
+        private bool HasPacketOwnedAntiMacroPendingSubmitResolution()
+        {
+            bool hasSubmittedRawPacket =
+                _lastPacketOwnedAntiMacroSubmittedRawPacket != null
+                && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
+            bool packetOutboxHasSentPacket = hasSubmittedRawPacket
+                && _localUtilityPacketOutbox.HasSentOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+            bool deferredPacketOutboxHasQueuedPacket = hasSubmittedRawPacket
+                && _localUtilityPacketOutbox.HasQueuedOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+
+            // No Maple session accepted opcode 117 in the simulator/generic-outbox
+            // cases, so the simulator can keep local state pending for timeout
+            // parity but cannot mark completion from synthetic or non-bridge 1011
+            // payloads.
+            return HasPendingPacketOwnedAntiMacroSubmitResolutionState(
+                _lastPacketOwnedAntiMacroSubmitTransportPath,
+                _packetOwnedAntiMacroAwaitingResult,
+                hasSubmittedRawPacket,
+                _lastPacketOwnedAntiMacroSubmittedTick != int.MinValue,
+                HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport(),
+                packetOutboxHasSentPacket,
+                deferredPacketOutboxHasQueuedPacket,
+                packetOutboxHasSentPacket);
+        }
+
         private void UpdatePacketOwnedAntiMacroAwaitingResultState(int currentTickCount)
         {
             if (!_packetOwnedAntiMacroAwaitingResult)
@@ -910,6 +974,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
 
             if (_packetOwnedAntiMacroComboHeld)
             {
@@ -1526,7 +1591,7 @@ namespace HaCreator.MapSimulator
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                         wasAwaitingResult,
                         authoritativeRoundTrip,
-                        HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
+                        HasPacketOwnedAntiMacroPendingSubmitResolution());
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroCloseResult(
                             mode,
@@ -1561,7 +1626,7 @@ namespace HaCreator.MapSimulator
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                         wasAwaitingResult,
                         authoritativeRoundTrip,
-                        HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
+                        HasPacketOwnedAntiMacroPendingSubmitResolution());
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
                         payload,
@@ -1583,7 +1648,7 @@ namespace HaCreator.MapSimulator
                 bool shouldKeepAwaitingNoticeAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                     wasAwaitingResult,
                     noticeAuthoritativeRoundTrip,
-                    HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
+                    HasPacketOwnedAntiMacroPendingSubmitResolution());
                 if (IsPacketOwnedAntiMacroSubmitTerminalMode(mode)
                     && wasAwaitingResult
                     && !shouldKeepAwaitingNoticeAuthoritativeResult)

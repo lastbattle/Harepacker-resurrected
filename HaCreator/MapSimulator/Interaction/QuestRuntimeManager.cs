@@ -1026,9 +1026,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
                 int currentCount = GetResolvedItemCount(requirement.ItemId);
-                if (currentCount < requirement.RequiredCount)
+                if (HasUnmetQuestItemCountDemand(requirement.RequiredCount, currentCount))
                 {
-                    issues.Add(BuildItemRequirementIssueText(requirement, requirement.RequiredCount - currentCount));
+                    issues.Add(BuildItemRequirementIssueText(
+                        requirement,
+                        ResolveQuestItemCountDemandDelta(requirement.RequiredCount, currentCount)));
                 }
             }
 
@@ -1237,6 +1239,38 @@ namespace HaCreator.MapSimulator.Interaction
             return questId > 0
                    && (hasQuestRecordProvider == null ||
                        !hasQuestRecordProvider(questId));
+        }
+
+        internal static bool HasUnmetQuestItemCountDemand(int requiredCount, int currentCount)
+        {
+            int normalizedCurrentCount = Math.Max(0, currentCount);
+            if (requiredCount > 0)
+            {
+                return normalizedCurrentCount < requiredCount;
+            }
+
+            if (requiredCount < 0)
+            {
+                return normalizedCurrentCount > Math.Abs(requiredCount);
+            }
+
+            return normalizedCurrentCount != 0;
+        }
+
+        internal static int ResolveQuestItemCountDemandDelta(int requiredCount, int currentCount)
+        {
+            int normalizedCurrentCount = Math.Max(0, currentCount);
+            if (requiredCount > 0)
+            {
+                return Math.Max(0, requiredCount - normalizedCurrentCount);
+            }
+
+            if (requiredCount < 0)
+            {
+                return Math.Max(0, normalizedCurrentCount - Math.Abs(requiredCount));
+            }
+
+            return normalizedCurrentCount;
         }
 
         internal static bool HasUnmetCompletionQuestCompleteCountDemand(
@@ -6517,16 +6551,20 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.StartItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.StartItemRequirements[i];
-                int currentCount = Math.Min(GetResolvedItemCount(requirement.ItemId), requirement.RequiredCount);
+                int ownedCount = GetResolvedItemCount(requirement.ItemId);
+                int displayRequirement = Math.Abs(requirement.RequiredCount);
+                int currentCount = requirement.RequiredCount > 0
+                    ? Math.Min(ownedCount, requirement.RequiredCount)
+                    : ownedCount;
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Item",
                     Text = GetItemRequirementDisplayName(requirement),
-                    ValueText = $"{currentCount}/{requirement.RequiredCount}",
-                    IsComplete = currentCount >= requirement.RequiredCount,
+                    ValueText = $"{currentCount}/{displayRequirement}",
+                    IsComplete = !HasUnmetQuestItemCountDemand(requirement.RequiredCount, ownedCount),
                     ItemId = requirement.IsSecret ? null : requirement.ItemId,
                     CurrentValue = currentCount,
-                    RequiredValue = requirement.RequiredCount
+                    RequiredValue = displayRequirement
                 });
             }
 
@@ -6610,16 +6648,20 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
-                int currentCount = Math.Min(GetResolvedItemCount(requirement.ItemId), requirement.RequiredCount);
+                int ownedCount = GetResolvedItemCount(requirement.ItemId);
+                int displayRequirement = Math.Abs(requirement.RequiredCount);
+                int currentCount = requirement.RequiredCount > 0
+                    ? Math.Min(ownedCount, requirement.RequiredCount)
+                    : ownedCount;
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Item",
                     Text = GetItemRequirementDisplayName(requirement),
-                    ValueText = $"{currentCount}/{requirement.RequiredCount}",
-                    IsComplete = currentCount >= requirement.RequiredCount,
+                    ValueText = $"{currentCount}/{displayRequirement}",
+                    IsComplete = !HasUnmetQuestItemCountDemand(requirement.RequiredCount, ownedCount),
                     ItemId = requirement.IsSecret ? null : requirement.ItemId,
                     CurrentValue = currentCount,
-                    RequiredValue = requirement.RequiredCount
+                    RequiredValue = displayRequirement
                 });
             }
 
@@ -7168,6 +7210,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Start demand blocks while one of the excluded buffs is active.");
             }
 
+            if (HasUnresolvedCompletionSideChannelDemands(definition.StartUnresolvedSideChannelDemandKeys))
+            {
+                issues.Add("Start demand includes unresolved side-channel state owners.");
+            }
+
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(
                 definition.StartActions.RewardItems,
@@ -7204,9 +7251,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
                 int currentCount = GetResolvedItemCount(requirement.ItemId);
-                if (currentCount < requirement.RequiredCount)
+                if (HasUnmetQuestItemCountDemand(requirement.RequiredCount, currentCount))
                 {
-                    issues.Add(BuildItemRequirementIssueText(requirement, requirement.RequiredCount - currentCount));
+                    issues.Add(BuildItemRequirementIssueText(
+                        requirement,
+                        ResolveQuestItemCountDemandDelta(requirement.RequiredCount, currentCount)));
                 }
             }
 
@@ -7781,12 +7830,14 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestItemRequirement requirement = requirements[i];
                 int currentCount = GetResolvedItemCount(requirement.ItemId);
-                if (currentCount >= requirement.RequiredCount)
+                if (!HasUnmetQuestItemCountDemand(requirement.RequiredCount, currentCount))
                 {
                     continue;
                 }
 
-                issues.Add(BuildItemRequirementIssueText(requirement, requirement.RequiredCount - currentCount));
+                issues.Add(BuildItemRequirementIssueText(
+                    requirement,
+                    ResolveQuestItemCountDemandDelta(requirement.RequiredCount, currentCount)));
             }
         }
 
@@ -11069,7 +11120,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WzImageProperty item = property.WzProperties[i];
                 int itemId = ParseInt(item["id"]).GetValueOrDefault();
                 int count = ResolveItemRequirementCount(item);
-                if (itemId == 0 || count <= 0)
+                if (itemId == 0)
                 {
                     continue;
                 }
@@ -11098,7 +11149,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return itemRequirement["id"] != null ? 1 : 0;
             }
 
-            return Math.Abs(parsedCount.Value);
+            // CQuestMan::CheckCompleteDemand keeps item demand counts signed:
+            // positive = minimum count, zero = must not own, negative = maximum allowed.
+            return parsedCount.Value;
         }
 
         private static IReadOnlyList<QuestTraitRequirement> ParseTraitRequirements(WzSubProperty property)
@@ -13259,6 +13312,52 @@ namespace HaCreator.MapSimulator.Interaction
                     "host");
             }
 
+            if (normalizedDemandKey == "deathcount")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "death",
+                    "dead",
+                    "deathCount");
+            }
+
+            if (normalizedDemandKey == "matchingexp")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "matching",
+                    "match",
+                    "exp",
+                    "matchingExp");
+            }
+
+            if (normalizedDemandKey == "multikill" || normalizedDemandKey == "multikillcount")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "multiKill",
+                    "multiKillCount",
+                    "kill",
+                    "killCount");
+            }
+
+            if (normalizedDemandKey == "combokill")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "combo",
+                    "comboKill",
+                    "kill");
+            }
+
             if (normalizedDemandKey == "damageonfalling")
             {
                 return TryGetStopPagesByAliases(
@@ -13268,6 +13367,84 @@ namespace HaCreator.MapSimulator.Interaction
                     "falling",
                     "fall",
                     "damage");
+            }
+
+            if (normalizedDemandKey == "hprate")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "hp",
+                    "hpRate",
+                    "health");
+            }
+
+            if (normalizedDemandKey == "toadcount")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "toad",
+                    "toadCount");
+            }
+
+            if (normalizedDemandKey == "personalshopbuy")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "personalShop",
+                    "shop",
+                    "buy");
+            }
+
+            if (normalizedDemandKey == "mobdropmesopickup")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "mobDropMeso",
+                    "mesoPickup",
+                    "dropMeso",
+                    "meso",
+                    "money");
+            }
+
+            if (normalizedDemandKey == "breaktimefield")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "breakTime",
+                    "break",
+                    "field",
+                    "map");
+            }
+
+            if (normalizedDemandKey == "runeact")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "rune",
+                    "runeAct");
+            }
+
+            if (normalizedDemandKey == "dailycommitment")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "daily",
+                    "dailyCommitment",
+                    "commitment");
             }
 
             if (normalizedDemandKey == "skinselectneed")
@@ -13304,6 +13481,18 @@ namespace HaCreator.MapSimulator.Interaction
                     "record",
                     "item",
                     "quest");
+            }
+
+            if (normalizedDemandKey == "lvoptinummob")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "lvOptinum",
+                    "levelMob",
+                    "mob",
+                    "monster");
             }
 
             pages = Array.Empty<NpcInteractionPage>();
@@ -13386,7 +13575,8 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < requirements.Count; i++)
             {
                 QuestItemRequirement requirement = requirements[i];
-                if (GetResolvedItemCount(requirement.ItemId) < requirement.RequiredCount)
+                if (requirement != null &&
+                    HasUnmetQuestItemCountDemand(requirement.RequiredCount, GetResolvedItemCount(requirement.ItemId)))
                 {
                     return true;
                 }
@@ -13404,7 +13594,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < requirements.Count; i++)
             {
-                if (GetResolvedItemCount(requirements[i].ItemId) > 0)
+                QuestItemRequirement requirement = requirements[i];
+                if (requirement == null || requirement.RequiredCount <= 0)
+                {
+                    return false;
+                }
+
+                if (GetResolvedItemCount(requirement.ItemId) > 0)
                 {
                     return false;
                 }
@@ -13443,7 +13639,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestItemRequirement requirement = requirements[i];
                 if (requirement == null ||
                     requirement.ItemId <= 0 ||
-                    GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount ||
+                    !HasUnmetQuestItemCountDemand(requirement.RequiredCount, GetResolvedItemCount(requirement.ItemId)) ||
                     itemIds.Contains(requirement.ItemId))
                 {
                     continue;
@@ -14556,8 +14752,13 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
                 int count = GetResolvedItemCount(requirement.ItemId);
-                currentProgress += Math.Min(count, requirement.RequiredCount);
-                totalProgress += requirement.RequiredCount;
+                int requiredProgress = requirement.RequiredCount > 0
+                    ? requirement.RequiredCount
+                    : Math.Max(1, Math.Abs(requirement.RequiredCount));
+                currentProgress += requirement.RequiredCount > 0
+                    ? Math.Min(count, requirement.RequiredCount)
+                    : (HasUnmetQuestItemCountDemand(requirement.RequiredCount, count) ? 0 : requiredProgress);
+                totalProgress += requiredProgress;
             }
 
             for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
@@ -14693,24 +14894,39 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            return $"Item: {GetItemRequirementDisplayName(requirement)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}";
+            int displayRequirement = Math.Abs(requirement.RequiredCount);
+            int displayCount = requirement.RequiredCount > 0
+                ? Math.Min(Math.Max(0, currentCount), requirement.RequiredCount)
+                : Math.Max(0, currentCount);
+            return $"Item: {GetItemRequirementDisplayName(requirement)} {displayCount}/{displayRequirement}";
         }
 
-        private string BuildItemRequirementIssueText(QuestItemRequirement requirement, int missingCount)
+        private string BuildItemRequirementIssueText(QuestItemRequirement requirement, int demandDelta)
         {
             if (requirement == null)
             {
                 return string.Empty;
             }
 
-            if (!requirement.IsSecret)
+            int normalizedDelta = Math.Max(0, demandDelta);
+            if (requirement.RequiredCount <= 0)
             {
-                return $"Collect {GetItemName(requirement.ItemId)} x{missingCount} more.";
+                string limitText = requirement.RequiredCount < 0
+                    ? $"at most {Math.Abs(requirement.RequiredCount)}"
+                    : "none";
+                return !requirement.IsSecret
+                    ? $"Remove {GetItemName(requirement.ItemId)}; this demand allows {limitText}."
+                    : "Remove the blocked hidden item before continuing.";
             }
 
-            return missingCount <= 1
+            if (!requirement.IsSecret)
+            {
+                return $"Collect {GetItemName(requirement.ItemId)} x{normalizedDelta} more.";
+            }
+
+            return normalizedDelta <= 1
                 ? "Collect the required hidden item."
-                : $"Collect the required hidden item x{missingCount}.";
+                : $"Collect the required hidden item x{normalizedDelta}.";
         }
 
         private string GetItemRequirementDisplayName(QuestItemRequirement requirement)
@@ -15653,7 +15869,9 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < requirements.Count; i++)
             {
                 QuestItemRequirement requirement = requirements[i];
-                if (requirement == null || requirement.ItemId <= 0 || GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount)
+                if (requirement == null ||
+                    requirement.ItemId <= 0 ||
+                    !HasUnmetQuestItemCountDemand(requirement.RequiredCount, GetResolvedItemCount(requirement.ItemId)))
                 {
                     continue;
                 }

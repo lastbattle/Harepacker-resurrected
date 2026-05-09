@@ -952,6 +952,33 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        internal void RecordInitializedProxySessionForTests(short sessionVersion, long proxySessionId)
+        {
+            RecordInitializedProxySession(sessionVersion, proxySessionId);
+        }
+
+        internal bool TryRecordOutboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryBuildOutboundTrace(rawPacket, source, out OutboundPacketTrace trace, sessionVersion, proxySessionId))
+            {
+                return false;
+            }
+
+            RecordOutboundTrace(trace);
+            return true;
+        }
+
+        internal bool TryRecordInboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryBuildInboundTrace(rawPacket, source, out InboundPacketTrace trace, sessionVersion, proxySessionId))
+            {
+                return false;
+            }
+
+            RecordInboundTrace(trace);
+            return true;
+        }
+
         internal static string DescribeLiveOwnershipVerificationStatus(
             bool hasConnectedSession,
             bool hasPassiveEstablishedSocketPair,

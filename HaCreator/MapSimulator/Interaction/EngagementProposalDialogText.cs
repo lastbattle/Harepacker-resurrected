@@ -268,7 +268,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 case ResultSubtypeServerNotice:
                     notice = string.IsNullOrWhiteSpace(serverText) ? string.Empty : serverText.Trim();
-                    return !string.IsNullOrWhiteSpace(notice);
+                    return true;
                 default:
                     notice = null;
                     return false;

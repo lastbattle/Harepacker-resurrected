@@ -617,7 +617,7 @@ namespace HaCreator.MapSimulator
 
             string applyDetail = target.ToLowerInvariant() switch
             {
-                "authority" => _guildBbsRuntime.ApplyPermissionPacket(payload),
+                "authority" => _guildBbsRuntime.ApplyPermissionPacket(payload, _playerManager?.Player?.Build?.Id ?? 0),
                 "cash" => _guildBbsRuntime.ApplyCashOwnershipPacket(payload),
                 "board" => _guildBbsRuntime.ApplyBoardPacket(payload),
                 _ => "Unsupported Guild BBS packet target."

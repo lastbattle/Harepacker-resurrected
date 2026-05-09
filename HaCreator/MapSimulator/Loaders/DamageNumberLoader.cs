@@ -88,15 +88,14 @@ namespace HaCreator.MapSimulator.Loaders
         /// Uses the authentic MapleStory spacing algorithm from CAnimationDisplayer::Effect_HP.
         ///
         /// Binary analysis (address 0x444eb0) revealed the spacing formula:
-        /// - For each digit: overlap = 3 * (origin.x - width) / 5
-        /// - Total width is accumulated using: accumulatedX = accumulatedX - previousOverlap + originX
+        /// - For each digit: overlap = 3 * (width - origin.x) / 5
+        /// - Total width is accumulated using: accumulatedX = accumulatedX - previousOverlap + width
         /// </summary>
         public int GetTotalWidth(string numberString)
         {
             int accumulatedX = 0;  // v15 in the binary
             int previousOverlap = 0;  // lY in the binary
-            int minLeft = int.MaxValue;
-            int maxRight = int.MinValue;
+            bool hasDigit = false;
 
             foreach (char c in numberString)
             {
@@ -106,28 +105,21 @@ namespace HaCreator.MapSimulator.Loaders
                 int digit = c - '0';
                 int width = Widths[digit];
                 int originX = Origins[digit].X;
-                int relativeX = accumulatedX + width - previousOverlap;
-                int drawLeft = relativeX - originX;
-                int drawRight = drawLeft + width;
 
-                minLeft = Math.Min(minLeft, drawLeft);
-                maxRight = Math.Max(maxRight, drawRight);
+                // Update accumulated position: v15 = v15 - lY + width.
+                accumulatedX = accumulatedX - previousOverlap + width;
 
-                // Update accumulated position: accumulatedX = accumulatedX - previousOverlap + originX
-                // Binary: v15 = v15 - lY + idx; (where idx is origin.x)
-                accumulatedX = accumulatedX - previousOverlap + originX;
-
-                // Calculate overlap for next digit: lY = 3 * (origin.x - width) / 5
-                // Binary: lY = 3 * v34 / 5; where v34 = idx - lWidth = origin.x - width
-                previousOverlap = 3 * (originX - width) / 5;
+                // Calculate overlap for next digit: lY = 3 * (width - origin.x) / 5.
+                previousOverlap = 3 * (width - originX) / 5;
+                hasDigit = true;
             }
 
-            if (minLeft == int.MaxValue || maxRight == int.MinValue)
+            if (!hasDigit)
             {
                 return 0;
             }
 
-            return Math.Max(0, maxRight - minLeft);
+            return Math.Max(0, accumulatedX);
         }
     }
 

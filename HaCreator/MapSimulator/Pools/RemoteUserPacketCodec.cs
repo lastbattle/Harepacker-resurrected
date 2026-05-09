@@ -635,7 +635,8 @@ namespace HaCreator.MapSimulator.Pools
         int CharacterId,
         MinimapUI.HelperMarkerType? MarkerType,
         bool ShowDirectionOverlay,
-        bool AppliesTrackedUserState = true);
+        bool AppliesTrackedUserState = true,
+        bool DirectionOverlayOnly = false);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
@@ -3351,11 +3352,13 @@ namespace HaCreator.MapSimulator.Pools
                 if (TryResolveDefaultHelperChildIndexMarkerName(markerRaw.ToString(CultureInfo.InvariantCulture), out string indexedMarkerName)
                     && TryResolveDefaultHelperAncillaryMarkerFallback(indexedMarkerName))
                 {
+                    bool directionOverlayOnly = IsDirectionOnlyHelperMarkerName(indexedMarkerName);
                     packet = new RemoteUserHelperPacket(
                         characterId,
                         MarkerType: null,
-                        ShowDirectionOverlay: payload[5] != 0,
-                        AppliesTrackedUserState: false);
+                        ShowDirectionOverlay: directionOverlayOnly || payload[5] != 0,
+                        AppliesTrackedUserState: directionOverlayOnly,
+                        DirectionOverlayOnly: directionOverlayOnly);
                     return true;
                 }
 
@@ -4131,11 +4134,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (TryResolveDefaultHelperAncillaryMarkerFallback(markerName))
             {
+                bool directionOverlayOnly = IsDirectionOnlyHelperMarkerName(markerName);
                 packet = new RemoteUserHelperPacket(
                     characterId,
                     MarkerType: null,
-                    showDirectionOverlay,
-                    AppliesTrackedUserState: false);
+                    directionOverlayOnly || showDirectionOverlay,
+                    AppliesTrackedUserState: directionOverlayOnly,
+                    DirectionOverlayOnly: directionOverlayOnly);
                 return true;
             }
 
@@ -4243,6 +4248,23 @@ namespace HaCreator.MapSimulator.Pools
             // outside tracked-user icons (npc/portal/arrow families). Accept those
             // payloads while keeping tracked-user marker ownership unchanged.
             return true;
+        }
+
+        internal static bool IsDirectionOnlyHelperMarkerNameForTesting(string markerName)
+        {
+            return IsDirectionOnlyHelperMarkerName(markerName);
+        }
+
+        private static bool IsDirectionOnlyHelperMarkerName(string markerName)
+        {
+            if (string.IsNullOrWhiteSpace(markerName))
+            {
+                return false;
+            }
+
+            string normalizedMarkerName = NormalizeHelperMarkerName(markerName);
+            return !string.IsNullOrWhiteSpace(normalizedMarkerName)
+                && KnownMinimapIconDirectionAncillaryMarkerNames.Contains(normalizedMarkerName);
         }
 
         private static bool HasHelperMarkerPathSegment(string[] segments, string expectedSegment)

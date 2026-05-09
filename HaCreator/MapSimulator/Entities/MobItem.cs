@@ -1592,8 +1592,13 @@ namespace HaCreator.MapSimulator.Entities
 
             if (metadata.Variants != null && metadata.Variants.Count > 0)
             {
-                foreach (MobAnimationSet.ActionSpeakVariant variant in metadata.Variants)
+                foreach (MobAnimationSet.ActionSpeakVariant variant in EnumerateActionSpeakVariantsByClientHpPhase(metadata.Variants, maxHp))
                 {
+                    if (!IsActionSpeakHpEligible(variant, currentHp, maxHp))
+                    {
+                        continue;
+                    }
+
                     if (ShouldTriggerActionSpeak(variant, currentHp, maxHp, nextProbabilityRoll?.Invoke() ?? 0))
                     {
                         return variant;
@@ -1621,6 +1626,46 @@ namespace HaCreator.MapSimulator.Entities
                     HpThreshold = metadata.HpThreshold,
                     Messages = metadata.Messages
                 };
+        }
+
+        private static bool IsActionSpeakHpEligible(
+            MobAnimationSet.ActionSpeakVariant metadata,
+            int currentHp,
+            int maxHp)
+        {
+            if (metadata == null || metadata.HpThreshold <= 0)
+            {
+                return true;
+            }
+
+            int effectiveThreshold = ResolveActionSpeakHpThreshold(metadata.HpThreshold, maxHp);
+            int effectiveHp = maxHp > 0 ? Math.Clamp(currentHp, 0, maxHp) : currentHp;
+            return effectiveHp <= effectiveThreshold;
+        }
+
+        private static IEnumerable<MobAnimationSet.ActionSpeakVariant> EnumerateActionSpeakVariantsByClientHpPhase(
+            IReadOnlyList<MobAnimationSet.ActionSpeakVariant> variants,
+            int maxHp)
+        {
+            if (variants == null || variants.Count == 0)
+            {
+                yield break;
+            }
+
+            foreach (MobAnimationSet.ActionSpeakVariant variant in variants
+                         .Select((variant, index) => new
+                         {
+                             Variant = variant,
+                             Index = index,
+                             Threshold = ResolveActionSpeakHpThreshold(variant?.HpThreshold ?? 0, maxHp)
+                         })
+                         .OrderBy(entry => entry.Threshold > 0 ? 0 : 1)
+                         .ThenBy(entry => entry.Threshold > 0 ? entry.Threshold : int.MaxValue)
+                         .ThenBy(entry => entry.Index)
+                         .Select(entry => entry.Variant))
+            {
+                yield return variant;
+            }
         }
 
         internal static int ResolveActionSpeakHpThreshold(int authoredThreshold, int maxHp)
@@ -2368,12 +2413,12 @@ namespace HaCreator.MapSimulator.Entities
         private bool RegisterAngerGaugeBurst(int tickCount)
         {
             List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
-            string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
-                _mobInstance?.MobInfo?.ID,
-                _animationSet.GetAngerGaugeEffectPath());
-            if (!MobAngerGaugeBurstParity.TryResolveOwnerRegistrationCadence(
+            string mobTemplateId = _mobInstance?.MobInfo?.ID;
+            string loadedEffectPath = _animationSet.GetAngerGaugeEffectPath();
+            if (!MobAngerGaugeBurstParity.TryResolveOwnerRegistrationCandidateCadence(
                     effectFrames,
-                    effectPath,
+                    mobTemplateId,
+                    loadedEffectPath,
                     hasActiveAnimationDisplayer: _animationEffects != null,
                     AI?.GetCurrentAttack(),
                     AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0,
@@ -2382,6 +2427,10 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
+            AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
+            string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
+                mobTemplateId,
+                loadedEffectPath);
             Vector2 anchor = GetAngerGaugeBurstAnchor();
             _animationEffects.AddFullChargedAngerGauge(
                 effectFrames,
@@ -2395,7 +2444,6 @@ namespace HaCreator.MapSimulator.Entities
             _angerGaugeBurstNextAllowedTick = MobAngerGaugeBurstParity.ResolveNextAllowedTick(
                 tickCount,
                 repeatIntervalMs);
-            AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
             return true;
         }
 

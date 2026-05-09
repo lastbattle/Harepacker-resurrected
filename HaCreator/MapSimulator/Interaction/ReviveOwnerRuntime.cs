@@ -116,6 +116,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string ClientNoButtonUolSymbol { get; init; } = string.Empty;
         public int ClientFocusButtonId { get; init; }
         public int ClientYesButtonOffsetX { get; init; }
+        public int ClientWindowWidth { get; init; }
+        public int ClientWindowHeight { get; init; }
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
         public string PrimaryTitle { get; init; } = string.Empty;
@@ -373,6 +375,16 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(0, (normalizedScreenHeight / 2) + NativeWindowTop));
         }
 
+        public static Rectangle ResolveNativeWindowBounds(int screenWidth, int screenHeight)
+        {
+            Point position = ResolveNativeWindowPosition(screenWidth, screenHeight);
+            return new Rectangle(
+                position.X,
+                position.Y,
+                NativeWindowWidth,
+                NativeWindowHeight);
+        }
+
         public static bool ShouldCreateDialog(int armedAtTick, int currentTick)
         {
             // Client evidence:
@@ -436,6 +448,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientNoButtonUolSymbol = nativeBranchSpec.NoButtonUolSymbol,
                 ClientFocusButtonId = nativeBranchSpec.FocusButtonId,
                 ClientYesButtonOffsetX = nativeBranchSpec.YesButtonOffsetX,
+                ClientWindowWidth = NativeWindowWidth,
+                ClientWindowHeight = NativeWindowHeight,
                 Title = "Revive",
                 Subtitle = subtitle,
                 PrimaryTitle = ResolvePrimaryTitle(Variant),

@@ -1234,6 +1234,7 @@ namespace HaCreator.MapSimulator.Fields
                         {
                             _remoteTownPortals[ownerId] = state with
                             {
+                                State = state.State == 0 ? RemoteTownPortalOverlayState : state.State,
                                 Phase = RemoteTownPortalVisualPhase.Stable,
                                 PhaseStartedAt = currentTime
                             };
@@ -3634,6 +3635,21 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return phase;
+        }
+
+        internal static (byte State, RemoteTownPortalVisualPhase Phase) AdvanceRemoteTownPortalStateForTesting(
+            byte state,
+            RemoteTownPortalVisualPhase phase,
+            int phaseStartedAt,
+            int currentTime)
+        {
+            if (phase == RemoteTownPortalVisualPhase.Opening
+                && unchecked(currentTime - phaseStartedAt) >= DefaultTownPortalOpeningDurationMs)
+            {
+                return (state == 0 ? RemoteTownPortalOverlayState : state, RemoteTownPortalVisualPhase.Stable);
+            }
+
+            return (state, phase);
         }
 
         internal static (bool MetadataCleared, bool ObservationsCleared, bool PendingCleared) ClearRemoteTownPortalInferenceStateForTesting()

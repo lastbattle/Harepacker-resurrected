@@ -17,6 +17,13 @@ namespace HaCreator.MapSimulator.Interaction
             // The Coconut board formats score and finish-timestamp time through
             // these StringPool ids before drawing the WZ bitmap glyphs.
             [0x0B02] = "%d",
+            // Recovered from MapleStory.exe v95 `CField_Coconut::Init` and
+            // `CField_Coconut::DrawBoard`. These board canvas/font resource
+            // ids sit beside the formatting ids and keep the native board
+            // lifecycle tied to the same client-owned StringPool seam.
+            [0x0B08] = "Map/Obj/etc.img/coconut/backgrnd",
+            [0x0B09] = "Map/Obj/etc.img/coconut/fontScore",
+            [0x0B0A] = "Map/Obj/etc.img/coconut/fontTime",
             [0x0B0C] = "%d:%02d",
             [0x1A15] = "%d",
             // Recovered from MapleStory.exe v95 `CMob::AngerGaugeFullChargeEffect`.
@@ -91,9 +98,13 @@ namespace HaCreator.MapSimulator.Interaction
             // table, then falls back to a destination-map string key.
             [0x06EC] = "streetName",
             [0x0EE3] = "String/ToolTipHelp.img/PortalTooltip/%d",
-            // Recovered from MapleStory.exe v95 `CAvatarMegaphone::OnCreate`.
-            // The owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name width
-            // before resolving the name-tag canvas through the resource manager.
+            // Recovered from MapleStory.exe v95 `CUIAvatarMegaphone::CUIAvatarMegaphone`,
+            // `CUIAvatarMegaphone::OnCreate`, and `CAvatarMegaphone::OnCreate`.
+            // 0x0FAE opens the dialog background, 0x0FAF is the control UOL base, and
+            // the presentation owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name
+            // width before resolving the name-tag canvas through the resource manager.
+            [0x0FAE] = "UI/UIWindow.img/AvatarMegaphone/backgrnd",
+            [0x0FAF] = "UI/UIWindow.img/AvatarMegaphone",
             [0x0FB0] = "Map/MapHelper.img/AvatarMegaphone/name/0",
             [0x0FB1] = "Map/MapHelper.img/AvatarMegaphone/name/1",
             // Recovered from MapleStory.exe v95 `CUserLocal::OnMesoGive_Succeeded`,

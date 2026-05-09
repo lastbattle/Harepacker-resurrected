@@ -699,7 +699,7 @@ namespace HaCreator.MapSimulator.Interaction
             _guildDialogMesoBalance = Math.Max(0, _guildDialogMesoBalance - request.RequiredMesos);
             string applyMessage = request.Kind switch
             {
-                GuildDialogPendingRequestKind.CreateGuild => ApplyGuildCreateAgreementAcceptanceCore(request.MasterName, request.GuildName),
+                GuildDialogPendingRequestKind.CreateGuild or GuildDialogPendingRequestKind.CreateGuildAgreement => ApplyGuildCreateAgreementAcceptanceCore(request.MasterName, request.GuildName),
                 GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => ApplyLocalGuildMarkSelectionCore(request.MarkSelection.Value),
                 _ => null
             };
@@ -727,6 +727,12 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialListGuildDialogRequestKind.CreateGuild,
                     request.GuildName,
                     null),
+                GuildDialogPendingRequestKind.CreateGuildAgreement => new SocialListGuildDialogRequestPacket(
+                    SocialListGuildDialogRequestKind.CreateGuildAgreement,
+                    request.GuildName,
+                    null,
+                    _clientPartyId,
+                    true),
                 GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => new SocialListGuildDialogRequestPacket(
                     SocialListGuildDialogRequestKind.SetMark,
                     request.GuildName,
@@ -747,7 +753,7 @@ namespace HaCreator.MapSimulator.Interaction
             GuildDialogPendingRequest request = _pendingGuildDialogRequest.Value;
             bool shouldFinalize = request.Kind switch
             {
-                GuildDialogPendingRequestKind.CreateGuild => HasAuthoritativeGuildCreateConfirmation(request),
+                GuildDialogPendingRequestKind.CreateGuild or GuildDialogPendingRequestKind.CreateGuildAgreement => HasAuthoritativeGuildCreateConfirmation(request),
                 GuildDialogPendingRequestKind.SetMark => HasAuthoritativeGuildMarkConfirmation(request),
                 _ => false
             };
@@ -767,6 +773,7 @@ namespace HaCreator.MapSimulator.Interaction
         private enum GuildDialogPendingRequestKind
         {
             CreateGuild,
+            CreateGuildAgreement,
             SetMark
         }
 
@@ -888,6 +895,7 @@ namespace HaCreator.MapSimulator.Interaction
             return request.Kind switch
             {
                 GuildDialogPendingRequestKind.CreateGuild => "new guild UI echo plus either OnGuildResult(75) or a packet-owned local master row",
+                GuildDialogPendingRequestKind.CreateGuildAgreement => "guild UI echo after the client-shaped create-guild agreement response",
                 GuildDialogPendingRequestKind.SetMark => "a newer OnGuildResult(69) emblem echo matching the submitted mark",
                 _ => "authoritative packet confirmation"
             };

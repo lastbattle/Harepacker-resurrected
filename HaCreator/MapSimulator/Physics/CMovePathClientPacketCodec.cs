@@ -54,6 +54,69 @@ namespace HaCreator.MapSimulator.Physics
             return true;
         }
 
+        public static bool TryDecode(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out string error,
+            bool includeClientRandomCounts = false)
+        {
+            path = Array.Empty<MovePathElement>();
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Move path payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new System.IO.BinaryReader(stream);
+                short startX = reader.ReadInt16();
+                short startY = reader.ReadInt16();
+                short startVx = reader.ReadInt16();
+                short startVy = reader.ReadInt16();
+                int count = reader.ReadByte();
+                var decoded = new List<MovePathElement>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    decoded.Add(ReadElement(reader, includeClientRandomCounts));
+                }
+
+                if (stream.Position != stream.Length)
+                {
+                    error = $"Move path payload has {(stream.Length - stream.Position).ToString(System.Globalization.CultureInfo.InvariantCulture)} trailing byte(s).";
+                    return false;
+                }
+
+                if (decoded.Count == 0)
+                {
+                    decoded.Add(new MovePathElement
+                    {
+                        X = startX,
+                        Y = startY,
+                        VelocityX = startVx,
+                        VelocityY = startVy,
+                        Action = MoveAction.Stand,
+                        FacingRight = true
+                    });
+                }
+
+                path = decoded;
+                return true;
+            }
+            catch (EndOfStreamException ex)
+            {
+                error = $"Move path payload ended early: {ex.Message}";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                error = $"Move path payload could not be read: {ex.Message}";
+                return false;
+            }
+        }
+
         internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
             IReadOnlyList<MovePathElement> path)
         {
@@ -503,10 +566,108 @@ namespace HaCreator.MapSimulator.Physics
             }
         }
 
+        private static MovePathElement ReadElement(System.IO.BinaryReader reader, bool includeClientRandomCounts)
+        {
+            byte attribute = reader.ReadByte();
+            var element = new MovePathElement
+            {
+                MovePathAttribute = attribute
+            };
+            bool readsCommonMoveSuffix = true;
+
+            switch (attribute)
+            {
+                case 0:
+                case 5:
+                case 12:
+                case 14:
+                case 35:
+                case 36:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    element.FootholdId = reader.ReadInt16();
+                    if (attribute == 12)
+                    {
+                        element.FallStartFootholdId = reader.ReadInt16();
+                    }
+
+                    element.XOffset = reader.ReadInt16();
+                    element.YOffset = reader.ReadInt16();
+                    break;
+                case 1:
+                case 2:
+                case 13:
+                case 16:
+                case 18:
+                case 31:
+                case 32:
+                case 33:
+                case 34:
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    break;
+                case 3:
+                case 4:
+                case 6:
+                case 7:
+                case 8:
+                case 10:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.FootholdId = reader.ReadInt16();
+                    break;
+                case 9:
+                    reader.ReadByte();
+                    readsCommonMoveSuffix = false;
+                    break;
+                case 11:
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    reader.ReadInt16();
+                    break;
+                case 17:
+                    element.X = reader.ReadInt16();
+                    element.Y = reader.ReadInt16();
+                    element.VelocityX = reader.ReadInt16();
+                    element.VelocityY = reader.ReadInt16();
+                    break;
+                case >= 20 and <= 30:
+                    break;
+                default:
+                    break;
+            }
+
+            if (!readsCommonMoveSuffix)
+            {
+                return element;
+            }
+
+            DecodeMoveAction(reader.ReadByte(), out element.Action, out element.FacingRight);
+            element.Duration = reader.ReadInt16();
+            if (includeClientRandomCounts)
+            {
+                element.RandomCount = reader.ReadUInt16();
+                element.ActualRandomCount = reader.ReadUInt16();
+            }
+
+            return element;
+        }
+
         private static byte EncodeMoveAction(MoveAction action, bool facingRight)
         {
             int actionCode = Math.Clamp((int)action, 0, 0x0F);
             return (byte)((actionCode << 1) | (facingRight ? 0 : 1));
+        }
+
+        private static void DecodeMoveAction(byte encoded, out MoveAction action, out bool facingRight)
+        {
+            int actionCode = (encoded >> 1) & 0x0F;
+            action = Enum.IsDefined(typeof(MoveAction), actionCode)
+                ? (MoveAction)actionCode
+                : MoveAction.Stand;
+            facingRight = (encoded & 1) == 0;
         }
 
         private static void WriteFlushTail(

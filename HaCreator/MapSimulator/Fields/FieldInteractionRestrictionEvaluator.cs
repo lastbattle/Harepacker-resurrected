@@ -248,6 +248,19 @@ namespace HaCreator.MapSimulator.Fields
             return ResolveInfoBool(mapInfo, "needSkillForFly", GetMapleBoolValue(mapInfo?.needSkillForFly)) == true;
         }
 
+        public static int GetConsumeItemCooldownSeconds(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoInt(mapInfo, "consumeItemCoolTime") ?? 0);
+        }
+
+        public static string GetConsumeItemCooldownEntryMessage(MapInfo mapInfo)
+        {
+            int cooldownSeconds = GetConsumeItemCooldownSeconds(mapInfo);
+            return cooldownSeconds > 0
+                ? $"Consumable item cooldown active: {cooldownSeconds}s between use-item activations."
+                : null;
+        }
+
         public static string GetFlyingMapEntryMessage(MapInfo mapInfo)
         {
             return IsFlyingMap(mapInfo)
@@ -830,6 +843,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetConsumeItemCooldownEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetZakumJumpQuestMoveCheckEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetAllMoveCheckEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));

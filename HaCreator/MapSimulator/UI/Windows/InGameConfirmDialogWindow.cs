@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         private string _footer = string.Empty;
         private Texture2D _icon;
         private InGameConfirmDialogPresentation _presentation = InGameConfirmDialogPresentation.Default;
+        private int _lastAppliedSharedFadeCreatedTick = int.MinValue;
 
         public InGameConfirmDialogWindow(
             IDXObject frame,
@@ -113,18 +114,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _fadeYesNoOwner.Show(request, Environment.TickCount);
-            Configure(
-                request.Title,
-                request.Body,
-                request.Footer,
-                request.Presentation ?? fallbackPresentation ?? (request.Type switch
-                {
-                    SharedFadeYesNoModalType.MessengerInvite => CreateMessengerInvitePresentation(request.StackIndex),
-                    SharedFadeYesNoModalType.ParcelAlarm => CreateParcelAlarmPresentation(request.StackIndex),
-                    _ => InGameConfirmDialogPresentation.Default
-                }));
-            ApplySharedFadeYesNoButtonLayout();
+            bool activatedImmediately = _fadeYesNoOwner.Enqueue(request, Environment.TickCount);
+            if (!activatedImmediately)
+            {
+                return;
+            }
+
+            ApplySharedFadeYesNoSnapshot(_fadeYesNoOwner.CaptureSnapshot(), fallbackPresentation);
         }
 
         internal SharedFadeYesNoModalSnapshot CaptureSharedFadeYesNoSnapshot()
@@ -178,9 +174,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (_fadeYesNoOwner.Update(Environment.TickCount))
             {
-                Hide();
-                CancelRequested?.Invoke();
+                if (_fadeYesNoOwner.PendingCount == 0)
+                {
+                    CancelRequested?.Invoke();
+                    Hide();
+                }
+
                 return;
+            }
+
+            SharedFadeYesNoModalSnapshot snapshot = _fadeYesNoOwner.CaptureSnapshot();
+            if (snapshot.IsActive
+                && snapshot.CreatedTick != _lastAppliedSharedFadeCreatedTick
+                && snapshot.Phase != SharedFadeYesNoModalPhase.FadingOut)
+            {
+                ApplySharedFadeYesNoSnapshot(snapshot);
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
@@ -308,6 +316,29 @@ namespace HaCreator.MapSimulator.UI
             _confirmButton.SetEnabled(layout.ShowsOkButton);
             _confirmButton.SetVisible(layout.ShowsOkButton);
             PositionButton(_cancelButton, layout.ButtonX, layout.CancelY);
+        }
+
+        private void ApplySharedFadeYesNoSnapshot(
+            SharedFadeYesNoModalSnapshot snapshot,
+            InGameConfirmDialogPresentation fallbackPresentation = null)
+        {
+            if (snapshot == null || !snapshot.IsActive)
+            {
+                return;
+            }
+
+            Configure(
+                snapshot.Title,
+                snapshot.Body,
+                snapshot.Footer,
+                snapshot.Presentation ?? fallbackPresentation ?? (snapshot.Type switch
+                {
+                    SharedFadeYesNoModalType.MessengerInvite => CreateMessengerInvitePresentation(snapshot.StackIndex),
+                    SharedFadeYesNoModalType.ParcelAlarm => CreateParcelAlarmPresentation(snapshot.StackIndex),
+                    _ => InGameConfirmDialogPresentation.Default
+                }));
+            _lastAppliedSharedFadeCreatedTick = snapshot.CreatedTick;
+            ApplySharedFadeYesNoButtonLayout();
         }
 
         private void TryRaiseSharedFadeYesNoButton(int buttonId, Action fallbackAction)

@@ -462,6 +462,10 @@ namespace HaCreator.MapSimulator
                         objInst.cx,
                         objInst.cy),
                     ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateVectorAnimationByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    PacketOwnedNamedObjectAlphaProfile.FromWzProperty(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateAlphaByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
                         objInst.Dynamic,
@@ -687,6 +691,57 @@ namespace HaCreator.MapSimulator
             return motionByIndex;
         }
 
+        internal static IReadOnlyDictionary<int, PacketOwnedNamedObjectVectorAnimationProfile> ResolvePacketOwnedNamedObjectAuthoredStateVectorAnimationByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, PacketOwnedNamedObjectVectorAnimationProfile> vectorAnimationByIndex = new();
+            if (objectProperty == null)
+            {
+                return vectorAnimationByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                PacketOwnedNamedObjectVectorAnimationProfile vectorProfile =
+                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(child);
+                if (vectorProfile != null)
+                {
+                    vectorAnimationByIndex[stateIndex] = vectorProfile;
+                }
+            }
+
+            return vectorAnimationByIndex;
+        }
+
+        internal static IReadOnlyDictionary<int, PacketOwnedNamedObjectAlphaProfile> ResolvePacketOwnedNamedObjectAuthoredStateAlphaByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, PacketOwnedNamedObjectAlphaProfile> alphaByIndex = new();
+            if (objectProperty == null)
+            {
+                return alphaByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                PacketOwnedNamedObjectAlphaProfile alphaProfile = PacketOwnedNamedObjectAlphaProfile.FromWzProperty(child);
+                if (alphaProfile != null)
+                {
+                    alphaByIndex[stateIndex] = alphaProfile;
+                }
+            }
+
+            return alphaByIndex;
+        }
+
         internal static IReadOnlyDictionary<int, PacketOwnedNamedObjectMetadataLane> ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(WzImageProperty objectProperty)
         {
             Dictionary<int, PacketOwnedNamedObjectMetadataLane> lanesByIndex = new();
@@ -704,10 +759,12 @@ namespace HaCreator.MapSimulator
 
                 WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
                 PacketOwnedNamedObjectMotionProfile motionProfile = PacketOwnedNamedObjectMotionProfile.FromWzProperty(realChild);
+                PacketOwnedNamedObjectVectorAnimationProfile vectorProfile =
+                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(realChild);
                 bool dynamicObject = TryReadPacketOwnedNamedObjectIntProperty(realChild, "dynamic", out int dynamicValue) &&
                     dynamicValue != 0;
                 PacketOwnedNamedObjectMetadataLane lanes = ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
-                    hasChangingObjectMetadata: dynamicObject || motionProfile != null,
+                    hasChangingObjectMetadata: dynamicObject || motionProfile != null || vectorProfile != null,
                     hasReflectionMetadata: false,
                     hasQuestVisibleMetadata: realChild?["quest"] is WzImageProperty);
                 if (lanes != PacketOwnedNamedObjectMetadataLane.None)
@@ -879,9 +936,13 @@ namespace HaCreator.MapSimulator
         {
             movingState = null;
             PacketOwnedNamedObjectMotionProfile motionProfile = metadata?.ResolveMotionProfile(stateIndex);
-            if (metadata == null ||
-                motionProfile == null ||
-                !TryResolvePacketOwnedNamedObjectMoveVector(
+            if (metadata == null)
+            {
+                return false;
+            }
+
+            if (motionProfile != null &&
+                TryResolvePacketOwnedNamedObjectMoveVector(
                     metadata.X,
                     metadata.Y,
                     motionProfile.Flow,
@@ -892,12 +953,26 @@ namespace HaCreator.MapSimulator
                     out int targetOffsetX,
                     out int targetOffsetY))
             {
+                movingState = new PacketOwnedNamedObjectMovingState(
+                    currentTick,
+                    PacketOwnedNamedObjectMovingState.DefaultDurationMs,
+                    0,
+                    0,
+                    targetOffsetX,
+                    targetOffsetY);
+                return true;
+            }
+
+            PacketOwnedNamedObjectVectorAnimationProfile vectorProfile = metadata.ResolveVectorAnimationProfile(stateIndex);
+            if (vectorProfile == null ||
+                !vectorProfile.TryResolveMoveVector(out targetOffsetX, out targetOffsetY, out int durationMs))
+            {
                 return false;
             }
 
             movingState = new PacketOwnedNamedObjectMovingState(
                 currentTick,
-                PacketOwnedNamedObjectMovingState.DefaultDurationMs,
+                durationMs,
                 0,
                 0,
                 targetOffsetX,

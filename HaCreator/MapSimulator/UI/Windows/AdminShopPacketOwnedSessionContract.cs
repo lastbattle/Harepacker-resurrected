@@ -104,9 +104,11 @@ namespace HaCreator.MapSimulator.UI
         public string PendingWishlistSearchQuery { get; private set; } = string.Empty;
         public string PendingWishlistSearchCategoryKey { get; private set; } = "all";
         public int PendingWishlistSearchPriceRangeIndex { get; private set; } = -1;
+        public int PendingWishlistSearchRemotePageIndex { get; private set; } = -1;
         public bool HasPendingWishlistSearch => PendingWishlistSearchRequestId >= 0
             || !string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
-            || PendingWishlistSearchPriceRangeIndex >= 0;
+            || PendingWishlistSearchPriceRangeIndex >= 0
+            || PendingWishlistSearchRemotePageIndex >= 0;
         public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResults.Count > 0;
         public int DeferredOwnerGatedResultCount => _deferredOwnerGatedResults.Count;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
@@ -589,7 +591,8 @@ namespace HaCreator.MapSimulator.UI
             int localSearchRequestId,
             string query,
             string categoryKey,
-            int priceRangeIndex)
+            int priceRangeIndex,
+            int remotePageIndex = -1)
         {
             int normalizedRequestId = localSearchRequestId < 0 ? -1 : localSearchRequestId;
             string normalizedQuery = query ?? string.Empty;
@@ -597,14 +600,17 @@ namespace HaCreator.MapSimulator.UI
                 ? "all"
                 : categoryKey.Trim();
             int normalizedPriceRangeIndex = Math.Max(-1, priceRangeIndex);
+            int normalizedRemotePageIndex = Math.Max(-1, remotePageIndex);
             bool changed = PendingWishlistSearchRequestId != normalizedRequestId
                 || !string.Equals(PendingWishlistSearchQuery, normalizedQuery, StringComparison.Ordinal)
                 || !string.Equals(PendingWishlistSearchCategoryKey, normalizedCategoryKey, StringComparison.Ordinal)
-                || PendingWishlistSearchPriceRangeIndex != normalizedPriceRangeIndex;
+                || PendingWishlistSearchPriceRangeIndex != normalizedPriceRangeIndex
+                || PendingWishlistSearchRemotePageIndex != normalizedRemotePageIndex;
             PendingWishlistSearchRequestId = normalizedRequestId;
             PendingWishlistSearchQuery = normalizedQuery;
             PendingWishlistSearchCategoryKey = normalizedCategoryKey;
             PendingWishlistSearchPriceRangeIndex = normalizedPriceRangeIndex;
+            PendingWishlistSearchRemotePageIndex = normalizedRemotePageIndex;
             if (changed)
             {
                 TouchWishlistSearchStateToken();
@@ -618,6 +624,7 @@ namespace HaCreator.MapSimulator.UI
             PendingWishlistSearchQuery = string.Empty;
             PendingWishlistSearchCategoryKey = "all";
             PendingWishlistSearchPriceRangeIndex = -1;
+            PendingWishlistSearchRemotePageIndex = -1;
             if (hadPending)
             {
                 TouchWishlistSearchStateToken();
@@ -1138,7 +1145,10 @@ namespace HaCreator.MapSimulator.UI
             string priceText = PendingWishlistSearchPriceRangeIndex >= 0
                 ? $"price-band {PendingWishlistSearchPriceRangeIndex}"
                 : "price-band any";
-            return $"{requestText}, {queryText}, {categoryText}, {priceText}";
+            string remotePageText = PendingWishlistSearchRemotePageIndex >= 0
+                ? $", remote page {PendingWishlistSearchRemotePageIndex + 1}"
+                : string.Empty;
+            return $"{requestText}, {queryText}, {categoryText}, {priceText}{remotePageText}";
         }
 
         private string DescribeDeferredOwnerGatedResult()

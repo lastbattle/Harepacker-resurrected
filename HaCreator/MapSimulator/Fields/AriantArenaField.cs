@@ -484,11 +484,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
-            if (HasResultElapsed(_resultStartedAt, GetResultDuration(), currentTimeMs))
-            {
-                _showResult = false;
-                return;
-            }
             while (_resultFrameIndex < _resultFrames.Count - 1)
             {
                 IDXObject frame = _resultFrames[_resultFrameIndex];

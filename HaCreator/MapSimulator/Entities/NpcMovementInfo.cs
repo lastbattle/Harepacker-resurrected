@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using HaCreator.MapSimulator.Physics;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -86,6 +88,38 @@ namespace HaCreator.MapSimulator.Animation
         {
             FlipX = (moveAction & 1) != 0;
             IsMoving = moveAction >= 2;
+            _moveTimer = 0;
+        }
+
+        public void ApplyPacketMovePath(IReadOnlyList<MovePathElement> elements)
+        {
+            if (elements == null || elements.Count == 0)
+            {
+                return;
+            }
+
+            MovePathElement? tail = null;
+            for (int i = elements.Count - 1; i >= 0; i--)
+            {
+                MovePathElement candidate = elements[i];
+                if (candidate.X != 0 || candidate.Y != 0)
+                {
+                    tail = candidate;
+                    break;
+                }
+            }
+
+            if (!tail.HasValue)
+            {
+                return;
+            }
+
+            MovePathElement element = tail.Value;
+            X = element.X;
+            Y = element.Y;
+            IsMoving = element.Action is MoveAction.Walk or MoveAction.Jump or MoveAction.Fall or MoveAction.Fly or MoveAction.Swim;
+            FlipX = !element.FacingRight;
+            _standTimer = 0;
             _moveTimer = 0;
         }
 

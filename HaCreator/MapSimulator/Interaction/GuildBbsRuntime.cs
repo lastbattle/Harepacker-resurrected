@@ -230,9 +230,9 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild BBS authority reverted to guild-role rules: {DescribePermissionMask(EffectivePermissionMask)}.";
         }
 
-        public string ApplyPermissionPacket(byte[] payload)
+        public string ApplyPermissionPacket(byte[] payload, int localCharacterId = 0)
         {
-            if (!TryDecodePermissionPacket(payload, out GuildBbsPermissionMask decodedMask, out string detail))
+            if (!TryDecodePermissionPacket(payload, localCharacterId, out GuildBbsPermissionMask decodedMask, out string detail))
             {
                 return detail;
             }
@@ -2072,7 +2072,7 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join(", ", names);
         }
 
-        private bool TryDecodePermissionPacket(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
+        private bool TryDecodePermissionPacket(byte[] payload, int localCharacterId, out GuildBbsPermissionMask mask, out string detail)
         {
             mask = GuildBbsPermissionMask.None;
             detail = null;
@@ -2080,6 +2080,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 detail = "Guild BBS authority packet payload is empty.";
                 return false;
+            }
+
+            if (TryDecodeGuildResultAuthorityPacket(payload, localCharacterId, out mask, out detail))
+            {
+                return true;
             }
 
             if (TryFindStructuredPermissionCandidate(payload, out GuildBbsPermissionMask structuredMask, out string structuredDetail))
@@ -2096,7 +2101,60 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            detail = "Guild BBS authority packet did not match a client-shaped guild-member-grade value or an explicit mask field.";
+            detail = "Guild BBS authority packet did not match a client-shaped guild-result roster grade, guild-member-grade value, or explicit mask field.";
+            return false;
+        }
+
+        private static bool TryDecodeGuildResultAuthorityPacket(
+            byte[] payload,
+            int localCharacterId,
+            out GuildBbsPermissionMask mask,
+            out string detail)
+        {
+            mask = GuildBbsPermissionMask.None;
+            detail = null;
+            if (localCharacterId <= 0 || payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!SocialListPacketCodec.TryParseClientGuildResult(
+                    payload,
+                    out SocialListClientGuildResultPacket packet,
+                    out _))
+            {
+                return false;
+            }
+
+            if (packet.Kind == SocialListClientGuildResultKind.GuildDataSnapshot)
+            {
+                SocialListClientGuildMemberEntry localEntry = packet.GuildMembers?
+                    .FirstOrDefault(member => member.MemberId == localCharacterId) ?? default;
+                if (localEntry.MemberId != localCharacterId)
+                {
+                    detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) guild roster, but local character #{localCharacterId} was not present.";
+                    return false;
+                }
+
+                if (!TryMapClientGuildMemberGradeToPermissionMask(localEntry.Grade, out mask))
+                {
+                    detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) guild roster, but local grade {localEntry.Grade} is outside the client range.";
+                    return false;
+                }
+
+                detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) local roster grade {localEntry.Grade} for character #{localCharacterId}; CUIGuildBBS::IsGuildBBSAdmin treats grade <= 2 as admin.";
+                return true;
+            }
+
+            if (packet.Kind == SocialListClientGuildResultKind.GradeChange
+                && packet.GradeChange.MemberId == localCharacterId
+                && packet.GradeChange.AbsoluteGrade.HasValue
+                && TryMapClientGuildMemberGradeToPermissionMask(packet.GradeChange.AbsoluteGrade.Value, out mask))
+            {
+                detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) local absolute grade {packet.GradeChange.AbsoluteGrade.Value} for character #{localCharacterId}; CUIGuildBBS::IsGuildBBSAdmin treats grade <= 2 as admin.";
+                return true;
+            }
+
             return false;
         }
 

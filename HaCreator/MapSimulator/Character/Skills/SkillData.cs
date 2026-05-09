@@ -351,7 +351,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         RelMoveAlpha,
         ReleaseAlphaVectorRef,
         RemoveAllCanvases,
-        ReleaseRemovedCanvasRef
+        ReleaseRemovedCanvasRef,
+        ClearLoadCanvasArgumentVariant
     }
 
     public readonly record struct AfterimageLayerReferenceOperation(
@@ -366,6 +367,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         int AlphaVectorRefDelta = 0,
         int AfterimageUolRefDelta = 0,
         int RemoveCanvasIndex = 0,
+        int InsertCanvasResultVariantRefDelta = 0,
+        int LoadCanvasArgumentVariantOrdinal = -1,
         AfterimageLoadCanvasArguments? LoadCanvasArguments = null);
 
     public readonly record struct AfterimageLoadCanvasArguments(
@@ -2253,6 +2256,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MainLayerObjectId { get; set; }
         public bool MainLayerAvailable { get; set; } = true;
         public bool MainLayerHasAlphaVector { get; set; } = true;
+        public bool MainLayerInitializationFailed { get; set; }
         public int EffectLayerObjectId { get; set; }
         public int EffectLayerParentObjectId { get; set; }
         public bool EffectLayerAvailable { get; set; }

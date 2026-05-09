@@ -114,8 +114,6 @@ namespace HaCreator.MapSimulator
 
         private const int PacketOwnedBalloonHorizontalPadding = 10;
         private const int PacketOwnedBalloonVerticalPadding = 10;
-        private const int PacketOwnedBalloonMinWidth = 64;
-        private const int PacketOwnedBalloonMaxWidth = 360;
         private const int PacketOwnedBalloonScreenMargin = 6;
         private const int PacketOwnedBalloonAvatarVerticalOffset = 15;
         private const int PacketOwnedBalloonFadeOutMs = 220;
@@ -709,9 +707,14 @@ namespace HaCreator.MapSimulator
             return new Point(0, -avatarHeight - PacketOwnedBalloonAvatarVerticalOffset);
         }
 
+        private static int ResolvePacketOwnedBalloonContentWidth(int requestedWidth)
+        {
+            return Math.Max(0, requestedWidth);
+        }
+
         private int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
         {
-            return Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            return Math.Max(1, ResolvePacketOwnedBalloonContentWidth(requestedWidth));
         }
 
         private PacketOwnedBalloonWrappedLine[] WrapPacketOwnedBalloonText(string text, int maxWidth)
@@ -1844,7 +1847,7 @@ namespace HaCreator.MapSimulator
             }
 
             int lineHeight = ResolvePacketOwnedBalloonLineHeight(lines);
-            int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
+            int contentWidth = ResolvePacketOwnedBalloonContentWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
             if (message.HasCachedBodyTexture(bodyWidth, bodyHeight))
@@ -2152,7 +2155,7 @@ namespace HaCreator.MapSimulator
             }
 
             int lineHeight = ResolvePacketOwnedBalloonLineHeight(lines);
-            int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
+            int contentWidth = ResolvePacketOwnedBalloonContentWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
             int bodyX = ResolvePacketOwnedBalloonBodyX(
@@ -2235,7 +2238,7 @@ namespace HaCreator.MapSimulator
 
         internal static int ResolvePacketOwnedBalloonBodyWidthForTests(int requestedWidth)
         {
-            int contentWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            int contentWidth = ResolvePacketOwnedBalloonContentWidth(requestedWidth);
             return contentWidth + PacketOwnedBalloonBodyExtraWidth;
         }
 
@@ -2245,7 +2248,7 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonAnchorMode anchorMode,
             int screenWidth)
         {
-            int contentWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            int contentWidth = ResolvePacketOwnedBalloonContentWidth(requestedWidth);
             return ResolvePacketOwnedBalloonBodyX(
                 anchor,
                 contentWidth,

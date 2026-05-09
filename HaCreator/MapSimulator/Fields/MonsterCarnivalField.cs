@@ -1376,6 +1376,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogBtOkAcceptedSendRouteCount;
         private int _season2SubDialogBtOkRejectedSendRouteCount;
         private int _season2SubDialogBtOkObservedSendRouteCount;
+        private int _season2SubDialogBtOkMouseRouteCount;
+        private int _season2SubDialogBodyClickRouteCount;
         private int _season2ChatWidgetRouteCount;
         private int _season2ChatWidgetType7RouteCount;
         private int _season2ChatWidgetType12RouteCount;
@@ -1454,6 +1456,8 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2SubDialogBtOkAcceptedSendRouteCount => _season2SubDialogBtOkAcceptedSendRouteCount;
         public int Season2SubDialogBtOkRejectedSendRouteCount => _season2SubDialogBtOkRejectedSendRouteCount;
         public int Season2SubDialogBtOkObservedSendRouteCount => _season2SubDialogBtOkObservedSendRouteCount;
+        public int Season2SubDialogBtOkMouseRouteCount => _season2SubDialogBtOkMouseRouteCount;
+        public int Season2SubDialogBodyClickRouteCount => _season2SubDialogBodyClickRouteCount;
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
@@ -1888,6 +1892,11 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryAcknowledgeSeason2SubDialog(int tickCount, out string message)
         {
+            return TryAcknowledgeSeason2SubDialog(tickCount, "local", out message);
+        }
+
+        private bool TryAcknowledgeSeason2SubDialog(int tickCount, string routeSource, out string message)
+        {
             if (_definition?.IsSeason2Mode != true)
             {
                 message = "Season 2 sub dialog is only owned by CField_MonsterCarnivalS2_Game.";
@@ -1901,6 +1910,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _season2SubDialogOkClickCount++;
+            string normalizedRouteSource = NormalizeRouteSource(routeSource);
+            if (string.Equals(normalizedRouteSource, "mouse", StringComparison.OrdinalIgnoreCase))
+            {
+                _season2SubDialogBtOkMouseRouteCount++;
+            }
+
             string selectedText = BuildSeason2SubDialogSelectedRouteText(out MonsterCarnivalEntry selectedEntry);
             if (selectedEntry != null)
             {
@@ -1921,8 +1936,8 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _season2SubDialogLastButtonRoute =
-                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK click #{_season2SubDialogOkClickCount} ({selectedText})";
-            RecordSeason2SubDialogRouteEvent($"btok(click={_season2SubDialogOkClickCount},{selectedText})");
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK click #{_season2SubDialogOkClickCount} ({selectedText}) source={normalizedRouteSource}";
+            RecordSeason2SubDialogRouteEvent($"btok(click={_season2SubDialogOkClickCount},{selectedText},source={normalizedRouteSource})");
             _season2SubDialogDeadlineTick = null;
             _season2SubDialogTimerSummary = "Season 2 sub dialog timer closed by UIWindow2 BtOK acknowledgement.";
             SetSeason2SubDialogState(
@@ -1956,12 +1971,13 @@ namespace HaCreator.MapSimulator.Fields
             Rectangle okButtonBounds = ResolveSeason2SubDialogOkButtonBounds(dialogBounds);
             if (okButtonBounds.Contains(mousePosition))
             {
-                return TryAcknowledgeSeason2SubDialog(tickCount, out message);
+                return TryAcknowledgeSeason2SubDialog(tickCount, "mouse", out message);
             }
 
+            _season2SubDialogBodyClickRouteCount++;
             _season2SubDialogLastButtonRoute =
                 $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub body click ({mousePosition.X},{mousePosition.Y})";
-            RecordSeason2SubDialogRouteEvent("body-click");
+            RecordSeason2SubDialogRouteEvent($"body-click(count={_season2SubDialogBodyClickRouteCount})");
             message = "Season 2 Monster Carnival sub dialog consumed the click inside its UIWindow2 owner surface.";
             return true;
         }
@@ -3036,6 +3052,8 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkAcceptedSendRouteCount = 0;
             _season2SubDialogBtOkRejectedSendRouteCount = 0;
             _season2SubDialogBtOkObservedSendRouteCount = 0;
+            _season2SubDialogBtOkMouseRouteCount = 0;
+            _season2SubDialogBodyClickRouteCount = 0;
             _season2SubDialogSelectedTab = null;
             _season2SubDialogSelectedIndex = -1;
             _season2SubDialogLastButtonRoute = null;
@@ -5161,7 +5179,7 @@ namespace HaCreator.MapSimulator.Fields
             string chatTrail = BuildSeason2ChatRouteTrailSummary();
             string sendTrail = BuildSeason2SubDialogSendRouteTrailSummary();
             string selectedRouteText = BuildSeason2SubDialogSelectedRouteText(out _);
-            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
+            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
                 ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},{sendText},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"

@@ -6,16 +6,23 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum SocialListGuildDialogRequestKind
     {
         CreateGuild,
-        SetMark
+        SetMark,
+        CreateGuildAgreement
     }
 
     internal readonly record struct SocialListGuildDialogRequestPacket(
         SocialListGuildDialogRequestKind Kind,
         string GuildName,
-        GuildMarkSelection? MarkSelection);
+        GuildMarkSelection? MarkSelection,
+        int PartyId = 0,
+        bool Accepted = true);
 
     internal static class SocialListGuildDialogRequestCodec
     {
+        public const byte CreateGuildRequest = 2;
+        public const byte SetGuildMarkRequest = 15;
+        public const byte CreateGuildAgreementRequest = 32;
+
         public static bool TryParse(
             byte[] rawPacket,
             ushort createGuildOpcode,
@@ -36,7 +43,21 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(rawPacket);
                 ushort opcode = (ushort)reader.ReadShort();
-                if (createGuildOpcode != 0 && opcode == createGuildOpcode)
+                if (createGuildOpcode == 0 && setGuildMarkOpcode == 0)
+                {
+                    error = "No guild dialog request opcode is configured.";
+                    return false;
+                }
+
+                if ((createGuildOpcode != 0 && opcode != createGuildOpcode)
+                    && (setGuildMarkOpcode != 0 && opcode != setGuildMarkOpcode))
+                {
+                    error = $"Opcode {opcode} is not a configured guild create or guild mark request.";
+                    return false;
+                }
+
+                byte subtype = reader.ReadByte();
+                if (subtype == CreateGuildRequest)
                 {
                     string guildName = NormalizeGuildName(reader.ReadMapleString());
                     packet = new SocialListGuildDialogRequestPacket(
@@ -46,7 +67,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
 
-                if (setGuildMarkOpcode != 0 && opcode == setGuildMarkOpcode)
+                if (subtype == SetGuildMarkRequest)
                 {
                     GuildMarkSelection selection = new(
                         unchecked((ushort)reader.ReadShort()),
@@ -61,7 +82,20 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
 
-                error = $"Opcode {opcode} is not a configured guild create or guild mark request.";
+                if (subtype == CreateGuildAgreementRequest)
+                {
+                    int partyId = reader.ReadInt();
+                    bool accepted = reader.ReadByte() != 0;
+                    packet = new SocialListGuildDialogRequestPacket(
+                        SocialListGuildDialogRequestKind.CreateGuildAgreement,
+                        string.Empty,
+                        null,
+                        partyId,
+                        accepted);
+                    return true;
+                }
+
+                error = $"Guild request subtype {subtype} is not a configured guild dialog request.";
                 return false;
             }
             catch (Exception ex)
@@ -86,6 +120,7 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     writer.WriteShort((short)createGuildOpcode);
+                    writer.WriteByte(CreateGuildRequest);
                     writer.WriteMapleString(NormalizeGuildName(request.GuildName));
                     return writer.ToArray();
 
@@ -102,10 +137,23 @@ namespace HaCreator.MapSimulator.Interaction
 
                     GuildMarkSelection selection = request.MarkSelection.Value;
                     writer.WriteShort((short)setGuildMarkOpcode);
+                    writer.WriteByte(SetGuildMarkRequest);
                     writer.WriteShort((short)selection.MarkBackground);
                     writer.WriteByte((byte)selection.MarkBackgroundColor);
                     writer.WriteShort((short)selection.Mark);
                     writer.WriteByte((byte)selection.MarkColor);
+                    return writer.ToArray();
+
+                case SocialListGuildDialogRequestKind.CreateGuildAgreement:
+                    if (createGuildOpcode == 0)
+                    {
+                        throw new InvalidOperationException("Create-guild agreement opcode is not configured.");
+                    }
+
+                    writer.WriteShort((short)createGuildOpcode);
+                    writer.WriteByte(CreateGuildAgreementRequest);
+                    writer.WriteInt(Math.Max(0, request.PartyId));
+                    writer.WriteByte(request.Accepted ? (byte)1 : (byte)0);
                     return writer.ToArray();
 
                 default:

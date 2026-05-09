@@ -47,6 +47,8 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
+        private readonly ConcurrentDictionary<string, ulong> _clientSoundSourceAccessSerials;
+        private readonly HashSet<string> _clientSoundSourceKeys;
         private readonly List<OneShotSound> _activeSounds;
         private readonly ConcurrentDictionary<string, LoopingSound> _activeLoopingSounds;
         private readonly ConcurrentDictionary<uint, string> _loopingSoundHandles;
@@ -55,14 +57,18 @@ namespace HaCreator.MapSimulator.Managers
         private bool _disposed;
         private bool _focusActive = true;
         private uint _nextLoopingSerial;
+        private ulong _nextClientSoundSourceAccessSerial;
 
         // Maximum concurrent sounds per effect type to prevent resource exhaustion
         private const int MaxConcurrentSoundsPerType = 8;
+        private const int MaxClientSoundEffectCacheEntries = 128;
         private readonly ConcurrentDictionary<string, int> _activeSoundCounts;
 
         public SoundManager()
         {
             _soundSources = new ConcurrentDictionary<string, SoundEffect>();
+            _clientSoundSourceAccessSerials = new ConcurrentDictionary<string, ulong>();
+            _clientSoundSourceKeys = new HashSet<string>(StringComparer.Ordinal);
             _activeSounds = new List<OneShotSound>();
             _activeLoopingSounds = new ConcurrentDictionary<string, LoopingSound>();
             _loopingSoundHandles = new ConcurrentDictionary<uint, string>();
@@ -138,7 +144,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            RegisterSound(key, sound);
+            RegisterClientSoundSource(key, sound);
 
             if (plan.Action == ClientSoundPlaybackAction.PlayLooping)
             {
@@ -148,6 +154,25 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason);
+        }
+
+        private void RegisterClientSoundSource(string key, WzBinaryProperty sound)
+        {
+            RegisterSound(key, sound);
+
+            ulong accessSerial = ++_nextClientSoundSourceAccessSerial;
+            if (accessSerial == 0)
+            {
+                accessSerial = ++_nextClientSoundSourceAccessSerial;
+            }
+
+            lock (_lock)
+            {
+                _clientSoundSourceKeys.Add(key);
+            }
+
+            _clientSoundSourceAccessSerials[key] = accessSerial;
+            FlushClientSoundEffectCache(MaxClientSoundEffectCacheEntries);
         }
 
         internal bool TryPlaySound(string name, float volumeScale, bool suppressWhileActive, out string reason)
@@ -412,6 +437,43 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private void FlushClientSoundEffectCache(int maxEntries)
+        {
+            int normalizedMaxEntries = Math.Max(0, maxEntries);
+            while (GetClientSoundSourceKeyCount() > normalizedMaxEntries)
+            {
+                HashSet<string> activeLoopingSoundKeys = new HashSet<string>(_activeLoopingSounds.Keys, StringComparer.Ordinal);
+                string evictKey = SelectClientSoundCacheEvictionCandidate(
+                    _clientSoundSourceAccessSerials,
+                    _activeSoundCounts,
+                    activeLoopingSoundKeys);
+                if (string.IsNullOrEmpty(evictKey))
+                {
+                    return;
+                }
+
+                lock (_lock)
+                {
+                    _clientSoundSourceKeys.Remove(evictKey);
+                }
+
+                _clientSoundSourceAccessSerials.TryRemove(evictKey, out _);
+                _activeSoundCounts.TryRemove(evictKey, out _);
+                if (_soundSources.TryRemove(evictKey, out SoundEffect soundEffect))
+                {
+                    soundEffect.Dispose();
+                }
+            }
+        }
+
+        private int GetClientSoundSourceKeyCount()
+        {
+            lock (_lock)
+            {
+                return _clientSoundSourceKeys.Count;
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -436,6 +498,11 @@ namespace HaCreator.MapSimulator.Managers
             _loopingSoundHandles.Clear();
 
             _soundSources.Clear();
+            _clientSoundSourceAccessSerials.Clear();
+            lock (_lock)
+            {
+                _clientSoundSourceKeys.Clear();
+            }
             _activeSoundCounts.Clear();
         }
 
@@ -487,6 +554,57 @@ namespace HaCreator.MapSimulator.Managers
             return !forceRestart && string.Equals(currentPath, requestedPath, StringComparison.Ordinal)
                 ? BgmRequestAction.None
                 : BgmRequestAction.Start;
+        }
+
+        internal static string SelectClientSoundCacheEvictionCandidate(
+            IReadOnlyDictionary<string, ulong> accessSerials,
+            IReadOnlyDictionary<string, int> activeSoundCounts,
+            IReadOnlyCollection<string> activeLoopingSoundKeys)
+        {
+            string selectedKey = null;
+            ulong selectedSerial = ulong.MaxValue;
+            foreach (KeyValuePair<string, ulong> pair in accessSerials)
+            {
+                string key = pair.Key;
+                if (string.IsNullOrEmpty(key))
+                {
+                    continue;
+                }
+
+                if (activeSoundCounts != null
+                    && activeSoundCounts.TryGetValue(key, out int activeCount)
+                    && activeCount > 0)
+                {
+                    continue;
+                }
+
+                if (activeLoopingSoundKeys != null
+                    && ContainsSoundKey(activeLoopingSoundKeys, key))
+                {
+                    continue;
+                }
+
+                if (pair.Value < selectedSerial)
+                {
+                    selectedKey = key;
+                    selectedSerial = pair.Value;
+                }
+            }
+
+            return selectedKey;
+        }
+
+        private static bool ContainsSoundKey(IEnumerable<string> keys, string key)
+        {
+            foreach (string candidate in keys)
+            {
+                if (candidate == key)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool ShouldMuteBgmForRadio(bool radioPlaying, bool radioMuted)

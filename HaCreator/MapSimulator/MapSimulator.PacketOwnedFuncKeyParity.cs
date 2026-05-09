@@ -952,7 +952,7 @@ namespace HaCreator.MapSimulator
             string inventoryLabel = inventoryType != InventoryType.NONE
                 ? inventoryType.ToString()
                 : "Unknown";
-            bool drawsStackNumber = packetEntryType == PacketOwnedFuncKeyItemType;
+            bool drawsStackNumber = ShouldDrawPacketOwnedKeyConfigItemQuantity(packetEntryType, itemCount);
             bool drawsUnavailableOverlay = packetEntryType == PacketOwnedFuncKeyItemTypeAlt && itemCount <= 0;
             bool isCashItemEntry = packetEntryType == PacketOwnedFuncKeyItemTypeCash;
             string clientLayer = packetEntryType switch
@@ -975,14 +975,7 @@ namespace HaCreator.MapSimulator
             string quantityText = drawsStackNumber && itemCount > 0
                 ? itemCount.ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
-            KeyConfigWindow.ShortcutVisualState.ClientDrawLayer drawLayer = packetEntryType switch
-            {
-                PacketOwnedFuncKeyItemType => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
-                PacketOwnedFuncKeyItemTypeAlt when drawsUnavailableOverlay => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemUnavailable,
-                PacketOwnedFuncKeyItemTypeAlt => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
-                PacketOwnedFuncKeyItemTypeCash => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.CashItem,
-                _ => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
-            };
+            KeyConfigWindow.ShortcutVisualState.ClientDrawLayer drawLayer = ResolvePacketOwnedKeyConfigItemDrawLayer(packetEntryType, itemCount);
 
             return new KeyConfigWindow.ShortcutVisualState(
                 ResolvePacketOwnedKeyConfigItemIcon(itemId, inventoryType),
@@ -992,6 +985,24 @@ namespace HaCreator.MapSimulator
                 quantityText: quantityText,
                 unavailable: drawsUnavailableOverlay,
                 drawLayer: drawLayer);
+        }
+
+        internal static bool ShouldDrawPacketOwnedKeyConfigItemQuantity(byte packetEntryType, int itemCount)
+        {
+            return packetEntryType == PacketOwnedFuncKeyItemType && itemCount > 0;
+        }
+
+        internal static KeyConfigWindow.ShortcutVisualState.ClientDrawLayer ResolvePacketOwnedKeyConfigItemDrawLayer(byte packetEntryType, int itemCount)
+        {
+            // CUIKeyConfig::DrawFuncKeyMapped draws type 3 as an availability item and only adds the gray slot overlay when the live count is empty.
+            return packetEntryType switch
+            {
+                PacketOwnedFuncKeyItemType => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+                PacketOwnedFuncKeyItemTypeAlt when itemCount <= 0 => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemUnavailable,
+                PacketOwnedFuncKeyItemTypeAlt => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemAvailability,
+                PacketOwnedFuncKeyItemTypeCash => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.CashItem,
+                _ => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+            };
         }
 
         private Texture2D ResolvePacketOwnedKeyConfigItemIcon(int itemId, InventoryType inventoryType)

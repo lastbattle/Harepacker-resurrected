@@ -63,6 +63,13 @@ namespace HaCreator.MapSimulator.UI
             public WhisperPickerButtonAction Action { get; set; }
         }
 
+        private sealed class ImeCandidateHitRegion
+        {
+            public Rectangle Bounds { get; set; }
+            public int ListIndex { get; set; } = -1;
+            public int CandidateIndex { get; set; } = -1;
+        }
+
         private sealed class WhisperPickerButtonVisuals
         {
             public Texture2D Normal { get; set; }
@@ -293,11 +300,14 @@ namespace HaCreator.MapSimulator.UI
         private WhisperPickerButtonVisuals _whisperPickerCloseButtonVisuals = new WhisperPickerButtonVisuals();
         private VerticalScrollbarSkin _whisperPickerDropdownScrollbarSkin;
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
+        private readonly List<ImeCandidateHitRegion> _imeCandidateHitRegions = new List<ImeCandidateHitRegion>();
         private bool _isDraggingWhisperPickerDropdownScrollThumb;
         private int _whisperPickerDropdownScrollThumbDragOffsetY;
         private WhisperPickerDropdownScrollRepeatAction _whisperPickerDropdownScrollRepeatAction = WhisperPickerDropdownScrollRepeatAction.None;
         private int _whisperPickerDropdownScrollRepeatStartTick = int.MinValue;
         private int _whisperPickerDropdownScrollRepeatLastTick = int.MinValue;
+        private int _pressedImeCandidateListIndex = -1;
+        private int _pressedImeCandidateIndex = -1;
 
         internal const float ClientChatTextFontPixelSize = 11f;
         internal const int ClientChatTextFontFaceStringPoolId = 0x1A25;
@@ -363,6 +373,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<int> WhisperTargetPickerModalComboDropdownScrollPositionRequested { get; set; }
         public Func<IntPtr> ResolveImeWindowHandle { get; set; }
         public Action<ImeCandidateListState> ImeCandidateListRefreshedRequested { get; set; }
+        public Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -474,6 +485,51 @@ namespace HaCreator.MapSimulator.UI
                 || hasPressedWhisperPickerButtonAction
                 || pressedWhisperPickerComboControl
                 || pressedWhisperPickerComboToggle;
+        }
+
+        internal static bool ShouldCommitClientEditImeCandidateOnRelease(
+            int pressedListIndex,
+            int pressedCandidateIndex,
+            int hoveredListIndex,
+            int hoveredCandidateIndex)
+        {
+            return pressedListIndex >= 0
+                && pressedCandidateIndex >= 0
+                && pressedListIndex == hoveredListIndex
+                && pressedCandidateIndex == hoveredCandidateIndex;
+        }
+
+        internal static int ResolveClientEditImeCandidateIndexFromPoint(
+            Point point,
+            Rectangle candidateBounds,
+            int pageStart,
+            int visibleCount,
+            bool vertical,
+            int rowHeight,
+            int cellWidth)
+        {
+            if (candidateBounds.IsEmpty
+                || visibleCount <= 0
+                || !candidateBounds.Contains(point))
+            {
+                return -1;
+            }
+
+            int visibleIndex;
+            if (vertical)
+            {
+                int safeRowHeight = Math.Max(1, rowHeight);
+                visibleIndex = (point.Y - candidateBounds.Y - ImeCandidateWindowBorderPadding) / safeRowHeight;
+            }
+            else
+            {
+                int safeCellWidth = Math.Max(1, cellWidth);
+                visibleIndex = (point.X - candidateBounds.X - 3) / safeCellWidth;
+            }
+
+            return visibleIndex >= 0 && visibleIndex < visibleCount
+                ? Math.Max(0, pageStart) + visibleIndex
+                : -1;
         }
 
         internal static bool ShouldConsumeWhisperPickerDropdownChromePointerEvent(
@@ -1127,6 +1183,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperPickerDropdownScrollNextBounds = null;
             _whisperPickerDropdownScrollTrackBounds = null;
             _whisperPickerDropdownScrollThumbBounds = null;
+            _imeCandidateHitRegions.Clear();
 
             if (!HasTextRenderer())
             {
@@ -2087,6 +2144,14 @@ namespace HaCreator.MapSimulator.UI
                         rowHeight,
                         textColor,
                         shadowColor);
+                    RegisterImeCandidateHitRegion(
+                        new Rectangle(
+                            bounds.X,
+                            bounds.Y + ImeCandidateWindowBorderPadding + (i * rowHeight),
+                            bounds.Width,
+                            rowHeight),
+                        candidateListState.ListIndex,
+                        candidateIndex);
                 }
 
                 return;
@@ -2105,7 +2170,30 @@ namespace HaCreator.MapSimulator.UI
                     Math.Max(1, ResolveFontLineSpacing() + 1),
                     textColor,
                     shadowColor);
+                RegisterImeCandidateHitRegion(
+                    new Rectangle(
+                        bounds.X + 3 + (i * cellWidth),
+                        bounds.Y,
+                        cellWidth,
+                        bounds.Height),
+                    candidateListState.ListIndex,
+                    candidateIndex);
             }
+        }
+
+        private void RegisterImeCandidateHitRegion(Rectangle bounds, int listIndex, int candidateIndex)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0 || listIndex < 0 || candidateIndex < 0)
+            {
+                return;
+            }
+
+            _imeCandidateHitRegions.Add(new ImeCandidateHitRegion
+            {
+                Bounds = bounds,
+                ListIndex = listIndex,
+                CandidateIndex = candidateIndex
+            });
         }
 
         private void DrawImeCandidateEntry(
@@ -3381,6 +3469,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleWhisperTargetClick(MouseState mouseState)
         {
+            if (HandleImeCandidateWindowInteraction(mouseState))
+            {
+                return true;
+            }
+
             if (HandleWhisperPickerDropdownScrollbarInteraction(mouseState))
             {
                 return true;
@@ -3625,6 +3718,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             WhisperTargetRequested?.Invoke(hoveredRegion.WhisperTarget);
+            return true;
+        }
+
+        private bool HandleImeCandidateWindowInteraction(MouseState mouseState)
+        {
+            ImeCandidateHitRegion hoveredRegion = FindImeCandidateHitRegion(mouseState.X, mouseState.Y);
+            bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
+                && _previousLeftButtonState == ButtonState.Released;
+            bool isRelease = mouseState.LeftButton == ButtonState.Released
+                && _previousLeftButtonState == ButtonState.Pressed;
+
+            if (isPressStarted)
+            {
+                _pressedImeCandidateListIndex = hoveredRegion?.ListIndex ?? -1;
+                _pressedImeCandidateIndex = hoveredRegion?.CandidateIndex ?? -1;
+                return hoveredRegion != null;
+            }
+
+            if (!isRelease)
+            {
+                return _pressedImeCandidateListIndex >= 0 && _pressedImeCandidateIndex >= 0;
+            }
+
+            int pressedListIndex = _pressedImeCandidateListIndex;
+            int pressedCandidateIndex = _pressedImeCandidateIndex;
+            _pressedImeCandidateListIndex = -1;
+            _pressedImeCandidateIndex = -1;
+            if (!ShouldCommitClientEditImeCandidateOnRelease(
+                    pressedListIndex,
+                    pressedCandidateIndex,
+                    hoveredRegion?.ListIndex ?? -1,
+                    hoveredRegion?.CandidateIndex ?? -1))
+            {
+                return pressedListIndex >= 0 && pressedCandidateIndex >= 0;
+            }
+
+            ImeCandidateSelectedRequested?.Invoke(pressedListIndex, pressedCandidateIndex);
             return true;
         }
 
@@ -3954,6 +4084,20 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _whisperPickerHitRegions.Count; i++)
             {
                 WhisperPickerHitRegion region = _whisperPickerHitRegions[i];
+                if (region.Bounds.Contains(mouseX, mouseY))
+                {
+                    return region;
+                }
+            }
+
+            return null;
+        }
+
+        private ImeCandidateHitRegion FindImeCandidateHitRegion(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _imeCandidateHitRegions.Count; i++)
+            {
+                ImeCandidateHitRegion region = _imeCandidateHitRegions[i];
                 if (region.Bounds.Contains(mouseX, mouseY))
                 {
                     return region;

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18486;
         public const short OutboundCheckPasswordOpcode = 1;
+        public const short OutboundCheckUserLimitOpcode = 6;
         public const short OutboundCheckDuplicateIdOpcode = 21;
         public const short OutboundNewCharacterOpcode = 22;
         public const short OutboundNewCharacterSaleOpcode = 23;
@@ -324,6 +325,21 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendCheckUserLimitRequest(int worldId, out string status)
+        {
+            if (worldId < 0 || worldId > ushort.MaxValue)
+            {
+                status = "Login official-session CheckUserLimit injection requires a 16-bit world id.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildCheckUserLimitPacket(worldId),
+                $"Injected login opcode {OutboundCheckUserLimitOpcode} for CheckUserLimit world {worldId} into live session",
+                out status);
+        }
+
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
         {
             if (string.IsNullOrWhiteSpace(request.CharacterName))
@@ -380,6 +396,14 @@ namespace HaCreator.MapSimulator.Managers
             writer.WriteByte(0);
             writer.WriteByte(0);
             writer.WriteInt(partnerCode);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildCheckUserLimitPacket(int worldId)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(OutboundCheckUserLimitOpcode);
+            writer.WriteShort((short)Math.Clamp(worldId, 0, ushort.MaxValue));
             return writer.ToArray();
         }
 

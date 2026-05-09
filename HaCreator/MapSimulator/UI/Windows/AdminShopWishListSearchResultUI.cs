@@ -779,7 +779,7 @@ namespace HaCreator.MapSimulator.UI
         private int GetPageCount()
         {
             return UseOwnerSession
-                ? _owner.GetWishlistSearchResultSessionPageCount()
+                ? _owner.GetWishlistSearchResultSessionDisplayPageCount()
                 : _results.Count == 0 ? 0 : (int)Math.Ceiling(_results.Count / (float)ResultsPerPage);
         }
 
@@ -1005,7 +1005,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetPageIndex()
         {
-            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionPageIndex() : _pageIndex;
+            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionDisplayPageIndex() : _pageIndex;
         }
 
         private int GetResultCount()

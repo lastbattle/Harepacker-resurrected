@@ -6,22 +6,22 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class SocialListOutboundPacketCodec
     {
         public const byte FriendAddRequest = 1;
-        public const byte FriendDeleteRequest = 2;
+        public const byte FriendDeleteRequest = 3;
         public const byte PartyCreateRequest = 1;
         public const byte PartyWithdrawRequest = 2;
         public const byte PartyInviteRequest = 4;
         public const byte PartyKickRequest = 5;
         public const byte PartyChangeBossRequest = 6;
         public const byte GuildInviteRequest = 5;
-        public const byte GuildKickRequest = 7;
-        public const byte GuildWithdrawRequest = 9;
-        public const byte GuildGradeChangeRequest = 15;
+        public const byte GuildWithdrawRequest = 7;
+        public const byte GuildKickRequest = 8;
+        public const byte GuildGradeChangeRequest = 14;
         public const byte AllianceInviteRequest = 3;
         public const byte AllianceKickRequest = 6;
         public const byte AllianceWithdrawRequest = 2;
         public const byte AllianceGradeChangeRequest = 9;
-        public const byte BlacklistAddRequest = 18;
-        public const byte BlacklistDeleteRequest = 19;
+        public const byte BlacklistAddRequest = 31;
+        public const byte BlacklistDeleteRequest = 32;
 
         public static bool TryBuildOutboundRequest(
             SocialListOutboundRequestDraft draft,
@@ -47,6 +47,13 @@ namespace HaCreator.MapSimulator.Interaction
                 && (draft.MemberId <= 0 || draft.SecondaryValue <= 0))
             {
                 error = "Alliance kick requires the client-owned target guild id and alliance id payload.";
+                return false;
+            }
+
+            if (draft.Kind == SocialListOutboundRequestKind.GuildWithdraw
+                && (draft.MemberId <= 0 || string.IsNullOrWhiteSpace(draft.TargetName)))
+            {
+                error = "Guild withdraw requires the client-owned local character id and local character name payload.";
                 return false;
             }
 
@@ -96,9 +103,6 @@ namespace HaCreator.MapSimulator.Interaction
             switch (draft.Kind)
             {
                 case SocialListOutboundRequestKind.PartyCreate:
-                case SocialListOutboundRequestKind.GuildWithdraw:
-                    return;
-
                 case SocialListOutboundRequestKind.AllianceWithdraw:
                     return;
 
@@ -107,8 +111,11 @@ namespace HaCreator.MapSimulator.Interaction
                     return;
 
                 case SocialListOutboundRequestKind.FriendDelete:
+                    writer.WriteInt(Math.Max(0, draft.MemberId));
+                    return;
+
+                case SocialListOutboundRequestKind.GuildWithdraw:
                 case SocialListOutboundRequestKind.GuildKick:
-                case SocialListOutboundRequestKind.BlacklistDelete:
                     writer.WriteInt(Math.Max(0, draft.MemberId));
                     writer.WriteMapleString(NormalizeTarget(draft.TargetName));
                     return;
@@ -125,8 +132,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case SocialListOutboundRequestKind.GuildGradeChange:
                     writer.WriteInt(Math.Max(0, draft.MemberId));
-                    writer.Write(draft.Value >= 0 ? (byte)1 : (byte)0);
-                    writer.WriteMapleString(NormalizeTarget(draft.TargetName));
+                    writer.Write((byte)Math.Clamp(draft.Value, 1, 5));
                     return;
 
                 case SocialListOutboundRequestKind.AllianceGradeChange:

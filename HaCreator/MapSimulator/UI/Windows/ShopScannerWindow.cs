@@ -102,7 +102,10 @@ namespace HaCreator.MapSimulator.UI
         internal const int ChildPreviousButtonId = 1001;
         internal const int ChildNextButtonId = 1002;
         internal const int ChildOkButtonId = 1003;
+        internal const int ShopResultNextButtonId = 4000;
+        internal const int ShopResultPreviousButtonId = 4001;
         internal const int SearchResultPageSize = 10;
+        internal const int ScanRequestThrottleMilliseconds = 500;
         internal const int ShopLinkSuccessResultCode = 0;
         internal const int ShopLinkNoShopResultCode = 1;
         internal const int ShopLinkAlreadyMovedResultCode = 2;
@@ -152,6 +155,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _hotListChildShown;
         private bool _categoryChildShown;
         private bool _searchResultChildShown;
+        private bool _exclusiveScannerRequestPending;
         private int? _lastShopLinkResultCode;
         private string _lastShopLinkResultSummary = "No scanner shop-link result packet has been applied.";
         private int _lastScannerResultSubtype;
@@ -243,6 +247,7 @@ namespace HaCreator.MapSimulator.UI
             public bool HotListChildShown { get; init; }
             public bool CategoryChildShown { get; init; }
             public bool SearchResultChildShown { get; init; }
+            public bool ExclusiveScannerRequestPending { get; init; }
             public int? LastShopLinkResultCode { get; init; }
             public string LastShopLinkResultSummary { get; init; } = string.Empty;
             public int LastScannerResultSubtype { get; init; }
@@ -380,6 +385,7 @@ namespace HaCreator.MapSimulator.UI
                 HotListChildShown = _hotListChildShown,
                 CategoryChildShown = _categoryChildShown,
                 SearchResultChildShown = _searchResultChildShown,
+                ExclusiveScannerRequestPending = _exclusiveScannerRequestPending,
                 LastShopLinkResultCode = _lastShopLinkResultCode,
                 LastShopLinkResultSummary = _lastShopLinkResultSummary,
                 LastScannerResultSubtype = _lastScannerResultSubtype,
@@ -408,6 +414,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (packetResult.HasNoResultNotice)
                 {
+                    _exclusiveScannerRequestPending = false;
                     _results.Clear();
                     _selectedIndex = -1;
                     SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
@@ -443,6 +450,11 @@ namespace HaCreator.MapSimulator.UI
                 _selectedIndex = _results.Count > 0 ? 0 : -1;
                 SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
                 ResetSearchResultPaging();
+                if (packetResult.ServerRowCount == 0)
+                {
+                    _exclusiveScannerRequestPending = false;
+                }
+
                 _lastScannerResultSummary =
                     $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed.";
                 _statusMessage = _lastScannerResultSummary;
@@ -491,6 +503,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _lastShopLinkResultSummary;
             if (resultCode == ShopLinkSuccessResultCode)
             {
+                _exclusiveScannerRequestPending = false;
                 Hide();
             }
             else if (_lastRequestedScanItemId > 0)
@@ -774,14 +787,22 @@ namespace HaCreator.MapSimulator.UI
                     ClearSearch();
                     return true;
                 case ChildPreviousButtonId:
+                case ShopResultPreviousButtonId:
                     MoveChildPage(-1);
                     return true;
                 case ChildNextButtonId:
+                case ShopResultNextButtonId:
                     MoveChildPage(1);
                     return true;
                 case ChildOkButtonId:
                     return TrySendSelectedChildOkRequest(Environment.TickCount, out _);
                 default:
+                    if (buttonId >= ShopResultRowFirstButtonId
+                        && buttonId < ShopResultRowFirstButtonId + ShopResultRowsPerPage)
+                    {
+                        return TrySendShopResultRowLinkRequest(buttonId - ShopResultRowFirstButtonId, Environment.TickCount, out _);
+                    }
+
                     return false;
             }
         }
@@ -816,18 +837,41 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (!IsScannerExclusiveRequestGateOpen(_exclusiveScannerRequestPending, _lastRequestedScanTick, currentTick))
+            {
+                message = $"CUIShopScanner::SendScanPacket blocked item {selected.ItemId.ToString(CultureInfo.InvariantCulture)} because the client exclusive-request latch is still active or the 500 ms request throttle has not elapsed.";
+                _statusMessage = message;
+                return false;
+            }
+
             byte[] payload = BuildShopScanRequestPayload(selected.ItemId, _lastRequestedScanDescending, currentTick);
             string dispatchSummary = ScanItemRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
             _lastRequestedScanItemId = selected.ItemId;
             _lastRequestedMiniRoomSn = 0;
             _lastRequestedFieldId = 0;
             _lastRequestedScanTick = currentTick;
+            _exclusiveScannerRequestPending = true;
             message = string.IsNullOrWhiteSpace(dispatchSummary)
                 ? $"CUIShopScanner::SendScanPacket staged opcode {InitialRequestOpcode} item {selected.ItemId.ToString(CultureInfo.InvariantCulture)} descending {(_lastRequestedScanDescending ? 1 : 0).ToString(CultureInfo.InvariantCulture)} tick {currentTick.ToString(CultureInfo.InvariantCulture)} simulator-local."
                 : dispatchSummary;
             _statusMessage = message;
             Hide();
             return true;
+        }
+
+        private bool TrySendShopResultRowLinkRequest(int visibleRow, int currentTick, out string message)
+        {
+            int index = (_searchResultPageIndex * GetCurrentChildPageSize()) + visibleRow;
+            if (index < 0 || index >= _results.Count)
+            {
+                message = $"CUIShopScanResult row button {(ShopResultRowFirstButtonId + visibleRow).ToString(CultureInfo.InvariantCulture)} has no item on the current page.";
+                _statusMessage = message;
+                return false;
+            }
+
+            _selectedIndex = index;
+            _scrollOffset = Math.Min(_selectedIndex, Math.Max(0, _results.Count - VisibleRows));
+            return TrySendSelectedShopLinkRequest(currentTick, out message);
         }
 
         public bool TrySendSelectedShopLinkRequest(int currentTick, out string message)
@@ -873,7 +917,7 @@ namespace HaCreator.MapSimulator.UI
             _searchResultPageIndex = 0;
             _searchResultTotalPages = _results.Count == 0
                 ? 0
-                : (int)Math.Ceiling(_results.Count / (double)SearchResultPageSize);
+                : (int)Math.Ceiling(_results.Count / (double)GetCurrentChildPageSize());
             _scrollOffset = 0;
         }
 
@@ -885,7 +929,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _searchResultPageIndex = Math.Clamp(_selectedIndex / SearchResultPageSize, 0, Math.Max(0, _searchResultTotalPages - 1));
+            _searchResultPageIndex = Math.Clamp(_selectedIndex / GetCurrentChildPageSize(), 0, Math.Max(0, _searchResultTotalPages - 1));
+        }
+
+        private int GetCurrentChildPageSize()
+        {
+            return _activeAddOnMode == ScannerAddOnMode.SearchResult && _results.Any(result => result.IsPacketFedShopRow)
+                ? ShopResultRowsPerPage
+                : SearchResultPageSize;
         }
 
         private void RefreshRows()
@@ -1009,6 +1060,12 @@ namespace HaCreator.MapSimulator.UI
         internal static byte[] BuildInitialScannerRequestPayload()
         {
             return new[] { unchecked((byte)InitialRequestSubtype) };
+        }
+
+        internal static bool IsScannerExclusiveRequestGateOpen(bool exclusiveRequestPending, int lastRequestTick, int currentTick)
+        {
+            return !exclusiveRequestPending
+                && unchecked(currentTick - lastRequestTick) >= ScanRequestThrottleMilliseconds;
         }
 
         internal static byte[] BuildShopLinkRequestPayload(int miniRoomSn, int fieldId)

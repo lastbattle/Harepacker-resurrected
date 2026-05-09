@@ -86,6 +86,12 @@ namespace HaCreator.MapSimulator.UI
         internal const uint EsNoHideSel = 0x0100;
         internal const uint ClientEditWindowStyle = WsChild | WsVisible | WsTabStop | EsAutoHScroll | EsNoHideSel;
         internal const uint ClientEditWindowExStyle = 0;
+        internal const int ClientEditCreateParamTextX = 0;
+        internal const int ClientEditCreateParamTextY = 0;
+        internal const int ClientEditCreateParamBackColor = -1;
+        internal const int ClientEditCreateParamFontColor = -16777216;
+        internal const int ClientEditCreateParamMaxHorzUnits = 50;
+        internal const bool ClientEditCreateParamNumberOnly = false;
         internal const int ClientEditLeftMargin = 0;
         internal const int ClientEditRightMargin = 0;
         internal const uint ImeExcludeStyle = 0x0080;
@@ -102,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Encoding _clientEncoding;
         private readonly WndProcDelegate _subclassWndProc;
         private readonly HashSet<int> _clientOwnedKeyDowns = new();
+        private readonly HashSet<int> _forwardedStageFunctionKeyIndices = new();
 
         private IntPtr _parentHandle;
         private IntPtr _editHandle;
@@ -128,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action<string> TextChanged;
         public event Action SubmitRequested;
         public event Action<bool> FocusChanged;
+        public event Action<int, bool> ClientForwardedFunctionKeyStateChanged;
 
         public bool TryAttach(IntPtr parentHandle, Rectangle bounds)
         {
@@ -461,6 +469,7 @@ namespace HaCreator.MapSimulator.UI
             _parentHandle = IntPtr.Zero;
             _lastKnownText = string.Empty;
             _clientOwnedKeyDowns.Clear();
+            ReleaseForwardedStageFunctionKeys();
             _keyboardSelectionAnchor = -1;
         }
 
@@ -717,7 +726,11 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldTreatClientEncodedKeyDownAsKeyUp(msg == WmKeyDown, clientLParam))
             {
                 bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
-                if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
+                if (IsStagePassthroughVirtualKey(virtualKey))
+                {
+                    ForwardStagePassthroughKey(virtualKey, keyDown: false, wParam, lParam);
+                }
+                else if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
                 {
                     ForwardKeyToParent(WmKeyUp, wParam, lParam);
                 }
@@ -782,7 +795,7 @@ namespace HaCreator.MapSimulator.UI
 
             if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(virtualKey))
             {
-                ForwardKeyToParent(msg, wParam, lParam);
+                ForwardStagePassthroughKey(virtualKey, msg == WmKeyDown, wParam, lParam);
                 UpdateImePlacement();
                 return IntPtr.Zero;
             }
@@ -1080,9 +1093,74 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void ForwardStagePassthroughKey(int virtualKey, bool keyDown, IntPtr wParam, IntPtr lParam)
+        {
+            if (!TryResolveClientStageFunctionKeyIndex(virtualKey, out int functionKeyIndex)
+                || !ShouldForwardClientEditStageFunctionKeyToStage(functionKeyIndex))
+            {
+                return;
+            }
+
+            if (ClientForwardedFunctionKeyStateChanged == null)
+            {
+                ForwardKeyToParent((uint)(keyDown ? WmKeyDown : WmKeyUp), wParam, lParam);
+                return;
+            }
+
+            if (keyDown)
+            {
+                _forwardedStageFunctionKeyIndices.Add(functionKeyIndex);
+                ClientForwardedFunctionKeyStateChanged(functionKeyIndex, true);
+                return;
+            }
+
+            _forwardedStageFunctionKeyIndices.Remove(functionKeyIndex);
+            ClientForwardedFunctionKeyStateChanged(functionKeyIndex, false);
+        }
+
+        private void ReleaseForwardedStageFunctionKeys()
+        {
+            if (_forwardedStageFunctionKeyIndices.Count == 0)
+            {
+                return;
+            }
+
+            int[] indices = new int[_forwardedStageFunctionKeyIndices.Count];
+            _forwardedStageFunctionKeyIndices.CopyTo(indices);
+            _forwardedStageFunctionKeyIndices.Clear();
+            if (ClientForwardedFunctionKeyStateChanged == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < indices.Length; i++)
+            {
+                ClientForwardedFunctionKeyStateChanged(indices[i], false);
+            }
+        }
+
         private static bool IsStagePassthroughVirtualKey(int virtualKey)
         {
             return virtualKey >= VkF1 && virtualKey <= VkF12;
+        }
+
+        internal static bool TryResolveClientStageFunctionKeyIndex(int virtualKey, out int functionKeyIndex)
+        {
+            if (virtualKey >= VkF1 && virtualKey <= VkF12)
+            {
+                functionKeyIndex = virtualKey - VkF1;
+                return true;
+            }
+
+            functionKeyIndex = -1;
+            return false;
+        }
+
+        internal static bool ShouldForwardClientEditStageFunctionKeyToStage(int functionKeyIndex)
+        {
+            // `CCtrlEdit::OnKey` sends VK_F1..VK_F12 to `g_pStage` directly,
+            // bypassing the edit parent owner.
+            return functionKeyIndex >= 0 && functionKeyIndex < CandidateListCount * 3;
         }
 
         internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey)
@@ -1319,6 +1397,7 @@ namespace HaCreator.MapSimulator.UI
         private void ClearClientOwnedTransientFocusState(bool cancelImeComposition)
         {
             _clientOwnedKeyDowns.Clear();
+            ReleaseForwardedStageFunctionKeys();
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
             _keyboardSelectionAnchor = -1;

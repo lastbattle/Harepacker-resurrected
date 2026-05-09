@@ -1266,6 +1266,27 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            foreach (WzImageProperty child in effectProperty.WzProperties)
+            {
+                if (int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    continue;
+                }
+
+                WzSubProperty namedGroup = ResolveLinkedSubProperty(child);
+                if (namedGroup == null)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<WzCanvasProperty> frames = GetNumericNamedCanvasRows(namedGroup, 1);
+                if (frames.Count > 0)
+                {
+                    canvas = frames[0];
+                    return canvas != null;
+                }
+            }
+
             return false;
         }
 

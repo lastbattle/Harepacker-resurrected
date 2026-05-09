@@ -208,11 +208,18 @@ namespace HaCreator.MapSimulator
             bool ClearedHandle,
             bool ReleasedSoundObject,
             bool ReleasedTrackProperty,
+            bool HaltBeforeUnload,
+            bool MmsStopBeforeTrackRelease,
+            bool ClearedHandleBeforeSoundRelease,
+            bool SoundReleasedBeforeTrackProperty,
             PacketOwnedRadioClientHandleStatus HandleStatus);
 
         internal readonly record struct PacketOwnedRadioUpdatePlan(
             bool ShouldPoll,
             bool ShouldStopOnComplete,
+            bool PolledAilQuickStatus,
+            int AilQuickStatusValue,
+            bool AdvancedLastUpdate,
             int NextLastUpdateTick);
 
         internal sealed class PacketOwnedRadioClientPlaybackHandle
@@ -5334,7 +5341,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedMessengerDispatchPayload(message.Payload, out string detail);
+                bool applied = TryApplyMessengerOfficialSessionInboundPayload(message.Opcode, message.Payload, out string detail);
                 _messengerOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
@@ -5347,6 +5354,28 @@ namespace HaCreator.MapSimulator
                         _chat?.AddErrorMessage(detail, currTickCount);
                     }
                 }
+            }
+        }
+
+        private bool TryApplyMessengerOfficialSessionInboundPayload(int opcode, byte[] payload, out string detail)
+        {
+            switch (opcode)
+            {
+                case PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode:
+                    return TryApplyPacketOwnedMessengerDispatchPayload(payload, out detail);
+
+                case PacketOwnedSocialUtilityPacketTable.MessengerClaimResultOpcode:
+                    return _messengerRuntime.TryApplyOfficialClaimResultPayload(payload, out detail);
+
+                case PacketOwnedSocialUtilityPacketTable.MessengerClaimServerAvailableTimeOpcode:
+                    return _messengerRuntime.TryApplyOfficialClaimServerAvailableTimePayload(payload, out detail);
+
+                case PacketOwnedSocialUtilityPacketTable.MessengerClaimServerStatusChangedOpcode:
+                    return _messengerRuntime.TryApplyOfficialClaimServerStatusChangedPayload(payload, out detail);
+
+                default:
+                    detail = $"Messenger official-session inbound opcode {opcode} is not registered for the CUIMessenger/CWvsContext owner.";
+                    return false;
             }
         }
 
@@ -5900,7 +5929,10 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
-            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
+            ShowPacketOwnedRewardResultNotice(
+                noticeText,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeAutoSeparated,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeTightLine);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
@@ -6030,7 +6062,10 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetMesoGiveFailedText();
-            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
+            ShowPacketOwnedRewardResultNotice(
+                noticeText,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeAutoSeparated,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeTightLine);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned meso-give failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : "Applied packet-owned meso-give failure through the dedicated reward-result notice owner.";
@@ -6071,7 +6106,10 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetRandomMesoBagFailedText();
-            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
+            ShowPacketOwnedRewardResultNotice(
+                noticeText,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeAutoSeparated,
+                PacketOwnedRewardResultRuntime.UtilDlgNoticeTightLine);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned random meso sack failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : "Applied packet-owned random meso sack failure through the dedicated reward-result notice owner.";
@@ -12230,6 +12268,17 @@ namespace HaCreator.MapSimulator
                     : currentStatus;
         }
 
+        internal static int ResolvePacketOwnedRadioAilQuickStatus(PacketOwnedRadioClientHandleStatus currentStatus)
+        {
+            return currentStatus switch
+            {
+                PacketOwnedRadioClientHandleStatus.Done => 1,
+                PacketOwnedRadioClientHandleStatus.Playing => 0,
+                PacketOwnedRadioClientHandleStatus.Loaded => 0,
+                _ => -1,
+            };
+        }
+
         internal static PacketOwnedRadioClientHandleStatus ResolvePacketOwnedRadioClientHandleStatusAfterStop(
             PacketOwnedRadioClientHandleStatus currentStatus)
         {
@@ -12294,6 +12343,10 @@ namespace HaCreator.MapSimulator
                     ClearedHandle: false,
                     ReleasedSoundObject: false,
                     ReleasedTrackProperty: false,
+                    HaltBeforeUnload: false,
+                    MmsStopBeforeTrackRelease: false,
+                    ClearedHandleBeforeSoundRelease: false,
+                    SoundReleasedBeforeTrackProperty: false,
                     HandleStatus: currentStatus);
             }
 
@@ -12310,6 +12363,10 @@ namespace HaCreator.MapSimulator
                 ClearedHandle: shouldUnloadHandle,
                 ReleasedSoundObject: soundObjectLoaded,
                 ReleasedTrackProperty: trackPropertyLoaded,
+                HaltBeforeUnload: shouldHaltHandle && shouldUnloadHandle,
+                MmsStopBeforeTrackRelease: trackPropertyLoaded,
+                ClearedHandleBeforeSoundRelease: soundObjectLoaded,
+                SoundReleasedBeforeTrackProperty: soundObjectLoaded && trackPropertyLoaded,
                 HandleStatus: ResolvePacketOwnedRadioClientHandleStatusAfterStop(currentStatus));
         }
 
@@ -12320,7 +12377,8 @@ namespace HaCreator.MapSimulator
             int expectedStopTick,
             bool clientHandleStopped,
             bool useBackendStopSignal,
-            bool backendStopped)
+            bool backendStopped,
+            PacketOwnedRadioClientHandleStatus currentHandleStatus = PacketOwnedRadioClientHandleStatus.None)
         {
             bool shouldPoll = isPlaying
                 && ShouldPollPacketOwnedRadioCompletion(currentTickCount, lastUpdateTick);
@@ -12329,6 +12387,9 @@ namespace HaCreator.MapSimulator
                 return new PacketOwnedRadioUpdatePlan(
                     ShouldPoll: false,
                     ShouldStopOnComplete: false,
+                    PolledAilQuickStatus: false,
+                    AilQuickStatusValue: ResolvePacketOwnedRadioAilQuickStatus(currentHandleStatus),
+                    AdvancedLastUpdate: false,
                     NextLastUpdateTick: lastUpdateTick);
             }
 
@@ -12340,6 +12401,9 @@ namespace HaCreator.MapSimulator
                     clientHandleStopped,
                     useBackendStopSignal,
                     backendStopped),
+                PolledAilQuickStatus: true,
+                AilQuickStatusValue: ResolvePacketOwnedRadioAilQuickStatus(currentHandleStatus),
+                AdvancedLastUpdate: true,
                 NextLastUpdateTick: currentTickCount);
         }
 
@@ -12559,7 +12623,8 @@ namespace HaCreator.MapSimulator
                 expectedStopTick: _lastPacketOwnedRadioExpectedStopTick,
                 clientHandleStopped: clientHandleStopped,
                 useBackendStopSignal: useBackendStopSignal,
-                backendStopped: backendStopped);
+                backendStopped: backendStopped,
+                currentHandleStatus: _lastPacketOwnedRadioClientHandleStatus);
             if (updatePlan.ShouldStopOnComplete)
             {
                 _lastPacketOwnedRadioLastPollTick = updatePlan.NextLastUpdateTick;
@@ -13070,7 +13135,7 @@ namespace HaCreator.MapSimulator
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, failure={failure}; " +
-                $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
+                $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
@@ -14131,7 +14196,8 @@ namespace HaCreator.MapSimulator
                 maxValue,
                 currTickCount,
                 hasTemporaryObject: true,
-                recordPassiveTemporaryStatUpdate: mutationPlan.RecordPassiveTemporaryStatUpdate);
+                recordPassiveTemporaryStatUpdate: mutationPlan.RecordPassiveTemporaryStatUpdate,
+                preservePassiveTemporaryStatMaxValue: true);
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -15941,7 +16007,10 @@ namespace HaCreator.MapSimulator
             bool hasNewVisibleMessage = hasVisibleMessage
                 && lastMessageSequenceId != displayMessage.MessageSequenceId;
 
-            if (hasNewVisibleMessage && ShouldTriggerPacketOwnedTutorSayPlayback(displayVariant.SkillId, displayMessage.MessageKind))
+            int localOwnerJobId = owner.IsLocalOwner
+                ? _playerManager?.Player?.Build?.Job ?? 0
+                : 0;
+            if (hasNewVisibleMessage && ShouldTriggerPacketOwnedTutorSayPlayback(displayVariant.SkillId, displayMessage.MessageKind, localOwnerJobId))
             {
                 summon.LastAttackAnimationStartTime = displayMessage.MessageStartedAt == int.MinValue
                     ? currentTickCount
@@ -15967,8 +16036,21 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldTriggerPacketOwnedTutorSayPlayback(int skillId, TutorMessageKind messageKind)
         {
+            return ShouldTriggerPacketOwnedTutorSayPlayback(skillId, messageKind, localJobId: 0);
+        }
+
+        internal static bool ShouldTriggerPacketOwnedTutorSayPlayback(int skillId, TutorMessageKind messageKind, int localJobId)
+        {
             return messageKind == TutorMessageKind.Text
-                || skillId != TutorRuntime.AranTutorSkillId;
+                || (!IsPacketOwnedTutorSaySuppressedForJob(localJobId)
+                    && skillId != TutorRuntime.AranTutorSkillId);
+        }
+
+        internal static bool IsPacketOwnedTutorSaySuppressedForJob(int jobId)
+        {
+            int normalizedJobId = Math.Max(0, jobId);
+            return normalizedJobId == 2000
+                || normalizedJobId / 100 == 21;
         }
 
         private void RemovePacketOwnedTutorSummon()
@@ -17571,8 +17653,19 @@ namespace HaCreator.MapSimulator
             }
 
             string soundKey = $"PacketOwnedSound:{resolvedDescriptor}";
-            _soundManager.RegisterSound(soundKey, soundProperty);
-            _soundManager.PlaySound(soundKey, Math.Clamp(volumeScale, 0f, 1f));
+            if (!_soundManager.TryPlayClientSoundEffect(
+                    soundKey,
+                    soundProperty,
+                    Math.Clamp(volumeScale, 0f, 1f),
+                    loop: false,
+                    suppressWhileActive: false,
+                    out _,
+                    out string playbackReason))
+            {
+                error = $"Packet-owned sound '{resolvedDescriptor}' was resolved but was not admitted by the shared CSoundMan playback plan ({playbackReason}).";
+                return false;
+            }
+
             return true;
         }
 
@@ -20610,11 +20703,13 @@ namespace HaCreator.MapSimulator
             TutorVariantSnapshot displayVariant,
             PacketOwnedTutorDisplayOwner owner)
         {
-            if (owner.IsLocalOwner)
-            {
-                return Math.Max(1, _playerManager?.Skills?.GetSkillLevel(displayVariant.SkillId) ?? 0);
-            }
+            return ResolvePacketOwnedTutorSummonSkillLevel(displayVariant.SkillId);
+        }
 
+        internal static int ResolvePacketOwnedTutorSummonSkillLevel(int skillId)
+        {
+            // Client evidence: CUserLocal::OnHireTutor initializes CTutor/CSummoned with
+            // CActionMan::GetSummonedProp(skillId, 1), independent of the local skill book.
             return 1;
         }
 

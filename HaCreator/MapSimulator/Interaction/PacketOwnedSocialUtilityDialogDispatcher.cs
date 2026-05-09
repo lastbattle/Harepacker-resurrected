@@ -1199,7 +1199,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? steps.Where(step => step.StringPoolId == onlyStringPoolId.Value)
                 : steps;
             return string.Join(" -> ", selectedSteps.Select(step =>
-                $"{step.OwnerCall} {FormatStringPoolId(step.StringPoolId)} \"{TrunkDialogClientParityText.ToInlineText(step.Text)}\""));
+                $"{step.OwnerCall} {FormatStringPoolId(step.StringPoolId)}{TrunkDialogClientParityText.FormatStepAcceptance(step)} \"{TrunkDialogClientParityText.ToInlineText(step.Text)}\""));
         }
 
         private bool ApplyNotice(string statusMessage, out string message)
