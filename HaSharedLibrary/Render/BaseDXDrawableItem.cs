@@ -19,6 +19,7 @@ namespace HaSharedLibrary.Render.DX
 
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
+        private bool animationStopped = false;
 
         // 1 frame
         /// <summary>
@@ -78,6 +79,16 @@ namespace HaSharedLibrary.Render.DX
         }
 
         public IDXObject? Frame0 => frame0;
+
+        private byte _layerAlpha = byte.MaxValue;
+        public byte LayerAlpha
+        {
+            get => _layerAlpha;
+            private set => _layerAlpha = value;
+        }
+
+        private float _layerRotationDegrees;
+        public float LayerRotationDegrees => _layerRotationDegrees;
 
         private Point _Position;
         /// <summary>
@@ -205,6 +216,9 @@ namespace HaSharedLibrary.Render.DX
             if (notAnimated)
                 return frame0;
 
+            if (animationStopped)
+                return frames[currFrame];
+
             // Animated
             if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
             {
@@ -222,7 +236,70 @@ namespace HaSharedLibrary.Render.DX
         {
             currFrame = 0;
             lastFrameSwitchTime = tickCount;
+            animationStopped = false;
             _lastFrameDrawn = notAnimated ? frame0 : frames?[0];
+        }
+
+        /// <summary>
+        /// Applies the client map-object animation repeat mode used by CMapLoadable::AnimateObjLayer.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ApplyMapObjectAnimationRepeatMode(int repeatMode, int tickCount)
+        {
+            if (notAnimated)
+            {
+                return;
+            }
+
+            if (repeatMode == -1)
+            {
+                animationStopped = true;
+                lastFrameSwitchTime = tickCount;
+                _lastFrameDrawn = frames[currFrame];
+                return;
+            }
+
+            if (repeatMode == -2)
+            {
+                if (animationStopped)
+                {
+                    currFrame = 0;
+                    lastFrameSwitchTime = tickCount;
+                    animationStopped = false;
+                    _lastFrameDrawn = frames[0];
+                }
+
+                return;
+            }
+
+            animationStopped = false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetLayerAlpha(byte alpha) => _layerAlpha = alpha;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetLayerRotationDegrees(float rotationDegrees) => _layerRotationDegrees = rotationDegrees;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameIndex(int tickCount)
+        {
+            _ = GetCurrentFrame(tickCount);
+            return notAnimated ? 0 : currFrame;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameElapsed(int tickCount)
+        {
+            _ = GetCurrentFrame(tickCount);
+            return Math.Max(0, tickCount - lastFrameSwitchTime);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameDelay(int tickCount)
+        {
+            IDXObject? frame = GetCurrentFrame(tickCount);
+            return Math.Max(1, frame?.Delay ?? 1);
         }
 
         /// <summary>
@@ -255,11 +332,45 @@ namespace HaSharedLibrary.Render.DX
 
             if (IsFrameWithinView(drawFrame, shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y, renderParameters.RenderWidth, renderParameters.RenderHeight))
             {
-                drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                    shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
-                    flip,
-                    drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
-                    );
+                if (_layerAlpha == 0)
+                {
+                    _lastFrameDrawn = null;
+                    return;
+                }
+
+                if (Math.Abs(_layerRotationDegrees) > float.Epsilon && drawFrame.Texture != null)
+                {
+                    int drawX = drawFrame.X - (shiftCenteredX - _Position.X);
+                    int drawY = drawFrame.Y - (shiftCenteredY - _Position.Y);
+                    Vector2 origin = new(drawFrame.Width / 2f, drawFrame.Height / 2f);
+                    Color color = Color.White * (_layerAlpha / 255f);
+                    sprite.Draw(
+                        drawFrame.Texture,
+                        new Rectangle(drawX + (drawFrame.Width / 2), drawY + (drawFrame.Height / 2), drawFrame.Width, drawFrame.Height),
+                        null,
+                        color,
+                        MathHelper.ToRadians(_layerRotationDegrees),
+                        origin,
+                        flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                        0f);
+                }
+                else if (_layerAlpha == byte.MaxValue)
+                {
+                    drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                        shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
+                        flip,
+                        drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
+                        );
+                }
+                else if (_layerAlpha > 0)
+                {
+                    drawFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                        drawFrame.X - (shiftCenteredX - _Position.X),
+                        drawFrame.Y - (shiftCenteredY - _Position.Y),
+                        Color.White * (_layerAlpha / 255f),
+                        flip,
+                        drawReflectionInfo);
+                }
 
                 this._lastFrameDrawn = drawFrame; // set the last frame drawn
             }
