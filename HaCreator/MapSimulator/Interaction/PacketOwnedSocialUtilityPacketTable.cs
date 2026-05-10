@@ -698,7 +698,7 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             bool showFeedback = payload[0] != 0;
                             byte decodedResultCode = payload[1];
-                            if (showFeedback && MapleTvSendResultHandlers.TryGetValue(resultCode, out string resultHandler))
+                            if (showFeedback && MapleTvSendResultHandlers.TryGetValue(decodedResultCode, out string resultHandler))
                             {
                                 branchSummary = resultHandler;
                                 resultCode = decodedResultCode;

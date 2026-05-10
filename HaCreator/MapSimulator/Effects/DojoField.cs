@@ -219,6 +219,8 @@ namespace HaCreator.MapSimulator.Effects
             EnergyOrigin,
             EnergyGaugeLayerAnchor,
             EnergyGaugeOrigin,
+            EnergyGaugeWidth,
+            EnergyGaugeHeight,
             EnergyGaugeOffsetX,
             EnergyGaugeOffsetY,
             EnergyFullTopLeft);
@@ -2155,7 +2157,7 @@ namespace HaCreator.MapSimulator.Effects
                 energyBounds.Y + EnergyGaugeOffsetY,
                 EnergyGaugeWidth,
                 EnergyGaugeHeight);
-            DrawVerticalGauge(spriteBatch, pixelTexture, _energyGaugeTexture, energyGaugeBounds, (float)_energy / EnergyMax);
+            DrawEnergyGaugeEmptyLayer(spriteBatch, pixelTexture, _energyGaugeTexture, ResolveEnergyGaugeEmptyBounds(energyGaugeBounds, _energy));
         }
         private void DrawStageBanner(SpriteBatch spriteBatch, Viewport viewport, SpriteFont font, int currentTimeMs)
         {
@@ -2312,38 +2314,54 @@ namespace HaCreator.MapSimulator.Effects
                 fillWidth,
                 BarGaugeHeight);
         }
-        private static void DrawVerticalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds, float progress)
+        internal static Rectangle ResolveEnergyGaugeEmptyBounds(Rectangle energyGaugeBounds, int energy)
         {
-            int fillHeight = Math.Clamp((int)MathF.Round(bounds.Height * Math.Clamp(progress, 0f, 1f)), 0, bounds.Height);
-            if (fillHeight <= 0)
+            int visibleHeight = Math.Clamp(
+                EnergyGaugeHeight - (EnergyGaugeHeight * Math.Clamp(energy, 0, EnergyMax) / EnergyMax),
+                0,
+                EnergyGaugeHeight);
+            if (visibleHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                energyGaugeBounds.X,
+                energyGaugeBounds.Y,
+                EnergyGaugeWidth,
+                visibleHeight);
+        }
+        private static void DrawEnergyGaugeEmptyLayer(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
             {
                 return;
             }
+
             Texture2D source = gaugeTexture ?? pixelTexture;
             if (source == null)
             {
                 return;
             }
-            Rectangle dest = new(bounds.X, bounds.Bottom - fillHeight, bounds.Width, fillHeight);
-            spriteBatch.Draw(source, dest, ResolveVerticalGaugeSourceBounds(source, dest), Color.White);
+
+            spriteBatch.Draw(source, bounds, ResolveEnergyGaugeSourceBounds(source, bounds), Color.White);
         }
-        internal static Rectangle ResolveVerticalGaugeSourceBounds(int textureWidth, int textureHeight, Rectangle destination)
+        internal static Rectangle ResolveEnergyGaugeSourceBounds(int textureWidth, int textureHeight, Rectangle destination)
         {
             if (textureWidth <= 0 || textureHeight <= 0 || destination.Width <= 0 || destination.Height <= 0)
             {
                 return Rectangle.Empty;
             }
 
-            int sourceHeight = Math.Min(textureHeight, destination.Height);
             return new Rectangle(
                 0,
-                textureHeight - sourceHeight,
+                0,
                 Math.Min(textureWidth, destination.Width),
-                sourceHeight);
+                Math.Min(textureHeight, destination.Height));
         }
-        private static Rectangle ResolveVerticalGaugeSourceBounds(Texture2D source, Rectangle destination)
+        private static Rectangle ResolveEnergyGaugeSourceBounds(Texture2D source, Rectangle destination)
         {
-            return ResolveVerticalGaugeSourceBounds(source?.Width ?? 0, source?.Height ?? 0, destination);
+            return ResolveEnergyGaugeSourceBounds(source?.Width ?? 0, source?.Height ?? 0, destination);
         }
         private bool DrawAnimation(SpriteBatch spriteBatch, IReadOnlyList<DojoFrame> frames, int currentTimeMs, int startTick, Vector2 anchor, bool repeat)
         {
@@ -2410,6 +2428,8 @@ namespace HaCreator.MapSimulator.Effects
             Point EnergyOrigin,
             Point EnergyGaugeLayerAnchor,
             Point EnergyGaugeOrigin,
+            int EnergyGaugeWidth,
+            int EnergyGaugeHeight,
             int EnergyGaugeOffsetX,
             int EnergyGaugeOffsetY,
             Point EnergyFullTopLeft);

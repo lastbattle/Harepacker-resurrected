@@ -1292,9 +1292,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int resolvedCaret = Math.Clamp(caretIndex, 0, resolvedText.Length);
-            int pivotIndex = resolvedCaret == resolvedText.Length
-                ? resolvedText.Length - 1
-                : resolvedCaret;
+            int pivotIndex = resolvedCaret;
             if (pivotIndex < 0)
             {
                 selectionStart = 0;
@@ -1302,18 +1300,33 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            char pivot = resolvedText[pivotIndex];
-            bool selectWordCharacters = IsClientWordCharacter(pivot);
-            bool selectWhitespace = char.IsWhiteSpace(pivot);
+            if (pivotIndex >= resolvedText.Length)
+            {
+                selectionStart = resolvedCaret;
+                while (selectionStart > 0 && !IsClientWhitespace(resolvedText[selectionStart - 1]))
+                {
+                    selectionStart--;
+                }
+
+                selectionEnd = resolvedCaret;
+                return;
+            }
+
+            if (IsClientWhitespace(resolvedText[pivotIndex]))
+            {
+                selectionStart = pivotIndex;
+                selectionEnd = pivotIndex;
+                return;
+            }
 
             selectionStart = pivotIndex;
-            while (selectionStart > 0 && IsWithinClientWordSelectionGroup(resolvedText[selectionStart - 1], selectWordCharacters, selectWhitespace))
+            while (selectionStart > 0 && !IsClientWhitespace(resolvedText[selectionStart - 1]))
             {
                 selectionStart--;
             }
 
             selectionEnd = pivotIndex + 1;
-            while (selectionEnd < resolvedText.Length && IsWithinClientWordSelectionGroup(resolvedText[selectionEnd], selectWordCharacters, selectWhitespace))
+            while (selectionEnd < resolvedText.Length && !IsClientWhitespace(resolvedText[selectionEnd]))
             {
                 selectionEnd++;
             }
@@ -1364,25 +1377,9 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static bool IsWithinClientWordSelectionGroup(char character, bool selectWordCharacters, bool selectWhitespace)
+        private static bool IsClientWhitespace(char character)
         {
-            if (selectWhitespace)
-            {
-                return char.IsWhiteSpace(character);
-            }
-
-            bool isWordCharacter = IsClientWordCharacter(character);
-            if (selectWordCharacters)
-            {
-                return isWordCharacter;
-            }
-
-            return !char.IsWhiteSpace(character) && !isWordCharacter;
-        }
-
-        private static bool IsClientWordCharacter(char character)
-        {
-            return char.IsLetterOrDigit(character) || character == '_';
+            return character is ' ' or '\t' or '\r' or '\n';
         }
 
         private bool HasSelection => _selectionAnchorIndex >= 0 && _selectionAnchorIndex != _caretIndex;

@@ -93,6 +93,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasOriginX { get; set; }
         public int ShadowCanvasOriginY { get; set; }
         public int ShadowCanvasDelayMs { get; set; }
+        public int ShadowCanvasFrameCount { get; set; }
         public int ShadowCanvasLastUpdatedTime { get; set; } = int.MinValue;
         public int ShadowCanvasReferenceCount { get; set; }
         public int ShadowCanvasRemoveSequence { get; set; }
@@ -109,10 +110,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasMutationCanvasReleaseOrder { get; set; }
         public int MainLayerAnimationMode { get; set; }
         public string MainLayerAnimationModeName { get; set; }
+        public int MainLayerAnimationStartTime { get; set; } = int.MinValue;
+        public int MainLayerAnimationFrameDelayMs { get; set; }
+        public int MainLayerAnimationFrameCount { get; set; }
         public int ShadowLayerAnimationMode { get; set; }
         public string ShadowLayerAnimationModeName { get; set; }
+        public int ShadowLayerAnimationStartTime { get; set; } = int.MinValue;
+        public int ShadowLayerAnimationFrameDelayMs { get; set; }
+        public int ShadowLayerAnimationFrameCount { get; set; }
         public int AlertLayerAnimationMode { get; set; }
         public string AlertLayerAnimationModeName { get; set; }
         public int AlertLayerAnimationSequence { get; set; }
+        public int AlertLayerAnimationStartTime { get; set; } = int.MinValue;
+        public int AlertLayerAnimationFrameDelayMs { get; set; }
+        public int AlertLayerAnimationFrameCount { get; set; }
     }
 }

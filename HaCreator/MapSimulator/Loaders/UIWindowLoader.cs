@@ -2099,13 +2099,16 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D loginNoticeBarTexture = LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "2", device)
                                               ?? loginNoticeTexture;
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
-            Texture2D fieldMessageBoxChalkboardComposeTexture = CreateUtilDlgNoticeFrameTexture(
+            WzSubProperty fieldMessageBoxChalkboardComposeProperty = uiWindow2Image?["MultiLine"] as WzSubProperty
+                ?? uiWindowImage?["MultiLine"] as WzSubProperty;
+            Texture2D fieldMessageBoxChalkboardComposeTexture = LoadCanvasTexture(fieldMessageBoxChalkboardComposeProperty, "backgrnd_write", device)
+                ?? CreateUtilDlgNoticeFrameTexture(
                     utilDlgProperty,
                     uiWindowImage,
                     uiWindow2Image,
                     device,
-                    width: 312,
-                    height: 132)
+                    width: FieldMessageBoxRuntime.CuiHopeBackgroundWidth,
+                    height: FieldMessageBoxRuntime.CuiHopeBackgroundHeight)
                 ?? frameTexture;
             WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty
                                               ?? uiWindowImage?["FadeYesNo"] as WzSubProperty;
@@ -2134,6 +2137,11 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject restartButton = LoadButton(loginNoticeProperty, "BtRestart", btClickSound, btOverSound, device);
             UIObject exitButton = LoadButton(loginNoticeProperty, "BtExit", btClickSound, btOverSound, device);
             UIObject nexonButton = LoadButton(loginNoticeProperty, "BtNexon", btClickSound, btOverSound, device);
+            UIObject fieldMessageBoxChalkboardOkButton = LoadButton(fieldMessageBoxChalkboardComposeProperty, "BtOK", btClickSound, btOverSound, device)
+                ?? okButton;
+            UIObject fieldMessageBoxChalkboardCancelButton = LoadButton(fieldMessageBoxChalkboardComposeProperty, "BtCancle", btClickSound, btOverSound, device)
+                ?? LoadButton(fieldMessageBoxChalkboardComposeProperty, "BtCancel", btClickSound, btOverSound, device)
+                ?? cancelButton;
 
 
             Dictionary<LoginUtilityDialogFrameVariant, IDXObject> framesByVariant = new()
@@ -2161,6 +2169,8 @@ namespace HaCreator.MapSimulator.Loaders
                 restartButton,
                 exitButton,
                 nexonButton,
+                fieldMessageBoxChalkboardOkButton,
+                fieldMessageBoxChalkboardCancelButton,
                 noticeTextTextures,
                 screenWidth,
                 screenHeight)
@@ -3750,8 +3760,11 @@ namespace HaCreator.MapSimulator.Loaders
         {
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopLocker);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopInventory);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopTab);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopList);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopBest);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopStatus);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopItemSearch);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopOneADay);
         }
 
@@ -4592,8 +4605,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             window.BindButton(LoadButton(commonProperty, "btReady", clickSound, overSound, device), runtime.ToggleMiniRoomGuestReady, () => runtime.MiniRoomOmokReadyButtonEnabled);
             window.BindButton(LoadButton(commonProperty, "btStart", clickSound, overSound, device), runtime.StartMiniRoomSession, () => runtime.MiniRoomOmokStartButtonEnabled);
-            window.BindButton(LoadButton(commonProperty, "btDraw", clickSound, overSound, device), () => runtime.TryRequestMiniRoomTie(out _), () => runtime.CanMiniRoomOmokRequestTie);
-            window.BindButton(LoadButton(commonProperty, "btRefund", clickSound, overSound, device), () => runtime.TryRequestMiniRoomRetreat(out _), () => runtime.CanMiniRoomOmokRequestRetreat);
+            window.BindButton(LoadButton(commonProperty, "btDraw", clickSound, overSound, device), () => runtime.TryRequestMiniRoomTie(out _), () => runtime.MiniRoomOmokTieButtonEnabled);
+            window.BindButton(LoadButton(commonProperty, "btRefund", clickSound, overSound, device), () => runtime.TryRequestMiniRoomRetreat(out _), () => runtime.MiniRoomOmokRetreatButtonEnabled);
             window.BindButton(LoadButton(commonProperty, "btAbsten", clickSound, overSound, device), () => runtime.TryForfeitMiniRoom("owner", out _), () => runtime.CanMiniRoomOmokGiveUp);
             window.BindButton(LoadButton(commonProperty, "btExit", clickSound, overSound, device), window.Hide);
             return window;
@@ -5015,6 +5028,14 @@ namespace HaCreator.MapSimulator.Loaders
                         "CCSWnd_Inventory now exists as its own owner with the recovered tab-button family.",
                         "Its scrollbar and number-font setup stay separate from the parent cash dialog.");
                     break;
+                case MapSimulatorWindowNames.CashShopTab:
+                    window.SetContentBounds(new Rectangle(272, 17, 509, 78));
+                    AttachCanvasLayer(window, cashShopImage?["CSTab"]?["Tab"] as WzSubProperty, "1", device, new Point(272, 17));
+                    RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"]?["PopUp"] as WzSubProperty, "BtComboBox", clickSound, overSound, device, 646, 76, "CCSWnd_Tab moved focus through the WZ-backed sort combo owner.");
+                    window.SetFallbackLines(
+                        "CCSWnd_Tab is a dedicated category/sort wrapper: IDA constructs m_pSelector, m_pCBSort, ten canvas slots, and m_tLastKeyDown.",
+                        "WZ v95 backs the visible category strip with ui/CashShop.img/CSTab/Tab/1..9 at 508x78; the tenth client canvas slot remains an unbacked/null slot in this data set.");
+                    break;
                 case MapSimulatorWindowNames.CashShopList:
                     window.SetContentBounds(new Rectangle(275, 95, 412, 430));
                     AttachCanvasLayer(window, cashShopImage?["CSList"] as WzSubProperty, "Base", device, new Point(279, 99));
@@ -5026,6 +5047,12 @@ namespace HaCreator.MapSimulator.Loaders
                         "CCSWnd_List owns category/page state, selector focus, and the list plate canvases.",
                         "The dedicated owner now exists apart from the coarse parent shop surface.");
                     break;
+                case MapSimulatorWindowNames.CashShopBest:
+                    window.SetContentBounds(new Rectangle(275, 95, 412, 80));
+                    window.SetFallbackLines(
+                        "CCSWnd_Best is registered as its own wrapper beside CCSWnd_List so GoToCommoditySN no longer lives only on the parent cash stage.",
+                        "The current v95 CashShop.img has no CSBest branch; this owner intentionally stays state/chrome-light until a targeted draw decompile identifies a distinct WZ surface.");
+                    break;
                 case MapSimulatorWindowNames.CashShopStatus:
                     window.SetContentBounds(new Rectangle(254, 530, 545, 56));
                     RegisterCashShopStageChildButton(window, (cashShopImage?["CSStatus"] as WzSubProperty), "BtCharge", clickSound, overSound, device, 248, 13, "CCSWnd_Status previewed the charge button owner.");
@@ -5035,6 +5062,18 @@ namespace HaCreator.MapSimulator.Loaders
                     window.SetFallbackLines(
                         "CCSWnd_Status now exists as a dedicated owner with charge, check, coupon, and exit buttons.",
                         "The cash-balance strip is no longer represented only by the parent stage summary.");
+                    break;
+                case MapSimulatorWindowNames.CashShopItemSearch:
+                    window.SetContentBounds(new Rectangle(421, 173, 265, 274));
+                    AttachCanvasLayer(window, cashShopImage?["CSItemSearch"]?["PopUp"] as WzSubProperty, "backgrnd", device, new Point(421, 173));
+                    AttachCanvasLayer(window, cashShopImage?["CSItemSearch"]?["PopUp"]?["Box"] as WzSubProperty, "0", device, new Point(446, 210));
+                    RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtSearch", clickSound, overSound, device, 507, 272, "CCSWnd_ItemSearch staged the search button owner on the WZ-backed popup.");
+                    RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtAllItem", clickSound, overSound, device, 446, 238, "CCSWnd_ItemSearch toggled the all-item search filter.");
+                    RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtBuy", clickSound, overSound, device, 508, 238, "CCSWnd_ItemSearch staged buy from the focused search result.");
+                    RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtCancel", clickSound, overSound, device, 560, 238, "CCSWnd_ItemSearch cancelled the active search popup.");
+                    window.SetFallbackLines(
+                        "CCSWnd_ItemSearch is registered as a dedicated search/result wrapper beside the cash list owner.",
+                        "WZ v95 backs it with ui/CashShop.img/CSItemSearch PopUp, PopUp1, BtSearch, BtAllItem, BtBuy, BtCancel, Scroll, and Price ranges.");
                     break;
                 case MapSimulatorWindowNames.CashShopOneADay:
                     window.SetContentBounds(new Rectangle(275, 95, 412, 430));
@@ -5177,8 +5216,11 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 MapSimulatorWindowNames.CashShopLocker => "CCSWnd_Locker",
                 MapSimulatorWindowNames.CashShopInventory => "CCSWnd_Inventory",
+                MapSimulatorWindowNames.CashShopTab => "CCSWnd_Tab",
                 MapSimulatorWindowNames.CashShopList => "CCSWnd_List",
+                MapSimulatorWindowNames.CashShopBest => "CCSWnd_Best",
                 MapSimulatorWindowNames.CashShopStatus => "CCSWnd_Status",
+                MapSimulatorWindowNames.CashShopItemSearch => "CCSWnd_ItemSearch",
                 MapSimulatorWindowNames.CashShopOneADay => "CCSWnd_OneADay",
                 MapSimulatorWindowNames.ItcCharacter => "CITCWnd_Char",
                 MapSimulatorWindowNames.ItcSale => "CITCWnd_Sale",
@@ -8245,7 +8287,9 @@ namespace HaCreator.MapSimulator.Loaders
                 return new Point(92, 2);
             }
 
-            return new Point(130 - (int)origin.Value.X, (int)origin.Value.Y);
+            return new Point(
+                EngagementProposalRuntime.TitleCanvasCenteredAnchorX - (int)origin.Value.X,
+                (int)origin.Value.Y);
         }
 
         private static EngagementProposalBand LoadEngagementProposalFallbackBand(GraphicsDevice device, int height)

@@ -193,6 +193,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsSelfMessage = _isSelfMessage,
                 AwaitingQueueReuseConfirmation = _awaitingQueueReuseConfirmation,
                 MessageType = _messageType,
+                DialogType = ResolveDialogType(GetCurrentAudienceMode()),
                 SenderBuild = _senderBuild,
                 ReceiverBuild = _receiverBuild,
                 RemainingMs = remainingMs,
@@ -262,7 +263,6 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _useReceiver = false;
                 _isSelfMessage = true;
-                _messageType = 1;
                 _receiverName = string.Empty;
                 _receiverBuild = null;
                 _statusMessage = "This MapleTV item only supports sender-only broadcasts.";
@@ -271,14 +271,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             _useReceiver = !_useReceiver;
             _isSelfMessage = !_useReceiver;
-            _messageType = _useReceiver ? 2 : 1;
             if (!_useReceiver)
             {
                 if (audienceMode == MapleTvAudienceMode.ReceiverRequired)
                 {
                     _useReceiver = true;
                     _isSelfMessage = false;
-                    _messageType = 2;
                     _receiverBuild = CreateReceiverBuild();
                     _statusMessage = "This MapleTV item requires a receiver.";
                     return _statusMessage;
@@ -308,7 +306,6 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _useReceiver = true;
                     _isSelfMessage = false;
-                    _messageType = 2;
                     _receiverBuild = CreateReceiverBuild();
                     _statusMessage = "This MapleTV item requires a receiver.";
                     return _statusMessage;
@@ -317,7 +314,6 @@ namespace HaCreator.MapSimulator.Interaction
                 _useReceiver = false;
                 _receiverName = string.Empty;
                 _isSelfMessage = true;
-                _messageType = 1;
                 _receiverBuild = null;
                 _statusMessage = "MapleTV receiver cleared. Broadcast will target the sender only.";
                 return _statusMessage;
@@ -328,7 +324,6 @@ namespace HaCreator.MapSimulator.Interaction
                 _useReceiver = false;
                 _receiverName = string.Empty;
                 _isSelfMessage = true;
-                _messageType = 1;
                 _receiverBuild = null;
                 _statusMessage = "This MapleTV item only supports sender-only broadcasts.";
                 return _statusMessage;
@@ -337,7 +332,6 @@ namespace HaCreator.MapSimulator.Interaction
             _useReceiver = true;
             _receiverName = receiverName.Trim();
             _isSelfMessage = false;
-            _messageType = 2;
             _receiverBuild = CreateReceiverBuild();
             _statusMessage = $"MapleTV receiver set to {_receiverName}.";
             return _statusMessage;
@@ -456,7 +450,6 @@ namespace HaCreator.MapSimulator.Interaction
             _activeDurationMs = _draftDurationMs;
             SetQueueConfirmationWaitFromDurationMs(_activeDurationMs);
             _isSelfMessage = !_useReceiver;
-            _messageType = _useReceiver ? 2 : 1;
             _lastClientSendResultCode = -1;
             _lastClientSendResultStringPoolId = -1;
             _pendingSendResultFeedback = null;
@@ -506,6 +499,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             _statusMessage = QueueSendResultFeedback(definition);
             return _statusMessage;
+        }
+
+        private static int ResolveDialogType(MapleTvAudienceMode audienceMode)
+        {
+            return audienceMode switch
+            {
+                MapleTvAudienceMode.SenderOnly => 1,
+                MapleTvAudienceMode.ReceiverRequired => 2,
+                _ => 0
+            };
         }
 
         internal MapleTvSendResultFeedback ConsumePendingSendResultFeedback()
@@ -956,7 +959,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool includeReceiverAvatar = _useReceiver && _receiverBuild != null;
             CharacterBuild receiverBuild = includeReceiverAvatar ? _receiverBuild.Clone() : null;
             byte flag = includeReceiverAvatar ? (byte)2 : (byte)0;
-            byte messageType = (byte)Math.Clamp(_messageType > 0 ? _messageType : (_useReceiver ? 2 : 1), 0, byte.MaxValue);
+            byte messageType = (byte)Math.Clamp(_messageType, 0, byte.MaxValue);
             string senderName = string.IsNullOrWhiteSpace(_senderName) ? "Player" : _senderName.Trim();
             string receiverName = _useReceiver && !string.IsNullOrWhiteSpace(_receiverName) ? _receiverName.Trim() : string.Empty;
             string[] lines = (_showMessage && _displayLines.Any(line => !string.IsNullOrWhiteSpace(line)))
@@ -1007,13 +1010,13 @@ namespace HaCreator.MapSimulator.Interaction
             _itemProfile = profile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _availableMediaIndices);
             _resolvedMediaIndex = _itemProfile.MediaIndex;
             _draftDurationMs = _itemProfile.DurationMs;
+            _messageType = _itemProfile.MessageType;
 
             switch (_itemProfile.AudienceMode)
             {
                 case MapleTvAudienceMode.SenderOnly:
                     _useReceiver = false;
                     _isSelfMessage = true;
-                    _messageType = 1;
                     _receiverName = string.Empty;
                     _receiverBuild = null;
                     break;
@@ -1021,7 +1024,6 @@ namespace HaCreator.MapSimulator.Interaction
                 case MapleTvAudienceMode.ReceiverRequired:
                     _useReceiver = true;
                     _isSelfMessage = false;
-                    _messageType = 2;
                     if (!preserveReceiverSelection && string.IsNullOrWhiteSpace(_receiverName))
                     {
                         _receiverName = string.Empty;
@@ -1035,7 +1037,6 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         _useReceiver = false;
                         _isSelfMessage = true;
-                        _messageType = 1;
                         _receiverName = string.Empty;
                         _receiverBuild = null;
                     }
@@ -1277,6 +1278,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsSelfMessage { get; init; }
         public bool AwaitingQueueReuseConfirmation { get; init; }
         public int MessageType { get; init; }
+        public int DialogType { get; init; }
         public CharacterBuild SenderBuild { get; init; }
         public CharacterBuild ReceiverBuild { get; init; }
         public int RemainingMs { get; init; }
@@ -1523,6 +1525,16 @@ namespace HaCreator.MapSimulator.Interaction
             return 1;
         }
 
+        internal static int ResolveChatVariantKeyForMessageType(int messageType, int mediaIndex, int defaultMediaIndex, IReadOnlyList<int> availableMediaIndices)
+        {
+            return messageType switch
+            {
+                1 => 0,
+                2 => 2,
+                _ => ResolveChatVariantKey(mediaIndex, defaultMediaIndex, availableMediaIndices)
+            };
+        }
+
         internal static Rectangle ResolveChatBounds(int mediaIndex, int defaultMediaIndex, IReadOnlyList<int> availableMediaIndices)
         {
             return ResolveChatVariantKey(mediaIndex, defaultMediaIndex, availableMediaIndices) switch
@@ -1532,9 +1544,19 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => MapleTvWindow.DefaultChatTextBounds
             };
         }
+
+        internal static Rectangle ResolveChatBoundsForMessageType(int messageType, int mediaIndex, int defaultMediaIndex, IReadOnlyList<int> availableMediaIndices)
+        {
+            return ResolveChatVariantKeyForMessageType(messageType, mediaIndex, defaultMediaIndex, availableMediaIndices) switch
+            {
+                0 => MapleTvWindow.StarChatTextBounds,
+                2 => MapleTvWindow.HeartChatTextBounds,
+                _ => MapleTvWindow.DefaultChatTextBounds
+            };
+        }
     }
 
-    internal sealed record MapleTvItemProfile(int ItemId, string ItemName, int MediaIndex, int DurationMs, MapleTvAudienceMode AudienceMode, bool MirrorsToChat)
+    internal sealed record MapleTvItemProfile(int ItemId, string ItemName, int MediaIndex, int DurationMs, MapleTvAudienceMode AudienceMode, bool MirrorsToChat, int MessageType)
     {
         private const int DefaultItemDurationMs = 15000;
 
@@ -1547,7 +1569,8 @@ namespace HaCreator.MapSimulator.Interaction
                 MapleTvMediaIndexResolver.ResolveKnownMediaIndex(defaultMediaIndex, availableMediaIndices),
                 defaultDurationMs,
                 MapleTvAudienceMode.Flexible,
-                false);
+                false,
+                0);
         }
 
         internal static MapleTvItemProfile Resolve(int itemId, string itemName, string itemDescription, int defaultItemId, string defaultItemName, int defaultMediaIndex, IReadOnlyList<int> availableMediaIndices = null)
@@ -1584,16 +1607,20 @@ namespace HaCreator.MapSimulator.Interaction
                 normalizedDescription.IndexOf("star effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaA
                 : normalizedDescription.IndexOf("heart effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaB
                 : normalizedDefaultMediaIndex;
+            int messageType =
+                mediaIndex == alternateMediaA && alternateMediaA != normalizedDefaultMediaIndex ? 1
+                : mediaIndex == alternateMediaB && alternateMediaB != normalizedDefaultMediaIndex ? 2
+                : 0;
 
-            MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode, isMegassenger);
+            MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode, isMegassenger, messageType);
             return itemId switch
             {
-                5075000 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = false },
-                5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly, MirrorsToChat = false },
-                5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired, MirrorsToChat = false },
-                5075003 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
-                5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
-                5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
+                5075000 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = false, MessageType = 0 },
+                5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly, MirrorsToChat = false, MessageType = 1 },
+                5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired, MirrorsToChat = false, MessageType = 2 },
+                5075003 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true, MessageType = 0 },
+                5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true, MessageType = 1 },
+                5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true, MessageType = 2 },
                 _ => CreateDefault(itemId, resolvedName, normalizedDefaultMediaIndex, DefaultItemDurationMs, availableMediaIndices)
             };
         }

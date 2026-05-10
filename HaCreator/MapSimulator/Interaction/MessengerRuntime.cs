@@ -2885,12 +2885,21 @@ namespace HaCreator.MapSimulator.Interaction
             string statusText = packet.IsOnline ? "Online" : "Offline";
             const string dataSourceLabel = "packet";
 
+            if (slotOccupantIndex >= 0 && slotOccupantIndex != participantIndex)
+            {
+                _participants.RemoveAt(slotOccupantIndex);
+                if (slotOccupantIndex < participantIndex)
+                {
+                    participantIndex--;
+                }
+            }
+
             if (participantIndex >= 0)
             {
                 MessengerParticipantState existingParticipant = _participants[participantIndex];
                 _participants[participantIndex] = existingParticipant with
                 {
-                    SlotIndex = existingParticipant.IsLocalPlayer ? existingParticipant.SlotIndex : targetSlot,
+                    SlotIndex = targetSlot,
                     Channel = packet.Channel,
                     StatusText = packet.IsOnline
                         ? (string.Equals(existingParticipant.StatusText, "Offline", StringComparison.OrdinalIgnoreCase)
@@ -2902,19 +2911,11 @@ namespace HaCreator.MapSimulator.Interaction
                     DataSourceLabel = dataSourceLabel
                 };
 
-                if (slotOccupantIndex >= 0 && slotOccupantIndex != participantIndex && !_participants[slotOccupantIndex].IsLocalPlayer)
-                {
-                    _participants.RemoveAt(slotOccupantIndex);
-                    participantIndex = FindParticipantIndex(resolvedName);
-                }
+                participantIndex = FindParticipantIndex(resolvedName);
             }
             else
             {
-                if (slotOccupantIndex >= 0 && !_participants[slotOccupantIndex].IsLocalPlayer)
-                {
-                    _participants.RemoveAt(slotOccupantIndex);
-                }
-                else if (_participants.Count >= MaxParticipants)
+                if (_participants.Count >= MaxParticipants)
                 {
                     return $"Messenger enter packet could not add {resolvedName} because the room is full.";
                 }
@@ -2961,7 +2962,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
             TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
                 "CUIMessenger::OnDestroy leave request completed after OnEnter mutated the room roster.");
-            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the packet-owned room roster mutation.");
+            TryResolveDeleteGateAfterStateChange(
+                "Messenger close gate passed after the packet-owned room roster mutation.",
+                allowImmediateDestroy: true);
             return _lastActionSummary;
         }
 

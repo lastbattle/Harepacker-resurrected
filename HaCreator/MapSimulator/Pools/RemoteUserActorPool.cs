@@ -71,6 +71,45 @@ namespace HaCreator.MapSimulator.Pools
         }
     }
 
+    public enum RemoteReceiveHpGaugeLayerMutationKind
+    {
+        CreateCanvas,
+        RemoveCanvas,
+        InsertCanvas,
+        ReleaseLayerReference
+    }
+
+    public readonly record struct RemoteReceiveHpGaugeLayerMutation(
+        RemoteReceiveHpGaugeLayerMutationKind Kind,
+        string OwnerName,
+        int SimulatedGaugeLayerHandleId,
+        int SimulatedGaugeCanvasHandleId,
+        int SimulatedGaugeCanvasLayerRefCount,
+        int GaugePos,
+        int FillWidth,
+        int OperationIndex)
+    {
+        public static RemoteReceiveHpGaugeLayerMutation Create(
+            RemoteReceiveHpGaugeLayerMutationKind kind,
+            string ownerName,
+            int layerHandleId,
+            int canvasHandleId,
+            int canvasLayerRefCount,
+            int gaugePos,
+            int operationIndex)
+        {
+            return new RemoteReceiveHpGaugeLayerMutation(
+                kind,
+                ownerName ?? string.Empty,
+                Math.Max(0, layerHandleId),
+                Math.Max(0, canvasHandleId),
+                Math.Max(0, canvasLayerRefCount),
+                gaugePos,
+                RemoteUserActorPool.ClampRemoteReceiveHpGaugeFillWidthForParity(gaugePos),
+                Math.Max(0, operationIndex));
+        }
+    }
+
     /// <summary>
     /// Shared owner for remote user actors. This gives the simulator a single seam
     /// for remote avatar look decode, map insertion/removal, world rendering,
@@ -199,6 +238,7 @@ namespace HaCreator.MapSimulator.Pools
 
             public int SkillId { get; set; }
             public SkillData Skill { get; set; }
+            public string OwnerName { get; set; }
             public SkillAnimation OverlayAnimation { get; set; }
             public SkillAnimation OverlaySecondaryAnimation { get; set; }
             public SkillAnimation UnderFaceAnimation { get; set; }
@@ -598,7 +638,8 @@ namespace HaCreator.MapSimulator.Pools
             RepeatEffect = 6,
             MagicShield = 7,
             SuddenDeath = 8,
-            FinalCut = 9
+            FinalCut = 9,
+            EnergyCharge = 10
         }
 
         public sealed class RemoteShadowPartnerPresentationState
@@ -1471,6 +1512,7 @@ namespace HaCreator.MapSimulator.Pools
         };
         private const string RemoteTemporaryStatSoulArrowActionOwnerName = "aux.remote.temporaryStat.soulArrow.persistent";
         private const string RemoteTemporaryStatWeaponChargeActionOwnerName = "aux.remote.temporaryStat.weaponCharge.persistent";
+        private const string RemoteTemporaryStatEnergyChargeActionOwnerName = "aux.remote.temporaryStat.energyCharge.persistent";
         private const string RemoteTemporaryStatAuraActionOwnerName = "aux.remote.temporaryStat.aura.persistent";
         private const int RemoteTemporaryStatAffectedLayerTransitionDurationMs = 180;
         private const int RemoteTemporaryStatAffectedLayerShiftCadenceUpdates = 0x21;
@@ -1491,6 +1533,7 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteQuestDeliveryActionOwnerName = "aux.remote.questDelivery.persistent";
         private const string RemoteActiveEffectMotionBlurActionOwnerName = "aux.remote.activeEffectMotionBlur.persistent";
         private const string RemoteActiveEffectItemEffectActionOwnerName = "aux.remote.activeEffectItemEffect.persistent";
+        private const string RemoteReceiveHpGaugeActionOwnerName = "aux.remote.receiveHpGauge.persistent";
         private const string RemoteDragonCompanionActionOwnerName = "aux.remote.dragonCompanion.persistent";
         private const string RemoteDragonHudOverlayActionOwnerName = "aux.remote.dragonHudOverlay.persistent";
         private const string RemoteRelationshipOverlayGenericActionOwnerName = "aux.remote.relationshipOverlay.generic.oneTime";
@@ -1630,6 +1673,7 @@ namespace HaCreator.MapSimulator.Pools
                 ClearActorFollowLinks(actor);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 ClearRemoteActiveEffectItemEffectState(actor);
+                ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
                 ClearRemoteTemporaryStatAvatarEffectStates(actor);
                 ReleaseCarryItemEffectLayerReferenceForParity(actor);
                 ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
@@ -1666,6 +1710,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
                     ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
@@ -1703,6 +1748,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
                     ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
@@ -2957,7 +3003,11 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!tamingMobItemId.HasValue || tamingMobItemId.Value <= 0)
             {
-                actor.Build.Unequip(EquipSlot.TamingMob);
+                if (!TryRestoreRidingChairMountAfterVehicleClear(actor))
+                {
+                    actor.Build.Unequip(EquipSlot.TamingMob);
+                }
+
                 SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 return true;
@@ -3588,7 +3638,8 @@ namespace HaCreator.MapSimulator.Pools
                 packet.RelationshipType,
                 ownerCharacterId.Value,
                 normalizedRecord,
-                recordTable);
+                recordTable,
+                currentTime);
             RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, ownerCharacterId.Value);
             recordTable[ownerCharacterId.Value] = normalizedRecord;
             RegisterRelationshipRecordDispatchKeys(packet.RelationshipType, packet.DispatchKey, normalizedRecord, ownerCharacterId.Value);
@@ -3950,7 +4001,11 @@ namespace HaCreator.MapSimulator.Pools
                 && dispatchTable.TryGetValue(packet.DispatchKey, out int dispatchOwnerCharacterId)
                 && recordTable.ContainsKey(dispatchOwnerCharacterId))
             {
-                RemoveRelationshipRecordOwner(packet.RelationshipType, dispatchOwnerCharacterId, recordTable);
+                RemoveRelationshipRecordOwner(
+                    packet.RelationshipType,
+                    dispatchOwnerCharacterId,
+                    recordTable,
+                    Environment.TickCount);
                 removedOwnerCharacterIds.Add(dispatchOwnerCharacterId);
             }
 
@@ -3976,7 +4031,11 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                RemoveRelationshipRecordOwner(packet.RelationshipType, ownerCharacterId, recordTable);
+                RemoveRelationshipRecordOwner(
+                    packet.RelationshipType,
+                    ownerCharacterId,
+                    recordTable,
+                    Environment.TickCount);
                 removedOwnerCharacterIds.Add(ownerCharacterId);
             }
 
@@ -4021,7 +4080,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            RemoveRelationshipRecordOwner(relationshipType, ownerCharacterId, recordTable);
+            RemoveRelationshipRecordOwner(relationshipType, ownerCharacterId, recordTable, currentTime);
             RefreshRelationshipOverlays(relationshipType, currentTime);
             message = $"Cleared remote {relationshipType} relationship record for owner {ownerCharacterId}.";
             return true;
@@ -5840,6 +5899,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.PartyMaxHp = packet.MaxHp;
             actor.PartyHpPercent = partyHpPercent;
             actor.PartyHpGaugePos = gaugePos;
+            ApplyRemoteReceiveHpGaugeCanvasMutationForParity(actor, gaugePos);
             message = $"Remote user {packet.CharacterId} receive-HP gauge updated to {packet.CurrentHp}/{packet.MaxHp}.";
             return true;
         }
@@ -5862,6 +5922,90 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ClampRemoteReceiveHpGaugeFillWidthForParity(int gaugePos)
         {
             return Math.Clamp(gaugePos, 0, RemoteReceiveHpGaugeFillWidth);
+        }
+
+        private static void ApplyRemoteReceiveHpGaugeCanvasMutationForParity(
+            RemoteUserActor actor,
+            int gaugePos)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            if (actor.PartyHpGaugeLayerHandleId <= 0)
+            {
+                actor.PartyHpGaugeLayerHandleId = NextRemoteReceiveHpGaugeLayerHandleId();
+            }
+
+            actor.PartyHpGaugeLayerMutations.Add(
+                RemoteReceiveHpGaugeLayerMutation.Create(
+                    RemoteReceiveHpGaugeLayerMutationKind.RemoveCanvas,
+                    RemoteReceiveHpGaugeActionOwnerName,
+                    actor.PartyHpGaugeLayerHandleId,
+                    actor.PartyHpGaugeCanvasHandleId,
+                    canvasLayerRefCount: 0,
+                    gaugePos,
+                    actor.PartyHpGaugeLayerMutations.Count));
+            actor.PartyHpGaugeCanvasLayerRefCount = 0;
+
+            actor.PartyHpGaugeCanvasHandleId = NextRemoteReceiveHpGaugeCanvasHandleId();
+            actor.PartyHpGaugeLayerMutations.Add(
+                RemoteReceiveHpGaugeLayerMutation.Create(
+                    RemoteReceiveHpGaugeLayerMutationKind.CreateCanvas,
+                    RemoteReceiveHpGaugeActionOwnerName,
+                    actor.PartyHpGaugeLayerHandleId,
+                    actor.PartyHpGaugeCanvasHandleId,
+                    canvasLayerRefCount: 0,
+                    gaugePos,
+                    actor.PartyHpGaugeLayerMutations.Count));
+
+            actor.PartyHpGaugeCanvasLayerRefCount = 1;
+            actor.PartyHpGaugeLayerMutations.Add(
+                RemoteReceiveHpGaugeLayerMutation.Create(
+                    RemoteReceiveHpGaugeLayerMutationKind.InsertCanvas,
+                    RemoteReceiveHpGaugeActionOwnerName,
+                    actor.PartyHpGaugeLayerHandleId,
+                    actor.PartyHpGaugeCanvasHandleId,
+                    actor.PartyHpGaugeCanvasLayerRefCount,
+                    gaugePos,
+                    actor.PartyHpGaugeLayerMutations.Count));
+        }
+
+        private static void ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null || actor.PartyHpGaugeCanvasHandleId <= 0 || actor.PartyHpGaugeCanvasLayerRefCount <= 0)
+            {
+                return;
+            }
+
+            actor.PartyHpGaugeCanvasLayerRefCount = 0;
+            actor.PartyHpGaugeLayerMutations.Add(
+                RemoteReceiveHpGaugeLayerMutation.Create(
+                    RemoteReceiveHpGaugeLayerMutationKind.ReleaseLayerReference,
+                    RemoteReceiveHpGaugeActionOwnerName,
+                    actor.PartyHpGaugeLayerHandleId,
+                    actor.PartyHpGaugeCanvasHandleId,
+                    actor.PartyHpGaugeCanvasLayerRefCount,
+                    actor.PartyHpGaugePos ?? 0,
+                    actor.PartyHpGaugeLayerMutations.Count));
+        }
+
+        internal static void ApplyRemoteReceiveHpGaugeCanvasMutationForTesting(
+            RemoteUserActor actor,
+            int gaugePos)
+        {
+            ApplyRemoteReceiveHpGaugeCanvasMutationForParity(actor, gaugePos);
+        }
+
+        internal static void ReleaseRemoteReceiveHpGaugeLayerReferenceForTesting(RemoteUserActor actor)
+        {
+            ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
+        }
+
+        internal static string ResolveRemoteReceiveHpGaugeOwnerNameForTesting()
+        {
+            return RemoteReceiveHpGaugeActionOwnerName;
         }
 
         public bool TryApplyThrowGrenade(RemoteUserThrowGrenadePacket packet, int currentTime, out string message)
@@ -6227,6 +6371,7 @@ namespace HaCreator.MapSimulator.Pools
             ClearActorFollowLinks(actor);
             ClearRemoteActiveEffectMotionBlurState(actor);
             ClearRemoteActiveEffectItemEffectState(actor);
+            ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
             ClearRemoteTemporaryStatAvatarEffectStates(actor);
             ReleaseCarryItemEffectLayerReferenceForParity(actor);
             ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
@@ -10791,6 +10936,16 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteReceiveHpGaugeLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
+        private static int NextRemoteReceiveHpGaugeCanvasHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextAnimationStateId();
+        }
+
         private static int NextRemoteCarryItemEffectLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -10849,6 +11004,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteEffectByItemLayerHandleIdForTesting()
         {
             return NextRemoteEffectByItemLayerHandleId();
+        }
+
+        internal static int NextRemoteReceiveHpGaugeLayerHandleIdForTesting()
+        {
+            return NextRemoteReceiveHpGaugeLayerHandleId();
         }
 
         internal static int NextRemoteCarryItemEffectLayerHandleIdForTesting()
@@ -11268,7 +11428,8 @@ namespace HaCreator.MapSimulator.Pools
                     relationshipType,
                     ownerCharacterId,
                     normalizedRecord,
-                    recordTable);
+                    recordTable,
+                    currentTime);
                 RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
                 recordTable[ownerCharacterId] = normalizedRecord;
                 RegisterRelationshipRecordDispatchKeys(
@@ -11347,7 +11508,8 @@ namespace HaCreator.MapSimulator.Pools
             RemoteRelationshipOverlayType relationshipType,
             int ownerCharacterId,
             RemoteUserRelationshipRecord relationshipRecord,
-            IDictionary<int, RemoteUserRelationshipRecord> recordTable)
+            IDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            int currentTime)
         {
             if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
                 || ownerCharacterId <= 0
@@ -11370,7 +11532,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                RemoveRelationshipRecordOwner(relationshipType, entry.Key, recordTable);
+                RemoveRelationshipRecordOwner(relationshipType, entry.Key, recordTable, currentTime);
             }
         }
 
@@ -11861,14 +12023,15 @@ namespace HaCreator.MapSimulator.Pools
         private void RemoveRelationshipRecordOwner(
             RemoteRelationshipOverlayType relationshipType,
             int ownerCharacterId,
-            IDictionary<int, RemoteUserRelationshipRecord> recordTable)
+            IDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            int currentTime)
         {
             recordTable?.Remove(ownerCharacterId);
             GetRelationshipPairLookupStateTable(relationshipType).Remove(ownerCharacterId);
             RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
             if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
             {
-                ownerActor.RelationshipOverlays.Remove(relationshipType);
+                ClearRelationshipOverlayStateForParity(ownerActor, relationshipType, currentTime);
             }
         }
 
@@ -11896,7 +12059,11 @@ namespace HaCreator.MapSimulator.Pools
                         continue;
                     }
 
-                    RemoveRelationshipRecordOwner(relationshipType, ownerCharacterId, recordTable);
+                    RemoveRelationshipRecordOwner(
+                        relationshipType,
+                        ownerCharacterId,
+                        recordTable,
+                        Environment.TickCount);
                 }
 
                 RefreshRelationshipOverlays(relationshipType, Environment.TickCount);
@@ -13074,11 +13241,16 @@ namespace HaCreator.MapSimulator.Pools
                 soulArrowSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
-            ResolveRemoteWeaponChargeSkill(actor, knownState, out int? weaponChargeSkillId, out SkillData weaponChargeSkill);
+            ResolveRemoteWeaponChargeSkill(
+                actor,
+                knownState,
+                out int? weaponChargeSkillId,
+                out SkillData weaponChargeSkill,
+                out RemoteTemporaryStatAvatarEffectOwnerFamily weaponChargeOwnerFamily);
             actor.TemporaryStatWeaponChargeEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor,
                 actor.TemporaryStatWeaponChargeEffect,
-                RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge,
+                weaponChargeOwnerFamily,
                 weaponChargeSkillId,
                 weaponChargeSkill,
                 temporaryStatAnimationStartTime,
@@ -13298,6 +13470,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 RemoteTemporaryStatAvatarEffectOwnerFamily.SoulArrow => RemoteTemporaryStatSoulArrowActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge => RemoteTemporaryStatWeaponChargeActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.EnergyCharge => RemoteTemporaryStatEnergyChargeActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.Aura => RemoteTemporaryStatAuraActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.MoreWild => RemoteTemporaryStatMoreWildActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.Barrier => RemoteTemporaryStatBarrierActionOwnerName,
@@ -13463,6 +13636,7 @@ namespace HaCreator.MapSimulator.Pools
                 6 => RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect,
                 7 => RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield,
                 8 => RemoteTemporaryStatAvatarEffectOwnerFamily.SuddenDeath,
+                10 => RemoteTemporaryStatAvatarEffectOwnerFamily.EnergyCharge,
                 _ => RemoteTemporaryStatAvatarEffectOwnerFamily.FinalCut
             };
 
@@ -14159,10 +14333,12 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserActor actor,
             RemoteUserTemporaryStatKnownState knownState,
             out int? skillId,
-            out SkillData skill)
+            out SkillData skill,
+            out RemoteTemporaryStatAvatarEffectOwnerFamily ownerFamily)
         {
             skillId = null;
             skill = null;
+            ownerFamily = RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge;
             if (_skillLoader == null)
             {
                 return;
@@ -14178,6 +14354,11 @@ namespace HaCreator.MapSimulator.Pools
             if (hasEnergyChargeStyleValue)
             {
                 ResolveRemoteEnergyChargeSkill(actor, knownState, out skillId, out skill);
+                if (skillId.HasValue)
+                {
+                    ownerFamily = RemoteTemporaryStatAvatarEffectOwnerFamily.EnergyCharge;
+                }
+
                 return;
             }
 
@@ -14603,6 +14784,7 @@ namespace HaCreator.MapSimulator.Pools
                 && HasAnyRemoteTemporaryStatAvatarEffectAnimation(existingState))
             {
                 existingState.Skill = skill;
+                existingState.OwnerName = ownerName;
                 if (reseedTimelineFromPacket)
                 {
                     existingState.AnimationStartTime = currentTime;
@@ -14613,9 +14795,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (existingState != null && ownerCharacterId > 0)
             {
+                string existingOwnerName = string.IsNullOrWhiteSpace(existingState.OwnerName)
+                    ? ownerName
+                    : existingState.OwnerName;
                 StoreRemoteAuxiliaryLayerOwnerCounter(
                     ownerCharacterId,
-                    ownerName,
+                    existingOwnerName,
                     existingState.SkillId,
                     ownerActionName,
                     ownerFacingRight,
@@ -14638,6 +14823,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 return null;
             }
+            nextState.OwnerName = ownerName;
 
             if (!reseedTimelineFromPacket
                 && ownerCharacterId > 0
@@ -14653,6 +14839,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
+                    OwnerName = ownerName,
                     OverlayAnimation = nextState.OverlayAnimation,
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
@@ -14682,6 +14869,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
+                    OwnerName = ownerName,
                     OverlayAnimation = nextState.OverlayAnimation,
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
@@ -17903,6 +18091,22 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out int uniqueSeparatedPairChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueSeparatedPairChargeElement,
+                    out int uniqueSeparatedPairChargeSkillId))
+            {
+                return uniqueSeparatedPairChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -18131,6 +18335,18 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
                     out chargeElement))
             {
@@ -18517,16 +18733,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private void ApplyPortableChairMount(RemoteUserActor actor, PortableChair chair)
         {
-            if (_loader == null
-                || actor?.Build == null
-                || chair?.TamingMobItemId is not int tamingMobItemId
-                || tamingMobItemId <= 0)
-            {
-                return;
-            }
-
-            CharacterPart mountPart = _loader.LoadEquipment(tamingMobItemId);
-            if (mountPart?.Slot != EquipSlot.TamingMob)
+            if (actor?.Build == null
+                || !TryResolvePortableChairRidingVehicleMount(chair, out CharacterPart mountPart))
             {
                 return;
             }
@@ -18535,6 +18743,31 @@ namespace HaCreator.MapSimulator.Pools
             actor.PortableChairPreviousMount = previousMount;
             actor.PortableChairAppliedMount = true;
             actor.Build.Equip(mountPart);
+        }
+
+        private bool TryRestoreRidingChairMountAfterVehicleClear(RemoteUserActor actor)
+        {
+            if (actor?.Build?.ActivePortableChair == null
+                || !TryResolvePortableChairRidingVehicleMount(
+                    actor.Build.ActivePortableChair,
+                    out CharacterPart mountPart))
+            {
+                return false;
+            }
+
+            actor.Build.Equip(mountPart);
+            actor.PortableChairAppliedMount = true;
+            return true;
+        }
+
+        private bool TryResolvePortableChairRidingVehicleMount(
+            PortableChair chair,
+            out CharacterPart mountPart)
+        {
+            return PlayerCharacter.TryResolvePortableChairRidingVehicleMount(
+                chair,
+                _loader == null ? null : _loader.LoadEquipment,
+                out mountPart);
         }
 
         private static void ClearPortableChairMountState(RemoteUserActor actor)
@@ -18658,15 +18891,19 @@ namespace HaCreator.MapSimulator.Pools
         public int? PartyCurrentHp { get; set; }
         public int? PartyMaxHp { get; set; }
         public int? PartyHpPercent { get; set; }
-            public int? PartyHpGaugePos { get; set; }
-            public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
-            public int PacketOwnedQuestDeliveryEffectAppliedTime { get; set; } = int.MinValue;
-            public string PacketOwnedQuestDeliveryOwnerActionName { get; set; }
-            public bool PacketOwnedQuestDeliveryOwnerFacingRight { get; set; } = true;
-            public RemoteUserEffectPacket LastEffect { get; set; }
-            public int? LastEffectByItemId { get; set; }
-            public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
-            public int? LastThrowGrenadeSkillId { get; set; }
+        public int? PartyHpGaugePos { get; set; }
+        public int PartyHpGaugeLayerHandleId { get; set; }
+        public int PartyHpGaugeCanvasHandleId { get; set; }
+        public int PartyHpGaugeCanvasLayerRefCount { get; set; }
+        public List<RemoteReceiveHpGaugeLayerMutation> PartyHpGaugeLayerMutations { get; } = new();
+        public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
+        public int PacketOwnedQuestDeliveryEffectAppliedTime { get; set; } = int.MinValue;
+        public string PacketOwnedQuestDeliveryOwnerActionName { get; set; }
+        public bool PacketOwnedQuestDeliveryOwnerFacingRight { get; set; } = true;
+        public RemoteUserEffectPacket LastEffect { get; set; }
+        public int? LastEffectByItemId { get; set; }
+        public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
+        public int? LastThrowGrenadeSkillId { get; set; }
         public int? LastThrowGrenadeSkillLevel { get; set; }
         public Point? LastThrowGrenadeTarget { get; set; }
         public int LastThrowGrenadeKeyDownTime { get; set; }

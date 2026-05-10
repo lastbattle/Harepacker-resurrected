@@ -51,7 +51,7 @@ namespace HaCreator.MapSimulator.Managers
             @"(?:byte[\s_\-]*index|byte[\s_\-]*offset|offset|index)?[\s_\-]*(?<index>\d+)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldPairRegex = new(
-            @"(?<field>(?:(?:m[\s_\-]*)?n[\s_\-]*)?(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|m[\s_\-]*n[\s_\-]*move[\s_\-]*action|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*|vec[\s_\-]*owner|m[\s_\-]*(?:p[\s_\-]*)?vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
+            @"(?<field>(?:(?:m[\s_\-]*)?n[\s_\-]*)?(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|m[\s_\-]*n[\s_\-]*move[\s_\-]*action|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*|vec[\s_\-]*owner|m[\s_\-]*(?:p[\s_\-]*)?vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88GenericMismatchFieldPairRegex = new(
             @"(?<field>[^\r\n]+?)\s*(?:=|(?<!:):(?!:))\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
@@ -75,10 +75,10 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>(?:raw[\s_\-]*)?move[\s_\-]*action)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88VecCtrlMismatchClassAssignmentRegex = new(
-            @"[""']?(?<label>(?:vec(?:tor)?[\s_\-]*)?(?:ctrl|control|owner|state)[\s_\-]*(?:mismatch|diff|parity)|vec[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            @"[""']?(?<label>(?:vec(?:tor)?[\s_\-]*)?(?:ctrl|control|owner|state)[\s_\-]*(?:mismatch|diff|parity)|(?:m[\s_\-]*)?pvc[\s_\-]*(?:mismatch|diff|parity)|vec[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88VecCtrlFieldValueRegex = new(
-            @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
             @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
@@ -1958,6 +1958,26 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
+                case "pvc":
+                case "mpvc":
+                case "pvcbyte":
+                case "mpvcbyte":
+                case "pvcflag":
+                case "mpvcflag":
+                case "pvcowner":
+                case "mpvcowner":
+                case "pvcownerbyte":
+                case "mpvcownerbyte":
+                case "pvcstate":
+                case "mpvcstate":
+                case "pvcvecctrl":
+                case "mpvcvecctrl":
+                case "pvcvecctrlbyte":
+                case "mpvcvecctrlbyte":
+                case "pvcvecctrlowner":
+                case "mpvcvecctrlowner":
+                case "pvcvecctrlownerbyte":
+                case "mpvcvecctrlownerbyte":
                 case "pvecctrl":
                 case "mpvecctrl":
                 case "vecctrlbyte":

@@ -711,6 +711,12 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (property is WzStringProperty stringProperty
+                && TryReadReviveOwnerPointString(stringProperty.Value, out point))
+            {
+                return true;
+            }
+
             if (property is not WzSubProperty subProperty)
             {
                 return false;
@@ -720,6 +726,28 @@ namespace HaCreator.MapSimulator
             WzImageProperty yProperty = FindReviveOwnerChildProperty(subProperty, "y");
             if (!TryReadReviveOwnerInt(xProperty, out int x)
                 || !TryReadReviveOwnerInt(yProperty, out int y))
+            {
+                return false;
+            }
+
+            point = new Vector2(x, y);
+            return true;
+        }
+
+        private static bool TryReadReviveOwnerPointString(string rawValue, out Vector2 point)
+        {
+            point = default;
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string[] parts = rawValue.Split(
+                new[] { ',', ';', ' ', '\t' },
+                StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2
+                || !float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
+                || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
             {
                 return false;
             }

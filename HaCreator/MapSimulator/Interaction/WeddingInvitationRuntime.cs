@@ -47,6 +47,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PrimaryAcceptButtonWzOriginY = -213;
         internal const int PrimaryAcceptButtonWidth = 57;
         internal const int PrimaryAcceptButtonHeight = 23;
+        internal const int PressedAcceptButtonWzOriginX = -89;
+        internal const int PressedAcceptButtonWzOriginY = -213;
+        internal const int PressedAcceptButtonWidth = 57;
+        internal const int PressedAcceptButtonHeight = 23;
+        internal const int MouseOverAcceptButtonWzOriginX = -89;
+        internal const int MouseOverAcceptButtonWzOriginY = -213;
+        internal const int MouseOverAcceptButtonWidth = 57;
+        internal const int MouseOverAcceptButtonHeight = 23;
         internal const int DisabledAcceptButtonWzOriginX = -88;
         internal const int DisabledAcceptButtonWzOriginY = -213;
         internal const int DisabledAcceptButtonWidth = 58;
@@ -119,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             SetObservedSocialMessages(_groomName, _brideName);
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ primary button normal origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ button states normal/pressed/mouseOver share origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, disabled uses origin=({DisabledAcceptButtonWzOriginX},{DisabledAcceptButtonWzOriginY}) size={DisabledAcceptButtonWidth}x{DisabledAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
             return _statusMessage;
         }
 
@@ -304,6 +312,10 @@ namespace HaCreator.MapSimulator.Interaction
                 InvitationAssetSize = (InvitationAssetWidth, InvitationAssetHeight),
                 PrimaryAcceptButtonWzOrigin = (PrimaryAcceptButtonWzOriginX, PrimaryAcceptButtonWzOriginY),
                 PrimaryAcceptButtonSize = (PrimaryAcceptButtonWidth, PrimaryAcceptButtonHeight),
+                PressedAcceptButtonWzOrigin = (PressedAcceptButtonWzOriginX, PressedAcceptButtonWzOriginY),
+                PressedAcceptButtonSize = (PressedAcceptButtonWidth, PressedAcceptButtonHeight),
+                MouseOverAcceptButtonWzOrigin = (MouseOverAcceptButtonWzOriginX, MouseOverAcceptButtonWzOriginY),
+                MouseOverAcceptButtonSize = (MouseOverAcceptButtonWidth, MouseOverAcceptButtonHeight),
                 DisabledAcceptButtonWzOrigin = (DisabledAcceptButtonWzOriginX, DisabledAcceptButtonWzOriginY),
                 DisabledAcceptButtonSize = (DisabledAcceptButtonWidth, DisabledAcceptButtonHeight),
                 AcceptButtonAcceptFocus = AcceptButtonAcceptFocus,
@@ -592,6 +604,10 @@ namespace HaCreator.MapSimulator.Interaction
         public (int Width, int Height) InvitationAssetSize { get; init; }
         public (int X, int Y) PrimaryAcceptButtonWzOrigin { get; init; }
         public (int Width, int Height) PrimaryAcceptButtonSize { get; init; }
+        public (int X, int Y) PressedAcceptButtonWzOrigin { get; init; }
+        public (int Width, int Height) PressedAcceptButtonSize { get; init; }
+        public (int X, int Y) MouseOverAcceptButtonWzOrigin { get; init; }
+        public (int Width, int Height) MouseOverAcceptButtonSize { get; init; }
         public (int X, int Y) DisabledAcceptButtonWzOrigin { get; init; }
         public (int Width, int Height) DisabledAcceptButtonSize { get; init; }
         public (int X, int Y) GroomNamePosition { get; init; }

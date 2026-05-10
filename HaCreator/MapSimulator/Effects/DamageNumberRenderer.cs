@@ -1211,6 +1211,10 @@ namespace HaCreator.MapSimulator.Effects
                 BuildRecoveredEffectHpOwnerSelectionTrace(visual),
                 preparedSources,
                 temporaryCanvasOperations,
+                BuildRecoveredEffectHpDigitLayoutSteps(
+                    BuildRecoveredEffectHpOwnerSelectionTrace(visual),
+                    preparedSources,
+                    compositionTrace.RecoveredNativeAccumulatedCanvasWidth),
                 keepsOverlayOnSeparateLayer,
                 keepsOverlayOnSeparateLayer ? CriticalBannerSpriteStringPoolId : 0,
                 keepsOverlayOnSeparateLayer ? compositionTrace.CriticalBannerLayerCanvasPath : null,
@@ -1223,6 +1227,62 @@ namespace HaCreator.MapSimulator.Effects
                 BuildRecoveredSourceCleanupSteps(
                     BuildRecoveredEffectHpOwnerSelectionTrace(visual),
                     preparedSources));
+        }
+
+        internal static CanvasLayerRecoveredEffectHpDigitLayoutStep[] BuildRecoveredEffectHpDigitLayoutSteps(
+            CanvasLayerRecoveredEffectHpOwnerSelectionTrace ownerSelection,
+            IReadOnlyList<CanvasLayerRecoveredPreparedSourceTrace> preparedSources,
+            int recoveredNativeAccumulatedCanvasWidth)
+        {
+            if (preparedSources == null
+                || preparedSources.Count == 0
+                || ownerSelection.UsesSpecialTextOwner)
+            {
+                return Array.Empty<CanvasLayerRecoveredEffectHpDigitLayoutStep>();
+            }
+
+            var steps = new CanvasLayerRecoveredEffectHpDigitLayoutStep[preparedSources.Count];
+            int nativeAccumulatedX = ownerSelection.UsesRedCriticalOwnerSplit
+                ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX
+                : 0;
+            int previousReductionOffset = 0;
+
+            for (int i = 0; i < preparedSources.Count; i++)
+            {
+                CanvasLayerRecoveredPreparedSourceTrace source = preparedSources[i];
+                int nativeEffX = nativeAccumulatedX + source.SourceWidth - previousReductionOffset;
+                int nextAccumulatedX = nativeAccumulatedX - previousReductionOffset + source.SourceOrigin.X;
+                int nextReductionOffset = ResolveNativeDigitReductionOffset(
+                    source.SourceOrigin.X,
+                    source.SourceWidth);
+
+                if (i == preparedSources.Count - 1 && recoveredNativeAccumulatedCanvasWidth > 0)
+                {
+                    nextAccumulatedX = recoveredNativeAccumulatedCanvasWidth;
+                }
+
+                steps[i] = new CanvasLayerRecoveredEffectHpDigitLayoutStep(
+                    i,
+                    source.SourceSetName,
+                    source.SpriteName,
+                    source.UseLargeDigitSet,
+                    source.SourceWidth,
+                    source.SourceOrigin.X,
+                    previousReductionOffset,
+                    nativeEffX,
+                    Math.Max(0, nextAccumulatedX),
+                    nextReductionOffset);
+
+                nativeAccumulatedX = nextAccumulatedX;
+                previousReductionOffset = nextReductionOffset;
+            }
+
+            return steps;
+        }
+
+        internal static int ResolveNativeDigitReductionOffset(int sourceOriginX, int sourceWidth)
+        {
+            return 3 * (sourceOriginX - sourceWidth) / 5;
         }
 
         internal static CanvasLayerRecoveredEffectHpSourceCleanupStep[] BuildRecoveredSourceCleanupSteps(

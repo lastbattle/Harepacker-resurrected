@@ -911,8 +911,8 @@ namespace HaCreator.MapSimulator
                 _clientOwnedLimitedViewMaskHeight,
                 _clientOwnedLimitedViewOriginX,
                 _clientOwnedLimitedViewOriginY,
-                (int)MathF.Round(_clientOwnedLimitedViewMaskWidth),
-                (int)MathF.Round(_clientOwnedLimitedViewMaskHeight));
+                LimitedViewField.ClientOwnedSmallDarkCanvasWidth,
+                LimitedViewField.ClientOwnedSmallDarkCanvasHeight);
         }
 
         private bool RefreshClientOwnedLimitedViewShareView(MapInfo mapInfo)

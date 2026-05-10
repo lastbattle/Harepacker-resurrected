@@ -524,7 +524,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (mapInfo?.Image?[propertyName] is WzImageProperty imageProperty)
+            if (FindLiveImageProperty(mapInfo?.Image, propertyName) is WzImageProperty imageProperty)
             {
                 yield return imageProperty;
             }
@@ -556,10 +556,61 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (mapInfo?.Image?["info"]?[propertyName] is WzImageProperty imageProperty)
+            if (FindLiveInfoProperty(mapInfo, propertyName) is WzImageProperty imageProperty)
             {
                 yield return imageProperty;
             }
+        }
+
+        private static WzImageProperty FindLiveImageProperty(WzImage image, string propertyName)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = image[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            return FindNamedProperty(image.WzProperties, propertyName);
+        }
+
+        private static WzImageProperty FindLiveInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty info = FindLiveImageProperty(mapInfo?.Image, "info");
+            if (info == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = info[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            return FindNamedProperty(info.WzProperties, propertyName);
+        }
+
+        private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
 
         private static FieldType? GetInfoFieldType(MapInfo mapInfo)

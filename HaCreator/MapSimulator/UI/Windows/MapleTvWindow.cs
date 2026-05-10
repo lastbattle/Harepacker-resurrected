@@ -225,7 +225,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<MapleTvAnimationFrame> onFrames = _visualAssets.OnFrames.Count > 0
                 ? _visualAssets.OnFrames
                 : _visualAssets.BasicFrames;
-            IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
+            IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.MessageType, snapshot.ResolvedMediaIndex);
             MapleTvAnimationFrame mediaFrame = SelectFrame(mediaFrames, tickCount);
             MapleTvAnimationFrame onFrame = SelectFrame(
                 onFrames,
@@ -254,7 +254,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 snapshot.DisplayLines,
                 ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
-                MapleTvMediaIndexResolver.ResolveChatBounds(
+                MapleTvMediaIndexResolver.ResolveChatBoundsForMessageType(
+                    snapshot.MessageType,
                     snapshot.ResolvedMediaIndex,
                     _visualAssets.DefaultMediaIndex,
                     _visualAssets.AvailableMediaIndices),
@@ -399,7 +400,7 @@ namespace HaCreator.MapSimulator.UI
                 IReadOnlyList<MapleTvAnimationFrame> onFrames = _visualAssets.OnFrames.Count > 0
                     ? _visualAssets.OnFrames
                     : _visualAssets.BasicFrames;
-                IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
+                IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.MessageType, snapshot.ResolvedMediaIndex);
                 MapleTvAnimationFrame mediaFrame = SelectFrame(
                     mediaFrames,
                     tickCount);
@@ -422,7 +423,8 @@ namespace HaCreator.MapSimulator.UI
                     sprite,
                     snapshot.DisplayLines,
                     ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
-                    MapleTvMediaIndexResolver.ResolveChatBounds(
+                    MapleTvMediaIndexResolver.ResolveChatBoundsForMessageType(
+                        snapshot.MessageType,
                         snapshot.ResolvedMediaIndex,
                         _visualAssets.DefaultMediaIndex,
                         _visualAssets.AvailableMediaIndices),
@@ -756,7 +758,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static Rectangle ResolveMessageTextBounds(MapleTvSnapshot snapshot)
         {
-            return snapshot.MessageType == 1 ? SenderOnlyDraftMessageTextBounds : DraftMessageTextBounds;
+            return snapshot.DialogType == 1 ? SenderOnlyDraftMessageTextBounds : DraftMessageTextBounds;
         }
 
         private static string ResolveReceiverLabel(MapleTvSnapshot snapshot)
@@ -849,6 +851,21 @@ namespace HaCreator.MapSimulator.UI
                 mediaIndex,
                 DefaultMediaIndex,
                 AvailableMediaIndices);
+            return GetChatFramesByVariantKey(variantKey);
+        }
+
+        internal IReadOnlyList<MapleTvAnimationFrame> GetChatFrames(int messageType, int mediaIndex)
+        {
+            int variantKey = MapleTvMediaIndexResolver.ResolveChatVariantKeyForMessageType(
+                messageType,
+                mediaIndex,
+                DefaultMediaIndex,
+                AvailableMediaIndices);
+            return GetChatFramesByVariantKey(variantKey);
+        }
+
+        private IReadOnlyList<MapleTvAnimationFrame> GetChatFramesByVariantKey(int variantKey)
+        {
             if (ChatFrames.TryGetValue(variantKey, out IReadOnlyList<MapleTvAnimationFrame> frames) && frames.Count > 0)
             {
                 return frames;

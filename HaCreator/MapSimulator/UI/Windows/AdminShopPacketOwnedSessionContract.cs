@@ -733,6 +733,7 @@ namespace HaCreator.MapSimulator.UI
                 PendingWishlistSearchQuery ?? string.Empty,
                 PendingWishlistSearchCategoryKey ?? "all",
                 PendingWishlistSearchPriceRangeIndex,
+                PendingWishlistSearchRemotePageIndex,
                 DeferredOwnerGatedResultCount,
                 HasDeferredOwnerGatedResult ? DescribeDeferredOwnerGatedResult() : string.Empty,
                 ((int)OwnerVisibilityState).ToString(),

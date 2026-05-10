@@ -73,6 +73,13 @@ namespace HaCreator.MapSimulator.UI
         private bool _comboExpanded;
         private AccountMoreInfoEditableField _expandedComboField;
 
+        internal enum ClientOwnerKeyboardAction
+        {
+            None = 0,
+            CollapseCombo = 1,
+            CloseOwner = 2,
+        }
+
         internal AccountMoreInfoWindow(IDXObject frame, string windowName)
             : base(frame)
         {
@@ -394,14 +401,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboard)
         {
+            ClientOwnerKeyboardAction ownerAction = ResolveClientOwnerKeyboardActionForTesting(
+                keyboard,
+                _previousKeyboardState,
+                _comboExpanded);
+            if (ownerAction == ClientOwnerKeyboardAction.CollapseCombo)
+            {
+                _comboExpanded = false;
+                return;
+            }
+
+            if (ownerAction == ClientOwnerKeyboardAction.CloseOwner)
+            {
+                _cancelRequested?.Invoke();
+                return;
+            }
+
             if (_comboExpanded)
             {
-                if (WasPressed(keyboard, Keys.Escape))
-                {
-                    _comboExpanded = false;
-                    return;
-                }
-
                 if (WasPressed(keyboard, Keys.Up))
                 {
                     _fieldAdjusted?.Invoke(_expandedComboField, -1);
@@ -411,60 +428,28 @@ namespace HaCreator.MapSimulator.UI
                 if (WasPressed(keyboard, Keys.Down))
                 {
                     _fieldAdjusted?.Invoke(_expandedComboField, 1);
-                    return;
-                }
-
-                if (WasPressed(keyboard, Keys.Enter))
-                {
-                    _comboExpanded = false;
-                    return;
                 }
             }
-
-            if (WasPressed(keyboard, Keys.Enter))
-            {
-                _saveRequested?.Invoke();
-                return;
-            }
-
-            if (WasPressed(keyboard, Keys.Escape))
-            {
-                _cancelRequested?.Invoke();
-                return;
-            }
-
-            if (WasPressed(keyboard, Keys.Left)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaGroup, -1);
-            if (WasPressed(keyboard, Keys.Right)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaGroup, 1);
-            if (WasPressed(keyboard, Keys.Up)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaDetail, 1);
-            if (WasPressed(keyboard, Keys.Down)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaDetail, -1);
-            if (WasPressed(keyboard, Keys.PageUp)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthYear, 1);
-            if (WasPressed(keyboard, Keys.PageDown)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthYear, -1);
-            if (WasPressed(keyboard, Keys.Home)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthMonth, -1);
-            if (WasPressed(keyboard, Keys.End)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthMonth, 1);
-            if (WasPressed(keyboard, Keys.OemPlus) || WasPressed(keyboard, Keys.Add)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthDay, 1);
-            if (WasPressed(keyboard, Keys.OemMinus) || WasPressed(keyboard, Keys.Subtract)) _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthDay, -1);
-
-            ToggleIndexedSelection(keyboard, new[] { Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5 }, _playStyleToggled);
-            ToggleIndexedSelection(
-                keyboard,
-                new[] { Keys.NumPad1, Keys.NumPad2, Keys.NumPad3, Keys.NumPad4, Keys.NumPad5, Keys.NumPad6, Keys.NumPad7, Keys.NumPad8, Keys.NumPad9 },
-                _activityToggled);
         }
 
-        private void ToggleIndexedSelection(KeyboardState keyboard, IReadOnlyList<Keys> keys, Action<int> handler)
+        internal static ClientOwnerKeyboardAction ResolveClientOwnerKeyboardActionForTesting(
+            KeyboardState keyboard,
+            KeyboardState previousKeyboard,
+            bool comboExpanded)
         {
-            if (handler == null || keys == null)
+            if (IsPressed(keyboard, previousKeyboard, Keys.Escape))
             {
-                return;
+                return comboExpanded
+                    ? ClientOwnerKeyboardAction.CollapseCombo
+                    : ClientOwnerKeyboardAction.CloseOwner;
             }
 
-            for (int i = 0; i < keys.Count; i++)
+            if (comboExpanded && IsPressed(keyboard, previousKeyboard, Keys.Enter))
             {
-                if (WasPressed(keyboard, keys[i]))
-                {
-                    handler(i);
-                }
+                return ClientOwnerKeyboardAction.CollapseCombo;
             }
+
+            return ClientOwnerKeyboardAction.None;
         }
 
         private void HandleMouseInput(MouseState mouse)
@@ -734,7 +719,12 @@ namespace HaCreator.MapSimulator.UI
 
         private bool WasPressed(KeyboardState keyboard, Keys key)
         {
-            return keyboard.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+            return IsPressed(keyboard, _previousKeyboardState, key);
+        }
+
+        private static bool IsPressed(KeyboardState keyboard, KeyboardState previousKeyboard, Keys key)
+        {
+            return keyboard.IsKeyDown(key) && !previousKeyboard.IsKeyDown(key);
         }
 
         private void HandleOkButtonReleased(UIObject button)

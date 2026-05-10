@@ -600,14 +600,14 @@ namespace HaCreator.MapSimulator
                 primaryLabel: "OK",
                 secondaryLabel: "Cancel",
                 inputPlaceholder: prompt,
-                inputMaxLength: short.MaxValue,
+                inputMaxLength: FieldMessageBoxRuntime.CuiHopeLineCount * FieldMessageBoxRuntime.CuiHopeLineMaxLength,
                 inputValue: initialText,
                 softKeyboardType: SoftKeyboardKeyboardType.FreeText,
                 frameVariant: LoginUtilityDialogFrameVariant.FieldMessageBoxChalkboardCompose,
                 inputBoundsOverride: CreateFieldMessageBoxChalkboardInputBoundsOverride(),
                 trackDirectionModeOwner: true,
                 primaryButtonEnabled: ShouldEnableFieldMessageBoxChalkboardDialogPrimary(initialText));
-            message = $"{message} Opened the managed chalkboard compose owner through a WZ UtilDlgEx notice-frame variant using StringPool 0x{FieldMessageBoxRuntime.ComposePromptStringPoolId:X}.";
+            message = $"{message} Opened the managed chalkboard compose owner through the WZ UIWindow2.img/MultiLine CUIHope frame using StringPool 0x{FieldMessageBoxRuntime.ComposePromptStringPoolId:X}.";
             return true;
         }
 
@@ -617,7 +617,7 @@ namespace HaCreator.MapSimulator
             bool updated = _fieldMessageBoxRuntime.TrySetChalkboardDialogText(text, out message);
             if (updated)
             {
-                _loginUtilityDialogInputValue = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+                _loginUtilityDialogInputValue = string.Join("\n", FieldMessageBoxRuntime.NormalizeChalkboardDialogLinesForDialog(text));
                 _loginUtilityDialogPrimaryEnabled = ShouldEnableFieldMessageBoxChalkboardDialogPrimary(_loginUtilityDialogInputValue);
                 SyncLoginUtilityDialogWindow();
             }
@@ -627,7 +627,7 @@ namespace HaCreator.MapSimulator
 
         private static bool ShouldEnableFieldMessageBoxChalkboardDialogPrimary(string text)
         {
-            return !string.IsNullOrWhiteSpace(text);
+            return FieldMessageBoxRuntime.HasChalkboardDialogText(text);
         }
 
         internal static bool ShouldEnableFieldMessageBoxChalkboardDialogPrimaryForTesting(string text)
@@ -642,7 +642,11 @@ namespace HaCreator.MapSimulator
 
         private static Rectangle CreateFieldMessageBoxChalkboardInputBoundsOverride()
         {
-            return new Rectangle(17, 52, 278, 20);
+            return new Rectangle(
+                FieldMessageBoxRuntime.CuiHopeInputX,
+                FieldMessageBoxRuntime.CuiHopeInputY,
+                FieldMessageBoxRuntime.CuiHopeInputWidth,
+                FieldMessageBoxRuntime.CuiHopeInputHeight + ((FieldMessageBoxRuntime.CuiHopeLineCount - 1) * FieldMessageBoxRuntime.CuiHopeInputVerticalStride));
         }
 
         private bool TrySubmitFieldMessageBoxChalkboardDialog(out string message)

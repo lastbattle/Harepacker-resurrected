@@ -211,7 +211,8 @@ namespace HaCreator.MapSimulator
             bool IwzSoundQueryInterfaceAttempted = false,
             bool IwzSoundInterfaceRetainedBeforeRawBuffer = false,
             bool AilHandleStoredBeforeMsLength = false,
-            bool AilQuickPlayAfterLastUpdate = false);
+            bool AilQuickPlayAfterLastUpdate = false,
+            bool AilQuickLoadMemFailureAfterRawBuffer = false);
 
         internal readonly record struct PacketOwnedRadioMmsStopPlan(
             bool EnteredStop,
@@ -363,7 +364,19 @@ namespace HaCreator.MapSimulator
             MoveMessageLayerByHalfWidthAndSummonHeight,
             AnimateMessageLayerRepeat,
             SetSummonedSayAttackAction,
-            SuppressSummonedSayAttackActionForAranJob
+            SuppressSummonedSayAttackActionForAranJob,
+            SkipEmptyTextMessageLayer,
+            CreateTextAnalyzerWithRequestedWidth,
+            AnalyzeTextWithTutorFontArray,
+            StoreComputedTextHeight,
+            CreateTextMessageLayer,
+            BindMessageLayerToVectorController,
+            BindMessageLayerToActionLayerParent,
+            SetMessageLayerZ,
+            GetMessageLayerCanvas,
+            DrawTutorialBalloonFrame,
+            DrawTutorialBalloonArrow,
+            DrawAnalyzedTextRuns
         }
 
         internal readonly record struct PacketOwnedTutorNativeOperation(
@@ -577,6 +590,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioClientRawBufferLength;
         private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
         private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
+        private PacketOwnedRadioMmsPlayPlan _lastPacketOwnedRadioMmsPlayPlan;
         private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
         private PacketOwnedRadioStopPlan _lastPacketOwnedRadioStopPlan;
         private PacketOwnedRadioClientPlaybackHandle _packetOwnedRadioClientHandle;
@@ -4851,6 +4865,14 @@ namespace HaCreator.MapSimulator
             int requestedAt,
             PacketOwnedSkillEffectRequest request)
         {
+            DispatchClientSkillEffectPacketRequest(skillId, requestedAt, request);
+        }
+
+        private void DispatchClientSkillEffectPacketRequest(
+            int sourceSkillId,
+            int requestedAt,
+            PacketOwnedSkillEffectRequest request)
+        {
             if (request.Opcode <= 0 || request.Payload == null)
             {
                 return;
@@ -6152,7 +6174,12 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             PacketOwnedRandomMesoBagPresentation presentation = PacketOwnedRewardResultRuntime.CreateRandomMesoBagPresentation(result.Rank, result.MesoAmount);
-            _chat?.AddClientChatMessage(presentation.ChatLineText, currTickCount, presentation.ChatMessageType);
+            _chat?.AddClientChatMessage(
+                presentation.ChatLineText,
+                currTickCount,
+                presentation.ChatMessageType,
+                null,
+                presentation.ChatChannelId);
             bool openedRandomMesoBagOwner = ShowPacketOwnedRandomMesoBagWindow(presentation);
 
             string ownerResultText = openedRandomMesoBagOwner
@@ -6583,7 +6610,7 @@ namespace HaCreator.MapSimulator
                 getFlip,
                 fallbackPosition,
                 snapshotFacingRight,
-                delayMs: 0,
+                delayMs: definition.DelayMs,
                 intervalMs: definition.IntervalMs,
                 alpha: definition.Alpha,
                 currentTime,
@@ -12056,6 +12083,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioClientRawBufferLength = rawBufferLength;
                 _lastPacketOwnedRadioClientMmsPlaySucceeded = mmsPlayPlan.Started;
                 _lastPacketOwnedRadioClientMmsPlayFailureReason = mmsPlayPlan.FailureReason;
+                _lastPacketOwnedRadioMmsPlayPlan = mmsPlayPlan;
                 _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
                 _packetOwnedRadioClientHandle = null;
                 if (!mmsPlayPlan.Started)
@@ -12506,7 +12534,8 @@ namespace HaCreator.MapSimulator
             int msLength,
             int requestedPositionMs,
             int currentTick,
-            string rawBufferFailureReason = null)
+            string rawBufferFailureReason = null,
+            bool ailQuickLoadMemSucceeded = true)
         {
             int normalizedLength = Math.Max(0, msLength);
             int normalizedPosition = Math.Max(0, requestedPositionMs);
@@ -12575,6 +12604,31 @@ namespace HaCreator.MapSimulator
                     IwzSoundRawBufferQueried: true,
                     IwzSoundQueryInterfaceAttempted: true,
                     IwzSoundInterfaceRetainedBeforeRawBuffer: true);
+            }
+
+            if (!ailQuickLoadMemSucceeded)
+            {
+                return new PacketOwnedRadioMmsPlayPlan(
+                    TrackPropertyLoaded: true,
+                    SoundObjectLoaded: true,
+                    RawBufferLoaded: true,
+                    AilQuickLoadMemAttempted: true,
+                    AilQuickMsLengthAttempted: false,
+                    AilQuickSetMsPositionAttempted: false,
+                    AilQuickMsPositionAttempted: false,
+                    AilQuickPlayAttempted: false,
+                    AilQuickUnloadAttempted: false,
+                    Started: false,
+                    MsLength: normalizedLength,
+                    MsPosition: normalizedPosition,
+                    LastUpdateTick: int.MinValue,
+                    HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
+                    FailureReason: "CRadioManager::MMS_Play AIL_quick_load_mem returned null after the IWzSound raw buffer query.",
+                    IwzSoundRawBufferQueried: true,
+                    AilQuickLoadMemSucceeded: false,
+                    IwzSoundQueryInterfaceAttempted: true,
+                    IwzSoundInterfaceRetainedBeforeRawBuffer: true,
+                    AilQuickLoadMemFailureAfterRawBuffer: true);
             }
 
             if (normalizedLength < normalizedPosition)
@@ -12883,6 +12937,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioClientRawBufferLength = 0;
             _lastPacketOwnedRadioClientMmsPlaySucceeded = false;
             _lastPacketOwnedRadioClientMmsPlayFailureReason = completed ? "completed" : "stopped";
+            _lastPacketOwnedRadioMmsPlayPlan = default;
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -13248,7 +13303,7 @@ namespace HaCreator.MapSimulator
                 : _lastPacketOwnedRadioClientMmsPlayFailureReason;
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
-                $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
+                $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, ailLoadFailureAfterRaw={_lastPacketOwnedRadioMmsPlayPlan.AilQuickLoadMemFailureAfterRawBuffer}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
@@ -16504,6 +16559,131 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        internal static IReadOnlyList<PacketOwnedTutorNativeOperation> BuildPacketOwnedTutorTextMessageNativeOperationPlan(
+            int skillId,
+            string text,
+            int requestedWidth,
+            int durationMs,
+            int computedTextHeight,
+            int summonHeight)
+        {
+            int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(skillId)
+                ? skillId
+                : TutorRuntime.AranTutorSkillId;
+            int normalizedWidth = Math.Clamp(
+                requestedWidth <= 0 ? TutorRuntime.DefaultTextWidth : requestedWidth,
+                TutorRuntime.MinTextWidth,
+                TutorRuntime.MaxTextWidth);
+            int normalizedTextHeight = Math.Max(0, computedTextHeight);
+            int normalizedSummonHeight = summonHeight > 0
+                ? summonHeight
+                : normalizedSkillId == TutorRuntime.CygnusTutorSkillId
+                    ? TutorRuntime.CygnusTutorHeight
+                    : TutorRuntime.AranTutorHeight;
+
+            List<PacketOwnedTutorNativeOperation> operations = new()
+            {
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseExistingMessageLayer),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.StampMessageReceivedTick),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.StoreMessageDuration,
+                    DurationMs: Math.Max(0, durationMs))
+            };
+
+            if (string.IsNullOrEmpty(text))
+            {
+                operations.Add(new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.SkipEmptyTextMessageLayer));
+                return operations;
+            }
+
+            Point layerSize = ResolvePacketOwnedTutorTextMessageLayerSize(normalizedWidth, normalizedTextHeight);
+            Point layerMove = ResolvePacketOwnedTutorTextMessageLayerMove(normalizedWidth, normalizedTextHeight, normalizedSummonHeight);
+            int arrowLeft = ResolvePacketOwnedTutorTextMessageArrowLeft(normalizedWidth);
+            int arrowTop = ResolvePacketOwnedTutorTextMessageArrowTop(normalizedTextHeight);
+
+            operations.AddRange(new[]
+            {
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.RequestSummonedPropertyFixedSkillLevelOne,
+                    SkillId: normalizedSkillId,
+                    SkillLevel: ResolvePacketOwnedTutorSummonSkillLevel(normalizedSkillId)),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.QuerySummonedHeight,
+                    SkillId: normalizedSkillId,
+                    SkillLevel: ResolvePacketOwnedTutorSummonSkillLevel(normalizedSkillId),
+                    SummonHeight: normalizedSummonHeight,
+                    Source: ResolvePacketOwnedTutorSkillImageName(normalizedSkillId)),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.CreateTextAnalyzerWithRequestedWidth,
+                    LayerWidth: normalizedWidth),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AnalyzeTextWithTutorFontArray),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.StoreComputedTextHeight,
+                    LayerHeight: normalizedTextHeight),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.CreateTextMessageLayer,
+                    LayerWidth: layerSize.X,
+                    LayerHeight: layerSize.Y,
+                    Source: "IWzGr2D::CreateLayer"),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AssignMessageLayerWithAddRefRelease),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.BindMessageLayerToVectorController),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.BindMessageLayerToActionLayerParent),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.SetMessageLayerZ),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.RelMoveMessageLayerToOrigin),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.MoveMessageLayerByHalfWidthAndSummonHeight,
+                    LayerWidth: normalizedWidth,
+                    LayerHeight: normalizedTextHeight,
+                    SummonHeight: normalizedSummonHeight,
+                    OffsetX: layerMove.X,
+                    OffsetY: layerMove.Y),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.GetMessageLayerCanvas),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.DrawTutorialBalloonFrame,
+                    LayerWidth: normalizedWidth,
+                    LayerHeight: normalizedTextHeight,
+                    Source: "UI/ChatBalloon.img/tutorial"),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.DrawTutorialBalloonArrow,
+                    OffsetX: arrowLeft,
+                    OffsetY: arrowTop,
+                    Source: "UI/ChatBalloon.img/tutorial/arrow"),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.DrawAnalyzedTextRuns),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction,
+                    SkillId: normalizedSkillId)
+            });
+
+            return operations;
+        }
+
+        internal static Point ResolvePacketOwnedTutorTextMessageLayerSize(int requestedWidth, int computedTextHeight)
+        {
+            return new Point(
+                Math.Max(0, requestedWidth) + PacketOwnedTutorBalloonClientLeftInset + PacketOwnedTutorBalloonClientRightInset,
+                Math.Max(0, computedTextHeight) + PacketOwnedTutorBalloonClientLayerHeightPadding);
+        }
+
+        internal static Point ResolvePacketOwnedTutorTextMessageLayerMove(
+            int requestedWidth,
+            int computedTextHeight,
+            int summonHeight)
+        {
+            return new Point(
+                -(Math.Max(0, requestedWidth) / 2),
+                -(PacketOwnedTutorBalloonClientVerticalAnchorOffset + Math.Max(0, computedTextHeight) + Math.Max(0, summonHeight)));
+        }
+
+        internal static int ResolvePacketOwnedTutorTextMessageArrowLeft(int requestedWidth)
+        {
+            return Math.Max(0, requestedWidth / 2) + PacketOwnedTutorBalloonClientArrowLeftOffset;
+        }
+
+        internal static int ResolvePacketOwnedTutorTextMessageArrowTop(int computedTextHeight)
+        {
+            return Math.Max(0, computedTextHeight) + PacketOwnedTutorBalloonClientArrowTopOffset;
+        }
+
         private List<IDXObject> ResolvePacketOwnedTutorCueFrames(int cueIndex)
         {
             int normalizedIndex = Math.Max(0, cueIndex);
@@ -16661,9 +16841,10 @@ namespace HaCreator.MapSimulator
             int contentHeight,
             int actorHeight)
         {
+            Point layerMove = ResolvePacketOwnedTutorTextMessageLayerMove(requestedWidth, contentHeight, actorHeight);
             return new Point(
-                actorScreenPoint.X - Math.Max(0, requestedWidth / 2),
-                actorScreenPoint.Y - Math.Max(0, contentHeight) - Math.Max(0, actorHeight) - PacketOwnedTutorBalloonClientVerticalAnchorOffset);
+                actorScreenPoint.X + layerMove.X,
+                actorScreenPoint.Y + layerMove.Y);
         }
 
         internal static Rectangle ResolvePacketOwnedTutorBalloonLayerBounds(
@@ -16674,21 +16855,22 @@ namespace HaCreator.MapSimulator
             // Client evidence: CTutor::OnMessage(ZXString&,long,long) creates the
             // message layer at nWidth + 38 by m_nCTHeight + 92 before drawing the
             // WZ-backed tutorial balloon into that layer.
+            Point layerSize = ResolvePacketOwnedTutorTextMessageLayerSize(requestedWidth, contentHeight);
             return new Rectangle(
                 layerOrigin.X,
                 layerOrigin.Y,
-                Math.Max(0, requestedWidth) + PacketOwnedTutorBalloonClientLeftInset + PacketOwnedTutorBalloonClientRightInset,
-                Math.Max(0, contentHeight) + PacketOwnedTutorBalloonClientLayerHeightPadding);
+                layerSize.X,
+                layerSize.Y);
         }
 
         internal static int ResolvePacketOwnedTutorBalloonArrowLeft(Rectangle bodyBounds, int requestedWidth)
         {
-            return bodyBounds.X + Math.Max(0, requestedWidth / 2) + PacketOwnedTutorBalloonClientArrowLeftOffset;
+            return bodyBounds.X + ResolvePacketOwnedTutorTextMessageArrowLeft(requestedWidth);
         }
 
         internal static int ResolvePacketOwnedTutorBalloonArrowTop(Rectangle bodyBounds, int contentHeight)
         {
-            return bodyBounds.Y + Math.Max(0, contentHeight) + PacketOwnedTutorBalloonClientArrowTopOffset;
+            return bodyBounds.Y + ResolvePacketOwnedTutorTextMessageArrowTop(contentHeight);
         }
 
         internal static Rectangle ResolvePacketOwnedTutorBalloonArrowBounds(
@@ -17238,14 +17420,16 @@ namespace HaCreator.MapSimulator
 
         private void ArmPassiveTransferRequestFromFollowCharacterTransferDetach(bool transferField)
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldArmQueuedRetryFromFollowCharacterTransferDetach(
+            PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner writerOwner =
+                PassiveTransferFieldReadinessEvaluator.ResolveQueuedRetryWriterFromFollowCharacterTransferDetach(
                     isLocalUser: true,
-                    transferField))
+                    transferField);
+            if (!PassiveTransferFieldReadinessEvaluator.IsRecognizedQueuedRetryWriterOwner(writerOwner))
             {
                 return;
             }
 
-            ArmPassiveTransferRequest(PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.FollowCharacterTransferDetach);
+            ArmPassiveTransferRequest(writerOwner);
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(FollowCharacterFailureInfo info)

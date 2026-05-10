@@ -126,6 +126,14 @@ namespace HaCreator.MapSimulator
         // CChatHelper::HistoryAdd trims local edit history to eight retained entries.
         private const int MAX_INPUT_HISTORY = 8;
         private const int MAX_WHISPER_CANDIDATES = 50;
+        private const int ClientChatHelperMuteWindowMs = 0xAF0;
+        private const int ClientChatHelperRecentResetMs = 0x7530;
+        private const int ClientChatHelperFloodWindowMs = 0x7D0;
+        private const int ClientChatHelperRecentRepeatLimit = 4;
+        private const int ClientChatHelperChatTimestampLimit = 4;
+        private const int ClientChatHelperRepeatedMessageStringPoolId = 0x390;
+        private const int ClientChatHelperFloodMessageStringPoolId = 0x391;
+        private const int ClientChatHelperContextBlockedStringPoolId = 0x392;
         #endregion
 
         #region Fields
@@ -173,6 +181,14 @@ namespace HaCreator.MapSimulator
         private readonly List<string> _inputHistory = new List<string>();
         private int _historyIndex = -1; // -1 means not browsing history
         private string _savedCurrentInput = ""; // Saves current input when browsing history
+        private readonly List<string> _clientChatHelperRecentMessages = new List<string>(ClientChatHelperRecentRepeatLimit);
+        private readonly int[] _clientChatHelperChatTimestamps = new int[ClientChatHelperChatTimestampLimit];
+        private readonly bool[] _clientChatHelperChatTimestampValid = new bool[ClientChatHelperChatTimestampLimit];
+        private int _clientChatHelperChatIndex;
+        private int _clientChatHelperMutedTime;
+        private int _clientChatHelperLastCheckedTime;
+        private bool _clientChatHelperHasMutedTime;
+        private bool _clientChatHelperHasLastCheckedTime;
         #endregion
 
         #region Properties
@@ -198,6 +214,7 @@ namespace HaCreator.MapSimulator
         internal Func<string> ClipboardTextGetter { get; set; } = TryGetSystemClipboardText;
         internal Action<string> ClipboardTextSetter { get; set; } = TrySetSystemClipboardText;
         internal Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
+        internal bool IsClientChatContextBlocked { get; set; }
 
         internal ClientClaimChatLogResult BuildClientClaimChatLogOfTwoCharacters(
             string targetCharacterName,
@@ -431,9 +448,6 @@ namespace HaCreator.MapSimulator
                     if (_inputText.Length > 0)
                     {
                         string message = _inputText.ToString();
-
-                        // Add to input history
-                        AddToInputHistory(message);
 
                         _inputText.Clear();
                         _cursorPosition = 0;
@@ -1282,6 +1296,145 @@ namespace HaCreator.MapSimulator
             _savedCurrentInput = "";
         }
 
+        private bool TryApplyClientChatHelperTryChat(string originalMessage, int tickCount, out string processedMessage)
+        {
+            processedMessage = originalMessage ?? string.Empty;
+
+            if (_clientChatHelperHasMutedTime
+                && HasClientChatHelperElapsedLessThan(tickCount, _clientChatHelperMutedTime, ClientChatHelperMuteWindowMs))
+            {
+                return false;
+            }
+
+            if (IsClientChatContextBlocked)
+            {
+                AddClientChatMessage(
+                    ResolveClientChatHelperContextBlockedMessage(),
+                    tickCount,
+                    8);
+                return false;
+            }
+
+            if (!ClientCurseProcessParity.TryProcessString(
+                    processedMessage,
+                    ignoreNewLine: false,
+                    out processedMessage,
+                    out _,
+                    out string curseNotice))
+            {
+                ShowClientChatHelperNotice(curseNotice ?? ClientCurseProcessParity.GetInappropriateContentNotice(), tickCount);
+                return false;
+            }
+
+            if (_clientChatHelperHasLastCheckedTime
+                && !HasClientChatHelperElapsedLessThan(tickCount, _clientChatHelperLastCheckedTime, ClientChatHelperRecentResetMs))
+            {
+                _clientChatHelperRecentMessages.Clear();
+                _clientChatHelperLastCheckedTime = tickCount;
+            }
+            else if (!_clientChatHelperHasLastCheckedTime)
+            {
+                _clientChatHelperLastCheckedTime = tickCount;
+                _clientChatHelperHasLastCheckedTime = true;
+            }
+
+            _clientChatHelperRecentMessages.Add(originalMessage ?? string.Empty);
+            while (_clientChatHelperRecentMessages.Count > ClientChatHelperRecentRepeatLimit)
+            {
+                _clientChatHelperRecentMessages.RemoveAt(0);
+            }
+
+            if (_clientChatHelperRecentMessages.Count == ClientChatHelperRecentRepeatLimit
+                && AreClientChatHelperRecentMessagesEqual())
+            {
+                MuteClientChatHelper(tickCount);
+                ShowClientChatHelperNotice(ResolveClientChatHelperRepeatedMessageNotice(), tickCount);
+                return false;
+            }
+
+            int currentIndex = _clientChatHelperChatIndex;
+            _clientChatHelperChatTimestamps[currentIndex] = tickCount;
+            _clientChatHelperChatTimestampValid[currentIndex] = true;
+            int nextIndex = (currentIndex + 1) % ClientChatHelperChatTimestampLimit;
+            _clientChatHelperChatIndex = nextIndex;
+
+            if (_clientChatHelperChatTimestampValid[nextIndex]
+                && HasClientChatHelperElapsedLessThan(
+                    tickCount,
+                    _clientChatHelperChatTimestamps[nextIndex],
+                    ClientChatHelperFloodWindowMs))
+            {
+                MuteClientChatHelper(tickCount);
+                ShowClientChatHelperNotice(ResolveClientChatHelperFloodNotice(), tickCount);
+                return false;
+            }
+
+            AddToInputHistory(originalMessage);
+            return true;
+        }
+
+        private bool AreClientChatHelperRecentMessagesEqual()
+        {
+            if (_clientChatHelperRecentMessages.Count == 0)
+            {
+                return false;
+            }
+
+            string first = _clientChatHelperRecentMessages[0];
+            for (int i = 1; i < _clientChatHelperRecentMessages.Count; i++)
+            {
+                if (!string.Equals(first, _clientChatHelperRecentMessages[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void MuteClientChatHelper(int tickCount)
+        {
+            _clientChatHelperMutedTime = tickCount;
+            _clientChatHelperHasMutedTime = true;
+        }
+
+        private static bool HasClientChatHelperElapsedLessThan(int currentTick, int previousTick, int thresholdMs)
+        {
+            return unchecked((uint)(currentTick - previousTick)) < (uint)thresholdMs;
+        }
+
+        private void ShowClientChatHelperNotice(string notice, int tickCount)
+        {
+            AddErrorMessage(notice, tickCount);
+        }
+
+        internal static string ResolveClientChatHelperRepeatedMessageNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperRepeatedMessageStringPoolId,
+                "Please do not repeat the same message.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string ResolveClientChatHelperFloodNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperFloodMessageStringPoolId,
+                "Please wait before chatting again.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string ResolveClientChatHelperContextBlockedMessage()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientChatHelperContextBlockedStringPoolId,
+                "You cannot chat right now.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
         /// <summary>
         /// Converts a keyboard key to a character
         /// </summary>
@@ -2022,15 +2175,20 @@ namespace HaCreator.MapSimulator
             string prefix = GetTargetPrefix(_chatTarget);
             ClientChatLogType chatLogType = GetTargetChatLogType(_chatTarget);
             Color color = ResolveClientChatLogColor(chatLogType);
-            if (string.IsNullOrEmpty(prefix))
+            if (!TryApplyClientChatHelperTryChat(message, tickCount, out string processedMessage))
             {
-                AddMessage(message, color, tickCount, (int)chatLogType);
-                MessageSubmitted?.Invoke(message, tickCount);
                 return;
             }
 
-            AddMessage(FormatLocalGroupChatEcho(message, prefix), color, tickCount, (int)chatLogType);
-            MessageSubmitted?.Invoke(message, tickCount);
+            if (string.IsNullOrEmpty(prefix))
+            {
+                AddMessage(processedMessage, color, tickCount, (int)chatLogType);
+                MessageSubmitted?.Invoke(processedMessage, tickCount);
+                return;
+            }
+
+            AddMessage(FormatLocalGroupChatEcho(processedMessage, prefix), color, tickCount, (int)chatLogType);
+            MessageSubmitted?.Invoke(processedMessage, tickCount);
         }
 
         private ChatSubmitDisposition TryHandleSlashCommand(string message, int tickCount)
@@ -2156,16 +2314,22 @@ namespace HaCreator.MapSimulator
             string prefix = GetTargetPrefix(targetType);
             ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
             Color color = ResolveClientChatLogColor(chatLogType);
+            if (!TryApplyClientChatHelperTryChat(payload, tickCount, out string processedPayload))
+            {
+                disposition = ChatSubmitDisposition.CloseChat;
+                return true;
+            }
+
             if (string.IsNullOrEmpty(prefix))
             {
-                AddMessage(payload, color, tickCount, (int)chatLogType);
+                AddMessage(processedPayload, color, tickCount, (int)chatLogType);
             }
             else
             {
-                AddMessage(FormatLocalGroupChatEcho(payload, prefix), color, tickCount, (int)chatLogType);
+                AddMessage(FormatLocalGroupChatEcho(processedPayload, prefix), color, tickCount, (int)chatLogType);
             }
 
-            MessageSubmitted?.Invoke(payload, tickCount);
+            MessageSubmitted?.Invoke(processedPayload, tickCount);
             disposition = ChatSubmitDisposition.CloseChat;
 
             return true;
@@ -2178,15 +2342,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!TryApplyClientChatHelperTryChat(message, tickCount, out string processedMessage))
+            {
+                return;
+            }
+
             AddMessage(
-                $"> {_whisperTarget}: {message}",
+                $"> {_whisperTarget}: {processedMessage}",
                 OutgoingWhisperMessageColor,
                 tickCount,
                 (int)ClientChatLogType.OutgoingWhisper,
                 _whisperTarget);
             _lastOutgoingWhisperTarget = _whisperTarget ?? string.Empty;
-            _lastOutgoingWhisperText = message ?? string.Empty;
-            MessageSubmitted?.Invoke(message, tickCount);
+            _lastOutgoingWhisperText = processedMessage ?? string.Empty;
+            MessageSubmitted?.Invoke(processedMessage, tickCount);
         }
 
         private bool TryArmWhisperTarget(string whisperTarget, int tickCount)

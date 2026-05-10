@@ -82,6 +82,10 @@ namespace HaCreator.MapSimulator.Loaders
             public int FrameMetadataCount { get; init; }
             public bool HasActionSpeakMetadata { get; init; }
             public int ActionSpeakConditionGroupCount { get; init; }
+            public int ParentActionSpeakConditionGroupCount { get; init; }
+            public int VariantActionSpeakConditionGroupCount { get; init; }
+            public int ActionSpeakVariantCount { get; init; }
+            public int ActionSpeakMessageCount { get; init; }
             public bool AppendsReversePlayback { get; init; }
             public bool UsesClientSlotOwner { get; init; }
             public bool RefreshesLastAccessedOnCacheHit { get; init; }
@@ -1500,6 +1504,10 @@ namespace HaCreator.MapSimulator.Loaders
 
             MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata =
                 BuildMobActionSpeakMetadata(actionProperty?["speak"]);
+            CountMobActionSpeakConditionGroups(
+                actionSpeakMetadata,
+                out int parentConditionGroupCount,
+                out int variantConditionGroupCount);
 
             return new MobActionNativeCacheTrace
             {
@@ -1514,7 +1522,11 @@ namespace HaCreator.MapSimulator.Loaders
                 DirectCanvasFrameCount = CountMobActionFrameCanvasesForTests(actionProperty),
                 FrameMetadataCount = CountMobActionFrameMetadataForTests(actionProperty),
                 HasActionSpeakMetadata = actionSpeakMetadata != null,
-                ActionSpeakConditionGroupCount = CountMobActionSpeakConditionGroups(actionSpeakMetadata),
+                ActionSpeakConditionGroupCount = parentConditionGroupCount + variantConditionGroupCount,
+                ParentActionSpeakConditionGroupCount = parentConditionGroupCount,
+                VariantActionSpeakConditionGroupCount = variantConditionGroupCount,
+                ActionSpeakVariantCount = actionSpeakMetadata?.Variants?.Count ?? 0,
+                ActionSpeakMessageCount = actionSpeakMetadata?.Messages?.Count ?? 0,
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
                 UsesClientSlotOwner = usesClientSlotOwner,
                 RefreshesLastAccessedOnCacheHit = usesClientSlotOwner,
@@ -1913,21 +1925,34 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static int CountMobActionSpeakConditionGroups(MobAnimationSet.ActionSpeakMetadata metadata)
         {
+            CountMobActionSpeakConditionGroups(
+                metadata,
+                out int parentConditionGroupCount,
+                out int variantConditionGroupCount);
+            return parentConditionGroupCount + variantConditionGroupCount;
+        }
+
+        private static void CountMobActionSpeakConditionGroups(
+            MobAnimationSet.ActionSpeakMetadata metadata,
+            out int parentConditionGroupCount,
+            out int variantConditionGroupCount)
+        {
             if (metadata == null)
             {
-                return 0;
+                parentConditionGroupCount = 0;
+                variantConditionGroupCount = 0;
+                return;
             }
 
-            int count = metadata.ConditionGroups?.Count ?? 0;
+            parentConditionGroupCount = metadata.ConditionGroups?.Count ?? 0;
+            variantConditionGroupCount = 0;
             if (metadata.Variants != null)
             {
                 foreach (MobAnimationSet.ActionSpeakVariant variant in metadata.Variants)
                 {
-                    count += variant?.ConditionGroups?.Count ?? 0;
+                    variantConditionGroupCount += variant?.ConditionGroups?.Count ?? 0;
                 }
             }
-
-            return count;
         }
 
         private static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadata(WzImageProperty speakProperty)

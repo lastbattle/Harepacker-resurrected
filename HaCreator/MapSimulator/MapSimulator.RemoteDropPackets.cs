@@ -931,18 +931,9 @@ namespace HaCreator.MapSimulator
 
         private int ResolveDropPartyActorOwnerId(int actorId)
         {
-            if (actorId <= 0)
-            {
-                if (TryDecodeRemotePetPickupActorId(actorId, out int remotePetOwnerId, out _))
-                {
-                    return remotePetOwnerId;
-                }
-
-                return actorId;
-            }
-
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
-            if (localCharacterId > 0
+            if (actorId > 0
+                && localCharacterId > 0
                 && _playerManager?.Pets?.ActivePets != null)
             {
                 foreach (var pet in _playerManager.Pets.ActivePets)
@@ -954,14 +945,37 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (TryResolveObservedDropPartyActorOwner(actorId, out int observedOwnerId))
+            return ResolveDropPartyActorOwnerIdForPacketParity(
+                actorId,
+                _observedDropPartyActorParents,
+                _observedDropPartyActorOwners);
+        }
+
+        internal static int ResolveDropPartyActorOwnerIdForPacketParity(
+            int actorId,
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            IReadOnlyDictionary<int, int> actorOwners)
+        {
+            if (actorId == 0)
+            {
+                return 0;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(actorId, out int remotePetOwnerId, out _))
+            {
+                return remotePetOwnerId;
+            }
+
+            if (actorOwners != null
+                && actorOwners.TryGetValue(actorId, out int observedOwnerId)
+                && observedOwnerId > 0)
             {
                 return observedOwnerId;
             }
 
             if (TryResolveObservedDropPartyLinkedOwnerAlias(
-                _observedDropPartyActorParents,
-                _observedDropPartyActorOwners,
+                actorParents,
+                actorOwners,
                 actorId,
                 out int linkedOwnerCharacterId,
                 out _))
@@ -1173,18 +1187,6 @@ namespace HaCreator.MapSimulator
             }
 
             _observedDropPartyActorOwners[actorId] = ownerCharacterId;
-        }
-
-        private bool TryResolveObservedDropPartyActorOwner(int actorId, out int ownerCharacterId)
-        {
-            if (actorId != 0 && _observedDropPartyActorOwners.TryGetValue(actorId, out int observedOwnerId) && observedOwnerId > 0)
-            {
-                ownerCharacterId = observedOwnerId;
-                return true;
-            }
-
-            ownerCharacterId = 0;
-            return false;
         }
 
         private void ClearObservedDropPartyActorOwners()

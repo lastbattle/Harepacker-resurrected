@@ -93,6 +93,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedFieldClockCakePieLargeOffsetY = 25;
         private const int PacketOwnedFieldClockCakePieLargeWidth = 391;
         private const int PacketOwnedFieldClockCakePieLargeHeight = 83;
+        private const int PacketOwnedFieldClockClientWindowStyle = unchecked((int)0xC00616FC);
         private const int RemoteEvolRingFloatNoticeDurationMs = 10000;
         private const int RemoteEvolRingFloatNoticeReferenceWidth = 570;
         private const int RemoteEvolRingFloatNoticeReferenceHeight = 152;
@@ -2907,7 +2908,9 @@ namespace HaCreator.MapSimulator
                     DrawSolidWindow: false,
                     Color.Transparent,
                     PacketOwnedFieldClockDefaultTextColor,
-                    PreserveRawOffset: true);
+                    PreserveRawOffset: true,
+                    ClientCreateOrigin: "Origin_CT",
+                    UsesClientInitParam: true);
             }
 
             PacketFieldClockVisualVariant variant = state?.Variant ?? PacketFieldClockVisualVariant.Default;
@@ -2921,7 +2924,9 @@ namespace HaCreator.MapSimulator
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockEventHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
                     DrawSolidWindow: true,
                     PacketOwnedFieldClockEventBackColor,
-                    PacketOwnedFieldClockEventTextColor),
+                    PacketOwnedFieldClockEventTextColor,
+                    ClientCreateOrigin: "Origin_LT",
+                    UsesClientInitParam: true),
                 PacketFieldClockVisualVariant.CakePieSmall => new PacketOwnedFieldClockLayout(
                     PacketOwnedUiAnchorMode.WindowTopLeft,
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallOffsetX, renderWidth, PacketOwnedFieldClockReferenceWidth),
@@ -2930,7 +2935,9 @@ namespace HaCreator.MapSimulator
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
                     DrawSolidWindow: false,
                     Color.Transparent,
-                    PacketOwnedFieldClockDefaultTextColor),
+                    PacketOwnedFieldClockDefaultTextColor,
+                    ClientCreateOrigin: "Origin_LT",
+                    UsesClientInitParam: false),
                 PacketFieldClockVisualVariant.CakePieLarge => new PacketOwnedFieldClockLayout(
                     PacketOwnedUiAnchorMode.WindowTopLeft,
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeOffsetX, renderWidth, PacketOwnedFieldClockReferenceWidth),
@@ -2939,7 +2946,9 @@ namespace HaCreator.MapSimulator
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
                     DrawSolidWindow: false,
                     Color.Transparent,
-                    PacketOwnedFieldClockDefaultTextColor),
+                    PacketOwnedFieldClockDefaultTextColor,
+                    ClientCreateOrigin: "Origin_LT",
+                    UsesClientInitParam: false),
                 _ => new PacketOwnedFieldClockLayout(
                     PacketOwnedUiAnchorMode.WindowCenter,
                     0,
@@ -2948,7 +2957,9 @@ namespace HaCreator.MapSimulator
                     ScalePacketOwnedUiOffset(PacketOwnedFieldClockDefaultHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
                     DrawSolidWindow: false,
                     Color.Transparent,
-                    PacketOwnedFieldClockDefaultTextColor)
+                    PacketOwnedFieldClockDefaultTextColor,
+                    ClientCreateOrigin: "Origin_CT",
+                    UsesClientInitParam: true)
             };
         }
 
@@ -3017,6 +3028,27 @@ namespace HaCreator.MapSimulator
                 layout.BackColor.PackedValue,
                 layout.FallbackTextColor.PackedValue,
                 layout.DrawSolidWindow);
+        }
+
+        internal static (int WindowStyle, string CreateOrigin, bool UsesInitParam) GetPacketOwnedFieldClockCreateWndForTest(
+            PacketFieldClockVisualVariant variant,
+            int renderWidth,
+            int renderHeight)
+        {
+            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
+                new PacketFieldClockVisualState(
+                    PacketFieldClockVisualKind.Countdown,
+                    variant,
+                    0,
+                    0,
+                    false,
+                    0,
+                    0,
+                    0,
+                    "test"),
+                renderWidth,
+                renderHeight);
+            return (layout.ClientWindowStyle, layout.ClientCreateOrigin, layout.UsesClientInitParam);
         }
 
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, int Width, int Height, uint BackColorArgb, uint TextColorArgb, bool DrawSolidWindow) GetPacketOwnedFieldPropertyClockLayoutForTest(
@@ -3650,7 +3682,10 @@ namespace HaCreator.MapSimulator
             bool DrawSolidWindow,
             Color BackColor,
             Color FallbackTextColor,
-            bool PreserveRawOffset = false);
+            bool PreserveRawOffset = false,
+            int ClientWindowStyle = PacketOwnedFieldClockClientWindowStyle,
+            string ClientCreateOrigin = "Origin_LT",
+            bool UsesClientInitParam = true);
 
         private readonly record struct PacketOwnedUiAlphaRange(
             byte StartAlpha,

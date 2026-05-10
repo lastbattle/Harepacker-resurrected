@@ -214,7 +214,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|recovery|packets>|close]]");
             }
         }
 
@@ -1329,19 +1329,20 @@ namespace HaCreator.MapSimulator
                 case "page":
                     if (args.Length < 2)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord page <summary|dot|packets>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord page <summary|dot|recovery|packets>");
                     }
 
                     int pageIndex = args[1].ToLowerInvariant() switch
                     {
                         "summary" => 0,
                         "dot" => 1,
-                        "packets" => 2,
+                        "recovery" => 2,
+                        "packets" => 3,
                         _ => -1
                     };
                     if (pageIndex < 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord page <summary|dot|packets>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord page <summary|dot|recovery|packets>");
                     }
 
                     _packetOwnedBattleRecordRuntime.SelectPage(pageIndex);
@@ -1362,7 +1363,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|recovery|packets>|close]");
             }
         }
 

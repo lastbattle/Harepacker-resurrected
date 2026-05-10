@@ -5,6 +5,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class SummonDamageRuntimeRules
     {
+        public readonly record struct BodyContactDamageResult(
+            int BaseDamage,
+            MobDamageType DamageType,
+            int Damage);
+
         public static int ResolveRemainingHealth(int currentHealth, int maxHealth, int damage)
         {
             int resolvedMaxHealth = Math.Max(1, maxHealth);
@@ -87,6 +92,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool currentAttackIsMagic,
             Func<int, MobDamageType, int> outgoingDamageResolver)
         {
+            return ResolveBodyContactClientDamageResult(
+                physicalDamage,
+                currentAttackDamage,
+                magicalDamage,
+                currentAttackIsMagic,
+                outgoingDamageResolver).Damage;
+        }
+
+        public static BodyContactDamageResult ResolveBodyContactClientDamageResult(
+            int physicalDamage,
+            int currentAttackDamage,
+            int magicalDamage,
+            bool currentAttackIsMagic,
+            Func<int, MobDamageType, int> outgoingDamageResolver)
+        {
             int baseDamage = ResolveBodyContactBaseDamage(
                 physicalDamage,
                 currentAttackDamage,
@@ -94,7 +114,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentAttackIsMagic);
             MobDamageType damageType = ResolveBodyContactDamageType(currentAttackIsMagic);
             int resolvedDamage = outgoingDamageResolver?.Invoke(baseDamage, damageType) ?? baseDamage;
-            return Math.Max(1, resolvedDamage);
+            return new BodyContactDamageResult(baseDamage, damageType, Math.Max(1, resolvedDamage));
         }
 
         public static int ResolveBodyContactRelativeMotionX(

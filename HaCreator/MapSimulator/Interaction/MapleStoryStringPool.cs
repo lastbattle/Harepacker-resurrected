@@ -113,6 +113,19 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0FAF] = "UI/UIWindow.img/AvatarMegaphone",
             [0x0FB0] = "Map/MapHelper.img/AvatarMegaphone/name/0",
             [0x0FB1] = "Map/MapHelper.img/AvatarMegaphone/name/1",
+            // Recovered from MapleStory.exe v95 wedding wish-list owners.
+            // The generated table is shifted around this block, so pin the
+            // `CWishListRecvDlg`, `CWishListGiveDlg`, and `CWishListInputDlg`
+            // CUtilDlg text ids that gate opcode 162 request routing.
+            [0x036C] = "Are you sure you want to take it out?",
+            [0x0370] = "How many do you wish to send?",
+            [0x0374] = "Please check if your inventory is full or not.",
+            [0x1097] = "Do you want to register this wish list now?",
+            [0x1098] = "You cannot give more than one present for each wishlist.",
+            [0x10BE] = "Your wish list is full.",
+            [0x10C0] = "Once the gift is sent, it cannot be canceled. Do you still want to send it?",
+            [0x10C1] = "You have sent a gift.",
+            [0x10C2] = "Failed to send the gift.",
             // Recovered from MapleStory.exe v95 `CUserLocal::OnMesoGive_Succeeded`,
             // `CUserLocal::OnMesoGive_Failed`, `CUserLocal::OnRandomMesobag_Succeeded`,
             // `CUserLocal::OnRandomMesobag_Failed`, `CUIRandomMesoBag::CUIRandomMesoBag`,
@@ -440,6 +453,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x108E] = "BgmEvent/wedding",
             [0x108F] = "BgmEvent/wedding",
             [0x1090] = "Would you like to give your blessing to the couple?",
+            // Recovered from MapleStory.exe v95 `CUIFadeYesNo::Draw`. The generated
+            // table drifts for these shared fade yes/no payload lines; keep the
+            // owner-local level/job and apply/follow prompt suffixes on the same
+            // StringPool ids used by the client draw switch.
+            [0x1597] = "Lv.%d %s",
+            [0x1599] = "Follow request",
+            [0x1658] = "Application request",
             // Recovered from MapleStory.exe v95 `CField_AriantArena::OnUserScore`,
             // `CField_AriantArena::UpdateScoreAndRank`, and
             // `CField_AriantArena::OnShowResult`. Pin these Ariant Arena ids so the
@@ -447,6 +467,7 @@ namespace HaCreator.MapSimulator.Interaction
             // client-confirmed StringPool seam when generated-table ordering drifts.
             [0x1123] = "UI/UIWindow.img/AriantMatch/characterIcon/%d",
             [0x1124] = "UI/UIWindow.img/AriantMatch/Result",
+            [0x1125] = "Sound/MiniGame.img/Show",
             [0x112A] = "%d Point",
             // Recovered from MapleStory.exe v95 `CField_MonsterCarnival::OnRequestResult`,
             // `OnProcessForDeath`, `OnShowGameResult`, and `OnShowMemberOutMsg`. The

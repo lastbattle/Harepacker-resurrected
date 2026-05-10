@@ -520,6 +520,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _tradeAutoCrcReplyPending;
         private DateTime? _entrustedPermitExpiresAtUtc;
         private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
+        private EntrustedShopChildDialogKind? _entrustedPendingChildDialogKind;
         private int _entrustedVisitListSelectedIndex = -1;
         private int _entrustedBlacklistSelectedIndex = -1;
         private EntrustedShopBlacklistPromptRequest _entrustedBlacklistPromptRequest;
@@ -702,12 +703,15 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
         public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && !_miniRoomOmokRetreatRequestSentMatch && CountLocalOmokStones() > 0;
         public bool CanMiniRoomOmokGiveUp => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public int MiniRoomOmokLocalStoneCount => CountLocalOmokStones();
         public bool CanRequestEntrustedVisitListDialog => Kind == SocialRoomKind.EntrustedShop
             && _miniRoomLocalSeatIndex == 0
-            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList;
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList
+            && _entrustedPendingChildDialogKind != EntrustedShopChildDialogKind.VisitList;
         public bool CanRequestEntrustedBlacklistDialog => Kind == SocialRoomKind.EntrustedShop
             && _miniRoomLocalSeatIndex == 0
-            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist;
+            && _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist
+            && _entrustedPendingChildDialogKind != EntrustedShopChildDialogKind.Blacklist;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
@@ -882,6 +886,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SavedVisitors = _savedVisitors.ToList(),
                 EntrustedVisitListSelectedIndex = _entrustedVisitListSelectedIndex,
                 EntrustedBlacklistSelectedIndex = _entrustedBlacklistSelectedIndex,
+                EntrustedPendingChildDialogKind = _entrustedPendingChildDialogKind,
                 EntrustedChildDialogStatus = _entrustedChildDialogStatus,
                 EntrustedBlacklistLastOutboundPacketSummary = _entrustedBlacklistLastOutboundPacketSummary,
                 EntrustedBlacklistPendingMutationName = _entrustedBlacklistPendingMutationName,
@@ -975,6 +980,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
                 _entrustedVisitListSelectedIndex = source?.EntrustedVisitListSelectedIndex ?? _defaultSnapshot.EntrustedVisitListSelectedIndex;
                 _entrustedBlacklistSelectedIndex = source?.EntrustedBlacklistSelectedIndex ?? _defaultSnapshot.EntrustedBlacklistSelectedIndex;
+                _entrustedPendingChildDialogKind = source?.EntrustedPendingChildDialogKind ?? _defaultSnapshot.EntrustedPendingChildDialogKind;
                 _entrustedChildDialogStatus = source?.EntrustedChildDialogStatus ?? _defaultSnapshot.EntrustedChildDialogStatus ?? string.Empty;
                 _entrustedBlacklistLastOutboundPacketSummary = source?.EntrustedBlacklistLastOutboundPacketSummary ?? _defaultSnapshot.EntrustedBlacklistLastOutboundPacketSummary ?? string.Empty;
                 _entrustedBlacklistPendingMutationName = source?.EntrustedBlacklistPendingMutationName ?? _defaultSnapshot.EntrustedBlacklistPendingMutationName ?? string.Empty;
@@ -1297,7 +1303,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string DescribePacketOwnerStatus()
         {
-            return _shopDialogPacketOwner?.DescribeStatus(_lastPacketOwnerSummary) ?? _lastPacketOwnerSummary;
+            string packetOwnerStatus = _shopDialogPacketOwner?.DescribeStatus(_lastPacketOwnerSummary) ?? _lastPacketOwnerSummary;
+            return Kind == SocialRoomKind.TradingRoom
+                ? $"{packetOwnerStatus} | {TradingRoomPacketTable.DescribeRecoveredButtonTable()}"
+                : packetOwnerStatus;
         }
 
         public void RefreshTimedState(DateTime utcNow)
@@ -1885,7 +1894,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            StatusMessage = "Trading-room BtEnter stayed on the dedicated CTradingRoomDlg surface; chat text still enters through the shared MiniRoom base chat packet owner.";
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtEnter",
+                "Trading-room BtEnter is a recovered CTradingRoomDlg button, but its client route enters the shared MiniRoom base chat owner instead of the CTradingRoomDlg::OnPacket trade subtype table.");
             PersistState();
         }
 
@@ -1896,7 +1907,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            StatusMessage = "Trading-room BtClame stays on the dedicated CTradingRoomDlg/CDialog control surface; settlement remains owned by subtype 17 and subtype 20 packet verification.";
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtClame",
+                "Trading-room BtClame stays on the recovered CTradingRoomDlg/CDialog control route; settlement remains owned by subtype 17 and subtype 20 packet verification, not a separate acceptance packet.");
             PersistState();
         }
 
@@ -1907,8 +1920,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            StatusMessage = "Trading-room BtReset is WZ-authored, but no CTradingRoomDlg::OnPacket reset branch is recovered; simulator reset is available only through previewreset.";
+            StatusMessage = BuildTradingRoomButtonStatus(
+                "BtReset",
+                "Trading-room BtReset is WZ-authored and recovered as a dialog control route, but no CTradingRoomDlg::OnPacket reset branch is recovered; simulator reset remains preview-only.");
             PersistState();
+        }
+
+        private static string BuildTradingRoomButtonStatus(string buttonName, string fallback)
+        {
+            if (!TradingRoomPacketTable.TryResolveRecoveredButtonRoute(
+                buttonName,
+                out int controlId,
+                out string handler,
+                out TradingRoomPacketTable.TradingRoomButtonRoute route))
+            {
+                return fallback;
+            }
+
+            return $"{fallback} Recovered {buttonName} control id {controlId} route {route}: {handler}.";
         }
 
         private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
@@ -3735,9 +3764,46 @@ namespace HaCreator.MapSimulator.Interaction
                 case MiniRoomBaseCheckSsnPacketSubType:
                     return TryApplyMiniRoomBaseCheckSsnPacket(reader, out message);
                 default:
-                    message = $"Mini-room base packet subtype {packetSubType} is not modeled for this room.";
-                    return false;
+                    return TryDispatchMiniRoomBaseDefaultLiveInstancePacket(packetSubType, reader, tickCount, out message);
             }
+        }
+
+        private bool TryDispatchMiniRoomBaseDefaultLiveInstancePacket(byte packetSubType, PacketReader reader, int tickCount, out string message)
+        {
+            byte[] forwardedPayload = new byte[1 + Math.Max(0, reader?.Remaining ?? 0)];
+            forwardedPayload[0] = packetSubType;
+            if (reader != null && reader.Remaining > 0)
+            {
+                byte[] remaining = reader.ReadBytes(reader.Remaining);
+                Buffer.BlockCopy(remaining, 0, forwardedPayload, 1, remaining.Length);
+            }
+
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
+            {
+                PacketReader forwardedReader = new(forwardedPayload);
+                byte forwardedPacketType = forwardedReader.ReadByte();
+                string ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                string ownerMessage = string.Empty;
+                bool handled = _shopDialogPacketOwner?.TryDispatch(forwardedPayload, forwardedReader, forwardedPacketType, tickCount, out ownerMessage) == true;
+                message = handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into {ownerName}. {ownerMessage}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into {ownerName}, but the room-specific owner did not model it. {ownerMessage}";
+                return handled;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                PacketReader forwardedReader = new(forwardedPayload);
+                byte forwardedPacketType = forwardedReader.ReadByte();
+                bool handled = TryDispatchMiniRoomPacket(forwardedReader, forwardedPacketType, tickCount, out string ownerMessage);
+                message = handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into CMiniRoomBaseDlg-derived OnPacket. {ownerMessage}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase default live-instance branch forwarded subtype {packetSubType} into CMiniRoomBaseDlg-derived OnPacket, but it was not modeled. {ownerMessage}";
+                return handled;
+            }
+
+            message = $"Mini-room base packet subtype {packetSubType} is not modeled for this room.";
+            return false;
         }
 
         private bool TryApplyMiniRoomBaseInvitePacket(PacketReader reader, out string message)
@@ -4073,6 +4139,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void ResetEntrustedChildDialogStateForEnterResult(int localSeatIndex, bool decodedOwnerLedger, bool soldDialogVisible)
         {
             _entrustedChildDialogKind = null;
+            _entrustedPendingChildDialogKind = null;
             _entrustedVisitListSelectedIndex = -1;
             _entrustedBlacklistSelectedIndex = -1;
             _entrustedBlacklistPromptRequest = null;
@@ -7124,6 +7191,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Entrusted-shop visit log: {string.Join(", ", visitNotes)}."
                 : "Entrusted-shop visit log: no entries.";
             _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+            if (_entrustedPendingChildDialogKind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
             _entrustedChildDialogKind = EntrustedShopChildDialogKind.VisitList;
             _entrustedChildDialogStatus = count > 0
                 ? "CVisitListDlg::OnCreate opened the dedicated visit-list owner. Save Name remains disabled until a visit row is selected."
@@ -7152,6 +7224,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
                 : "Entrusted-shop blacklist: empty.";
             _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            if (_entrustedPendingChildDialogKind == EntrustedShopChildDialogKind.Blacklist)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
             _entrustedChildDialogKind = EntrustedShopChildDialogKind.Blacklist;
             string pendingCompletion = BuildEntrustedBlacklistPendingCompletionSummary(_blockedVisitors);
             ClearEntrustedBlacklistPendingMutation();
@@ -7185,6 +7262,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entrustedChildDialogKind = kind;
+            if (_entrustedPendingChildDialogKind == kind)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
             if (kind == EntrustedShopChildDialogKind.VisitList)
             {
                 _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
@@ -7221,6 +7303,21 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_entrustedChildDialogKind == kind)
+            {
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is already open.";
+                return false;
+            }
+
+            if (_entrustedPendingChildDialogKind == kind)
+            {
+                byte pendingSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                    ? EntrustedShopVisitListResultPacketType
+                    : EntrustedShopBlackListResultPacketType;
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is already waiting for authoritative server subtype {pendingSubtype}.";
+                return false;
+            }
+
             byte[] rawPacket = kind == EntrustedShopChildDialogKind.VisitList
                 ? SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopVisitListOutboundPacket()
                 : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistOutboundPacket();
@@ -7249,6 +7346,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (accepted)
                 {
+                    _entrustedPendingChildDialogKind = kind;
                     _entrustedChildDialogStatus = $"{summary} Waiting for authoritative server subtype {expectedResultSubtype}.";
                     StatusMessage = _entrustedChildDialogStatus;
                     PersistState();
@@ -7258,6 +7356,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool opened = TryOpenEntrustedChildDialog(kind, out string openMessage);
+            _entrustedPendingChildDialogKind = null;
             string offlineMessage = $"{summary} No live merchant bridge accepted it, so the simulator reopened the cached child snapshot as an offline preview.";
             _entrustedChildDialogStatus = opened
                 ? $"{openMessage} {offlineMessage}"
@@ -7296,6 +7395,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             EntrustedShopChildDialogKind closingKind = _entrustedChildDialogKind.Value;
             _entrustedChildDialogKind = null;
+            if (_entrustedPendingChildDialogKind == closingKind)
+            {
+                _entrustedPendingChildDialogKind = null;
+            }
+
             _entrustedBlacklistPromptRequest = null;
             _entrustedBlacklistNotice = null;
             _entrustedChildDialogStatus = $"{ResolveEntrustedChildDialogOwnerName(closingKind)} closed through SetRet and returned to the parent entrusted-shop shell.";
@@ -8233,6 +8337,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return TryRespondMiniRoomTieRequest(accept: true, out message);
             }
 
+            if (_miniRoomOmokDrawRequestSentTurn)
+            {
+                message = "COmokDlg::SendTieRequest only sends packet 50 once per turn; OnPutStoneChecker clears the per-turn gate.";
+                SetOmokDialogStatus(message, 1500);
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                return false;
+            }
+
             _miniRoomOmokDrawRequestSent = true;
             _miniRoomOmokDrawRequestSentTurn = true;
             _miniRoomOmokPendingPromptText = ResolveOmokString(
@@ -8322,6 +8436,16 @@ namespace HaCreator.MapSimulator.Interaction
             if (_miniRoomOmokRetreatRequested)
             {
                 return TryRespondMiniRoomRetreatRequest(accept: true, out message);
+            }
+
+            if (_miniRoomOmokRetreatRequestSentTurn)
+            {
+                message = "COmokDlg::SendRetreatRequest only sends packet 54 once per turn; OnPutStoneChecker clears the per-turn gate.";
+                SetOmokDialogStatus(message, 1500);
+                AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                return false;
             }
 
             if (CountLocalOmokStones() <= 0)

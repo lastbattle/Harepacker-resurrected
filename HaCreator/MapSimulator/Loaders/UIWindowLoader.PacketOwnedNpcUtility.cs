@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty searchRoot = uiWindow2Image?["itemSearch"]?["search"] as WzSubProperty;
             WzSubProperty mainProperty = searchRoot?["main"] as WzSubProperty;
             WzSubProperty subProperty = searchRoot?["sub"] as WzSubProperty;
+            WzSubProperty resultProperty = uiWindow2Image?["itemSearch"]?["result"] as WzSubProperty;
             WzSubProperty legacySearchProperty = uiWindowImage?["itemSearch"] as WzSubProperty;
             WzSubProperty buttonProperty = mainProperty ?? legacySearchProperty;
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
@@ -140,7 +141,8 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = LoadCanvasTexture(mainProperty, "backgrnd", device)
                 ?? LoadCanvasTexture(legacySearchProperty, "backgrnd", device)
                 ?? CreatePlaceholderWindowTexture(device, 220, 249, "Shop Scanner");
-            Texture2D resultTexture = LoadCanvasTexture(subProperty, "backgrnd", device)
+            Texture2D resultTexture = LoadCanvasTexture(resultProperty, "backgrnd", device)
+                ?? LoadCanvasTexture(subProperty, "backgrnd", device)
                 ?? LoadCanvasTexture(legacySearchProperty, "resultback", device);
             Texture2D iconTexture = LoadCanvasTexture(subProperty, "icon1", device)
                 ?? LoadCanvasTexture(legacySearchProperty, "icon0", device);
@@ -161,7 +163,10 @@ namespace HaCreator.MapSimulator.Loaders
                 categoryButton,
                 searchButton,
                 closeButton,
-                device)
+                device,
+                resultProperty != null,
+                resultTexture?.Width ?? 0,
+                resultTexture?.Height ?? 0)
             {
                 Position = position
             };

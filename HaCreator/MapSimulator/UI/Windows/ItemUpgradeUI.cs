@@ -893,6 +893,79 @@ namespace HaCreator.MapSimulator.UI
             return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
         }
 
+        public ItemUpgradeAttemptResult ConsumePacketOwnedPreparedUpgradeItemsAtPacketCounts(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            int? consumableFinalCount,
+            InventoryType? modifierInventoryType,
+            int? modifierSlotIndex,
+            int? modifierFinalCount,
+            bool success)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+
+            ItemUpgradeAttemptResult validationResult = TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: success,
+                previewOnly: true);
+            if (!validationResult.Success.HasValue)
+            {
+                return validationResult;
+            }
+
+            if (!TryGetConsumableDefinition(validationResult.ConsumableItemId, out EnhancementConsumableDefinition consumableDefinition))
+            {
+                _statusMessage = "Packet-owned enhancement result did not identify a consumable item.";
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+            }
+
+            EnhancementConsumable consumable = new EnhancementConsumable(consumableDefinition);
+            if (!TryConsumePreparedInventoryItemToPacketCount(
+                    consumable,
+                    consumableInventoryType,
+                    consumableSlotIndex,
+                    consumableFinalCount,
+                    out string consumableFailureReason))
+            {
+                _statusMessage = consumableFailureReason;
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+            }
+
+            if (validationResult.ModifierItemId != 0)
+            {
+                if (!TryGetConsumableDefinition(validationResult.ModifierItemId, out EnhancementConsumableDefinition modifierDefinition))
+                {
+                    _statusMessage = "Packet-owned enhancement result did not identify a valid modifier item.";
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+
+                EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+                if (!TryConsumePreparedInventoryItemToPacketCount(
+                        modifier,
+                        modifierInventoryType,
+                        modifierSlotIndex,
+                        modifierFinalCount,
+                        out string modifierFailureReason))
+                {
+                    _statusMessage = modifierFailureReason;
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+            }
+
+            _statusMessage = validationResult.StatusMessage;
+            _lastUpgradeSucceeded = success;
+            _preferredModifierItemId = null;
+            return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+        }
+
         public ItemUpgradeAttemptResult ValidatePacketOwnedPreparedUpgradeAtSlots(
             InventoryType consumableInventoryType,
             int consumableSlotIndex,
@@ -1338,6 +1411,67 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            return false;
+        }
+
+        private bool TryConsumePreparedInventoryItemToPacketCount(
+            EnhancementConsumable consumable,
+            InventoryType? forcedInventoryType,
+            int? forcedSlotIndex,
+            int? packetFinalCount,
+            out string failureReason)
+        {
+            if (!packetFinalCount.HasValue)
+            {
+                return TryConsumePreparedInventoryItem(
+                    consumable,
+                    forcedInventoryType,
+                    forcedSlotIndex,
+                    out failureReason);
+            }
+
+            int finalCount = Math.Max(0, packetFinalCount.Value);
+            failureReason = $"{consumable?.Name ?? "Item"} could not be consumed to the packet-authored inventory count.";
+            if (_inventory == null || consumable == null)
+            {
+                return false;
+            }
+
+            if (!forcedInventoryType.HasValue || !forcedSlotIndex.HasValue || forcedSlotIndex.Value < 0)
+            {
+                failureReason = $"{consumable.Name} packet-authored count did not identify a staged inventory slot.";
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(forcedInventoryType.Value);
+            if (slots == null || forcedSlotIndex.Value >= slots.Count)
+            {
+                return finalCount == 0;
+            }
+
+            InventorySlotData slot = slots[forcedSlotIndex.Value];
+            if (slot == null || slot.IsDisabled || slot.ItemId != consumable.ItemId)
+            {
+                return finalCount == 0;
+            }
+
+            int currentCount = Math.Max(1, slot.Quantity);
+            if (currentCount <= finalCount)
+            {
+                return true;
+            }
+
+            int consumeCount = currentCount - finalCount;
+            if (_inventory.TryConsumeItemAtSlot(
+                    forcedInventoryType.Value,
+                    forcedSlotIndex.Value,
+                    consumable.ItemId,
+                    consumeCount))
+            {
+                return true;
+            }
+
+            failureReason = $"{consumable.Name} could not be consumed down to the packet-authored inventory count.";
             return false;
         }
 

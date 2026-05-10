@@ -296,6 +296,7 @@ namespace HaCreator.MapSimulator
             DrainTradingRoomOfficialSessionBridge(currTickCount);
             DrainSocialRoomMerchantPacketInbox(currTickCount);
             DrainSocialRoomMerchantOfficialSessionBridge(currTickCount);
+            TryForwardPersonalShopTimedOutVisitorRequest();
             TryForwardTradingRoomAutoCrcResponse();
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
             MessengerRemoteUserSynchronizer.Sync(

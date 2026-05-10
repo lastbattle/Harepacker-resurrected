@@ -63,16 +63,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            int partyId = ResolvePendingGuildCreateAgreementPartyId(acceptance.MasterName, acceptance.GuildName);
             if (!acceptance.Accepted)
             {
                 SocialListGuildDialogRequestPacket packet = new(
                     SocialListGuildDialogRequestKind.CreateGuildAgreement,
                     acceptance.GuildName.Trim(),
                     null,
-                    _clientPartyId,
+                    partyId,
                     false);
                 string dispatchMessage = GuildDialogRequestDispatcher?.Invoke(packet);
                 string declineMessage = $"Create guild agreement for {acceptance.GuildName.Trim()} was declined; no guild state or meso balance changed.";
+                ClearPendingGuildCreateAgreementContext(acceptance.MasterName, acceptance.GuildName);
                 return NotifyGuildDialogSocialChatObserved(
                     string.IsNullOrWhiteSpace(dispatchMessage)
                         ? declineMessage
@@ -88,6 +90,7 @@ namespace HaCreator.MapSimulator.Interaction
                 0,
                 acceptance.AcceptedAtUtc,
                 true,
+                partyId,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,
@@ -110,6 +113,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DefaultGuildCreateCostMesos,
                 DateTimeOffset.UtcNow,
                 true,
+                0,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,
@@ -158,6 +162,51 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"{acceptedMasterName} guild agreement now updates the shared guild seam: guild={acceptedGuildName}, role=Master, Guild Lv. {_packetGuildUiState.Value.GuildLevel}.";
+        }
+
+        internal string CaptureClientGuildCreateAgreement(int partyId, string masterName, string guildName)
+        {
+            _pendingGuildCreateAgreementPartyId = Math.Max(0, partyId);
+            _pendingGuildCreateAgreementMasterName = string.IsNullOrWhiteSpace(masterName) ? _playerName : masterName.Trim();
+            _pendingGuildCreateAgreementGuildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
+            string summary = $"Client OnGuildResult(3) captured create-guild agreement party={_pendingGuildCreateAgreementPartyId}, master={_pendingGuildCreateAgreementMasterName}, guild={_pendingGuildCreateAgreementGuildName}.";
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] = summary;
+            NotifyGuildDialogSocialChatObserved(summary);
+            return summary;
+        }
+
+        private int ResolvePendingGuildCreateAgreementPartyId(string masterName, string guildName)
+        {
+            string normalizedMasterName = string.IsNullOrWhiteSpace(masterName) ? _playerName : masterName.Trim();
+            string normalizedGuildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
+            bool matchesCapturedAgreement =
+                !string.IsNullOrWhiteSpace(_pendingGuildCreateAgreementGuildName)
+                && string.Equals(_pendingGuildCreateAgreementGuildName, normalizedGuildName, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(_pendingGuildCreateAgreementMasterName)
+                    || string.Equals(_pendingGuildCreateAgreementMasterName, normalizedMasterName, StringComparison.OrdinalIgnoreCase));
+            return matchesCapturedAgreement && _pendingGuildCreateAgreementPartyId > 0
+                ? _pendingGuildCreateAgreementPartyId
+                : Math.Max(0, _clientPartyId);
+        }
+
+        private void ClearPendingGuildCreateAgreementContext(string masterName, string guildName)
+        {
+            string normalizedMasterName = string.IsNullOrWhiteSpace(masterName) ? _playerName : masterName.Trim();
+            string normalizedGuildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
+            if (!string.Equals(_pendingGuildCreateAgreementGuildName, normalizedGuildName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_pendingGuildCreateAgreementMasterName)
+                && !string.Equals(_pendingGuildCreateAgreementMasterName, normalizedMasterName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _pendingGuildCreateAgreementPartyId = 0;
+            _pendingGuildCreateAgreementMasterName = null;
+            _pendingGuildCreateAgreementGuildName = null;
         }
     }
 }

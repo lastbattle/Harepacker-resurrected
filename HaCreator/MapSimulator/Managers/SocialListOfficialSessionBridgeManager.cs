@@ -1,4 +1,5 @@
 ﻿using MapleLib.PacketLib;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -81,6 +82,11 @@ namespace HaCreator.MapSimulator.Managers
         public ushort PartyResultOpcode { get; private set; }
         public ushort GuildResultOpcode { get; private set; }
         public ushort AllianceResultOpcode { get; private set; }
+        public ushort FriendRequestOpcode { get; private set; } = ClientFriendRequestOpcode;
+        public ushort PartyRequestOpcode { get; private set; } = ClientPartyRequestOpcode;
+        public ushort GuildRequestOpcode { get; private set; } = ClientGuildRequestOpcode;
+        public ushort AllianceRequestOpcode { get; private set; } = ClientAllianceRequestOpcode;
+        public ushort BlacklistRequestOpcode { get; private set; } = ClientBlacklistRequestOpcode;
         public bool IsRunning => _roleSessionProxy.IsRunning;
         public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
@@ -230,7 +236,12 @@ namespace HaCreator.MapSimulator.Managers
             ushort friendResultOpcode,
             ushort partyResultOpcode,
             ushort guildResultOpcode,
-            ushort allianceResultOpcode)
+            ushort allianceResultOpcode,
+            ushort friendRequestOpcode = ClientFriendRequestOpcode,
+            ushort partyRequestOpcode = ClientPartyRequestOpcode,
+            ushort guildRequestOpcode = ClientGuildRequestOpcode,
+            ushort allianceRequestOpcode = ClientAllianceRequestOpcode,
+            ushort blacklistRequestOpcode = ClientBlacklistRequestOpcode)
         {
             lock (_sync)
             {
@@ -246,6 +257,11 @@ namespace HaCreator.MapSimulator.Managers
                     PartyResultOpcode = partyResultOpcode;
                     GuildResultOpcode = guildResultOpcode;
                     AllianceResultOpcode = allianceResultOpcode;
+                    FriendRequestOpcode = friendRequestOpcode;
+                    PartyRequestOpcode = partyRequestOpcode;
+                    GuildRequestOpcode = guildRequestOpcode;
+                    AllianceRequestOpcode = allianceRequestOpcode;
+                    BlacklistRequestOpcode = blacklistRequestOpcode;
                     if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
                     {
                         StopInternal(clearPending: false);
@@ -270,6 +286,11 @@ namespace HaCreator.MapSimulator.Managers
             ushort partyResultOpcode,
             ushort guildResultOpcode,
             ushort allianceResultOpcode,
+            ushort friendRequestOpcode,
+            ushort partyRequestOpcode,
+            ushort guildRequestOpcode,
+            ushort allianceRequestOpcode,
+            ushort blacklistRequestOpcode,
             string processSelector,
             int? localPort,
             out string status)
@@ -306,12 +327,22 @@ namespace HaCreator.MapSimulator.Managers
                     PartyResultOpcode,
                     GuildResultOpcode,
                     AllianceResultOpcode,
+                    FriendRequestOpcode,
+                    PartyRequestOpcode,
+                    GuildRequestOpcode,
+                    AllianceRequestOpcode,
+                    BlacklistRequestOpcode,
                     resolvedListenPort,
                     candidate.RemoteEndpoint,
                     friendResultOpcode,
                     partyResultOpcode,
                     guildResultOpcode,
-                    allianceResultOpcode))
+                    allianceResultOpcode,
+                    friendRequestOpcode,
+                    partyRequestOpcode,
+                    guildRequestOpcode,
+                    allianceRequestOpcode,
+                    blacklistRequestOpcode))
             {
                 status = $"Social-list official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using {DescribeConfiguredOpcodes(friendResultOpcode, partyResultOpcode, guildResultOpcode, allianceResultOpcode)}.";
                 LastStatus = status;
@@ -325,7 +356,12 @@ namespace HaCreator.MapSimulator.Managers
                 friendResultOpcode,
                 partyResultOpcode,
                 guildResultOpcode,
-                allianceResultOpcode);
+                allianceResultOpcode,
+                friendRequestOpcode,
+                partyRequestOpcode,
+                guildRequestOpcode,
+                allianceRequestOpcode,
+                blacklistRequestOpcode);
             status = $"Social-list official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
             LastStatus = status;
             return true;
@@ -401,7 +437,8 @@ namespace HaCreator.MapSimulator.Managers
             InjectedOutboundCount++;
             LastInjectedOutboundOpcode = opcode;
             LastInjectedOutboundRawPacket = clonedRawPacket;
-            RecordRecentPacket("inject", opcode, "client-request", clonedRawPacket, clonedRawPacket, "manual-inject");
+            string resultLabel = ResolveOutboundRequestLabel(clonedRawPacket);
+            RecordRecentPacket("inject", opcode, resultLabel, clonedRawPacket.Length > sizeof(ushort) ? clonedRawPacket[sizeof(ushort)..] : Array.Empty<byte>(), clonedRawPacket, "manual-inject");
             status = $"Injected social-list outbound opcode {opcode} into live session.";
             LastStatus = status;
             return true;
@@ -494,7 +531,8 @@ namespace HaCreator.MapSimulator.Managers
 
             ForwardedOutboundCount++;
             int opcode = e.RawPacket.Length >= sizeof(ushort) ? BitConverter.ToUInt16(e.RawPacket, 0) : 0;
-            RecordRecentPacket("out", opcode, "client-request", e.RawPacket.Length > sizeof(ushort) ? e.RawPacket[sizeof(ushort)..] : Array.Empty<byte>(), e.RawPacket, $"official-session:{e.SourceEndpoint}");
+            string resultLabel = ResolveOutboundRequestLabel(e.RawPacket);
+            RecordRecentPacket("out", opcode, resultLabel, e.RawPacket.Length > sizeof(ushort) ? e.RawPacket[sizeof(ushort)..] : Array.Empty<byte>(), e.RawPacket, $"official-session:{e.SourceEndpoint}");
             LastStatus = _roleSessionProxy.LastStatus;
         }
 
@@ -518,10 +556,26 @@ namespace HaCreator.MapSimulator.Managers
             InjectedOutboundCount = 0;
             LastInjectedOutboundOpcode = 0;
             LastInjectedOutboundRawPacket = Array.Empty<byte>();
+            FriendRequestOpcode = ClientFriendRequestOpcode;
+            PartyRequestOpcode = ClientPartyRequestOpcode;
+            GuildRequestOpcode = ClientGuildRequestOpcode;
+            AllianceRequestOpcode = ClientAllianceRequestOpcode;
+            BlacklistRequestOpcode = ClientBlacklistRequestOpcode;
             lock (_sync)
             {
                 _recentPackets.Clear();
             }
+        }
+
+        private string ResolveOutboundRequestLabel(byte[] rawPacket)
+        {
+            return SocialListOutboundPacketCodec.DescribeOpcodeFramedOutboundRequest(
+                rawPacket ?? Array.Empty<byte>(),
+                FriendRequestOpcode,
+                PartyRequestOpcode,
+                GuildRequestOpcode,
+                AllianceRequestOpcode,
+                BlacklistRequestOpcode);
         }
 
         private void RecordRecentPacket(string direction, int opcode, string resultLabel, byte[] payload, byte[] rawPacket, string source)
@@ -598,12 +652,22 @@ namespace HaCreator.MapSimulator.Managers
             ushort partyOpcode,
             ushort opcode,
             ushort allianceOpcode,
+            ushort friendRequestOpcode,
+            ushort partyRequestOpcode,
+            ushort guildRequestOpcode,
+            ushort allianceRequestOpcode,
+            ushort blacklistRequestOpcode,
             int desiredListenPort,
             IPEndPoint desiredRemoteEndpoint,
             ushort desiredFriendOpcode,
             ushort desiredPartyOpcode,
             ushort desiredOpcode,
-            ushort desiredAllianceOpcode)
+            ushort desiredAllianceOpcode,
+            ushort desiredFriendRequestOpcode,
+            ushort desiredPartyRequestOpcode,
+            ushort desiredGuildRequestOpcode,
+            ushort desiredAllianceRequestOpcode,
+            ushort desiredBlacklistRequestOpcode)
         {
             if (!isRunning || desiredRemoteEndpoint == null)
             {
@@ -616,6 +680,11 @@ namespace HaCreator.MapSimulator.Managers
                 && partyOpcode == desiredPartyOpcode
                 && opcode == desiredOpcode
                 && allianceOpcode == desiredAllianceOpcode
+                && friendRequestOpcode == desiredFriendRequestOpcode
+                && partyRequestOpcode == desiredPartyRequestOpcode
+                && guildRequestOpcode == desiredGuildRequestOpcode
+                && allianceRequestOpcode == desiredAllianceRequestOpcode
+                && blacklistRequestOpcode == desiredBlacklistRequestOpcode
                 && string.Equals(remoteHost, desiredRemoteEndpoint.Address.ToString(), StringComparison.OrdinalIgnoreCase);
         }
 

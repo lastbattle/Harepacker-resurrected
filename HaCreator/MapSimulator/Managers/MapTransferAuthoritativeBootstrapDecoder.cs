@@ -99,7 +99,10 @@ namespace HaCreator.MapSimulator.Managers
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
-                    matchedExactTailBoundary = true;
+                    matchedExactTailBoundary = IsExactMapTransferArrayTailBoundary(
+                        matchedOffset,
+                        matchedKnownLeadingCharacterDataTail,
+                        matchedOpaquePreMapTransferByteCount);
                     return true;
                 }
 
@@ -153,7 +156,10 @@ namespace HaCreator.MapSimulator.Managers
                     out matchedOpaquePreMapTransferByteCount,
                     out matchedKnownCharacterDataTail))
             {
-                matchedExactTailBoundary = true;
+                matchedExactTailBoundary = IsExactMapTransferArrayTailBoundary(
+                    matchedOffset,
+                    matchedKnownLeadingCharacterDataTail,
+                    matchedOpaquePreMapTransferByteCount);
                 return true;
             }
 
@@ -186,6 +192,16 @@ namespace HaCreator.MapSimulator.Managers
                 out matchedKnownLeadingSectionFlags,
                 out matchedOpaquePreMapTransferByteCount,
                 out matchedKnownCharacterDataTail);
+        }
+
+        private static bool IsExactMapTransferArrayTailBoundary(
+            int matchedOffset,
+            bool matchedKnownLeadingCharacterDataTail,
+            int matchedOpaquePreMapTransferByteCount)
+        {
+            return matchedOffset == 0 &&
+                   !matchedKnownLeadingCharacterDataTail &&
+                   matchedOpaquePreMapTransferByteCount < 0;
         }
 
         private static bool TryFindBootstrapBooksAtExactTail(

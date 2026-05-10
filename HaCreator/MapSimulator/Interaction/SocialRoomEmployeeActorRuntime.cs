@@ -1882,8 +1882,7 @@ namespace HaCreator.MapSimulator.Interaction
             WzCanvasProperty signboardCanvas = ResolveMiniRoomBoardCanvas(templateRoot?["skin"]);
             EmployeeMiniRoomBoardEffectFrame[] effectFrames = LoadMiniRoomBoardEffectFrames(templateRoot?["effect"], device);
             Texture2D signboardTexture = LoadUiCanvasTexture(signboardCanvas, device);
-            bool hasBoardPresentation = signboardTexture != null || effectFrames.Length > 0;
-            byte slotMax = ResolveTemplateMiniRoomSlotMax(templateRoot, hasBoardPresentation);
+            byte slotMax = ResolveTemplateMiniRoomSlotMax(templateRoot);
             if (signboardTexture == null && effectFrames.Length == 0 && slotMax == 0)
             {
                 _cashEmployeeMiniRoomBoardMissingTemplates.Add(templateId);
@@ -1914,13 +1913,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? ResolveCanvasProperty(skinSource["backgrnd"]);
         }
 
-        private static byte ResolveTemplateMiniRoomSlotMax(WzImageProperty templateRoot, bool hasBoardPresentation)
+        private static byte ResolveTemplateMiniRoomSlotMax(WzImageProperty templateRoot)
         {
-            if (!hasBoardPresentation)
-            {
-                return 0;
-            }
-
             int? slotMax = GetIntValue(templateRoot?["info"]?["slotMax"]);
             if (!slotMax.HasValue || slotMax.Value <= 0)
             {
@@ -1940,7 +1934,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             templateRoot.AddProperty(info);
-            return ResolveTemplateMiniRoomSlotMax(templateRoot, hasBoardPresentation);
+            return ResolveTemplateMiniRoomSlotMax(templateRoot);
         }
 
         internal static string ResolveMiniRoomBoardCanvasNameForTesting(params string[] childNames)

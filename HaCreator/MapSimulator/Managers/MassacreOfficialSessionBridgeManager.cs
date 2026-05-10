@@ -701,9 +701,11 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _recentInboundPackets.Clear();
                 _recentOutboundPackets.Clear();
+                _liveRecoveredInboundEvidence = null;
+                _liveOutboundInjectionEvidence = null;
             }
 
-            LastStatus = "Massacre official-session bridge packet history cleared.";
+            LastStatus = "Massacre official-session bridge packet history and live verification evidence cleared.";
             return LastStatus;
         }
 

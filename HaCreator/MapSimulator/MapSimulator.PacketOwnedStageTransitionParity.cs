@@ -62,12 +62,20 @@ namespace HaCreator.MapSimulator
                 UpdatePacketOwnedMapTransferBootstrapFromSetField(setFieldPacket);
             }
 
-            return _packetStageTransitionRuntime.TryApplyPacket(
+            bool applied = _packetStageTransitionRuntime.TryApplyPacket(
                 packetType,
                 payload,
                 currTickCount,
                 BuildPacketOwnedStageTransitionCallbacks(),
                 out message);
+            if (applied && ShouldConsumeSharedExclusiveRequestStateFromStageTransitionPacketType(packetType))
+            {
+                message = CompletePendingFamilyPrivilegeTransferFromStageTransition(
+                    message,
+                    teleportLocalPlayer: packetType == 141);
+            }
+
+            return applied;
         }
 
         internal static bool ShouldConsumeSharedExclusiveRequestStateFromStageTransitionPacketType(int packetType)
@@ -1044,7 +1052,8 @@ namespace HaCreator.MapSimulator
                 hasRotation ? rotateDurationMs : 0,
                 targetRotationDegrees,
                 vectorProfile.UsesEllipticalMove,
-                vectorProfile.EllipticalClockwise);
+                vectorProfile.EllipticalClockwise,
+                vectorProfile.CenterStart);
             return true;
         }
 
@@ -1060,7 +1069,44 @@ namespace HaCreator.MapSimulator
             out int y,
             out float progress)
         {
+            ResolvePacketOwnedNamedObjectVectorMotionOffset(
+                phase,
+                startX,
+                startY,
+                targetX,
+                targetY,
+                usesEllipticalMove,
+                ellipticalClockwise,
+                centerStart: false,
+                out x,
+                out y,
+                out progress);
+        }
+
+        internal static void ResolvePacketOwnedNamedObjectVectorMotionOffset(
+            float phase,
+            int startX,
+            int startY,
+            int targetX,
+            int targetY,
+            bool usesEllipticalMove,
+            bool ellipticalClockwise,
+            bool centerStart,
+            out int x,
+            out int y,
+            out float progress)
+        {
             phase -= MathF.Floor(phase);
+            if (centerStart && !usesEllipticalMove)
+            {
+                float centerStartAngle = phase * MathF.PI * 2f;
+                float offsetProgress = MathF.Sin(centerStartAngle);
+                x = startX + (int)Math.Round(targetX * offsetProgress);
+                y = startY + (int)Math.Round(targetY * offsetProgress);
+                progress = Math.Abs(offsetProgress);
+                return;
+            }
+
             if (!usesEllipticalMove)
             {
                 progress = phase <= 0.5f
@@ -1090,7 +1136,8 @@ namespace HaCreator.MapSimulator
             int RotationDurationMs = 0,
             float TargetRotationDegrees = 0f,
             bool UsesEllipticalMove = false,
-            bool EllipticalClockwise = true)
+            bool EllipticalClockwise = true,
+            bool CenterStart = false)
         {
             public const int DefaultDurationMs = 4000;
 
@@ -1112,6 +1159,7 @@ namespace HaCreator.MapSimulator
                         TargetY,
                         UsesEllipticalMove,
                         EllipticalClockwise,
+                        CenterStart,
                         out int x,
                         out int y,
                         out _);

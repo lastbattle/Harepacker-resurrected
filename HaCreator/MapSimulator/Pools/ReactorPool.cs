@@ -1929,6 +1929,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ReactorItem reactor = GetReactor(index);
+            string previousName = reactor?.ReactorInstance?.Name;
+            if (!string.Equals(previousName, runtimeName, StringComparison.OrdinalIgnoreCase))
+            {
+                RemoveReactorNameLookup(previousName, index);
+            }
+
             if (reactor?.ReactorInstance != null)
             {
                 reactor.ReactorInstance.Name = runtimeName;
@@ -1938,6 +1944,8 @@ namespace HaCreator.MapSimulator.Pools
             {
                 _spawnPoints[index].Name = runtimeName;
             }
+
+            AddReactorNameLookup(runtimeName, index);
         }
 
         internal static string ResolvePacketEnterRuntimeName(string name)

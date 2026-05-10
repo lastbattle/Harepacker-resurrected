@@ -2070,6 +2070,11 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (!IsClientConfirmedMorphActionName(actionName))
+            {
+                return false;
+            }
+
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
                    || IsClientPublishedAuthoredMorphFallbackAction(actionName)
                    || IsClientPublishedMeleeMorphFallbackAction(actionName)

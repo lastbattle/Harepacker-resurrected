@@ -344,11 +344,19 @@ namespace HaCreator.MapSimulator.UI
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
+            public int BaseCanvasStringPoolId { get; init; } = 0x16A4;
+            public int ItemBoxBigStringPoolId { get; init; } = 0x16A5;
+            public int ItemBoxStringPoolId { get; init; } = 0x16A6;
             public int NoItemStringPoolId { get; init; } = 0x4ED;
             public int KeyFocusStringPoolId { get; init; } = 0x4EA;
             public int PlateStringPoolId { get; init; } = 0x4E9;
             public int PlateBigStringPoolId { get; init; } = 0x16A5;
             public int NumberCanvasStringPoolId { get; init; } = 0x16A7;
+            public int BuyButtonStringPoolId { get; init; } = 0x16A8;
+            public int ItemBoxButtonStringPoolId { get; init; } = 0x16A9;
+            public int GiftButtonStringPoolId { get; init; } = 0x1A75;
+            public int InitialChangeStateState { get; init; }
+            public int InitialChangeStateForce { get; init; } = 1;
             public int NumberCanvasCount { get; init; }
             public int NumberCanvasReadyMask { get; init; }
             public int ExpectedNumberCanvasCount { get; init; } = 10;

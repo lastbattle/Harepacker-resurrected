@@ -560,6 +560,9 @@ namespace HaCreator.MapSimulator.UI
         public Func<ExtraCharacterSlotEntitlementResolution, string> ExtraCharacterSlotEntitlementResolved { get; set; }
         internal Func<PacketOwnedNpcUtilityOutboundRequest, string> DispatchPacketOwnedAdminShopOutboundRequest { get; set; }
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
+        internal bool IsPendingStorageExpansionAwaitingPacketResult => _pendingStorageExpansionAwaitingPacketResult;
+        internal int PendingStorageExpansionCommoditySerialNumber => _pendingStorageExpansionCommoditySerialNumber;
+        internal int PendingStorageExpansionPaymentOption => _pendingStorageExpansionPaymentOption;
         internal IStorageRuntime StorageRuntime => _storageRuntime;
         private const int PacketOwnedAdminShopResultMode = PacketOwnedAdminShopOutboundMode.Reopen;
         private const int PacketOwnedAdminShopTradeRequestMode = PacketOwnedAdminShopOutboundMode.TradeRequest;
@@ -2694,16 +2697,29 @@ namespace HaCreator.MapSimulator.UI
         {
             message = "Packet-authored wishlist paging is unavailable.";
             AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
-            if (!_packetOwnedAdminShopSession.IsActive
-                || snapshot == null
-                || !MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex))
+            if (!_packetOwnedAdminShopSession.IsActive)
             {
                 return false;
             }
 
-            int remotePageCount = ResolvePacketOwnedWishlistRemotePageCount(snapshot);
-            int currentRemotePageIndex = Math.Max(0, snapshot.RemotePageIndex);
-            if (remotePageCount <= 0 || snapshot.RemotePageIndex < 0)
+            bool hasMatchingSnapshot = snapshot != null
+                && MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex);
+            bool hasMatchingPendingRequest = !hasMatchingSnapshot
+                && MatchesPendingPacketOwnedWishlistSearchRequest(query, categoryKey, priceRangeIndex);
+            if (!hasMatchingSnapshot && !hasMatchingPendingRequest)
+            {
+                return false;
+            }
+
+            int remotePageCount = hasMatchingSnapshot
+                ? ResolvePacketOwnedWishlistRemotePageCount(snapshot)
+                : Math.Max(0, _packetOwnedWishlistPendingSearchRemotePageCount);
+            int currentRemotePageIndex = hasMatchingSnapshot
+                ? Math.Max(0, snapshot.RemotePageIndex)
+                : Math.Max(0, _packetOwnedWishlistPendingSearchRemotePageIndex);
+            if (remotePageCount <= 0
+                || (hasMatchingSnapshot && snapshot.RemotePageIndex < 0)
+                || (!hasMatchingSnapshot && _packetOwnedWishlistPendingSearchRemotePageIndex < 0))
             {
                 message = "Packet-authored wishlist paging metadata is unresolved.";
                 return false;
@@ -6776,6 +6792,7 @@ namespace HaCreator.MapSimulator.UI
                     CreateItemEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, AdminShopCategory.Special, true, InventoryType.CASH, 5150040, featured: true),
                     CreateItemEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true, InventoryType.CASH, 2120000, 3, featured: true, maxRequestCount: 5),
                     CreateStorageExpansionEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager"),
+                    CreateExtraCharacterSlotEntitlementEntry("Extra Character Slot", "Account-level entitlement purchase for one additional character creation card.", "Cash Manager"),
                     CreateItemEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, AdminShopCategory.Use, true, InventoryType.CASH, 5040004, maxRequestCount: 10),
                     CreateItemEntry("Surprise Style Box", "Random cosmetic box surfaced through the featured rotation.", "Cash Manager", 3400, AdminShopCategory.Package, true, InventoryType.CASH, 5222000, featured: true),
                     CreateItemEntry("Cosmetic Lens Coupon", "Style utility item staged for wish-list confirmation tests.", "Cash Manager", 1600, AdminShopCategory.Button, true, InventoryType.CASH, 5152057),
@@ -7278,6 +7295,27 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private static AdminShopEntry CreateExtraCharacterSlotEntitlementEntry(string title, string detail, string seller)
+        {
+            return new AdminShopEntry
+            {
+                Title = title,
+                Detail = $"{detail} Mirrors the Cash Shop buy-character counter path that feeds CLogin::OnExtraCharInfoResult.",
+                Seller = seller,
+                Price = ExtraCharacterSlotCouponPrice,
+                PriceLabel = FormatCashPriceLabel(ExtraCharacterSlotCouponPrice),
+                Category = AdminShopCategory.Etc,
+                Featured = true,
+                SupportsWishlist = true,
+                State = AdminShopEntryState.Available,
+                RewardInventoryType = InventoryType.CASH,
+                RewardItemId = ExtraCharacterSlotCouponItemId,
+                RewardQuantity = 1,
+                CommoditySerialNumber = ExtraCharacterSlotCouponCommoditySerialNumber,
+                IsExtraCharacterSlotEntitlement = true
+            };
+        }
+
         private static AdminShopEntry CreateUserEntry(
             string title,
             string detail,
@@ -7361,6 +7399,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_pendingRequestEntry.IsExtraCharacterSlotEntitlement)
+            {
+                ResolveExtraCharacterSlotEntitlementRequest(_pendingRequestEntry);
+                return;
+            }
+
             if (_pendingRequestEntry.InventoryExpansionType != InventoryType.NONE)
             {
                 ResolveInventoryExpansionRequest(_pendingRequestEntry);
@@ -7380,6 +7424,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry.IsStorageExpansion)
             {
                 return CanRequestStorageExpansion(entry);
+            }
+
+            if (entry.IsExtraCharacterSlotEntitlement)
+            {
+                return CanRequestExtraCharacterSlotEntitlement(entry);
             }
 
             if (entry.InventoryExpansionType != InventoryType.NONE)
@@ -7413,6 +7462,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry?.IsStorageExpansion == true)
             {
                 return BuildStorageExpansionBlockedMessage(entry);
+            }
+
+            if (entry?.IsExtraCharacterSlotEntitlement == true)
+            {
+                return BuildExtraCharacterSlotEntitlementBlockedMessage(entry);
             }
 
             if (entry?.InventoryExpansionType != InventoryType.NONE)
@@ -7456,6 +7510,18 @@ namespace HaCreator.MapSimulator.UI
                    && _storageRuntime.IsClientAccountAuthorityVerified
                    && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
+                   && ResolveStorageExpansionPaymentOption(Math.Max(0L, entry.Price), _pendingStorageExpansionPaymentOption, out _) != 0;
+        }
+
+        private bool CanRequestExtraCharacterSlotEntitlement(AdminShopEntry entry)
+        {
+            if (entry == null || !entry.IsExtraCharacterSlotEntitlement)
+            {
+                return false;
+            }
+
+            return ExtraCharacterSlotEntitlementResolved != null
+                   && CanSettleExtraCharacterSlotEntitlement?.Invoke() == true
                    && ResolveStorageExpansionPaymentOption(Math.Max(0L, entry.Price), _pendingStorageExpansionPaymentOption, out _) != 0;
         }
 
@@ -7537,12 +7603,13 @@ namespace HaCreator.MapSimulator.UI
 
         private static string FormatCashPriceLabel(long amount, int paymentOption = 0)
         {
+            string amountText = Math.Max(0L, amount).ToString("N0", CultureInfo.InvariantCulture);
             return paymentOption switch
             {
-                1 => $"{FormatPriceLabel(amount)} NX (Nexon Cash)",
-                2 => $"{FormatPriceLabel(amount)} NX (Maple Point)",
-                4 => $"{FormatPriceLabel(amount)} NX (Prepaid Cash)",
-                _ => $"{FormatPriceLabel(amount)} NX"
+                1 => $"{amountText} NX (Nexon Cash)",
+                2 => $"{amountText} NX (Maple Point)",
+                4 => $"{amountText} NX (Prepaid Cash)",
+                _ => $"{amountText} NX"
             };
         }
 
@@ -7644,6 +7711,25 @@ namespace HaCreator.MapSimulator.UI
             return GetEntryStateText(entry);
         }
 
+        private string BuildExtraCharacterSlotEntitlementBlockedMessage(AdminShopEntry entry)
+        {
+            if (CanSettleExtraCharacterSlotEntitlement?.Invoke() != true)
+            {
+                return "The authenticated account is not eligible for another extra character slot.";
+            }
+
+            int selectedPaymentOption = ResolveStorageExpansionPaymentOption(
+                Math.Max(0L, entry?.Price ?? ExtraCharacterSlotCouponPrice),
+                _pendingStorageExpansionPaymentOption,
+                out int availablePaymentOptions);
+            if (selectedPaymentOption == 0 || availablePaymentOptions == 0)
+            {
+                return $"Need {FormatCashPriceLabel(entry?.Price ?? ExtraCharacterSlotCouponPrice)} in an available cash lane before adding a character slot.";
+            }
+
+            return GetEntryStateText(entry);
+        }
+
         private void ResolveInventoryExpansionRequest(AdminShopEntry entry)
         {
             if (_inventory == null)
@@ -7678,6 +7764,67 @@ namespace HaCreator.MapSimulator.UI
             _footerMessage = $"{entry.Title} succeeded. {entry.InventoryExpansionType} inventory now has {_inventory.GetSlotLimit(entry.InventoryExpansionType)} slots.";
             ResetPendingRequestState();
             Money = _inventory.GetMesoCount();
+            UpdateActionButtonStates();
+        }
+
+        private void ResolveExtraCharacterSlotEntitlementRequest(AdminShopEntry entry)
+        {
+            if (CanSettleExtraCharacterSlotEntitlement?.Invoke() != true)
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "Not eligible";
+                PersistEntrySessionState(entry);
+                _footerMessage = BuildExtraCharacterSlotEntitlementBlockedMessage(entry);
+                ResetPendingRequestState();
+                UpdateActionButtonStates();
+                return;
+            }
+
+            int selectedPaymentOption = ResolveStorageExpansionPaymentOption(
+                Math.Max(0L, entry.Price),
+                _pendingStorageExpansionPaymentOption,
+                out int availablePaymentOptions);
+            if (selectedPaymentOption == 0 || availablePaymentOptions == 0)
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "Need NX";
+                PersistEntrySessionState(entry);
+                _footerMessage = $"Need {FormatCashPriceLabel(entry.Price)} in an available cash lane before adding a character slot.";
+                ResetPendingRequestState();
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (!TryConsumeStorageExpansionCash(entry.Price, selectedPaymentOption))
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "Need NX";
+                PersistEntrySessionState(entry);
+                _footerMessage = $"Need {FormatCashPriceLabel(entry.Price, selectedPaymentOption)} before adding a character slot.";
+                ResetPendingRequestState();
+                UpdateActionButtonStates();
+                return;
+            }
+
+            string settlementMessage = ExtraCharacterSlotEntitlementResolved?.Invoke(new ExtraCharacterSlotEntitlementResolution
+            {
+                CommoditySerialNumber = entry.CommoditySerialNumber > 0
+                    ? entry.CommoditySerialNumber
+                    : ExtraCharacterSlotCouponCommoditySerialNumber,
+                NxPrice = Math.Max(0L, entry.Price),
+                PaymentOption = selectedPaymentOption,
+                CashAlreadySettled = true,
+                Message = $"{entry.Title} settled through the Cash Shop extra-character counter path."
+            });
+
+            entry.State = AdminShopEntryState.RequestAccepted;
+            entry.StateLabel = "Granted";
+            MarkEntryPurchased(entry);
+            PersistEntrySessionState(entry);
+            _footerMessage = string.IsNullOrWhiteSpace(settlementMessage)
+                ? $"{entry.Title} succeeded. The account can create one extra character."
+                : settlementMessage;
+            ResetPendingRequestState();
             UpdateActionButtonStates();
         }
 

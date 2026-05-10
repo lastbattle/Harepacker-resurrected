@@ -104,6 +104,9 @@ namespace HaCreator.MapSimulator.UI
         internal const int ChildNextButtonId = 1002;
         internal const int ChildOkButtonId = 1003;
         internal const int SearchResultDescendingCheckBoxId = 1004;
+        internal const int ShopResultOkButtonId = 1;
+        internal const int ShopResultCancelButtonId = 2;
+        internal const int ShopResultCloseButtonId = 8;
         internal const int ShopResultNextButtonId = 4000;
         internal const int ShopResultPreviousButtonId = 4001;
         internal const int SearchResultPageSize = 10;
@@ -471,6 +474,7 @@ namespace HaCreator.MapSimulator.UI
                 if (packetResult.HasNoResultNotice)
                 {
                     _exclusiveScannerRequestPending = false;
+                    ClearPendingScanConfirmation();
                     _results.Clear();
                     _selectedIndex = -1;
                     SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
@@ -507,6 +511,7 @@ namespace HaCreator.MapSimulator.UI
                 SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
                 ResetSearchResultPaging();
                 _exclusiveScannerRequestPending = false;
+                ClearPendingScanConfirmation();
 
                 _lastScannerResultSummary =
                     $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed and the exclusive scanner request latch is clear.";
@@ -533,6 +538,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = _results.Count > 0 ? 0 : -1;
             SetActiveAddOnMode(ScannerAddOnMode.HotList);
             ResetSearchResultPaging();
+            ClearPendingScanConfirmation();
             _lastScannerResultSummary =
                 $"CWvsContext::OnShopScannerResult subtype 7 refreshed {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed scanner item id(s) on the CUIShopScanner owner.";
             _statusMessage = _lastScannerResultSummary;
@@ -686,6 +692,7 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = 0;
             _searchResultPageIndex = 0;
             _searchResultTotalPages = 0;
+            ClearPendingScanConfirmation();
             SetActiveAddOnMode(ScannerAddOnMode.None);
             _searchFieldFocused = true;
             _statusMessage = "Scanner search reset; edit focus restored.";
@@ -848,7 +855,15 @@ namespace HaCreator.MapSimulator.UI
                     MoveChildPage(1);
                     return true;
                 case ChildOkButtonId:
-                    return TrySendSelectedChildOkRequest(Environment.TickCount, out _);
+                    return TryStageSelectedScanConfirmation(out _);
+                case SearchResultDescendingCheckBoxId:
+                    ToggleDescendingOrder();
+                    return true;
+                case ShopResultOkButtonId:
+                case ShopResultCancelButtonId:
+                case ShopResultCloseButtonId:
+                    ClearSearch();
+                    return true;
                 default:
                     if (buttonId >= ShopResultRowFirstButtonId
                         && buttonId < ShopResultRowFirstButtonId + ShopResultRowsPerPage)
@@ -870,7 +885,79 @@ namespace HaCreator.MapSimulator.UI
 
             return _results[_selectedIndex].IsPacketFedShopRow
                 ? TrySendSelectedShopLinkRequest(currentTick, out message)
-                : TrySendSelectedScanRequest(currentTick, out message);
+                : TryStageSelectedScanConfirmation(out message);
+        }
+
+        public bool TryStageSelectedScanConfirmation(out string message)
+        {
+            message = null;
+            if (_selectedIndex < 0 || _selectedIndex >= _results.Count)
+            {
+                message = "CUIShopScannerSearchResult has no selected item row for button 1003.";
+                return false;
+            }
+
+            ScannerResult selected = _results[_selectedIndex];
+            if (selected.IsPacketFedShopRow)
+            {
+                message = "CUIShopScannerSearchResult button 1003 is only used for item-name result rows; packet-fed shop rows use CUIShopScanResult link buttons 3000..3007.";
+                _statusMessage = message;
+                return false;
+            }
+
+            if (selected.ItemId <= 0)
+            {
+                message = "CUIShopScannerSearchResult cannot open the scan confirmation without a concrete item id.";
+                _statusMessage = message;
+                return false;
+            }
+
+            _scanConfirmationPending = true;
+            _pendingScanConfirmationItemId = selected.ItemId;
+            _pendingScanConfirmationSummary = BuildScanConfirmationSummary(
+                string.IsNullOrWhiteSpace(selected.Name) ? $"Item {selected.ItemId.ToString(CultureInfo.InvariantCulture)}" : selected.Name,
+                _descendingOrderChecked);
+            message = $"CUIShopScannerSearchResult button 1003 opened CUtilDlg::YesNo for item {selected.ItemId.ToString(CultureInfo.InvariantCulture)}. {_pendingScanConfirmationSummary}";
+            _statusMessage = message;
+            return true;
+        }
+
+        public bool ConfirmPendingScanRequest(int currentTick, out string message)
+        {
+            if (!_scanConfirmationPending || _pendingScanConfirmationItemId <= 0)
+            {
+                message = "CUIShopScannerSearchResult has no pending CUtilDlg::YesNo scan confirmation.";
+                return false;
+            }
+
+            int selectedIndex = _results.FindIndex(result => result.ItemId == _pendingScanConfirmationItemId && !result.IsPacketFedShopRow);
+            if (selectedIndex < 0)
+            {
+                message = $"CUIShopScannerSearchResult pending confirmation item {_pendingScanConfirmationItemId.ToString(CultureInfo.InvariantCulture)} is no longer present.";
+                ClearPendingScanConfirmation();
+                _statusMessage = message;
+                return false;
+            }
+
+            _selectedIndex = selectedIndex;
+            SyncSearchResultPageToSelection();
+            ClearPendingScanConfirmation();
+            return TrySendSelectedScanRequest(currentTick, out message);
+        }
+
+        public bool CancelPendingScanConfirmation(out string message)
+        {
+            if (!_scanConfirmationPending)
+            {
+                message = "CUIShopScannerSearchResult has no pending CUtilDlg::YesNo scan confirmation.";
+                return false;
+            }
+
+            int itemId = _pendingScanConfirmationItemId;
+            ClearPendingScanConfirmation();
+            message = $"CUIShopScannerSearchResult cancelled CUtilDlg::YesNo scan confirmation for item {itemId.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = message;
+            return true;
         }
 
         public bool TrySendSelectedScanRequest(int currentTick, out string message)
@@ -897,6 +984,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            _lastRequestedScanDescending = _descendingOrderChecked;
             byte[] payload = BuildShopScanRequestPayload(selected.ItemId, _lastRequestedScanDescending, currentTick);
             string dispatchSummary = ScanItemRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
             _lastRequestedScanItemId = selected.ItemId;
@@ -910,6 +998,31 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = message;
             Hide();
             return true;
+        }
+
+        private void ToggleDescendingOrder()
+        {
+            _descendingOrderChecked = !_descendingOrderChecked;
+            _lastRequestedScanDescending = _descendingOrderChecked;
+            if (_scanConfirmationPending && _pendingScanConfirmationItemId > 0)
+            {
+                ScannerResult pending = _results.FirstOrDefault(result => result.ItemId == _pendingScanConfirmationItemId);
+                string itemName = pending == null || string.IsNullOrWhiteSpace(pending.Name)
+                    ? $"Item {_pendingScanConfirmationItemId.ToString(CultureInfo.InvariantCulture)}"
+                    : pending.Name;
+                _pendingScanConfirmationSummary = BuildScanConfirmationSummary(itemName, _descendingOrderChecked);
+            }
+
+            _statusMessage = _descendingOrderChecked
+                ? "CUIShopScannerSearchResult checkbox 1004 checked: scan result order is descending."
+                : "CUIShopScannerSearchResult checkbox 1004 cleared: scan result order is ascending.";
+        }
+
+        private void ClearPendingScanConfirmation()
+        {
+            _scanConfirmationPending = false;
+            _pendingScanConfirmationItemId = 0;
+            _pendingScanConfirmationSummary = string.Empty;
         }
 
         private bool TrySendShopResultRowLinkRequest(int visibleRow, int currentTick, out string message)
@@ -1161,6 +1274,41 @@ namespace HaCreator.MapSimulator.UI
             payload[sizeof(int)] = descendingOrder ? (byte)1 : (byte)0;
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(byte), sizeof(int)), updateTick);
             return payload;
+        }
+
+        internal static string BuildScanConfirmationSummary(string itemName, bool descendingOrder)
+        {
+            string displayName = string.IsNullOrWhiteSpace(itemName) ? "this item" : itemName.Trim();
+            string orderText = MapleStoryStringPool.GetOrFallback(
+                descendingOrder ? ScanConfirmationDescendingStringPoolId : ScanConfirmationAscendingStringPoolId,
+                descendingOrder ? "high price order" : "low price order");
+            string format = MapleStoryStringPool.GetOrFallback(
+                ScanConfirmationFormatStringPoolId,
+                "Do you want to search for %s in %s?");
+
+            return FormatClientString(format, displayName, orderText);
+        }
+
+        private static string FormatClientString(string format, params string[] args)
+        {
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return string.Join(" ", args.Where(arg => !string.IsNullOrWhiteSpace(arg)));
+            }
+
+            string normalized = format;
+            for (int i = 0; i < args.Length; i++)
+            {
+                int tokenIndex = normalized.IndexOf("%s", StringComparison.Ordinal);
+                if (tokenIndex < 0)
+                {
+                    break;
+                }
+
+                normalized = normalized.Remove(tokenIndex, 2).Insert(tokenIndex, args[i] ?? string.Empty);
+            }
+
+            return normalized;
         }
 
         internal static bool TryDecodeScannerResultPayload(byte[] payload, out ScannerPacketResult result, out string error)

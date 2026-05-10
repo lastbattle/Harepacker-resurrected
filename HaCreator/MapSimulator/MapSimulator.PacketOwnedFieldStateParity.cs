@@ -256,6 +256,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
             _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
             _packetStageTransitionNamedObjectAlphaStates.Remove(mapObject);
+            mapObject.StopAnimationAtCurrentFrame(currentTick);
             mapObject.SetLayerAlpha(byte.MinValue);
             mapObject.SetLayerRotationDegrees(0f);
             mapObject.Position = Point.Zero;
@@ -1118,12 +1119,6 @@ namespace HaCreator.MapSimulator
                         break;
                     default:
                         return false;
-                }
-
-                if (CenterStart)
-                {
-                    targetOffsetX /= 2;
-                    targetOffsetY /= 2;
                 }
 
                 return targetOffsetX != 0 || targetOffsetY != 0;

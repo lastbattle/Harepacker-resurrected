@@ -78,7 +78,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
         private Func<DragonCompanionRuntime.OwnerPhaseContext> _dragonOwnerPhaseContextProvider;
-        private byte? _latestDragonClientKeyPadState;
+        private byte? _latestLocalClientKeyPadState;
         private bool _isFlyingMap;
         private bool _requiresFlyingSkillForMap;
         private bool _noLandingMap;
@@ -123,6 +123,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float> _moveSpeedCapResolver;
         private Action<PlayerCharacter, PlayerLandingInfo> _onLanded;
         internal Action<int, int, int, PacketOwnedSkillEffectRequest> OnRepeatSkillModeEndEffectRequestReady { get; set; }
+        internal Action<int, int, PacketOwnedSkillEffectRequest> OnClientSkillEffectPacketRequestReady { get; set; }
 
         #endregion
 
@@ -567,6 +568,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.OnLocalAttackAreaPreflight = _localAttackAreaPreflightHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 Skills.OnRepeatSkillImmediateEffectRequestReady = HandleRepeatSkillImmediateEffectRequestReady;
+                Skills.OnClientSkillEffectPacketRequestReady = HandleClientSkillEffectPacketRequestReady;
                 Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;
                 Skills.OnClientSkillCancelDragonCleanupRequested = (_, currentTime) =>
                     Dragon.ClearClientOwnedOneTimeActionOnSkillCancel(Player, currentTime);
@@ -712,8 +714,10 @@ namespace HaCreator.MapSimulator.Character
 
         private void ConfigureDragonClientKeyPadStateProvider()
         {
-            Dragon.SetClientKeyPadStateProvider(() => _latestDragonClientKeyPadState);
+            Dragon.SetClientKeyPadStateProvider(() => _latestLocalClientKeyPadState);
         }
+
+        internal byte? LatestLocalClientKeyPadState => _latestLocalClientKeyPadState;
 
         private DragonCompanionRuntime.OwnerPhaseContext ResolveDragonOwnerPhaseContext()
         {
@@ -1051,24 +1055,24 @@ namespace HaCreator.MapSimulator.Character
 
             if (effectData.HasBombEffect)
             {
-                _animationEffects.AddOneTime(
+                _animationEffects.AddPacketOwnedMobSkillBomb(
                     effectData.BombEffectFrames,
+                    effectData.BombEffectSourceUol
+                        ?? MobSkillEffectLoader.BuildMobSkillEffectSourceUol(effectData.SkillId, effectData.Level, "bombInfo/effect"),
                     Player.X,
                     Player.Y,
-                    flip: false,
-                    currentTime,
-                    zOrder: 1);
+                    currentTime);
             }
 
             if (effectData.HasHitEffect)
             {
-                _animationEffects.AddOneTime(
+                _animationEffects.AddPacketOwnedMobSkillHit(
                     effectData.HitFrames,
+                    effectData.HitSourceUol
+                        ?? MobSkillEffectLoader.BuildMobSkillEffectSourceUol(effectData.SkillId, effectData.Level, "hit"),
                     Player.X,
                     Player.Y,
-                    flip: false,
-                    currentTime,
-                    zOrder: 1);
+                    currentTime);
             }
         }
 
@@ -1176,7 +1180,7 @@ namespace HaCreator.MapSimulator.Character
             if (!Player.IsAlive)
             {
                 ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
-                _latestDragonClientKeyPadState = 0;
+                _latestLocalClientKeyPadState = 0;
                 Player.ClearInput();
                 return;
             }
@@ -1186,7 +1190,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 InputState inputState = Input.GetState();
                 InputState playerInputState = ApplyMobStatusToInput(inputState);
-                _latestDragonClientKeyPadState = DragonCompanionRuntime.ResolveClientVecCtrlPassiveKeyPadStateFromInput(playerInputState);
+                _latestLocalClientKeyPadState = DragonCompanionRuntime.ResolveClientVecCtrlPassiveKeyPadStateFromInput(playerInputState);
                 Input.ApplyToPlayer(Player, playerInputState);
 
                 // Handle pickup input separately
@@ -1230,7 +1234,7 @@ namespace HaCreator.MapSimulator.Character
             else
             {
                 ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
-                _latestDragonClientKeyPadState = 0;
+                _latestLocalClientKeyPadState = 0;
                 Player.ClearInput();
             }
 
@@ -1666,7 +1670,8 @@ namespace HaCreator.MapSimulator.Character
             int recastLeadTimeMs = 0,
             Rectangle? periodicDamageArea = null,
             int sourceOwnerId = 0,
-            int sourceAreaObjectId = 0)
+            int sourceAreaObjectId = 0,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default)
         {
             if (Player == null)
             {
@@ -1682,7 +1687,8 @@ namespace HaCreator.MapSimulator.Character
                 recastLeadTimeMs,
                 periodicDamageArea,
                 sourceOwnerId,
-                sourceAreaObjectId) == true;
+                sourceAreaObjectId,
+                sourceOwnerSnapshot) == true;
         }
 
         internal bool TryApplyMobSkillBlockingStatus(int skillId, int skillLevel, MobSkillRuntimeData runtimeData, int currentTime)
@@ -1805,6 +1811,14 @@ namespace HaCreator.MapSimulator.Character
             PacketOwnedSkillEffectRequest request)
         {
             OnRepeatSkillModeEndEffectRequestReady?.Invoke(skillId, 0, requestedAt, request);
+        }
+
+        private void HandleClientSkillEffectPacketRequestReady(
+            int sourceSkillId,
+            int requestedAt,
+            PacketOwnedSkillEffectRequest request)
+        {
+            OnClientSkillEffectPacketRequestReady?.Invoke(sourceSkillId, requestedAt, request);
         }
 
         public bool TryResolvePacketOwnedRepeatSkillModeEndRequest(

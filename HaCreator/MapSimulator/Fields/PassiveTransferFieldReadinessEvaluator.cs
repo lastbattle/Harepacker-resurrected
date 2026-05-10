@@ -313,7 +313,15 @@ namespace HaCreator.MapSimulator.Fields
         {
             return ShouldClearQueuedRetryFromLifecycleOwner(
                 hasPendingRequest,
-                QueuedRetryLifecycleClearOwner.MapTransferAdmission);
+                ResolveQueuedRetryLifecycleClearOwnerFromMapTransferAdmission(admittedMapTransfer: true));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromMapTransferAdmission(
+            bool admittedMapTransfer)
+        {
+            return admittedMapTransfer
+                ? QueuedRetryLifecycleClearOwner.MapTransferAdmission
+                : QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldClearQueuedRetryFromFieldInterfaceTeardown(bool hasPendingRequest)
@@ -508,7 +516,12 @@ namespace HaCreator.MapSimulator.Fields
             QueuedRetryWriterOwner writerOwner)
         {
             return hasPendingRequest
-                   && writerOwner != QueuedRetryWriterOwner.None;
+                   && IsRecognizedQueuedRetryWriterOwner(writerOwner);
+        }
+
+        public static bool IsRecognizedQueuedRetryWriterOwner(QueuedRetryWriterOwner writerOwner)
+        {
+            return writerOwner != QueuedRetryWriterOwner.None;
         }
 
         public static QueuedRetryWriterOwner ResolveQueuedRetryWriterFromHandleUpKeyDown(

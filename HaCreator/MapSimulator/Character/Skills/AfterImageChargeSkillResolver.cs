@@ -1105,6 +1105,79 @@ namespace HaCreator.MapSimulator.Character.Skills
                 out chargeElement);
         }
 
+        internal static bool TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int maxPairDistanceBytes,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int) * 2
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || maxPairDistanceBytes < sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            int matchedElement = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateSkillId = ReadInt32LittleEndian(payload, offset);
+                if (!TryGetChargeElement(candidateSkillId, out int skillElement)
+                    || !HasMatchingNearbyElementValue(
+                        payload,
+                        alignedStartOffset,
+                        offset,
+                        skillElement,
+                        maxPairDistanceBytes))
+                {
+                    continue;
+                }
+
+                if (preferredSkillId > 0
+                    && candidateSkillId == preferredSkillId)
+                {
+                    chargeElement = skillElement;
+                    return true;
+                }
+
+                if (matchedElement == 0)
+                {
+                    matchedElement = skillElement;
+                    continue;
+                }
+
+                if (matchedElement != skillElement)
+                {
+                    if (preferredSkillId > 0
+                        && TryGetChargeElement(preferredSkillId, out int preferredElement)
+                        && (matchedElement == preferredElement || skillElement == preferredElement))
+                    {
+                        matchedElement = preferredElement;
+                        continue;
+                    }
+
+                    return false;
+                }
+            }
+
+            chargeElement = matchedElement;
+            return chargeElement > 0;
+        }
+
         private static int ResolveAdjacentSkillElementPair(int firstValue, int secondValue)
         {
             if (IsKnownChargeElement(secondValue)

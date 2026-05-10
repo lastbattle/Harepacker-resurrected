@@ -59,11 +59,16 @@ namespace HaCreator.MapSimulator
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 12;
         private const int CashShopOneADaySelectorInitArg = 4;
+        private const int CashShopOneADayBaseCanvasStringPoolId = 0x16A4;
         private const int CashShopOneADayNoItemStringPoolId = 0x4ED;
         private const int CashShopOneADayKeyFocusStringPoolId = 0x4EA;
         private const int CashShopOneADayPlateStringPoolId = 0x4E9;
         private const int CashShopOneADayPlateBigStringPoolId = 0x16A5;
+        private const int CashShopOneADayItemBoxStringPoolId = 0x16A6;
         private const int CashShopOneADayNumberCanvasStringPoolId = 0x16A7;
+        private const int CashShopOneADayBuyButtonStringPoolId = 0x16A8;
+        private const int CashShopOneADayItemBoxButtonStringPoolId = 0x16A9;
+        private const int CashShopOneADayGiftButtonStringPoolId = 0x1A75;
         private const int CashShopLockerScrollBarControlId = 1001;
         private const int CashShopInventoryTabControlId = 1000;
         private const int CashShopInventoryScrollBarControlId = 1001;
@@ -179,7 +184,8 @@ namespace HaCreator.MapSimulator
             IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
             IStorageRuntime storageRuntime = uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) as IStorageRuntime;
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            AdminShopDialogUI cashShopWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) as AdminShopDialogUI;
+            if (cashShopWindow != null)
             {
                 cashShopWindow.SetInventory(inventoryRuntime);
                 cashShopWindow.SetStorageRuntime(storageRuntime);
@@ -188,6 +194,8 @@ namespace HaCreator.MapSimulator
                 cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
                 cashShopWindow.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
                 cashShopWindow.StorageExpansionResolved = HandleStorageExpansionResolved;
+                cashShopWindow.CanSettleExtraCharacterSlotEntitlement = CanSettleLoginExtraCharacterSlotEntitlement;
+                cashShopWindow.ExtraCharacterSlotEntitlementResolved = HandleExtraCharacterSlotEntitlementResolved;
                 cashShopWindow.WindowHidden = _ => HideCashShopOwnerFamilyWindows();
                 WireCashShopChildOwnerWindows(cashShopWindow);
             }
@@ -198,6 +206,7 @@ namespace HaCreator.MapSimulator
                 cashShopStageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
                 cashShopStageWindow.SetInventory(inventoryRuntime);
                 cashShopStageWindow.SetStorageRuntime(storageRuntime);
+                SynchronizeCashShopStageCatalogSnapshot(cashShopStageWindow, cashShopWindow);
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewWindow
@@ -473,11 +482,19 @@ namespace HaCreator.MapSimulator
                         HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
                         HasPlateCanvas = artSnapshot.HasPlateCanvas,
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
+                        BaseCanvasStringPoolId = CashShopOneADayBaseCanvasStringPoolId,
+                        ItemBoxBigStringPoolId = CashShopOneADayPlateBigStringPoolId,
+                        ItemBoxStringPoolId = CashShopOneADayItemBoxStringPoolId,
                         NoItemStringPoolId = CashShopOneADayNoItemStringPoolId,
                         KeyFocusStringPoolId = CashShopOneADayKeyFocusStringPoolId,
                         PlateStringPoolId = CashShopOneADayPlateStringPoolId,
                         PlateBigStringPoolId = CashShopOneADayPlateBigStringPoolId,
                         NumberCanvasStringPoolId = CashShopOneADayNumberCanvasStringPoolId,
+                        BuyButtonStringPoolId = CashShopOneADayBuyButtonStringPoolId,
+                        ItemBoxButtonStringPoolId = CashShopOneADayItemBoxButtonStringPoolId,
+                        GiftButtonStringPoolId = CashShopOneADayGiftButtonStringPoolId,
+                        InitialChangeStateState = 0,
+                        InitialChangeStateForce = 1,
                         NumberCanvasCount = artSnapshot.NumberCanvasCount,
                         NumberCanvasReadyMask = artSnapshot.NumberCanvasReadyMask,
                         ExpectedNumberCanvasCount = 10,
@@ -1558,6 +1575,9 @@ namespace HaCreator.MapSimulator
 
         internal static IReadOnlyList<CashShopStageChildWindow.InventoryOwnerState.ButtonControlState> BuildCashShopInventoryButtonControlStates()
         {
+            CashShopStageChildWindow.InventoryOwnerState.ButtonControlState btExTrunk =
+                BuildCashShopInventoryBtExTrunkControlState();
+
             return new[]
             {
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
@@ -1608,18 +1628,23 @@ namespace HaCreator.MapSimulator
                     MouseOverWidth = 64,
                     MouseOverHeight = 22
                 },
-                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
-                {
-                    ActionKey = "BtExTrunk",
-                    ControlId = 0x3EF,
-                    NativeButtonId = 0x3EF,
-                    StringPoolUolId = 0x4E7,
-                    Position = new Microsoft.Xna.Framework.Point(176, 135),
-                    Width = 64,
-                    Height = 22,
-                    MouseOverWidth = 65,
-                    MouseOverHeight = 22
-                }
+                btExTrunk
+            };
+        }
+
+        internal static CashShopStageChildWindow.InventoryOwnerState.ButtonControlState BuildCashShopInventoryBtExTrunkControlState()
+        {
+            return new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+            {
+                ActionKey = "BtExTrunk",
+                ControlId = 0x3EF,
+                NativeButtonId = 0x3EF,
+                StringPoolUolId = 0x4E7,
+                Position = new Microsoft.Xna.Framework.Point(176, 135),
+                Width = 64,
+                Height = 22,
+                MouseOverWidth = 65,
+                MouseOverHeight = 22
             };
         }
 
@@ -1731,6 +1756,7 @@ namespace HaCreator.MapSimulator
                 $"WZ key-focus canvases: Buy={artSnapshot.HasBuyKeyFocusCanvas}, Gift={artSnapshot.HasGiftKeyFocusCanvas}, Reserve={artSnapshot.HasReserveKeyFocusCanvas}, Remove={artSnapshot.HasRemoveKeyFocusCanvas}.");
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
             {
+                SynchronizeCashShopStageCatalogSnapshot(stageWindow, cashShopWindow);
                 if (!string.IsNullOrWhiteSpace(stageWindow.CashPurchaseRecordSummary))
                 {
                     AppendUniqueLine(lines, stageWindow.CashPurchaseRecordSummary);
@@ -1763,6 +1789,7 @@ namespace HaCreator.MapSimulator
         {
             AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow?.GetListOwnerSnapshot();
             CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            SynchronizeCashShopStageCatalogSnapshot(stageWindow, cashShopWindow, snapshot);
             CashShopListArtSnapshot artSnapshot = ResolveCashShopListArtSnapshot();
             IReadOnlyList<string> recentPackets = stageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
             bool preferPacketOwnedList = ShouldPreferStagePacketOwnedCashList(snapshot, stageWindow);
@@ -1776,17 +1803,35 @@ namespace HaCreator.MapSimulator
                 {
                     PaneLabel = packetPaneLabel,
                     BrowseModeLabel = packetBrowseModeLabel,
-                    CategoryLabel = "CCashShop",
-                    FooterMessage = stageWindow.StatusMessage,
+                    CategoryLabel = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            ? stageWindow.CashStageCatalogSnapshotCategoryLabel
+                            : "CCashShop",
+                    FooterMessage = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            ? stageWindow.CashStageCatalogSnapshotFooterMessage
+                            : stageWindow.StatusMessage,
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
-                    SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
-                    ScrollOffset = 0,
+                    SelectedIndex = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            ? stageWindow.CashStageCatalogSnapshotSelectedIndex
+                            : packetEntries.Count > 0 ? 0 : -1,
+                    ScrollOffset = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            ? stageWindow.CashStageCatalogSnapshotScrollOffset
+                            : 0,
                     TotalCount = Math.Max(
                         packetEntries.Count,
                         string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
                             ? stageWindow.WishlistCount
-                            : 0),
-                    PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
+                            : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                                && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                    ? stageWindow.CashStageCatalogSnapshotTotalCount
+                                    : 0),
+                    PlateFocusIndex = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            ? Math.Max(0, stageWindow.CashStageCatalogSnapshotSelectedIndex - stageWindow.CashStageCatalogSnapshotScrollOffset)
+                            : packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     ButtonControls = BuildCashShopListButtonControlStates(),
                     VisibleEntries = packetEntries,
@@ -1841,6 +1886,22 @@ namespace HaCreator.MapSimulator
                 VisibleEntries = entries,
                 RecentPackets = recentPackets
             };
+        }
+
+        private static void SynchronizeCashShopStageCatalogSnapshot(
+            CashServiceStageWindow stageWindow,
+            AdminShopDialogUI cashShopWindow,
+            AdminShopDialogUI.ListOwnerSnapshot snapshot = null)
+        {
+            if (stageWindow == null)
+            {
+                return;
+            }
+
+            stageWindow.CaptureCashShopCatalogSnapshot(
+                snapshot ?? cashShopWindow?.GetListOwnerSnapshot(),
+                cashShopWindow?.GetPacketOwnedCashShopStageCatalogEntries(),
+                cashShopWindow?.GetPacketOwnedCashShopStageCatalogSummary());
         }
 
         internal static IReadOnlyList<CashShopStageChildWindow.ListOwnerState.ButtonControlState> BuildCashShopListButtonControlStates()
@@ -1941,6 +2002,13 @@ namespace HaCreator.MapSimulator
             if (stageWindow.CashPacketCatalogEntries.Count > 0)
             {
                 return stageWindow.CashPacketCatalogEntries;
+            }
+
+            if (stageWindow.CashStageCatalogSnapshotEntries.Count > 0)
+            {
+                paneLabel = stageWindow.CashStageCatalogSnapshotPaneLabel;
+                browseModeLabel = stageWindow.CashStageCatalogSnapshotBrowseModeLabel;
+                return stageWindow.CashStageCatalogSnapshotEntries;
             }
 
             if (stageWindow.CashGiftPacketEntries.Count > 0)
@@ -3812,6 +3880,52 @@ namespace HaCreator.MapSimulator
             string gateState = _loginCanHaveExtraCharacter ? "enabled" : "denied";
             message = $"{owner} refreshed the account-owned extra-character gate to {gateState} from buy-count {buyCharacterCount.ToString(CultureInfo.InvariantCulture)}.";
             return true;
+        }
+
+        private bool CanSettleLoginExtraCharacterSlotEntitlement()
+        {
+            int? accountId = ResolveLoginRosterAccountId();
+            if (!accountId.HasValue || accountId.Value <= 0)
+            {
+                return false;
+            }
+
+            if (_loginCanHaveExtraCharacter || _loginCharacterRoster?.BuyCharacterCount > 0)
+            {
+                return false;
+            }
+
+            int slotCount = Math.Max(0, _loginCharacterRoster?.SlotCount ?? 0);
+            int buyCharacterCount = Math.Max(0, _loginCharacterRoster?.BuyCharacterCount ?? 0);
+            return slotCount + buyCharacterCount <
+                   LoginCharacterRosterManager.MaxCharacterSlotCount;
+        }
+
+        private string HandleExtraCharacterSlotEntitlementResolved(
+            AdminShopDialogUI.ExtraCharacterSlotEntitlementResolution resolution)
+        {
+            int? accountId = ResolveLoginRosterAccountId();
+            if (!accountId.HasValue || accountId.Value <= 0)
+            {
+                return "Cash Shop extra-character settlement was ignored because no authenticated login account id is active.";
+            }
+
+            _loginBackendSessionManager.SetAuthenticatedAccountId(accountId.Value);
+            _loginBackendSessionManager.ApplyAuthoritativeBuyCharacterCountSnapshot(1, accountId.Value);
+            _loginPacketExtraCharInfoResultProfile = _loginBackendSessionManager.SnapshotExtraCharInfoResult();
+            _loginCanHaveExtraCharacter = _loginBackendSessionManager.CanHaveExtraCharacter;
+            SyncActiveLoginRosterExtraCharacterEntitlement();
+            PersistLoginExtraCharacterEntitlementForAccount(
+                _loginCanHaveExtraCharacter ? 1 : 0,
+                _loginPacketExtraCharInfoResultProfile);
+
+            string commodityText = resolution?.CommoditySerialNumber > 0
+                ? $" SN {resolution.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            string paymentText = resolution?.NxPrice > 0
+                ? $" for {resolution.NxPrice.ToString("N0", CultureInfo.InvariantCulture)} NX via payment option {Math.Max(0, resolution.PaymentOption).ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $"CCashShop::OnCashItemResIncBuyCharacterCountDone settled local extra-character entitlement{commodityText}{paymentText}; CLogin::OnExtraCharInfoResult gate is now {(_loginCanHaveExtraCharacter ? "enabled" : "denied")} for account {accountId.Value.ToString(CultureInfo.InvariantCulture)}.";
         }
 
         private void TryOpenCashShopModalOwnerForPacket(CashServiceStageWindow stageWindow, int packetType)

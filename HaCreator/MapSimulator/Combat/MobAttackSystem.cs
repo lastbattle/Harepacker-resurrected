@@ -1345,7 +1345,7 @@ namespace HaCreator.MapSimulator.Combat
                 return targetGroups;
             }
 
-            float fallbackX = playerX ?? GetRangeCenterX(mobItem, attack);
+            float fallbackX = playerX ?? GetRangeCenterX(mobItem, attack, sourceFacesRight);
             float fallbackY = playerY ?? GetRangeBottomY(mobItem, attack);
             var fallbackGroup = new GroundTargetGroup();
             AppendGroundAttackTargets(fallbackGroup.Targets, mobItem, attack, new Vector2(fallbackX, fallbackY));
@@ -1736,7 +1736,7 @@ namespace HaCreator.MapSimulator.Combat
             }
             else
             {
-                float centerX = playerX ?? GetRangeCenterX(mobItem, attack);
+                float centerX = playerX ?? GetRangeCenterX(mobItem, attack, sourceFacesRight);
                 float halfWidth = Math.Max(attack.AreaWidth, attack.Range) / 2f;
                 left = centerX - halfWidth;
                 right = centerX + halfWidth;
@@ -4019,13 +4019,35 @@ namespace HaCreator.MapSimulator.Combat
 
         private static float GetRangeCenterX(MobItem mobItem, MobAttackEntry attack)
         {
-            if (!attack.HasRangeBounds)
+            return GetRangeCenterX(mobItem, attack, ResolveLiveMobSourceFacingRight(mobItem));
+        }
+
+        private static float GetRangeCenterX(MobItem mobItem, MobAttackEntry attack, bool sourceFacesRight)
+        {
+            return ResolveRangeCenterX(mobItem.CurrentX, attack, sourceFacesRight);
+        }
+
+        internal static float ResolveRangeCenterX(float sourceX, MobAttackEntry attack, bool sourceFacesRight)
+        {
+            if (attack == null)
             {
-                return mobItem.CurrentX + (ResolveLiveMobSourceFacingRight(mobItem) ? attack.Range / 2f : -attack.Range / 2f);
+                return sourceX;
             }
 
-            return (GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight) +
-                    GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight)) * 0.5f;
+            if (!attack.HasRangeBounds)
+            {
+                return sourceX + (sourceFacesRight ? attack.Range / 2f : -attack.Range / 2f);
+            }
+
+            int rangeLeft = attack.RangeLeft;
+            int rangeRight = attack.RangeRight;
+            if (sourceFacesRight)
+            {
+                rangeLeft = -attack.RangeRight;
+                rangeRight = -attack.RangeLeft;
+            }
+
+            return sourceX + ((Math.Min(rangeLeft, rangeRight) + Math.Max(rangeLeft, rangeRight)) * 0.5f);
         }
 
         private static float GetRangeBottomY(MobItem mobItem, MobAttackEntry attack)

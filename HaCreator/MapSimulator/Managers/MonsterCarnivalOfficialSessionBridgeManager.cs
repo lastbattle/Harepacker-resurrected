@@ -1014,11 +1014,6 @@ namespace HaCreator.MapSimulator.Managers
 
         private int ClearSessionScopedEvidenceForInitializedProxySession(long? proxySessionId, short? sessionVersion)
         {
-            if (!proxySessionId.HasValue)
-            {
-                return 0;
-            }
-
             if (_currentInitializedProxySessionId == proxySessionId
                 && _currentInitializedSessionVersion == sessionVersion)
             {

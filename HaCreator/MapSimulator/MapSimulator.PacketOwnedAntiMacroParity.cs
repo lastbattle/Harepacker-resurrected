@@ -794,13 +794,14 @@ namespace HaCreator.MapSimulator
             int mode,
             bool wasAwaitingResult,
             string source,
+            string expectedSource,
             bool hasAuthoritativeSubmitTransport,
             bool hasBridgeCorrelatedInboundResult)
         {
             return wasAwaitingResult
                 && hasAuthoritativeSubmitTransport
                 && hasBridgeCorrelatedInboundResult
-                && IsPacketOwnedAntiMacroAuthoritativeResultSource(source)
+                && IsPacketOwnedAntiMacroResultSourceMatch(source, expectedSource)
                 && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
         }
 
@@ -1600,6 +1601,7 @@ namespace HaCreator.MapSimulator
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
+                        _lastPacketOwnedAntiMacroSubmitExpectedSource,
                         hasAuthoritativeSubmitTransport,
                         hasAuthoritativeResultEvidence);
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
@@ -1635,6 +1637,7 @@ namespace HaCreator.MapSimulator
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
+                        _lastPacketOwnedAntiMacroSubmitExpectedSource,
                         hasAuthoritativeSubmitTransport,
                         hasAuthoritativeResultEvidence);
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
@@ -1657,6 +1660,7 @@ namespace HaCreator.MapSimulator
                     mode,
                     wasAwaitingResult,
                     resolvedSource,
+                    _lastPacketOwnedAntiMacroSubmitExpectedSource,
                     hasNoticeAuthoritativeSubmitTransport,
                     hasNoticeAuthoritativeResultEvidence);
                 bool shouldKeepAwaitingNoticeAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(

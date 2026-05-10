@@ -2633,12 +2633,11 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
             string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
                 mobTemplateId,
                 loadedEffectPath);
             Vector2 anchor = GetAngerGaugeBurstAnchor();
-            _animationEffects.AddFullChargedAngerGauge(
+            bool registeredOwnerBurst = _animationEffects.AddFullChargedAngerGauge(
                 effectFrames,
                 effectPath,
                 GetAngerGaugeBurstAnchor,
@@ -2646,6 +2645,12 @@ namespace HaCreator.MapSimulator.Entities
                 anchor.Y,
                 tickCount,
                 zOrder: 1);
+            if (!registeredOwnerBurst)
+            {
+                return false;
+            }
+
+            AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
 
             _angerGaugeBurstNextAllowedTick = MobAngerGaugeBurstParity.ResolveNextAllowedTick(
                 tickCount,

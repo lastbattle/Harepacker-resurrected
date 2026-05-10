@@ -91,6 +91,7 @@ namespace HaCreator.MapSimulator.Interaction
         public List<string> SavedVisitors { get; set; } = new();
         public int EntrustedVisitListSelectedIndex { get; set; } = -1;
         public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
+        public EntrustedShopChildDialogKind? EntrustedPendingChildDialogKind { get; set; }
         public string EntrustedChildDialogStatus { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary { get; set; }
         public string EntrustedBlacklistPendingMutationName { get; set; }

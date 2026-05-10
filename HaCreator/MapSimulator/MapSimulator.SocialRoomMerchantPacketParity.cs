@@ -108,6 +108,37 @@ namespace HaCreator.MapSimulator
                 }
             }
         }
+
+        private void TryForwardPersonalShopTimedOutVisitorRequest()
+        {
+            if (!_socialRoomMerchantOfficialSessionBridge.IsRunning
+                || !_socialRoomMerchantOfficialSessionBridge.HasConnectedSession
+                || _socialRoomMerchantOfficialSessionBridge.PreferredKind != SocialRoomKind.PersonalShop
+                || !TryGetSocialRoomRuntime(SocialRoomKind.PersonalShop, out SocialRoomRuntime runtime)
+                || !runtime.TryBuildNextPersonalShopTimedOutVisitorRawPacket(
+                    DateTime.UtcNow,
+                    out int seatIndex,
+                    out byte[] rawPacket,
+                    out string buildMessage))
+            {
+                return;
+            }
+
+            if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeStatus))
+            {
+                _socialRoomMerchantOfficialSessionBridge.RecordDispatchResult(
+                    "CPersonalShopDlg::Update",
+                    success: false,
+                    $"{buildMessage} {bridgeStatus}");
+                return;
+            }
+
+            runtime.MarkPersonalShopKickTimedOutVisitorRequestSent(seatIndex, out string runtimeMessage);
+            _socialRoomMerchantOfficialSessionBridge.RecordDispatchResult(
+                "CPersonalShopDlg::Update",
+                success: true,
+                $"{buildMessage} {bridgeStatus} {runtimeMessage}");
+        }
     }
 }
 

@@ -2176,20 +2176,12 @@ namespace HaCreator.MapSimulator
                 bodyWidth,
                 message.AnchorMode,
                 Width);
-            Rectangle seedBodyBounds = new(bodyX, 0, bodyWidth, bodyHeight);
-            PacketOwnedBalloonArrowKind aboveArrowKind = SelectPacketOwnedBalloonArrowKind(anchor, seedBodyBounds, placeBelowAnchor: false);
-            LocalOverlayBalloonArrowSprite aboveArrowSprite = ResolvePacketOwnedBalloonArrowSprite(aboveArrowKind);
-            int arrowBelowBodyExtent = ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, aboveArrowKind, aboveArrowSprite);
-            PacketOwnedBalloonArrowKind belowArrowKind = SelectPacketOwnedBalloonArrowKind(anchor, seedBodyBounds, placeBelowAnchor: true);
-            LocalOverlayBalloonArrowSprite belowArrowSprite = ResolvePacketOwnedBalloonArrowSprite(belowArrowKind);
-            int arrowAboveBodyExtent = ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, belowArrowKind, belowArrowSprite);
-            bool placeAboveAnchor = message.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar ||
-                                    ShouldPlacePacketOwnedBalloonAbove(anchor, bodyHeight, arrowBelowBodyExtent, arrowAboveBodyExtent);
-            PacketOwnedBalloonArrowKind arrowKind = placeAboveAnchor ? aboveArrowKind : belowArrowKind;
+            PacketOwnedBalloonArrowKind arrowKind = ResolvePacketOwnedBalloonClientInitArrowKind();
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
-            int bodyY = placeAboveAnchor
-                ? anchor.Y - bodyHeight - ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite)
-                : anchor.Y + ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
+            int bodyY = ResolvePacketOwnedBalloonClientBodyY(
+                anchor.Y,
+                bodyHeight,
+                ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite));
             Texture2D visualTexture = null;
             Rectangle bodyBounds = new(
                 bodyX,
@@ -2197,8 +2189,6 @@ namespace HaCreator.MapSimulator
                 bodyWidth,
                 bodyHeight);
 
-            arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, bodyBounds, placeBelowAnchor: !placeAboveAnchor);
-            arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
             Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
             Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
 
@@ -2251,6 +2241,12 @@ namespace HaCreator.MapSimulator
             return contentWidth + PacketOwnedBalloonBodyExtraWidth;
         }
 
+        internal static int ResolvePacketOwnedBalloonClientBodyYForTests(int anchorY, int bodyHeight, int arrowBelowBodyExtent) =>
+            ResolvePacketOwnedBalloonClientBodyY(anchorY, bodyHeight, arrowBelowBodyExtent);
+
+        internal static string ResolvePacketOwnedBalloonClientArrowKindForTests() =>
+            ResolvePacketOwnedBalloonClientInitArrowKind().ToString();
+
         internal static int ResolvePacketOwnedBalloonBodyXForTests(
             Point anchor,
             int requestedWidth,
@@ -2275,6 +2271,16 @@ namespace HaCreator.MapSimulator
         {
             int clientLayerX = anchor.X - (Math.Max(0, contentWidth) / 2);
             return clientLayerX;
+        }
+
+        private static int ResolvePacketOwnedBalloonClientBodyY(int anchorY, int bodyHeight, int arrowBelowBodyExtent)
+        {
+            return anchorY - Math.Max(0, bodyHeight) - Math.Max(0, arrowBelowBodyExtent);
+        }
+
+        private static PacketOwnedBalloonArrowKind ResolvePacketOwnedBalloonClientInitArrowKind()
+        {
+            return PacketOwnedBalloonArrowKind.BottomCenter;
         }
 
         private void ResolvePacketOwnedBalloonOverlap(

@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MiniRoomTitleFirstLineY = 8;
         internal const int MiniRoomTitleSecondLineY = 22;
         internal const int MiniRoomTitleSecondLineOffsetY = 14;
+        internal const string MiniRoomRootPath = "UI/ChatBalloon.img/miniroom";
         internal const int ADBoardNativeBalloonType = 1003;
         internal const int ADBoardButtonWidth = 12;
         internal const int ADBoardButtonHeight = 12;
@@ -128,6 +129,29 @@ namespace HaCreator.MapSimulator.Interaction
             return maxUsers > 0 && currentUsers >= maxUsers
                 ? ChatBalloonMiniRoomStatusKind.Disable
                 : ChatBalloonMiniRoomStatusKind.Able;
+        }
+
+        internal static ChatBalloonMiniRoomComposition ResolveMiniRoomComposition(
+            byte miniRoomType,
+            byte spec,
+            byte currentUsers,
+            byte maxUsers,
+            ChatBalloonMiniRoomIconKind icon,
+            ChatBalloonMiniRoomPrivacyIconKind privacyIcon,
+            ChatBalloonMiniRoomStatusKind status,
+            ChatBalloonMiniRoomBackground background,
+            IReadOnlyList<string> titleLines)
+        {
+            return new ChatBalloonMiniRoomComposition(
+                background.Path,
+                ResolveMiniRoomIconPath(icon, spec),
+                ResolveMiniRoomPrivacyIconPath(privacyIcon),
+                ResolveMiniRoomStatusPath(status),
+                ResolveMiniRoomCountPath("cNum", currentUsers),
+                ResolveMiniRoomCountPath("mNum", maxUsers),
+                ResolveMiniRoomShopEffectPath(miniRoomType, spec),
+                new Point(background.Width, background.Height),
+                ResolveMiniRoomTitleYOffsets(titleLines));
         }
 
         internal static IReadOnlyList<string> ResolveMiniRoomTitleLines(
@@ -271,6 +295,64 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return bestLength;
+        }
+
+        private static string ResolveMiniRoomIconPath(ChatBalloonMiniRoomIconKind icon, byte spec)
+        {
+            return icon switch
+            {
+                ChatBalloonMiniRoomIconKind.Omok => $"{MiniRoomRootPath}/Omok",
+                ChatBalloonMiniRoomIconKind.MemoryGame => $"{MiniRoomRootPath}/MemoryGame/{Math.Clamp((int)spec, 0, 2)}",
+                ChatBalloonMiniRoomIconKind.PersonalShop => $"{MiniRoomRootPath}/PersonalShop",
+                _ => string.Empty
+            };
+        }
+
+        private static string ResolveMiniRoomPrivacyIconPath(ChatBalloonMiniRoomPrivacyIconKind privacyIcon)
+        {
+            return privacyIcon switch
+            {
+                ChatBalloonMiniRoomPrivacyIconKind.Lock => $"{MiniRoomRootPath}/Lock",
+                ChatBalloonMiniRoomPrivacyIconKind.Unlock => $"{MiniRoomRootPath}/Unlock",
+                _ => string.Empty
+            };
+        }
+
+        private static string ResolveMiniRoomStatusPath(ChatBalloonMiniRoomStatusKind status)
+        {
+            return status switch
+            {
+                ChatBalloonMiniRoomStatusKind.Able => $"{MiniRoomRootPath}/Able",
+                ChatBalloonMiniRoomStatusKind.Disable => $"{MiniRoomRootPath}/Disable",
+                ChatBalloonMiniRoomStatusKind.Progress => $"{MiniRoomRootPath}/Progress",
+                _ => string.Empty
+            };
+        }
+
+        private static string ResolveMiniRoomShopEffectPath(byte miniRoomType, byte spec)
+        {
+            return miniRoomType is 3 or 4 or 5
+                ? $"{MiniRoomRootPath}/PSSkin/{Math.Clamp((int)spec, 0, 6)}"
+                : string.Empty;
+        }
+
+        private static string ResolveMiniRoomCountPath(string nodeName, byte value)
+        {
+            return value is >= 1 and <= 4
+                ? $"{MiniRoomRootPath}/{nodeName}/{value}"
+                : string.Empty;
+        }
+
+        private static IReadOnlyList<int> ResolveMiniRoomTitleYOffsets(IReadOnlyList<string> titleLines)
+        {
+            if (titleLines == null || titleLines.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return titleLines.Count == 1
+                ? new[] { MiniRoomTitleFirstLineY }
+                : new[] { MiniRoomTitleFirstLineY, MiniRoomTitleSecondLineY };
         }
     }
 

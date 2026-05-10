@@ -393,7 +393,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Ignored guild-skill packet result because no guild is currently active.";
             }
 
-            if (packet.Kind == GuildSkillResultPacketKind.FundSync)
+            if (ShouldIgnorePacketOwnedResultGuildId(packet.GuildId, "guild-skill packet result", out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            if (packet.Kind == GuildSkillResultPacketKind.FundSync ||
+                packet.Kind == GuildSkillResultPacketKind.ScopedFundSync)
             {
                 string fundSyncResult = ApplyStandalonePacketOwnedFundSync(packet.GuildFundMeso);
                 return string.IsNullOrWhiteSpace(packet.Summary)
@@ -1087,6 +1093,25 @@ namespace HaCreator.MapSimulator.Interaction
                     pendingKind = default;
                     return false;
             }
+        }
+
+        private bool ShouldIgnorePacketOwnedResultGuildId(int? guildId, string resultLabel, out string ignoredMessage)
+        {
+            ignoredMessage = null;
+            int resolvedGuildId = Math.Max(0, guildId ?? 0);
+            if (resolvedGuildId <= 0)
+            {
+                return false;
+            }
+
+            if (_guildId > 0 && resolvedGuildId != _guildId)
+            {
+                ignoredMessage = $"Ignored {resultLabel} for guild {resolvedGuildId} because the active guild context is {_guildId}.";
+                return true;
+            }
+
+            RememberPacketGuildId(resolvedGuildId);
+            return false;
         }
 
         private SkillDisplayData GetSelectedSkill()

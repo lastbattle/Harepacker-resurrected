@@ -1096,9 +1096,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private int GetTownPortalOpeningDurationMs()
         {
-            return _mysticDoorCurrentMapVisuals?.DurationMs > 0
-                ? _mysticDoorCurrentMapVisuals.DurationMs
-                : DefaultTownPortalOpeningDurationMs;
+            return ResolveRemoteTownPortalOpeningDurationMs(_mysticDoorCurrentMapVisuals?.DurationMs ?? 0);
         }
 
         private BaseDXDrawableItem[] CreateRemoteTownPortalDrawables(
@@ -1209,6 +1207,13 @@ namespace HaCreator.MapSimulator.Fields
             return !useTownVisuals
                    && state.Phase != RemoteTownPortalVisualPhase.Opening
                    && state.State >= RemoteTownPortalOverlayState;
+        }
+
+        private static int ResolveRemoteTownPortalOpeningDurationMs(int visualDurationMs)
+        {
+            return visualDurationMs > 0
+                ? Math.Max(DefaultTownPortalOpeningDurationMs, visualDurationMs)
+                : DefaultTownPortalOpeningDurationMs;
         }
 
         private bool AdvanceRemoteTownPortalPhases(int currentTime)
@@ -3760,6 +3765,11 @@ namespace HaCreator.MapSimulator.Fields
 
             ClearRemoteTownPortalInferenceState(fieldMetadata, ownerFieldObservations, pendingOwnerFieldObservations);
             return (fieldMetadata.Count == 0, ownerFieldObservations.Count == 0, pendingOwnerFieldObservations.Count == 0);
+        }
+
+        internal static int ResolveRemoteTownPortalOpeningDurationMsForTesting(int visualDurationMs)
+        {
+            return ResolveRemoteTownPortalOpeningDurationMs(visualDurationMs);
         }
 
         internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationForTesting(

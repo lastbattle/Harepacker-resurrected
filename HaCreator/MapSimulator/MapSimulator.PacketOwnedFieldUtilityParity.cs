@@ -381,7 +381,7 @@ namespace HaCreator.MapSimulator
             {
                 for (int i = 0; i < entries.Count; i++)
                 {
-                    if (TryResolvePacketOwnedDynamicPlatform(entries[i], out DynamicPlatform platform))
+                    foreach (DynamicPlatform platform in ResolvePacketOwnedDynamicPlatforms(entries[i]))
                     {
                         mentionedPlatformIds.Add(platform.Id);
                     }
@@ -421,21 +421,25 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolvePacketOwnedDynamicPlatform(entry, out DynamicPlatform platform))
+            IReadOnlyList<DynamicPlatform> platforms = ResolvePacketOwnedDynamicPlatforms(entry);
+            if (platforms.Count == 0)
             {
                 return;
             }
 
-            _packetFieldUtilityFootholdStatesByPlatformId[platform.Id] = entry.State;
-            platform.IsActive = entry.State != 0;
-            platform.IsVisible = entry.State != 0;
-            if (entry.MovingState != null)
+            foreach (DynamicPlatform platform in platforms)
             {
-                ApplyPacketOwnedFootholdMovingStateToPlatform(platform, entry.MovingState);
-            }
-            else
-            {
-                ApplyPacketOwnedFootholdStateWithoutMovingStateForPacketParity(platform);
+                _packetFieldUtilityFootholdStatesByPlatformId[platform.Id] = entry.State;
+                platform.IsActive = entry.State != 0;
+                platform.IsVisible = entry.State != 0;
+                if (entry.MovingState != null)
+                {
+                    ApplyPacketOwnedFootholdMovingStateToPlatform(platform, entry.MovingState);
+                }
+                else
+                {
+                    ApplyPacketOwnedFootholdStateWithoutMovingStateForPacketParity(platform);
+                }
             }
         }
 
@@ -708,6 +712,57 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private IReadOnlyList<DynamicPlatform> ResolvePacketOwnedDynamicPlatforms(PacketFieldUtilityFootholdEntry entry)
+        {
+            if (entry == null || _dynamicFootholds == null)
+            {
+                return Array.Empty<DynamicPlatform>();
+            }
+
+            // Named WZ dynamic objects remain the authoritative simulator owner. The serial fallback is only
+            // widened when no authored object name resolves, matching the client order while preserving the
+            // existing packet-only test seam where serial numbers stand in for runtime platform ids.
+            if (TryResolvePacketOwnedDynamicPlatform(entry.Name, out DynamicPlatform namedPlatform))
+            {
+                return new[] { namedPlatform };
+            }
+
+            if (entry.FootholdSerialNumbers == null || entry.FootholdSerialNumbers.Count == 0)
+            {
+                return Array.Empty<DynamicPlatform>();
+            }
+
+            return ResolvePacketOwnedDynamicPlatformsFromSerialFallbackForPacketParity(_dynamicFootholds, entry.FootholdSerialNumbers);
+        }
+
+        internal static IReadOnlyList<DynamicPlatform> ResolvePacketOwnedDynamicPlatformsFromSerialFallbackForPacketParity(
+            DynamicFootholdSystem dynamicFootholds,
+            IReadOnlyList<int> footholdSerialNumbers)
+        {
+            if (dynamicFootholds == null || footholdSerialNumbers == null || footholdSerialNumbers.Count == 0)
+            {
+                return Array.Empty<DynamicPlatform>();
+            }
+
+            List<DynamicPlatform> platforms = new();
+            HashSet<int> platformIds = new();
+            foreach (int serialNumber in footholdSerialNumbers)
+            {
+                if (serialNumber < 0)
+                {
+                    continue;
+                }
+
+                DynamicPlatform platform = dynamicFootholds.GetPlatform(serialNumber);
+                if (platform != null && platformIds.Add(platform.Id))
+                {
+                    platforms.Add(platform);
+                }
+            }
+
+            return platforms;
         }
 
         private bool TryResolvePacketOwnedDynamicPlatform(string name, out DynamicPlatform platform)

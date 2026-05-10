@@ -12,22 +12,22 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class EngagementProposalWindow : UIWindowBase
     {
-        private const int FrameWidth = 260;
-        private const int TextTop = 20;
-        private const int TextCenterWidth = 234;
-        private const int TextWrapWidth = 200;
-        private const int TextLeft = 15;
-        private const int TextSlotHeight = 16;
-        private const int TextDrawHeight = 14;
-        private const int CenterBandTop = 20;
-        private const int CenterBandStride = 16;
-        private const int TextBoxTopFromBottom = 47;
-        private const int BottomBandTopFromBottom = 31;
-        private const int BottomTextTopFromBottom = 15;
-        private const int MinimumLineCount = 2;
-        private const int HeightPadding = 67;
-        private const int ButtonX = 197;
-        private const int ButtonBottomOffset = 31;
+        private const int FrameWidth = EngagementProposalRuntime.FrameWidth;
+        private const int TextTop = EngagementProposalRuntime.TextTop;
+        private const int TextCenterWidth = EngagementProposalRuntime.TextCenterWidth;
+        private const int TextWrapWidth = EngagementProposalRuntime.ClientTextWrapWidth;
+        private const int TextLeft = EngagementProposalRuntime.TextLeft;
+        private const int TextSlotHeight = EngagementProposalRuntime.TextSlotHeight;
+        private const int TextDrawHeight = EngagementProposalRuntime.TextDrawHeight;
+        private const int CenterBandTop = EngagementProposalRuntime.CenterBandTop;
+        private const int CenterBandStride = EngagementProposalRuntime.CenterBandStride;
+        private const int TextBoxTopFromBottom = EngagementProposalRuntime.TextBoxTopFromBottom;
+        private const int BottomBandTopFromBottom = EngagementProposalRuntime.BottomBandTopFromBottom;
+        private const int BottomTextTopFromBottom = EngagementProposalRuntime.BottomTextTopFromBottom;
+        private const int MinimumLineCount = EngagementProposalRuntime.MinimumLineCount;
+        private const int HeightPadding = EngagementProposalRuntime.HeightPadding;
+        private const int ButtonX = EngagementProposalRuntime.PrimaryButtonX;
+        private const int ButtonBottomOffset = EngagementProposalRuntime.PrimaryButtonBottomOffset;
 
         private readonly GraphicsDevice _device;
         private readonly Texture2D _pixel;

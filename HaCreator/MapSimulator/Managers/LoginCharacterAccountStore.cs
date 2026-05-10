@@ -141,6 +141,11 @@ namespace HaCreator.MapSimulator.Managers
             LoadFromDisk();
         }
 
+        public bool RefreshFromDisk(bool clearWhenMissing = false)
+        {
+            return LoadFromDisk(clearWhenMissing);
+        }
+
         public static string ResolveAccountKey(string accountName, int worldId, int? accountId = null)
         {
             if (accountId.HasValue && accountId.Value > 0)
@@ -859,11 +864,17 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private void LoadFromDisk()
+        private bool LoadFromDisk(bool clearWhenMissing = false)
         {
             if (string.IsNullOrWhiteSpace(_storageFilePath) || !File.Exists(_storageFilePath))
             {
-                return;
+                if (clearWhenMissing && _accountsByKey.Count > 0)
+                {
+                    _accountsByKey.Clear();
+                    return true;
+                }
+
+                return false;
             }
 
             try
@@ -872,10 +883,10 @@ namespace HaCreator.MapSimulator.Managers
                 PersistedStore persisted = JsonSerializer.Deserialize<PersistedStore>(json, JsonOptions);
                 if (persisted?.AccountsByKey == null)
                 {
-                    return;
+                    return false;
                 }
 
-                _accountsByKey.Clear();
+                Dictionary<string, PersistedAccountState> refreshedAccountsByKey = new(StringComparer.Ordinal);
                 foreach (KeyValuePair<string, PersistedAccountState> entry in persisted.AccountsByKey)
                 {
                     if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null)
@@ -883,12 +894,31 @@ namespace HaCreator.MapSimulator.Managers
                         continue;
                     }
 
+                    refreshedAccountsByKey[entry.Key] = entry.Value;
+                }
+
+                if (AreEquivalentAccountDictionaries(_accountsByKey, refreshedAccountsByKey))
+                {
+                    return false;
+                }
+
+                _accountsByKey.Clear();
+                foreach (KeyValuePair<string, PersistedAccountState> entry in refreshedAccountsByKey)
+                {
                     _accountsByKey[entry.Key] = entry.Value;
                 }
+
+                return true;
             }
             catch
             {
+                if (_accountsByKey.Count == 0)
+                {
+                    return false;
+                }
+
                 _accountsByKey.Clear();
+                return true;
             }
         }
 
@@ -1283,6 +1313,101 @@ namespace HaCreator.MapSimulator.Managers
                    CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.AccountId == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.AccountId &&
                    CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.ResultFlag == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.ResultFlag &&
                    CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.CanHaveExtraCharacter == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.CanHaveExtraCharacter;
+        }
+
+        private static bool AreEquivalentAccountDictionaries(
+            IReadOnlyDictionary<string, PersistedAccountState> left,
+            IReadOnlyDictionary<string, PersistedAccountState> right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+
+            foreach ((string key, PersistedAccountState leftState) in left)
+            {
+                if (!right.TryGetValue(key, out PersistedAccountState rightState) ||
+                    !AreEquivalentPersistedStates(leftState, rightState) ||
+                    !AreEquivalentEntryStateLists(leftState?.Entries, rightState?.Entries))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool AreEquivalentEntryStateLists(
+            IReadOnlyList<LoginCharacterAccountEntryState> left,
+            IReadOnlyList<LoginCharacterAccountEntryState> right)
+        {
+            int leftCount = left?.Count ?? 0;
+            int rightCount = right?.Count ?? 0;
+            if (leftCount != rightCount)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < leftCount; index++)
+            {
+                if (!AreEquivalentEntryStates(left[index], right[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool AreEquivalentEntryStates(
+            LoginCharacterAccountEntryState left,
+            LoginCharacterAccountEntryState right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            return left.CharacterId == right.CharacterId &&
+                   string.Equals(left.Name ?? string.Empty, right.Name ?? string.Empty, StringComparison.Ordinal) &&
+                   left.Gender == right.Gender &&
+                   left.Skin == right.Skin &&
+                   left.Level == right.Level &&
+                   left.Job == right.Job &&
+                   left.SubJob == right.SubJob &&
+                   left.Fame == right.Fame &&
+                   left.WorldRank == right.WorldRank &&
+                   left.JobRank == right.JobRank &&
+                   left.Exp == right.Exp &&
+                   left.HP == right.HP &&
+                   left.MaxHP == right.MaxHP &&
+                   left.MP == right.MP &&
+                   left.MaxMP == right.MaxMP &&
+                   left.Strength == right.Strength &&
+                   left.Dexterity == right.Dexterity &&
+                   left.Intelligence == right.Intelligence &&
+                   left.Luck == right.Luck &&
+                   left.AbilityPoints == right.AbilityPoints &&
+                   left.FieldMapId == right.FieldMapId &&
+                   left.CanDelete == right.CanDelete &&
+                   left.PreviousWorldRank == right.PreviousWorldRank &&
+                   left.PreviousJobRank == right.PreviousJobRank &&
+                   left.Portal == right.Portal &&
+                   left.HasPacketOwnedRadioCreateLayerLeftContextValue == right.HasPacketOwnedRadioCreateLayerLeftContextValue &&
+                   left.PacketOwnedRadioCreateLayerLeftContextValue == right.PacketOwnedRadioCreateLayerLeftContextValue &&
+                   left.PacketOwnedRadioCreateLayerMutationSequence == right.PacketOwnedRadioCreateLayerMutationSequence &&
+                   string.Equals(left.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty, right.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty, StringComparison.Ordinal) &&
+                   left.HasPacketOwnedRadioScheduleContextValue == right.HasPacketOwnedRadioScheduleContextValue &&
+                   string.Equals(left.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty, right.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty, StringComparison.Ordinal) &&
+                   left.PacketOwnedRadioScheduleTimeValue == right.PacketOwnedRadioScheduleTimeValue &&
+                   left.PacketOwnedRadioScheduleMutationSequence == right.PacketOwnedRadioScheduleMutationSequence &&
+                   string.Equals(left.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty, right.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty, StringComparison.Ordinal) &&
+                   (left.AvatarLookPacket?.AsSpan().SequenceEqual(right.AvatarLookPacket ?? Array.Empty<byte>()) ?? false);
         }
 
         private static LoginExtraCharInfoResultProfile CloneExtraCharInfoResultProfile(LoginExtraCharInfoResultProfile profile)

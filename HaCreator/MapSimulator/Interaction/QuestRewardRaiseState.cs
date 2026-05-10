@@ -57,7 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
             enabledDropItemIndex = GetEnableDropItemIndex(itemId);
             if (enabledDropItemIndex < 0)
             {
-                return !HasEnabledDropItemList;
+                return false;
             }
 
             int enabledItemId = EnumerateEnabledDropItemIds(Prompt).ElementAt(enabledDropItemIndex);

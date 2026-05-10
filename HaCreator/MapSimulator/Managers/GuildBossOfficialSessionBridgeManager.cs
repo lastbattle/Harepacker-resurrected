@@ -869,7 +869,8 @@ namespace HaCreator.MapSimulator.Managers
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
                 relayPayload,
                 $"official-session:{e.SourceEndpoint}",
-                $"packetraw {Convert.ToHexString(e.RawPacket)}"));
+                $"packetraw {Convert.ToHexString(e.RawPacket)}",
+                e.ProxySessionId));
             ReceivedCount++;
             LastStatus =
                 $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";

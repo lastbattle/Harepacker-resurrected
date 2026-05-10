@@ -41,8 +41,25 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxBodyLineCount = 4;
         internal const int ComposePromptStringPoolId = 0x1E8;
         private const int CreateFailedStringPoolId = 0x1EA;
+        internal const int CuiHopeLineCount = 3;
+        internal const int CuiHopeLineMaxLength = 60;
+        internal const int CuiHopeInputX = 15;
+        internal const int CuiHopeInputY = 57;
+        internal const int CuiHopeInputWidth = 314;
+        internal const int CuiHopeInputHeight = 16;
+        internal const int CuiHopeInputVerticalStride = 17;
+        internal const int CuiHopeBackgroundWidth = 343;
+        internal const int CuiHopeBackgroundHeight = 144;
+        internal const int CuiHopeOkButtonX = 250;
+        internal const int CuiHopeCancelButtonX = 289;
+        internal const int CuiHopeButtonY = 115;
+        internal const int CuiHopeButtonWidth = 37;
+        internal const int CuiHopeButtonHeight = 16;
+        internal const int CuiHopeItemNameDrawX = 40;
+        internal const int CuiHopeItemNameDrawY = 21;
         private const int ChalkboardDialogOkButtonId = 1;
         private const int ChalkboardDialogCancelButtonId = 2;
+        private const int ChalkboardDialogLineTooLongStringPoolId = 0x11E;
         private const int ClientMessageBoxPropertyStringPoolId = 0x660;
         private const string ClientMessageBoxPropertyName = "messageBox";
         private const string ChalkboardSamplePropertyName = "sample";
@@ -779,16 +796,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string normalizedMessage = string.IsNullOrWhiteSpace(messageText) ? string.Empty : messageText.Trim();
-            if (string.IsNullOrEmpty(normalizedMessage))
+            if (!TryNormalizeChalkboardDialogText(messageText, out string normalizedMessage, out error))
             {
-                error = "Message-box use request requires non-empty message text.";
                 return false;
             }
 
-            if (normalizedMessage.Length > short.MaxValue)
+            IReadOnlyList<string> messageLines = NormalizeChalkboardDialogLines(normalizedMessage);
+            if (messageLines.Count == 0)
             {
-                error = $"Message-box use request text length {normalizedMessage.Length} exceeds the MapleString 16-bit length field.";
+                error = "Message-box use request requires non-empty message text.";
                 return false;
             }
 
@@ -796,7 +812,12 @@ namespace HaCreator.MapSimulator.Interaction
             writer.WriteInt(Math.Max(0, currentTick));
             writer.WriteShort(inventoryPosition);
             writer.WriteInt(itemId);
-            writer.WriteMapleString(normalizedMessage);
+            writer.WriteByte(messageLines.Count);
+            foreach (string line in messageLines)
+            {
+                writer.WriteMapleString(line);
+            }
+
             payload = writer.ToArray();
             return true;
         }
@@ -895,7 +916,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string normalizedText = NormalizeChalkboardDialogText(initialText);
+            if (!TryNormalizeChalkboardDialogText(initialText, out string normalizedText, out message))
+            {
+                return false;
+            }
+
             _chalkboardDialogState = new ChalkboardDialogState(
                 inventoryPosition,
                 itemId,
@@ -903,10 +928,10 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveItemName(itemId),
                 ResolveChalkboardComposePromptText(),
                 ResolveChalkboardDialogDescription(itemId));
-            message = $"Opened chalkboard consume dialog for {_chalkboardDialogState.ItemName} from slot {inventoryPosition}; OK button {ChalkboardDialogOkButtonId} will submit opcode 0x{ConsumeCashItemUseRequestOpcode:X} and Cancel button {ChalkboardDialogCancelButtonId} will close without staging a board.";
+            message = $"Opened CUIHope chalkboard consume dialog for {_chalkboardDialogState.ItemName} from slot {inventoryPosition}; OK button {ChalkboardDialogOkButtonId} will submit opcode 0x{ConsumeCashItemUseRequestOpcode:X} and Cancel button {ChalkboardDialogCancelButtonId} will close without staging a board.";
             if (!string.IsNullOrEmpty(normalizedText))
             {
-                message += $" Draft text length {normalizedText.Length}.";
+                message += $" Draft uses {NormalizeChalkboardDialogLines(normalizedText).Count} CCtrlEdit line(s).";
             }
 
             return true;
@@ -921,9 +946,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string normalizedText = NormalizeChalkboardDialogText(text);
+            if (!TryNormalizeChalkboardDialogText(text, out string normalizedText, out message))
+            {
+                return false;
+            }
+
             _chalkboardDialogState = _chalkboardDialogState with { MessageText = normalizedText };
-            message = $"Updated chalkboard consume dialog draft text length {normalizedText.Length}.";
+            message = $"Updated chalkboard consume dialog draft to {NormalizeChalkboardDialogLines(normalizedText).Count} CCtrlEdit line(s).";
             return true;
         }
 
@@ -959,7 +988,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(_chalkboardDialogState.MessageText))
+            if (NormalizeChalkboardDialogLines(_chalkboardDialogState.MessageText).Count == 0)
             {
                 message = "Chalkboard consume dialog OK is disabled until message text is entered.";
                 return false;
@@ -969,7 +998,7 @@ namespace HaCreator.MapSimulator.Interaction
             itemId = _chalkboardDialogState.ItemId;
             messageText = _chalkboardDialogState.MessageText;
             _chalkboardDialogState = null;
-            message = $"Accepted chalkboard consume dialog for item {itemId} from slot {inventoryPosition}; routing OK button {ChalkboardDialogOkButtonId} through CUserLocal::ConsumeCashItem opcode 0x{ConsumeCashItemUseRequestOpcode:X}.";
+            message = $"Accepted CUIHope chalkboard consume dialog for item {itemId} from slot {inventoryPosition}; routing OK button {ChalkboardDialogOkButtonId} through CUserLocal::ConsumeCashItem opcode 0x{ConsumeCashItemUseRequestOpcode:X}.";
             return true;
         }
 
@@ -980,10 +1009,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "No chalkboard consume dialog is open.";
             }
 
-            string okState = string.IsNullOrWhiteSpace(_chalkboardDialogState.MessageText)
+            int lineCount = NormalizeChalkboardDialogLines(_chalkboardDialogState.MessageText).Count;
+            string okState = lineCount == 0
                 ? "disabled"
                 : "enabled";
-            return $"Chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; prompt StringPool 0x{ComposePromptStringPoolId:X} \"{_chalkboardDialogState.PromptText}\", OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft length {_chalkboardDialogState.MessageText.Length}. {_chalkboardDialogState.ItemDescription}";
+            return $"CUIHope chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; prompt StringPool 0x{ComposePromptStringPoolId:X} \"{_chalkboardDialogState.PromptText}\", OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft lines {lineCount}/{CuiHopeLineCount}, edit max {CuiHopeLineMaxLength} each. {_chalkboardDialogState.ItemDescription}";
         }
 
         private sealed record ChalkboardDialogState(
@@ -1038,7 +1068,14 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                string messageText = reader.ReadMapleString();
+                string messageText;
+                int messageStartPosition = reader.Position;
+                if (!TryDecodeCuiHopeLinePayload(reader, out messageText))
+                {
+                    reader.Position = messageStartPosition;
+                    messageText = reader.ReadMapleString();
+                }
+
                 request = new MessageBoxConsumeCashItemUseRequest(clientTick, inventoryPosition, itemId, messageText);
                 return true;
             }
@@ -1134,11 +1171,136 @@ namespace HaCreator.MapSimulator.Interaction
             return KnownConsumeCashItemUseRequestItemIds.Contains(itemId);
         }
 
-        private static string NormalizeChalkboardDialogText(string text)
+        internal static bool HasChalkboardDialogText(string text)
         {
-            return string.IsNullOrWhiteSpace(text)
-                ? string.Empty
-                : text.Trim();
+            return NormalizeChalkboardDialogLines(text).Count > 0;
+        }
+
+        internal static IReadOnlyList<string> NormalizeChalkboardDialogLinesForTest(string text)
+        {
+            return NormalizeChalkboardDialogLinesForDialog(text);
+        }
+
+        internal static IReadOnlyList<string> NormalizeChalkboardDialogLinesForDialog(string text)
+        {
+            return NormalizeChalkboardDialogLines(text);
+        }
+
+        internal static (int X, int Y, int Width, int Height)[] ResolveCuiHopeEditRowsForTest()
+        {
+            return Enumerable.Range(0, CuiHopeLineCount)
+                .Select(index => (
+                    CuiHopeInputX,
+                    CuiHopeInputY + (index * CuiHopeInputVerticalStride),
+                    CuiHopeInputWidth,
+                    CuiHopeInputHeight))
+                .ToArray();
+        }
+
+        private static bool TryNormalizeChalkboardDialogText(string text, out string normalizedText, out string error)
+        {
+            normalizedText = string.Empty;
+            error = string.Empty;
+            IReadOnlyList<string> lines = NormalizeChalkboardDialogLines(text);
+            foreach (string line in lines)
+            {
+                if (line.Length > CuiHopeLineMaxLength)
+                {
+                    error = $"Chalkboard dialog line length {line.Length} exceeds CUIHope CCtrlEdit nHorzMax {CuiHopeLineMaxLength} [client notice StringPool 0x{ChalkboardDialogLineTooLongStringPoolId:X}].";
+                    return false;
+                }
+            }
+
+            normalizedText = string.Join("\n", lines);
+            return true;
+        }
+
+        private static IReadOnlyList<string> NormalizeChalkboardDialogLines(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            string normalizedNewlines = text.Replace("\\r\\n", "\n", StringComparison.Ordinal)
+                .Replace("\\n", "\n", StringComparison.Ordinal)
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
+            string[] splitLines = normalizedNewlines.Split('\n');
+            List<string> lines = new(CuiHopeLineCount);
+            foreach (string splitLine in splitLines)
+            {
+                if (lines.Count >= CuiHopeLineCount)
+                {
+                    break;
+                }
+
+                lines.Add((splitLine ?? string.Empty).Trim());
+            }
+
+            for (int index = lines.Count - 1; index >= 0; index--)
+            {
+                if (lines[index].Length != 0)
+                {
+                    break;
+                }
+
+                lines.RemoveAt(index);
+            }
+
+            return lines;
+        }
+
+        private static bool TryDecodeCuiHopeLinePayload(PacketReader reader, out string messageText)
+        {
+            messageText = string.Empty;
+            if (reader == null || reader.Remaining <= 0)
+            {
+                return false;
+            }
+
+            int startPosition = reader.Position;
+            try
+            {
+                byte lineCount = reader.ReadByte();
+                if (lineCount == 0 || lineCount > CuiHopeLineCount)
+                {
+                    reader.Position = startPosition;
+                    return false;
+                }
+
+                List<string> lines = new(lineCount);
+                for (int index = 0; index < lineCount; index++)
+                {
+                    string line = reader.ReadMapleString() ?? string.Empty;
+                    if (line.Length > CuiHopeLineMaxLength)
+                    {
+                        reader.Position = startPosition;
+                        return false;
+                    }
+
+                    lines.Add(line.Trim());
+                }
+
+                if (reader.Remaining != 0)
+                {
+                    reader.Position = startPosition;
+                    return false;
+                }
+
+                messageText = string.Join("\n", lines);
+                return lines.Any(line => line.Length > 0);
+            }
+            catch (EndOfStreamException)
+            {
+                reader.Position = startPosition;
+                return false;
+            }
+            catch (IOException)
+            {
+                reader.Position = startPosition;
+                return false;
+            }
         }
 
         private static string ResolveChalkboardDialogDescription(int itemId)

@@ -1409,6 +1409,19 @@ namespace HaCreator.MapSimulator.Entities
 
             _lastVisibilityCheckFrame = frameNumber;
 
+            int shiftCenteredX = mapShiftX - centerX;
+            int shiftCenteredY = mapShiftY - centerY;
+            if (TryGetCurrentTransientSourceBounds(out Rectangle transientSourceBounds))
+            {
+                SetVisible(IsBoundsWithinView(
+                    transientSourceBounds,
+                    shiftCenteredX,
+                    shiftCenteredY,
+                    viewWidth,
+                    viewHeight));
+                return;
+            }
+
             IDXObject frame = GetVisibilityFrame();
             if (frame == null)
             {
@@ -1416,8 +1429,6 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            int shiftCenteredX = mapShiftX - centerX;
-            int shiftCenteredY = mapShiftY - centerY;
             SetVisible(IsFrameWithinView(
                 frame,
                 shiftCenteredX - Position.X,
@@ -1446,13 +1457,27 @@ namespace HaCreator.MapSimulator.Entities
 
                 int shiftCenteredX = mapShiftX - centerX;
                 int shiftCenteredY = mapShiftY - centerY;
-                if (!IsFrameWithinView(
-                    drawFrame,
-                    shiftCenteredX - Position.X,
-                    shiftCenteredY - Position.Y,
-                    renderParameters.RenderWidth,
-                    renderParameters.RenderHeight))
+                if (TryGetCurrentTransientSourceBounds(out Rectangle transientSourceBounds))
+                {
+                    if (!IsBoundsWithinView(
+                        transientSourceBounds,
+                        shiftCenteredX,
+                        shiftCenteredY,
+                        renderParameters.RenderWidth,
+                        renderParameters.RenderHeight))
+                    {
+                        return;
+                    }
+                }
+                else if (!IsFrameWithinView(
+                             drawFrame,
+                             shiftCenteredX - Position.X,
+                             shiftCenteredY - Position.Y,
+                             renderParameters.RenderWidth,
+                             renderParameters.RenderHeight))
+                {
                     return;
+                }
 
                 DrawLayerFrame(drawFrame, sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - Position.X, shiftCenteredY - Position.Y,
@@ -1493,6 +1518,44 @@ namespace HaCreator.MapSimulator.Entities
                 drawReflectionInfo,
                 renderParameters,
                 TickCount);
+        }
+
+        private bool TryGetCurrentTransientSourceBounds(out Rectangle bounds)
+        {
+            if (_transientFrameDelays == null
+                || _transientFrameDelays.Length == 0
+                || _transientSourceBounds == null
+                || _transientSourceBounds.Length == 0)
+            {
+                bounds = default;
+                return false;
+            }
+
+            int sourceFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
+                _transientFrameIndex,
+                _transientSourceBounds.Length);
+            Rectangle sourceBounds = _transientSourceBounds[sourceFrameIndex];
+            bounds = new Rectangle(
+                _currentWorldX + sourceBounds.X,
+                _currentWorldY + sourceBounds.Y,
+                sourceBounds.Width,
+                sourceBounds.Height);
+            return true;
+        }
+
+        private static bool IsBoundsWithinView(
+            Rectangle bounds,
+            int shiftCenteredX,
+            int shiftCenteredY,
+            int viewWidth,
+            int viewHeight)
+        {
+            int adjustedLeft = bounds.Left - shiftCenteredX;
+            int adjustedTop = bounds.Top - shiftCenteredY;
+            return adjustedLeft + bounds.Width >= 0
+                && adjustedTop + bounds.Height >= 0
+                && adjustedLeft <= viewWidth
+                && adjustedTop <= viewHeight;
         }
 
         internal static float NormalizeLayerAlphaForTesting(float layerAlpha)

@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.Managers
             AuthenCode.HasValue &&
             PremiumArgument.HasValue;
 
+        public bool IsPremium => AuthenCode.HasValue && ((AuthenCode.Value >> 1) & 1) != 0;
+
         public bool IsConnectSuccess =>
             LoginSelectCharacterByVacResultCodec.IsConnectSuccess(ResultCode, SecondaryCode);
 

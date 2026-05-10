@@ -124,6 +124,41 @@ namespace HaCreator.MapSimulator.UI
             public bool HasDetails => !string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Detail);
         }
 
+        internal enum ClientFuncKeyMappedCompositionKind
+        {
+            None = 0,
+            SkillCanvasCopy = 1,
+            ItemSlotIcon = 2,
+            MacroCanvasCopy = 8,
+        }
+
+        internal readonly struct ClientFuncKeyMappedComposition
+        {
+            public ClientFuncKeyMappedComposition(
+                ClientFuncKeyMappedCompositionKind kind,
+                Rectangle iconBounds,
+                Vector2 quantityPosition,
+                Rectangle unavailableOverlayBounds,
+                Point nativeAnchorOffset,
+                bool usesItemNumberImages)
+            {
+                Kind = kind;
+                IconBounds = iconBounds;
+                QuantityPosition = quantityPosition;
+                UnavailableOverlayBounds = unavailableOverlayBounds;
+                NativeAnchorOffset = nativeAnchorOffset;
+                UsesItemNumberImages = usesItemNumberImages;
+            }
+
+            public ClientFuncKeyMappedCompositionKind Kind { get; }
+            public Rectangle IconBounds { get; }
+            public Vector2 QuantityPosition { get; }
+            public Rectangle UnavailableOverlayBounds { get; }
+            public Point NativeAnchorOffset { get; }
+            public bool UsesItemNumberImages { get; }
+            public bool HasUnavailableOverlay => UnavailableOverlayBounds != Rectangle.Empty;
+        }
+
         public readonly struct PacketSlotVisualState
         {
             public PacketSlotVisualState(
@@ -1223,16 +1258,26 @@ namespace HaCreator.MapSimulator.UI
             float scale = ResolveClientFuncKeyMappedScale(cellBounds, iconTexture, shortcutVisualState.DrawLayer, compact);
             int drawWidth = Math.Max(1, (int)Math.Round(iconTexture.Width * scale, MidpointRounding.AwayFromZero));
             int drawHeight = Math.Max(1, (int)Math.Round(iconTexture.Height * scale, MidpointRounding.AwayFromZero));
-            Rectangle iconBounds = ResolveClientFuncKeyMappedIconBounds(cellBounds, drawWidth, drawHeight, shortcutVisualState.DrawLayer);
+            Vector2 quantitySize = string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText)
+                ? Vector2.Zero
+                : _font.MeasureString(shortcutVisualState.QuantityText) * (compact ? 0.28f : 0.36f);
+            ClientFuncKeyMappedComposition composition = ResolveClientFuncKeyMappedComposition(
+                cellBounds,
+                drawWidth,
+                drawHeight,
+                quantitySize,
+                shortcutVisualState.DrawLayer,
+                !string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText),
+                compact);
             Color tint = shortcutVisualState.Unavailable ? ClientFuncKeyMappedUnavailableTint : Color.White;
-            sprite.Draw(iconTexture, iconBounds, tint);
+            sprite.Draw(iconTexture, composition.IconBounds, tint);
 
-            if (shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.ItemUnavailable)
+            if (composition.HasUnavailableOverlay)
             {
-                sprite.Draw(_highlightTexture, cellBounds, ClientFuncKeyMappedUnavailableOverlay);
+                sprite.Draw(_highlightTexture, composition.UnavailableOverlayBounds, ClientFuncKeyMappedUnavailableOverlay);
             }
 
-            DrawClientFuncKeyMappedQuantity(sprite, cellBounds, shortcutVisualState, compact);
+            DrawClientFuncKeyMappedQuantity(sprite, cellBounds, shortcutVisualState, compact, composition);
         }
 
         private static Rectangle ResolveClientFuncKeyMappedCellBounds(Rectangle bounds, bool compact)
@@ -1304,7 +1349,56 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(clampedX, clampedY, iconBounds.Width, iconBounds.Height);
         }
 
-        private void DrawClientFuncKeyMappedQuantity(SpriteBatch sprite, Rectangle cellBounds, ShortcutVisualState shortcutVisualState, bool compact)
+        internal static ClientFuncKeyMappedComposition ResolveClientFuncKeyMappedComposition(
+            Rectangle cellBounds,
+            int drawWidth,
+            int drawHeight,
+            Vector2 quantitySize,
+            ShortcutVisualState.ClientDrawLayer drawLayer,
+            bool hasQuantityText,
+            bool compact)
+        {
+            Rectangle iconBounds = ResolveClientFuncKeyMappedIconBounds(
+                cellBounds,
+                Math.Max(1, drawWidth),
+                Math.Max(1, drawHeight),
+                drawLayer);
+            Vector2 quantityPosition = hasQuantityText
+                ? ResolveClientFuncKeyMappedQuantityPosition(cellBounds, quantitySize, drawLayer)
+                : Vector2.Zero;
+            Rectangle unavailableOverlayBounds = drawLayer == ShortcutVisualState.ClientDrawLayer.ItemUnavailable
+                ? cellBounds
+                : Rectangle.Empty;
+            ClientFuncKeyMappedCompositionKind kind = drawLayer switch
+            {
+                ShortcutVisualState.ClientDrawLayer.Skill => ClientFuncKeyMappedCompositionKind.SkillCanvasCopy,
+                ShortcutVisualState.ClientDrawLayer.Macro => ClientFuncKeyMappedCompositionKind.MacroCanvasCopy,
+                ShortcutVisualState.ClientDrawLayer.ItemStack
+                    or ShortcutVisualState.ClientDrawLayer.ItemAvailability
+                    or ShortcutVisualState.ClientDrawLayer.ItemUnavailable
+                    or ShortcutVisualState.ClientDrawLayer.CashItem => ClientFuncKeyMappedCompositionKind.ItemSlotIcon,
+                _ => ClientFuncKeyMappedCompositionKind.None,
+            };
+            bool usesItemNumberImages = drawLayer == ShortcutVisualState.ClientDrawLayer.ItemStack
+                && hasQuantityText;
+
+            // IDA: CUIKeyConfig::DrawFuncKeyMapped draws item slots from (x, y + 32),
+            // stack numbers from y + 20, and skill/macro canvases bottom-aligned to x/y.
+            return new ClientFuncKeyMappedComposition(
+                kind,
+                iconBounds,
+                quantityPosition,
+                unavailableOverlayBounds,
+                new Point(0, ClientFuncKeyMappedCellSize),
+                usesItemNumberImages);
+        }
+
+        private void DrawClientFuncKeyMappedQuantity(
+            SpriteBatch sprite,
+            Rectangle cellBounds,
+            ShortcutVisualState shortcutVisualState,
+            bool compact,
+            ClientFuncKeyMappedComposition composition)
         {
             if (string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText))
             {
@@ -1318,15 +1412,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float scale = compact ? 0.28f : 0.36f;
-            Vector2 quantitySize = _font.MeasureString(shortcutVisualState.QuantityText) * scale;
-            Vector2 quantityPosition = ResolveClientFuncKeyMappedQuantityPosition(
-                cellBounds,
-                quantitySize,
-                shortcutVisualState.DrawLayer);
             sprite.DrawString(
                 _font,
                 shortcutVisualState.QuantityText,
-                quantityPosition,
+                composition.QuantityPosition,
                 new Color(255, 248, 194),
                 0f,
                 Vector2.Zero,

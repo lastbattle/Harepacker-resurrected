@@ -52,7 +52,7 @@ namespace HaCreator.MapSimulator
             PacketOwnedLogoutGiftPredictQuitContextByteOffset - sizeof(int);
         private const string PacketOwnedLogoutGiftPrecursorFirstContextSymbol = "CWvsContext::dword_4098";
         private const string PacketOwnedLogoutGiftPrecursorSecondContextSymbol = "CWvsContext::dword_409C";
-        private const string PacketOwnedLogoutGiftPrecursorThirdContextSymbol = "CWvsContext::dword_40A0";
+        private const string PacketOwnedLogoutGiftPrecursorThirdContextSymbol = "CWvsContext::m_apStackForTab.a";
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
         private readonly int[] _packetOwnedLogoutGiftOwnerCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedLogoutGiftRefreshTick = int.MinValue;
         private int _lastPacketOwnedLogoutGiftClientUpdateTick = int.MinValue;
         private int _packetOwnedLogoutGiftClientUpdateCount;
+        private int _packetOwnedLogoutGiftClientUpdatedChildControlCount;
         private int _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;
         private int _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
         private string _lastPacketOwnedLogoutGiftSummary = "Packet-owned logout gift idle.";
@@ -616,10 +617,22 @@ namespace HaCreator.MapSimulator
                 : PacketOwnedLogoutGiftUpdateEffect.NativeSingletonOnly;
         }
 
+        internal static int ResolvePacketOwnedLogoutGiftUpdatedChildControlCount(
+            bool ownerSingletonPresent,
+            bool hasWindowInstance)
+        {
+            return ResolvePacketOwnedLogoutGiftUpdateEffect(ownerSingletonPresent, hasWindowInstance) == PacketOwnedLogoutGiftUpdateEffect.EnabledChildControlUpdate
+                ? LogoutGiftWindow.ResolveClientUpdateEnabledChildControlCount()
+                : 0;
+        }
+
         private void ApplyPacketOwnedLogoutGiftClientUpdateRefresh(LogoutGiftWindow window)
         {
             _packetOwnedLogoutGiftClientUpdateCount++;
             _lastPacketOwnedLogoutGiftClientUpdateTick = Environment.TickCount;
+            _packetOwnedLogoutGiftClientUpdatedChildControlCount += ResolvePacketOwnedLogoutGiftUpdatedChildControlCount(
+                IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, window?.IsVisible == true),
+                window != null);
             window?.ApplyPacketOwnedClientUpdateRefresh();
         }
 
@@ -630,7 +643,10 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            return $" Inherited `CWnd::Update` child-control refresh count {_packetOwnedLogoutGiftClientUpdateCount.ToString(CultureInfo.InvariantCulture)} at tick {_lastPacketOwnedLogoutGiftClientUpdateTick.ToString(CultureInfo.InvariantCulture)}.";
+            string childControlSuffix = _packetOwnedLogoutGiftClientUpdatedChildControlCount > 0
+                ? $" / enabled child-control updates {_packetOwnedLogoutGiftClientUpdatedChildControlCount.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $" Inherited `CWnd::Update` child-control refresh count {_packetOwnedLogoutGiftClientUpdateCount.ToString(CultureInfo.InvariantCulture)}{childControlSuffix} at tick {_lastPacketOwnedLogoutGiftClientUpdateTick.ToString(CultureInfo.InvariantCulture)}.";
         }
 
         private void CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache()
@@ -661,6 +677,7 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftPredictQuitRawValue = 0;
                 _lastPacketOwnedLogoutGiftClientUpdateTick = int.MinValue;
                 _packetOwnedLogoutGiftClientUpdateCount = 0;
+                _packetOwnedLogoutGiftClientUpdatedChildControlCount = 0;
                 Array.Clear(_packetOwnedLogoutGiftOwnerCommoditySerialNumbers, 0, _packetOwnedLogoutGiftOwnerCommoditySerialNumbers.Length);
                 _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
                 _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;

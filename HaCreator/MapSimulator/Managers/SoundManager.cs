@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
+        private readonly ConcurrentDictionary<string, WzBinaryProperty> _registeredSoundProperties;
         private readonly ConcurrentDictionary<string, ulong> _clientSoundSourceAccessSerials;
         private readonly HashSet<string> _clientSoundSourceKeys;
         private readonly List<OneShotSound> _activeSounds;
@@ -67,6 +68,7 @@ namespace HaCreator.MapSimulator.Managers
         public SoundManager()
         {
             _soundSources = new ConcurrentDictionary<string, SoundEffect>();
+            _registeredSoundProperties = new ConcurrentDictionary<string, WzBinaryProperty>();
             _clientSoundSourceAccessSerials = new ConcurrentDictionary<string, ulong>();
             _clientSoundSourceKeys = new HashSet<string>(StringComparer.Ordinal);
             _activeSounds = new List<OneShotSound>();
@@ -91,11 +93,12 @@ namespace HaCreator.MapSimulator.Managers
         /// <param name="sound">The WzBinaryProperty containing the sound data</param>
         public void RegisterSound(string name, WzBinaryProperty sound)
         {
-            if (sound == null) return;
+            if (string.IsNullOrWhiteSpace(name) || sound == null) return;
             _soundSources.AddOrUpdate(
                 name,
                 _ => MonoGameAudioFactory.CreateSoundEffect(sound),
                 (_, existing) => existing);
+            _registeredSoundProperties.AddOrUpdate(name, sound, (_, _) => sound);
             _activeSoundCounts[name] = 0;
         }
 
@@ -115,7 +118,46 @@ namespace HaCreator.MapSimulator.Managers
         /// <param name="volumeScale">Per-call volume multiplier clamped to 0.0-1.0</param>
         public void PlaySound(string name, float volumeScale)
         {
+            if (TryPlayRegisteredClientSoundEffect(name, volumeScale, suppressWhileActive: false, out _))
+            {
+                return;
+            }
+
             TryPlaySound(name, volumeScale, suppressWhileActive: false, out _);
+        }
+
+        internal bool TryGetRegisteredSoundSource(string name, out WzBinaryProperty sound)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                sound = null;
+                return false;
+            }
+
+            return _registeredSoundProperties.TryGetValue(name, out sound) && sound != null;
+        }
+
+        internal bool TryPlayRegisteredClientSoundEffect(
+            string name,
+            float startVolumeScale,
+            bool suppressWhileActive,
+            out string reason)
+        {
+            reason = null;
+            if (!TryGetRegisteredSoundSource(name, out WzBinaryProperty sound))
+            {
+                return false;
+            }
+
+            TryPlayClientSoundEffect(
+                BuildRegisteredClientSoundKey(name, sound),
+                sound,
+                startVolumeScale,
+                loop: false,
+                suppressWhileActive,
+                out _,
+                out reason);
+            return true;
         }
 
         internal bool TryPlayClientSoundEffect(
@@ -459,6 +501,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 _clientSoundSourceAccessSerials.TryRemove(evictKey, out _);
                 _activeSoundCounts.TryRemove(evictKey, out _);
+                _registeredSoundProperties.TryRemove(evictKey, out _);
                 if (_soundSources.TryRemove(evictKey, out SoundEffect soundEffect))
                 {
                     soundEffect.Dispose();
@@ -498,6 +541,7 @@ namespace HaCreator.MapSimulator.Managers
             _loopingSoundHandles.Clear();
 
             _soundSources.Clear();
+            _registeredSoundProperties.Clear();
             _clientSoundSourceAccessSerials.Clear();
             lock (_lock)
             {
@@ -648,6 +692,32 @@ namespace HaCreator.MapSimulator.Managers
         internal static bool ShouldMuteBgmForRadio(bool radioPlaying, bool radioMuted)
         {
             return radioPlaying && !radioMuted;
+        }
+
+        internal static string BuildRegisteredClientSoundKey(string registeredName, WzBinaryProperty sound)
+        {
+            string path = sound?.FullPath?.Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(path)
+                || (path.IndexOf('/') < 0 && !string.IsNullOrWhiteSpace(registeredName))
+                || (path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) < 0
+                    && !string.IsNullOrWhiteSpace(registeredName)
+                    && registeredName.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                path = registeredName;
+            }
+
+            if (path.StartsWith("Sound.wz/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = path["Sound.wz/".Length..];
+            }
+
+            if (!path.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase)
+                && path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                path = "Sound/" + path;
+            }
+
+            return $"RegisteredSound:{path}";
         }
 
         internal static ClientSoundPlaybackPlan ResolveClientSoundPlaybackPlan(

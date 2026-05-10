@@ -1270,17 +1270,6 @@ namespace HaCreator.MapSimulator.Fields
                 nextTip = FormatTipStringPoolText(TimeLeftTipStringPoolId, "Time left: {0}s", remainingSeconds);
                 optionKey = 1;
             }
-            else if (_resultType == RockPaperScissorsResultType.Win)
-            {
-                nextTip = MapleStoryStringPool.GetOrFallback(ClearTipStringPoolId, "Round cleared.");
-                optionKey = 2;
-            }
-            else if (_resultType == RockPaperScissorsResultType.Lose || _resultType == RockPaperScissorsResultType.TimeOver)
-            {
-                int stringPoolId = _receiveCompensation ? CompensationRetryTipStringPoolId : LoseRetryTipStringPoolId;
-                nextTip = MapleStoryStringPool.GetOrFallback(stringPoolId, "Try again.");
-                optionKey = _receiveCompensation ? 3u : 4u;
-            }
             else if (_mainButtonType == RockPaperScissorsMainButtonType.Continue)
             {
                 nextTip = FormatTipStringPoolText(ContinueTipStringPoolId, "Continue to round {0}.", StraightVictoryCount + 1);
@@ -1288,8 +1277,22 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (_mainButtonType == RockPaperScissorsMainButtonType.Retry)
             {
-                nextTip = MapleStoryStringPool.GetOrFallback(RetryTipStringPoolId, "Retry.");
-                optionKey = 6;
+                if (StraightVictoryCount >= 10)
+                {
+                    nextTip = MapleStoryStringPool.GetOrFallback(ClearTipStringPoolId, "Round cleared.");
+                    optionKey = 2;
+                }
+                else if (_npcChoice != RockPaperScissorsChoice.None)
+                {
+                    int stringPoolId = _receiveCompensation ? CompensationRetryTipStringPoolId : LoseRetryTipStringPoolId;
+                    nextTip = MapleStoryStringPool.GetOrFallback(stringPoolId, "Try again.");
+                    optionKey = _receiveCompensation ? 3u : 4u;
+                }
+                else
+                {
+                    nextTip = MapleStoryStringPool.GetOrFallback(RetryTipStringPoolId, "Retry.");
+                    optionKey = 6;
+                }
             }
             else
             {

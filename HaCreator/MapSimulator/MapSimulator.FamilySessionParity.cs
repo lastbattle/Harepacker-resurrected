@@ -236,6 +236,29 @@ namespace HaCreator.MapSimulator
             return $"{detail} {teleportMessage}";
         }
 
+        private string CompletePendingFamilyPrivilegeTransferFromStageTransition(string detail, bool teleportLocalPlayer)
+        {
+            if (!_familyChartRuntime.TryCompletePendingPrivilegeTransfer(out var teleportPosition, out string transferMessage))
+            {
+                return detail ?? string.Empty;
+            }
+
+            // Family cross-map privilege acceptance is completed by the stage-transition/session-ingress owner.
+            if (teleportLocalPlayer)
+            {
+                _playerManager?.TeleportTo(teleportPosition.X, teleportPosition.Y);
+            }
+
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return transferMessage;
+            }
+
+            return string.IsNullOrWhiteSpace(transferMessage)
+                ? detail
+                : $"{detail} {transferMessage}";
+        }
+
         private bool TryMirrorFamilyUsePrivilegeClientRequest(
             int privilegeIndex,
             bool includeTargetName,
@@ -348,7 +371,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleFamilySessionCommand(string[] args)
         {
-            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendchart [characterName]|queuechart [characterName]|sendpending|queuepending|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|transfer <status|complete|cancel>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendchart [characterName]|queuechart [characterName]|sendpending|queuepending|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeFamilyOfficialSessionBridgeStatus());
@@ -405,6 +428,38 @@ namespace HaCreator.MapSimulator
                 return _familyOfficialSessionBridge.TryReplayRecentOutboundPacket(historyIndex, out string replayStatus)
                     ? ChatCommandHandler.CommandResult.Ok(replayStatus)
                     : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "transfer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /family session transfer <status|complete|cancel>");
+                }
+
+                if (string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Info(_familyChartRuntime.DescribePendingPrivilegeTransfer());
+                }
+
+                if (string.Equals(args[1], "complete", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!_familyChartRuntime.TryCompletePendingPrivilegeTransfer(out var teleportPosition, out string completion))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(completion);
+                    }
+
+                    _playerManager?.TeleportTo(teleportPosition.X, teleportPosition.Y);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        $"Manually completed family privilege transfer from the server-owned stage-transition/session-ingress seam. {completion}");
+                }
+
+                if (string.Equals(args[1], "cancel", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.CancelPendingPrivilegeTransfer());
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /family session transfer <status|complete|cancel>");
             }
 
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)

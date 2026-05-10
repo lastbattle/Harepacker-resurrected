@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private int _hoveredEntryIndex = -1;
         private int _clientMouseToolTipIndex = -1;
         private int _packetOwnedClientUpdateCount;
+        private int _packetOwnedUpdatedChildControlCount;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -66,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible;
         internal Point ActiveFrameSize => new(CurrentFrame?.Width ?? DefaultWidth, CurrentFrame?.Height ?? DefaultHeight);
         internal int PacketOwnedClientUpdateCount => _packetOwnedClientUpdateCount;
+        internal int PacketOwnedUpdatedChildControlCount => _packetOwnedUpdatedChildControlCount;
 
         internal void ConfigureVisualAssets(Texture2D frameTexture, LogoutGiftButtonSkin buttonSkin)
         {
@@ -98,8 +100,7 @@ namespace HaCreator.MapSimulator.UI
         internal void ApplyPacketOwnedClientUpdateRefresh()
         {
             _packetOwnedClientUpdateCount++;
-            _snapshot = _snapshotProvider?.Invoke() ?? new LogoutGiftOwnerSnapshot();
-            _pendingSelectionIndex = ClampSelectionIndex(_snapshot.SelectedIndex);
+            _packetOwnedUpdatedChildControlCount += ResolveClientUpdateEnabledChildControlCount();
         }
 
         public override void Update(GameTime gameTime)
@@ -623,6 +624,11 @@ namespace HaCreator.MapSimulator.UI
         internal static int GetClientSelectButtonId(int index)
         {
             return ClientSelectButtonBaseId + index;
+        }
+
+        internal static int ResolveClientUpdateEnabledChildControlCount()
+        {
+            return ClientSelectButtonCount;
         }
 
         internal static bool TryResolveClientSelectButtonIndex(int buttonId, out int index)

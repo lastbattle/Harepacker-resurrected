@@ -158,11 +158,11 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.GuildQuestQueueNotice => ApplyClientGuildQuestQueueNoticeResult(packet),
                 SocialListClientGuildResultKind.GuildBoardAuthKey => SetPacketGuildBoardAuthKey(packet.GuildBoardAuthKey),
                 SocialListClientGuildResultKind.GuildNameInput
-                    or SocialListClientGuildResultKind.CreateGuildAgreement
                     or SocialListClientGuildResultKind.GuildInvite
                     or SocialListClientGuildResultKind.GuildMarkInput => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildExplicitBranchSummary(packet)),
+                SocialListClientGuildResultKind.CreateGuildAgreement => ApplyClientGuildCreateAgreementResult(packet),
                 SocialListClientGuildResultKind.GuildDataSnapshot => ApplyClientGuildDataSnapshot(packet),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     BuildClientGuildSkillRecordSummary(packet),
@@ -210,6 +210,18 @@ namespace HaCreator.MapSimulator.Interaction
             int memberCount = packet.GuildMembers?.Count ?? 0;
             string summary = $"Client OnGuildResult({packet.RawSubtype}) decoded guild snapshot for {resolvedGuildName} (id={packet.GuildId}, level={Math.Max(0, packet.GuildLevel)}, points={Math.Max(0, packet.GuildPoints)}, members={memberCount}, skillRecords={skillRecordCount}).";
             return SetPacketSyncSummary(SocialListTab.Guild, summary);
+        }
+
+        private string ApplyClientGuildCreateAgreementResult(SocialListClientGuildResultPacket packet)
+        {
+            string summary = CaptureClientGuildCreateAgreement(
+                packet.GuildDialogPartyId,
+                packet.GuildDialogMasterName,
+                packet.GuildName);
+            string branchSummary = BuildClientGuildExplicitBranchSummary(packet);
+            return string.IsNullOrWhiteSpace(branchSummary)
+                ? summary
+                : $"{branchSummary} {summary}";
         }
 
         private string ApplyClientGuildDataSnapshotClear(byte rawSubtype)

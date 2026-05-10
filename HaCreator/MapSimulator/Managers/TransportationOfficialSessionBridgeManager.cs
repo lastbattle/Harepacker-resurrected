@@ -858,10 +858,12 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
-                int flushed = FlushQueuedOutboundPacketsViaProxy();
-                LastStatus = flushed > 0
-                    ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued outbound packet(s)."
-                    : $"{_roleSessionProxy.LastStatus} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
+                int flushed = FlushQueuedOutboundPacketsViaProxy(out string flushFailureStatus);
+                LastStatus = !string.IsNullOrWhiteSpace(flushFailureStatus)
+                    ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)}, flushed {flushed} queued outbound packet(s), and retained {PendingPacketCount} queued outbound packet(s). {flushFailureStatus}"
+                    : flushed > 0
+                        ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued outbound packet(s)."
+                        : $"{_roleSessionProxy.LastStatus} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
                 return;
             }
 
@@ -1008,14 +1010,16 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private int FlushQueuedOutboundPacketsViaProxy()
+        private int FlushQueuedOutboundPacketsViaProxy(out string failureStatus)
         {
+            failureStatus = null;
             int flushed = 0;
             while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket packet))
             {
                 if (!_roleSessionProxy.TrySendToServer(packet.RawPacket, out string status))
                 {
-                    _pendingOutboundPackets.Enqueue(packet);
+                    RestoreFailedOutboundPacketAtFront(packet);
+                    failureStatus = status;
                     LastStatus = status;
                     break;
                 }
@@ -1026,6 +1030,21 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return flushed;
+        }
+
+        private void RestoreFailedOutboundPacketAtFront(PendingOutboundPacket failedPacket)
+        {
+            List<PendingOutboundPacket> remainingPackets = new();
+            while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket queuedPacket))
+            {
+                remainingPackets.Add(queuedPacket);
+            }
+
+            _pendingOutboundPackets.Enqueue(failedPacket);
+            foreach (PendingOutboundPacket queuedPacket in remainingPackets)
+            {
+                _pendingOutboundPackets.Enqueue(queuedPacket);
+            }
         }
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)

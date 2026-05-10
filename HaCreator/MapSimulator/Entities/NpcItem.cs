@@ -60,6 +60,11 @@ namespace HaCreator.MapSimulator.Entities
         private int _mapleTvMessageY;
         private int _mapleTvAdX;
         private int _mapleTvAdY;
+        private const int MapleTvNativeMessageLineHeight = 16;
+        private const int MapleTvNativeSenderNameXDelta = -57;
+        private const int MapleTvNativeReceiverNameXDelta = 146;
+        private const int MapleTvNativeNameYDelta = 71;
+        private const int MapleTvNativeReceiverGlyphWidth = 4;
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
@@ -778,7 +783,7 @@ namespace HaCreator.MapSimulator.Entities
                 : visualAssets.BasicFrames;
             MapleTvAnimationFrame mediaFrame = SelectMapleTvFrame(mediaFrames, tickCount);
             MapleTvAnimationFrame onFrame = SelectMapleTvFrame(onFrames, tickCount);
-            IReadOnlyList<MapleTvAnimationFrame> chatFrames = visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
+            IReadOnlyList<MapleTvAnimationFrame> chatFrames = ResolveActorLocalMapleTvChatFrames(visualAssets, snapshot);
             MapleTvAnimationFrame chatFrame = SelectMapleTvFrame(chatFrames, tickCount);
             if (chatFrame == null)
             {
@@ -815,13 +820,11 @@ namespace HaCreator.MapSimulator.Entities
                 chatOriginX,
                 chatOriginY);
 
-            Rectangle textBounds = MapleTvMediaIndexResolver.ResolveChatBounds(
-                snapshot.ResolvedMediaIndex,
-                visualAssets.DefaultMediaIndex,
-                visualAssets.AvailableMediaIndices);
+            Rectangle textBounds = ResolveActorLocalMapleTvTextBounds(visualAssets, snapshot);
             Point chatTopLeft = new(chatOriginX + chatFrame.Offset.X, chatOriginY + chatFrame.Offset.Y);
             int drawY = chatTopLeft.Y + textBounds.Y;
-            foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(4))
+            int lineX = chatTopLeft.X + textBounds.X;
+            foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(5))
             {
                 string visibleLine = TruncateMapleTvLine(line, ResolveMapleTvMaxChars(textBounds.Width, 0.36f));
                 if (!string.IsNullOrWhiteSpace(visibleLine))
@@ -829,14 +832,16 @@ namespace HaCreator.MapSimulator.Entities
                     ClientTextDrawing.DrawShadowed(
                         sprite,
                         visibleLine,
-                        new Vector2(chatTopLeft.X + textBounds.X, drawY),
+                        new Vector2(lineX, drawY),
                         Color.White,
                         _mapleTvFont,
                         0.36f);
                 }
 
-                drawY += 14;
+                drawY += MapleTvNativeMessageLineHeight;
             }
+
+            DrawActorLocalMapleTvNames(sprite, snapshot, lineX, chatTopLeft.Y + textBounds.Y);
         }
 
         internal static IReadOnlyList<MapleTvAnimationFrame> ResolveActorLocalMapleTvIdleFrames(
@@ -858,6 +863,112 @@ namespace HaCreator.MapSimulator.Entities
             return visualAssets.BasicFrames.Count > 0
                 ? visualAssets.BasicFrames
                 : visualAssets.OffFrames;
+        }
+
+        internal static IReadOnlyList<MapleTvAnimationFrame> ResolveActorLocalMapleTvChatFrames(
+            MapleTvVisualAssets visualAssets,
+            MapleTvSnapshot snapshot)
+        {
+            if (visualAssets == null)
+            {
+                return Array.Empty<MapleTvAnimationFrame>();
+            }
+
+            int variantKey = ResolveActorLocalMapleTvChatVariantKey(snapshot);
+            if (visualAssets.ChatFrames.TryGetValue(variantKey, out IReadOnlyList<MapleTvAnimationFrame> frames)
+                && frames.Count > 0)
+            {
+                return frames;
+            }
+
+            return visualAssets.GetChatFrames(snapshot?.ResolvedMediaIndex ?? visualAssets.DefaultMediaIndex);
+        }
+
+        internal static Rectangle ResolveActorLocalMapleTvTextBounds(
+            MapleTvVisualAssets visualAssets,
+            MapleTvSnapshot snapshot)
+        {
+            int variantKey = ResolveActorLocalMapleTvChatVariantKey(snapshot);
+            return variantKey switch
+            {
+                0 => MapleTvWindow.StarChatTextBounds,
+                2 => MapleTvWindow.HeartChatTextBounds,
+                _ => MapleTvMediaIndexResolver.ResolveChatBounds(
+                    snapshot?.ResolvedMediaIndex ?? visualAssets?.DefaultMediaIndex ?? 1,
+                    visualAssets?.DefaultMediaIndex ?? 1,
+                    visualAssets?.AvailableMediaIndices ?? Array.Empty<int>())
+            };
+        }
+
+        internal static Point ResolveActorLocalMapleTvSenderNameOffset(Rectangle textBounds)
+        {
+            return new Point(
+                textBounds.X + MapleTvNativeSenderNameXDelta,
+                textBounds.Y + MapleTvNativeNameYDelta);
+        }
+
+        internal static Point ResolveActorLocalMapleTvReceiverNameOffset(Rectangle textBounds, string receiverName)
+        {
+            int receiverLength = string.IsNullOrEmpty(receiverName) ? 0 : receiverName.Length;
+            return new Point(
+                textBounds.X + MapleTvNativeReceiverNameXDelta - (receiverLength * MapleTvNativeReceiverGlyphWidth),
+                textBounds.Y + MapleTvNativeNameYDelta);
+        }
+
+        private static int ResolveActorLocalMapleTvChatVariantKey(MapleTvSnapshot snapshot)
+        {
+            return MapleTvMediaIndexResolver.ResolveChatVariantKeyForMessageType(
+                snapshot?.MessageType ?? 0,
+                snapshot?.ResolvedMediaIndex ?? 1,
+                1,
+                Array.Empty<int>());
+        }
+
+        private void DrawActorLocalMapleTvNames(
+            SpriteBatch sprite,
+            MapleTvSnapshot snapshot,
+            int lineX,
+            int lineY)
+        {
+            if (_mapleTvFont == null || snapshot == null)
+            {
+                return;
+            }
+
+            Point senderOffset = ResolveActorLocalMapleTvSenderNameOffset(new Rectangle(lineX, lineY, 1, 1));
+            string senderName = TruncateMapleTvLine(snapshot.SenderName, ResolveMapleTvMaxChars(80, 0.36f));
+            if (!string.IsNullOrWhiteSpace(senderName))
+            {
+                ClientTextDrawing.DrawShadowed(
+                    sprite,
+                    senderName,
+                    new Vector2(senderOffset.X, senderOffset.Y),
+                    Color.White,
+                    _mapleTvFont,
+                    0.36f);
+            }
+
+            if (!snapshot.UseReceiver)
+            {
+                return;
+            }
+
+            string receiverName = TruncateMapleTvLine(snapshot.ReceiverName, ResolveMapleTvMaxChars(80, 0.36f));
+            if (string.IsNullOrWhiteSpace(receiverName))
+            {
+                return;
+            }
+
+            Point receiverOffset = ResolveActorLocalMapleTvReceiverNameOffset(
+                new Rectangle(lineX, lineY, 1, 1),
+                receiverName);
+            ClientTextDrawing.DrawShadowed(
+                sprite,
+                receiverName,
+                new Vector2(receiverOffset.X, receiverOffset.Y),
+                Color.White,
+                _mapleTvFont,
+                0.36f);
         }
 
         private static void DrawMapleTvFrame(

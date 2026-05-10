@@ -7,6 +7,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Interaction;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
@@ -32,7 +33,6 @@ namespace HaCreator.MapSimulator.UI
         private const int InputPaddingX = 4;
         private const int InputPaddingY = 1;
         private const float UtilDlgNoticeBodyWrapWidth = 278f;
-        private const int FieldMessageBoxChalkboardButtonBottomPadding = 9;
 
         private readonly IReadOnlyDictionary<LoginUtilityDialogFrameVariant, IDXObject> _framesByVariant;
         private readonly UIObject _okButton;
@@ -47,6 +47,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _restartButton;
         private readonly UIObject _exitButton;
         private readonly UIObject _nexonButton;
+        private readonly UIObject _fieldMessageBoxChalkboardOkButton;
+        private readonly UIObject _fieldMessageBoxChalkboardCancelButton;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private readonly Texture2D _pixelTexture;
         private readonly int _screenWidth;
@@ -96,6 +98,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject restartButton,
             UIObject exitButton,
             UIObject nexonButton,
+            UIObject fieldMessageBoxChalkboardOkButton,
+            UIObject fieldMessageBoxChalkboardCancelButton,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures,
             int screenWidth,
             int screenHeight)
@@ -118,6 +122,8 @@ namespace HaCreator.MapSimulator.UI
             _restartButton = RegisterButton(restartButton, true);
             _exitButton = RegisterButton(exitButton, false);
             _nexonButton = RegisterButton(nexonButton, true);
+            _fieldMessageBoxChalkboardOkButton = RegisterButton(fieldMessageBoxChalkboardOkButton, true);
+            _fieldMessageBoxChalkboardCancelButton = RegisterButton(fieldMessageBoxChalkboardCancelButton, false);
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
             _screenWidth = screenWidth;
             _screenHeight = screenHeight;
@@ -219,7 +225,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (Pressed(keyboardState, Keys.Enter) && IsPrimaryActionEnabled)
+            if (Pressed(keyboardState, Keys.Enter) && IsPrimaryActionEnabled && !UsesFieldMessageBoxChalkboardComposeLayout)
             {
                 PrimaryRequested?.Invoke();
             }
@@ -429,11 +435,13 @@ namespace HaCreator.MapSimulator.UI
             HideButton(_restartButton);
             HideButton(_exitButton);
             HideButton(_nexonButton);
+            HideButton(_fieldMessageBoxChalkboardOkButton);
+            HideButton(_fieldMessageBoxChalkboardCancelButton);
 
             if (UsesFieldMessageBoxChalkboardComposeLayout)
             {
-                _activePrimaryButton = _okButton ?? _yesButton;
-                _activeSecondaryButton = _cancelButton ?? _noButton;
+                _activePrimaryButton = _fieldMessageBoxChalkboardOkButton ?? _okButton ?? _yesButton;
+                _activeSecondaryButton = _fieldMessageBoxChalkboardCancelButton ?? _cancelButton ?? _noButton;
             }
             else
             {
@@ -503,12 +511,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (UsesFieldMessageBoxChalkboardComposeLayout)
             {
-                int frameWidth = Frame?.Width > 0 ? Frame.Width : 312;
-                int primaryWidth = _activePrimaryButton?.CanvasSnapshotWidth > 0 ? _activePrimaryButton.CanvasSnapshotWidth : 57;
-                int secondaryWidth = _activeSecondaryButton?.CanvasSnapshotWidth > 0 ? _activeSecondaryButton.CanvasSnapshotWidth : 57;
-                const int buttonGap = 9;
-                int startX = Math.Max(0, (frameWidth - (primaryWidth + secondaryWidth + buttonGap)) / 2);
-                return (startX, startX + primaryWidth + buttonGap);
+                return ResolveFieldMessageBoxChalkboardButtonPositions();
             }
 
             return _buttonLayout switch
@@ -564,9 +567,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (UsesFieldMessageBoxChalkboardComposeLayout)
             {
-                int frameHeight = Frame?.Height > 0 ? Frame.Height : 132;
-                int buttonHeight = button?.CanvasSnapshotHeight > 0 ? button.CanvasSnapshotHeight : 16;
-                return Math.Max(18, frameHeight - buttonHeight - FieldMessageBoxChalkboardButtonBottomPadding);
+                return FieldMessageBoxRuntime.CuiHopeButtonY;
             }
 
             return DialogButtonY;
@@ -1057,8 +1058,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant))
             {
-                int normalizedFrameWidth = frameWidth > 0 ? frameWidth : 312;
-                return Math.Max(200f, Math.Min(UtilDlgNoticeBodyWrapWidth, normalizedFrameWidth - (TextOffsetX * 2f)));
+                int normalizedFrameWidth = frameWidth > 0 ? frameWidth : FieldMessageBoxRuntime.CuiHopeBackgroundWidth;
+                return Math.Max(200f, normalizedFrameWidth - (TextOffsetX * 2f));
             }
 
             return BodyWrapWidth;
@@ -1072,8 +1073,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant)
-                ? 15
+                ? FieldMessageBoxRuntime.CuiHopeItemNameDrawY
                 : TextOffsetY;
+        }
+
+        internal static (int PrimaryX, int SecondaryX, int Y) ResolveFieldMessageBoxChalkboardButtonPositionsForTesting()
+        {
+            (int primaryX, int secondaryX) = ResolveFieldMessageBoxChalkboardButtonPositions();
+            return (primaryX, secondaryX, FieldMessageBoxRuntime.CuiHopeButtonY);
+        }
+
+        private static (int PrimaryX, int SecondaryX) ResolveFieldMessageBoxChalkboardButtonPositions()
+        {
+            return (FieldMessageBoxRuntime.CuiHopeOkButtonX, FieldMessageBoxRuntime.CuiHopeCancelButtonX);
         }
 
         private void DrawImeCandidateWindow(SpriteBatch sprite)

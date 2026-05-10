@@ -242,14 +242,28 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Decoded Guild BBS authority packet -> {boardAuthDetail}.";
             }
 
-            if (!TryDecodePermissionPacket(payload, localCharacterId, out GuildBbsPermissionMask decodedMask, out string detail))
+            if (!TryDecodePermissionPacket(
+                    payload,
+                    localCharacterId,
+                    out GuildBbsPermissionMask decodedMask,
+                    out string detail,
+                    out bool shouldClearBoardAuthKey))
             {
                 return detail;
             }
 
             _packetPermissionMask = decodedMask;
+            if (shouldClearBoardAuthKey)
+            {
+                _hasPacketBoardAuthKeyOverride = false;
+                _packetBoardAuthKeySourceLabel = null;
+            }
+
             NormalizeDraftState();
-            return $"Decoded Guild BBS authority packet -> {DescribePermissionMask(decodedMask)} ({detail}).";
+            string boardAuthResetDetail = shouldClearBoardAuthKey
+                ? " Board auth key returned to the local board session because the client destroys the guild-board window after a local grade change."
+                : string.Empty;
+            return $"Decoded Guild BBS authority packet -> {DescribePermissionMask(decodedMask)} ({detail}).{boardAuthResetDetail}";
         }
 
         public string ApplyCashOwnershipPacket(byte[] payload)
@@ -2084,17 +2098,23 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join(", ", names);
         }
 
-        private bool TryDecodePermissionPacket(byte[] payload, int localCharacterId, out GuildBbsPermissionMask mask, out string detail)
+        private bool TryDecodePermissionPacket(
+            byte[] payload,
+            int localCharacterId,
+            out GuildBbsPermissionMask mask,
+            out string detail,
+            out bool shouldClearBoardAuthKey)
         {
             mask = GuildBbsPermissionMask.None;
             detail = null;
+            shouldClearBoardAuthKey = false;
             if (payload == null || payload.Length == 0)
             {
                 detail = "Guild BBS authority packet payload is empty.";
                 return false;
             }
 
-            if (TryDecodeGuildResultAuthorityPacket(payload, localCharacterId, out mask, out detail))
+            if (TryDecodeGuildResultAuthorityPacket(payload, localCharacterId, out mask, out detail, out shouldClearBoardAuthKey))
             {
                 return true;
             }
@@ -2121,10 +2141,12 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             int localCharacterId,
             out GuildBbsPermissionMask mask,
-            out string detail)
+            out string detail,
+            out bool shouldClearBoardAuthKey)
         {
             mask = GuildBbsPermissionMask.None;
             detail = null;
+            shouldClearBoardAuthKey = false;
             if (localCharacterId <= 0 || payload == null || payload.Length == 0)
             {
                 return false;
@@ -2163,7 +2185,8 @@ namespace HaCreator.MapSimulator.Interaction
                 && packet.GradeChange.AbsoluteGrade.HasValue
                 && TryMapClientGuildMemberGradeToPermissionMask(packet.GradeChange.AbsoluteGrade.Value, out mask))
             {
-                detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) local absolute grade {packet.GradeChange.AbsoluteGrade.Value} for character #{localCharacterId}; CUIGuildBBS::IsGuildBBSAdmin treats grade <= 2 as admin.";
+                shouldClearBoardAuthKey = true;
+                detail = $"Decoded CWvsContext::OnGuildResult({(byte)packet.Kind}) local absolute grade {packet.GradeChange.AbsoluteGrade.Value} for character #{localCharacterId}; CUIGuildBBS::IsGuildBBSAdmin treats grade <= 2 as admin, and CWvsContext::OnGuildResult destroys CWndGuildBoard for the local grade-change branch.";
                 return true;
             }
 

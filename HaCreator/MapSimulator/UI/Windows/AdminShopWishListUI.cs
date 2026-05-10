@@ -375,19 +375,15 @@ namespace HaCreator.MapSimulator.UI
         public bool TryChangeWishlistSearchResultSessionPage(int delta, out string message)
         {
             message = "Wish-list result paging is unavailable.";
-            List<AdminShopDialogUI.WishlistSearchResult> liveResults = GetLiveWishlistSearchResultSessionResults();
-            if (liveResults.Count == 0)
-            {
-                _statusMessage = message;
-                return false;
-            }
-
             int remotePageIndex = GetPacketOwnedWishlistSearchRemotePageIndex();
             int remotePageCount = GetPacketOwnedWishlistSearchRemotePageCount();
             if (remotePageIndex >= 0 && remotePageCount > 0)
             {
-                int targetRemotePage = Math.Clamp(remotePageIndex + delta, 0, remotePageCount - 1);
-                if (targetRemotePage == remotePageIndex)
+                if (!AdminShopPacketOwnedWishlistSearchSessionParity.TryResolveRemotePageTarget(
+                        remotePageIndex,
+                        remotePageCount,
+                        delta,
+                        out int targetRemotePage))
                 {
                     message = $"SearchItemName stayed on remote packet page {remotePageIndex + 1} / {remotePageCount}.";
                     _statusMessage = message;
@@ -410,6 +406,13 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
+                _statusMessage = message;
+                return false;
+            }
+
+            List<AdminShopDialogUI.WishlistSearchResult> liveResults = GetLiveWishlistSearchResultSessionResults();
+            if (liveResults.Count == 0)
+            {
                 _statusMessage = message;
                 return false;
             }

@@ -805,10 +805,10 @@ namespace HaCreator.MapSimulator.Fields
                 switch (packetType)
                 {
                     case PacketTypeHit:
-                        OnCoconutHit(reader.ReadShort(), reader.ReadShort(), reader.ReadByte(), currentTimeMs);
+                        OnCoconutHit(reader.ReadShort(), reader.ReadUShort(), reader.ReadByte(), currentTimeMs);
                         return true;
                     case PacketTypeScore:
-                        OnCoconutScore(reader.ReadShort(), reader.ReadShort(), currentTimeMs);
+                        OnCoconutScore(reader.ReadUShort(), reader.ReadUShort(), currentTimeMs);
                         return true;
                     default:
                         errorMessage = $"Unsupported Coconut packet type: {packetType}";

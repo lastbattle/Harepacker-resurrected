@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechNativeScreenCanvasInsertAlpha = 255;
         private const int MobActionSpeechNativeScreenCanvasInsertX = 0;
         private const int MobActionSpeechNativeScreenCanvasInsertY = 0;
+        private const int MobActionSpeechNativeCanvasFactoryStringPoolId = 0x03D0;
+        private const int MobActionSpeechNativeCreateCanvasBaseAlpha = 253;
 
         private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
         private bool _mobActionSpeechBalloonSkinsLoaded;
@@ -452,6 +454,10 @@ namespace HaCreator.MapSimulator
             public int CanvasInsertX { get; init; }
             public int CanvasInsertY { get; init; }
             public int CanvasInsertAlpha { get; init; }
+            public int CanvasFactoryStringPoolId { get; init; }
+            public int CreateCanvasBaseAlpha { get; init; }
+            public bool CentersEachTextLine { get; init; }
+            public bool UsesNativeFontTextWidth { get; init; }
             public bool AssignsLayerChat { get; init; }
             public IReadOnlyList<string> NativeLifetimeOperations { get; init; }
         }
@@ -507,6 +513,10 @@ namespace HaCreator.MapSimulator
                     "AddRef(pProp)",
                     "AddRef(bsText)",
                     "CreateCanvas(type=1005)",
+                    "PcCreateObject(Canvas:StringPool=0x03D0)",
+                    "CreateCanvas.CopyBase(alpha=253)",
+                    "CalcTextWidth",
+                    "DrawTextA(centered-line)",
                     "CreateLayer(option=0xC00616FC)",
                     "Release(CreateLayer out-param layer)",
                     "SetLayerOrigin(Origin_LT)",
@@ -524,6 +534,10 @@ namespace HaCreator.MapSimulator
                 : new[]
                 {
                     "CreateCanvas(type=1004)",
+                    "PcCreateObject(Canvas:StringPool=0x03D0)",
+                    "CreateCanvas.CopyBase(alpha=253)",
+                    "CalcTextWidth",
+                    "DrawTextA(centered-line)",
                     "AttachOwnerOverlayLayer",
                     "StoreTimeout"
                 };
@@ -551,6 +565,10 @@ namespace HaCreator.MapSimulator
                 CanvasInsertX = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertX : 0,
                 CanvasInsertY = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertY : 0,
                 CanvasInsertAlpha = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertAlpha : 0,
+                CanvasFactoryStringPoolId = MobActionSpeechNativeCanvasFactoryStringPoolId,
+                CreateCanvasBaseAlpha = MobActionSpeechNativeCreateCanvasBaseAlpha,
+                CentersEachTextLine = true,
+                UsesNativeFontTextWidth = true,
                 AssignsLayerChat = useScreenLayer,
                 NativeLifetimeOperations = lifetimeOperations
             };

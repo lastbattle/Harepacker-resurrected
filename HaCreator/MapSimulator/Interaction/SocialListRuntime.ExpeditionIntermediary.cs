@@ -68,12 +68,14 @@ namespace HaCreator.MapSimulator.Interaction
             int masterPartyIndex,
             IReadOnlyList<ExpeditionPartySeed> parties,
             bool packetOwned,
-            int retCode = 59)
+            int retCode = 59,
+            int partyQuestId = 0)
         {
             string resolvedTitle = string.IsNullOrWhiteSpace(expeditionTitle) ? $"{_playerName}'s Expedition" : expeditionTitle.Trim();
             _expeditionIntermediary.PacketOwned = packetOwned;
             _expeditionIntermediary.ExpeditionTitle = resolvedTitle;
             _expeditionIntermediary.MasterPartyIndex = Math.Max(0, masterPartyIndex);
+            _expeditionIntermediary.PartyQuestId = Math.Max(0, partyQuestId);
             _expeditionIntermediary.Parties.Clear();
 
             IReadOnlyList<ExpeditionPartySeed> resolvedParties = parties == null || parties.Count == 0
@@ -146,6 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(1, level),
                 Math.Max(0, jobCode),
                 Math.Max(0, partyQuestId));
+            _expeditionIntermediary.PartyQuestId = Math.Max(0, partyQuestId);
             _expeditionIntermediary.PendingRequestSummary = string.Empty;
             _expeditionIntermediary.LastPacketRetCode = retCode;
             _expeditionIntermediary.LastStatusMessage = $"Expedition intermediary queued an invite from {resolvedInviter} (Lv. {Math.Max(1, level)}, job {Math.Max(0, jobCode)}).";
@@ -310,7 +313,7 @@ namespace HaCreator.MapSimulator.Interaction
             return _expeditionIntermediary.HasActiveExpedition;
         }
 
-        internal string StartLocalExpeditionIntermediary(string expeditionTitle = null, bool registrationDraft = false)
+        internal string StartLocalExpeditionIntermediary(string expeditionTitle = null, bool registrationDraft = false, int partyQuestId = 0)
         {
             if (_expeditionIntermediary.PacketOwned && _expeditionIntermediary.HasActiveExpedition)
             {
@@ -326,7 +329,8 @@ namespace HaCreator.MapSimulator.Interaction
                 0,
                 CreateDefaultExpeditionSeedParties(resolvedTitle),
                 packetOwned: false,
-                retCode: registrationDraft ? 57 : 59);
+                retCode: registrationDraft ? 57 : 59,
+                partyQuestId: partyQuestId);
             _expeditionIntermediary.LastStatusMessage = registrationDraft
                 ? $"Local expedition intermediary published {resolvedTitle} from {_locationSummary}."
                 : $"Local expedition intermediary created {resolvedTitle}.";
@@ -361,6 +365,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.PacketOwned = false;
             _expeditionIntermediary.ExpeditionTitle = string.Empty;
             _expeditionIntermediary.MasterPartyIndex = 0;
+            _expeditionIntermediary.PartyQuestId = 0;
             _expeditionIntermediary.PendingInvite = null;
             _expeditionIntermediary.PendingRequestSummary = string.Empty;
             _expeditionIntermediary.Parties.Clear();
@@ -378,6 +383,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.PacketOwned = packetOwned;
             _expeditionIntermediary.ExpeditionTitle = string.Empty;
             _expeditionIntermediary.MasterPartyIndex = 0;
+            _expeditionIntermediary.PartyQuestId = 0;
             _expeditionIntermediary.PendingInvite = null;
             _expeditionIntermediary.PendingRequestSummary = string.Empty;
             _expeditionIntermediary.Parties.Clear();
@@ -407,7 +413,8 @@ namespace HaCreator.MapSimulator.Interaction
                 0,
                 CreateDefaultExpeditionSeedParties($"{_playerName}'s Expedition"),
                 _expeditionIntermediary.PacketOwned,
-                retCode: 57);
+                retCode: 57,
+                partyQuestId: _expeditionIntermediary.PartyQuestId);
         }
 
         private IReadOnlyList<ExpeditionPartySeed> CreateDefaultExpeditionSeedParties(string expeditionTitle)
@@ -624,6 +631,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public string ExpeditionTitle { get; set; } = string.Empty;
             public int MasterPartyIndex { get; set; }
+            public int PartyQuestId { get; set; }
             public List<ExpeditionPartyState> Parties { get; } = new();
             public ExpeditionInviteState PendingInvite { get; set; }
             public bool PacketOwned { get; set; }

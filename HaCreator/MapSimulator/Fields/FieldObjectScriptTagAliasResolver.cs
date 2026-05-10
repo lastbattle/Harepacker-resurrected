@@ -2476,6 +2476,14 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            if (TryParseObjectEntriesIdentityTransformCall(normalizedCollection, out entriesSourceName)
+                && objectMemberAliasMap != null
+                && objectMemberAliasMap.TryGetValue(entriesSourceName, out sourceMemberAliasMap))
+            {
+                CopyObjectMemberAliases(memberAliasMap, sourceMemberAliasMap);
+                return;
+            }
+
             if (TryParseCollectionFactoryCall(normalizedCollection, out string factoryMethod, out IReadOnlyList<string> factoryArguments))
             {
                 if (factoryMethod.Equals("Map", StringComparison.OrdinalIgnoreCase) && factoryArguments.Count == 1)
@@ -2556,6 +2564,230 @@ namespace HaCreator.MapSimulator.Fields
 
             sourceName = NormalizeFunctionAliasArgument(arguments[0]).TrimEnd(';');
             return IsPotentialFunctionAliasName(sourceName);
+        }
+
+        private static bool TryParseObjectEntriesIdentityTransformCall(string value, out string sourceName)
+        {
+            sourceName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            const string prefix = "Object.entries";
+            if (!normalizedValue.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int entriesOpenIndex = SkipWhitespace(normalizedValue, prefix.Length);
+            if (entriesOpenIndex < 0 || entriesOpenIndex >= normalizedValue.Length || normalizedValue[entriesOpenIndex] != '(')
+            {
+                return false;
+            }
+
+            int entriesCloseIndex = FindMatchingCloseParenthesis(normalizedValue, entriesOpenIndex);
+            if (entriesCloseIndex <= entriesOpenIndex)
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> entriesArguments = new List<string>(SplitFunctionArguments(normalizedValue[(entriesOpenIndex + 1)..entriesCloseIndex]));
+            if (entriesArguments.Count != 1)
+            {
+                return false;
+            }
+
+            string parsedSourceName = NormalizeFunctionAliasArgument(entriesArguments[0]).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(parsedSourceName))
+            {
+                return false;
+            }
+
+            bool recoveredTransform = false;
+            int cursor = SkipWhitespace(normalizedValue, entriesCloseIndex + 1);
+            while (cursor >= 0)
+            {
+                if (TryConsumeObjectEntriesIdentityTransformMember(
+                        normalizedValue,
+                        cursor,
+                        out int nextCursor,
+                        out bool memberRecovered))
+                {
+                    recoveredTransform |= memberRecovered;
+                    cursor = SkipWhitespace(normalizedValue, nextCursor);
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (!recoveredTransform)
+            {
+                return false;
+            }
+
+            sourceName = parsedSourceName;
+            return true;
+        }
+
+        private static bool TryConsumeObjectEntriesIdentityTransformMember(
+            string value,
+            int memberIndex,
+            out int nextIndex,
+            out bool recoveredTransform)
+        {
+            nextIndex = memberIndex;
+            recoveredTransform = false;
+            if (string.IsNullOrWhiteSpace(value)
+                || memberIndex < 0
+                || memberIndex >= value.Length
+                || value[memberIndex] != '.')
+            {
+                return false;
+            }
+
+            int nameStart = memberIndex + 1;
+            int nameEnd = nameStart;
+            while (nameEnd < value.Length && (char.IsLetterOrDigit(value[nameEnd]) || value[nameEnd] == '_'))
+            {
+                nameEnd++;
+            }
+
+            if (nameEnd <= nameStart)
+            {
+                return false;
+            }
+
+            string methodName = value[nameStart..nameEnd];
+            int openIndex = SkipWhitespace(value, nameEnd);
+            if (openIndex < 0 || openIndex >= value.Length || value[openIndex] != '(')
+            {
+                return false;
+            }
+
+            int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+            if (closeIndex <= openIndex)
+            {
+                return false;
+            }
+
+            var arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+            if (methodName.Equals("map", StringComparison.OrdinalIgnoreCase))
+            {
+                if (arguments.Count != 1 || !TryResolveObjectEntriesIdentityPairProjection(arguments[0]))
+                {
+                    return false;
+                }
+
+                recoveredTransform = true;
+                nextIndex = closeIndex + 1;
+                return true;
+            }
+
+            if (methodName.Equals("filter", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!IsRecoverableStaticArrayTransform(methodName, arguments))
+                {
+                    return false;
+                }
+
+                recoveredTransform = true;
+                nextIndex = closeIndex + 1;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveObjectEntriesIdentityPairProjection(string callback)
+        {
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryResolveIdentityCallback(normalizedCallback))
+            {
+                return true;
+            }
+
+            if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression))
+            {
+                return TryResolveObjectEntriesIdentityPairProjectionFromParts(parameterText, bodyExpression);
+            }
+
+            if (TryParseSingleParameterFunctionCallback(normalizedCallback, out parameterText, out IReadOnlyList<string> returnExpressions))
+            {
+                for (int i = 0; i < returnExpressions.Count; i++)
+                {
+                    if (TryResolveObjectEntriesIdentityPairProjectionFromParts(parameterText, returnExpressions[i]))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveObjectEntriesIdentityPairProjectionFromParts(string parameterText, string bodyExpression)
+        {
+            if (string.IsNullOrWhiteSpace(parameterText) || string.IsNullOrWhiteSpace(bodyExpression))
+            {
+                return false;
+            }
+
+            string normalizedParameter = StripOuterBalancedParentheses(parameterText.Trim());
+            string normalizedBody = StripOuterBalancedParentheses(bodyExpression.Trim()).TrimEnd(';');
+            if (normalizedBody.Length < 2 || normalizedBody[0] != '[' || normalizedBody[^1] != ']')
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> bodyElements = SplitTopLevelByComma(normalizedBody[1..^1]);
+            if (bodyElements.Count != 2)
+            {
+                return false;
+            }
+
+            if (normalizedParameter.Length >= 2 && normalizedParameter[0] == '[' && normalizedParameter[^1] == ']')
+            {
+                IReadOnlyList<string> destructuredNames = SplitTopLevelByComma(normalizedParameter[1..^1]);
+                if (destructuredNames.Count < 2)
+                {
+                    return false;
+                }
+
+                string keyName = NormalizeFunctionAliasArgument(destructuredNames[0]).TrimEnd(';');
+                string valueName = NormalizeFunctionAliasArgument(destructuredNames[1]).TrimEnd(';');
+                string bodyKeyName = NormalizeFunctionAliasArgument(bodyElements[0]).TrimEnd(';');
+                string bodyValueName = NormalizeFunctionAliasArgument(bodyElements[1]).TrimEnd(';');
+                return IsPotentialFunctionAliasName(keyName)
+                    && IsPotentialFunctionAliasName(valueName)
+                    && bodyKeyName.Equals(keyName, StringComparison.OrdinalIgnoreCase)
+                    && bodyValueName.Equals(valueName, StringComparison.OrdinalIgnoreCase);
+            }
+
+            string parameterName = NormalizeFunctionAliasArgument(normalizedParameter).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(parameterName))
+            {
+                return false;
+            }
+
+            return IsObjectEntriesIndexedProjection(parameterName, bodyElements[0], "0")
+                && IsObjectEntriesIndexedProjection(parameterName, bodyElements[1], "1");
+        }
+
+        private static bool IsObjectEntriesIndexedProjection(string parameterName, string bodyElement, string expectedIndex)
+        {
+            string normalizedBodyElement = StripOuterBalancedParentheses(bodyElement?.Trim()).TrimEnd(';');
+            return TryParseIndexedObjectAccess(normalizedBodyElement, out string objectName, out string indexExpression)
+                && objectName.Equals(parameterName, StringComparison.OrdinalIgnoreCase)
+                && TryResolveBracketIndexKeyLiteral(indexExpression, out string entryIndex)
+                && entryIndex.Equals(expectedIndex, StringComparison.Ordinal);
         }
 
         private static bool TryResolveEntryKeyAlias(

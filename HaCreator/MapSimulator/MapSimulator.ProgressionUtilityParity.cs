@@ -201,7 +201,10 @@ namespace HaCreator.MapSimulator
                 presentation: confirmDialogWindow.CreateMessengerInvitePresentation(state.StackIndex),
                 fadeYesNoType: SharedFadeYesNoModalType.MessengerInvite,
                 fadeYesNoLifetimeMilliseconds: MessengerRuntime.InvitePromptLifetimeMs,
-                fadeYesNoStackIndex: state.StackIndex);
+                fadeYesNoStackIndex: state.StackIndex,
+                fadeYesNoPayloadFields: new SharedFadeYesNoPayloadFields(
+                    RequesterName: state.ContactName,
+                    Message: state.PromptText));
 
             bool alarmCounterAdvanced = state.AlarmCounter > 0
                 && state.AlarmCounter != _lastMessengerInvitePromptAlarmCounter;

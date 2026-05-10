@@ -2305,12 +2305,46 @@ namespace HaCreator.MapSimulator.Character.Skills
         int Time = 0,
         int Value = 0);
 
+    public enum BulletRegistrationNativeOperationKind
+    {
+        RetainEffectOrBallUol,
+        RetainTargetVector,
+        AllocateBulletOwner,
+        ConstructBulletOwner,
+        RetainBulletLocalReference,
+        RetainBulletContainerReference,
+        InsertIntoBulletContainer,
+        ReleaseBulletLocalReference,
+        ReleaseTargetVector,
+        ReleaseEffectOrBallUol
+    }
+
+    public readonly record struct BulletRegistrationNativeOperation(
+        BulletRegistrationNativeOperationKind Kind,
+        int ObjectId,
+        int RelatedObjectId = 0,
+        int RefCountDelta = 0,
+        int Sequence = 0);
+
     public sealed class ActiveBulletAnimationOwner
     {
         public int Id { get; set; }
         public int ProjectileId { get; set; }
         public bool IsDetachedFromProjectile { get; set; }
         public int MainLayerObjectId { get; set; }
+        public int SimulatedBulletOwnerObjectId { get; set; }
+        public int SimulatedTargetVectorObjectId { get; set; }
+        public int SimulatedEffectOrBallUolObjectId { get; set; }
+        public int SimulatedEffectOrBallUolAddRefCount { get; set; }
+        public int SimulatedEffectOrBallUolReleaseCount { get; set; }
+        public int SimulatedTargetVectorAddRefCount { get; set; }
+        public int SimulatedTargetVectorReleaseCount { get; set; }
+        public int SimulatedBulletLocalAddRefCount { get; set; }
+        public int SimulatedBulletLocalReleaseCount { get; set; }
+        public int SimulatedBulletContainerAddRefCount { get; set; }
+        public int SimulatedBulletContainerRefCount { get; set; }
+        public IReadOnlyList<BulletRegistrationNativeOperation> NativeRegistrationOperations { get; set; } =
+            Array.Empty<BulletRegistrationNativeOperation>();
         public bool MainLayerAvailable { get; set; } = true;
         public bool MainLayerHasAlphaVector { get; set; } = true;
         public bool MainLayerInitializationFailed { get; set; }
@@ -2716,6 +2750,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool? FacingRightOverride { get; set; }
         public int? DelayRateOverride { get; set; }
         public SkillManager.ClientDoActiveSummonMonsterPacketPayload? ClientDoActiveSummonMonsterPacketPayload { get; set; }
+        public SkillManager.ClientDoActiveTownPortalPacketPayload? ClientDoActiveTownPortalPacketPayload { get; set; }
         public SkillManager.ClientDoActiveTeslaCoilPacketPayload? ClientDoActiveTeslaCoilPacketPayload { get; set; }
 
         public float TargetX { get; set; }
@@ -2824,6 +2859,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastBodyContactTime { get; set; } = int.MinValue;
         public int LastBodyContactRelativeMotionX { get; set; }
         public bool? LastBodyContactHitFacingRight { get; set; }
+        public int LastBodyContactBaseDamage { get; set; }
+        public int LastBodyContactDamage { get; set; }
+        public bool LastBodyContactAttackWasMagic { get; set; }
         public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
         public int HitPeriodRemainingMs { get; set; }

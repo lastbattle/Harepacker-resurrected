@@ -9,7 +9,9 @@ internal static class MobSkillSelectionParity
     public static bool ShouldAutoSelectMobStatusSkill(
         MobSkillStatusDefinition definition,
         MobSkillRuntimeData runtimeData,
-        IEnumerable<MobAI> candidateTargets)
+        IEnumerable<MobAI> candidateTargets,
+        int currentTick = 0,
+        int recastLeadTimeMs = 0)
     {
         if (candidateTargets == null)
         {
@@ -61,7 +63,13 @@ internal static class MobSkillSelectionParity
 
                 foreach (MobAI target in candidateTargets)
                 {
-                    if (ShouldApplyStatusToTarget(target, definition, runtimeData, statusValue))
+                    if (ShouldApplyStatusToTarget(
+                            target,
+                            definition,
+                            runtimeData,
+                            statusValue,
+                            currentTick,
+                            recastLeadTimeMs))
                     {
                         return true;
                     }
@@ -96,21 +104,31 @@ internal static class MobSkillSelectionParity
     internal static bool ShouldApplyStatusToTarget(
         MobAI target,
         MobSkillStatusDefinition definition,
-        MobSkillRuntimeData runtimeData)
+        MobSkillRuntimeData runtimeData,
+        int currentTick = 0,
+        int recastLeadTimeMs = 0)
     {
         int statusValue = MobSkillStatusMapper.ResolveStatusValue(
             definition.Effect,
             runtimeData?.X ?? 0,
             runtimeData?.Y ?? 0,
             runtimeData?.Hp ?? 0);
-        return ShouldApplyStatusToTarget(target, definition, runtimeData, statusValue);
+        return ShouldApplyStatusToTarget(
+            target,
+            definition,
+            runtimeData,
+            statusValue,
+            currentTick,
+            recastLeadTimeMs);
     }
 
     private static bool ShouldApplyStatusToTarget(
         MobAI target,
         MobSkillStatusDefinition definition,
         MobSkillRuntimeData runtimeData,
-        int statusValue)
+        int statusValue,
+        int currentTick,
+        int recastLeadTimeMs)
     {
         if (target?.IsDead != false)
         {
@@ -127,7 +145,14 @@ internal static class MobSkillSelectionParity
             return true;
         }
 
-        return target.GetStatusEffectValue(definition.Effect) < statusValue;
+        if (target.GetStatusEffectValue(definition.Effect) < statusValue)
+        {
+            return true;
+        }
+
+        int refreshLeadTimeMs = System.Math.Max(0, recastLeadTimeMs);
+        return refreshLeadTimeMs > 0 &&
+               target.GetStatusEffectRemaining(definition.Effect, currentTick) <= refreshLeadTimeMs;
     }
 
     private static bool IsAuthoredHpGateOpen(

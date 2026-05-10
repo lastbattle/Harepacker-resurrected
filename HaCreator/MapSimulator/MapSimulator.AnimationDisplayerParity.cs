@@ -9755,20 +9755,37 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var points = new List<Vector2>(childCount);
+            var indexedPoints = new List<(int Index, Vector2 Point)>(childCount);
+            var seenIndices = new HashSet<int>();
             for (int i = 0; i < childCount; i++)
             {
-                WzImageProperty indexedRow = resolvedGenerationPointProperty[i.ToString(CultureInfo.InvariantCulture)];
-                WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(indexedRow);
-                if (resolvedChild is not WzVectorProperty point)
+                WzImageProperty childProperty = children[i];
+                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childProperty?.Name, out int index)
+                    || !seenIndices.Add(index))
                 {
-                    break;
+                    continue;
                 }
 
-                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
+                WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
+                if (resolvedChild is WzVectorProperty point)
+                {
+                    indexedPoints.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
+                }
             }
 
-            return points.Count > 0
+            if (indexedPoints.Count <= 0)
+            {
+                return null;
+            }
+
+            indexedPoints.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            var points = new Vector2[indexedPoints.Count];
+            for (int i = 0; i < indexedPoints.Count; i++)
+            {
+                points[i] = indexedPoints[i].Point;
+            }
+
+            return points.Length > 0
                 ? points
                 : null;
         }

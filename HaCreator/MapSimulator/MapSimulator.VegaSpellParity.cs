@@ -108,6 +108,10 @@ namespace HaCreator.MapSimulator
             public int PacketOwnedEquipItemToken { get; set; }
             public bool PacketOwnedEquipSnapshotObserved { get; set; }
             public VegaPacketOwnedEquipSnapshot PacketOwnedEquipSnapshot { get; set; }
+            public bool PacketOwnedScrollCountObserved { get; set; }
+            public int PacketOwnedScrollFinalCount { get; set; }
+            public bool PacketOwnedModifierCountObserved { get; set; }
+            public int PacketOwnedModifierFinalCount { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -674,7 +678,8 @@ namespace HaCreator.MapSimulator
             SharedFadeYesNoModalType fadeYesNoType = SharedFadeYesNoModalType.Generic,
             int fadeYesNoLifetimeMilliseconds = -1,
             int fadeYesNoStackIndex = 0,
-            bool fadeYesNoQuickDelivery = false)
+            bool fadeYesNoQuickDelivery = false,
+            SharedFadeYesNoPayloadFields fadeYesNoPayloadFields = null)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
             {
@@ -694,6 +699,7 @@ namespace HaCreator.MapSimulator
                     fadeYesNoStackIndex,
                     fadeYesNoQuickDelivery,
                     presentation,
+                    fadeYesNoPayloadFields,
                     onConfirm,
                     onCancel),
                 presentation);
@@ -977,20 +983,38 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryDecodeVegaClientInventoryOperationEquipSnapshot(
+            if (!TryDecodeVegaClientInventoryOperationState(
                     payload,
                     _pendingVegaCastState.Request.EquipItemId,
                     _pendingVegaCastState.EncodedEquipPosition,
-                    out VegaPacketOwnedEquipSnapshot snapshot,
-                    out bool clearsExclusiveRequest,
+                    _pendingVegaCastState.Request.ScrollItemId,
+                    _pendingVegaCastState.ScrollInventoryType,
+                    _pendingVegaCastState.ScrollSlotIndex,
+                    _pendingVegaCastState.Request.ModifierItemId,
+                    _pendingVegaCastState.ModifierInventoryType,
+                    _pendingVegaCastState.ModifierSlotIndex,
+                    out VegaClientInventoryOperationState operationState,
                     out string rejectReason))
             {
                 message = rejectReason;
                 return false;
             }
 
+            VegaPacketOwnedEquipSnapshot snapshot = operationState.EquipSnapshot;
             _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
             _pendingVegaCastState.PacketOwnedEquipSnapshot = snapshot;
+            if (operationState.ScrollCountObserved)
+            {
+                _pendingVegaCastState.PacketOwnedScrollCountObserved = true;
+                _pendingVegaCastState.PacketOwnedScrollFinalCount = operationState.ScrollFinalCount;
+            }
+
+            if (operationState.ModifierCountObserved)
+            {
+                _pendingVegaCastState.PacketOwnedModifierCountObserved = true;
+                _pendingVegaCastState.PacketOwnedModifierFinalCount = operationState.ModifierFinalCount;
+            }
+
             if (snapshot.EquipItemToken != 0)
             {
                 _pendingVegaCastState.PacketOwnedEquipItemTokenObserved = true;
@@ -999,15 +1023,18 @@ namespace HaCreator.MapSimulator
 
             _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
             _pendingVegaCastState.PacketOwnedUpgradeState = snapshot.RemainingSlots;
-            if (clearsExclusiveRequest)
+            if (operationState.ClearsExclusiveRequest)
             {
                 ClearVegaExclusiveRequestState(currTickCount);
             }
 
-            string resetNote = clearsExclusiveRequest
+            string resetNote = operationState.ClearsExclusiveRequest
                 ? " and consumed the client bExclRequestSent reset marker"
                 : string.Empty;
-            message = $"Captured packet-owned Vega equip state from CWvsContext::OnInventoryOperation for item {snapshot.ItemId}{resetNote}; the pending Vega terminal handoff will apply this client-authored equipment snapshot after the recovered result prelude.";
+            string countNote = operationState.ScrollCountObserved || operationState.ModifierCountObserved
+                ? " plus packet-authored staged item counts"
+                : string.Empty;
+            message = $"Captured packet-owned Vega equip state from CWvsContext::OnInventoryOperation for item {snapshot.ItemId}{countNote}{resetNote}; the pending Vega terminal handoff will apply this client-authored equipment snapshot after the recovered result prelude.";
             return true;
         }
 
@@ -1870,19 +1897,61 @@ namespace HaCreator.MapSimulator
             out int bonusWeaponAttack,
             out string rejectReason)
         {
-            bool decoded = TryDecodeVegaClientInventoryOperationEquipSnapshot(
+            bool decoded = TryDecodeVegaClientInventoryOperationState(
                 payload,
                 expectedItemId,
                 expectedEncodedEquipPosition,
-                out VegaPacketOwnedEquipSnapshot snapshot,
-                out clearsExclusiveRequest,
+                expectedScrollItemId: 0,
+                expectedScrollInventoryType: InventoryType.NONE,
+                expectedScrollSlotIndex: -1,
+                expectedModifierItemId: 0,
+                expectedModifierInventoryType: InventoryType.NONE,
+                expectedModifierSlotIndex: -1,
+                out VegaClientInventoryOperationState operationState,
                 out rejectReason);
+            VegaPacketOwnedEquipSnapshot snapshot = operationState.EquipSnapshot;
+            clearsExclusiveRequest = operationState.ClearsExclusiveRequest;
             equipItemToken = snapshot.EquipItemToken;
             totalSlots = snapshot.TotalSlots;
             remainingSlots = snapshot.RemainingSlots;
             successCount = snapshot.SuccessCount;
             bonusStr = snapshot.BonusSTR;
             bonusWeaponAttack = snapshot.BonusWeaponAttack;
+            return decoded;
+        }
+
+        internal static bool TryDecodeVegaClientInventoryOperationCountsForTests(
+            byte[] payload,
+            int expectedItemId,
+            int expectedEncodedEquipPosition,
+            int expectedScrollItemId,
+            InventoryType expectedScrollInventoryType,
+            int expectedScrollSlotIndex,
+            int expectedModifierItemId,
+            InventoryType expectedModifierInventoryType,
+            int expectedModifierSlotIndex,
+            out bool scrollCountObserved,
+            out int scrollFinalCount,
+            out bool modifierCountObserved,
+            out int modifierFinalCount,
+            out string rejectReason)
+        {
+            bool decoded = TryDecodeVegaClientInventoryOperationState(
+                payload,
+                expectedItemId,
+                expectedEncodedEquipPosition,
+                expectedScrollItemId,
+                expectedScrollInventoryType,
+                expectedScrollSlotIndex,
+                expectedModifierItemId,
+                expectedModifierInventoryType,
+                expectedModifierSlotIndex,
+                out VegaClientInventoryOperationState operationState,
+                out rejectReason);
+            scrollCountObserved = operationState.ScrollCountObserved;
+            scrollFinalCount = operationState.ScrollFinalCount;
+            modifierCountObserved = operationState.ModifierCountObserved;
+            modifierFinalCount = operationState.ModifierFinalCount;
             return decoded;
         }
 
@@ -2049,11 +2118,17 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.PacketOwnedOutcomeSuccessObserved,
                 _pendingVegaCastState.PacketOwnedOutcomeSuccess);
             result = _pendingVegaCastState.PacketOwnedEquipSnapshotObserved
-                ? itemUpgradeWindow.ConsumePacketOwnedPreparedUpgradeItemsAtSlots(
+                ? itemUpgradeWindow.ConsumePacketOwnedPreparedUpgradeItemsAtPacketCounts(
                     _pendingVegaCastState.ScrollInventoryType,
                     _pendingVegaCastState.ScrollSlotIndex,
+                    _pendingVegaCastState.PacketOwnedScrollCountObserved
+                        ? _pendingVegaCastState.PacketOwnedScrollFinalCount
+                        : null,
                     _pendingVegaCastState.ModifierInventoryType,
                     _pendingVegaCastState.ModifierSlotIndex,
+                    _pendingVegaCastState.PacketOwnedModifierCountObserved
+                        ? _pendingVegaCastState.PacketOwnedModifierFinalCount
+                        : null,
                     mutationSuccess)
                 : itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
                     _pendingVegaCastState.ScrollInventoryType,
@@ -2167,16 +2242,20 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private static bool TryDecodeVegaClientInventoryOperationEquipSnapshot(
+        private static bool TryDecodeVegaClientInventoryOperationState(
             byte[] payload,
             int expectedItemId,
             int expectedEncodedEquipPosition,
-            out VegaPacketOwnedEquipSnapshot snapshot,
-            out bool clearsExclusiveRequest,
+            int expectedScrollItemId,
+            InventoryType expectedScrollInventoryType,
+            int expectedScrollSlotIndex,
+            int expectedModifierItemId,
+            InventoryType expectedModifierInventoryType,
+            int expectedModifierSlotIndex,
+            out VegaClientInventoryOperationState operationState,
             out string rejectReason)
         {
-            snapshot = default;
-            clearsExclusiveRequest = false;
+            operationState = default;
             rejectReason = null;
             if (payload == null || payload.Length < sizeof(byte) * 2)
             {
@@ -2188,7 +2267,7 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                clearsExclusiveRequest = reader.ReadByte() != 0;
+                bool clearsExclusiveRequest = reader.ReadByte() != 0;
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
                 {
@@ -2215,10 +2294,16 @@ namespace HaCreator.MapSimulator
                                     fromPosition,
                                     expectedItemId,
                                     expectedEncodedEquipPosition,
-                                    out snapshot,
+                                    out VegaPacketOwnedEquipSnapshot decodedSnapshot,
                                     out rejectReason))
                             {
-                                return true;
+                                operationState = operationState with
+                                {
+                                    ClearsExclusiveRequest = clearsExclusiveRequest,
+                                    HasEquipSnapshot = true,
+                                    EquipSnapshot = decodedSnapshot
+                                };
+                                break;
                             }
 
                             if (!string.IsNullOrWhiteSpace(rejectReason))
@@ -2226,14 +2311,26 @@ namespace HaCreator.MapSimulator
                                 return false;
                             }
 
-                            break;
+                            rejectReason = "Inventory-operation payload included a mode-0 entry before the matching Vega equipment add entry could be decoded.";
+                            return false;
                         case 1:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
                             {
                                 return false;
                             }
 
-                            _ = reader.ReadInt16();
+                            int newCount = Math.Max(0, (int)reader.ReadInt16());
+                            operationState = ObserveVegaClientInventoryOperationCount(
+                                operationState,
+                                inventoryType,
+                                fromPosition,
+                                newCount,
+                                expectedScrollItemId,
+                                expectedScrollInventoryType,
+                                expectedScrollSlotIndex,
+                                expectedModifierItemId,
+                                expectedModifierInventoryType,
+                                expectedModifierSlotIndex);
                             break;
                         case 2:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
@@ -2244,6 +2341,17 @@ namespace HaCreator.MapSimulator
                             _ = reader.ReadInt16();
                             break;
                         case 3:
+                            operationState = ObserveVegaClientInventoryOperationCount(
+                                operationState,
+                                inventoryType,
+                                fromPosition,
+                                0,
+                                expectedScrollItemId,
+                                expectedScrollInventoryType,
+                                expectedScrollSlotIndex,
+                                expectedModifierItemId,
+                                expectedModifierInventoryType,
+                                expectedModifierSlotIndex);
                             break;
                         case 4:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(int), out rejectReason))
@@ -2259,14 +2367,82 @@ namespace HaCreator.MapSimulator
                     }
                 }
 
-                rejectReason = "Inventory-operation payload did not include a matching Vega GW_ItemSlotEquip add entry.";
-                return false;
+                if (!operationState.HasEquipSnapshot)
+                {
+                    rejectReason = "Inventory-operation payload did not include a matching Vega GW_ItemSlotEquip add entry.";
+                    return false;
+                }
+
+                operationState = operationState with { ClearsExclusiveRequest = clearsExclusiveRequest };
+                return true;
             }
             catch (Exception ex)
             {
                 rejectReason = $"Inventory-operation payload could not be decoded for Vega equipment state: {ex.Message}";
                 return false;
             }
+        }
+
+        private static VegaClientInventoryOperationState ObserveVegaClientInventoryOperationCount(
+            VegaClientInventoryOperationState operationState,
+            byte inventoryType,
+            short position,
+            int finalCount,
+            int expectedScrollItemId,
+            InventoryType expectedScrollInventoryType,
+            int expectedScrollSlotIndex,
+            int expectedModifierItemId,
+            InventoryType expectedModifierInventoryType,
+            int expectedModifierSlotIndex)
+        {
+            if (MatchesVegaClientInventoryOperationSlot(
+                    inventoryType,
+                    position,
+                    expectedScrollItemId,
+                    expectedScrollInventoryType,
+                    expectedScrollSlotIndex))
+            {
+                operationState = operationState with
+                {
+                    ScrollCountObserved = true,
+                    ScrollFinalCount = finalCount
+                };
+            }
+
+            if (MatchesVegaClientInventoryOperationSlot(
+                    inventoryType,
+                    position,
+                    expectedModifierItemId,
+                    expectedModifierInventoryType,
+                    expectedModifierSlotIndex))
+            {
+                operationState = operationState with
+                {
+                    ModifierCountObserved = true,
+                    ModifierFinalCount = finalCount
+                };
+            }
+
+            return operationState;
+        }
+
+        private static bool MatchesVegaClientInventoryOperationSlot(
+            byte inventoryType,
+            short position,
+            int expectedItemId,
+            InventoryType expectedInventoryType,
+            int expectedSlotIndex)
+        {
+            if (expectedItemId <= 0 ||
+                expectedInventoryType == InventoryType.NONE ||
+                expectedSlotIndex < 0 ||
+                !Enum.IsDefined(typeof(InventoryType), (int)inventoryType) ||
+                (InventoryType)inventoryType != expectedInventoryType)
+            {
+                return false;
+            }
+
+            return position == expectedSlotIndex + 1;
         }
 
         private static bool TryReadVegaClientInventoryOperationEquipAddEntry(
@@ -2772,6 +2948,15 @@ namespace HaCreator.MapSimulator
             int BonusAvoidability,
             int BonusSpeed,
             int BonusJump);
+
+        private readonly record struct VegaClientInventoryOperationState(
+            bool ClearsExclusiveRequest,
+            bool HasEquipSnapshot,
+            VegaPacketOwnedEquipSnapshot EquipSnapshot,
+            bool ScrollCountObserved,
+            int ScrollFinalCount,
+            bool ModifierCountObserved,
+            int ModifierFinalCount);
 
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)
         {

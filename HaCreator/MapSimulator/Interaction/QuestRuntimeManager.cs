@@ -369,6 +369,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? StartFakeQuestId { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> StartInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> StartInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
+            public bool StartRequiresMarriage { get; init; }
+            public bool StartRequiresNoMarriage { get; init; }
             public IReadOnlyList<string> StartUnresolvedSideChannelDemandKeys { get; init; } = Array.Empty<string>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
@@ -5862,13 +5864,19 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetGenderRequirement = state == QuestStateType.Started &&
                 build != null &&
                 HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender);
-            bool hasUnmetMarriageRequirement = state == QuestStateType.Started &&
-                build != null &&
-                HasUnmetCompletionMarriageDemand(
-                    definition.EndRequiresMarriage,
-                    definition.EndRequiresNoMarriage,
-                    build.HasAuthoritativeProfileMarriage,
-                    build.IsProfileMarried);
+            bool hasUnmetMarriageRequirement = build != null &&
+                (state == QuestStateType.Not_Started
+                    ? HasUnmetCompletionMarriageDemand(
+                        definition.StartRequiresMarriage,
+                        definition.StartRequiresNoMarriage,
+                        build.HasAuthoritativeProfileMarriage,
+                        build.IsProfileMarried)
+                    : state == QuestStateType.Started &&
+                      HasUnmetCompletionMarriageDemand(
+                          definition.EndRequiresMarriage,
+                          definition.EndRequiresNoMarriage,
+                          build.HasAuthoritativeProfileMarriage,
+                          build.IsProfileMarried));
             bool hasUnmetUserInteractRequirement = state == QuestStateType.Started &&
                 HasUnmetCompletionUserInteractDemand(
                     definition.EndUserInteractDemand,
@@ -6731,6 +6739,22 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (HasAuthoredCompletionMarriageDemand(definition.StartRequiresMarriage, definition.StartRequiresNoMarriage))
+            {
+                bool isComplete = build != null &&
+                    !HasUnmetCompletionMarriageDemand(
+                        definition.StartRequiresMarriage,
+                        definition.StartRequiresNoMarriage,
+                        build.HasAuthoritativeProfileMarriage,
+                        build.IsProfileMarried);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = definition.StartRequiresNoMarriage ? "Not married" : "Married",
+                    IsComplete = isComplete
+                });
+            }
+
             AppendAvailabilityRequirementLines(
                 definition.StartAvailableFrom,
                 definition.StartAvailableUntil,
@@ -7411,6 +7435,15 @@ namespace HaCreator.MapSimulator.Interaction
             if (HasUnresolvedCompletionSideChannelDemands(definition.StartUnresolvedSideChannelDemandKeys))
             {
                 issues.Add("Start demand includes unresolved side-channel state owners.");
+            }
+
+            if (HasUnmetCompletionMarriageDemand(
+                    definition.StartRequiresMarriage,
+                    definition.StartRequiresNoMarriage,
+                    build?.HasAuthoritativeProfileMarriage ?? false,
+                    build?.IsProfileMarried ?? false))
+            {
+                issues.Add("Start demand requires marriage state.");
             }
 
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
@@ -10113,6 +10146,11 @@ namespace HaCreator.MapSimulator.Interaction
                 StartFakeQuestId = ParsePositiveInt(startCheck?["fakeQuestID"]),
                 StartInfoRequirements = ParseQuestRecordTextRequirements(startCheck?["info"]),
                 StartInfoExRequirements = ParseQuestRecordValueRequirements(startCheck?["infoex"]),
+                StartRequiresMarriage = HasAuthoredCompletionSideChannelDemand(startCheck?["marriaged"])
+                                       || HasAuthoredCompletionSideChannelDemand(startCheck?["marriage"])
+                                       || HasAuthoredCompletionSideChannelDemand(startCheck?["married"]),
+                StartRequiresNoMarriage = HasAuthoredCompletionSideChannelDemand(startCheck?["noMarriaged"])
+                                         || HasAuthoredCompletionSideChannelDemand(startCheck?["noMarriage"]),
                 StartUnresolvedSideChannelDemandKeys = ParseUnresolvedSideChannelDemandKeys(startCheck),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
@@ -10405,38 +10443,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var days = new List<DayOfWeek>();
-            if (TryParseAllowedDay(property.GetString(), out DayOfWeek scalarDay))
-            {
-                days.Add(scalarDay);
-            }
+            AddParsedAllowedDays(days, property.GetString());
 
             if (property.WzProperties != null)
             {
                 for (int i = 0; i < property.WzProperties.Count; i++)
                 {
-                    if (!TryParseAllowedDay(property.WzProperties[i]?.GetString(), out DayOfWeek day))
-                    {
-                        continue;
-                    }
-
-                    if (!days.Contains(day))
-                    {
-                        days.Add(day);
-                    }
+                    AddParsedAllowedDays(days, property.WzProperties[i]?.GetString());
                 }
             }
 
             return days;
         }
 
-        private static bool TryParseAllowedDay(string rawValue, out DayOfWeek day)
+        internal static IReadOnlyList<DayOfWeek> ParseAllowedDaysForTesting(WzImageProperty property)
         {
-            if (string.Equals(rawValue, "1", StringComparison.Ordinal))
+            return ParseAllowedDays(property);
+        }
+
+        private static void AddParsedAllowedDays(ICollection<DayOfWeek> days, string rawValue)
+        {
+            if (days == null || string.IsNullOrWhiteSpace(rawValue))
             {
-                day = DayOfWeek.Sunday;
-                return true;
+                return;
             }
 
+            string trimmedValue = rawValue.Trim();
+            if (int.TryParse(trimmedValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dayMask))
+            {
+                AddAllowedDaysFromClientMask(days, dayMask);
+                return;
+            }
+
+            if (TryParseAllowedDayName(trimmedValue, out DayOfWeek day) && !days.Contains(day))
+            {
+                days.Add(day);
+            }
+        }
+
+        private static void AddAllowedDaysFromClientMask(ICollection<DayOfWeek> days, int dayMask)
+        {
+            if (dayMask <= 0)
+            {
+                return;
+            }
+
+            for (int dayIndex = 0; dayIndex <= 6; dayIndex++)
+            {
+                if ((dayMask & (1 << dayIndex)) == 0)
+                {
+                    continue;
+                }
+
+                var day = (DayOfWeek)dayIndex;
+                if (!days.Contains(day))
+                {
+                    days.Add(day);
+                }
+            }
+        }
+
+        private static bool TryParseAllowedDayName(string rawValue, out DayOfWeek day)
+        {
             return Enum.TryParse(rawValue, ignoreCase: true, out day);
         }
 

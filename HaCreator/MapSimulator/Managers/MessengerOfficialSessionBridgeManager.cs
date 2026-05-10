@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<ushort, HashSet<byte>> _passiveMapleTvResultCodeObservations = new();
         private readonly Dictionary<ushort, string> _passiveInboundOpcodeSampleRawHex = new();
         private readonly Dictionary<byte, string> _observedMessengerSubtypePayloadSamples = new();
+        private readonly Dictionary<ushort, string> _observedMapleTvBranchPayloadSamples = new();
         private readonly Dictionary<byte, string> _observedMapleTvResultCodePayloadSamples = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
 
@@ -288,6 +289,7 @@ namespace HaCreator.MapSimulator.Managers
                 _passiveMapleTvResultCodeObservations.Clear();
                 _passiveInboundOpcodeSampleRawHex.Clear();
                 _observedMessengerSubtypePayloadSamples.Clear();
+                _observedMapleTvBranchPayloadSamples.Clear();
                 _observedMapleTvResultCodePayloadSamples.Clear();
                 _expectedResultRequestCount = 0;
                 _expectedResultMatchCount = 0;
@@ -814,6 +816,12 @@ namespace HaCreator.MapSimulator.Managers
                 _observedInboundOpcodes.Add((ushort)opcode);
                 if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (hasKnownBranch
+                        && PacketOwnedSocialUtilityPacketTable.IsRecoveredInboundOpcode(_ownerName, (ushort)opcode))
+                    {
+                        _observedMapleTvBranchPayloadSamples[(ushort)opcode] = Convert.ToHexString(payload);
+                    }
+
                     if (resultCode != byte.MaxValue)
                     {
                         _observedMapleTvSendResultCodes.Add(resultCode);
@@ -1386,17 +1394,23 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
-                if (_observedMapleTvResultCodePayloadSamples.Count == 0)
-                {
-                    return "MapleTV send-result samples=none";
-                }
-
-                return "MapleTV send-result samples "
+                string branchSamples = _observedMapleTvBranchPayloadSamples.Count == 0
+                    ? "MapleTV branch samples=none"
+                    : "MapleTV branch samples "
+                    + string.Join(
+                        ", ",
+                        _observedMapleTvBranchPayloadSamples
+                            .OrderBy(entry => entry.Key)
+                            .Select(entry => $"{DescribeMapleTvBranch(entry.Key)} payload={entry.Value}"));
+                string resultSamples = _observedMapleTvResultCodePayloadSamples.Count == 0
+                    ? "MapleTV send-result samples=none"
+                    : "MapleTV send-result samples "
                     + string.Join(
                         ", ",
                         _observedMapleTvResultCodePayloadSamples
                             .OrderBy(entry => entry.Key)
                             .Select(entry => $"code {entry.Key} payload={entry.Value}"));
+                return $"{branchSamples}; {resultSamples}";
             }
 
             if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
@@ -1495,7 +1509,19 @@ namespace HaCreator.MapSimulator.Managers
             _passiveMapleTvResultCodeObservations.Clear();
             _passiveInboundOpcodeSampleRawHex.Clear();
             _observedMessengerSubtypePayloadSamples.Clear();
+            _observedMapleTvBranchPayloadSamples.Clear();
             _observedMapleTvResultCodePayloadSamples.Clear();
+        }
+
+        private static string DescribeMapleTvBranch(ushort opcode)
+        {
+            return opcode switch
+            {
+                PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode => "OnSetMessage(405)",
+                PacketOwnedSocialUtilityPacketTable.MapleTvInboundClearMessageOpcode => "OnClearMessage(406)",
+                PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode => "OnSendMessageResult(407)",
+                _ => $"opcode {opcode}"
+            };
         }
 
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)

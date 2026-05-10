@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PreviewY = 85;
         private const int ShakeStepMs = 65;
         private const int ShakeOffsetMagnitude = 5;
+        private static readonly IReadOnlyList<string> ClientDrawPassOrder =
+            new[] { "background", "avatar", "avatarSkin", "nameTag", "messageText", "senderName" };
         internal const int ChatLogType = 18;
         internal const int TrembleForce = 16;
         internal const int SendDialogRowMax = 4;
@@ -539,14 +541,14 @@ namespace HaCreator.MapSimulator.Interaction
                 spriteBatch.Draw(backgroundTexture, new Vector2(layout.PanelX, 0f), Color.White);
             }
 
+            DrawPreviewAvatar(spriteBatch, currentTick, layout.PanelX);
+
             AvatarMegaphoneAnimationFrame itemFrame = SelectFrame(itemFrames, currentTick);
             if (itemFrame?.Texture != null)
             {
                 Vector2 itemPosition = new(layout.PanelX - itemFrame.Origin.X, -itemFrame.Origin.Y);
                 spriteBatch.Draw(itemFrame.Texture, itemPosition, Color.White);
             }
-
-            DrawPreviewAvatar(spriteBatch, currentTick, layout.PanelX);
 
             if (nameTagTexture != null)
             {
@@ -611,7 +613,7 @@ namespace HaCreator.MapSimulator.Interaction
             int elapsed = Math.Max(0, currentTick - _presentationStartedAt);
             float enterProgress = MathHelper.Clamp(elapsed / (float)SlideDurationMs, 0f, 1f);
             int panelX = (int)Math.Round(MathHelper.Lerp(helloOffscreenX, targetX, enterProgress));
-            panelX += ResolveShakeOffset(elapsed);
+            panelX += ResolveClientShakeOffset(elapsed);
             int nameAlpha = Math.Clamp((int)Math.Round(255f * MathHelper.Clamp(elapsed / (float)NameFadeDurationMs, 0f, 1f)), 0, 255);
             return new AvatarMegaphoneLayout(panelX, nameAlpha);
         }
@@ -631,7 +633,17 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(1, Math.Abs(ByeOffscreenX - ResolveClientTargetX(screenWidth)));
         }
 
-        private static int ResolveShakeOffset(int elapsedMs)
+        internal static int ResolveClientNameAlpha(int elapsedMs)
+        {
+            return Math.Clamp((int)Math.Round(255f * MathHelper.Clamp(Math.Max(0, elapsedMs) / (float)NameFadeDurationMs, 0f, 1f)), 0, 255);
+        }
+
+        internal static IReadOnlyList<string> GetClientDrawPassOrder()
+        {
+            return ClientDrawPassOrder;
+        }
+
+        internal static int ResolveClientShakeOffset(int elapsedMs)
         {
             for (int i = 1; i <= 6; i++)
             {

@@ -4309,6 +4309,26 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SubmitCreateGuildNameRequest(string.Join(' ', args.Skip(3))));
                             }
 
+                            if (string.Equals(args[2], "agreement", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 5 || !int.TryParse(args[3], out int partyId))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog agreement <partyId> <masterName>|<guildName>");
+                                }
+
+                                string[] fields = string.Join(' ', args.Skip(4)).Split('|');
+                                if (fields.Length < 2 || string.IsNullOrWhiteSpace(fields[1]))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog agreement <partyId> <masterName>|<guildName>");
+                                }
+
+                                string masterName = string.IsNullOrWhiteSpace(fields[0]) ? null : fields[0].Trim();
+                                string guildName = fields[1].Trim();
+                                string captureMessage = _socialListRuntime.CaptureClientGuildCreateAgreement(partyId, masterName, guildName);
+                                string openMessage = OpenGuildCreateAgreementWindow(masterName, guildName);
+                                return ChatCommandHandler.CommandResult.Ok($"{captureMessage} {openMessage}");
+                            }
+
                             if (string.Equals(args[2], "approve", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(args[2], "accept", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(args[2], "reject", StringComparison.OrdinalIgnoreCase)
@@ -4320,7 +4340,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ResolvePendingGuildDialogRequest(approved, summary));
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog <status|balance [mesos]|create <guildName>|approve [summary]|reject [summary]>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guilddialog <status|balance [mesos]|create <guildName>|agreement <partyId> <masterName>|<guildName>|approve [summary]|reject [summary]>");
                         }
 
                         return ChatCommandHandler.CommandResult.Error(
@@ -9971,7 +9991,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
+                "/family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|transfer <status|complete|cancel>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendchart [characterName]|queuechart [characterName]|sendpending|queuepending|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -10253,7 +10273,7 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyClientMessage))
                                 : ChatCommandHandler.CommandResult.Error(familyClientMessage);
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|junior|remove|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|transfer <status|complete|cancel>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendchart [characterName]|queuechart [characterName]|sendpending|queuepending|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
                     }
                 });
 
@@ -10853,7 +10873,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
-                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|attrrate <value>|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
+                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|attrrate <value>|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|recovery|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "npcpool",

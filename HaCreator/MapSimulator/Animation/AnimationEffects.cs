@@ -1543,7 +1543,7 @@ namespace HaCreator.MapSimulator.Animation
             AddPacketOwnedBasicOneTime(
                 frames,
                 sourceUol,
-                getPosition: null,
+                null,
                 x,
                 y,
                 currentTimeMs,
@@ -1669,6 +1669,99 @@ namespace HaCreator.MapSimulator.Animation
                 fallbackY,
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedLevelUp,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillIcon(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillIcon,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillBomb(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillBomb,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillHit,
                 zOrder,
                 initialElapsedMs);
         }
@@ -1993,7 +2086,7 @@ namespace HaCreator.MapSimulator.Animation
                 initialElapsedMs);
         }
 
-        internal void AddFullChargedAngerGauge(
+        internal bool AddFullChargedAngerGauge(
             List<IDXObject> frames,
             string sourceUol,
             Func<Vector2> getOrigin,
@@ -2002,7 +2095,7 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             int zOrder = 1)
         {
-            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return false;
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
@@ -2022,6 +2115,7 @@ namespace HaCreator.MapSimulator.Animation
                 usesOverlayParent: true,
                 registrationTrace);
             InsertOneTimeAnimation(anim);
+            return true;
         }
 
         private void AddPacketOwnedBasicOneTime(
@@ -4266,7 +4360,7 @@ namespace HaCreator.MapSimulator.Animation
             _fallbackFlip = fallbackFlip;
             _follow = follow;
             _ownsFrameTextures = ownsFrameTextures;
-            _nextUpdateTime = currentTimeMs + Math.Max(0, delayMs);
+            _nextUpdateTime = currentTimeMs;
             _lastUpdateTime = currentTimeMs;
             _endTime = currentTimeMs + Math.Max(1, durationMs);
             _intervalMs = NormalizeSnapshotIntervalMs(intervalMs);
@@ -4884,7 +4978,11 @@ namespace HaCreator.MapSimulator.Animation
         ClientOwnedCollisionVerticalJump = 24,
         ClientOwnedCollisionCustomImpact = 25,
         PacketOwnedRemoteSkillUse = 26,
-        ClientOwnedBoundJumpGeneralEffect = 27
+        ClientOwnedBoundJumpGeneralEffect = 27,
+        PacketOwnedMobSkillEffect = 28,
+        PacketOwnedMobSkillIcon = 29,
+        PacketOwnedMobSkillBomb = 30,
+        PacketOwnedMobSkillHit = 31
     }
 
     internal enum AnimationFallingOwner
@@ -5617,6 +5715,23 @@ namespace HaCreator.MapSimulator.Animation
         AnimationCanvasLayerBlendMode BlendMode);
 
     /// <summary>
+    /// Per-source digit placement recurrence recovered from CAnimationDisplayer::Effect_HP.
+    /// The native function computes lEffX from source width, origin.x, and the previous
+    /// 3 * (origin.x - width) / 5 reduction before inserting each source canvas.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpDigitLayoutStep(
+        int SourceIndex,
+        string SourceSetName,
+        string SpriteName,
+        bool UsesLargeOwner,
+        int SourceWidth,
+        int SourceOriginX,
+        int PreviousReductionOffset,
+        int NativeEffX,
+        int NativeAccumulatedCanvasWidthAfterStep,
+        int NextReductionOffset);
+
+    /// <summary>
     /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredOwnerTrace(
@@ -5627,6 +5742,7 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredEffectHpOwnerSelectionTrace OwnerSelectionTrace,
         CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
         CanvasLayerRecoveredTemporaryCanvasOperation[] TemporaryCanvasOperations,
+        CanvasLayerRecoveredEffectHpDigitLayoutStep[] DigitLayoutSteps,
         bool KeepsOverlayOnSeparateLayer,
         int OverlaySpriteNameStringPoolId,
         string OverlayCanvasPath,

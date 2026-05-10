@@ -184,6 +184,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int[] _wins = new int[2];
         private readonly int[] _losses = new int[2];
         private readonly int[] _draws = new int[2];
+        private readonly Dictionary<int, MiniGameRecord> _miniGameRecords = new();
         private readonly Dictionary<MemoryGamePacketType, int> _packetCounts = new();
         private readonly Texture2D[] _cardFaceTextures = new Texture2D[CardFaceTextureCount];
         private readonly Texture2D[] _cardBackTextures = new Texture2D[CardBackTextureCount];
@@ -278,6 +279,30 @@ namespace HaCreator.MapSimulator.Fields
             public int FaceId { get; init; }
             public bool IsFaceUp { get; set; }
             public bool IsMatched { get; set; }
+        }
+
+        public sealed class MiniGameRecord
+        {
+            public MiniGameRecord(int slot, int wins, int draws, int losses, int score, int grade, byte[] rawBytes)
+            {
+                Slot = slot;
+                Wins = wins;
+                Draws = draws;
+                Losses = losses;
+                Score = score;
+                Grade = grade;
+                RawBytes = rawBytes == null ? Array.Empty<byte>() : (byte[])rawBytes.Clone();
+            }
+
+            public int Slot { get; }
+            public int Wins { get; }
+            public int Draws { get; }
+            public int Losses { get; }
+            public int Score { get; }
+            public int Grade { get; }
+            public byte[] RawBytes { get; }
+            public int TotalGames => Math.Max(0, Wins) + Math.Max(0, Draws) + Math.Max(0, Losses);
+            public int WinRatePercent => TotalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, Wins) * 100d / TotalGames);
         }
 
 
@@ -406,6 +431,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> ReadyStates => _readyStates;
         public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
+        public IReadOnlyDictionary<int, MiniGameRecord> MiniGameRecords => _miniGameRecords;
         public int GameKind => _gameKind;
         public int CardsPerRow => _cardsPerRow;
         public string Title => _title;
@@ -1628,6 +1654,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingRemoteActions.Clear();
             _pendingOfficialClientRelayPackets.Clear();
             _miniRoomParticipants.Clear();
+            _miniGameRecords.Clear();
             _lastPacketType = null;
             _lastPacketSummary = "Memory Game room reset.";
             _packetCounts.Clear();
@@ -1841,6 +1868,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
             _pendingOfficialClientRelayPackets.Clear();
+            _miniGameRecords.Clear();
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
@@ -1886,7 +1914,12 @@ namespace HaCreator.MapSimulator.Fields
                     break;
                 }
 
-                _ = reader.ReadBytes(ClientMiniGameRecordByteLength);
+                if (!TryDecodeMiniGameRecord(reader, recordIndex, out MiniGameRecord record, out message))
+                {
+                    return false;
+                }
+
+                ApplyMiniGameRecord(record);
                 decodedRecordCount++;
             }
 
@@ -1921,6 +1954,58 @@ namespace HaCreator.MapSimulator.Fields
             SyncMiniRoomRuntime();
             message = $"CMemoryGameDlg::OnEnterResult decoded {decodedRecordCount} MiniGame record entr{(decodedRecordCount == 1 ? "y" : "ies")}, title '{_title}', gameKind={gameKind}, tournament={(tournamentMode ? 1 : 0)}, round={tournamentRound}.";
             return true;
+        }
+
+        private bool TryDecodeMiniGameRecord(PacketReader reader, int slot, out MiniGameRecord record, out string message)
+        {
+            record = null;
+            if (slot < 0)
+            {
+                message = $"MiniGame record used invalid slot {slot}.";
+                return false;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            byte[] rawBytes = reader.ReadBytes(ClientMiniGameRecordByteLength);
+            if (rawBytes.Length != ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but decoded {rawBytes.Length} byte(s).";
+                return false;
+            }
+
+            record = new MiniGameRecord(
+                slot,
+                BitConverter.ToInt32(rawBytes, 0),
+                BitConverter.ToInt32(rawBytes, 4),
+                BitConverter.ToInt32(rawBytes, 8),
+                BitConverter.ToInt32(rawBytes, 12),
+                BitConverter.ToInt32(rawBytes, 16),
+                rawBytes);
+            message = string.Empty;
+            return true;
+        }
+
+        private void ApplyMiniGameRecord(MiniGameRecord record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            _miniGameRecords[record.Slot] = record;
+            if (record.Slot < 0 || record.Slot >= _wins.Length)
+            {
+                return;
+            }
+
+            _wins[record.Slot] = record.Wins;
+            _draws[record.Slot] = record.Draws;
+            _losses[record.Slot] = record.Losses;
         }
 
 
@@ -2501,6 +2586,23 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyGameResultPacket(PacketReader reader, int tickCount, out string message)
         {
             int resultType = reader.ReadByte();
+            int winnerIndex = -1;
+            if (resultType != 1)
+            {
+                winnerIndex = reader.ReadByte();
+                if (!IsValidPlayerIndex(winnerIndex))
+                {
+                    message = $"Game-result packet used invalid winner index {winnerIndex}.";
+                    return false;
+                }
+            }
+
+            if (!TryDecodeMiniGameRecord(reader, 0, out MiniGameRecord firstRecord, out message)
+                || !TryDecodeMiniGameRecord(reader, 1, out MiniGameRecord secondRecord, out message))
+            {
+                return false;
+            }
+
             _stage = RoomStage.Result;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
@@ -2509,13 +2611,13 @@ namespace HaCreator.MapSimulator.Fields
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
+            ApplyMiniGameRecord(firstRecord);
+            ApplyMiniGameRecord(secondRecord);
 
 
             if (resultType == 1)
             {
                 _lastWinnerIndex = -1;
-                _draws[0]++;
-                _draws[1]++;
                 _statusMessage = ResolveMemoryGameResultText(isDraw: true);
                 _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
                 SyncMiniRoomRuntime();
@@ -2523,19 +2625,7 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-
-            int winnerIndex = reader.ReadByte();
-            if (!IsValidPlayerIndex(winnerIndex))
-            {
-                message = $"Game-result packet used invalid winner index {winnerIndex}.";
-                return false;
-            }
-
-
-            int loserIndex = winnerIndex == 0 ? 1 : 0;
             _lastWinnerIndex = winnerIndex;
-            _wins[winnerIndex]++;
-            _losses[loserIndex]++;
             _statusMessage = ResolveMemoryGameResultText(winnerIndex);
             _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
             SyncMiniRoomRuntime();
@@ -4100,9 +4190,25 @@ namespace HaCreator.MapSimulator.Fields
             {
                 DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
             }
-            DrawOutlinedText(spriteBatch, font, $"W {_wins[localIndex]}  L {_losses[localIndex]}  D {_draws[localIndex]}", new Vector2(dialogX + 409, dialogY + 210), Color.Black, new Color(48, 48, 48));
-            DrawOutlinedText(spriteBatch, font, $"Packet: {_lastPacketType?.ToString() ?? "None"}", new Vector2(dialogX + 409, dialogY + 228), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, BuildRecordDisplayText(localIndex), new Vector2(dialogX + 409, dialogY + 210), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, BuildRecordDisplayText(localIndex == 0 ? 1 : 0), new Vector2(dialogX + 409, dialogY + 228), Color.Black, new Color(48, 48, 48));
             DrawOutlinedText(spriteBatch, font, $"Room: {_stage}", new Vector2(dialogX + 409, dialogY + 246), Color.Black, new Color(48, 48, 48));
+        }
+
+        private string BuildRecordDisplayText(int slot)
+        {
+            string prefix = slot == _localPlayerIndex ? "You" : ResolveParticipantName(slot);
+            if (_miniGameRecords.TryGetValue(slot, out MiniGameRecord record))
+            {
+                return $"{prefix}: W {record.Wins} D {record.Draws} L {record.Losses} R {record.WinRatePercent}%";
+            }
+
+            if (slot >= 0 && slot < _wins.Length)
+            {
+                return $"{prefix}: W {_wins[slot]} D {_draws[slot]} L {_losses[slot]}";
+            }
+
+            return $"{prefix}: no record";
         }
 
 

@@ -1144,7 +1144,33 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<InventoryMobPreviewItem>();
             }
 
-            return ResolveMobPreviewItems(ResolveLinkedSubProperty(LoadItemProperty(itemId)?["mob"]), limit);
+            return ResolveMobPreviewItemsFromItemProperty(LoadItemProperty(itemId), limit);
+        }
+
+        private static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItemsFromItemProperty(WzSubProperty itemProperty, int limit)
+        {
+            if (itemProperty == null)
+            {
+                return Array.Empty<InventoryMobPreviewItem>();
+            }
+
+            IReadOnlyList<InventoryMobPreviewItem> rootEntries =
+                ResolveMobPreviewItems(ResolveLinkedSubProperty(itemProperty["mob"]), limit);
+            if (rootEntries.Count > 0)
+            {
+                return rootEntries;
+            }
+
+            WzSubProperty specProperty = ResolveLinkedSubProperty(itemProperty["spec"]);
+            IReadOnlyList<InventoryMobPreviewItem> specEntries =
+                ResolveMobPreviewItems(ResolveLinkedSubProperty(specProperty?["mob"]), limit);
+            if (specEntries.Count > 0)
+            {
+                return specEntries;
+            }
+
+            WzSubProperty specExProperty = ResolveLinkedSubProperty(itemProperty["specEx"]);
+            return ResolveMobPreviewItems(ResolveLinkedSubProperty(specExProperty?["mob"]), limit);
         }
 
         private static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItems(WzSubProperty mobProperty, int limit)
@@ -5855,6 +5881,13 @@ namespace HaCreator.MapSimulator.UI
             int limit = 8)
         {
             return ResolveMobPreviewItems(mobProperty, limit);
+        }
+
+        public static IReadOnlyList<InventoryMobPreviewItem> ResolveMobPreviewItemsFromItemForTests(
+            WzSubProperty itemProperty,
+            int limit = 8)
+        {
+            return ResolveMobPreviewItemsFromItemProperty(itemProperty, limit);
         }
 
         public static bool TryResolveEffectPathForTests(string effectPath, out string imagePath, out string propertyPath)

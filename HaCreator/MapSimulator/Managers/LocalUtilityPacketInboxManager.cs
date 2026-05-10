@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int AntiMacroResultPacketType = 1011;
         public const int RadioCreateLayerContextPacketType = 1035;
         public const int DragonBoxClientPacketType = 164;
+        public const int NewYearCardResultClientPacketType = 122;
         public const int AccountMoreInfoPacketType = 133;
         public const int SetGenderPacketType = 58;
         public const int FollowCharacterPacketType = 1012;
@@ -468,6 +469,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onaccountmoreinfo", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = AccountMoreInfoPacketType;
+                return true;
+            }
+
+            if (token.Equals("newyearcard", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("newyearcardresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnewyearcardres", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontextnewyearcard", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = NewYearCardResultClientPacketType;
                 return true;
             }
 

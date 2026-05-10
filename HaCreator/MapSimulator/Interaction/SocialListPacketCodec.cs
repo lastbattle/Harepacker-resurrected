@@ -158,7 +158,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         LevelUp = 0,
         Renew = 1,
-        FundSync = 2
+        FundSync = 2,
+        ScopedFundSync = 3
     }
 
     internal readonly record struct GuildSkillResultPacket(
@@ -168,7 +169,8 @@ namespace HaCreator.MapSimulator.Interaction
         int? SkillLevel,
         int? RemainingDurationMinutes,
         int? GuildFundMeso,
-        string Summary);
+        string Summary,
+        int? GuildId = null);
 
     internal enum SocialListClientGuildResultKind : byte
     {
@@ -1669,8 +1671,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(payload);
                 GuildSkillResultPacketKind kind = (GuildSkillResultPacketKind)reader.ReadByte();
-                if (kind == GuildSkillResultPacketKind.FundSync)
+                if (kind == GuildSkillResultPacketKind.FundSync || kind == GuildSkillResultPacketKind.ScopedFundSync)
                 {
+                    int? scopedGuildId = kind == GuildSkillResultPacketKind.ScopedFundSync
+                        ? reader.ReadInt32()
+                        : null;
                     int syncedGuildFundMeso = reader.ReadInt32();
                     string fundSummary = reader.HasRemaining ? reader.ReadString16().Trim() : null;
                     packet = new GuildSkillResultPacket(
@@ -1680,7 +1685,8 @@ namespace HaCreator.MapSimulator.Interaction
                         null,
                         null,
                         syncedGuildFundMeso,
-                        fundSummary);
+                        fundSummary,
+                        scopedGuildId);
                     return true;
                 }
 
@@ -1702,6 +1708,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int? skillLevel = (flags & 0x01) != 0 ? reader.ReadInt32() : null;
                 int? remainingDurationMinutes = (flags & 0x02) != 0 ? reader.ReadInt32() : null;
                 int? guildFundMeso = (flags & 0x04) != 0 ? reader.ReadInt32() : null;
+                int? guildId = (flags & 0x08) != 0 ? reader.ReadInt32() : null;
                 string summary = reader.HasRemaining ? reader.ReadString16().Trim() : null;
 
                 packet = new GuildSkillResultPacket(
@@ -1711,7 +1718,8 @@ namespace HaCreator.MapSimulator.Interaction
                     skillLevel,
                     remainingDurationMinutes,
                     guildFundMeso,
-                    summary);
+                    summary,
+                    guildId);
                 return true;
             }
             catch (InvalidOperationException ex)

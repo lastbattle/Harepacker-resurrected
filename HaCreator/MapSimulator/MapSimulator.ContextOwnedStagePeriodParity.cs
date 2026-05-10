@@ -179,8 +179,10 @@ namespace HaCreator.MapSimulator
             }
 
             int zOrder = 1;
+            int nativePageIndex = 0;
             foreach (ContextOwnedStageBackImageEntry entry in _contextOwnedStageCurrentBackImages)
             {
+                int entryPageIndex = nativePageIndex++;
                 BackgroundInfo backgroundInfo = ResolveContextOwnedStageBackInfo(entry);
                 if (backgroundInfo?.ParentObject is not WzImageProperty sourceProperty)
                 {
@@ -191,7 +193,8 @@ namespace HaCreator.MapSimulator
                     ContextOwnedStageSystemCatalog.ResolveClientMakeBackPieceFields(
                         entry,
                         sourceProperty,
-                        backgroundInfo.Type);
+                        backgroundInfo.Type,
+                        entryPageIndex);
                 if (!ShouldRenderContextOwnedStageBackForCurrentScreen(resolvedEntry.ScreenMode))
                 {
                     continue;

@@ -22,6 +22,8 @@ namespace HaCreator.MapSimulator
 
     internal sealed class LoginWorldInfoPacketProfile
     {
+        private const int ClientWorldSelectChannelSlotCount = 30;
+
         public LoginWorldInfoPacketProfile(int worldId, int visibleChannelCount, int occupancyPercent, bool requiresAdultAccess)
             : this(
                 worldId,
@@ -46,7 +48,7 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<LoginWorldInfoChannelPacketProfile> channels)
         {
             WorldId = Math.Max(0, worldId);
-            VisibleChannelCount = Math.Clamp(visibleChannelCount, 0, 20);
+            VisibleChannelCount = Math.Clamp(visibleChannelCount, 0, ClientWorldSelectChannelSlotCount);
             OccupancyPercent = Math.Clamp(occupancyPercent, 0, 100);
             RequiresAdultAccess = requiresAdultAccess || (channels?.Any(channel => channel?.RequiresAdultAccess == true) ?? false);
             WorldState = worldState;

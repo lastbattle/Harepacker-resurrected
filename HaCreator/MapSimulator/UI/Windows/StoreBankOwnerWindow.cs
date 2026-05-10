@@ -43,6 +43,28 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color MoneyShadowColor = Color.Black;
         private static readonly Color MoneyTextColor = Color.White;
 
+        internal readonly record struct ClientDrawLayout(
+            int VisibleRowCount,
+            int RowX,
+            int RowY,
+            int RowWidth,
+            int RowHeight,
+            int RowPitch,
+            int RowIconX,
+            int RowIconY,
+            int RowClientStockX,
+            int RowClientStockY,
+            int RowCashIconRightX,
+            int RowPrimaryTextX,
+            int RowPrimaryTextY,
+            int RowSecondaryTextX,
+            int RowSecondaryTextY,
+            int ScrollBarX,
+            int ScrollBarY,
+            int ScrollBarHeight,
+            int MoneyRightX,
+            int MoneyY);
+
         private readonly struct Layer
         {
             public Layer(IDXObject drawable, Point offset)
@@ -138,6 +160,31 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.StoreBank;
 
         internal int SelectedOwnerRowIndex => _selectedRowIndex;
+
+        internal static ClientDrawLayout GetClientDrawLayoutForTests()
+        {
+            return new ClientDrawLayout(
+                VisibleRowCount,
+                RowX,
+                RowY,
+                RowWidth,
+                RowHeight,
+                RowPitch,
+                RowIconX,
+                RowIconY,
+                RowClientStockX,
+                RowClientStockY,
+                RowCashIconRightX,
+                RowPrimaryTextX,
+                RowPrimaryTextY,
+                RowSecondaryTextX,
+                RowSecondaryTextY,
+                ScrollBarX,
+                ScrollBarY,
+                ScrollBarHeight,
+                MoneyRightX,
+                MoneyY);
+        }
 
         public override void SetFont(SpriteFont font)
         {

@@ -1381,6 +1381,11 @@ namespace HaCreator.MapSimulator.Pools
                 return levelData.DotDamage;
             }
 
+            if (preferDotDamage && levelData.Damage > 0)
+            {
+                return levelData.Damage;
+            }
+
             if (preferSpeed && levelData.Speed != 0)
             {
                 return Math.Abs(levelData.Speed);

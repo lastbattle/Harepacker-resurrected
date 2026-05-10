@@ -1747,8 +1747,8 @@ namespace HaCreator.MapSimulator.Fields
             int viewrangeHeight,
             string viewrangeSource)
         {
-            int smallDarkWidth = Math.Max(1, viewrangeWidth);
-            int smallDarkHeight = Math.Max(1, viewrangeHeight);
+            int viewrangeSourceWidth = Math.Max(1, viewrangeWidth);
+            int viewrangeSourceHeight = Math.Max(1, viewrangeHeight);
             string source = string.IsNullOrWhiteSpace(viewrangeSource)
                 ? $"StringPool[0x{ClientOwnedViewrangePathStringPoolId:X}]"
                 : viewrangeSource.Trim();
@@ -1765,10 +1765,10 @@ namespace HaCreator.MapSimulator.Fields
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.MoveDarkLayer, x: ClientOwnedDarkLayerOffsetX, y: ClientOwnedDarkLayerOffsetY),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerColor, source: $"0x{unchecked((uint)ClientOwnedDarkLayerColorArgb):X8}"),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerZ, source: "-1"),
-                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateSmallDarkCanvas, smallDarkWidth, smallDarkHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
-                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillSmallDarkCanvasBlack, smallDarkWidth, smallDarkHeight),
-                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.LoadViewrangeCanvas, smallDarkWidth, smallDarkHeight, source: source),
-                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.DrawInitialViewrange, smallDarkWidth, smallDarkHeight)
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateSmallDarkCanvas, ClientOwnedSmallDarkCanvasWidth, ClientOwnedSmallDarkCanvasHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillSmallDarkCanvasBlack, ClientOwnedSmallDarkCanvasWidth, ClientOwnedSmallDarkCanvasHeight),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.LoadViewrangeCanvas, viewrangeSourceWidth, viewrangeSourceHeight, source: source),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.DrawInitialViewrange, viewrangeSourceWidth, viewrangeSourceHeight)
             };
         }
 

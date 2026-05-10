@@ -2104,17 +2104,17 @@ namespace HaCreator.MapSimulator.AI
             TransitionToActionState(MobAIState.Attack, currentTick);
         }
 
-        private void StartSkill(int skillIndex, int currentTick)
+        private bool StartSkill(int skillIndex, int currentTick)
         {
             if (skillIndex < 0 || skillIndex >= _skills.Count)
             {
-                return;
+                return false;
             }
 
             MobSkillEntry skill = _skills[skillIndex];
             if (!TryConsumeSkillMp(skill))
             {
-                return;
+                return false;
             }
 
             _currentSkillIndex = skillIndex;
@@ -2123,6 +2123,7 @@ namespace HaCreator.MapSimulator.AI
             _actionAnimationCompleted = false;
             _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(skill);
             TransitionToActionState(MobAIState.Skill, currentTick);
+            return true;
         }
 
         private void TransitionToActionState(MobAIState newState, int currentTick)
@@ -2149,8 +2150,7 @@ namespace HaCreator.MapSimulator.AI
             if (availableSkillIndex >= 0 &&
                 ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
             {
-                StartSkill(availableSkillIndex, currentTick);
-                return true;
+                return StartSkill(availableSkillIndex, currentTick);
             }
 
             if (availableAttackIndex >= 0)
@@ -2399,7 +2399,10 @@ namespace HaCreator.MapSimulator.AI
 
             if (skill.SkillForbid > 0)
             {
-                _skillForbidUntil = Math.Max(_skillForbidUntil, currentTick + skill.SkillForbid);
+                int proposedSkillForbidUntil = unchecked(currentTick + skill.SkillForbid);
+                _skillForbidUntil = _skillForbidUntil == 0
+                    ? proposedSkillForbidUntil
+                    : ResolveLaterStatusExpirationTime(currentTick, _skillForbidUntil, proposedSkillForbidUntil);
             }
         }
 
@@ -2623,10 +2626,13 @@ namespace HaCreator.MapSimulator.AI
                     continue;
                 }
 
-                _currentSkillIndex = i;
-                _selfDestructPending = true;
-                StartSkill(i, currentTick);
-                return true;
+                if (StartSkill(i, currentTick))
+                {
+                    _selfDestructPending = true;
+                    return true;
+                }
+
+                return false;
             }
 
             return TryStartFallbackSelfDestructionAction(currentTick);
@@ -2643,9 +2649,13 @@ namespace HaCreator.MapSimulator.AI
 
             if (_skills.Count == 1)
             {
-                _selfDestructPending = true;
-                StartSkill(0, currentTick);
-                return true;
+                if (StartSkill(0, currentTick))
+                {
+                    _selfDestructPending = true;
+                    return true;
+                }
+
+                return false;
             }
 
             return false;

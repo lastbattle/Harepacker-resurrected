@@ -3741,17 +3741,37 @@ namespace HaCreator.MapSimulator.Pools
             directionMarkerName = (firstSegment, secondSegment) switch
             {
                 ("north", "west") => "nw",
+                ("n", "w") => "nw",
                 ("up", "left") => "nw",
+                ("up", "w") => "nw",
+                ("n", "left") => "nw",
                 ("left", "up") => "nw",
+                ("w", "up") => "nw",
+                ("left", "n") => "nw",
                 ("north", "east") => "ne",
+                ("n", "e") => "ne",
                 ("up", "right") => "ne",
+                ("up", "e") => "ne",
+                ("n", "right") => "ne",
                 ("right", "up") => "ne",
+                ("e", "up") => "ne",
+                ("right", "n") => "ne",
                 ("south", "west") => "sw",
+                ("s", "w") => "sw",
                 ("down", "left") => "sw",
+                ("down", "w") => "sw",
+                ("s", "left") => "sw",
                 ("left", "down") => "sw",
+                ("w", "down") => "sw",
+                ("left", "s") => "sw",
                 ("south", "east") => "se",
+                ("s", "e") => "se",
                 ("down", "right") => "se",
+                ("down", "e") => "se",
+                ("s", "right") => "se",
                 ("right", "down") => "se",
+                ("e", "down") => "se",
+                ("right", "s") => "se",
                 _ => null
             };
 
@@ -3900,9 +3920,21 @@ namespace HaCreator.MapSimulator.Pools
             markerName = (firstSegment, secondSegment, thirdSegment) switch
             {
                 ("arrow", "up", "right") => "arrowupright",
+                ("arrow", "up", "e") => "arrowupright",
+                ("arrow", "n", "right") => "arrowupright",
+                ("arrow", "n", "e") => "arrowupright",
                 ("arrow", "up", "left") => "arrowupleft",
+                ("arrow", "up", "w") => "arrowupleft",
+                ("arrow", "n", "left") => "arrowupleft",
+                ("arrow", "n", "w") => "arrowupleft",
                 ("arrow", "down", "right") => "arrowdownright",
+                ("arrow", "down", "e") => "arrowdownright",
+                ("arrow", "s", "right") => "arrowdownright",
+                ("arrow", "s", "e") => "arrowdownright",
                 ("arrow", "down", "left") => "arrowdownleft",
+                ("arrow", "down", "w") => "arrowdownleft",
+                ("arrow", "s", "left") => "arrowdownleft",
+                ("arrow", "s", "w") => "arrowdownleft",
                 _ => null
             };
 
@@ -5184,6 +5216,22 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
                     separatedPairConsensusChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out int uniqueSeparatedPairChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueSeparatedPairChargeElement,
                     out chargeSkillId))
             {
                 return true;

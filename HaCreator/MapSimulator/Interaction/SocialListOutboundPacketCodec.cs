@@ -72,6 +72,81 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static string DescribeOpcodeFramedOutboundRequest(
+            ReadOnlySpan<byte> rawPacket,
+            ushort friendRequestOpcode,
+            ushort partyRequestOpcode,
+            ushort guildRequestOpcode,
+            ushort allianceRequestOpcode,
+            ushort blacklistRequestOpcode)
+        {
+            if (rawPacket.Length < sizeof(ushort) + 1)
+            {
+                return "client-request:unknown";
+            }
+
+            ushort opcode = (ushort)(rawPacket[0] | (rawPacket[1] << 8));
+            byte subtype = rawPacket[sizeof(ushort)];
+            if (friendRequestOpcode > 0 && opcode == friendRequestOpcode)
+            {
+                return subtype switch
+                {
+                    FriendAddRequest => "friend-request:add",
+                    FriendDeleteRequest => "friend-request:delete",
+                    _ => $"friend-request:subtype-{subtype}"
+                };
+            }
+
+            if (partyRequestOpcode > 0 && opcode == partyRequestOpcode)
+            {
+                return subtype switch
+                {
+                    PartyCreateRequest => "party-request:create",
+                    PartyWithdrawRequest => "party-request:withdraw",
+                    PartyInviteRequest => "party-request:invite",
+                    PartyKickRequest => "party-request:kick",
+                    PartyChangeBossRequest => "party-request:change-boss",
+                    _ => $"party-request:subtype-{subtype}"
+                };
+            }
+
+            if (guildRequestOpcode > 0 && opcode == guildRequestOpcode)
+            {
+                return subtype switch
+                {
+                    GuildInviteRequest => "guild-request:invite",
+                    GuildWithdrawRequest => "guild-request:withdraw",
+                    GuildKickRequest => "guild-request:kick",
+                    GuildGradeChangeRequest => "guild-request:grade-change",
+                    _ => $"guild-request:subtype-{subtype}"
+                };
+            }
+
+            if (allianceRequestOpcode > 0 && opcode == allianceRequestOpcode)
+            {
+                return subtype switch
+                {
+                    AllianceWithdrawRequest => "alliance-request:withdraw",
+                    AllianceInviteRequest => "alliance-request:invite",
+                    AllianceKickRequest => "alliance-request:kick",
+                    AllianceGradeChangeRequest => "alliance-request:grade-change",
+                    _ => $"alliance-request:subtype-{subtype}"
+                };
+            }
+
+            if (blacklistRequestOpcode > 0 && opcode == blacklistRequestOpcode)
+            {
+                return subtype switch
+                {
+                    BlacklistAddRequest => "blacklist-request:add",
+                    BlacklistDeleteRequest => "blacklist-request:delete",
+                    _ => $"blacklist-request:subtype-{subtype}"
+                };
+            }
+
+            return "client-request";
+        }
+
         private static bool TryResolveSubtype(SocialListOutboundRequestKind kind, out byte subtype)
         {
             subtype = kind switch

@@ -10,6 +10,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort TradingRoomInboundOpcode = 373;
         internal const ushort TradingRoomOutboundOpcode = 144;
 
+        internal enum TradingRoomButtonRoute
+        {
+            TradingRoomOutbound,
+            MiniRoomBaseChat,
+            DialogControl
+        }
+
         private static readonly ushort[] TradingRoomInboundOpcodeSet = { TradingRoomInboundOpcode };
         private static readonly ushort[] TradingRoomOutboundOpcodeSet = { TradingRoomOutboundOpcode };
 
@@ -32,14 +39,14 @@ namespace HaCreator.MapSimulator.Interaction
                 [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
             };
 
-        private static readonly IReadOnlyDictionary<string, (int ControlId, string Handler)> TradingRoomButtonHandlers =
-            new Dictionary<string, (int ControlId, string Handler)>(StringComparer.OrdinalIgnoreCase)
+        private static readonly IReadOnlyDictionary<string, (int ControlId, string Handler, TradingRoomButtonRoute Route)> TradingRoomButtonHandlers =
+            new Dictionary<string, (int ControlId, string Handler, TradingRoomButtonRoute Route)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["BtTrade"] = (1002, "CTradingRoomDlg::Trade -> outbound opcode 144 subtype 17"),
-                ["BtCoin"] = (1003, "CTradingRoomDlg::PutMoney -> outbound opcode 144 subtype 16"),
-                ["BtEnter"] = (1004, "CTradingRoomDlg::OnButtonClicked -> CMiniRoomBaseDlg::CheckAndSendChat"),
-                ["BtReset"] = (1005, "CDialog::OnButtonClicked default reset/control branch, not a recovered CTradingRoomDlg::OnPacket branch"),
-                ["BtClame"] = (2, "CDialog::OnButtonClicked default claim/cancel control, not a trade acceptance packet")
+                ["BtTrade"] = (1002, "CTradingRoomDlg::Trade -> outbound opcode 144 subtype 17", TradingRoomButtonRoute.TradingRoomOutbound),
+                ["BtCoin"] = (1003, "CTradingRoomDlg::PutMoney -> outbound opcode 144 subtype 16", TradingRoomButtonRoute.TradingRoomOutbound),
+                ["BtEnter"] = (1004, "CTradingRoomDlg::OnButtonClicked -> CMiniRoomBaseDlg::CheckAndSendChat", TradingRoomButtonRoute.MiniRoomBaseChat),
+                ["BtReset"] = (1005, "CDialog::OnButtonClicked default reset/control branch, not a recovered CTradingRoomDlg::OnPacket branch", TradingRoomButtonRoute.DialogControl),
+                ["BtClame"] = (2, "CDialog::OnButtonClicked default claim/cancel control, not a trade acceptance packet", TradingRoomButtonRoute.DialogControl)
             };
 
         internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes()
@@ -129,14 +136,32 @@ namespace HaCreator.MapSimulator.Interaction
         {
             controlId = 0;
             handler = string.Empty;
+            if (!TryResolveRecoveredButtonRoute(buttonName, out controlId, out handler, out _))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool TryResolveRecoveredButtonRoute(
+            string buttonName,
+            out int controlId,
+            out string handler,
+            out TradingRoomButtonRoute route)
+        {
+            controlId = 0;
+            handler = string.Empty;
+            route = TradingRoomButtonRoute.DialogControl;
             if (string.IsNullOrWhiteSpace(buttonName)
-                || !TradingRoomButtonHandlers.TryGetValue(buttonName.Trim(), out (int ControlId, string Handler) entry))
+                || !TradingRoomButtonHandlers.TryGetValue(buttonName.Trim(), out (int ControlId, string Handler, TradingRoomButtonRoute Route) entry))
             {
                 return false;
             }
 
             controlId = entry.ControlId;
             handler = entry.Handler;
+            route = entry.Route;
             return true;
         }
 
@@ -145,7 +170,7 @@ namespace HaCreator.MapSimulator.Interaction
             string controls = string.Join(
                 ", ",
                 TradingRoomButtonHandlers.Select(entry =>
-                    $"{entry.Key}=id {entry.Value.ControlId.ToString(CultureInfo.InvariantCulture)} ({entry.Value.Handler})"));
+                    $"{entry.Key}=id {entry.Value.ControlId.ToString(CultureInfo.InvariantCulture)} route {entry.Value.Route} ({entry.Value.Handler})"));
             return $"Recovered TradingRoom button table from CTradingRoomDlg::OnCreate/OnButtonClicked: {controls}.";
         }
 

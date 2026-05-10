@@ -46,6 +46,8 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerCreateWndShow = 1;
         private const int InitialQuizOwnerCreateWndOption = 0;
         private const int InitialQuizOwnerCreateWndEnable = 1;
+        private const int InitialQuizOwnerAnimationLeft = 222;
+        private const int InitialQuizOwnerAnimationTop = 65;
         private const string InitialQuizOwnerCreateWndOrigin = "Origin_CC";
         private const float InitialQuizOwnerTextScale = 0.44f;
         private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
@@ -113,7 +115,7 @@ namespace HaCreator.MapSimulator
         private int _initialQuizOwnerControlStackGeneration;
         private bool UsingInitialQuizOwnerNativeEditHost => _initialQuizOwnerNativeEditHost?.IsAttached == true;
 
-        private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
+        private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs, string ResourcePath);
         private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
         internal readonly record struct InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind Layer, int Z);
         internal enum InitialQuizOwnerFocusTarget
@@ -192,6 +194,20 @@ namespace HaCreator.MapSimulator
             internal bool UsesStringPoolFormat => FormatArgument.HasValue;
             internal string ClientCanvasMethodName => "IWzCanvas::Copy";
             internal int Alpha => 255;
+        }
+
+        internal readonly record struct InitialQuizOwnerAnimationDrawCall(
+            int FrameIndex,
+            int Left,
+            int Top,
+            int Width,
+            int Height,
+            int DelayMs,
+            string ResourcePath)
+        {
+            internal string ClientCanvasMethodName => "IWzCanvas::Copy";
+            internal int Alpha => 255;
+            internal bool UsesNumericWzChildOrder => true;
         }
 
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
@@ -1405,13 +1421,27 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)
         {
-            InitialQuizAnimationFrame frame = ResolveInitialQuizOwnerAnimationFrame(currentTickCount);
+            InitialQuizOwnerAnimationDrawCall? drawCall = ResolveInitialQuizOwnerAnimationDrawCall(
+                currentTickCount,
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.ResourcePath).ToArray(),
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.DelayMs).ToArray(),
+                _initialQuizOwnerAnimationFrames.Select(static frame => new Point(frame.Texture?.Width ?? 0, frame.Texture?.Height ?? 0)).ToArray());
+            if (!drawCall.HasValue)
+            {
+                return;
+            }
+
+            InitialQuizAnimationFrame frame = ResolveInitialQuizOwnerAnimationFrameByIndex(drawCall.Value.FrameIndex);
             if (frame?.Texture == null)
             {
                 return;
             }
 
-            Rectangle drawBounds = new(ownerBounds.X + 222, ownerBounds.Y + 65, frame.Texture.Width, frame.Texture.Height);
+            Rectangle drawBounds = new(
+                ownerBounds.X + drawCall.Value.Left,
+                ownerBounds.Y + drawCall.Value.Top,
+                drawCall.Value.Width,
+                drawCall.Value.Height);
             _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
         }
 
@@ -1507,6 +1537,13 @@ namespace HaCreator.MapSimulator
             return frameIndex >= 0 && frameIndex < _initialQuizOwnerAnimationFrames.Length
                 ? _initialQuizOwnerAnimationFrames[frameIndex]
                 : _initialQuizOwnerAnimationFrames[0];
+        }
+
+        private InitialQuizAnimationFrame ResolveInitialQuizOwnerAnimationFrameByIndex(int frameIndex)
+        {
+            return frameIndex >= 0 && frameIndex < _initialQuizOwnerAnimationFrames.Length
+                ? _initialQuizOwnerAnimationFrames[frameIndex]
+                : null;
         }
 
         private Rectangle ResolveInitialQuizOwnerBounds()
@@ -2086,9 +2123,11 @@ namespace HaCreator.MapSimulator
         private InitialQuizAnimationFrame[] LoadInitialQuizOwnerAnimationFrames(WzSubProperty preferred, WzSubProperty fallback)
         {
             List<InitialQuizAnimationFrame> frames = new();
-            IEnumerable<WzCanvasProperty> canvases = preferred?.WzProperties.OfType<WzCanvasProperty>()
-                ?? fallback?.WzProperties.OfType<WzCanvasProperty>()
-                ?? Enumerable.Empty<WzCanvasProperty>();
+            bool usingPreferred = preferred != null;
+            IEnumerable<WzCanvasProperty> canvases = usingPreferred
+                ? preferred.WzProperties.OfType<WzCanvasProperty>()
+                : fallback?.WzProperties.OfType<WzCanvasProperty>()
+                    ?? Enumerable.Empty<WzCanvasProperty>();
             Dictionary<string, WzCanvasProperty> canvasByName = canvases.ToDictionary(static canvas => canvas.Name, StringComparer.Ordinal);
             foreach (string frameName in ResolveInitialQuizOwnerAnimationFrameNames(canvasByName.Keys))
             {
@@ -2100,7 +2139,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 int delay = (canvas["delay"] as WzIntProperty)?.Value ?? 60;
-                frames.Add(new InitialQuizAnimationFrame(texture, Math.Max(1, delay)));
+                frames.Add(new InitialQuizAnimationFrame(
+                    texture,
+                    Math.Max(1, delay),
+                    $"{(usingPreferred ? "UI/UIWindow2.img" : "UI/UIWindow.img")}/InitialQuiz/ani/{frameName}"));
             }
 
             return frames.ToArray();
@@ -2613,6 +2655,43 @@ namespace HaCreator.MapSimulator
             }
 
             return frameDelaysMs.Count - 1;
+        }
+
+        internal static InitialQuizOwnerAnimationDrawCall? ResolveInitialQuizOwnerAnimationDrawCall(
+            int currentTickCount,
+            IReadOnlyList<string> frameResourcePaths,
+            IReadOnlyList<int> frameDelaysMs,
+            IReadOnlyList<Point> frameSizes)
+        {
+            int frameIndex = ResolveInitialQuizOwnerAnimationFrameIndex(currentTickCount, frameDelaysMs);
+            if (frameIndex < 0)
+            {
+                return null;
+            }
+
+            Point frameSize = frameSizes != null && frameIndex < frameSizes.Count
+                ? frameSizes[frameIndex]
+                : Point.Zero;
+            if (frameSize.X <= 0 || frameSize.Y <= 0)
+            {
+                return null;
+            }
+
+            int delayMs = frameDelaysMs != null && frameIndex < frameDelaysMs.Count
+                ? Math.Max(1, frameDelaysMs[frameIndex])
+                : 1;
+            string resourcePath = frameResourcePaths != null && frameIndex < frameResourcePaths.Count
+                ? frameResourcePaths[frameIndex] ?? string.Empty
+                : string.Empty;
+
+            return new InitialQuizOwnerAnimationDrawCall(
+                frameIndex,
+                InitialQuizOwnerAnimationLeft,
+                InitialQuizOwnerAnimationTop,
+                frameSize.X,
+                frameSize.Y,
+                delayMs,
+                resourcePath);
         }
 
         internal static InitialQuizOwnerSubmissionValidation ValidateInitialQuizOwnerSubmission(

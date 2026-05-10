@@ -3630,6 +3630,32 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal string ClearInfoFromCurrentOwnerTabButton()
+        {
+            int? clearOption = _pageIndex switch
+            {
+                0 => 0,
+                1 => 0,
+                2 => 1,
+                _ => null
+            };
+
+            if (!clearOption.HasValue)
+            {
+                StatusMessage = "CUIBattleRecord tab-clear ignored the simulator packet-log page because the recovered owner button only maps to native DamageInfo/RecoveryItemInfo clear options.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
+            }
+
+            string message = ClearInfo(clearOption.Value);
+            _timerSetMilliseconds = 0;
+            _timerStopRemainMilliseconds = 0;
+            _timerExpiryTick = 0;
+            StatusMessage = $"{message} CUIBattleRecord::OnButtonClicked tab-clear mapped page {CurrentPageIndex.ToString(CultureInfo.InvariantCulture)} back to native ClearInfo({clearOption.Value.ToString(CultureInfo.InvariantCulture)}) and reset the staged timer controls.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         private void ClearDamageInfoValues()
         {
             TotalDamage = 0;
@@ -3995,11 +4021,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void SelectPage(int pageIndex)
         {
-            _pageIndex = Math.Clamp(pageIndex, 0, 2);
+            _pageIndex = Math.Clamp(pageIndex, 0, 3);
             StatusMessage = _pageIndex switch
             {
                 1 => "Battle Record page switched to DOT totals.",
-                2 => "Battle Record page switched to packet log.",
+                2 => "Battle Record page switched to recovery totals.",
+                3 => "Battle Record page switched to packet log.",
                 _ => "Battle Record page switched to summary."
             };
         }
@@ -4093,6 +4120,13 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 2:
+                    lines.Add($"Recovery totals: count={_recoveryCount.ToString(CultureInfo.InvariantCulture)}, amount={_recoveryTotal.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo totals: HP req/apply={_recoveryTotalHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryTotalMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalMpIncApply.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo item usage: total={_recoveryTotalUseItem.ToString(CultureInfo.InvariantCulture)} (hp={_recoveryTotalUseHpItem.ToString(CultureInfo.InvariantCulture)}, mp={_recoveryTotalUseMpItem.ToString(CultureInfo.InvariantCulture)}, hp+mp={_recoveryTotalUseHpMpItem.ToString(CultureInfo.InvariantCulture)}), forecast/hour={_recoveryForecastUsePerHour.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo averages: HP req/apply={_recoveryAverageHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryAverageMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageMpIncApply.ToString(CultureInfo.InvariantCulture)}");
+                    break;
+
+                case 3:
                     lines.Add($"Last packet: {(_lastPacketType < 0 ? "none" : _lastPacketType.ToString(CultureInfo.InvariantCulture))}");
                     lines.Add(StatusMessage);
                     lines.AddRange(_recentNotes);
@@ -4288,7 +4322,8 @@ namespace HaCreator.MapSimulator.Interaction
             return _pageIndex switch
             {
                 1 => "DOT",
-                2 => "Packets",
+                2 => "Recovery",
+                3 => "Packets",
                 _ => "Summary"
             };
         }

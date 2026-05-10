@@ -356,6 +356,11 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
+                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode,
+                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode,
+                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode,
+                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode,
+                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode,
                     _socialListOfficialSessionBridgeConfiguredProcessSelector,
                     _socialListOfficialSessionBridgeConfiguredLocalPort,
                     out _);
@@ -397,7 +402,12 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredFriendResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
-                _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode);
+                _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode);
         }
 
         private void RefreshSocialListOfficialSessionBridgeDiscovery(int currentTickCount)
@@ -423,6 +433,11 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode,
+                _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode,
                 _socialListOfficialSessionBridgeConfiguredProcessSelector,
                 _socialListOfficialSessionBridgeConfiguredLocalPort,
                 out _);
@@ -722,6 +737,11 @@ namespace HaCreator.MapSimulator
                         discoverPartyOpcode,
                         discoverGuildOpcode,
                         discoverAllianceOpcode,
+                        discoverFriendRequestOpcode,
+                        discoverPartyRequestOpcode,
+                        discoverGuildRequestOpcode,
+                        discoverAllianceRequestOpcode,
+                        discoverBlacklistRequestOpcode,
                         discoverProcessSelector,
                         discoverLocalPort,
                         out string discoverStatus)

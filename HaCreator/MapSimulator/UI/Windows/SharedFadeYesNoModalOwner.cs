@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -77,6 +78,18 @@ namespace HaCreator.MapSimulator.UI
         bool SendsAcceptPacket,
         bool SendsCancelPacket);
 
+    internal sealed record SharedFadeYesNoPayloadFields(
+        string RequesterName = "",
+        int Level = 0,
+        string JobName = "",
+        string QuestName = "",
+        string Message = "");
+
+    internal readonly record struct SharedFadeYesNoResolvedText(
+        string Title,
+        string Body,
+        string Footer);
+
     internal sealed record SharedFadeYesNoModalRequest(
         SharedFadeYesNoModalType Type,
         string Title,
@@ -86,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         int StackIndex = 0,
         bool QuickDelivery = false,
         InGameConfirmDialogPresentation Presentation = null,
+        SharedFadeYesNoPayloadFields PayloadFields = null,
         Action ConfirmAction = null,
         Action CancelAction = null);
 
@@ -320,6 +334,7 @@ namespace HaCreator.MapSimulator.UI
                     null);
             }
 
+            SharedFadeYesNoResolvedText resolvedText = ResolveDisplayText(_activeRequest);
             return new SharedFadeYesNoModalSnapshot(
                 true,
                 ActiveType,
@@ -333,12 +348,57 @@ namespace HaCreator.MapSimulator.UI
                 ResolveButtonLayout(ActiveType, _activeRequest.QuickDelivery),
                 _onceClicked,
                 _activeRequest.QuickDelivery,
-                _activeRequest.Title ?? string.Empty,
-                _activeRequest.Body ?? string.Empty,
-                _activeRequest.Footer ?? string.Empty,
+                resolvedText.Title,
+                resolvedText.Body,
+                resolvedText.Footer,
                 _activeRequest.Presentation,
                 _activeRequest.ConfirmAction,
                 _activeRequest.CancelAction);
+        }
+
+        internal static SharedFadeYesNoResolvedText ResolveDisplayText(SharedFadeYesNoModalRequest request)
+        {
+            if (request == null)
+            {
+                return new SharedFadeYesNoResolvedText(string.Empty, string.Empty, string.Empty);
+            }
+
+            SharedFadeYesNoPayloadFields fields = request.PayloadFields;
+            if (fields == null)
+            {
+                return new SharedFadeYesNoResolvedText(
+                    request.Title ?? string.Empty,
+                    request.Body ?? string.Empty,
+                    request.Footer ?? string.Empty);
+            }
+
+            SharedFadeYesNoPayloadProfile profile = ResolvePayloadProfile(request.Type);
+            string requesterName = NormalizeText(fields.RequesterName, request.Title);
+            string message = NormalizeText(fields.Message, request.Body);
+            string primaryLine = FormatPrimaryPayloadLine(profile, fields, requesterName, message);
+            string requesterLine = FormatRequesterLine(profile, requesterName);
+            string secondaryLine = FormatSecondaryPayloadLine(profile, request.Type, message);
+
+            if (profile.UsesLevelJobLine)
+            {
+                return new SharedFadeYesNoResolvedText(
+                    primaryLine,
+                    requesterLine,
+                    string.IsNullOrWhiteSpace(request.Footer) ? secondaryLine : request.Footer);
+            }
+
+            if (profile.UsesRequesterNameLine)
+            {
+                return new SharedFadeYesNoResolvedText(
+                    string.IsNullOrWhiteSpace(requesterLine) ? request.Title ?? string.Empty : requesterLine,
+                    string.IsNullOrWhiteSpace(secondaryLine) ? primaryLine : secondaryLine,
+                    request.Footer ?? string.Empty);
+            }
+
+            return new SharedFadeYesNoResolvedText(
+                string.IsNullOrWhiteSpace(request.Title) ? primaryLine : request.Title,
+                string.IsNullOrWhiteSpace(message) ? request.Body ?? string.Empty : message,
+                request.Footer ?? string.Empty);
         }
 
         internal static SharedFadeYesNoVisualProfile ResolveVisualProfile(SharedFadeYesNoModalType type, bool quickDelivery)
@@ -676,6 +736,105 @@ namespace HaCreator.MapSimulator.UI
                     || string.Equals(iconName, "icon0", StringComparison.Ordinal));
         }
 
+        private static string FormatPrimaryPayloadLine(
+            SharedFadeYesNoPayloadProfile profile,
+            SharedFadeYesNoPayloadFields fields,
+            string requesterName,
+            string message)
+        {
+            if (profile.UsesLevelJobLine)
+            {
+                string levelJobFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    profile.PrimaryStringPoolId,
+                    "Lv.{0} {1}",
+                    maxPlaceholderCount: 2,
+                    out _);
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    levelJobFormat,
+                    Math.Max(0, fields.Level),
+                    NormalizeText(fields.JobName, "Beginner"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(message)
+                && (profile.PrimaryStringPoolId <= 0 || profile.PrimaryStringPoolId == 0x30B))
+            {
+                return message;
+            }
+
+            if (profile.PrimaryStringPoolId > 0)
+            {
+                string primaryFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    profile.PrimaryStringPoolId,
+                    "{0}",
+                    maxPlaceholderCount: 1,
+                    out _);
+                return string.Format(CultureInfo.InvariantCulture, primaryFormat, requesterName);
+            }
+
+            return message;
+        }
+
+        private static string FormatRequesterLine(
+            SharedFadeYesNoPayloadProfile profile,
+            string requesterName)
+        {
+            if (!profile.UsesRequesterNameLine)
+            {
+                return string.Empty;
+            }
+
+            string requesterFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                profile.UsesLevelJobLine ? 0x30B : profile.PrimaryStringPoolId,
+                "from '{0}'",
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, requesterFormat, requesterName);
+        }
+
+        private static string FormatSecondaryPayloadLine(
+            SharedFadeYesNoPayloadProfile profile,
+            SharedFadeYesNoModalType type,
+            string message)
+        {
+            if (type == SharedFadeYesNoModalType.NewYearCardArrived)
+            {
+                return string.IsNullOrWhiteSpace(message) ? "New Year Card arrived." : message;
+            }
+
+            if (profile.SecondaryStringPoolId <= 0)
+            {
+                return message;
+            }
+
+            string secondaryFallback = type switch
+            {
+                SharedFadeYesNoModalType.MessengerInvite => "A chat invitation",
+                SharedFadeYesNoModalType.FriendRegister => "Buddy request",
+                SharedFadeYesNoModalType.TradeInvite or SharedFadeYesNoModalType.CashTradeInvite => "Trade request",
+                SharedFadeYesNoModalType.NewMemo => "New memo",
+                SharedFadeYesNoModalType.PartyInvite => "Party invite",
+                SharedFadeYesNoModalType.AllianceInvite => "Alliance invite",
+                SharedFadeYesNoModalType.QuestClear => "Quest Complete!",
+                SharedFadeYesNoModalType.GuildInvite => "Guild invite",
+                SharedFadeYesNoModalType.FamilyInvite => "It's a Family Invitation.",
+                SharedFadeYesNoModalType.ExpeditionInvite => "Expedition invite",
+                SharedFadeYesNoModalType.PartyApply => "Party application",
+                SharedFadeYesNoModalType.ExpeditionApply => "Expedition application",
+                SharedFadeYesNoModalType.FollowRequest => "Follow request",
+                _ => message
+            };
+
+            return MapleStoryStringPool.GetOrFallback(profile.SecondaryStringPoolId, secondaryFallback);
+        }
+
+        private static string NormalizeText(string value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? fallback ?? string.Empty
+                : value.Trim();
+        }
+
         private static bool IsSameModalPayload(
             SharedFadeYesNoModalRequest current,
             SharedFadeYesNoModalRequest candidate)
@@ -687,7 +846,8 @@ namespace HaCreator.MapSimulator.UI
                 && current.QuickDelivery == candidate.QuickDelivery
                 && string.Equals(current.Title, candidate.Title, StringComparison.Ordinal)
                 && string.Equals(current.Body, candidate.Body, StringComparison.Ordinal)
-                && string.Equals(current.Footer, candidate.Footer, StringComparison.Ordinal);
+                && string.Equals(current.Footer, candidate.Footer, StringComparison.Ordinal)
+                && EqualityComparer<SharedFadeYesNoPayloadFields>.Default.Equals(current.PayloadFields, candidate.PayloadFields);
         }
     }
 }

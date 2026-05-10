@@ -104,6 +104,16 @@ namespace HaCreator.MapSimulator.Interaction
                 measureWidth,
                 ChatBalloonPresentationRules.MiniRoomTitleClientLineWidth);
             ChatBalloonMiniRoomBackground background = ResolveMiniRoomBackground(miniRoomType, spec);
+            ChatBalloonMiniRoomComposition composition = ChatBalloonPresentationRules.ResolveMiniRoomComposition(
+                miniRoomType,
+                spec,
+                currentUsers,
+                maxUsers,
+                icon,
+                privacyIcon,
+                status,
+                background,
+                titleLines);
             int preSharedAdjustY = ResolveMiniRoomPreSharedAdjustY(miniRoomType, spec, adjustCoordY);
             _miniRoomState = new ChatBalloonMiniRoomBalloonState(
                 miniRoomType,
@@ -117,6 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ChatBalloonPresentationRules.FormatMiniRoomCount(maxUsers),
                 spec,
                 background,
+                composition,
                 new Rectangle(
                     -background.Width / 2,
                     -background.Height + preSharedAdjustY,
@@ -222,7 +233,6 @@ namespace HaCreator.MapSimulator.Interaction
                 point,
                 ref pressed);
             _adBoardState.SetPressed(pressed);
-            ADBoardMouseMove(point);
             if (clicked)
             {
                 _adBoardState.MarkClicked();
@@ -279,7 +289,7 @@ namespace HaCreator.MapSimulator.Interaction
                         CultureInfo.InvariantCulture,
                         "CChatBalloon MiniRoom active: type={0}, skin={1}, rect=({2},{3},{4},{5}), icon={6}, privacy={7}, status={8}, abbreviated={9}.",
                         _miniRoomState.MiniRoomType,
-                        _miniRoomState.Background.Path,
+                        _miniRoomState.Composition.BackgroundPath,
                         _miniRoomState.LayerBounds.X,
                         _miniRoomState.LayerBounds.Y,
                         _miniRoomState.LayerBounds.Width,
@@ -547,6 +557,7 @@ namespace HaCreator.MapSimulator.Interaction
             string maxUserText,
             byte spec,
             ChatBalloonMiniRoomBackground background,
+            ChatBalloonMiniRoomComposition composition,
             Rectangle layerBounds,
             int preSharedAdjustY,
             int sharedAdjustY,
@@ -563,6 +574,7 @@ namespace HaCreator.MapSimulator.Interaction
             MaxUserText = maxUserText ?? string.Empty;
             Spec = spec;
             Background = background;
+            Composition = composition;
             LayerBounds = layerBounds;
             PreSharedAdjustY = preSharedAdjustY;
             SharedAdjustY = sharedAdjustY;
@@ -580,6 +592,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string MaxUserText { get; }
         public byte Spec { get; }
         public ChatBalloonMiniRoomBackground Background { get; }
+        public ChatBalloonMiniRoomComposition Composition { get; }
         public Rectangle LayerBounds { get; }
         public int PreSharedAdjustY { get; }
         public int SharedAdjustY { get; }

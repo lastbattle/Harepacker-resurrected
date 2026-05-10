@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Character
             int LayerObjectId,
             int ListNodeObjectId,
             int RegisteredAnimationObjectId,
+            int ActionFrameCanvasObjectId,
             int ParentUnderFaceLayerObjectId,
             IReadOnlyList<ShadowPartnerLayerNativeOperation> NativeOperations);
 
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.Character
             ReleaseUnderFaceOverlayVariant,
             MoveHelperLayerByClientOffset,
             PutHelperLayerFlipFromUnderFace,
+            AddRefActionFrameCanvas,
             InsertActionFrameCanvas,
             ClearInsertCanvasResultVariant,
             ClearInsertCanvasDelayVariant,
@@ -60,6 +62,7 @@ namespace HaCreator.MapSimulator.Character
             ClearInsertCanvasAlpha1Variant,
             ClearInsertCanvasAlpha2Variant,
             ClearInsertCanvasOriginVariant,
+            ReleaseActionFrameCanvasVariant,
             AnimateOneTimeLayerStop,
             AddRefRegisteredAnimation,
             ReleaseRegisteredAnimation,
@@ -2820,6 +2823,7 @@ namespace HaCreator.MapSimulator.Character
         private const int ShadowPartnerOneTimeLayerObjectSalt = 47000;
         private const int ShadowPartnerLayerListNodeSalt = 40000;
         private const int ShadowPartnerRegisteredAnimationSalt = 80000;
+        private const int ShadowPartnerActionFrameCanvasSalt = 120000;
         private const int ShadowPartnerUnderFaceParentLayerObjectId = 5;
         internal const int ClientActionManInitDefaultPieceDelayMs = 150;
 
@@ -3411,6 +3415,11 @@ namespace HaCreator.MapSimulator.Character
                    && MountedCreateActionFrameNames.Contains(actionName);
         }
 
+        private static bool IsMountedFrameBackedPostInitActionDataName(string actionName)
+        {
+            return IsMountedCreateActionFrameName(actionName);
+        }
+
         private static bool IsMountedLegacyCreateFallbackActionName(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)
@@ -3619,13 +3628,15 @@ namespace HaCreator.MapSimulator.Character
             if (IsClientPostInitActionDataFallbackRawActionCode(rawActionCode)
                 && IsSupportedRawActionName(actionName, supportedRawActionNames))
             {
-                // The recovered native static action-data initializer constructs the checked
-                // post-init mounted helper rows as ACTIONDATA(zigzag: 0, pieced: 1, name).
+                // The checked post-init fallback surface is source-gated because it sits past
+                // the recovered CActionMan::Init loop. Most mounted rows still use the same
+                // action-piece shape as ACTIONDATA(pieced: 1), while create2/3/4 variants are
+                // direct mounted frame animations and must not be reported as pieced rows.
                 return new ShadowPartnerActionDataFlags(
                     IsKnown: true,
                     IsClientInitRow: false,
                     IsPostInitFallbackRow: true,
-                    IsPieced: true,
+                    IsPieced: !IsMountedFrameBackedPostInitActionDataName(actionName),
                     IsZigZag: false);
             }
 
@@ -3685,11 +3696,13 @@ namespace HaCreator.MapSimulator.Character
                 layerObjectId,
                 layerObjectId + ShadowPartnerLayerListNodeSalt,
                 usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
+                layerObjectId + ShadowPartnerActionFrameCanvasSalt,
                 ShadowPartnerUnderFaceParentLayerObjectId,
                 BuildShadowPartnerLayerNativeOperations(
                     layerObjectId,
                     layerObjectId + ShadowPartnerLayerListNodeSalt,
                     usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
+                    layerObjectId + ShadowPartnerActionFrameCanvasSalt,
                     ShadowPartnerUnderFaceParentLayerObjectId));
         }
 
@@ -3697,10 +3710,11 @@ namespace HaCreator.MapSimulator.Character
             int layerObjectId,
             int listNodeObjectId,
             int registeredAnimationObjectId,
+            int actionFrameCanvasObjectId,
             int parentUnderFaceLayerObjectId)
         {
             bool usesOneTimeLayer = registeredAnimationObjectId > 0;
-            var operations = new List<ShadowPartnerLayerNativeOperation>(usesOneTimeLayer ? 22 : 20);
+            var operations = new List<ShadowPartnerLayerNativeOperation>(usesOneTimeLayer ? 25 : 23);
             int sequence = 0;
             operations.Add(new ShadowPartnerLayerNativeOperation(
                 ShadowPartnerLayerNativeOperationKind.AddRefParentUnderFaceLayer,
@@ -3766,6 +3780,12 @@ namespace HaCreator.MapSimulator.Character
                     parentUnderFaceLayerObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.AddRefActionFrameCanvas,
+                    ++sequence,
+                    actionFrameCanvasObjectId,
+                    registeredAnimationObjectId,
+                    ReferenceDelta: 1));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.InsertActionFrameCanvas,
                     ++sequence,
                     layerObjectId,
@@ -3807,6 +3827,12 @@ namespace HaCreator.MapSimulator.Character
                     layerObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ReleaseActionFrameCanvasVariant,
+                    ++sequence,
+                    actionFrameCanvasObjectId,
+                    registeredAnimationObjectId,
+                    ReferenceDelta: -1));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.AnimateOneTimeLayerStop,
                     ++sequence,
@@ -3865,6 +3891,12 @@ namespace HaCreator.MapSimulator.Character
                     parentUnderFaceLayerObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.AddRefActionFrameCanvas,
+                    ++sequence,
+                    actionFrameCanvasObjectId,
+                    listNodeObjectId,
+                    ReferenceDelta: 1));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.InsertActionFrameCanvas,
                     ++sequence,
                     layerObjectId,
@@ -3900,6 +3932,12 @@ namespace HaCreator.MapSimulator.Character
                     layerObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ReleaseActionFrameCanvasVariant,
+                    ++sequence,
+                    actionFrameCanvasObjectId,
+                    listNodeObjectId,
+                    ReferenceDelta: -1));
             }
 
             operations.Add(new ShadowPartnerLayerNativeOperation(

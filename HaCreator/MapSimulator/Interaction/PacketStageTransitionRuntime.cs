@@ -3497,6 +3497,7 @@ namespace HaCreator.MapSimulator.Interaction
                 out Dictionary<InventoryType, int> positionFallbackReplacementByteCountsByType,
                 out Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> mutationSequenceByType,
                 out Dictionary<InventoryType, IReadOnlyDictionary<long, short>> mutationEffectivePositionsByType,
+                out Dictionary<InventoryType, IReadOnlyDictionary<short, long>> mutationEffectiveSerialNumbersByType,
                 out IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> mutationSequence,
                 out int positionValidatedCount,
                 out int positionFallbackCount,
@@ -3571,6 +3572,8 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdateCashMutationSequenceByFlag = BuildCharacterDataInventoryFlagSequenceMap(mutationSequenceByType),
                 BackwardUpdateCashMutationEffectivePositionsByType = mutationEffectivePositionsByType,
                 BackwardUpdateCashMutationEffectivePositionsByFlag = BuildCharacterDataInventoryFlagPositionMap(mutationEffectivePositionsByType),
+                BackwardUpdateCashMutationEffectiveSerialNumbersByType = mutationEffectiveSerialNumbersByType,
+                BackwardUpdateCashMutationEffectiveSerialNumbersByFlag = BuildCharacterDataInventoryFlagSerialNumberMap(mutationEffectiveSerialNumbersByType),
                 BackwardUpdateCashMutationCountsByFlag = BuildCharacterDataBackwardUpdateMutationCountFlagMap(mutationSequenceByType),
                 BackwardUpdateCashMutationByteCountsByFlag = BuildCharacterDataBackwardUpdateMutationByteCountFlagMap(mutationSequenceByType),
                 BackwardUpdateCashMutationSequence = mutationSequence,
@@ -3643,6 +3646,24 @@ namespace HaCreator.MapSimulator.Interaction
             return positionsByFlag;
         }
 
+        private static Dictionary<ulong, IReadOnlyDictionary<short, long>> BuildCharacterDataInventoryFlagSerialNumberMap(
+            IReadOnlyDictionary<InventoryType, IReadOnlyDictionary<short, long>> serialNumbersByType)
+        {
+            Dictionary<ulong, IReadOnlyDictionary<short, long>> serialNumbersByFlag = new(CharacterDataInventoryOrder.Length);
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                serialNumbersByFlag[inventoryFlag] = serialNumbersByType != null &&
+                    serialNumbersByType.TryGetValue(inventoryType, out IReadOnlyDictionary<short, long> serialNumbers) &&
+                    serialNumbers != null
+                        ? serialNumbers
+                        : new Dictionary<short, long>();
+            }
+
+            return serialNumbersByFlag;
+        }
+
         private static Dictionary<ulong, int> BuildCharacterDataBackwardUpdateMutationCountFlagMap(
             IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByType)
         {
@@ -3705,6 +3726,7 @@ namespace HaCreator.MapSimulator.Interaction
             out Dictionary<InventoryType, int> positionFallbackReplacementByteCountsByType,
             out Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> mutationSequenceByType,
             out Dictionary<InventoryType, IReadOnlyDictionary<long, short>> mutationEffectivePositionsByType,
+            out Dictionary<InventoryType, IReadOnlyDictionary<short, long>> mutationEffectiveSerialNumbersByType,
             out IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> mutationSequence,
             out int positionValidatedCount,
             out int positionFallbackCount,
@@ -3738,6 +3760,7 @@ namespace HaCreator.MapSimulator.Interaction
             positionFallbackReplacementByteCountsByType = new Dictionary<InventoryType, int>();
             mutationSequenceByType = new Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>>();
             mutationEffectivePositionsByType = new Dictionary<InventoryType, IReadOnlyDictionary<long, short>>();
+            mutationEffectiveSerialNumbersByType = new Dictionary<InventoryType, IReadOnlyDictionary<short, long>>();
             List<PacketCharacterDataBackwardUpdateCashMutation> aggregatedMutationSequence = new();
             positionValidatedCount = 0;
             positionFallbackCount = 0;
@@ -3772,6 +3795,7 @@ namespace HaCreator.MapSimulator.Interaction
                 positionFallbackReplacementByteCountsByType[inventoryType] = 0;
                 mutationSequenceByType[inventoryType] = Array.Empty<PacketCharacterDataBackwardUpdateCashMutation>();
                 mutationEffectivePositionsByType[inventoryType] = new Dictionary<long, short>();
+                mutationEffectiveSerialNumbersByType[inventoryType] = new Dictionary<short, long>();
             }
 
             if (inventoryItemsByType == null)
@@ -3805,6 +3829,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int fallbackReplacementBytesForType = 0;
                 List<PacketCharacterDataBackwardUpdateCashMutation> mutationSequenceForType = new();
                 Dictionary<long, short> mutationEffectivePositionsForType = new();
+                Dictionary<short, long> mutationEffectiveSerialNumbersForType = new();
                 int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
                 HashSet<short> occupiedPositivePositions = BuildBackwardUpdateOccupiedPositivePositions(slots, slotCapacity);
                 HashSet<short> reservedValidatedPositions = new();
@@ -3899,6 +3924,7 @@ namespace HaCreator.MapSimulator.Interaction
                     mutationSequenceForType.Add(mutation);
                     aggregatedMutationSequence.Add(mutation);
                     mutationEffectivePositionsForType[slot.CashItemSerialNumber] = effectivePosition;
+                    mutationEffectiveSerialNumbersForType[effectivePosition] = slot.CashItemSerialNumber;
                 }
 
                 positionValidatedCountsByType[inventoryType] = validatedForType;
@@ -3959,6 +3985,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 mutationSequenceByType[inventoryType] = mutationSequenceForType;
                 mutationEffectivePositionsByType[inventoryType] = mutationEffectivePositionsForType;
+                mutationEffectiveSerialNumbersByType[inventoryType] = mutationEffectiveSerialNumbersForType;
             }
 
             mutationSequence = aggregatedMutationSequence;
@@ -6311,6 +6338,7 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackReplacementCashItemByteCountsByType = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> BackwardUpdateCashMutationSequenceByType = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyDictionary<long, short>> BackwardUpdateCashMutationEffectivePositionsByType = null,
+        IReadOnlyDictionary<InventoryType, IReadOnlyDictionary<short, long>> BackwardUpdateCashMutationEffectiveSerialNumbersByType = null,
         IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> BackwardUpdateCashMutationSequence = null,
         int BackwardUpdatePositionValidatedCashItemCount = 0,
         int BackwardUpdatePositionFallbackCashItemCount = 0,
@@ -6549,6 +6577,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> BackwardUpdateCashMutationSequenceByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, IReadOnlyDictionary<long, short>> BackwardUpdateCashMutationEffectivePositionsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, IReadOnlyDictionary<short, long>> BackwardUpdateCashMutationEffectiveSerialNumbersByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> BackwardUpdateCashMutationCountsByFlag { get; init; } = null;
 

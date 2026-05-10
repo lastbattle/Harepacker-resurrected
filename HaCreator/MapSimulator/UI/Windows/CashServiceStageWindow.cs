@@ -243,6 +243,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PacketCatalogEntry> _cashInventoryPacketEntries = new();
         private readonly List<PacketCatalogEntry> _cashLockerPacketEntries = new();
         private readonly List<PacketCatalogEntry> _cashGiftPacketEntries = new();
+        private readonly List<PacketCatalogEntry> _cashStageCatalogSnapshotEntries = new();
         private readonly Dictionary<int, bool> _cashPurchaseRecordStates = new();
         private readonly List<OneADayHistoryEntry> _cashOneADayHistoryEntries = new();
         private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
@@ -294,6 +295,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
         private string _cashPacketPaneLabel = "Packet wishlist";
         private string _cashPacketBrowseModeLabel = "Wish";
+        private string _cashStageCatalogSnapshotPaneLabel = "Stage catalog";
+        private string _cashStageCatalogSnapshotBrowseModeLabel = "All";
+        private string _cashStageCatalogSnapshotCategoryLabel = "CCashShop";
+        private string _cashStageCatalogSnapshotFooterMessage = string.Empty;
+        private int _cashStageCatalogSnapshotSelectedIndex = -1;
+        private int _cashStageCatalogSnapshotScrollOffset;
+        private int _cashStageCatalogSnapshotTotalCount;
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
         private PacketCatalogEntry _cashReceiveGiftPendingAcceptEntry;
@@ -375,6 +383,14 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<int> CashWishlistSerialNumbers => _cashWishlistSerialNumbers;
         public string CashPacketPaneLabel => _cashPacketPaneLabel;
         public string CashPacketBrowseModeLabel => _cashPacketBrowseModeLabel;
+        public IReadOnlyList<PacketCatalogEntry> CashStageCatalogSnapshotEntries => _cashStageCatalogSnapshotEntries;
+        public string CashStageCatalogSnapshotPaneLabel => _cashStageCatalogSnapshotPaneLabel;
+        public string CashStageCatalogSnapshotBrowseModeLabel => _cashStageCatalogSnapshotBrowseModeLabel;
+        public string CashStageCatalogSnapshotCategoryLabel => _cashStageCatalogSnapshotCategoryLabel;
+        public string CashStageCatalogSnapshotFooterMessage => _cashStageCatalogSnapshotFooterMessage;
+        public int CashStageCatalogSnapshotSelectedIndex => _cashStageCatalogSnapshotSelectedIndex;
+        public int CashStageCatalogSnapshotScrollOffset => _cashStageCatalogSnapshotScrollOffset;
+        public int CashStageCatalogSnapshotTotalCount => _cashStageCatalogSnapshotTotalCount;
         public string CashItemLastSummary => _cashItemLastSummary;
         public string CashGiftLastSummary => _cashGiftLastSummary;
         public string CashPurchaseRecordSummary => _cashPurchaseRecordSummary;
@@ -513,6 +529,14 @@ namespace HaCreator.MapSimulator.UI
             _cashInventoryPacketEntries.Clear();
             _cashLockerPacketEntries.Clear();
             _cashGiftPacketEntries.Clear();
+            _cashStageCatalogSnapshotEntries.Clear();
+            _cashStageCatalogSnapshotPaneLabel = "Stage catalog";
+            _cashStageCatalogSnapshotBrowseModeLabel = "All";
+            _cashStageCatalogSnapshotCategoryLabel = "CCashShop";
+            _cashStageCatalogSnapshotFooterMessage = string.Empty;
+            _cashStageCatalogSnapshotSelectedIndex = -1;
+            _cashStageCatalogSnapshotScrollOffset = 0;
+            _cashStageCatalogSnapshotTotalCount = 0;
             _cashPurchaseRecordStates.Clear();
             _cashPurchaseRecordGlobalState = false;
             _cashPacketPaneLabel = "Packet wishlist";
@@ -660,6 +684,108 @@ namespace HaCreator.MapSimulator.UI
             return BuildStatusSnapshot().DetailLines;
         }
         public IReadOnlyList<string> DescribeSearchOwnerState() => BuildSearchPane();
+
+        public void CaptureCashShopCatalogSnapshot(
+            AdminShopDialogUI.ListOwnerSnapshot snapshot,
+            IReadOnlyList<PacketCatalogEntry> packetOwnedAdminShopEntries,
+            string packetOwnedAdminShopSummary)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return;
+            }
+
+            _cashStageCatalogSnapshotEntries.Clear();
+            _cashStageCatalogSnapshotEntries.AddRange(BuildCashShopStageCatalogSnapshotEntries(
+                snapshot,
+                packetOwnedAdminShopEntries,
+                packetOwnedAdminShopSummary));
+
+            _cashStageCatalogSnapshotPaneLabel = string.IsNullOrWhiteSpace(snapshot?.PaneLabel)
+                ? "Stage catalog"
+                : $"Stage {snapshot.PaneLabel}";
+            _cashStageCatalogSnapshotBrowseModeLabel = string.IsNullOrWhiteSpace(snapshot?.BrowseModeLabel)
+                ? "All"
+                : snapshot.BrowseModeLabel;
+            _cashStageCatalogSnapshotCategoryLabel = string.IsNullOrWhiteSpace(snapshot?.CategoryLabel)
+                ? "CCashShop"
+                : snapshot.CategoryLabel;
+            _cashStageCatalogSnapshotFooterMessage = !string.IsNullOrWhiteSpace(packetOwnedAdminShopSummary)
+                ? packetOwnedAdminShopSummary.Trim()
+                : snapshot?.FooterMessage ?? string.Empty;
+            _cashStageCatalogSnapshotSelectedIndex = snapshot?.SelectedIndex ?? (_cashStageCatalogSnapshotEntries.Count > 0 ? 0 : -1);
+            _cashStageCatalogSnapshotScrollOffset = Math.Max(0, snapshot?.ScrollOffset ?? 0);
+            _cashStageCatalogSnapshotTotalCount = Math.Max(
+                _cashStageCatalogSnapshotEntries.Count,
+                Math.Max(0, snapshot?.TotalCount ?? 0));
+        }
+
+        internal static IReadOnlyList<PacketCatalogEntry> BuildCashShopStageCatalogSnapshotEntries(
+            AdminShopDialogUI.ListOwnerSnapshot snapshot,
+            IReadOnlyList<PacketCatalogEntry> packetOwnedAdminShopEntries,
+            string packetOwnedAdminShopSummary)
+        {
+            List<PacketCatalogEntry> entries = new();
+            if (packetOwnedAdminShopEntries != null)
+            {
+                foreach (PacketCatalogEntry packetEntry in packetOwnedAdminShopEntries)
+                {
+                    if (packetEntry == null)
+                    {
+                        continue;
+                    }
+
+                    PacketCatalogEntry clone = ClonePacketCatalogEntry(packetEntry, packetEntry.StateLabel);
+                    clone.PacketSource = string.IsNullOrWhiteSpace(clone.PacketSource)
+                        ? "CAdminShopDlg packet catalog snapshot"
+                        : clone.PacketSource;
+                    clone.PacketFieldSummary = string.IsNullOrWhiteSpace(clone.PacketFieldSummary)
+                        ? "Packet-owned admin-shop commodity row mirrored into the CCashShop stage catalog owner."
+                        : clone.PacketFieldSummary;
+                    entries.Add(clone);
+                }
+            }
+
+            if (entries.Count == 0 && snapshot?.VisibleEntries != null)
+            {
+                foreach (AdminShopDialogUI.OwnerEntrySnapshot entry in snapshot.VisibleEntries)
+                {
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    entries.Add(new PacketCatalogEntry
+                    {
+                        Title = entry.Title ?? string.Empty,
+                        Detail = string.IsNullOrWhiteSpace(entry.Detail)
+                            ? "Admin-shop catalog row mirrored into the dedicated CCashShop stage owner."
+                            : entry.Detail,
+                        Seller = entry.Seller ?? string.Empty,
+                        PriceLabel = entry.PriceLabel ?? string.Empty,
+                        StateLabel = string.IsNullOrWhiteSpace(entry.StateLabel)
+                            ? (entry.CommodityOnSale ? "Catalog" : "Unavailable")
+                            : entry.StateLabel,
+                        ListingId = Math.Max(0, entry.CommoditySerialNumber),
+                        CommodityId = Math.Max(0, entry.CommoditySerialNumber),
+                        ItemId = Math.Max(0, entry.RewardItemId),
+                        Quantity = Math.Max(1, entry.RewardQuantity),
+                        PacketSource = "CAdminShopDlg visible catalog snapshot",
+                        PacketFieldSummary =
+                            $"Stage-owned catalog mirror: commoditySN={Math.Max(0, entry.CommoditySerialNumber).ToString(CultureInfo.InvariantCulture)}, itemID={Math.Max(0, entry.RewardItemId).ToString(CultureInfo.InvariantCulture)}, quantity={Math.Max(1, entry.RewardQuantity).ToString(CultureInfo.InvariantCulture)}, onSale={entry.CommodityOnSale}."
+                    });
+                }
+            }
+
+            if (entries.Count > 0 && !string.IsNullOrWhiteSpace(packetOwnedAdminShopSummary))
+            {
+                entries[0].Detail = string.IsNullOrWhiteSpace(entries[0].Detail)
+                    ? packetOwnedAdminShopSummary.Trim()
+                    : $"{entries[0].Detail} {packetOwnedAdminShopSummary.Trim()}";
+            }
+
+            return entries;
+        }
         public IReadOnlyList<string> DescribeSaleOwnerState() => BuildSalePane();
         public IReadOnlyList<string> DescribePurchaseOwnerState() => BuildPurchasePane();
 
@@ -860,12 +986,21 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildTabPane()
         {
+            if (_stageKind == CashServiceStageKind.CashShop)
+            {
+                return new[]
+                {
+                    _navigationState,
+                    "CCSWnd_Tab is modeled as the client wrapper that owns m_pSelector, m_pCBSort, ten canvas slots, and m_tLastKeyDown.",
+                    "WZ v95 supplies ui/CashShop.img/CSTab/Tab/1..9 as the visible 508x78 category strip; the extra client canvas slot remains null/unbacked here.",
+                    "Category/sort button paths are staged through CCashShop::OnChangedCategory and CCashShop::OnChangedSortType placeholders."
+                };
+            }
+
             return new[]
             {
                 _navigationState,
-                _stageKind == CashServiceStageKind.CashShop
-                    ? "Client layout owns tab, list, best-items, and search panes separately."
-                    : "Client layout owns top tab and list subtab separately."
+                "Client layout owns top tab and list subtab separately."
             };
         }
 
@@ -945,6 +1080,7 @@ namespace HaCreator.MapSimulator.UI
                 _pendingCommoditySerialNumber > 0
                     ? $"GoToCommoditySN {_pendingCommoditySerialNumber} is waiting on the best-items owner."
                     : "No commodity serial is waiting on best-items.",
+                "CCSWnd_Best is registered as its own vtable-backed wrapper; v95 CashShop.img has no distinct CSBest surface yet.",
                 wishlistLine,
                 _cashPurchaseRecordSummary
             };
@@ -1015,7 +1151,9 @@ namespace HaCreator.MapSimulator.UI
         {
             return new[]
             {
-                _searchState
+                _searchState,
+                "CCSWnd_ItemSearch is modeled as the dedicated search wrapper backed by ui/CashShop.img/CSItemSearch PopUp/PopUp1.",
+                "Loaded controls include BtSearch, BtAllItem, BtBuy, BtCancel, the combo-box button, scroll assets, and four WZ price ranges."
             };
         }
 

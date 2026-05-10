@@ -21,6 +21,9 @@ namespace HaCreator.MapSimulator.Interaction
         private int _packetGuildPointsAndLevelRevision;
         private int _packetGuildRosterRevision;
         private string _packetGuildBoardAuthKey = string.Empty;
+        private int _pendingGuildCreateAgreementPartyId;
+        private string _pendingGuildCreateAgreementMasterName;
+        private string _pendingGuildCreateAgreementGuildName;
 
         private const int DefaultGuildCreateCostMesos = 1_500_000;
         private const int DefaultGuildMarkCostMesos = 5_000_000;
@@ -641,6 +644,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DefaultGuildMarkCostMesos,
                 DateTimeOffset.UtcNow,
                 true,
+                0,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,
@@ -718,6 +722,7 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => ApplyLocalGuildMarkSelectionCore(request.MarkSelection.Value),
                 _ => null
             };
+            ClearPendingGuildCreateAgreementContext(request.MasterName, request.GuildName);
 
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] = string.IsNullOrWhiteSpace(summary)
                 ? $"{request.RequestLabel} for {request.GuildName} was approved and consumed {request.RequiredMesos} mesos."
@@ -746,7 +751,7 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialListGuildDialogRequestKind.CreateGuildAgreement,
                     request.GuildName,
                     null,
-                    _clientPartyId,
+                    request.PartyId,
                     request.Accepted),
                 GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => new SocialListGuildDialogRequestPacket(
                     SocialListGuildDialogRequestKind.SetMark,
@@ -781,6 +786,7 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingGuildDialogRequest = null;
             _lastPendingRequestByTab[SocialListTab.Guild] = null;
             _guildDialogMesoBalance = Math.Max(0, _guildDialogMesoBalance - request.RequiredMesos);
+            ClearPendingGuildCreateAgreementContext(request.MasterName, request.GuildName);
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client guild-result synchronization finalized {request.RequestLabel.ToLowerInvariant()} for {request.GuildName} and consumed {request.RequiredMesos} mesos.";
         }
@@ -819,6 +825,7 @@ namespace HaCreator.MapSimulator.Interaction
             int RequiredMesos,
             DateTimeOffset RequestedAtUtc,
             bool Accepted,
+            int PartyId,
             int GuildUiRevisionAtSubmit,
             int GuildMarkRevisionAtSubmit,
             int GuildPointsAndLevelRevisionAtSubmit,
@@ -929,7 +936,7 @@ namespace HaCreator.MapSimulator.Interaction
             return request.Kind switch
             {
                 GuildDialogPendingRequestKind.CreateGuild => "new guild UI echo plus either OnGuildResult(75) or a packet-owned local master row",
-                GuildDialogPendingRequestKind.CreateGuildAgreement => "guild UI echo after the client-shaped create-guild agreement response",
+                GuildDialogPendingRequestKind.CreateGuildAgreement => "guild UI echo after the client-shaped create-guild agreement response for the captured party id",
                 GuildDialogPendingRequestKind.SetMark => "a newer OnGuildResult(69) emblem echo matching the submitted mark",
                 _ => "authoritative packet confirmation"
             };

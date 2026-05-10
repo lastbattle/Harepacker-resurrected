@@ -2170,7 +2170,7 @@ namespace HaCreator.MapSimulator
             ConsumePendingPortalSessionValueImpactsFromTransferLifecycle();
             if (ShouldConsumePassiveTransferRequestOnMapTransferAdmission(_passiveTransferRequestPending))
             {
-                ConsumePassiveTransferRequestFromTransferLifecycle();
+                ConsumePassiveTransferRequestFromMapTransferAdmission();
             }
             _playerManager?.ForceStand();
             _gameState.PendingMapChange = true;
@@ -9972,6 +9972,9 @@ namespace HaCreator.MapSimulator
                     return;
 
                 }
+
+                summaryOverride = message;
+                skipRuntimeDispatch = true;
             }
             if (packetType == LoginPacketType.ViewAllCharResult &&
                 TryHandlePacketOwnedViewAllCharResult(out string viewAllSummary, out bool continueViewAllRuntimeDispatch))
@@ -11589,15 +11592,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            _loginRuntime.ApplySelectCharacterByVacResultProfile(packetProfile, currTickCount);
+
 
             if (!packetProfile.IsConnectSuccess)
             {
-                if (ShouldReturnSelectCharacterByVacFailureToTitle(packetProfile))
-                {
-                    _loginRuntime.ForceStep(LoginStep.Title, "Packet-authored SelectCharacterByVACResult returned the login flow to title.");
-                }
-
-
                 message = BuildSelectCharacterByVacResultFailureMessage(packetProfile);
                 _loginCharacterStatusMessage = message;
                 ShowSelectCharacterByVacFailureDialog(packetProfile, message);
@@ -14515,10 +14514,31 @@ namespace HaCreator.MapSimulator
 
 
 
-        private bool HasLiveOfficialCheckPasswordAuth =>
+        private bool HasManualLiveOfficialCheckPasswordAuth =>
             !string.IsNullOrWhiteSpace(_loginOfficialSessionCheckPasswordNexonPassport) &&
             _loginOfficialSessionCheckPasswordMachineId != null &&
             _loginOfficialSessionCheckPasswordMachineId.Length == LoginOfficialSessionBridgeManager.ClientMachineIdLength;
+
+        private bool HasLiveOfficialCheckPasswordAuth =>
+            TryResolveLiveOfficialCheckPasswordAuth(out _);
+
+        private bool TryResolveLiveOfficialCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial)
+        {
+            if (HasManualLiveOfficialCheckPasswordAuth)
+            {
+                authMaterial = new LoginCheckPasswordAuthMaterial(
+                    _loginOfficialSessionCheckPasswordNexonPassport,
+                    (byte[])_loginOfficialSessionCheckPasswordMachineId.Clone(),
+                    _loginOfficialSessionCheckPasswordGameRoomClient,
+                    _loginOfficialSessionCheckPasswordGameStartMode,
+                    _loginOfficialSessionCheckPasswordPartnerCode,
+                    "manual /loginpacket session auth",
+                    DateTime.UtcNow);
+                return true;
+            }
+
+            return _loginOfficialSessionBridge.TryGetCapturedCheckPasswordAuth(out authMaterial);
+        }
 
         private bool TrySendLiveOfficialCheckPasswordRequest(string password, out string status)
         {
@@ -14528,19 +14548,19 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!HasLiveOfficialCheckPasswordAuth)
+            if (!TryResolveLiveOfficialCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial))
             {
-                status = "Login official-session CheckPassword injection needs /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode].";
+                status = "Login official-session CheckPassword injection needs client-auth material captured from a live opcode 1 CheckPassword request, or /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode].";
                 return false;
             }
 
             return _loginOfficialSessionBridge.TrySendCheckPasswordRequest(
                 password,
-                _loginOfficialSessionCheckPasswordNexonPassport,
-                _loginOfficialSessionCheckPasswordMachineId,
-                _loginOfficialSessionCheckPasswordGameRoomClient,
-                _loginOfficialSessionCheckPasswordGameStartMode,
-                _loginOfficialSessionCheckPasswordPartnerCode,
+                authMaterial.NexonPassport,
+                authMaterial.MachineId,
+                authMaterial.GameRoomClient,
+                authMaterial.GameStartMode,
+                authMaterial.PartnerCode,
                 out status);
         }
 
@@ -22029,7 +22049,9 @@ namespace HaCreator.MapSimulator
                 return MobSkillSelectionParity.ShouldAutoSelectMobStatusSkill(
                     definition,
                     runtimeData,
-                    EnumerateMobSkillSelectionTargets(sourceMob, definition, runtimeData, currentTick));
+                    EnumerateMobSkillSelectionTargets(sourceMob, definition, runtimeData, currentTick),
+                    currentTick,
+                    ResolveMobSkillStatusRefreshLeadTimeMs(runtimeData, skill));
             }
 
             if (IsPlayerTargetedMobSkill(skill.SkillId))
@@ -22048,7 +22070,7 @@ namespace HaCreator.MapSimulator
                                runtimeData,
                                currentTick,
                                sourceMob.CurrentX,
-                               recastLeadTimeMs: Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)))
+                               recastLeadTimeMs: ResolveMobSkillStatusRefreshLeadTimeMs(runtimeData, skill))
                            ?? false);
             }
 
@@ -22182,9 +22204,10 @@ namespace HaCreator.MapSimulator
                 currentTick,
                 sourceMob.CurrentX,
                 runtimeData.ElementAttribute,
-                Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)),
+                ResolveMobSkillStatusRefreshLeadTimeMs(runtimeData, skill),
                 CreateMobSkillPeriodicDamageArea(sourceMob, skill.SkillId, runtimeData),
-                sourceOwnerId: Math.Max(0, sourceMob.PoolId));
+                sourceOwnerId: Math.Max(0, sourceMob.PoolId),
+                sourceOwnerSnapshot: ResolveDirectMobSkillSourceOwnerSnapshot(sourceMob));
 
             if (applied)
             {
@@ -22204,6 +22227,50 @@ namespace HaCreator.MapSimulator
 
             return applied;
 
+        }
+
+        private static PlayerMobStatusSourceOwnerSnapshot ResolveDirectMobSkillSourceOwnerSnapshot(MobItem sourceMob)
+        {
+            if (sourceMob == null)
+            {
+                return default;
+            }
+
+            string ownerName = sourceMob.MobInstance?.MobInfo?.Name;
+            int? teamId = sourceMob.MobInstance?.Team;
+            Fields.MonsterCarnivalTeam? carnivalTeam = teamId switch
+            {
+                0 => Fields.MonsterCarnivalTeam.Team0,
+                1 => Fields.MonsterCarnivalTeam.Team1,
+                _ => null
+            };
+
+            return new PlayerMobStatusSourceOwnerSnapshot(
+                ownerName,
+                battlefieldTeamId: teamId,
+                monsterCarnivalTeam: carnivalTeam);
+        }
+
+        internal static int ResolveMobSkillStatusRefreshLeadTimeMsForTesting(
+            MobSkillRuntimeData runtimeData,
+            MobSkillEntry skill)
+        {
+            return ResolveMobSkillStatusRefreshLeadTimeMs(runtimeData, skill);
+        }
+
+        private static int ResolveMobSkillStatusRefreshLeadTimeMs(
+            MobSkillRuntimeData runtimeData,
+            MobSkillEntry skill)
+        {
+            int actionLeadTimeMs = Math.Max(1000, Math.Max(skill?.SkillAfter ?? 0, skill?.EffectAfter ?? 0));
+            int durationMs = Math.Max(0, runtimeData?.DurationMs ?? 0);
+            int intervalMs = Math.Max(0, runtimeData?.IntervalMs ?? 0);
+            if (durationMs <= 0 || intervalMs <= 0 || intervalMs >= durationMs)
+            {
+                return actionLeadTimeMs;
+            }
+
+            return Math.Max(actionLeadTimeMs, durationMs - intervalMs);
         }
 
         private void ApplyBattlefieldFlagMobSkillSideEffect(int skillId, MobSkillRuntimeData runtimeData, int currentTick)
@@ -22259,7 +22326,14 @@ namespace HaCreator.MapSimulator
             {
                 Vector2 effectPosition = ResolveMobSkillEffectPosition(mobItem, effectData);
                 bool flip = mobItem?.MovementInfo?.FlipX ?? false;
-                _animationEffects?.AddOneTime(effectData.EffectFrames, effectPosition.X, effectPosition.Y, flip, currentTick);
+                _animationEffects?.AddPacketOwnedMobSkillEffect(
+                    effectData.EffectFrames,
+                    effectData.EffectSourceUol
+                        ?? MobSkillEffectLoader.BuildMobSkillEffectSourceUol(effectData.SkillId, effectData.Level, "effect"),
+                    effectPosition.X,
+                    effectPosition.Y,
+                    flip,
+                    currentTick);
 
 
                 if (effectData.EffectPosition == MobSkillEffectPosition.Screen)
@@ -22272,7 +22346,13 @@ namespace HaCreator.MapSimulator
             if (effectData.MobIconFrames != null && effectData.MobIconFrames.Count > 0)
             {
                 Vector2 iconPosition = ResolveMobSkillIconPosition(mobItem);
-                _animationEffects?.AddOneTime(effectData.MobIconFrames, iconPosition.X, iconPosition.Y, false, currentTick, 1);
+                _animationEffects?.AddPacketOwnedMobSkillIcon(
+                    effectData.MobIconFrames,
+                    effectData.MobIconSourceUol
+                        ?? MobSkillEffectLoader.BuildMobSkillEffectSourceUol(effectData.SkillId, effectData.Level, "mob"),
+                    iconPosition.X,
+                    iconPosition.Y,
+                    currentTick);
             }
 
             ApplyDirectMobSkillTileArea(mobItem, skill, effectData, currentTick);
@@ -23653,8 +23733,7 @@ namespace HaCreator.MapSimulator
 
 
             if (_npcInteractionOverlay?.IsVisible == true ||
-                _gameState.DirectionModeActive ||
-                _playerManager.Pets.GetSpeakingPets(currentTickCount).Any())
+                _gameState.DirectionModeActive)
             {
                 return;
             }
@@ -34055,6 +34134,12 @@ namespace HaCreator.MapSimulator
                 PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.TransferResponseLifecycle);
         }
 
+        private void ConsumePassiveTransferRequestFromMapTransferAdmission()
+        {
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.MapTransferAdmission);
+        }
+
         private void ConsumePassiveTransferRequestFromMapLoadLifecycle()
         {
             ConsumePassiveTransferRequestFromLifecycleOwner(
@@ -34840,12 +34925,16 @@ namespace HaCreator.MapSimulator
                         isFlying: physics.IsFlying,
                         hasDynamicFoothold: hasDynamicFoothold));
             MovePathElement? encodeHeader = physics.GetClientMovePathEncodeHeaderSnapshot(currentTime);
+            IReadOnlyList<byte> passiveKeyPadStates = flushAdmitted
+                ? ResolvePortalOwnedLocalUserFlushKeyPadStates(encodedPath)
+                : Array.Empty<byte>();
             if (!CMovePathClientPacketCodec.TryEncode(
                     encodedPath,
                     out byte[] payload,
                     out _,
                     includeClientRandomCounts,
                     includeClientFlushTail: flushAdmitted,
+                    passiveKeyPadStates: passiveKeyPadStates,
                     headerElement: encodeHeader))
             {
                 return Array.Empty<byte>();
@@ -34871,6 +34960,27 @@ namespace HaCreator.MapSimulator
 
             encoded = true;
             return payload ?? Array.Empty<byte>();
+        }
+
+        private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
+            IReadOnlyList<MovePathElement> encodedPath)
+        {
+            if (encodedPath == null
+                || encodedPath.Count == 0
+                || _playerManager?.LatestLocalClientKeyPadState is not byte keyPadState)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int stateCount = Math.Min(encodedPath.Count, byte.MaxValue);
+            byte normalizedKeyPadState = (byte)(keyPadState & 0x0F);
+            byte[] states = new byte[stateCount];
+            for (int i = 0; i < states.Length; i++)
+            {
+                states[i] = normalizedKeyPadState;
+            }
+
+            return states;
         }
 
         internal static bool ShouldAdmitPortalOwnedMovePathFlushCadence(
@@ -37228,6 +37338,7 @@ namespace HaCreator.MapSimulator
             if (_playerManager?.Skills != null)
             {
                 _playerManager.OnRepeatSkillModeEndEffectRequestReady = DispatchRepeatSkillModeEndEffectRequest;
+                _playerManager.OnClientSkillEffectPacketRequestReady = DispatchClientSkillEffectPacketRequest;
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
                 {
                     RemoveLocalOwnedAffectedAreasByCancelRequest(cancelSkillId, currentTime);
@@ -37902,6 +38013,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
             _playerManager.Skills.OnClientGeneralEffectRequested = HandleAnimationDisplayerClientGeneralEffectRequested;
             _playerManager.Skills.OnClientDoActiveSummonMonsterPacketPayloadReady = HandleClientDoActiveSummonMonsterPacketPayloadReady;
+            _playerManager.Skills.OnClientDoActiveTownPortalPacketPayloadReady = HandleClientDoActiveTownPortalPacketPayloadReady;
             _playerManager.Skills.OnSwallowAbsorbRequested = HandleAnimationDisplayerSwallowAbsorbRequested;
             _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
@@ -38425,7 +38537,7 @@ namespace HaCreator.MapSimulator
                 battleRecordWindow.SetFont(_fontChat);
                 battleRecordWindow.SetContentProvider(BuildPacketOwnedBattleRecordLines);
                 battleRecordWindow.SetFooterProvider(BuildPacketOwnedBattleRecordFooter);
-                battleRecordWindow.SetButtonAction("tabClear", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ClearInfoFromOwnerButton(_packetOwnedBattleRecordRuntime.CurrentPageIndex)));
+                battleRecordWindow.SetButtonAction("tabClear", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ClearInfoFromCurrentOwnerTabButton()));
                 battleRecordWindow.SetButtonAction("allClear", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ClearInfoFromOwnerButton(3)));
                 battleRecordWindow.SetButtonAction("timerSet", () => ShowUtilityFeedbackMessage("CUIBattleRecord button 2003 opens the recovered timer-input dialog; use /npcutility battlerecord timer <seconds> [clear=<on|off>] to submit its value."));
                 battleRecordWindow.SetButtonAction("fold", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ToggleExtended()));
@@ -39718,6 +39830,43 @@ namespace HaCreator.MapSimulator
             SkillManager.ClientDoActiveSummonMonsterPacketPayload payload)
         {
             byte[] encodedPayload = SkillManager.EncodeClientDoActiveSummonMonsterPacketPayloadForTesting(payload);
+            string bridgeStatus = "live bridge unavailable";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out bridgeStatus))
+            {
+                return;
+            }
+
+            string outboxStatus = "packet outbox unavailable";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out outboxStatus))
+            {
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out _))
+            {
+                return;
+            }
+
+            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+                SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                encodedPayload,
+                out _);
+        }
+
+        private void HandleClientDoActiveTownPortalPacketPayloadReady(
+            SkillManager.ClientDoActiveTownPortalPacketPayload payload)
+        {
+            byte[] encodedPayload = SkillManager.EncodeClientDoActiveTownPortalPacketPayloadForTesting(payload);
             string bridgeStatus = "live bridge unavailable";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                     SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
@@ -43979,6 +44128,7 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasOriginX = buffEntry.ShadowCanvasOriginX;
             renderData.ShadowCanvasOriginY = buffEntry.ShadowCanvasOriginY;
             renderData.ShadowCanvasDelayMs = buffEntry.ShadowCanvasDelayMs;
+            renderData.ShadowCanvasFrameCount = buffEntry.ShadowCanvasFrameCount;
             renderData.ShadowCanvasLastUpdatedTime = buffEntry.ShadowCanvasLastUpdatedTime;
             renderData.ShadowCanvasReferenceCount = buffEntry.ShadowCanvasReferenceCount;
             renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
@@ -43995,11 +44145,20 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasMutationCanvasReleaseOrder = buffEntry.ShadowCanvasMutationCanvasReleaseOrder;
             renderData.MainLayerAnimationMode = buffEntry.MainLayerAnimationMode;
             renderData.MainLayerAnimationModeName = buffEntry.MainLayerAnimationModeName;
+            renderData.MainLayerAnimationStartTime = buffEntry.MainLayerAnimationStartTime;
+            renderData.MainLayerAnimationFrameDelayMs = buffEntry.MainLayerAnimationFrameDelayMs;
+            renderData.MainLayerAnimationFrameCount = buffEntry.MainLayerAnimationFrameCount;
             renderData.ShadowLayerAnimationMode = buffEntry.ShadowLayerAnimationMode;
             renderData.ShadowLayerAnimationModeName = buffEntry.ShadowLayerAnimationModeName;
+            renderData.ShadowLayerAnimationStartTime = buffEntry.ShadowLayerAnimationStartTime;
+            renderData.ShadowLayerAnimationFrameDelayMs = buffEntry.ShadowLayerAnimationFrameDelayMs;
+            renderData.ShadowLayerAnimationFrameCount = buffEntry.ShadowLayerAnimationFrameCount;
             renderData.AlertLayerAnimationMode = buffEntry.AlertLayerAnimationMode;
             renderData.AlertLayerAnimationModeName = buffEntry.AlertLayerAnimationModeName;
             renderData.AlertLayerAnimationSequence = buffEntry.AlertLayerAnimationSequence;
+            renderData.AlertLayerAnimationStartTime = buffEntry.AlertLayerAnimationStartTime;
+            renderData.AlertLayerAnimationFrameDelayMs = buffEntry.AlertLayerAnimationFrameDelayMs;
+            renderData.AlertLayerAnimationFrameCount = buffEntry.AlertLayerAnimationFrameCount;
         }
 
 
@@ -45648,7 +45807,7 @@ namespace HaCreator.MapSimulator
             {
                 bool bridgeApplied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _guildBossOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
+                    bridgeMessage.SourceWithProxySession,
                     bridgeMessage.PacketType,
                     bridgeApplied,
                     bridgeErrorMessage);
@@ -45657,7 +45816,7 @@ namespace HaCreator.MapSimulator
             {
                 bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _guildBossTransport.RecordDispatchResult(
-                    message.Source,
+                    message.SourceWithProxySession,
                     message.PacketType,
                     applied,
                     errorMessage);
