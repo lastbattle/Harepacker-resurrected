@@ -252,6 +252,22 @@ namespace HaSharedLibrary.Render.DX
         }
 
         /// <summary>
+        /// Stops animated map-object playback at the current frame.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void StopAnimationAtCurrentFrame(int tickCount)
+        {
+            if (notAnimated)
+            {
+                return;
+            }
+
+            _ = GetCurrentFrame(tickCount);
+            animationStopped = true;
+            _lastFrameDrawn = frames?[currFrame];
+        }
+
+        /// <summary>
         /// Applies the client map-object animation repeat mode used by CMapLoadable::AnimateObjLayer.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
