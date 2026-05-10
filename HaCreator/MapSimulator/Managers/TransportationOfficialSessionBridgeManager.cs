@@ -695,6 +695,18 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
+                IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                    candidate.RemoteEndpoint.Port,
+                    candidate.ProcessId,
+                    candidate.ProcessName);
+                if (!ContainsMatchingEstablishedSession(candidates, candidate))
+                {
+                    _passiveEstablishedSession = null;
+                    status = $"Passive transport Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Cleared passive ownership and retained {PendingPacketCount} queued transport packet(s); reattach an established pair before arming deferred reconnect injection.";
+                    LastStatus = status;
+                    return false;
+                }
+
                 if (!TryStartReconnectProxyListener(
                     requestedListenPort,
                     resolvedRemoteHost,

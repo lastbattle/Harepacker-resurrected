@@ -35,6 +35,23 @@ namespace HaCreator.MapSimulator.UI
             int MaxHorzUnits,
             bool NumberOnly);
 
+        internal readonly record struct ClientEditHostCreateSnapshot(
+            ClientEditCreateContract EditContract,
+            string EditWindowClassName,
+            uint EditWindowStyle,
+            uint EditWindowExStyle,
+            int EditCreateParamTextX,
+            int EditCreateParamTextY,
+            int EditCreateParamBackColor,
+            int EditCreateParamFontColor,
+            int EditCreateParamMaxHorzUnits,
+            bool EditCreateParamNumberOnly,
+            int EditLeftMargin,
+            int EditRightMargin,
+            int EditDialogCode,
+            int EditImeCandidateFormCount,
+            uint EditImeCompositionStyle);
+
         private sealed class LayoutProfile
         {
             public LayoutProfile(
@@ -168,6 +185,30 @@ namespace HaCreator.MapSimulator.UI
                 ClientEditFontColor,
                 InputMaxLength,
                 ClientEditNumberOnly);
+        }
+
+        internal static ClientEditHostCreateSnapshot ResolveClientEditHostCreateSnapshot(bool adminVariant)
+        {
+            // The hosted control is still a Win32 EDIT approximation, but keep its
+            // creation payload explicit beside the recovered owner-local CCtrlEdit
+            // contract so parity checks do not infer native-widget details from
+            // private implementation state.
+            return new ClientEditHostCreateSnapshot(
+                ResolveClientEditCreateContract(adminVariant),
+                NativeAntiMacroEditHost.ClientEditWindowClassName,
+                NativeAntiMacroEditHost.ClientEditWindowStyle,
+                NativeAntiMacroEditHost.ClientEditWindowExStyle,
+                NativeAntiMacroEditHost.ClientEditCreateParamTextX,
+                NativeAntiMacroEditHost.ClientEditCreateParamTextY,
+                NativeAntiMacroEditHost.ClientEditCreateParamBackColor,
+                NativeAntiMacroEditHost.ClientEditCreateParamFontColor,
+                NativeAntiMacroEditHost.ClientEditCreateParamMaxHorzUnits,
+                NativeAntiMacroEditHost.ClientEditCreateParamNumberOnly,
+                NativeAntiMacroEditHost.ClientEditLeftMargin,
+                NativeAntiMacroEditHost.ClientEditRightMargin,
+                NativeAntiMacroEditHost.GetClientOwnedAntiMacroDialogCode(),
+                NativeAntiMacroEditHost.CandidateListCount,
+                NativeAntiMacroEditHost.ImeExcludeStyle);
         }
 
         public void TryAttachNativeEditHost(IntPtr parentWindowHandle)

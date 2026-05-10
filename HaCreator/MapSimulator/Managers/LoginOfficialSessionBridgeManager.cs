@@ -670,12 +670,14 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            if (e != null && !e.IsInit)
-            {
-                TryCaptureCheckPasswordAuth(e.RawPacket, $"official-client:{e.SourceEndpoint}");
-            }
+            bool capturedAuth = e != null &&
+                !e.IsInit &&
+                TryCaptureCheckPasswordAuthFromClientPacket(e.RawPacket, $"official-client:{e.SourceEndpoint}");
 
-            LastStatus = _roleSessionProxy.LastStatus;
+            if (!capturedAuth)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+            }
         }
 
         private bool TrySendPacket(byte[] payload, string successPrefix, out string status)
@@ -730,6 +732,11 @@ namespace HaCreator.MapSimulator.Managers
             _capturedCheckPasswordAuth = authMaterial;
             LastStatus = $"Captured login CheckPassword auth material from {authMaterial.Source}.";
             return true;
+        }
+
+        internal bool TryCaptureCheckPasswordAuthFromClientPacket(byte[] rawPacket, string source)
+        {
+            return TryCaptureCheckPasswordAuth(rawPacket, source);
         }
 
         private static bool TryReadCheckPasswordAuth(

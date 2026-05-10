@@ -13722,8 +13722,24 @@ namespace HaCreator.MapSimulator
                     }
 
                     int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 73;
-                    return ChatCommandHandler.CommandResult.Ok(
-                        _socialListRuntime.ApplyExpeditionResponseInvite(inviterName, responseCode, packetOwned, retCode));
+                    string localStatus = _socialListRuntime.ApplyExpeditionResponseInvite(inviterName, responseCode, packetOwned, retCode);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        ExpeditionIntermediaryOutboundRequestKind.Response,
+                        ExpeditionTitle: string.Empty,
+                        OwnerName: inviterName,
+                        CharacterName: inviterName,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave,
+                        ResponseAccepted: responseCode == ExpeditionIntermediaryPacketTable.AcceptedInviteResponseValue || responseCode == 1);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
                 }
 
                 case "notice":
@@ -13751,8 +13767,23 @@ namespace HaCreator.MapSimulator
                             ExpeditionNoticeKind.Removed => 66,
                             _ => 60
                         };
-                    return ChatCommandHandler.CommandResult.Ok(
-                        _socialListRuntime.ApplyExpeditionNotice(noticeKind, characterName, packetOwned, retCode));
+                    string localStatus = _socialListRuntime.ApplyExpeditionNotice(noticeKind, characterName, packetOwned, retCode);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        ExpeditionIntermediaryOutboundRequestKind.Notice,
+                        ExpeditionTitle: string.Empty,
+                        OwnerName: string.Empty,
+                        CharacterName: characterName,
+                        PartyIndex: 0,
+                        NoticeKind: noticeKind,
+                        RemovalKind: ExpeditionRemovalKind.Leave);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Ok($"{localStatus} Live expedition notice send skipped: {sendStatus}");
                 }
 
                 case "master":
@@ -13763,8 +13794,29 @@ namespace HaCreator.MapSimulator
                             ? positionalPartyIndex
                             : 0;
                     int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 69;
-                    return ChatCommandHandler.CommandResult.Ok(
-                        _socialListRuntime.ApplyExpeditionMasterChanged(masterPartyIndex, packetOwned, retCode));
+                    string localStatus = _socialListRuntime.ApplyExpeditionMasterChanged(masterPartyIndex, packetOwned, retCode);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    if (!TryResolveExpeditionCommandCharacterId(args, index + 1, masterPartyIndex, out int characterId, out string resolveStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Ok($"{localStatus} Live expedition change-master send skipped: {resolveStatus}");
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        ExpeditionIntermediaryOutboundRequestKind.Master,
+                        ExpeditionTitle: string.Empty,
+                        OwnerName: string.Empty,
+                        CharacterName: string.Empty,
+                        PartyIndex: masterPartyIndex,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave,
+                        CharacterId: characterId);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
                 }
 
                 case "removed":
@@ -13787,14 +13839,105 @@ namespace HaCreator.MapSimulator
                             ExpeditionRemovalKind.Removed => 68,
                             _ => 67
                         };
-                    return ChatCommandHandler.CommandResult.Ok(
-                        _socialListRuntime.ApplyExpeditionRemoved(removalKind, packetOwned, retCode));
+                    string localStatus = _socialListRuntime.ApplyExpeditionRemoved(removalKind, packetOwned, retCode);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        removalKind == ExpeditionRemovalKind.Removed
+                            ? ExpeditionIntermediaryOutboundRequestKind.Remove
+                            : removalKind == ExpeditionRemovalKind.Disband
+                                ? ExpeditionIntermediaryOutboundRequestKind.Disband
+                                : ExpeditionIntermediaryOutboundRequestKind.Leave,
+                        ExpeditionTitle: string.Empty,
+                        OwnerName: string.Empty,
+                        CharacterName: string.Empty,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Left,
+                        RemovalKind: removalKind,
+                        CharacterId: TryGetExpeditionCommandInt(args, index + 1, "charid", out int parsedCharacterId) ? parsedCharacterId : 0);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
+                }
+
+                case "remove":
+                case "kick":
+                case "changeboss":
+                case "changepartyboss":
+                case "relocate":
+                case "relocateparty":
+                {
+                    int partyIndex = TryGetExpeditionCommandInt(args, index + 1, "party", out int parsedPartyIndex)
+                        ? parsedPartyIndex
+                        : TryGetExpeditionPositionalInt(args, index + 1, out int positionalPartyIndex)
+                            ? positionalPartyIndex
+                            : 0;
+                    if (!TryResolveExpeditionCommandCharacterId(args, index + 1, partyIndex, out int characterId, out string resolveStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(resolveStatus);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequestKind requestKind = action switch
+                    {
+                        "changeboss" or "changepartyboss" => ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss,
+                        "relocate" or "relocateparty" => ExpeditionIntermediaryOutboundRequestKind.RelocateParty,
+                        _ => ExpeditionIntermediaryOutboundRequestKind.Remove
+                    };
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        requestKind,
+                        ExpeditionTitle: string.Empty,
+                        OwnerName: string.Empty,
+                        CharacterName: string.Empty,
+                        PartyIndex: partyIndex,
+                        NoticeKind: ExpeditionNoticeKind.Removed,
+                        RemovalKind: ExpeditionRemovalKind.Removed,
+                        CharacterId: characterId);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok($"{outboundRequest.Describe()} staged; attach /expedition bridge to inject the recovered outbound packet.");
+                    }
+
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                        : ChatCommandHandler.CommandResult.Error(sendStatus);
                 }
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name] [pq=n]|register [title=Name] [pq=n]|quickjoin [title=Name] owner=Leader|request [title=Name] owner=Leader|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|opcodes|history [count]|clearhistory|send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]]");
+                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name] [pq=n]|register [title=Name] [pq=n]|quickjoin [title=Name] owner=Leader|request [title=Name] owner=Leader|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n] [name=Member|charid=n]|removed [kind=leave|disband|removed] [charid=n]|remove|kick|changeboss|relocate [name=Member|charid=n] [party=n]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|opcodes|history [count]|clearhistory|send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]]");
             }
+        }
+
+        private bool TryResolveExpeditionCommandCharacterId(
+            string[] args,
+            int startIndex,
+            int partyIndex,
+            out int characterId,
+            out string status)
+        {
+            if (TryGetExpeditionCommandInt(args, startIndex, "charid", out characterId) && characterId > 0)
+            {
+                status = null;
+                return true;
+            }
+
+            string characterName = TryGetExpeditionCommandValue(args, startIndex, "name", out string namedCharacter)
+                ? NormalizeExpeditionCommandText(namedCharacter)
+                : TryGetExpeditionPositionalValue(args, startIndex, out string positionalCharacter)
+                    ? NormalizeExpeditionCommandText(positionalCharacter)
+                    : null;
+            if (_socialListRuntime.TryResolveExpeditionMemberCharacterId(characterName, partyIndex, out characterId, out status))
+            {
+                return true;
+            }
+
+            status = string.IsNullOrWhiteSpace(status)
+                ? "Expedition command requires charid=<characterId> or a packet-owned roster member with a character id."
+                : status;
+            return false;
         }
 
         private static bool TryGetExpeditionCommandValue(string[] args, int startIndex, string key, out string value)

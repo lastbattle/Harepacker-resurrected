@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
         private MapleTvSendResultFeedback _pendingSendResultFeedback;
         private MapleTvClientRequestState _lastClientRequestState;
         private MapleTvOfficialPacketState _lastOfficialPacketState;
+        private readonly Queue<MapleTvClientRequestState> _pendingClientRequests = new();
 
         internal MapleTvRuntime()
         {
@@ -201,6 +202,7 @@ namespace HaCreator.MapSimulator.Interaction
                 CanClear = _showMessage || _queueExists,
                 CanToggleReceiver = GetCurrentAudienceMode() == MapleTvAudienceMode.Flexible,
                 MirrorsToChat = _itemProfile?.MirrorsToChat ?? false,
+                PendingClientRequestCount = _pendingClientRequests.Count,
                 LastClientRequest = _lastClientRequestState == null ? null : new MapleTvClientRequestSnapshot(
                     _lastClientRequestState.InventoryPosition,
                     _lastClientRequestState.ItemId,
@@ -244,10 +246,13 @@ namespace HaCreator.MapSimulator.Interaction
             string requestSuffix = snapshot.LastClientRequest == null
                 ? string.Empty
                 : $" Client request {DescribeClientRequest(snapshot.LastClientRequest)}.";
+            string pendingRequestSuffix = snapshot.PendingClientRequestCount > 0
+                ? $" Pending client requests={snapshot.PendingClientRequestCount}."
+                : string.Empty;
             string packetSuffix = snapshot.LastOfficialPacket == null
                 ? string.Empty
                 : $" Last official packet {DescribeOfficialPacket(snapshot.LastOfficialPacket)}.";
-            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}.{initMedia} {snapshot.StatusMessage}{queueConfirmationSuffix}{requestSuffix}{packetSuffix}";
+            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}.{initMedia} {snapshot.StatusMessage}{queueConfirmationSuffix}{requestSuffix}{pendingRequestSuffix}{packetSuffix}";
         }
 
         internal string ToggleReceiverMode()
@@ -532,6 +537,12 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTick,
                 -1,
                 -1);
+            if (stage == MapleTvClientRequestStage.Queued
+                || stage == MapleTvClientRequestStage.Dispatched
+                || stage == MapleTvClientRequestStage.AppliedLocally)
+            {
+                _pendingClientRequests.Enqueue(_lastClientRequestState);
+            }
         }
 
         internal bool TryApplyPacket(
@@ -1126,6 +1137,26 @@ namespace HaCreator.MapSimulator.Interaction
             int resultCode = -1,
             int stringPoolId = -1)
         {
+            if (_pendingClientRequests.Count > 0)
+            {
+                MapleTvClientRequestState request = _pendingClientRequests.Dequeue();
+                MapleTvClientRequestState advancedRequest = request with
+                {
+                    Stage = stage,
+                    LastUpdatedTick = currentTick,
+                    ResultCode = resultCode,
+                    ResultStringPoolId = stringPoolId
+                };
+                _lastClientRequestState = advancedRequest;
+                if (stage != MapleTvClientRequestStage.SendResultReceived
+                    && stage != MapleTvClientRequestStage.Cleared)
+                {
+                    _pendingClientRequests.Enqueue(advancedRequest);
+                }
+
+                return;
+            }
+
             if (_lastClientRequestState == null)
             {
                 return;
@@ -1255,6 +1286,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanClear { get; init; }
         public bool CanToggleReceiver { get; init; }
         public bool MirrorsToChat { get; init; }
+        public int PendingClientRequestCount { get; init; }
         public MapleTvClientRequestSnapshot LastClientRequest { get; init; }
         public MapleTvOfficialPacketSnapshot LastOfficialPacket { get; init; }
     }

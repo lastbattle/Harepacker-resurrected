@@ -2281,13 +2281,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         SeedAlphaVector,
         ScheduleAlphaFade,
         AnimateStop,
+        RetainSourceCanvasTemporary,
         InsertCanvas,
+        ReleaseInsertCanvasResult,
+        ReleaseSourceCanvasTemporary,
         ApplyClockwiseBounds,
         RetainRegisterArgumentLayer,
         RegisterRepeatAnimation,
         ReleaseRegisterArgumentLayer,
         StoreLastUpdatedTick,
         ReleaseOriginVector,
+        ReleaseAlphaVector,
         ReleaseRepeatLayerLocal,
         ReleaseSourceLayer
     }
@@ -2354,11 +2358,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedRepeatLayerRefCount { get; set; }
         public int SimulatedListNodeRefCount { get; set; }
         public int SimulatedOriginVectorRefCount { get; set; }
+        public int SimulatedOriginVectorLocalReleaseCount { get; init; }
         public int SimulatedAlphaVectorRefCount { get; set; }
+        public int SimulatedAlphaVectorLocalReleaseCount { get; init; }
         public int SimulatedSourceCanvasRefCount { get; set; }
+        public int SimulatedSourceCanvasTemporaryAddRefCount { get; init; }
+        public int SimulatedSourceCanvasTemporaryReleaseCount { get; init; }
         public int SimulatedRegisteredAnimationStateRefCount { get; set; }
         public int SimulatedReleaseTime { get; private set; }
         public int SimulatedReleaseSequence { get; private set; }
+        public int SimulatedSourceCanvasTemporaryLiveRefCount =>
+            Math.Max(0, SimulatedSourceCanvasTemporaryAddRefCount - SimulatedSourceCanvasTemporaryReleaseCount);
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }
@@ -2839,7 +2849,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasReachedNaturalExpiry(int currentTime)
         {
             return Duration > 0
-                   && SummonRuntimeRules.HasClientTickElapsedAtLeast(currentTime, StartTime, Duration);
+                   && SummonRuntimeRules.HasClientTickElapsedGreaterThan(currentTime, StartTime, Duration);
         }
 
         public bool IsExpired(int currentTime)

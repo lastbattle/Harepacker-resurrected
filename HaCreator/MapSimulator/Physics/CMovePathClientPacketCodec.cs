@@ -76,11 +76,30 @@ namespace HaCreator.MapSimulator.Physics
                 short startY = reader.ReadInt16();
                 short startVx = reader.ReadInt16();
                 short startVy = reader.ReadInt16();
+                short currentX = startX;
+                short currentY = startY;
+                short currentVx = startVx;
+                short currentVy = startVy;
                 int count = reader.ReadByte();
                 var decoded = new List<MovePathElement>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    decoded.Add(ReadElement(reader, includeClientRandomCounts));
+                    MovePathElement element = ReadElement(
+                        reader,
+                        includeClientRandomCounts,
+                        currentX,
+                        currentY,
+                        currentVx,
+                        currentVy,
+                        out bool refreshClientCarryState);
+                    decoded.Add(element);
+                    if (refreshClientCarryState)
+                    {
+                        currentX = ClampToShort(element.X);
+                        currentY = ClampToShort(element.Y);
+                        currentVx = element.VelocityX;
+                        currentVy = element.VelocityY;
+                    }
                 }
 
                 if (stream.Position != stream.Length)
@@ -566,7 +585,14 @@ namespace HaCreator.MapSimulator.Physics
             }
         }
 
-        private static MovePathElement ReadElement(System.IO.BinaryReader reader, bool includeClientRandomCounts)
+        private static MovePathElement ReadElement(
+            System.IO.BinaryReader reader,
+            bool includeClientRandomCounts,
+            short currentX,
+            short currentY,
+            short currentVelocityX,
+            short currentVelocityY,
+            out bool refreshClientCarryState)
         {
             byte attribute = reader.ReadByte();
             var element = new MovePathElement
@@ -574,6 +600,7 @@ namespace HaCreator.MapSimulator.Physics
                 MovePathAttribute = attribute
             };
             bool readsCommonMoveSuffix = true;
+            refreshClientCarryState = true;
 
             switch (attribute)
             {
@@ -605,6 +632,9 @@ namespace HaCreator.MapSimulator.Physics
                 case 32:
                 case 33:
                 case 34:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.FootholdId = 0;
                     element.VelocityX = reader.ReadInt16();
                     element.VelocityY = reader.ReadInt16();
                     break;
@@ -617,15 +647,29 @@ namespace HaCreator.MapSimulator.Physics
                     element.X = reader.ReadInt16();
                     element.Y = reader.ReadInt16();
                     element.FootholdId = reader.ReadInt16();
+                    element.VelocityX = 0;
+                    element.VelocityY = 0;
                     break;
                 case 9:
                     element.StatChanged = reader.ReadByte() != 0;
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.VelocityX = 0;
+                    element.VelocityY = 0;
+                    element.FootholdId = 0;
+                    element.Action = MoveAction.Stand;
+                    element.FacingRight = true;
+                    element.Duration = 0;
                     readsCommonMoveSuffix = false;
+                    refreshClientCarryState = false;
                     break;
                 case 11:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.FootholdId = 0;
                     element.VelocityX = reader.ReadInt16();
                     element.VelocityY = reader.ReadInt16();
-                    reader.ReadInt16();
+                    element.FallStartFootholdId = reader.ReadInt16();
                     break;
                 case 17:
                     element.X = reader.ReadInt16();
@@ -634,6 +678,10 @@ namespace HaCreator.MapSimulator.Physics
                     element.VelocityY = reader.ReadInt16();
                     break;
                 case >= 20 and <= 30:
+                    element.X = currentX;
+                    element.Y = currentY;
+                    element.VelocityX = currentVelocityX;
+                    element.VelocityY = currentVelocityY;
                     break;
                 default:
                     break;

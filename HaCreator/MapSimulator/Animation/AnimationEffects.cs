@@ -756,20 +756,21 @@ namespace HaCreator.MapSimulator.Animation
                 IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
             {
                 var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
-                if (overlayLayerHandleId > 0)
-                {
-                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
-                        layerCode: -1,
-                        overlayLayerHandleId,
-                        refCount: 2));
-                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
-                        layerCode: -1,
-                        overlayLayerHandleId,
-                        refCount: 1));
-                }
 
                 if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
                 {
+                    if (overlayLayerHandleId > 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 2));
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 1));
+                    }
+
                     return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                 }
 
@@ -792,6 +793,18 @@ namespace HaCreator.MapSimulator.Animation
                         layerCode,
                         handleId,
                         refCount));
+                }
+
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 2));
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 1));
                 }
 
                 foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
@@ -830,20 +843,21 @@ namespace HaCreator.MapSimulator.Animation
                 IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
             {
                 var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
-                if (overlayLayerHandleId > 0)
-                {
-                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
-                        layerCode: -1,
-                        overlayLayerHandleId,
-                        refCount: 2));
-                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
-                        layerCode: -1,
-                        overlayLayerHandleId,
-                        refCount: 1));
-                }
 
                 if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
                 {
+                    if (overlayLayerHandleId > 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 2));
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 1));
+                    }
+
                     return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                 }
 
@@ -868,6 +882,14 @@ namespace HaCreator.MapSimulator.Animation
                         refCount));
                 }
 
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 2));
+                }
+
                 var ownerRefCountsByHandle = new Dictionary<int, int>();
                 foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
                 {
@@ -888,6 +910,14 @@ namespace HaCreator.MapSimulator.Animation
                         layerCode,
                         handleId,
                         temporaryRefCount + ownerRefCount));
+                }
+
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 1));
                 }
 
                 foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
@@ -5078,7 +5108,8 @@ namespace HaCreator.MapSimulator.Animation
         bool RegistersOneTimeAnimation,
         int RegisterOneTimeAnimationDelayMs,
         bool RegisterOneTimeAnimationUsesFlipOrigin,
-        bool RegisterOneTimeAnimationHasCallback)
+        bool RegisterOneTimeAnimationHasCallback,
+        bool RegisterOneTimeAnimationUsesAutoFlipOverlay = false)
     {
         public static OneTimeAnimationRecoveredRegistrationTrace CreateFullChargedAngerGauge(string sourceUol)
         {
@@ -5132,7 +5163,8 @@ namespace HaCreator.MapSimulator.Animation
                 RegistersOneTimeAnimation: true,
                 RegisterOneTimeAnimationDelayMs: 0,
                 RegisterOneTimeAnimationUsesFlipOrigin: false,
-                RegisterOneTimeAnimationHasCallback: false);
+                RegisterOneTimeAnimationHasCallback: false,
+                RegisterOneTimeAnimationUsesAutoFlipOverlay: true);
         }
 
         public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedBasicOneTime(string sourceUol)
@@ -6980,8 +7012,10 @@ namespace HaCreator.MapSimulator.Animation
                     trace.RegisterOneTimeAnimationUsesFlipOrigin,
                     0,
                     0,
-                    false,
-                    AnimationOneTimeOverlayParentKind.None,
+                    trace.RegisterOneTimeAnimationUsesAutoFlipOverlay,
+                    trace.RegisterOneTimeAnimationUsesAutoFlipOverlay
+                        ? trace.OverlayParentKind
+                        : AnimationOneTimeOverlayParentKind.None,
                     trace.RegisterOneTimeAnimationDelayMs,
                     RegisterOneTimeAnimationHasCallback: trace.RegisterOneTimeAnimationHasCallback));
             }
@@ -8178,7 +8212,7 @@ namespace HaCreator.MapSimulator.Animation
                 itemId,
                 clientEquipIndex,
                 normalizedVariantIndices);
-            int allocatedItemEffectCount = 1;
+            int allocatedItemEffectCount = normalizedVariantIndices.Count;
             return new FollowItemEffectRecoveredNativeOwnerState(
                 itemId,
                 clientEquipIndex,
@@ -8213,14 +8247,13 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var handles = new int[effectVariantIndices.Count];
-            int sharedHandle = BuildRecoveredNativeItemEffectHandleId(
-                itemId,
-                clientEquipIndex,
-                effectVariantIndex: 0,
-                variantOrdinal: 0);
             for (int ordinal = 0; ordinal < handles.Length; ordinal++)
             {
-                handles[ordinal] = sharedHandle;
+                handles[ordinal] = BuildRecoveredNativeItemEffectHandleId(
+                    itemId,
+                    clientEquipIndex,
+                    effectVariantIndices[ordinal],
+                    ordinal);
             }
 
             return handles;
@@ -9282,8 +9315,12 @@ namespace HaCreator.MapSimulator.Animation
                     Rectangle spawnArea = Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
                         ? ResolvePacketOwnedExplosionSpawnArea(_area, _completedUpdates, _totalUpdates)
                         : _area;
-                    int spawnWidth = ResolveAreaAnimationSpawnWidth(spawnArea);
-                    int spawnHeight = ResolveAreaAnimationSpawnHeight(spawnArea);
+                    int spawnWidth = Owner == AnimationAreaAnimationOwner.PacketOwnedReservedArea
+                        ? ResolvePacketOwnedReservedAreaSpawnWidth(spawnArea)
+                        : ResolveAreaAnimationSpawnWidth(spawnArea);
+                    int spawnHeight = Owner == AnimationAreaAnimationOwner.PacketOwnedReservedArea
+                        ? ResolvePacketOwnedReservedAreaSpawnHeight(spawnArea)
+                        : ResolveAreaAnimationSpawnHeight(spawnArea);
                     float x = spawnArea.Left + random.Next(spawnWidth);
                     float y = spawnArea.Top + random.Next(spawnHeight);
                     if (Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
@@ -9337,6 +9374,16 @@ namespace HaCreator.MapSimulator.Animation
         internal static int ResolveAreaAnimationSpawnHeight(Rectangle area)
         {
             return Math.Max(1, area.Height);
+        }
+
+        internal static int ResolvePacketOwnedReservedAreaSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width + 1);
+        }
+
+        internal static int ResolvePacketOwnedReservedAreaSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height + 1);
         }
 
         internal static int ResolvePacketOwnedExplosionInitialSpawnWidth(Rectangle area)

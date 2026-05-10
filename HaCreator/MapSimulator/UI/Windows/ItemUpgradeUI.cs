@@ -893,6 +893,34 @@ namespace HaCreator.MapSimulator.UI
             return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
         }
 
+        public ItemUpgradeAttemptResult ValidatePacketOwnedPreparedUpgradeAtSlots(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            InventoryType? modifierInventoryType,
+            int? modifierSlotIndex,
+            bool success)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+
+            ItemUpgradeAttemptResult validationResult = TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: success,
+                previewOnly: true);
+            if (!validationResult.Success.HasValue)
+            {
+                return validationResult;
+            }
+
+            _statusMessage = validationResult.StatusMessage;
+            _lastUpgradeSucceeded = success;
+            _preferredModifierItemId = null;
+            return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+        }
+
         public void PlayPacketOwnedViciousHammerRequestPresentation()
         {
             // CUIItemUpgrade::OnButtonClicked emits Effect_ViciousHammer with nFinished=0,

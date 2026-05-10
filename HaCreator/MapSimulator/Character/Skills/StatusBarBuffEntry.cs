@@ -47,6 +47,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewParentLayerOrdinal { get; set; }
         public int TemporaryStatViewMainLayerOrdinal { get; set; }
         public int TemporaryStatViewShadowLayerOrdinal { get; set; }
+        public string TemporaryStatViewLayerOriginName { get; set; }
+        public int TemporaryStatViewLayerZ { get; set; }
         public bool IsTemporaryStatViewReleased { get; set; }
         public int TemporaryStatViewReleaseTime { get; set; } = int.MinValue;
         public int TemporaryStatViewTerminalReleaseSequence { get; set; }
@@ -59,6 +61,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewParentLayerReleaseOrder { get; set; }
         public int TemporaryStatViewMainLayerReleaseOrder { get; set; }
         public int TemporaryStatViewShadowLayerReleaseOrder { get; set; }
+        public int TemporaryStatViewObjectReleaseReferenceCountBefore { get; set; }
+        public int TemporaryStatViewObjectReleaseReferenceCountAfter { get; set; }
+        public int TemporaryStatViewParentLayerReleaseReferenceCountBefore { get; set; }
+        public int TemporaryStatViewParentLayerReleaseReferenceCountAfter { get; set; }
+        public int TemporaryStatViewMainLayerReleaseReferenceCountBefore { get; set; }
+        public int TemporaryStatViewMainLayerReleaseReferenceCountAfter { get; set; }
+        public int TemporaryStatViewShadowLayerReleaseReferenceCountBefore { get; set; }
+        public int TemporaryStatViewShadowLayerReleaseReferenceCountAfter { get; set; }
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
@@ -90,6 +100,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasReleaseSequence { get; set; }
         public int ShadowCanvasRemoveOrder { get; set; }
         public int ShadowCanvasReleaseOrder { get; set; }
+        public int ShadowCanvasReleaseReferenceCountBefore { get; set; }
+        public int ShadowCanvasReleaseReferenceCountAfter { get; set; }
         public int ShadowCanvasMutationLoadOrder { get; set; }
         public int ShadowCanvasMutationRemoveOrder { get; set; }
         public int ShadowCanvasMutationInsertOrder { get; set; }

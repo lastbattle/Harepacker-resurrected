@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _okButton;
         private readonly UIObject _yesButton;
         private readonly UIObject _noButton;
+        private readonly UIObject _cancelButton;
         private readonly UIObject _questionYesButton;
         private readonly UIObject _questionNoButton;
         private readonly UIObject _acceptButton;
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject okButton,
             UIObject yesButton,
             UIObject noButton,
+            UIObject cancelButton,
             UIObject questionYesButton,
             UIObject questionNoButton,
             UIObject acceptButton,
@@ -107,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
             _okButton = RegisterButton(okButton, true);
             _yesButton = RegisterButton(yesButton, true);
             _noButton = RegisterButton(noButton, false);
+            _cancelButton = RegisterButton(cancelButton, false);
             _questionYesButton = RegisterButton(questionYesButton, true);
             _questionNoButton = RegisterButton(questionNoButton, false);
             _acceptButton = RegisterButton(acceptButton, true);
@@ -356,12 +359,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_drawPrimaryButtonLabel)
+            if (_drawPrimaryButtonLabel && ShouldDrawButtonTextOverlay(_frameVariant))
             {
                 DrawButtonLabel(sprite, _activePrimaryButton, _primaryLabel);
             }
 
-            if (_drawSecondaryButtonLabel)
+            if (_drawSecondaryButtonLabel && ShouldDrawButtonTextOverlay(_frameVariant))
             {
                 DrawButtonLabel(sprite, _activeSecondaryButton, _secondaryLabel);
             }
@@ -417,6 +420,7 @@ namespace HaCreator.MapSimulator.UI
             HideButton(_okButton);
             HideButton(_yesButton);
             HideButton(_noButton);
+            HideButton(_cancelButton);
             HideButton(_questionYesButton);
             HideButton(_questionNoButton);
             HideButton(_acceptButton);
@@ -426,41 +430,49 @@ namespace HaCreator.MapSimulator.UI
             HideButton(_exitButton);
             HideButton(_nexonButton);
 
-            switch (_buttonLayout)
+            if (UsesFieldMessageBoxChalkboardComposeLayout)
             {
-                case LoginUtilityDialogButtonLayout.YesNo:
-                    if (_visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo)
-                    {
-                        _activePrimaryButton = _questionYesButton ?? _yesButton ?? _okButton;
-                        _activeSecondaryButton = _questionNoButton ?? _noButton;
-                    }
-                    else
-                    {
+                _activePrimaryButton = _okButton ?? _yesButton;
+                _activeSecondaryButton = _cancelButton ?? _noButton;
+            }
+            else
+            {
+                switch (_buttonLayout)
+                {
+                    case LoginUtilityDialogButtonLayout.YesNo:
+                        if (_visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo)
+                        {
+                            _activePrimaryButton = _questionYesButton ?? _yesButton ?? _okButton;
+                            _activeSecondaryButton = _questionNoButton ?? _noButton;
+                        }
+                        else
+                        {
+                            _activePrimaryButton = _yesButton ?? _okButton;
+                            _activeSecondaryButton = _noButton;
+                        }
+                        break;
+                    case LoginUtilityDialogButtonLayout.Accept:
+                        _activePrimaryButton = _acceptButton ?? _okButton;
+                        break;
+                    case LoginUtilityDialogButtonLayout.NowLater:
+                        _activePrimaryButton = _nowButton ?? _okButton;
+                        _activeSecondaryButton = _laterButton;
+                        break;
+                    case LoginUtilityDialogButtonLayout.EnableDisableSpw:
                         _activePrimaryButton = _yesButton ?? _okButton;
                         _activeSecondaryButton = _noButton;
-                    }
-                    break;
-                case LoginUtilityDialogButtonLayout.Accept:
-                    _activePrimaryButton = _acceptButton ?? _okButton;
-                    break;
-                case LoginUtilityDialogButtonLayout.NowLater:
-                    _activePrimaryButton = _nowButton ?? _okButton;
-                    _activeSecondaryButton = _laterButton;
-                    break;
-                case LoginUtilityDialogButtonLayout.EnableDisableSpw:
-                    _activePrimaryButton = _yesButton ?? _okButton;
-                    _activeSecondaryButton = _noButton;
-                    break;
-                case LoginUtilityDialogButtonLayout.RestartExit:
-                    _activePrimaryButton = _restartButton ?? _okButton;
-                    _activeSecondaryButton = _exitButton;
-                    break;
-                case LoginUtilityDialogButtonLayout.Nexon:
-                    _activePrimaryButton = _nexonButton ?? _okButton;
-                    break;
-                default:
-                    _activePrimaryButton = _okButton;
-                    break;
+                        break;
+                    case LoginUtilityDialogButtonLayout.RestartExit:
+                        _activePrimaryButton = _restartButton ?? _okButton;
+                        _activeSecondaryButton = _exitButton;
+                        break;
+                    case LoginUtilityDialogButtonLayout.Nexon:
+                        _activePrimaryButton = _nexonButton ?? _okButton;
+                        break;
+                    default:
+                        _activePrimaryButton = _okButton;
+                        break;
+                }
             }
 
             if (_activePrimaryButton != null && _activeSecondaryButton != null)
@@ -1014,6 +1026,11 @@ namespace HaCreator.MapSimulator.UI
         internal static bool UsesFieldMessageBoxChalkboardComposeLayoutVariant(LoginUtilityDialogFrameVariant frameVariant)
         {
             return frameVariant == LoginUtilityDialogFrameVariant.FieldMessageBoxChalkboardCompose;
+        }
+
+        internal static bool ShouldDrawButtonTextOverlay(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            return !UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant);
         }
 
         internal static bool ShouldDrawTitleHeader(LoginUtilityDialogFrameVariant frameVariant, string title)

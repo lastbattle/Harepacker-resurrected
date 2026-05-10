@@ -1136,6 +1136,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptChannelId = -1;
         private string _lastShipmentPromptText = string.Empty;
         private bool _hasAcceptedGetAllRequestInFlight;
+        private bool _hasStoreBankNpcOwnerReference;
         private int _ownerRowRevision;
         private byte[] _lastOpenPayloadTrailingBytes = Array.Empty<byte>();
 
@@ -1146,6 +1147,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool GetAllRequestWasAccepted { get; private set; }
         internal bool HasDecodedItems => _decodedItems.Count > 0;
         internal bool HasAcceptedGetAllRequestInFlight => _hasAcceptedGetAllRequestInFlight;
+        internal bool HasStoreBankNpcOwnerReference => _hasStoreBankNpcOwnerReference;
         internal int OwnerRowRevision => _ownerRowRevision;
         internal int OwnerSlotCount => _slotCount;
         internal bool IsOwnerGetButtonEnabled =>
@@ -1159,6 +1161,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void Close()
         {
             IsOpen = false;
+            _hasStoreBankNpcOwnerReference = false;
             ResetTransientRequestState();
             StatusMessage = "CStoreBankDlg owner closed locally.";
             AppendNote(StatusMessage);
@@ -1213,6 +1216,7 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = false;
             IsOpen = false;
+            _hasStoreBankNpcOwnerReference = false;
             StatusMessage = "CStoreBankDlg::SetRet closed the owner and mirrored the return packet.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
@@ -1676,6 +1680,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (!_hasStoreBankNpcOwnerReference)
+            {
+                StatusMessage = $"CStoreBankDlg packet 369 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} hit the recovered disconnect hazard because m_pSBNPC was already cleared.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return true;
+            }
+
+            _hasStoreBankNpcOwnerReference = false;
             ResetTransientRequestState();
             StatusMessage = _lastSubtype switch
             {
@@ -1722,6 +1735,14 @@ namespace HaCreator.MapSimulator.Interaction
                     if (!IsOpen)
                     {
                         StatusMessage = "CStoreBankDlg ignored packet 370 subtype 36 because no store-bank unique-modeless owner is open.";
+                        AppendNote(StatusMessage);
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    if (!_hasStoreBankNpcOwnerReference)
+                    {
+                        StatusMessage = "CStoreBankDlg packet 370 subtype 36 hit the recovered disconnect hazard because m_pSBNPC was already cleared before SendGetAllRequest.";
                         AppendNote(StatusMessage);
                         message = StatusMessage;
                         return true;
@@ -1788,6 +1809,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyOpenPacket(byte[] payload, out string message)
         {
             IsOpen = true;
+            _hasStoreBankNpcOwnerReference = true;
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = false;
             ResetShipmentPromptState();
@@ -1806,6 +1828,20 @@ namespace HaCreator.MapSimulator.Interaction
             AppendNote(StatusMessage);
             message = StatusMessage;
             return true;
+        }
+
+        internal string ApplyOpenBlockedByUniqueModelessOwner(string blockingOwner)
+        {
+            string owner = string.IsNullOrWhiteSpace(blockingOwner)
+                ? "another unique-modeless owner"
+                : blockingOwner;
+            ResetTransientRequestState();
+            HasPendingGetAllRequest = false;
+            GetAllRequestWasAccepted = false;
+            _hasStoreBankNpcOwnerReference = false;
+            StatusMessage = $"CStoreBankDlg packet 370 subtype 35 stayed staged because the recovered OnPacket branch throws the unique-modeless disconnect hazard while {owner} is visible.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
         }
 
         private void ResetShipmentPromptState()

@@ -52,4 +52,19 @@ namespace HaCreator.MapSimulator.Interaction
                 : Detail;
         }
     }
+
+    internal readonly record struct SocialListOutboundRequestTrace(
+        SocialListTab Tab,
+        SocialListOutboundRequestKind? Kind,
+        ushort Opcode,
+        byte Subtype,
+        int PayloadLength,
+        string PayloadHex)
+    {
+        internal string Describe()
+        {
+            string kindText = Kind.HasValue ? Kind.Value.ToString() : "unknown";
+            return $"{Tab.ToString().ToLowerInvariant()}-request:{kindText}/subtype-{Subtype}";
+        }
+    }
 }

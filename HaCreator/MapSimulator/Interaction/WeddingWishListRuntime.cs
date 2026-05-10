@@ -707,6 +707,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _isOpen = false;
+            _mode = WeddingWishListDialogMode.None;
+            ClearTransientActionState();
             _statusMessage = "Closed the wedding wish-list dialog.";
             return _statusMessage;
         }
@@ -774,7 +776,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryApplyTransferResultPacket(IReadOnlyList<byte> payload, out string message)
         {
             message = string.Empty;
-            byte subtype = payload?.Count > 0 ? payload[0] : (byte)0;
+            IReadOnlyList<byte> safePayload = payload ?? Array.Empty<byte>();
+            byte subtype = safePayload.Count > 0 ? safePayload[0] : (byte)0;
             if (subtype == SendWishListInputSubtype)
             {
                 if (!_hasPendingInputRequest)
@@ -787,9 +790,11 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _hasPendingInputRequest = false;
                 ClearTransientActionState();
-                byte resultCode = payload.Count > 1 ? payload[1] : (byte)0;
+                byte resultCode = safePayload.Count > 1 ? safePayload[1] : (byte)0;
                 if (resultCode == 0)
                 {
+                    _isOpen = false;
+                    _mode = WeddingWishListDialogMode.None;
                     _statusMessage = "Applied wedding wish-list input completion from opcode 162 subtype 9 and cleared the pending SendWishListInput request.";
                 }
                 else
@@ -803,7 +808,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (TryApplyClientOwnedTransferResultSubtype(subtype, payload, out message))
+            if (TryApplyClientOwnedTransferResultSubtype(subtype, safePayload, out message))
             {
                 return true;
             }
@@ -826,7 +831,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            byte transferResultCode = payload.Count > 1 ? payload[1] : (byte)0;
+            byte transferResultCode = safePayload.Count > 1 ? safePayload[1] : (byte)0;
             if (transferResultCode != 0)
             {
                 message = RejectPendingTransferRequest(subtype, transferResultCode);

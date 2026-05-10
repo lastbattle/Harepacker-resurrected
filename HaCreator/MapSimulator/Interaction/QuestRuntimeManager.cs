@@ -1116,16 +1116,30 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion demand blocks while one of the excluded buffs is active.");
             }
 
-            int currentMonsterBookCardTypes =
-                ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider);
-            if (HasUnmetMonsterBookCardTypeMinimumDemand(
+            bool hasMonsterBookDemandOwner = _monsterBookOwnedCardTypeCountProvider != null;
+            if (HasUnresolvedMonsterBookCompletionDemand(
+                    definition.EndMonsterBookMinCardTypes,
+                    definition.EndMonsterBookMaxCardTypes,
+                    definition.EndMonsterBookCardRequirements,
+                    _monsterBookOwnedCardTypeCountProvider,
+                    _monsterBookCardCountByMobIdProvider))
+            {
+                issues.Add("Monster Book demand owner is unavailable.");
+            }
+
+            int currentMonsterBookCardTypes = hasMonsterBookDemandOwner
+                ? ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider)
+                : 0;
+            if (hasMonsterBookDemandOwner &&
+                HasUnmetMonsterBookCardTypeMinimumDemand(
                     definition.EndMonsterBookMinCardTypes,
                     currentMonsterBookCardTypes))
             {
                 issues.Add($"Monster Book demand requires at least {definition.EndMonsterBookMinCardTypes.Value} owned card type(s).");
             }
 
-            if (HasUnmetMonsterBookCardTypeMaximumDemand(
+            if (hasMonsterBookDemandOwner &&
+                HasUnmetMonsterBookCardTypeMaximumDemand(
                     definition.EndMonsterBookMaxCardTypes,
                     currentMonsterBookCardTypes))
             {
@@ -1467,6 +1481,89 @@ namespace HaCreator.MapSimulator.Interaction
             return maxOwnedCardTypes.HasValue
                    && maxOwnedCardTypes.Value >= 0
                    && currentOwnedCardTypes > maxOwnedCardTypes.Value;
+        }
+
+        private static bool HasUnresolvedMonsterBookCompletionDemand(
+            int? minOwnedCardTypes,
+            int? maxOwnedCardTypes,
+            IReadOnlyList<QuestMonsterBookCardRequirement> cardRequirements,
+            Func<int> ownedCardTypeCountProvider,
+            Func<int, int> cardCountByMobIdProvider)
+        {
+            bool needsCardTypeOwner =
+                (minOwnedCardTypes.HasValue && minOwnedCardTypes.Value >= 0) ||
+                (maxOwnedCardTypes.HasValue && maxOwnedCardTypes.Value >= 0);
+            if (needsCardTypeOwner && ownedCardTypeCountProvider == null)
+            {
+                return true;
+            }
+
+            if (cardRequirements == null || cardRequirements.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < cardRequirements.Count; i++)
+            {
+                QuestMonsterBookCardRequirement requirement = cardRequirements[i];
+                if (requirement?.MobId > 0)
+                {
+                    return cardCountByMobIdProvider == null;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasUnresolvedMonsterBookCompletionDemandForTesting(
+            int? minOwnedCardTypes,
+            int? maxOwnedCardTypes,
+            IReadOnlyList<(int MobId, int? MinCount, int? MaxCount)> cardRequirements,
+            bool hasOwnedCardTypeCountProvider,
+            bool hasCardCountByMobIdProvider)
+        {
+            bool needsCardTypeOwner =
+                (minOwnedCardTypes.HasValue && minOwnedCardTypes.Value >= 0) ||
+                (maxOwnedCardTypes.HasValue && maxOwnedCardTypes.Value >= 0);
+            if (needsCardTypeOwner && !hasOwnedCardTypeCountProvider)
+            {
+                return true;
+            }
+
+            if (cardRequirements == null || cardRequirements.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < cardRequirements.Count; i++)
+            {
+                if (cardRequirements[i].MobId > 0)
+                {
+                    return !hasCardCountByMobIdProvider;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasUnmetOrUnresolvedMonsterBookCompletionDemandForTesting(
+            int? minOwnedCardTypes,
+            int? maxOwnedCardTypes,
+            int currentOwnedCardTypes,
+            IReadOnlyList<(int MobId, int? MinCount, int? MaxCount)> cardRequirements,
+            Func<int, int> resolveCardCountByMobIdProvider,
+            bool hasOwnedCardTypeCountProvider,
+            bool hasCardCountByMobIdProvider)
+        {
+            return HasUnresolvedMonsterBookCompletionDemandForTesting(
+                       minOwnedCardTypes,
+                       maxOwnedCardTypes,
+                       cardRequirements,
+                       hasOwnedCardTypeCountProvider,
+                       hasCardCountByMobIdProvider) ||
+                   HasUnmetMonsterBookCardTypeMinimumDemand(minOwnedCardTypes, currentOwnedCardTypes) ||
+                   HasUnmetMonsterBookCardTypeMaximumDemand(maxOwnedCardTypes, currentOwnedCardTypes) ||
+                   HasUnmetMonsterBookCardDemandForTesting(cardRequirements, resolveCardCountByMobIdProvider);
         }
 
         internal static bool HasUnmetMonsterBookCardDemandForTesting(
@@ -5731,19 +5828,30 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetExcludedCompletionBuffDemand(
                     definition.EndExcludedBuffIds,
                     _hasActiveQuestDemandBuffProvider);
-            int currentMonsterBookCardTypes = state == QuestStateType.Started
+            bool hasMonsterBookDemandOwner = _monsterBookOwnedCardTypeCountProvider != null;
+            bool hasMonsterBookCardDemandOwner = _monsterBookCardCountByMobIdProvider != null;
+            int currentMonsterBookCardTypes = state == QuestStateType.Started && hasMonsterBookDemandOwner
                 ? ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider)
                 : 0;
             bool hasUnmetMonsterBookRequirement = state == QuestStateType.Started &&
-                (HasUnmetMonsterBookCardTypeMinimumDemand(
+                (HasUnresolvedMonsterBookCompletionDemand(
                      definition.EndMonsterBookMinCardTypes,
-                     currentMonsterBookCardTypes) ||
-                 HasUnmetMonsterBookCardTypeMaximumDemand(
                      definition.EndMonsterBookMaxCardTypes,
-                     currentMonsterBookCardTypes) ||
-                 HasUnmetMonsterBookCardDemand(
                      definition.EndMonsterBookCardRequirements,
-                     _monsterBookCardCountByMobIdProvider));
+                     _monsterBookOwnedCardTypeCountProvider,
+                     _monsterBookCardCountByMobIdProvider) ||
+                 (hasMonsterBookDemandOwner &&
+                  HasUnmetMonsterBookCardTypeMinimumDemand(
+                     definition.EndMonsterBookMinCardTypes,
+                     currentMonsterBookCardTypes)) ||
+                 (hasMonsterBookDemandOwner &&
+                  HasUnmetMonsterBookCardTypeMaximumDemand(
+                     definition.EndMonsterBookMaxCardTypes,
+                     currentMonsterBookCardTypes)) ||
+                 (hasMonsterBookCardDemandOwner &&
+                  HasUnmetMonsterBookCardDemand(
+                     definition.EndMonsterBookCardRequirements,
+                     _monsterBookCardCountByMobIdProvider)));
             bool hasUnmetTimeKeepFieldSetRequirement = state == QuestStateType.Started &&
                 HasUnmetCompletionTimeKeepFieldSetDemand(
                     definition.EndTimeKeepFieldSet,
@@ -6185,6 +6293,12 @@ namespace HaCreator.MapSimulator.Interaction
                     "cards"))
             {
                 return monsterBookPages;
+            }
+
+            if (hasUnmetMonsterBookRequirement &&
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> monsterBookItemPages, "item", "items"))
+            {
+                return monsterBookItemPages;
             }
 
             if (hasUnmetTimeKeepFieldSetRequirement &&
@@ -7415,23 +7529,38 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion demand blocks while one of the excluded buffs is active.");
             }
 
-            int currentMonsterBookCardTypes =
-                ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider);
-            if (HasUnmetMonsterBookCardTypeMinimumDemand(
+            bool hasMonsterBookDemandOwner = _monsterBookOwnedCardTypeCountProvider != null;
+            if (HasUnresolvedMonsterBookCompletionDemand(
+                    definition.EndMonsterBookMinCardTypes,
+                    definition.EndMonsterBookMaxCardTypes,
+                    definition.EndMonsterBookCardRequirements,
+                    _monsterBookOwnedCardTypeCountProvider,
+                    _monsterBookCardCountByMobIdProvider))
+            {
+                issues.Add("Monster Book demand owner is unavailable.");
+            }
+
+            int currentMonsterBookCardTypes = hasMonsterBookDemandOwner
+                ? ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider)
+                : 0;
+            if (hasMonsterBookDemandOwner &&
+                HasUnmetMonsterBookCardTypeMinimumDemand(
                     definition.EndMonsterBookMinCardTypes,
                     currentMonsterBookCardTypes))
             {
                 issues.Add($"Monster Book demand requires at least {definition.EndMonsterBookMinCardTypes.Value} owned card type(s).");
             }
 
-            if (HasUnmetMonsterBookCardTypeMaximumDemand(
+            if (hasMonsterBookDemandOwner &&
+                HasUnmetMonsterBookCardTypeMaximumDemand(
                     definition.EndMonsterBookMaxCardTypes,
                     currentMonsterBookCardTypes))
             {
                 issues.Add($"Monster Book demand requires at most {definition.EndMonsterBookMaxCardTypes.Value} owned card type(s).");
             }
 
-            if (HasUnmetMonsterBookCardDemand(
+            if (_monsterBookCardCountByMobIdProvider != null &&
+                HasUnmetMonsterBookCardDemand(
                     definition.EndMonsterBookCardRequirements,
                     _monsterBookCardCountByMobIdProvider))
             {
@@ -10270,23 +10399,30 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<DayOfWeek> ParseAllowedDays(WzImageProperty property)
         {
-            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            if (property == null)
             {
                 return Array.Empty<DayOfWeek>();
             }
 
             var days = new List<DayOfWeek>();
-            for (int i = 0; i < property.WzProperties.Count; i++)
+            if (TryParseAllowedDay(property.GetString(), out DayOfWeek scalarDay))
             {
-                string rawValue = (property.WzProperties[i] as WzStringProperty)?.Value;
-                if (!TryParseAllowedDay(rawValue, out DayOfWeek day))
-                {
-                    continue;
-                }
+                days.Add(scalarDay);
+            }
 
-                if (!days.Contains(day))
+            if (property.WzProperties != null)
+            {
+                for (int i = 0; i < property.WzProperties.Count; i++)
                 {
-                    days.Add(day);
+                    if (!TryParseAllowedDay(property.WzProperties[i]?.GetString(), out DayOfWeek day))
+                    {
+                        continue;
+                    }
+
+                    if (!days.Contains(day))
+                    {
+                        days.Add(day);
+                    }
                 }
             }
 

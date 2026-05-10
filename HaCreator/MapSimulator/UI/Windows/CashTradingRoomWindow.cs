@@ -43,12 +43,24 @@ namespace HaCreator.MapSimulator.UI
         {
             public int ControlId { get; init; }
             public int FontStringPoolId { get; init; }
+            public int BackColor { get; init; }
+            public int FontColor { get; init; }
             public Point Position { get; init; }
             public System.Drawing.Size Size { get; init; }
             public int MaxLength { get; init; }
             public bool HasFocus { get; init; }
             public bool SoftKeyboardActive { get; init; }
             public int Revision { get; init; }
+        }
+
+        public sealed class ChatLogRuntimeSnapshot
+        {
+            public Point Position { get; init; }
+            public System.Drawing.Size Size { get; init; }
+            public int EnableChatParam { get; init; }
+            public int MaxVisibleLines { get; init; }
+            public int HistoryCount { get; init; }
+            public int ScrollOffset { get; init; }
         }
 
         public sealed class ScrollBarRuntimeSnapshot
@@ -98,6 +110,7 @@ namespace HaCreator.MapSimulator.UI
         public sealed class TradingRoomRuntimeSnapshot
         {
             public ChatEditRuntimeSnapshot ChatEdit { get; init; }
+            public ChatLogRuntimeSnapshot ChatLog { get; init; }
             public ScrollBarRuntimeSnapshot ScrollBar { get; init; }
             public FontRuntimeSnapshot FontOwner { get; init; }
             public TradeSessionRuntimeSnapshot TradeSession { get; init; }
@@ -152,6 +165,8 @@ namespace HaCreator.MapSimulator.UI
         {
             public int ControlId { get; init; } = 1006;
             public int FontStringPoolId { get; init; } = 0x1A25;
+            public int BackColor { get; init; } = ChatEditBackColor;
+            public int FontColor { get; init; } = ChatEditFontColor;
             public Point Position { get; init; } = new(ChatEditX, ChatEditY);
             public System.Drawing.Size Size { get; init; } = new(ChatEditWidth, ChatEditHeight);
             public int MaxLength { get; init; } = ChatMaxLength;
@@ -203,10 +218,13 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatEditY = 158;
         private const int ChatEditWidth = 165;
         private const int ChatEditHeight = 16;
+        private const int ChatEditBackColor = 0;
+        private const int ChatEditFontColor = -11184811;
         private const int ChatLogX = 409;
         private const int ChatLogY = 18;
         private const int ChatLogWidth = 216;
         private const int ChatLogHeight = 128;
+        private const int ChatLogEnableParam = 0;
         private const int ChatScrollX = 630;
         private const int ChatScrollY = 12;
         private const int ChatScrollHeight = 135;
@@ -378,6 +396,69 @@ namespace HaCreator.MapSimulator.UI
         internal static IReadOnlyList<ButtonControlRuntimeState> BuildRecoveredButtonControlRuntimeStatesForTests()
         {
             return BuildButtonControlRuntimeStates(TradeOwnerFocusTarget.ChatEdit);
+        }
+
+        internal static TradingRoomRuntimeSnapshot BuildInitialRuntimeSnapshotForTests()
+        {
+            return new TradingRoomRuntimeSnapshot
+            {
+                ChatEdit = new ChatEditRuntimeSnapshot
+                {
+                    ControlId = 1006,
+                    FontStringPoolId = 0x1A25,
+                    BackColor = ChatEditBackColor,
+                    FontColor = ChatEditFontColor,
+                    Position = new Point(ChatEditX, ChatEditY),
+                    Size = new System.Drawing.Size(ChatEditWidth, ChatEditHeight),
+                    MaxLength = ChatMaxLength,
+                    HasFocus = true,
+                    SoftKeyboardActive = false,
+                    Revision = 0
+                },
+                ChatLog = new ChatLogRuntimeSnapshot
+                {
+                    Position = new Point(ChatLogX, ChatLogY),
+                    Size = new System.Drawing.Size(ChatLogWidth, ChatLogHeight),
+                    EnableChatParam = ChatLogEnableParam,
+                    MaxVisibleLines = MaxVisibleChatLines,
+                    HistoryCount = 3,
+                    ScrollOffset = 0
+                },
+                ScrollBar = new ScrollBarRuntimeSnapshot
+                {
+                    ControlId = 1000,
+                    UpButtonId = 1,
+                    DownButtonId = 8,
+                    Position = new Point(ChatScrollX, ChatScrollY),
+                    Height = ChatScrollHeight,
+                    WheelRange = ChatWheelRange,
+                    Offset = 0,
+                    MaxOffset = 0,
+                    IsDragging = false,
+                    Revision = 0
+                },
+                FontOwner = new FontRuntimeSnapshot
+                {
+                    NumberImageStringPoolId = 0x50E,
+                    HasSmallWhiteFont = true,
+                    HasNoBlackFont = true,
+                    HasNoBlueFont = true,
+                    HasSmallGrayFont = true,
+                    HasSmallRedFont = true,
+                    HasRemainGrayFont = true,
+                    HasNumberImage = true,
+                    Revision = 0
+                },
+                TradeSession = new TradeSessionRuntimeSnapshot
+                {
+                    Stage = TradeSessionStage.Draft.ToString(),
+                    RemoteProgressState = RemoteTradeProgressState.Reviewing.ToString()
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(TradeOwnerFocusTarget.ChatEdit),
+                VisibleChatEntries = Array.Empty<string>(),
+                FocusTarget = TradeOwnerFocusTarget.ChatEdit.ToString(),
+                StatusMessage = "CCashTradingRoomDlg initial runtime snapshot."
+            };
         }
 
         public void ResetOwnerSession()
@@ -1005,12 +1086,23 @@ namespace HaCreator.MapSimulator.UI
                 {
                     ControlId = _editRuntime.ControlId,
                     FontStringPoolId = _editRuntime.FontStringPoolId,
+                    BackColor = _editRuntime.BackColor,
+                    FontColor = _editRuntime.FontColor,
                     Position = _editRuntime.Position,
                     Size = _editRuntime.Size,
                     MaxLength = _editRuntime.MaxLength,
                     HasFocus = _editRuntime.HasFocus,
                     SoftKeyboardActive = _editRuntime.SoftKeyboardActive,
                     Revision = _editRuntime.Revision
+                },
+                ChatLog = new ChatLogRuntimeSnapshot
+                {
+                    Position = new Point(ChatLogX, ChatLogY),
+                    Size = new System.Drawing.Size(ChatLogWidth, ChatLogHeight),
+                    EnableChatParam = ChatLogEnableParam,
+                    MaxVisibleLines = MaxVisibleChatLines,
+                    HistoryCount = _chatEntries.Count,
+                    ScrollOffset = _chatScrollOffset
                 },
                 ScrollBar = new ScrollBarRuntimeSnapshot
                 {

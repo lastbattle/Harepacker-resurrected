@@ -4630,6 +4630,7 @@ namespace HaCreator.MapSimulator.UI
         public int? OwnerAccountId { get; set; }
         public int? OwnerCharacterId { get; set; }
         public int? ClientItemToken { get; set; }
+        public bool IsSharableOnceItem { get; set; }
         public bool IsCashOwnershipLocked { get; set; }
         public long? CashItemSerialNumber { get; set; }
         public int PendingRequestId { get; set; }
@@ -4665,6 +4666,7 @@ namespace HaCreator.MapSimulator.UI
                 OwnerAccountId = OwnerAccountId,
                 OwnerCharacterId = OwnerCharacterId,
                 ClientItemToken = ClientItemToken,
+                IsSharableOnceItem = IsSharableOnceItem,
                 IsCashOwnershipLocked = IsCashOwnershipLocked,
                 CashItemSerialNumber = CashItemSerialNumber,
                 PendingRequestId = PendingRequestId

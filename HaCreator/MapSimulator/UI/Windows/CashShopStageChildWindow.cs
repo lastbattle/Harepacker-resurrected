@@ -282,6 +282,7 @@ namespace HaCreator.MapSimulator.UI
             public sealed class SelectorEntryState
             {
                 public int Index { get; init; }
+                public int SourceStringPoolId { get; init; }
                 public string Label { get; init; } = string.Empty;
                 public bool IsActive { get; init; }
             }
@@ -2929,6 +2930,7 @@ namespace HaCreator.MapSimulator.UI
                     .Select(entry => new OneADayOwnerState.SelectorEntryState
                     {
                         Index = entry.Index,
+                        SourceStringPoolId = entry.SourceStringPoolId,
                         Label = entry.Label,
                         IsActive = entry.Index == _oneADaySelectorIndex
                     })
@@ -2944,12 +2946,14 @@ namespace HaCreator.MapSimulator.UI
                 new OneADayOwnerState.SelectorEntryState
                 {
                     Index = 0,
+                    SourceStringPoolId = 0x16A1,
                     Label = todayLabel,
                     IsActive = _oneADaySelectorIndex == 0
                 },
                 new OneADayOwnerState.SelectorEntryState
                 {
                     Index = 1,
+                    SourceStringPoolId = 0x16A2,
                     Label = previousLabel,
                     IsActive = _oneADaySelectorIndex == 1
                 }

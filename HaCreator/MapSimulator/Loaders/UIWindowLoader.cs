@@ -2120,6 +2120,9 @@ namespace HaCreator.MapSimulator.Loaders
                                  ?? LoadButton(loginNoticeProperty, "BtYes", btClickSound, btOverSound, device);
             UIObject noButton = LoadButton(utilDlgProperty, "BtNo", btClickSound, btOverSound, device)
                                 ?? LoadButton(loginNoticeProperty, "BtNo", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(utilDlgProperty, "BtCancel", btClickSound, btOverSound, device)
+                                    ?? LoadButton(loginNoticeProperty, "BtCancel", btClickSound, btOverSound, device)
+                                    ?? noButton;
             UIObject questionYesButton = LoadButton(loginNoticeProperty, "BtYes1", btClickSound, btOverSound, device)
                                          ?? yesButton;
             UIObject questionNoButton = LoadButton(loginNoticeProperty, "BtNo1", btClickSound, btOverSound, device)
@@ -2149,6 +2152,7 @@ namespace HaCreator.MapSimulator.Loaders
                 okButton,
                 yesButton,
                 noButton,
+                cancelButton,
                 questionYesButton,
                 questionNoButton,
                 acceptButton,

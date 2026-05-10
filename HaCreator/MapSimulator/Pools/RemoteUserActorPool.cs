@@ -597,7 +597,8 @@ namespace HaCreator.MapSimulator.Pools
             BlessingArmor = 5,
             RepeatEffect = 6,
             MagicShield = 7,
-            FinalCut = 8
+            SuddenDeath = 8,
+            FinalCut = 9
         }
 
         public sealed class RemoteShadowPartnerPresentationState
@@ -688,23 +689,50 @@ namespace HaCreator.MapSimulator.Pools
             public ItemEffectAnimationSet Effect { get; init; }
             public int SimulatedOwnerLayerHandleId { get; init; }
             public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
             public int AnimationStartTime { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
+            private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
 
             public void CaptureRegisteredLayerReference()
             {
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    TerminateRequested = false;
+                    IsTerminated = false;
+                    return;
+                }
+
                 SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
                 TerminateRequested = false;
                 IsTerminated = false;
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                            RemoteEffectByItemActionOwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            SimulatedOwnerLayerHandleRefCount,
+                            _visibleLayerReferenceMutations.Count));
+                }
             }
 
             public void ReleaseLayerReference()
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            RemoteEffectByItemActionOwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
                 SimulatedOwnerLayerHandleRefCount = 0;
             }
         }
@@ -1425,6 +1453,17 @@ namespace HaCreator.MapSimulator.Pools
         {
             RemoteMoreWildDamageUpSkillId
         };
+        private static readonly int[] RemoteSuddenDeathSkillIds =
+        {
+            1221009,
+            30010111,
+            3110001,
+            3210001,
+            3221007,
+            4331003,
+            5721006,
+            31121005
+        };
         private static readonly HashSet<int> RemotePreparedSkillUseEffectSkillIds = new()
         {
             35001001,
@@ -1443,6 +1482,7 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteTemporaryStatBlessingArmorActionOwnerName = "aux.remote.temporaryStat.blessingArmor.persistent";
         private const string RemoteTemporaryStatRepeatEffectActionOwnerName = "aux.remote.temporaryStat.repeatEffect.persistent";
         private const string RemoteTemporaryStatMagicShieldActionOwnerName = "aux.remote.temporaryStat.magicShield.persistent";
+        private const string RemoteTemporaryStatSuddenDeathActionOwnerName = "aux.remote.temporaryStat.suddenDeath.persistent";
         private const string RemoteTemporaryStatFinalCutActionOwnerName = "aux.remote.temporaryStat.finalCut.persistent";
         private const string RemotePacketOwnedEmotionActionOwnerName = "aux.remote.packetOwnedEmotion.persistent";
         private const string RemoteEffectByItemActionOwnerName = "aux.remote.effectByItem.oneTime";
@@ -2688,6 +2728,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (!markerType.HasValue
+                && directionOverlayOnly
+                && actor.HasPacketAuthoredHelperState
+                && actor.HelperMarkerType.HasValue)
+            {
+                markerType = actor.HelperMarkerType;
+            }
+
             actor.HelperMarkerType = markerType;
             actor.HasPacketAuthoredHelperState = true;
             actor.ShowDirectionOverlay = showDirectionOverlay;
@@ -3623,8 +3671,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            RemoteUserRelationshipRecord ownerCanonicalRecord = hasExistingOwnerRecord
+                ? existingRecord
+                : hasOwnerPairLookupState
+                    ? ownerPairLookupState
+                    : normalizedRecord;
             bool packetOwnerIsCanonicalOwner = IsPairLookupPacketOwnerCanonicalOwner(
                 ownerCharacterId,
+                ownerCanonicalRecord,
                 matchedOwnerCharacterId,
                 matchedRecord);
             int entryOwnerCharacterId = packetOwnerIsCanonicalOwner ? ownerCharacterId : matchedOwnerCharacterId;
@@ -3699,27 +3753,62 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool IsPairLookupPacketOwnerCanonicalOwner(
             int packetOwnerCharacterId,
+            RemoteUserRelationshipRecord packetOwnerRecord,
             int matchedOwnerCharacterId,
             RemoteUserRelationshipRecord matchedRecord)
         {
-            int recoveredOwnerCharacterId = matchedRecord.CharacterId.GetValueOrDefault();
-            int recoveredPairCharacterId = matchedRecord.PairCharacterId.GetValueOrDefault();
-            if (recoveredOwnerCharacterId > 0 || recoveredPairCharacterId > 0)
+            if (TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
+                    packetOwnerCharacterId,
+                    matchedOwnerCharacterId,
+                    packetOwnerRecord,
+                    out bool packetOwnerIsCanonicalOwner))
             {
-                if (recoveredOwnerCharacterId == packetOwnerCharacterId
-                    || recoveredPairCharacterId == matchedOwnerCharacterId)
-                {
-                    return true;
-                }
+                return packetOwnerIsCanonicalOwner;
+            }
 
-                if (recoveredOwnerCharacterId == matchedOwnerCharacterId
-                    || recoveredPairCharacterId == packetOwnerCharacterId)
-                {
-                    return false;
-                }
+            if (TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
+                    packetOwnerCharacterId,
+                    matchedOwnerCharacterId,
+                    matchedRecord,
+                    out packetOwnerIsCanonicalOwner))
+            {
+                return packetOwnerIsCanonicalOwner;
             }
 
             return packetOwnerCharacterId <= matchedOwnerCharacterId;
+        }
+
+        private static bool TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
+            int packetOwnerCharacterId,
+            int matchedOwnerCharacterId,
+            RemoteUserRelationshipRecord recoveredRecord,
+            out bool packetOwnerIsCanonicalOwner)
+        {
+            packetOwnerIsCanonicalOwner = false;
+            int recoveredOwnerCharacterId = recoveredRecord.CharacterId.GetValueOrDefault();
+            int recoveredPairCharacterId = recoveredRecord.PairCharacterId.GetValueOrDefault();
+            if (recoveredOwnerCharacterId <= 0 && recoveredPairCharacterId <= 0)
+            {
+                return false;
+            }
+
+            if ((recoveredOwnerCharacterId == packetOwnerCharacterId && recoveredPairCharacterId == matchedOwnerCharacterId)
+                || recoveredOwnerCharacterId == packetOwnerCharacterId
+                || recoveredPairCharacterId == matchedOwnerCharacterId)
+            {
+                packetOwnerIsCanonicalOwner = true;
+                return true;
+            }
+
+            if ((recoveredOwnerCharacterId == matchedOwnerCharacterId && recoveredPairCharacterId == packetOwnerCharacterId)
+                || recoveredOwnerCharacterId == matchedOwnerCharacterId
+                || recoveredPairCharacterId == packetOwnerCharacterId)
+            {
+                packetOwnerIsCanonicalOwner = false;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryResolvePairLookupMatchedOwnerCharacterId(
@@ -7864,9 +7953,7 @@ namespace HaCreator.MapSimulator.Pools
                 marker.DirectionOverlayOnly = actor.HelperDirectionOverlayOnly
                     && !actor.HelperMarkerType.HasValue
                     && !actor.BattlefieldTeamId.HasValue;
-                marker.DirectionOverlay = marker.DirectionOverlayOnly
-                    ? actor.HelperDirectionOverlay
-                    : null;
+                marker.DirectionOverlay = actor.HelperDirectionOverlay;
                 marker.TooltipText = actor.Name;
             }
 
@@ -10123,6 +10210,7 @@ namespace HaCreator.MapSimulator.Pools
             ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatBlessingArmorEffect, releasedStates);
             ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatRepeatEffect, releasedStates);
             ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatMagicShieldEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatSuddenDeathEffect, releasedStates);
             ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatFinalCutEffect, releasedStates);
 
             actor.TemporaryStatSoulArrowEffect = null;
@@ -10134,6 +10222,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.TemporaryStatBlessingArmorEffect = null;
             actor.TemporaryStatRepeatEffect = null;
             actor.TemporaryStatMagicShieldEffect = null;
+            actor.TemporaryStatSuddenDeathEffect = null;
             actor.TemporaryStatFinalCutEffect = null;
             actor.TemporaryStatAffectedLayerLastSyncTime = int.MinValue;
             actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount = 0;
@@ -13067,6 +13156,15 @@ namespace HaCreator.MapSimulator.Pools
                 magicShieldSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
+            ResolveRemoteSuddenDeathSkill(actor, knownState, out int? suddenDeathSkillId, out SkillData suddenDeathSkill);
+            actor.TemporaryStatSuddenDeathEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
+                actor.TemporaryStatSuddenDeathEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.SuddenDeath,
+                suddenDeathSkillId,
+                suddenDeathSkill,
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteFinalCutSkill(actor, knownState, out int? finalCutSkillId, out SkillData finalCutSkill);
             actor.TemporaryStatFinalCutEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor,
@@ -13206,6 +13304,7 @@ namespace HaCreator.MapSimulator.Pools
                 RemoteTemporaryStatAvatarEffectOwnerFamily.BlessingArmor => RemoteTemporaryStatBlessingArmorActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect => RemoteTemporaryStatRepeatEffectActionOwnerName,
                 RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield => RemoteTemporaryStatMagicShieldActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.SuddenDeath => RemoteTemporaryStatSuddenDeathActionOwnerName,
                 _ => RemoteTemporaryStatFinalCutActionOwnerName
             };
         }
@@ -13363,6 +13462,7 @@ namespace HaCreator.MapSimulator.Pools
                 5 => RemoteTemporaryStatAvatarEffectOwnerFamily.BlessingArmor,
                 6 => RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect,
                 7 => RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield,
+                8 => RemoteTemporaryStatAvatarEffectOwnerFamily.SuddenDeath,
                 _ => RemoteTemporaryStatAvatarEffectOwnerFamily.FinalCut
             };
 
@@ -13973,6 +14073,45 @@ namespace HaCreator.MapSimulator.Pools
                 : Array.Empty<int>();
         }
 
+        internal static IReadOnlyList<int> EnumerateRemoteSuddenDeathSkillIds(int jobId, int? preferredSkillId)
+        {
+            int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
+            if (IsKnownRemoteSuddenDeathSkillId(resolvedPreferredSkillId))
+            {
+                return new[] { resolvedPreferredSkillId };
+            }
+
+            int jobPreferredSkillId = Math.Abs(jobId) switch
+            {
+                >= 3110 and <= 3112 => 31121005,
+                >= 430 and <= 434 => 4331003,
+                >= 570 and <= 572 => 5721006,
+                322 => 3221007,
+                122 => 1221009,
+                321 => 3210001,
+                311 => 3110001,
+                3001 => 30010111,
+                _ => 0
+            };
+
+            return jobPreferredSkillId > 0
+                ? new[] { jobPreferredSkillId }
+                : Array.Empty<int>();
+        }
+
+        private static bool IsKnownRemoteSuddenDeathSkillId(int skillId)
+        {
+            for (int i = 0; i < RemoteSuddenDeathSkillIds.Length; i++)
+            {
+                if (RemoteSuddenDeathSkillIds[i] == skillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static IReadOnlyList<int> EnumerateRemoteBlessingArmorSkillIds(int jobId, int? preferredSkillId)
         {
             int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
@@ -14332,6 +14471,36 @@ namespace HaCreator.MapSimulator.Pools
             out SkillData skill)
         {
             ResolveRemotePayloadDrivenEffectSkill(knownState.MagicShieldSkillId, out skillId, out skill);
+        }
+
+        private void ResolveRemoteSuddenDeathSkill(
+            RemoteUserActor actor,
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            skillId = null;
+            skill = null;
+            if (_skillLoader == null || !knownState.ExtendedState.SuddenDeathValue.HasValue)
+            {
+                return;
+            }
+
+            foreach (int candidateSkillId in EnumerateRemoteSuddenDeathSkillIds(
+                         actor?.Build?.Job ?? 0,
+                         knownState.ExtendedState.SuddenDeathValue))
+            {
+                SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
+                if (candidateSkill?.UsesSuddenDeathAvatarEffectOwner != true
+                    || !HasRemoteTemporaryStatAvatarEffect(candidateSkill))
+                {
+                    continue;
+                }
+
+                skillId = candidateSkillId;
+                skill = candidateSkill;
+                return;
+            }
         }
 
         private void ResolveRemoteFinalCutSkill(
@@ -15151,6 +15320,7 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState blessingArmorState,
             RemoteTemporaryStatAvatarEffectState repeatState,
             RemoteTemporaryStatAvatarEffectState magicShieldState,
+            RemoteTemporaryStatAvatarEffectState suddenDeathState,
             RemoteTemporaryStatAvatarEffectState finalCutState,
             int currentTime = int.MinValue)
         {
@@ -15165,6 +15335,7 @@ namespace HaCreator.MapSimulator.Pools
                     blessingArmorState,
                     repeatState,
                     magicShieldState,
+                    suddenDeathState,
                     finalCutState,
                     currentTime);
 
@@ -15579,6 +15750,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor?.TemporaryStatBlessingArmorEffect,
                     actor?.TemporaryStatRepeatEffect,
                     actor?.TemporaryStatMagicShieldEffect,
+                    actor?.TemporaryStatSuddenDeathEffect,
                     actor?.TemporaryStatFinalCutEffect,
                     currentTime);
             for (int i = 0; i < drawStates.Count; i++)
@@ -15606,10 +15778,11 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState blessingArmorState,
             RemoteTemporaryStatAvatarEffectState repeatState,
             RemoteTemporaryStatAvatarEffectState magicShieldState,
+            RemoteTemporaryStatAvatarEffectState suddenDeathState,
             RemoteTemporaryStatAvatarEffectState finalCutState,
             int currentTime)
         {
-            var orderedStates = new List<RemoteTemporaryStatAvatarEffectState>(11);
+            var orderedStates = new List<RemoteTemporaryStatAvatarEffectState>(12);
 
             void AddState(RemoteTemporaryStatAvatarEffectState state)
             {
@@ -15621,7 +15794,7 @@ namespace HaCreator.MapSimulator.Pools
 
             // Client owner-family chain from `CUser::Update` / `CUser::UpdateMoreWildEffect`:
             // SoulArrow -> WeaponCharge -> Aura(affected-layer tails + active) -> MoreWild -> Barrier
-            // -> BlessingArmor -> Repeat -> MagicShield -> FinalCut.
+            // -> BlessingArmor -> Repeat -> MagicShield -> SuddenDeath -> FinalCut.
             AddState(soulArrowState);
             AddState(weaponChargeState);
             AddState(ResolveLatestRemoteTemporaryStatAuraTailState(auraTailStates, currentTime));
@@ -15632,6 +15805,7 @@ namespace HaCreator.MapSimulator.Pools
             AddState(blessingArmorState);
             AddState(repeatState);
             AddState(magicShieldState);
+            AddState(suddenDeathState);
             AddState(finalCutState);
             return orderedStates;
         }
@@ -18471,6 +18645,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBlessingArmorEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatRepeatEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatMagicShieldEffect { get; set; }
+        public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatSuddenDeathEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public RemoteUserActorPool.RemoteActiveEffectMotionBlurState ActiveEffectMotionBlur { get; set; }

@@ -52,6 +52,11 @@ namespace HaCreator.MapSimulator
             int resolvedPetOwnerCharacterId = packet.Reason == PacketDropLeaveReason.PetPickup
                 ? ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedPetActorId)
                 : 0;
+            resolvedPetOwnerCharacterId = ResolveRemotePetPickupObservedOwnerCharacterId(
+                resolvedPetOwnerCharacterId,
+                packet.ActorId,
+                resolvedPetActorId,
+                ResolveDropPartyActorOwnerId);
             Vector2? petTargetPosition = packet.Reason == PacketDropLeaveReason.PetPickup
                 ? ResolveRemoteDropPacketTargetPosition(packet.Reason, packet)
                 : null;
@@ -117,6 +122,11 @@ namespace HaCreator.MapSimulator
                 ? ResolveRemoteDropPacketPetActorId(packet)
                 : packet.ActorId;
             int resolvedOwnerCharacterId = ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedActorId);
+            resolvedOwnerCharacterId = ResolveRemotePetPickupObservedOwnerCharacterId(
+                resolvedOwnerCharacterId,
+                packet.ActorId,
+                resolvedActorId,
+                ResolveDropPartyActorOwnerId);
             int[] linkedActorIds = ResolveRemoteDropPacketLeavePartyLinkActorIds(packet, resolvedActorId, resolvedOwnerCharacterId);
             foreach (int linkedActorId in linkedActorIds)
             {
@@ -819,6 +829,35 @@ namespace HaCreator.MapSimulator
         {
             return packet.Reason == PacketDropLeaveReason.PetPickup
                 && pickupTargetPosition.HasValue;
+        }
+
+        internal static int ResolveRemotePetPickupObservedOwnerCharacterId(
+            int resolvedOwnerCharacterId,
+            int packetActorId,
+            int resolvedActorId,
+            Func<int, int> partyActorOwnerResolver)
+        {
+            if (resolvedOwnerCharacterId > 0)
+            {
+                return resolvedOwnerCharacterId;
+            }
+
+            int normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(resolvedActorId) ?? 0;
+            if (normalizedOwnerCharacterId > 0)
+            {
+                return normalizedOwnerCharacterId;
+            }
+
+            if (packetActorId != resolvedActorId)
+            {
+                normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(packetActorId) ?? 0;
+                if (normalizedOwnerCharacterId > 0)
+                {
+                    return normalizedOwnerCharacterId;
+                }
+            }
+
+            return 0;
         }
 
         internal static void AddRemotePetPickupActorAliasesForOwner(ISet<int> actorIds, int ownerCharacterId)

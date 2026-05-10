@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ExitChatRoomPromptStringPoolId = 0xE21;
         internal const int InvitePromptTitleStringPoolId = 0x538;
         internal const int ClaimUnderCoverStringPoolId = 0xD55;
+        internal const int ClaimServerClosedStringPoolId = 0xD5A;
         internal const int ClaimSucceededWithRemainingStringPoolId = 0xD56;
         internal const int ClaimSucceededNoRemainingStringPoolId = 0xD57;
         internal const int ClaimFailedStringPoolId = 0xD58;
@@ -52,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string ExitChatRoomPromptFallback = "Will you exit this chat room?";
         private const string InvitePromptTitleFallback = "Messenger";
         private const string ClaimUnderCoverFallback = "You cannot submit a claim while under cover.";
+        private const string ClaimServerClosedFallback = "The report could not be submitted because the claim server is closed.";
         private const string ClaimSucceededWithRemainingFallback = "Your report has been submitted. You may submit {0} more report(s) today.";
         private const string ClaimSucceededNoRemainingFallback = "Your report has been submitted. You cannot submit another report today.";
         private const string ClaimFailedFallback = "The report could not be submitted.";
@@ -138,6 +140,11 @@ namespace HaCreator.MapSimulator.Interaction
                 InvitePromptTitleFallback,
                 appendFallbackSuffix: false,
                 minimumHexWidth: 3);
+        }
+
+        public static string GetClaimServerClosed()
+        {
+            return MapleStoryStringPool.GetOrFallback(ClaimServerClosedStringPoolId, ClaimServerClosedFallback);
         }
 
         public static string FormatOfficialClaimResult(byte resultCode, bool succeeded, int remainingClaimCount, byte openTime, byte closeTime)

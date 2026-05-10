@@ -56,18 +56,18 @@ namespace HaCreator.MapSimulator
             int initialElapsedMs = ResolveAnimationDisplayerRemoteUpgradeTombInitialElapsed(
                 presentation.CharacterId,
                 presentation.ItemId,
+                ReviveOwnerUpgradeTombEffectUol,
+                presentation.Position,
                 ownerActionName,
                 ownerFacingRight,
                 presentation.CurrentTime,
                 ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(_tombFallFrames));
             Vector2 packetAnchor = presentation.Position;
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedUpgradeTomb(
                 _tombFallFrames,
-                () => packetAnchor,
-                getFlip: null,
+                ReviveOwnerUpgradeTombEffectUol,
                 packetAnchor.X,
                 packetAnchor.Y,
-                fallbackFlip: false,
                 presentation.CurrentTime,
                 zOrder: 1,
                 initialElapsedMs: initialElapsedMs);
@@ -1987,6 +1987,11 @@ namespace HaCreator.MapSimulator
                         resolvedPickupActorId,
                         pickupOwnerCharacterId,
                         ResolveDropPartyActorOwnerId);
+                    int observedPickupOwnerCharacterId = ResolveRemotePetPickupObservedOwnerCharacterId(
+                        pickupOwnerCharacterId,
+                        dropPickupPacket.ActorId,
+                        resolvedPickupActorId,
+                        ResolveDropPartyActorOwnerId);
                     DropItem drop = _dropPool.GetDrop(dropPickupPacket.DropId);
                     if (drop == null)
                     {
@@ -2030,7 +2035,7 @@ namespace HaCreator.MapSimulator
                         foreach (int observedPetActorId in ResolveRemoteUserDropPickupObservedPetActorIds(
                             dropPickupPacket,
                             resolvedPickupActorId,
-                            pickupOwnerCharacterId))
+                            observedPickupOwnerCharacterId))
                         {
                             if (dropPickupPacket.HasExplicitTargetPosition)
                             {
@@ -2043,7 +2048,7 @@ namespace HaCreator.MapSimulator
                         }
                     }
 
-                    ObserveRemoteUserDropPickupPartyLink(drop, dropPickupPacket, resolvedPickupActorId, pickupOwnerCharacterId);
+                    ObserveRemoteUserDropPickupPartyLink(drop, dropPickupPacket, resolvedPickupActorId, observedPickupOwnerCharacterId);
                     bool pickupApplied = _dropPool.ResolveRemotePickup(
                         drop,
                         resolvedPickupActorId,

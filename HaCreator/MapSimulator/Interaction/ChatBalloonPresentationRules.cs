@@ -40,6 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MiniRoomCountStringPoolId = 0x1A15;
         internal const string MiniRoomCountFallbackFormat = "%d";
         internal const int MiniRoomTitleClientLineWidth = 100;
+        internal const int MiniRoomTitleFirstLineY = 8;
+        internal const int MiniRoomTitleSecondLineY = 22;
         internal const int MiniRoomTitleSecondLineOffsetY = 14;
         internal const int ADBoardNativeBalloonType = 1003;
         internal const int ADBoardButtonWidth = 12;
@@ -290,4 +292,39 @@ namespace HaCreator.MapSimulator.Interaction
         Rectangle BodyBounds,
         Point ArrowPosition,
         bool IncludesArrow);
+
+    internal sealed class ChatBalloonMiniRoomComposition
+    {
+        internal ChatBalloonMiniRoomComposition(
+            string backgroundPath,
+            string iconPath,
+            string privacyIconPath,
+            string statusPath,
+            string currentCountPath,
+            string maxCountPath,
+            string shopEffectPath,
+            Point canvasSize,
+            IReadOnlyList<int> titleLineYOffsets)
+        {
+            BackgroundPath = backgroundPath ?? string.Empty;
+            IconPath = iconPath ?? string.Empty;
+            PrivacyIconPath = privacyIconPath ?? string.Empty;
+            StatusPath = statusPath ?? string.Empty;
+            CurrentCountPath = currentCountPath ?? string.Empty;
+            MaxCountPath = maxCountPath ?? string.Empty;
+            ShopEffectPath = shopEffectPath ?? string.Empty;
+            CanvasSize = canvasSize;
+            TitleLineYOffsets = titleLineYOffsets ?? Array.Empty<int>();
+        }
+
+        public string BackgroundPath { get; }
+        public string IconPath { get; }
+        public string PrivacyIconPath { get; }
+        public string StatusPath { get; }
+        public string CurrentCountPath { get; }
+        public string MaxCountPath { get; }
+        public string ShopEffectPath { get; }
+        public Point CanvasSize { get; }
+        public IReadOnlyList<int> TitleLineYOffsets { get; }
+    }
 }

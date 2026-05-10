@@ -32,6 +32,26 @@ namespace HaCreator.MapSimulator.Character
         BattlefieldFlag
     }
 
+    internal readonly struct PlayerMobStatusSourceOwnerSnapshot
+    {
+        public PlayerMobStatusSourceOwnerSnapshot(
+            string ownerName = null,
+            int? battlefieldTeamId = null,
+            global::HaCreator.MapSimulator.Fields.MonsterCarnivalTeam? monsterCarnivalTeam = null,
+            bool? ownerIsEnemy = null)
+        {
+            OwnerName = string.IsNullOrWhiteSpace(ownerName) ? null : ownerName.Trim();
+            BattlefieldTeamId = battlefieldTeamId;
+            MonsterCarnivalTeam = monsterCarnivalTeam;
+            OwnerIsEnemy = ownerIsEnemy;
+        }
+
+        public string OwnerName { get; }
+        public int? BattlefieldTeamId { get; }
+        public global::HaCreator.MapSimulator.Fields.MonsterCarnivalTeam? MonsterCarnivalTeam { get; }
+        public bool? OwnerIsEnemy { get; }
+    }
+
     internal readonly struct PlayerMobStatusFrameState
     {
         public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, false, false, false, 100, 100, 100);
@@ -102,6 +122,7 @@ namespace HaCreator.MapSimulator.Character
             public int SourceSkillLevel { get; set; }
             public int SourceOwnerId { get; set; }
             public int SourceAreaObjectId { get; set; }
+            public PlayerMobStatusSourceOwnerSnapshot SourceOwnerSnapshot { get; set; }
             public Rectangle? PeriodicDamageArea { get; set; }
         }
 
@@ -449,7 +470,8 @@ namespace HaCreator.MapSimulator.Character
             SkillLevelData levelData,
             int currentTime,
             int sourceOwnerId = 0,
-            int sourceAreaObjectId = 0)
+            int sourceAreaObjectId = 0,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default)
         {
             if (_player == null || skill == null || levelData == null)
             {
@@ -492,7 +514,8 @@ namespace HaCreator.MapSimulator.Character
                         sourceSkillId: sourceSkillId,
                         sourceSkillLevel: sourceSkillLevel,
                         sourceOwnerId: sourceOwnerId,
-                        sourceAreaObjectId: sourceAreaObjectId)
+                        sourceAreaObjectId: sourceAreaObjectId,
+                        sourceOwnerSnapshot: sourceOwnerSnapshot)
                     : ApplyStatus(
                         status.Effect,
                         status.DurationMs,
@@ -501,7 +524,8 @@ namespace HaCreator.MapSimulator.Character
                         sourceSkillId: sourceSkillId,
                         sourceSkillLevel: sourceSkillLevel,
                         sourceOwnerId: sourceOwnerId,
-                        sourceAreaObjectId: sourceAreaObjectId);
+                        sourceAreaObjectId: sourceAreaObjectId,
+                        sourceOwnerSnapshot: sourceOwnerSnapshot);
 
                 applied |= statusApplied;
             }
@@ -678,6 +702,20 @@ namespace HaCreator.MapSimulator.Character
             sourceSkillLevel = 0;
             sourceOwnerId = 0;
             sourceAreaObjectId = 0;
+            return false;
+        }
+
+        internal bool TryGetStatusSourceOwnerSnapshot(
+            PlayerMobStatusEffect effect,
+            out PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot)
+        {
+            if (_entries.TryGetValue(effect, out PlayerMobStatusEntry entry))
+            {
+                sourceOwnerSnapshot = entry.SourceOwnerSnapshot;
+                return true;
+            }
+
+            sourceOwnerSnapshot = default;
             return false;
         }
 
@@ -948,9 +986,10 @@ namespace HaCreator.MapSimulator.Character
             int sourceSkillId = 0,
             int sourceSkillLevel = 0,
             int sourceOwnerId = 0,
-            int sourceAreaObjectId = 0)
+            int sourceAreaObjectId = 0,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId, sourceOwnerSnapshot);
         }
 
         private bool ApplyMobSkillStatus(
@@ -992,9 +1031,10 @@ namespace HaCreator.MapSimulator.Character
             int sourceSkillLevel = 0,
             int sourceOwnerId = 0,
             int sourceAreaObjectId = 0,
-            Rectangle? periodicDamageArea = null)
+            Rectangle? periodicDamageArea = null,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId, periodicDamageArea);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs, sourceSkillId, sourceSkillLevel, sourceOwnerId, sourceAreaObjectId, sourceOwnerSnapshot, periodicDamageArea);
         }
 
         private bool ApplyPolymorphStatus(
@@ -1052,6 +1092,7 @@ namespace HaCreator.MapSimulator.Character
             int sourceSkillLevel = 0,
             int sourceOwnerId = 0,
             int sourceAreaObjectId = 0,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default,
             Rectangle? periodicDamageArea = null)
         {
             if (effect == PlayerMobStatusEffect.None || durationMs <= 0)
@@ -1070,7 +1111,8 @@ namespace HaCreator.MapSimulator.Character
                     existingEntry.SourceSkillId == sourceSkillId &&
                     existingEntry.SourceSkillLevel == sourceSkillLevel &&
                     existingEntry.SourceOwnerId == sourceOwnerId &&
-                    existingEntry.SourceAreaObjectId == sourceAreaObjectId;
+                    existingEntry.SourceAreaObjectId == sourceAreaObjectId &&
+                    Equals(existingEntry.SourceOwnerSnapshot, sourceOwnerSnapshot);
                 int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(durationMs, recastLeadTimeMs);
                 if (sameRuntimeState
                     && !ShouldAllowNoOpStatusRefreshRecast(
@@ -1094,6 +1136,7 @@ namespace HaCreator.MapSimulator.Character
                 existingEntry.SourceSkillLevel = sourceSkillLevel;
                 existingEntry.SourceOwnerId = sourceOwnerId;
                 existingEntry.SourceAreaObjectId = sourceAreaObjectId;
+                existingEntry.SourceOwnerSnapshot = sourceOwnerSnapshot;
                 existingEntry.PeriodicDamageArea = periodicDamageArea;
                 return true;
             }
@@ -1112,6 +1155,7 @@ namespace HaCreator.MapSimulator.Character
                 SourceSkillLevel = sourceSkillLevel,
                 SourceOwnerId = sourceOwnerId,
                 SourceAreaObjectId = sourceAreaObjectId,
+                SourceOwnerSnapshot = sourceOwnerSnapshot,
                 PeriodicDamageArea = periodicDamageArea
             };
             return true;

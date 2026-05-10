@@ -38,8 +38,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ["BtTrade"] = (1002, "CTradingRoomDlg::Trade -> outbound opcode 144 subtype 17"),
                 ["BtCoin"] = (1003, "CTradingRoomDlg::PutMoney -> outbound opcode 144 subtype 16"),
                 ["BtEnter"] = (1004, "CTradingRoomDlg::OnButtonClicked -> CMiniRoomBaseDlg::CheckAndSendChat"),
-                ["BtClame"] = (1005, "CDialog::OnButtonClicked default claim/report control, not a trade acceptance packet"),
-                ["BtReset"] = (2, "CDialog::OnButtonClicked default cancel/reset control, not a recovered CTradingRoomDlg::OnPacket branch")
+                ["BtReset"] = (1005, "CDialog::OnButtonClicked default reset/control branch, not a recovered CTradingRoomDlg::OnPacket branch"),
+                ["BtClame"] = (2, "CDialog::OnButtonClicked default claim/cancel control, not a trade acceptance packet")
             };
 
         internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes()

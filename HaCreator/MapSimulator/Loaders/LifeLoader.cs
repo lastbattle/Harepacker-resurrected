@@ -77,12 +77,15 @@ namespace HaCreator.MapSimulator.Loaders
             public string CanonicalActionName { get; init; }
             public int? ClientActionSlot { get; init; }
             public string CacheKey { get; init; }
+            public uint? NativePackedCacheKey { get; init; }
             public int DirectCanvasFrameCount { get; init; }
             public int FrameMetadataCount { get; init; }
             public bool HasActionSpeakMetadata { get; init; }
             public int ActionSpeakConditionGroupCount { get; init; }
             public bool AppendsReversePlayback { get; init; }
             public bool UsesClientSlotOwner { get; init; }
+            public bool RefreshesLastAccessedOnCacheHit { get; init; }
+            public bool CopiesCachedFrameListOnCacheHit { get; init; }
         }
 
         private sealed class MobImgEntry
@@ -1491,6 +1494,9 @@ namespace HaCreator.MapSimulator.Loaders
                 ? ResolveMobClientActionName(clientActionSlot) ?? normalizedActionName
                 : normalizedActionName;
             int? slot = usesClientSlotOwner ? clientActionSlot : null;
+            uint? nativePackedCacheKey = usesClientSlotOwner
+                ? BuildNativeMobActionCacheKey(normalizedTemplateId, clientActionSlot)
+                : null;
 
             MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata =
                 BuildMobActionSpeakMetadata(actionProperty?["speak"]);
@@ -1504,13 +1510,26 @@ namespace HaCreator.MapSimulator.Loaders
                 CacheKey = usesClientSlotOwner
                     ? $"{normalizedTemplateId}:{clientActionSlot}:{canonicalActionName}"
                     : $"{normalizedTemplateId}:authored:{canonicalActionName}",
+                NativePackedCacheKey = nativePackedCacheKey,
                 DirectCanvasFrameCount = CountMobActionFrameCanvasesForTests(actionProperty),
                 FrameMetadataCount = CountMobActionFrameMetadataForTests(actionProperty),
                 HasActionSpeakMetadata = actionSpeakMetadata != null,
                 ActionSpeakConditionGroupCount = CountMobActionSpeakConditionGroups(actionSpeakMetadata),
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
-                UsesClientSlotOwner = usesClientSlotOwner
+                UsesClientSlotOwner = usesClientSlotOwner,
+                RefreshesLastAccessedOnCacheHit = usesClientSlotOwner,
+                CopiesCachedFrameListOnCacheHit = usesClientSlotOwner
             };
+        }
+
+        private static uint? BuildNativeMobActionCacheKey(string normalizedTemplateId, int clientActionSlot)
+        {
+            if (!uint.TryParse(normalizedTemplateId, out uint templateId))
+            {
+                return null;
+            }
+
+            return (templateId << 8) | (uint)(clientActionSlot & 0xFF);
         }
 
         private static List<MobAnimationSet.FrameMetadata> BuildMobActionFrameMetadata(WzImageProperty source)

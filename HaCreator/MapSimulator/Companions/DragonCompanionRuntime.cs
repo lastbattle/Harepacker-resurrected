@@ -1830,6 +1830,22 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
+        internal bool TryRecordClientDragonEndUpdateActiveKeyPadByFootholdMemoryCapture(
+            IReadOnlyList<byte> bytes,
+            bool packedNibbles,
+            string source,
+            out string message)
+        {
+            string resolvedSource = string.IsNullOrWhiteSpace(source)
+                ? "manual m_aKeyPadStateByFoothold capture"
+                : source.Trim();
+            return TryRecordClientDragonEndUpdateActiveKeyPadMemoryCapture(
+                bytes,
+                packedNibbles,
+                resolvedSource,
+                out message);
+        }
+
         internal string DescribeClientVecCtrlEndUpdateActiveParityStatus()
         {
             ClientDragonFlushTailComparison comparison = CompareLastClientDragonFlushTailCapture();

@@ -1397,6 +1397,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            PlayerMobStatusSourceOwnerSnapshot ownerSnapshot =
+                ResolveRemoteAffectedAreaLocalPlayerDebuffOwnerSnapshot(areaObjectId, ownerId);
             for (int i = 0; i < hostileSkillRuntimes.Length; i++)
             {
                 _playerManager.TryApplyRemoteAffectedAreaPlayerSkillStatus(
@@ -1404,8 +1406,39 @@ namespace HaCreator.MapSimulator
                     hostileSkillRuntimes[i].LevelData,
                     currentTime,
                     ownerId,
-                    areaObjectId);
+                    areaObjectId,
+                    ownerSnapshot);
             }
+        }
+
+        private PlayerMobStatusSourceOwnerSnapshot ResolveRemoteAffectedAreaLocalPlayerDebuffOwnerSnapshot(
+            int areaObjectId,
+            int ownerId)
+        {
+            if (ownerId <= 0)
+            {
+                return default;
+            }
+
+            string ownerName = ResolveRemoteAffectedAreaOwnerName(areaObjectId, ownerId);
+            int? battlefieldTeamId = null;
+            if (TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int resolvedBattlefieldTeamId, out _))
+            {
+                battlefieldTeamId = resolvedBattlefieldTeamId;
+            }
+
+            Fields.MonsterCarnivalTeam? monsterCarnivalTeam = null;
+            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(areaObjectId, ownerId, out Fields.MonsterCarnivalTeam resolvedCarnivalTeam))
+            {
+                monsterCarnivalTeam = resolvedCarnivalTeam;
+            }
+
+            bool ownerIsEnemy = IsAffectedAreaOwnerEnemyInPvpContext(areaObjectId, ownerId);
+            return new PlayerMobStatusSourceOwnerSnapshot(
+                ownerName,
+                battlefieldTeamId,
+                monsterCarnivalTeam,
+                ownerIsEnemy);
         }
 
         private void ApplyRemoteAffectedAreaDamageShareToOwner(int areaObjectId, int sharedDamage, int currentTime)

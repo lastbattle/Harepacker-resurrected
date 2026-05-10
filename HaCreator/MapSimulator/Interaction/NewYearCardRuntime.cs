@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string ReadBackgroundPath = "UI/UIWindow.img/NewYearsCard/backgrnd3";
 
         private readonly List<string> _searchResults = new();
+        private readonly List<NewYearCardRecordSnapshot> _localRecords = new();
         private string _senderName = "Player";
         private string _targetName = string.Empty;
         private string _memo = "Happy New Year!";
@@ -108,6 +109,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal NewYearCardResultSnapshot LastResultSnapshot => _lastResultSnapshot;
+
+        internal IReadOnlyList<NewYearCardRecordSnapshot> LocalRecords => _localRecords.ToArray();
 
         internal string ConfigureDraft(int inventoryPosition, int itemId, string targetName, string memo)
         {
@@ -266,19 +269,25 @@ namespace HaCreator.MapSimulator.Interaction
                         _targetName = target;
                     }
 
+                    AddOrReplaceLocalRecord(packet.Record);
                     _lastStatus = NewYearCardClientText.ResolveSendSuccessNotice(DisplayTargetName);
                     break;
 
                 case NewYearCardResultSubtype.ReceiveSuccess:
                     ConfigureReadView(packet.Record.SenderName, packet.Record.ReceiverName, packet.Record.Content);
+                    AddOrReplaceLocalRecord(packet.Record);
                     _lastStatus = NewYearCardClientText.ResolveReceiveSuccessNotice();
                     break;
 
                 case NewYearCardResultSubtype.DeleteSuccess:
+                    RemoveLocalRecord(packet.SerialNumber);
                     _lastStatus = NewYearCardClientText.ResolveDeleteSuccessNotice();
                     break;
 
-                case NewYearCardResultSubtype.Failure:
+                case NewYearCardResultSubtype.SendFailure:
+                case NewYearCardResultSubtype.ReceiveFailure:
+                case NewYearCardResultSubtype.DeleteFailure:
+                case NewYearCardResultSubtype.ReadFailure:
                     _lastStatus = NewYearCardClientText.ResolveFailureNotice(packet.CompletionKind);
                     break;
 
@@ -376,7 +385,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeStatus()
         {
-            return $"New Year Card runtime: sender='{_senderName}', target='{DisplayTargetName}', item={_itemId}, invenPOS={_inventoryPosition}, memoChars={_memo.Length}, searchResults={_searchResults.Count}. {_lastStatus}";
+            return $"New Year Card runtime: sender='{_senderName}', target='{DisplayTargetName}', item={_itemId}, invenPOS={_inventoryPosition}, memoChars={_memo.Length}, searchResults={_searchResults.Count}, localRecords={_localRecords.Count}. {_lastStatus}";
         }
 
         private string DisplayTargetName => string.IsNullOrWhiteSpace(_targetName) ? "(empty)" : _targetName;
@@ -399,6 +408,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _firstVisibleSearchResultIndex = Math.Clamp(_firstVisibleSearchResultIndex, 0, maxFirstVisibleIndex);
+        }
+
+        private void AddOrReplaceLocalRecord(NewYearCardRecordSnapshot record)
+        {
+            if (record.Equals(default(NewYearCardRecordSnapshot)))
+            {
+                return;
+            }
+
+            int index = _localRecords.FindIndex(existing => existing.SerialNumber == record.SerialNumber);
+            if (index >= 0)
+            {
+                _localRecords[index] = record;
+            }
+            else
+            {
+                _localRecords.Add(record);
+            }
+        }
+
+        private void RemoveLocalRecord(int serialNumber)
+        {
+            _localRecords.RemoveAll(record => record.SerialNumber == serialNumber);
         }
 
         private static IEnumerable<string> ResolveSearchCandidates(string normalizedQuery, IEnumerable<string> contactNames)
@@ -751,7 +783,7 @@ namespace HaCreator.MapSimulator.Interaction
                     NewYearCardResultSubtype.SendFailure
                         or NewYearCardResultSubtype.ReceiveFailure
                         or NewYearCardResultSubtype.DeleteFailure
-                        or NewYearCardResultSubtype.ReadFailure => DecodeFailure(reader),
+                        or NewYearCardResultSubtype.ReadFailure => DecodeFailure(reader, subtype),
                     NewYearCardResultSubtype.ArrivalList => DecodeArrivalList(reader, subtype),
                     NewYearCardResultSubtype.ArrivalSingle => DecodeArrivalSingle(reader, subtype),
                     NewYearCardResultSubtype.RemoteRecordAdd => DecodeRemoteRecordAdd(reader, subtype),
@@ -829,11 +861,11 @@ namespace HaCreator.MapSimulator.Interaction
                 Array.Empty<NewYearCardArrivalPrompt>());
         }
 
-        private static NewYearCardResultPacket DecodeFailure(System.IO.BinaryReader reader)
+        private static NewYearCardResultPacket DecodeFailure(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
         {
             NewYearCardFailureReason reason = DecodeFailureReason(reader.ReadByte());
             return new NewYearCardResultPacket(
-                NewYearCardResultSubtype.Failure,
+                subtype,
                 ToCompletionKind(reason),
                 reason,
                 default,

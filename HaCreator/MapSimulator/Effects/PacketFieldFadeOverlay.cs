@@ -79,7 +79,7 @@ namespace HaCreator.MapSimulator.Effects
             for (int index = _entries.Count - 1; index >= 0; index--)
             {
                 FadeEntry entry = _entries[index];
-                if (entry.HasForcedFadeOut())
+                if (entry.HasForcedFadeOut() || entry.NaturalFadeOutStarted)
                 {
                     continue;
                 }
@@ -111,6 +111,15 @@ namespace HaCreator.MapSimulator.Effects
                 if (unchecked(currentTickCount - _entries[index].ExpiresAt) >= 0)
                 {
                     _entries.RemoveAt(index);
+                    continue;
+                }
+
+                FadeEntry entry = _entries[index];
+                if (!entry.HasForcedFadeOut()
+                    && !entry.NaturalFadeOutStarted
+                    && entry.HasFadeOutStarted(currentTickCount))
+                {
+                    _entries[index] = entry with { NaturalFadeOutStarted = true };
                 }
             }
         }
@@ -214,7 +223,8 @@ namespace HaCreator.MapSimulator.Effects
             int StartedAt,
             int ForcedFadeOutStartsAt = int.MinValue,
             int ForcedFadeOutMs = -1,
-            float ForcedStartAlpha = 1f)
+            float ForcedStartAlpha = 1f,
+            bool NaturalFadeOutStarted = false)
         {
             public bool HasForcedFadeOut() =>
                 ForcedFadeOutStartsAt != int.MinValue

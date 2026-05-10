@@ -135,6 +135,15 @@ namespace HaCreator.MapSimulator.UI
             public string Message { get; init; } = string.Empty;
         }
 
+        public sealed class ExtraCharacterSlotEntitlementResolution
+        {
+            public int CommoditySerialNumber { get; init; }
+            public long NxPrice { get; init; }
+            public int PaymentOption { get; init; }
+            public bool CashAlreadySettled { get; init; }
+            public string Message { get; init; } = string.Empty;
+        }
+
         public sealed class PacketOwnedStorageExpansionResult
         {
             public int PacketType { get; init; }
@@ -258,6 +267,7 @@ namespace HaCreator.MapSimulator.UI
             public AdminShopEntryState State { get; set; }
             public string StateLabel { get; set; } = string.Empty;
             public bool IsStorageExpansion { get; init; }
+            public bool IsExtraCharacterSlotEntitlement { get; init; }
             public InventoryType InventoryExpansionType { get; init; } = InventoryType.NONE;
             public InventoryType RewardInventoryType { get; init; } = InventoryType.NONE;
             public int RewardItemId { get; init; }
@@ -361,6 +371,9 @@ namespace HaCreator.MapSimulator.UI
         private const int CashShopIncTrunkCountCost = 4000;
         private const int CashShopIncTrunkCountSlotStep = 4;
         private const int CashShopIncTrunkCountSlotCap = 48;
+        private const int ExtraCharacterSlotCouponItemId = 5430000;
+        private const int ExtraCharacterSlotCouponCommoditySerialNumber = 10100734;
+        private const int ExtraCharacterSlotCouponPrice = 12000;
         private const int CashShopIncTrunkCountConfirmPromptStringPoolId = 0x01F7;
         private const int CashShopIncTrunkCountSlotCapNoticeStringPoolId = 0x01FC;
         private const int CashShopIncTrunkCountInsufficientCashNoticeStringPoolId = 0x0229;
@@ -543,6 +556,8 @@ namespace HaCreator.MapSimulator.UI
         public Func<int> ResolveStorageExpansionCommoditySerialNumber { get; set; }
         public Func<string> GetStorageExpansionStatusSummary { get; set; }
         public Action<StorageExpansionResolution> StorageExpansionResolved { get; set; }
+        public Func<bool> CanSettleExtraCharacterSlotEntitlement { get; set; }
+        public Func<ExtraCharacterSlotEntitlementResolution, string> ExtraCharacterSlotEntitlementResolved { get; set; }
         internal Func<PacketOwnedNpcUtilityOutboundRequest, string> DispatchPacketOwnedAdminShopOutboundRequest { get; set; }
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
         internal IStorageRuntime StorageRuntime => _storageRuntime;

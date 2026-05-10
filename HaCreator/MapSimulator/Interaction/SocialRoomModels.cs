@@ -624,6 +624,7 @@ namespace HaCreator.MapSimulator.Interaction
             _shopDialogPacketOwner = CreateShopDialogPacketOwner();
             _lastPacketOwnerSummary = BuildDefaultPacketOwnerSummary();
             SeedDefaultRemoteInventory();
+            SeedPersonalShopVisitorEnterTimes(DateTime.UtcNow);
             if (kind == SocialRoomKind.MiniRoom && string.Equals(ModeName, "Omok", StringComparison.OrdinalIgnoreCase))
             {
                 SyncMiniRoomOmokPresentation();
@@ -830,6 +831,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EmployeeHasWorldPosition = _employeeHasWorldPosition,
                 EmployeeFlip = _employeeFlip,
                 EmployeePoolEntries = _employeePoolRuntime.BuildSnapshots().ToList(),
+                PersonalShopVisitorEnterTimes = BuildPersonalShopVisitorEnterTimeSnapshots(),
                 Occupants = _occupants
                     .Select(occupant => new SocialRoomOccupantSnapshot
                     {
@@ -1002,6 +1004,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady));
                 }
+                RestorePersonalShopVisitorEnterTimes(source, DateTime.UtcNow);
 
                 _items.Clear();
                 foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
@@ -1196,10 +1199,9 @@ namespace HaCreator.MapSimulator.Interaction
                     .ToList();
             bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
                 ? HasValidEntrustedVisitListSelection()
-                : _blockedVisitors.Count < 20 && !_entrustedBlacklistPendingMutationAdd.HasValue;
+                : _blockedVisitors.Count < 20;
             bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist
-                && HasValidEntrustedBlacklistSelection()
-                && !_entrustedBlacklistPendingMutationAdd.HasValue;
+                && HasValidEntrustedBlacklistSelection();
 
             return new EntrustedShopChildDialogSnapshot
             {
@@ -5957,6 +5959,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
             EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
+            RecordPersonalShopVisitorEntered(normalizedSeatIndex, occupantName, DateTime.UtcNow);
             RoomState = Kind == SocialRoomKind.MiniRoom ? "Seat update" : "Visitor update";
             StatusMessage = $"{occupantName} entered {seatLabel.ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase.";
             if (Kind == SocialRoomKind.MiniRoom)
@@ -6059,6 +6062,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int normalizedSeatIndex = Math.Max(0, seatIndex);
             string leavingName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            RecordPersonalShopVisitorLeft(normalizedSeatIndex);
             if (normalizedSeatIndex <= 0)
             {
                 if (Kind == SocialRoomKind.EntrustedShop)
@@ -7022,22 +7026,35 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int remainingItemCount = reader.ReadByte();
             int removedIndex = reader.ReadShort();
-            SocialRoomItemEntry entry = FindActiveMerchantPacketEntry(removedIndex);
-            if (entry == null)
+            int normalizedRemainingItemCount = Math.Max(0, remainingItemCount);
+            int normalizedRemovedIndex = Math.Max(0, removedIndex);
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            SocialRoomItemEntry removedEntry = normalizedRemovedIndex < activeEntries.Count
+                ? activeEntries[normalizedRemovedIndex]
+                : null;
+
+            if (removedEntry != null)
             {
-                message = $"No active personal-shop bundle exists at packet slot {removedIndex}.";
+                _items.Remove(removedEntry);
+                _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, removedEntry));
+            }
+            else if (activeEntries.Count <= normalizedRemainingItemCount)
+            {
+                message = $"Personal-shop move-to-inventory packet declared packet slot {removedIndex}, but no active merchant row needed compaction.";
                 return false;
             }
 
-            _items.Remove(entry);
-            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
-            int trimmedRows = TrimActiveMerchantPacketRows(Math.Max(0, remainingItemCount));
+            int trimmedRows = TrimActiveMerchantPacketRows(normalizedRemainingItemCount);
             NormalizeActiveMerchantPacketSlots();
             RoomState = "Closed for setup";
             ModeName = "Repricing";
+            string itemLabel = removedEntry?.ItemName ?? $"packet slot {normalizedRemovedIndex}";
+            string removedDetail = removedEntry == null
+                ? $"CPersonalShopDlg::OnMoveItemToInventory accepted the server-owned m_nItem={normalizedRemainingItemCount} compaction even though packet slot {normalizedRemovedIndex} was not locally populated."
+                : $"Moved {itemLabel} back to inventory from packet slot {normalizedRemovedIndex}.";
             StatusMessage = trimmedRows > 0
-                ? $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array after trimming {trimmedRows} stale row(s)."
-                : $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array.";
+                ? $"{removedDetail} {normalizedRemainingItemCount} bundle row(s) remain in the client packet array after shifting following rows down and trimming {trimmedRows} stale tail row(s)."
+                : $"{removedDetail} {normalizedRemainingItemCount} bundle row(s) remain in the client packet array after shifting following rows down.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -7381,12 +7398,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (_entrustedBlacklistPendingMutationAdd.HasValue)
-            {
-                message = $"Blacklist add is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
-                return false;
-            }
-
             request = new EntrustedShopBlacklistPromptRequest
             {
                 OwnerName = ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist),
@@ -7475,12 +7486,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (_entrustedBlacklistPendingMutationAdd.HasValue)
-            {
-                message = $"Blacklist add is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
-                return false;
-            }
-
             string resolvedName = NormalizeName(visitorName);
             if (!IsValidEntrustedBlacklistName(resolvedName))
             {
@@ -7552,12 +7557,6 @@ namespace HaCreator.MapSimulator.Interaction
             if (!HasValidEntrustedBlacklistSelection())
             {
                 message = "Delete stays disabled until the selected blacklist cell is valid.";
-                return false;
-            }
-
-            if (_entrustedBlacklistPendingMutationAdd.HasValue)
-            {
-                message = $"Blacklist delete is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
                 return false;
             }
 

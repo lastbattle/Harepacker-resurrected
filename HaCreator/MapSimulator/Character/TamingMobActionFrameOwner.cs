@@ -178,7 +178,14 @@ namespace HaCreator.MapSimulator.Character
                 ["chargeBlow"] = new[] { "stand1", "stand2", "sit" },
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
-                ["ghost"] = new[] { "sit", "stand1" }
+                ["ghost"] = new[] { "sit", "stand1" },
+                // CAvatar::SetRidingVehicle keeps the old special-family raw action
+                // when switching to a nonzero ordinary vehicle. LoadTamingMobAction
+                // then falls back through raw 2 for the real new vehicle owner.
+                ["msummon"] = new[] { "stand1", "stand2", "sit" },
+                ["msummon2"] = new[] { "stand1", "stand2", "sit" },
+                ["earthslug"] = new[] { "stand1", "stand2", "sit" },
+                ["rpunch"] = new[] { "stand1", "stand2", "sit" }
             };
         private static readonly IReadOnlyDictionary<string, string[]> ClientActionRemapCandidates =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)

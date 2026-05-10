@@ -35,5 +35,6 @@ namespace HaCreator.MapSimulator.Interaction
         string MasterName,
         string GuildName,
         DateTimeOffset AcceptedAtUtc,
-        bool Accepted = true);
+        bool Accepted = true,
+        int PartyId = 0);
 }

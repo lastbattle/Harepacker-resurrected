@@ -2827,6 +2827,15 @@ namespace HaCreator.MapSimulator.Managers
             ReadOnlySpan<byte> observedSpan = observedBytes;
             ReadOnlySpan<byte> rebuiltSpan = rebuiltBytes;
             int byteIndexOffset = 0;
+            if (TryResolveSg88PacketComparisonBodySpan(observedSpan, out ReadOnlySpan<byte> observedBody, out bool observedBodyPayload)
+                && TryResolveSg88PacketComparisonBodySpan(rebuiltSpan, out ReadOnlySpan<byte> rebuiltBody, out bool rebuiltBodyPayload))
+            {
+                observedSpan = observedBody;
+                rebuiltSpan = rebuiltBody;
+                observedPayload |= observedBodyPayload;
+                rebuiltPayload |= rebuiltBodyPayload;
+            }
+
             if (observedPayload && rebuiltPayload)
             {
                 byteIndexOffset = sizeof(ushort);
@@ -2902,34 +2911,60 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (!TryResolveSg88PacketComparisonBodySpan(bytes, out _, out payloadBytes))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryResolveSg88PacketComparisonBodySpan(
+            ReadOnlySpan<byte> bytes,
+            out ReadOnlySpan<byte> body,
+            out bool payloadBytes)
+        {
+            body = default;
+            payloadBytes = false;
             const int payloadLength = (sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2;
             const int rawPacketLength = sizeof(ushort) + payloadLength;
-            if (bytes.Length == rawPacketLength)
+            if (bytes.Length >= rawPacketLength)
             {
-                ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(0, sizeof(ushort)));
-                if (opcode != Sg88FirstUseSummonOpcode)
+                int offset = bytes.Length - rawPacketLength;
+                if (offset >= 0)
                 {
-                    return false;
+                    ReadOnlySpan<byte> candidate = bytes.Slice(offset, rawPacketLength);
+                    ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(candidate[..sizeof(ushort)]);
+                    if (opcode == Sg88FirstUseSummonOpcode)
+                    {
+                        int skillId = BinaryPrimitives.ReadInt32LittleEndian(
+                            candidate.Slice(sizeof(ushort) + sizeof(int), sizeof(int)));
+                        if (skillId == Sg88SkillId)
+                        {
+                            body = candidate;
+                            return true;
+                        }
+                    }
                 }
-
-                int skillId = BinaryPrimitives.ReadInt32LittleEndian(
-                    bytes.AsSpan(sizeof(ushort) + sizeof(int), sizeof(int)));
-                return skillId == Sg88SkillId;
             }
 
-            if (bytes.Length != payloadLength)
+            if (bytes.Length >= payloadLength)
             {
-                return false;
+                int offset = bytes.Length - payloadLength;
+                if (offset >= 0)
+                {
+                    ReadOnlySpan<byte> candidate = bytes.Slice(offset, payloadLength);
+                    int payloadSkillId = BinaryPrimitives.ReadInt32LittleEndian(candidate.Slice(sizeof(int), sizeof(int)));
+                    if (payloadSkillId == Sg88SkillId)
+                    {
+                        body = candidate;
+                        payloadBytes = true;
+                        return true;
+                    }
+                }
             }
 
-            int payloadSkillId = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(sizeof(int), sizeof(int)));
-            if (payloadSkillId != Sg88SkillId)
-            {
-                return false;
-            }
-
-            payloadBytes = true;
-            return true;
+            return false;
         }
 
         private static bool ContainsSg88PayloadComparisonByteArrayLabel(JsonElement value)

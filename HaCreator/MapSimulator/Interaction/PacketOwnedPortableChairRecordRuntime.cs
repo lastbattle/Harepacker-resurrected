@@ -12,6 +12,9 @@ namespace HaCreator.MapSimulator.Interaction
     /// </summary>
     public sealed class PacketOwnedPortableChairRecordRuntime
     {
+        private const int MaxDispatchTraceEntries = 16;
+        private readonly List<PortableChairRecordRuntimeDispatchEntry> _dispatchTrace = new();
+
         public int TotalAddCount { get; private set; }
         public int TotalRemoveCount { get; private set; }
         public int TotalRejectedCount { get; private set; }
@@ -23,6 +26,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string LastDispatchSummary { get; private set; } = "Packet-owned portable-chair record runtime idle.";
         private readonly Dictionary<ushort, int> _observedAddCountByOpcode = new();
         private readonly Dictionary<ushort, int> _observedRemoveCountByOpcode = new();
+
+        internal IReadOnlyList<PortableChairRecordRuntimeDispatchEntry> DispatchTrace => _dispatchTrace.ToArray();
 
         public void Clear()
         {
@@ -36,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
             LastSource = "none";
             _observedAddCountByOpcode.Clear();
             _observedRemoveCountByOpcode.Clear();
+            _dispatchTrace.Clear();
             LastDispatchSummary = "Packet-owned portable-chair record runtime idle.";
         }
 
@@ -91,6 +97,13 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     LastOwnerCharacterId = addPacket.CharacterId;
+                    RememberDispatchTrace(
+                        operation: "add",
+                        observedOpcode,
+                        addPacket.CharacterId,
+                        payload.Length,
+                        normalizedSource,
+                        ResolveDispatchReason(normalizedSource, "packet-owned OnCoupleChairRecordAdd dispatch"));
                     bool addApplied = remoteUserPool.TryApplyPortableChairRecordAdd(addPacket, out string addDetail);
                     if (addApplied)
                     {
@@ -125,6 +138,13 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     LastOwnerCharacterId = removePacket.CharacterId;
+                    RememberDispatchTrace(
+                        operation: "remove",
+                        observedOpcode,
+                        removePacket.CharacterId,
+                        payload.Length,
+                        normalizedSource,
+                        ResolveDispatchReason(normalizedSource, "packet-owned OnCoupleChairRecordRemove dispatch"));
                     bool removeApplied = remoteUserPool.TryApplyPortableChairRecordRemove(removePacket, out string removeDetail);
                     if (removeApplied)
                     {
@@ -190,6 +210,13 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 LastOperation = "add";
                 LastOwnerCharacterId = addPacket.CharacterId;
+                RememberDispatchTrace(
+                    operation: "add",
+                    observedOpcode,
+                    addPacket.CharacterId,
+                    LastPayloadLength,
+                    normalizedSource,
+                    ResolveDispatchReason(normalizedSource, "derived=CUser::SetActivePortableChair"));
                 bool addApplied = remoteUserPool.TryApplyPortableChairRecordAdd(addPacket, out string addDetail);
                 if (addApplied)
                 {
@@ -213,6 +240,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             LastOperation = "remove";
             LastOwnerCharacterId = removePacket.CharacterId;
+            RememberDispatchTrace(
+                operation: "remove",
+                observedOpcode,
+                removePacket.CharacterId,
+                LastPayloadLength,
+                normalizedSource,
+                ResolveDispatchReason(normalizedSource, "derived=CUser::SetActivePortableChair"));
             bool removeApplied = remoteUserPool.TryApplyPortableChairRecordRemove(removePacket, out string removeDetail);
             if (removeApplied)
             {
@@ -247,8 +281,17 @@ namespace HaCreator.MapSimulator.Interaction
                 LastOwnerCharacterId == 0 ? "none" : LastOwnerCharacterId.ToString(CultureInfo.InvariantCulture),
                 LastPayloadLength,
                 LastSource,
-                $"{DescribeObservedOpcodes()} {LastDispatchSummary}");
+                $"{DescribeObservedOpcodes()} dispatchOrder={DescribeDispatchTrace()}. {LastDispatchSummary}");
         }
+
+        internal readonly record struct PortableChairRecordRuntimeDispatchEntry(
+            int Sequence,
+            string Operation,
+            ushort Opcode,
+            int CharacterId,
+            int PayloadLength,
+            string Source,
+            string Reason);
 
         internal static ushort ResolveObservedOpcodeForParity(string source)
         {
@@ -287,6 +330,67 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ushort.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out opcode);
+        }
+
+        private void RememberDispatchTrace(
+            string operation,
+            ushort opcode,
+            int characterId,
+            int payloadLength,
+            string source,
+            string reason)
+        {
+            int sequence = _dispatchTrace.Count == 0
+                ? 1
+                : _dispatchTrace[_dispatchTrace.Count - 1].Sequence + 1;
+            _dispatchTrace.Add(new PortableChairRecordRuntimeDispatchEntry(
+                sequence,
+                string.IsNullOrWhiteSpace(operation) ? "unknown" : operation,
+                opcode,
+                characterId,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
+                string.IsNullOrWhiteSpace(reason) ? "packet-owned dispatch" : reason));
+
+            if (_dispatchTrace.Count > MaxDispatchTraceEntries)
+            {
+                _dispatchTrace.RemoveRange(0, _dispatchTrace.Count - MaxDispatchTraceEntries);
+            }
+        }
+
+        private static string ResolveDispatchReason(string source, string fallbackReason)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return fallbackReason;
+            }
+
+            const string reasonToken = "reason=";
+            string[] segments = source.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                string segment = segments[i].Trim();
+                if (segment.StartsWith(reasonToken, StringComparison.OrdinalIgnoreCase)
+                    && segment.Length > reasonToken.Length)
+                {
+                    return segment.Substring(reasonToken.Length).Trim();
+                }
+            }
+
+            return fallbackReason;
+        }
+
+        private string DescribeDispatchTrace()
+        {
+            if (_dispatchTrace.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ",",
+                _dispatchTrace.Select(entry =>
+                    $"{entry.Sequence}:{entry.Operation}@{(entry.Opcode == 0 ? "none" : entry.Opcode.ToString(CultureInfo.InvariantCulture))}:{entry.CharacterId}({entry.PayloadLength}b; source={entry.Source}; reason={entry.Reason})"));
         }
 
         private static string DescribePacketKind(int packetType)

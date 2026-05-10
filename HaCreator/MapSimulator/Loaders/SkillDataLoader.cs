@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly object SkillDisplayCacheLock = new();
         private static readonly Dictionary<int, List<SkillDisplayData>> SkillDisplayCacheByJob = new();
         private static readonly HashSet<int> MissingSkillBooks = new();
+        private const int GuildSkillPeriodDaysToMinutes = 24 * 60;
 
         public readonly struct RecommendedSkillEntry
         {
@@ -449,7 +450,11 @@ namespace HaCreator.MapSimulator.Loaders
             displayData.GuildPriceUnit = ResolveGuildPriceUnit(skillEntry["common"]);
             PopulateEvaluatedGuildValues(displayData.GuildActivationCosts, GetStringValue(skillEntry["common"], "price"), displayData.MaxLevel, displayData.GuildPriceUnit);
             PopulateEvaluatedGuildValues(displayData.GuildRenewalCosts, GetStringValue(skillEntry["common"], "extendPrice"), displayData.MaxLevel, displayData.GuildPriceUnit);
-            PopulateEvaluatedGuildValues(displayData.GuildDurationsMinutes, GetStringValue(skillEntry["common"], "period"), displayData.MaxLevel);
+            PopulateEvaluatedGuildValues(
+                displayData.GuildDurationsMinutes,
+                GetStringValue(skillEntry["common"], "period"),
+                displayData.MaxLevel,
+                GuildSkillPeriodDaysToMinutes);
 
             if (levelDescriptions != null)
             {

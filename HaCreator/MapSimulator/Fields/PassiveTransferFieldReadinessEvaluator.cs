@@ -111,7 +111,15 @@ namespace HaCreator.MapSimulator.Fields
         {
             None = 0,
             HandleUpKeyDownOneTimeAction = 1,
-            FollowCharacterTransferDetach = 2
+            FollowCharacterTransferDetach = 2,
+            JoystickButtonUpOneTimeAction = 3
+        }
+
+        public enum HandleUpKeyDownInputOwner
+        {
+            None = 0,
+            OnKey = 1,
+            OnJoystickButton = 2
         }
 
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
@@ -507,15 +515,21 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPendingRequest,
             bool hasClientOwnedOneTimeAction,
             bool hasPassiveTransferFieldPortalCollision,
-            bool allowsTransferField)
+            bool allowsTransferField,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
         {
-            return ShouldArmQueuedRetryFromHandleUpKeyDown(
+            if (!ShouldArmQueuedRetryFromHandleUpKeyDown(
                 hasPendingRequest,
                 hasClientOwnedOneTimeAction,
                 hasPassiveTransferFieldPortalCollision,
-                allowsTransferField)
-                ? QueuedRetryWriterOwner.HandleUpKeyDownOneTimeAction
-                : QueuedRetryWriterOwner.None;
+                allowsTransferField))
+            {
+                return QueuedRetryWriterOwner.None;
+            }
+
+            return inputOwner == HandleUpKeyDownInputOwner.OnJoystickButton
+                ? QueuedRetryWriterOwner.JoystickButtonUpOneTimeAction
+                : QueuedRetryWriterOwner.HandleUpKeyDownOneTimeAction;
         }
 
         public static bool ShouldArmQueuedRetryFromFollowCharacterTransferDetach(

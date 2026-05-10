@@ -289,6 +289,37 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public void ApplySelectCharacterByVacResultProfile(
+            LoginSelectCharacterByVacResultProfile profile,
+            int currentTickCount)
+        {
+            // Client evidence: CLogin::OnSelectCharacterByVACResult clears m_bRequestSent
+            // before branching on success, title-return failures, or local notice failures.
+            RequestSent = false;
+
+            if (profile == null)
+            {
+                LastEventSummary = "Received SelectCharacterByVacResult without a decoded packet profile.";
+                return;
+            }
+
+            if (profile.IsConnectSuccess)
+            {
+                FieldEntryRequested = true;
+                ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterByVacResult");
+                Update(currentTickCount);
+                return;
+            }
+
+            if (profile.ReturnsToTitle)
+            {
+                ForceStep(LoginStep.Title, "Packet-authored SelectCharacterByVACResult returned the login flow to title.");
+                return;
+            }
+
+            LastEventSummary = "Packet-authored SelectCharacterByVACResult stayed on the active login entry surface.";
+        }
+
         public string DescribeStatus()
         {
             var builder = new StringBuilder();

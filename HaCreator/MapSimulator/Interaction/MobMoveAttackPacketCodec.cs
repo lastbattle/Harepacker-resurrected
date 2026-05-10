@@ -382,6 +382,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     byte attr = reader.ReadByte();
                     bool readsCommonMoveSuffix = true;
+                    bool updatesClientCarryState = true;
                     float elementX = currentX;
                     float elementY = currentY;
                     float elementVelocityX = currentVelocityX;
@@ -437,6 +438,7 @@ namespace HaCreator.MapSimulator.Interaction
                             elementVelocityX = 0f;
                             elementVelocityY = 0f;
                             readsCommonMoveSuffix = false;
+                            updatesClientCarryState = false;
                             break;
                         case 11:
                             elementVelocityX = reader.ReadShort();
@@ -476,6 +478,11 @@ namespace HaCreator.MapSimulator.Interaction
                             _ = reader.ReadShort();
                         }
                     }
+                    else
+                    {
+                        moveActionByte = 0;
+                        elapsedMs = 0;
+                    }
 
                     int moveAction = moveActionByte >> 1;
                     bool facingRight = (moveActionByte & 1) != 0;
@@ -498,10 +505,13 @@ namespace HaCreator.MapSimulator.Interaction
                         Attribute = attr
                     });
 
-                    currentX = elementX;
-                    currentY = elementY;
-                    currentVelocityX = elementVelocityX;
-                    currentVelocityY = elementVelocityY;
+                    if (updatesClientCarryState)
+                    {
+                        currentX = elementX;
+                        currentY = elementY;
+                        currentVelocityX = elementVelocityX;
+                        currentVelocityY = elementVelocityY;
+                    }
                 }
 
                 if (decodeClientFlushTail)

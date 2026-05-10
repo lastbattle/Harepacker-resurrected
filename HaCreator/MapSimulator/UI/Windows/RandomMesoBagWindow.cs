@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class RandomMesoBagWindow : UIWindowBase
     {
-        internal const int FallbackNoticeFrameWidth = PacketOwnedRewardNoticeWindow.DefaultFrameWidth;
+        internal const int FallbackNoticeFrameWidth = 312;
         internal const int FallbackNoticeFrameHeight = PacketOwnedRewardNoticeWindow.DefaultFrameHeight;
         private const int MessageOffsetX = 78;
         private const int MessageOffsetY = 16;

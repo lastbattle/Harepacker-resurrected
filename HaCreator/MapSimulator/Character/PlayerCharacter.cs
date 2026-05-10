@@ -408,6 +408,9 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasNativeOperationSignature { get; set; }
             public IReadOnlyList<MirrorImageLayerNativeOperation> LastInsertCanvasNativeOperations { get; set; } =
                 Array.Empty<MirrorImageLayerNativeOperation>();
+            public int LastInsertCanvasNativeReferenceBalanceSignature { get; set; }
+            public IReadOnlyList<MirrorImageLayerNativeReferenceBalance> LastInsertCanvasNativeReferenceBalances { get; set; } =
+                Array.Empty<MirrorImageLayerNativeReferenceBalance>();
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -440,6 +443,20 @@ namespace HaCreator.MapSimulator.Character
             int ObjectId,
             int RelatedObjectId,
             int ReferenceDelta);
+
+        public enum MirrorImageLayerNativeReferenceKind
+        {
+            SourceLayer,
+            SourceCanvasLocal,
+            InsertCanvasResult
+        }
+
+        public readonly record struct MirrorImageLayerNativeReferenceBalance(
+            MirrorImageLayerNativeReferenceKind Kind,
+            int ObjectId,
+            int AddRefCount,
+            int ReleaseCount,
+            int NetReferenceDelta);
         private readonly struct MirrorImageRenderableSourceLayer
         {
             public MirrorImageRenderableSourceLayer(
@@ -6643,6 +6660,8 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasPostReparentListNodeSignature = 0,
                     LastInsertCanvasNativeOperationSignature = 0,
                     LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>(),
+                    LastInsertCanvasNativeReferenceBalanceSignature = 0,
+                    LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>(),
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6871,6 +6890,10 @@ namespace HaCreator.MapSimulator.Character
                 liveUnderFaceParentObjectId,
                 preparedLayer.LastInsertCanvasUnderFaceParentObjectId);
             int liveNativeOperationSignature = ComputeMirrorImageLiveInsertNativeOperationSignature(liveNativeOperations);
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> liveNativeReferenceBalances =
+                BuildMirrorImageLiveInsertNativeReferenceBalances(liveNativeOperations);
+            int liveNativeReferenceBalanceSignature = ComputeMirrorImageLiveInsertNativeReferenceBalanceSignature(
+                liveNativeReferenceBalances);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -6927,7 +6950,9 @@ namespace HaCreator.MapSimulator.Character
                     liveOverlaySiblingSignature),
                 preparedLayer.LastInsertCanvasPostReparentListNodeSignature,
                 liveNativeOperationSignature,
-                preparedLayer.LastInsertCanvasNativeOperationSignature);
+                preparedLayer.LastInsertCanvasNativeOperationSignature,
+                liveNativeReferenceBalanceSignature,
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6954,7 +6979,9 @@ namespace HaCreator.MapSimulator.Character
                         liveOverlayInsertionIndex,
                         liveOverlaySiblingSignature),
                     nativeOperations: liveNativeOperations,
-                    nativeOperationSignature: liveNativeOperationSignature);
+                    nativeOperationSignature: liveNativeOperationSignature,
+                    nativeReferenceBalances: liveNativeReferenceBalances,
+                    nativeReferenceBalanceSignature: liveNativeReferenceBalanceSignature);
             }
 
             return shouldUseLiveSourceLayer;
@@ -7215,6 +7242,8 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
             preparedLayer.LastInsertCanvasNativeOperationSignature = 0;
             preparedLayer.LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>();
+            preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = 0;
+            preparedLayer.LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>();
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -7243,7 +7272,9 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerRelMoveEndTime = int.MinValue,
             int postReparentListNodeSignature = 0,
             IReadOnlyList<MirrorImageLayerNativeOperation> nativeOperations = null,
-            int nativeOperationSignature = 0)
+            int nativeOperationSignature = 0,
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> nativeReferenceBalances = null,
+            int nativeReferenceBalanceSignature = 0)
         {
             if (preparedLayer == null)
             {
@@ -7283,6 +7314,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
                 preparedLayer.LastInsertCanvasNativeOperationSignature = 0;
                 preparedLayer.LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>();
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = 0;
+                preparedLayer.LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>();
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7393,6 +7426,14 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasNativeOperations = ResolveMirrorImageLastInsertCanvasNativeOperations(
                 preparedLayer.LastInsertCanvasNativeOperations,
                 nativeOperations,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = ResolveMirrorImageLastInsertCanvasNativeReferenceBalanceSignature(
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature,
+                nativeReferenceBalanceSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeReferenceBalances = ResolveMirrorImageLastInsertCanvasNativeReferenceBalances(
+                preparedLayer.LastInsertCanvasNativeReferenceBalances,
+                nativeReferenceBalances,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -8096,6 +8137,113 @@ namespace HaCreator.MapSimulator.Character
             return signature.ToHashCode();
         }
 
+        internal static IReadOnlyList<MirrorImageLayerNativeReferenceBalance> BuildMirrorImageLiveInsertNativeReferenceBalances(
+            IReadOnlyList<MirrorImageLayerNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            }
+
+            var balances = new Dictionary<(MirrorImageLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)>();
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImageLayerNativeOperation operation = operations[operationIndex];
+                switch (operation.Kind)
+                {
+                    case MirrorImageLayerNativeOperationKind.AddRefSourceLayer:
+                    case MirrorImageLayerNativeOperationKind.ReleaseSourceLayer:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.SourceLayer,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.AddRefSourceCanvasLocal:
+                    case MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasLocal:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.SourceCanvasLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.InsertCanvasIntoHelperLayer:
+                    case MirrorImageLayerNativeOperationKind.ClearInsertCanvasResultVariant:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.InsertCanvasResult,
+                            operation.RelatedObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                }
+            }
+
+            if (balances.Count == 0)
+            {
+                return Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            }
+
+            return balances
+                .OrderBy(static entry => entry.Key.Kind)
+                .ThenBy(static entry => entry.Key.ObjectId)
+                .Select(static entry => new MirrorImageLayerNativeReferenceBalance(
+                    entry.Key.Kind,
+                    entry.Key.ObjectId,
+                    entry.Value.AddRefCount,
+                    entry.Value.ReleaseCount,
+                    entry.Value.NetReferenceDelta))
+                .ToArray();
+        }
+
+        private static void AddMirrorImageNativeReferenceDelta(
+            Dictionary<(MirrorImageLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)> balances,
+            MirrorImageLayerNativeReferenceKind kind,
+            int objectId,
+            int referenceDelta)
+        {
+            if (balances == null || objectId == 0 || referenceDelta == 0)
+            {
+                return;
+            }
+
+            (int AddRefCount, int ReleaseCount, int NetReferenceDelta) balance = balances.TryGetValue((kind, objectId), out var existing)
+                ? existing
+                : default;
+            if (referenceDelta > 0)
+            {
+                balance.AddRefCount += referenceDelta;
+            }
+            else
+            {
+                balance.ReleaseCount += -referenceDelta;
+            }
+
+            balance.NetReferenceDelta += referenceDelta;
+            balances[(kind, objectId)] = balance;
+        }
+
+        internal static int ComputeMirrorImageLiveInsertNativeReferenceBalanceSignature(
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(balances.Count);
+            for (int balanceIndex = 0; balanceIndex < balances.Count; balanceIndex++)
+            {
+                MirrorImageLayerNativeReferenceBalance balance = balances[balanceIndex];
+                signature.Add((int)balance.Kind);
+                signature.Add(balance.ObjectId);
+                signature.Add(balance.AddRefCount);
+                signature.Add(balance.ReleaseCount);
+                signature.Add(balance.NetReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
         internal static int ResolveMirrorImageLastInsertCanvasNativeOperationSignature(
             int existingNativeOperationSignature,
             int currentNativeOperationSignature,
@@ -8106,6 +8254,25 @@ namespace HaCreator.MapSimulator.Character
                 : existingNativeOperationSignature;
         }
 
+        internal static int ResolveMirrorImageLastInsertCanvasNativeReferenceBalanceSignature(
+            int existingNativeReferenceBalanceSignature,
+            int currentNativeReferenceBalanceSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeReferenceBalanceSignature != 0
+                ? currentNativeReferenceBalanceSignature
+                : existingNativeReferenceBalanceSignature;
+        }
+
+        internal static IReadOnlyList<MirrorImageLayerNativeReferenceBalance> ResolveMirrorImageLastInsertCanvasNativeReferenceBalances(
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> existingNativeReferenceBalances,
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> currentNativeReferenceBalances,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeReferenceBalances != null && currentNativeReferenceBalances.Count > 0
+                ? currentNativeReferenceBalances
+                : existingNativeReferenceBalances ?? Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+        }
         internal static IReadOnlyList<MirrorImageLayerNativeOperation> ResolveMirrorImageLastInsertCanvasNativeOperations(
             IReadOnlyList<MirrorImageLayerNativeOperation> existingNativeOperations,
             IReadOnlyList<MirrorImageLayerNativeOperation> currentNativeOperations,
@@ -8583,7 +8750,9 @@ namespace HaCreator.MapSimulator.Character
             int postReparentListNodeSignature = 0,
             int lastInsertCanvasPostReparentListNodeSignature = 0,
             int nativeOperationSignature = 0,
-            int lastInsertCanvasNativeOperationSignature = 0)
+            int lastInsertCanvasNativeOperationSignature = 0,
+            int nativeReferenceBalanceSignature = 0,
+            int lastInsertCanvasNativeReferenceBalanceSignature = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -8710,6 +8879,9 @@ namespace HaCreator.MapSimulator.Character
             bool nativeOperationSignatureChanged = nativeOperationSignature != 0
                 && lastInsertCanvasNativeOperationSignature != 0
                 && nativeOperationSignature != lastInsertCanvasNativeOperationSignature;
+            bool nativeReferenceBalanceSignatureChanged = nativeReferenceBalanceSignature != 0
+                && lastInsertCanvasNativeReferenceBalanceSignature != 0
+                && nativeReferenceBalanceSignature != lastInsertCanvasNativeReferenceBalanceSignature;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
@@ -8735,6 +8907,7 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerRelMoveEndTimeChanged
                 || postReparentListNodeChanged
                 || nativeOperationSignatureChanged
+                || nativeReferenceBalanceSignatureChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
             {
@@ -8783,6 +8956,8 @@ namespace HaCreator.MapSimulator.Character
                 && (postReparentListNodeSignature == 0 || lastInsertCanvasPostReparentListNodeSignature == 0);
             bool nativeOperationSignatureMetadataMissing = (nativeOperationSignature != 0 || lastInsertCanvasNativeOperationSignature != 0)
                 && (nativeOperationSignature == 0 || lastInsertCanvasNativeOperationSignature == 0);
+            bool nativeReferenceBalanceSignatureMetadataMissing = (nativeReferenceBalanceSignature != 0 || lastInsertCanvasNativeReferenceBalanceSignature != 0)
+                && (nativeReferenceBalanceSignature == 0 || lastInsertCanvasNativeReferenceBalanceSignature == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
                 || sourceCanvasSignatureMetadataMissing
@@ -8803,7 +8978,8 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerTargetOffsetMetadataMissing
                 || preparedLayerRelMoveEndTimeMetadataMissing
                 || postReparentListNodeMetadataMissing
-                || nativeOperationSignatureMetadataMissing;
+                || nativeOperationSignatureMetadataMissing
+                || nativeReferenceBalanceSignatureMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -12820,34 +12996,21 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            bool shouldPlayRideTransition = activeMount?.Slot == EquipSlot.TamingMob
-                && (clientOwnedMountActive || !SameTamingMob(_observedTamingMobPart, activeMount));
-            bool shouldPlayGetOffTransition = _observedTamingMobPart?.Slot == EquipSlot.TamingMob
-                && (_observedClientOwnedTamingMobActive || activeMount == null);
+            bool shouldPlayTransition = (activeMount?.Slot == EquipSlot.TamingMob
+                    && (clientOwnedMountActive || !SameTamingMob(_observedTamingMobPart, activeMount)))
+                || (_observedTamingMobPart?.Slot == EquipSlot.TamingMob
+                    && (_observedClientOwnedTamingMobActive || activeMount == null));
 
-            string rideTransitionActionName = ResolveClientRidingVehicleTransitionActionName(
-                activeMount,
-                isMounting: true);
-            string getOffTransitionActionName = ResolveClientRidingVehicleTransitionActionName(
-                _observedTamingMobPart,
-                isMounting: false);
-
-            if (shouldPlayRideTransition
-                && !string.IsNullOrWhiteSpace(rideTransitionActionName))
-            {
-                TriggerAutomaticTamingMobTransition(
-                    activeMount,
-                    rideTransitionActionName,
-                    preserveUnmountedMount: false,
-                    currentTime);
-            }
-            else if (shouldPlayGetOffTransition
-                     && !string.IsNullOrWhiteSpace(getOffTransitionActionName))
-            {
-                TriggerAutomaticTamingMobTransition(
+            if (shouldPlayTransition
+                && TryResolveClientRidingVehicleTransition(
                     _observedTamingMobPart,
-                    getOffTransitionActionName,
-                    preserveUnmountedMount: true,
+                    activeMount,
+                    out ClientRidingVehicleTransition transition))
+            {
+                TriggerAutomaticTamingMobTransition(
+                    transition.OwnerPart,
+                    transition.ActionName,
+                    transition.PreserveUnmountedMount,
                     currentTime);
             }
             else
@@ -13123,6 +13286,112 @@ namespace HaCreator.MapSimulator.Character
                 : null;
         }
 
+        internal static string ResolveClientRidingVehicleTransitionActionName(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            return TryResolveClientRidingVehicleTransition(
+                oldMountPart,
+                newMountPart,
+                out ClientRidingVehicleTransition transition)
+                ? transition.ActionName
+                : null;
+        }
+
+        private static bool TryResolveClientRidingVehicleTransition(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart,
+            out ClientRidingVehicleTransition transition)
+        {
+            transition = default;
+            CharacterPart oldMount = oldMountPart?.Slot == EquipSlot.TamingMob ? oldMountPart : null;
+            CharacterPart newMount = newMountPart?.Slot == EquipSlot.TamingMob ? newMountPart : null;
+            if (oldMount == null && newMount == null)
+            {
+                return false;
+            }
+
+            bool hasNewVehicle = newMount != null;
+            CharacterPart jaguarMount = ResolveClientRidingVehicleJaguarTransitionOwner(oldMount, newMount);
+            if (jaguarMount != null)
+            {
+                string actionName = ResolveClientRidingVehicleJaguarBodyTransitionActionName(hasNewVehicle);
+                if (!IsClientRidingVehicleJaguarBodyTransitionAction(jaguarMount, actionName))
+                {
+                    return false;
+                }
+
+                transition = new ClientRidingVehicleTransition(
+                    jaguarMount,
+                    actionName,
+                    preserveUnmountedMount: !hasNewVehicle);
+                return true;
+            }
+
+            CharacterPart mechanicMount = ResolveClientRidingVehicleMechanicTransitionOwner(oldMount, newMount);
+            if (mechanicMount != null)
+            {
+                string actionName = hasNewVehicle ? "msummon" : "msummon2";
+                if (!SupportsTamingMobTransitionAction(mechanicMount, actionName))
+                {
+                    return false;
+                }
+
+                transition = new ClientRidingVehicleTransition(
+                    mechanicMount,
+                    actionName,
+                    preserveUnmountedMount: !hasNewVehicle);
+                return true;
+            }
+
+            CharacterPart defaultOwner = hasNewVehicle ? newMount : oldMount;
+            string defaultActionName = ResolveClientRidingVehicleTransitionActionName(
+                defaultOwner,
+                isMounting: hasNewVehicle);
+            if (string.IsNullOrWhiteSpace(defaultActionName))
+            {
+                return false;
+            }
+
+            transition = new ClientRidingVehicleTransition(
+                defaultOwner,
+                defaultActionName,
+                preserveUnmountedMount: !hasNewVehicle);
+            return true;
+        }
+
+        private static CharacterPart ResolveClientRidingVehicleJaguarTransitionOwner(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            if (newMountPart?.Slot == EquipSlot.TamingMob
+                && ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(newMountPart.ItemId))
+            {
+                return newMountPart;
+            }
+
+            return oldMountPart?.Slot == EquipSlot.TamingMob
+                   && ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(oldMountPart.ItemId)
+                ? oldMountPart
+                : null;
+        }
+
+        private static CharacterPart ResolveClientRidingVehicleMechanicTransitionOwner(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            if (newMountPart?.Slot == EquipSlot.TamingMob
+                && newMountPart.ItemId == MechanicTamingMobItemId)
+            {
+                return newMountPart;
+            }
+
+            return oldMountPart?.Slot == EquipSlot.TamingMob
+                   && oldMountPart.ItemId == MechanicTamingMobItemId
+                ? oldMountPart
+                : null;
+        }
+
         private static string ResolveClientRidingVehicleJaguarBodyTransitionActionName(bool isMounting)
         {
             return isMounting ? "earthslug" : "rpunch";
@@ -13207,6 +13476,25 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return left.Slot == right.Slot && left.ItemId == right.ItemId;
+        }
+
+        private readonly struct ClientRidingVehicleTransition
+        {
+            internal ClientRidingVehicleTransition(
+                CharacterPart ownerPart,
+                string actionName,
+                bool preserveUnmountedMount)
+            {
+                OwnerPart = ownerPart;
+                ActionName = actionName;
+                PreserveUnmountedMount = preserveUnmountedMount;
+            }
+
+            internal CharacterPart OwnerPart { get; }
+
+            internal string ActionName { get; }
+
+            internal bool PreserveUnmountedMount { get; }
         }
 
         private static CharacterAction GetCharacterActionForActionName(string actionName)

@@ -765,7 +765,7 @@ namespace HaCreator.MapSimulator.Entities
 
             if (!HasExactAuthoredEventIndex(state, properEventIndex))
             {
-                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+                return TryResolveRootThenStateHitSource(state, out sourceKind, out sourceProperty);
             }
 
             if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
@@ -774,6 +774,16 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+        }
+
+        private bool TryResolveRootThenStateHitSource(int state, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)
+        {
+            if (TryResolveRootHitSource(out sourceKind, out sourceProperty))
+            {
+                return true;
+            }
+
+            return TryResolveStateHitSource(state, out sourceKind, out sourceProperty);
         }
 
         private static bool HasRenderableHitLayerSource(HitAnimationSourceKind sourceKind, WzImageProperty sourceProperty)

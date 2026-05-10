@@ -74,7 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _draftSender = "ExplorerGM";
         private readonly string[] _draftMessageFragments = new string[4];
         private int _draftItemId = DefaultItemId;
-        private bool _draftWhisper;
+        private bool _draftWhisper = SendDialogInitialWhisperChecked;
         private int _draftChannelId = -1;
         private CharacterBuild _localAvatarTemplate;
         private CharacterBuild _packetAvatarTemplate;
@@ -393,7 +393,7 @@ namespace HaCreator.MapSimulator.Interaction
             chatLogEntry = null;
             message = string.Empty;
 
-            AvatarMegaphoneItemProfile profile = ResolveItemProfile(_draftItemId);
+            AvatarMegaphoneItemProfile profile = ResolveItemProfile(itemId);
             if (profile == null)
             {
                 message = $"Avatar megaphone item {itemId} is not supported.";

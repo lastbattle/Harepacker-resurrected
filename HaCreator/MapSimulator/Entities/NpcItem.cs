@@ -733,7 +733,7 @@ namespace HaCreator.MapSimulator.Entities
             int centerY,
             int tickCount)
         {
-            if (!HasMapleTvPresentation || _mapleTvVisualAssetsProvider == null || _mapleTvFont == null)
+            if (!HasMapleTvPresentation || _mapleTvVisualAssetsProvider == null)
             {
                 return;
             }
@@ -745,7 +745,29 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             MapleTvSnapshot snapshot = _mapleTvSnapshotProvider?.Invoke();
-            if (snapshot?.IsShowingMessage != true)
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            if (!snapshot.IsShowingMessage)
+            {
+                IReadOnlyList<MapleTvAnimationFrame> idleFrames = ResolveActorLocalMapleTvIdleFrames(visualAssets, snapshot.QueueExists);
+                MapleTvAnimationFrame idleFrame = SelectMapleTvFrame(idleFrames, tickCount);
+                int idleOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
+                int idleOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
+                DrawMapleTvFrame(
+                    idleFrame,
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawReflectionInfo,
+                    idleOriginX,
+                    idleOriginY);
+                return;
+            }
+
+            if (_mapleTvFont == null)
             {
                 return;
             }
@@ -815,6 +837,27 @@ namespace HaCreator.MapSimulator.Entities
 
                 drawY += 14;
             }
+        }
+
+        internal static IReadOnlyList<MapleTvAnimationFrame> ResolveActorLocalMapleTvIdleFrames(
+            MapleTvVisualAssets visualAssets,
+            bool queueExists)
+        {
+            if (visualAssets == null)
+            {
+                return Array.Empty<MapleTvAnimationFrame>();
+            }
+
+            if (queueExists)
+            {
+                return visualAssets.OffFrames.Count > 0
+                    ? visualAssets.OffFrames
+                    : visualAssets.BasicFrames;
+            }
+
+            return visualAssets.BasicFrames.Count > 0
+                ? visualAssets.BasicFrames
+                : visualAssets.OffFrames;
         }
 
         private static void DrawMapleTvFrame(

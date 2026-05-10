@@ -447,6 +447,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             float offset = MathHelper.Clamp(currentPosition - lowerBound, 0f, span);
+            float packetPhysicalOffset = currentPosition - (lowerBound + offset);
             float period = span * 2f;
             float phase = movingPositive
                 ? offset + movement
@@ -459,23 +460,23 @@ namespace HaCreator.MapSimulator.Fields
 
             if (phase < span)
             {
-                reflectedPosition = lowerBound + phase;
+                reflectedPosition = lowerBound + phase + packetPhysicalOffset;
                 reflectedMovingPositive = true;
             }
             else if (phase > span)
             {
-                reflectedPosition = upperBound - (phase - span);
+                reflectedPosition = upperBound - (phase - span) + packetPhysicalOffset;
                 reflectedMovingPositive = false;
             }
             else
             {
-                reflectedPosition = upperBound;
+                reflectedPosition = upperBound + packetPhysicalOffset;
                 reflectedMovingPositive = false;
             }
 
             if (phase == 0f)
             {
-                reflectedPosition = lowerBound;
+                reflectedPosition = lowerBound + packetPhysicalOffset;
                 reflectedMovingPositive = true;
             }
 

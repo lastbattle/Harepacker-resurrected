@@ -3088,6 +3088,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.ShadowPartnerSupportedRawActionNames.Add(rawActionName);
             }
+
+            WzImageProperty specialNode = ResolveShadowPartnerSourcePropertyFromSkillNode(skillNode);
+            foreach (WzImageProperty actionNode in specialNode?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (!string.IsNullOrWhiteSpace(actionNode?.Name))
+                {
+                    skill.ShadowPartnerSupportedRawActionNames.Add(actionNode.Name);
+                }
+            }
         }
 
         internal static IEnumerable<string> EnumerateShadowPartnerRawActionNamesFromSourceSkillNodes(
@@ -7177,6 +7186,142 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return candidate;
                 }
             }
+
+            foreach ((IReadOnlyList<string> Headers, IReadOnlyList<string> Values) in EnumerateClientSummonedUolColumnValueTableEntryRows(tableEntry))
+            {
+                int fieldCount = Math.Min(Headers.Count, Values.Count);
+                if (fieldCount <= 0)
+                {
+                    continue;
+                }
+
+                var fields = new List<string>();
+                for (int fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++)
+                {
+                    string header = Headers[fieldIndex];
+                    string value = Values[fieldIndex];
+                    if (string.IsNullOrWhiteSpace(header) || string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    fields.Add($"{header}={value}");
+                }
+
+                if (fields.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+                             string.Join(";", fields),
+                             skillId))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<(IReadOnlyList<string> Headers, IReadOnlyList<string> Values)> EnumerateClientSummonedUolColumnValueTableEntryRows(
+            WzImageProperty tableEntry)
+        {
+            if (tableEntry?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            var ownerColumns = new List<(string Header, IReadOnlyList<string> Values)>();
+            var valueColumns = new List<(string Header, IReadOnlyList<string> Values)>();
+            var variantColumns = new List<(string Header, IReadOnlyList<string> Values)>();
+            foreach (WzImageProperty child in tableEntry.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string header = child.Name;
+                IReadOnlyList<string> values = ReadClientSummonedUolColumnValues(child);
+                if (values.Count == 0)
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolTableOwnerFieldName(header))
+                {
+                    ownerColumns.Add((header, values));
+                }
+                else if (IsClientSummonedUolTableEntryValueName(header))
+                {
+                    valueColumns.Add((header, values));
+                }
+                else if (TryReadClientSkillAssetUolRecordVariantLevel(header, "1", out _, out _)
+                         || TryReadClientSkillAssetUolRecordVariantLevel(header, out _, out _))
+                {
+                    variantColumns.Add((header, values));
+                }
+            }
+
+            if (ownerColumns.Count == 0 || valueColumns.Count == 0)
+            {
+                yield break;
+            }
+
+            int maxRowCount = ownerColumns
+                .Concat(valueColumns)
+                .Concat(variantColumns)
+                .Select(static column => column.Values.Count)
+                .DefaultIfEmpty(0)
+                .Max();
+            for (int rowIndex = 0; rowIndex < maxRowCount; rowIndex++)
+            {
+                var headers = new List<string>();
+                var values = new List<string>();
+                foreach ((string Header, IReadOnlyList<string> Values) column in ownerColumns
+                             .Concat(valueColumns)
+                             .Concat(variantColumns))
+                {
+                    string value = rowIndex < column.Values.Count
+                        ? column.Values[rowIndex]
+                        : column.Values.Count == 1
+                            ? column.Values[0]
+                            : null;
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    headers.Add(column.Header);
+                    values.Add(value);
+                }
+
+                if (headers.Any(IsClientSummonedUolTableOwnerFieldName)
+                    && headers.Any(IsClientSummonedUolTableEntryValueName))
+                {
+                    yield return (headers, values);
+                }
+            }
+        }
+
+        private static IReadOnlyList<string> ReadClientSummonedUolColumnValues(WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            IReadOnlyList<string> indexedValues = ReadClientSummonedUolDelimitedOrIndexedList(node, preferredDelimiter: '\0');
+            string text = GetClientSummonedUolCandidateValue(node);
+            if (string.IsNullOrWhiteSpace(text) || text.IndexOfAny(new[] { '\r', '\n' }) < 0)
+            {
+                return indexedValues;
+            }
+
+            string[] lineValues = SplitClientSummonedUolRowSetText(text)
+                .Select(TrimClientSummonedUolRecordTextFieldToken)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .ToArray();
+            return lineValues.Length > 1 ? lineValues : indexedValues;
         }
 
         private static IEnumerable<(IReadOnlyList<string> Headers, IReadOnlyList<string> Values)> EnumerateClientSummonedUolHeaderValueTableEntryRows(
@@ -7212,7 +7357,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     if (IsClientSummonedUolRowSetFieldName(valueNode.Name))
                     {
-                        foreach (IReadOnlyList<string> rowValues in ReadClientSummonedUolRowSetValues(valueNode, preferredDelimiter))
+                        foreach (IReadOnlyList<string> rowValues in ReadClientSummonedUolRowSetValues(valueNode, preferredDelimiter, headers))
                         {
                             if (rowValues.Count > 0)
                             {
@@ -7223,7 +7368,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    foreach (IReadOnlyList<string> values in EnumerateClientSummonedUolValueRows(valueNode, preferredDelimiter))
+                    foreach (IReadOnlyList<string> values in EnumerateClientSummonedUolValueRows(valueNode, preferredDelimiter, headers))
                     {
                         if (values.Count > 0)
                         {
@@ -7236,9 +7381,24 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IEnumerable<IReadOnlyList<string>> EnumerateClientSummonedUolValueRows(
             WzImageProperty node,
-            char preferredDelimiter)
+            char preferredDelimiter,
+            IReadOnlyList<string> headers = null)
         {
             if (node == null)
+            {
+                yield break;
+            }
+
+            bool yieldedBracketedRow = false;
+            foreach (IReadOnlyList<string> row in EnumerateClientSummonedUolBracketedValueRows(
+                         GetClientSummonedUolCandidateValue(node),
+                         preferredDelimiter))
+            {
+                yieldedBracketedRow = true;
+                yield return row;
+            }
+
+            if (yieldedBracketedRow)
             {
                 yield break;
             }
@@ -7270,7 +7430,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     {
                         if (child?.WzProperties?.Count > 0)
                         {
-                            IReadOnlyList<string> row = ReadClientSummonedUolDelimitedOrIndexedList(child, preferredDelimiter);
+                            IReadOnlyList<string> row = ReadClientSummonedUolNamedFieldRow(child, headers);
+                            if (row.Count == 0)
+                            {
+                                row = ReadClientSummonedUolDelimitedOrIndexedList(child, preferredDelimiter);
+                            }
+
                             if (row.Count > 0)
                             {
                                 yieldedNestedRow = true;
@@ -7318,6 +7483,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                         yield break;
                     }
                 }
+
+                foreach (WzImageProperty child in node.WzProperties)
+                {
+                    if (child?.WzProperties?.Count > 0 != true
+                        || string.IsNullOrWhiteSpace(child.Name)
+                        || int.TryParse(
+                            NormalizeClientSummonedUolFieldNameSyntax(child.Name),
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out _))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<string> row = ReadClientSummonedUolNamedFieldRow(child, headers);
+                    if (row.Count > 0)
+                    {
+                        yield return row;
+                    }
+                }
             }
 
             IReadOnlyList<string> values = ReadClientSummonedUolDelimitedOrIndexedList(node, preferredDelimiter);
@@ -7329,7 +7514,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IEnumerable<IReadOnlyList<string>> ReadClientSummonedUolRowSetValues(
             WzImageProperty node,
-            char preferredDelimiter)
+            char preferredDelimiter,
+            IReadOnlyList<string> headers = null)
         {
             if (node == null)
             {
@@ -7345,7 +7531,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    IReadOnlyList<string> rowValues = ReadClientSummonedUolDelimitedOrIndexedList(rowNode, preferredDelimiter);
+                    IReadOnlyList<string> rowValues = ReadClientSummonedUolNamedFieldRow(rowNode, headers);
+                    if (rowValues.Count == 0)
+                    {
+                        rowValues = ReadClientSummonedUolDelimitedOrIndexedList(rowNode, preferredDelimiter);
+                    }
+
                     if (rowValues.Count > 0)
                     {
                         yield return rowValues;
@@ -7359,6 +7550,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            bool yieldedBracketedRow = false;
+            foreach (IReadOnlyList<string> rowValues in EnumerateClientSummonedUolBracketedValueRows(text, preferredDelimiter))
+            {
+                yieldedBracketedRow = true;
+                yield return rowValues;
+            }
+
+            if (yieldedBracketedRow)
+            {
+                yield break;
+            }
+
             foreach (string rowText in SplitClientSummonedUolRowSetText(text))
             {
                 IReadOnlyList<string> rowValues = ReadClientSummonedUolDelimitedOrIndexedText(rowText, preferredDelimiter);
@@ -7367,6 +7570,49 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return rowValues;
                 }
             }
+        }
+
+        private static IReadOnlyList<string> ReadClientSummonedUolNamedFieldRow(
+            WzImageProperty node,
+            IReadOnlyList<string> headers)
+        {
+            if (node?.WzProperties?.Count > 0 != true || headers == null || headers.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var values = new List<string>(headers.Count);
+            foreach (string header in headers)
+            {
+                WzImageProperty fieldNode = FindClientSummonedUolNamedFieldChild(node, header);
+                values.Add(TrimClientSummonedUolRecordTextFieldToken(GetClientSummonedUolCandidateValue(fieldNode)) ?? string.Empty);
+            }
+
+            return values.Any(static value => !string.IsNullOrWhiteSpace(value))
+                ? values
+                : Array.Empty<string>();
+        }
+
+        private static WzImageProperty FindClientSummonedUolNamedFieldChild(WzImageProperty node, string fieldName)
+        {
+            if (node?.WzProperties == null || string.IsNullOrWhiteSpace(fieldName))
+            {
+                return null;
+            }
+
+            string normalizedFieldName = NormalizeClientSummonedUolFieldNameSyntax(fieldName);
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (string.Equals(
+                        NormalizeClientSummonedUolFieldNameSyntax(child?.Name),
+                        normalizedFieldName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+            }
+
+            return null;
         }
 
         private static IEnumerable<string> SplitClientSummonedUolRowSetText(string text)
@@ -7480,6 +7726,105 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Select(TrimClientSummonedUolRecordTextFieldToken)
                 .Where(static value => !string.IsNullOrWhiteSpace(value))
                 .ToArray();
+        }
+
+        private static IEnumerable<IReadOnlyList<string>> EnumerateClientSummonedUolBracketedValueRows(
+            string text,
+            char preferredDelimiter)
+        {
+            string normalizedText = NormalizeClientSummonedUolEncodedPathSyntax(text).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedText)
+                || normalizedText.Length < 4
+                || normalizedText[0] != '['
+                || normalizedText[normalizedText.Length - 1] != ']')
+            {
+                yield break;
+            }
+
+            bool yieldedNestedRow = false;
+            foreach (string nestedRowText in EnumerateClientSummonedUolTopLevelBracketGroups(normalizedText))
+            {
+                IReadOnlyList<string> row = SplitClientSummonedUolDelimitedList(nestedRowText, preferredDelimiter);
+                if (row.Count > 0)
+                {
+                    yieldedNestedRow = true;
+                    yield return row;
+                }
+            }
+
+            if (yieldedNestedRow)
+            {
+                yield break;
+            }
+
+            IReadOnlyList<string> scalarRow = SplitClientSummonedUolDelimitedList(
+                normalizedText.Trim('[', ']'),
+                preferredDelimiter);
+            if (scalarRow.Count > 0)
+            {
+                yield return scalarRow;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolTopLevelBracketGroups(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            bool inQuote = false;
+            char quoteChar = '\0';
+            int depth = 0;
+            int groupStart = -1;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char current = text[i];
+                if ((current == '"' || current == '\'') && (i == 0 || text[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (inQuote)
+                {
+                    continue;
+                }
+
+                if (current == '[' || current == '{' || current == '(')
+                {
+                    depth++;
+                    if (depth == 2)
+                    {
+                        groupStart = i + 1;
+                    }
+
+                    continue;
+                }
+
+                if (current != ']' && current != '}' && current != ')')
+                {
+                    continue;
+                }
+
+                if (depth == 2 && groupStart >= 0 && i > groupStart)
+                {
+                    yield return text.Substring(groupStart, i - groupStart);
+                    groupStart = -1;
+                }
+
+                depth = Math.Max(0, depth - 1);
+            }
         }
 
         private static char DetectClientSummonedUolListDelimiter(string value)

@@ -970,14 +970,16 @@ namespace HaCreator.MapSimulator.Character
             SkillLevelData levelData,
             int currentTime,
             int sourceOwnerId = 0,
-            int sourceAreaObjectId = 0)
+            int sourceAreaObjectId = 0,
+            PlayerMobStatusSourceOwnerSnapshot sourceOwnerSnapshot = default)
         {
             return _mobStatusController?.TryApplyRemoteAffectedAreaPlayerSkill(
                 skill,
                 levelData,
                 currentTime,
                 sourceOwnerId,
-                sourceAreaObjectId) == true;
+                sourceAreaObjectId,
+                sourceOwnerSnapshot) == true;
         }
 
         internal void PlayMobSkillHitEffect(int skillId, int skillLevel, int currentTime)
@@ -1740,6 +1742,12 @@ namespace HaCreator.MapSimulator.Character
 
         internal bool IsInteractPressedForWorldInput()
         {
+            return TryResolveInteractPressedForWorldInput(out _);
+        }
+
+        internal bool TryResolveInteractPressedForWorldInput(out InputSource source)
+        {
+            source = InputSource.None;
             if (Input == null)
             {
                 return false;
@@ -1750,7 +1758,8 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return Input.IsPressed(InputAction.Interact);
+            return Input.TryResolvePressedInputSource(InputAction.Interact, out source)
+                   && Input.IsPressed(InputAction.Interact);
         }
 
         internal static bool IsInteractBlockedByMobStatus(PlayerMobStatusFrameState state)

@@ -2377,7 +2377,7 @@ namespace HaCreator.MapSimulator
             {
                 MapleLib.WzLib.WzStructure.MapInfo manualTargetMapInfo =
                     ResolveMapTransferDestinationMapInfo(_mapTransferManualDestination.MapId);
-                string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+                string registrationRestriction = ResolveMapTransferRegisterStatusRestrictionMessage(
                     _mapTransferManualDestination.MapId,
                     manualTargetMapInfo,
                     BuildFieldEntryRestrictionContext());
@@ -2394,7 +2394,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string currentMapRegistrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+            string currentMapRegistrationRestriction = ResolveMapTransferRegisterStatusRestrictionMessage(
                 _mapBoard?.MapInfo?.id ?? 0,
                 _mapBoard?.MapInfo,
                 BuildFieldEntryRestrictionContext());
@@ -2415,6 +2415,16 @@ namespace HaCreator.MapSimulator
             string ownerName = GetActiveMapTransferCharacterBuild()?.Name;
             string ownerSuffix = string.IsNullOrWhiteSpace(ownerName) ? string.Empty : $" for {ownerName}";
             return $"Register the current map, enter a map ID, or choose a listed route ({Math.Min(currentDestinations.Count, savedCapacity)}/{savedCapacity} saved{ownerSuffix}).";
+        }
+
+        internal static string ResolveMapTransferRegisterStatusRestrictionMessage(
+            int mapId,
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            _ = mapInfo;
+            _ = context;
+            return FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(mapId);
         }
 
         private MapleLib.WzLib.WzStructure.MapInfo ResolveMapTransferDestinationMapInfo(int mapId)
@@ -21981,7 +21991,8 @@ namespace HaCreator.MapSimulator
                     secondaryValue: runtimeData.X,
                     tertiaryValue: runtimeData.Y,
                     sourceSkillId: skill.SkillId,
-                    sourceSkillLevel: skill.Level);
+                    sourceSkillLevel: skill.Level,
+                    sourceOwnerId: Math.Max(0, sourceMob.PoolId));
             }
         }
 
@@ -31617,12 +31628,12 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int delayMs = Math.Max(0, skill?.ClientDelayMs ?? 0);
+            int delayMs = ResolveClientExplicitLocalOwnedAffectedAreaStartDelayMs(
+                skill?.SkillId ?? 0,
+                ownerLane);
             if (delayMs <= 0)
             {
-                delayMs = ResolveClientExplicitLocalOwnedAffectedAreaStartDelayMs(
-                    skill?.SkillId ?? 0,
-                    ownerLane);
+                delayMs = Math.Max(0, skill?.ClientDelayMs ?? 0);
             }
 
             int units = (delayMs + 99) / 100;
@@ -32260,7 +32271,7 @@ namespace HaCreator.MapSimulator
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
             // IDA: TryDoingMagicAttack explicit foothold registration keeps a fixed `180` start-delay
-            // on the recovered explicit-duration fallback branch subset when authored delay is absent.
+            // on the recovered explicit-duration branch subset.
             return ownerLane switch
             {
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack
@@ -32285,14 +32296,20 @@ namespace HaCreator.MapSimulator
             int authoredDurationSeconds,
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
-            if (skill == null || Math.Max(0, authoredDurationSeconds) > 0)
+            if (skill == null)
             {
                 return 0;
             }
 
-            return ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(
+            int clientDurationOverrideMs = ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(
                 skill.SkillId,
                 ownerLane);
+            if (clientDurationOverrideMs > 0)
+            {
+                return clientDurationOverrideMs;
+            }
+
+            return 0;
         }
 
         private int ResolveLocalOwnedAffectedAreaObjectId(int skillId)
@@ -33900,7 +33917,8 @@ namespace HaCreator.MapSimulator
             }
 
 
-            bool interactPressed = _playerManager.IsInteractPressedForWorldInput();
+            bool interactPressed = _playerManager.TryResolveInteractPressedForWorldInput(
+                out InputSource interactInputSource);
 
             if (!interactPressed)
 
@@ -33955,7 +33973,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            ArmPassiveTransferRequest(ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown());
+            ArmPassiveTransferRequest(
+                ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown(interactInputSource));
         }
 
         private void HandleQueuedPassiveTransferFieldRetry(int currentTime)
@@ -34306,13 +34325,23 @@ namespace HaCreator.MapSimulator
                 ResolvePassiveTransferFieldRuntimeTransferAllowance());
         }
 
-        private PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown()
+        private PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown(
+            InputSource inputSource = InputSource.Keyboard)
         {
             return PassiveTransferFieldReadinessEvaluator.ResolveQueuedRetryWriterFromHandleUpKeyDown(
                 _passiveTransferRequestPending,
                 HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
                 HasPassiveTransferFieldPortalCollision(),
-                ResolvePassiveTransferFieldRuntimeTransferAllowance());
+                ResolvePassiveTransferFieldRuntimeTransferAllowance(),
+                ResolvePassiveTransferFieldHandleUpKeyDownInputOwner(inputSource));
+        }
+
+        private static PassiveTransferFieldReadinessEvaluator.HandleUpKeyDownInputOwner ResolvePassiveTransferFieldHandleUpKeyDownInputOwner(
+            InputSource inputSource)
+        {
+            return inputSource == InputSource.Gamepad
+                ? PassiveTransferFieldReadinessEvaluator.HandleUpKeyDownInputOwner.OnJoystickButton
+                : PassiveTransferFieldReadinessEvaluator.HandleUpKeyDownInputOwner.OnKey;
         }
 
         private static bool HasActivePassiveTransferFieldOneTimeAction(PlayerCharacter player)
@@ -43910,6 +43939,8 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerOrdinal = buffEntry.TemporaryStatViewParentLayerOrdinal;
             renderData.TemporaryStatViewMainLayerOrdinal = buffEntry.TemporaryStatViewMainLayerOrdinal;
             renderData.TemporaryStatViewShadowLayerOrdinal = buffEntry.TemporaryStatViewShadowLayerOrdinal;
+            renderData.TemporaryStatViewLayerOriginName = buffEntry.TemporaryStatViewLayerOriginName;
+            renderData.TemporaryStatViewLayerZ = buffEntry.TemporaryStatViewLayerZ;
             renderData.IsTemporaryStatViewReleased = buffEntry.IsTemporaryStatViewReleased;
             renderData.TemporaryStatViewReleaseTime = buffEntry.TemporaryStatViewReleaseTime;
             renderData.TemporaryStatViewTerminalReleaseSequence = buffEntry.TemporaryStatViewTerminalReleaseSequence;
@@ -43922,6 +43953,14 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerReleaseOrder = buffEntry.TemporaryStatViewParentLayerReleaseOrder;
             renderData.TemporaryStatViewMainLayerReleaseOrder = buffEntry.TemporaryStatViewMainLayerReleaseOrder;
             renderData.TemporaryStatViewShadowLayerReleaseOrder = buffEntry.TemporaryStatViewShadowLayerReleaseOrder;
+            renderData.TemporaryStatViewObjectReleaseReferenceCountBefore = buffEntry.TemporaryStatViewObjectReleaseReferenceCountBefore;
+            renderData.TemporaryStatViewObjectReleaseReferenceCountAfter = buffEntry.TemporaryStatViewObjectReleaseReferenceCountAfter;
+            renderData.TemporaryStatViewParentLayerReleaseReferenceCountBefore = buffEntry.TemporaryStatViewParentLayerReleaseReferenceCountBefore;
+            renderData.TemporaryStatViewParentLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewParentLayerReleaseReferenceCountAfter;
+            renderData.TemporaryStatViewMainLayerReleaseReferenceCountBefore = buffEntry.TemporaryStatViewMainLayerReleaseReferenceCountBefore;
+            renderData.TemporaryStatViewMainLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewMainLayerReleaseReferenceCountAfter;
+            renderData.TemporaryStatViewShadowLayerReleaseReferenceCountBefore = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountBefore;
+            renderData.TemporaryStatViewShadowLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountAfter;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
@@ -43947,6 +43986,8 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasReleaseSequence = buffEntry.ShadowCanvasReleaseSequence;
             renderData.ShadowCanvasRemoveOrder = buffEntry.ShadowCanvasRemoveOrder;
             renderData.ShadowCanvasReleaseOrder = buffEntry.ShadowCanvasReleaseOrder;
+            renderData.ShadowCanvasReleaseReferenceCountBefore = buffEntry.ShadowCanvasReleaseReferenceCountBefore;
+            renderData.ShadowCanvasReleaseReferenceCountAfter = buffEntry.ShadowCanvasReleaseReferenceCountAfter;
             renderData.ShadowCanvasMutationLoadOrder = buffEntry.ShadowCanvasMutationLoadOrder;
             renderData.ShadowCanvasMutationRemoveOrder = buffEntry.ShadowCanvasMutationRemoveOrder;
             renderData.ShadowCanvasMutationInsertOrder = buffEntry.ShadowCanvasMutationInsertOrder;

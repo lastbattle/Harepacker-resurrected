@@ -496,9 +496,14 @@ namespace HaCreator.MapSimulator
 
         private static float ResolvePacketOwnedSummonSoundVolumeScale(Vector2? playerPosition, int x, int y)
         {
+            return ResolvePacketOwnedSummonSoundVolumePercent(playerPosition, x, y) / 100f;
+        }
+
+        private static int ResolvePacketOwnedSummonSoundVolumePercent(Vector2? playerPosition, int x, int y)
+        {
             if (!playerPosition.HasValue)
             {
-                return 0.4f;
+                return 40;
             }
 
             double dx = playerPosition.Value.X - x;
@@ -506,15 +511,15 @@ namespace HaCreator.MapSimulator
             double distance = Math.Sqrt((dx * dx) + (dy * dy) + 0.001d);
             if (distance < 250d)
             {
-                return 1f;
+                return 100;
             }
 
             if (distance <= 1000d)
             {
-                return (float)Math.Clamp(1.2d - (distance * 0.0008d), 0.4d, 1d);
+                return (int)Math.Clamp(Math.Floor(120d - (distance * 0.08d)), 40d, 100d);
             }
 
-            return 0.4f;
+            return 40;
         }
 
         private static string ResolvePacketOwnedFieldBgmOverrideName(string descriptor)
@@ -2452,6 +2457,14 @@ namespace HaCreator.MapSimulator
                 ? new Vector2(playerX.Value, playerY.Value)
                 : null;
             return ResolvePacketOwnedSummonSoundVolumeScale(playerPosition, x, y);
+        }
+
+        internal static int ResolvePacketOwnedSummonSoundVolumePercentForTest(float? playerX, float? playerY, int x, int y)
+        {
+            Vector2? playerPosition = playerX.HasValue && playerY.HasValue
+                ? new Vector2(playerX.Value, playerY.Value)
+                : null;
+            return ResolvePacketOwnedSummonSoundVolumePercent(playerPosition, x, y);
         }
 
         internal static string ResolvePacketOwnedFieldBgmOverrideNameForTest(string descriptor)

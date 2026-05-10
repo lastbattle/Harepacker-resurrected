@@ -132,6 +132,18 @@ namespace HaCreator.MapSimulator.Fields
             public bool IsDelayedLoad { get; }
         }
 
+        internal readonly struct ClientOwnedRemoteFocusWorldPosition
+        {
+            public ClientOwnedRemoteFocusWorldPosition(Vector2 worldPosition, bool isDelayedLoad)
+            {
+                WorldPosition = worldPosition;
+                IsDelayedLoad = isDelayedLoad;
+            }
+
+            public Vector2 WorldPosition { get; }
+            public bool IsDelayedLoad { get; }
+        }
+
         internal readonly struct ClientOwnedDrawViewrangeOperation
         {
             public ClientOwnedDrawViewrangeOperation(
@@ -228,7 +240,7 @@ namespace HaCreator.MapSimulator.Fields
         private Vector2 _clientOwnedScreenMaskCenter;
         private bool _clientOwnedFocusWorldPositionValid;
         private Vector2 _clientOwnedFocusWorldPosition;
-        private readonly List<Vector2> _clientOwnedRemoteFocusWorldPositions = new();
+        private readonly List<ClientOwnedRemoteFocusWorldPosition> _clientOwnedRemoteFocusWorldPositions = new();
         private readonly List<Vector2> _clientOwnedScreenMaskCentersBuffer = new();
         private readonly List<Vector2> _clientOwnedMaskTopLeftsBuffer = new();
         private readonly List<Vector2> _clientOwnedRemoteMaskTopLeftsBuffer = new();
@@ -483,7 +495,21 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (Vector2 worldPosition in worldPositions)
             {
-                _clientOwnedRemoteFocusWorldPositions.Add(worldPosition);
+                _clientOwnedRemoteFocusWorldPositions.Add(new ClientOwnedRemoteFocusWorldPosition(worldPosition, isDelayedLoad: false));
+            }
+        }
+
+        internal void SetClientOwnedRemoteFocusWorldPositionTargets(IEnumerable<ClientOwnedRemoteFocusWorldPosition> worldPositionTargets)
+        {
+            _clientOwnedRemoteFocusWorldPositions.Clear();
+            if (worldPositionTargets == null)
+            {
+                return;
+            }
+
+            foreach (ClientOwnedRemoteFocusWorldPosition target in worldPositionTargets)
+            {
+                _clientOwnedRemoteFocusWorldPositions.Add(target);
             }
         }
 
@@ -615,7 +641,7 @@ namespace HaCreator.MapSimulator.Fields
                         Vector2? localMaskTopLeft = TryGetClientOwnedUpdateParityLocalMaskTopLeft(mapShiftX, mapShiftY, centerX, centerY, out Vector2 resolvedLocalMaskTopLeft)
                             ? resolvedLocalMaskTopLeft
                             : null;
-                        IReadOnlyList<Vector2> remoteMaskTopLefts = GetClientOwnedUpdateParityRemoteMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
+                        IReadOnlyList<ClientOwnedRemoteViewrangeTarget> remoteMaskTargets = GetClientOwnedUpdateParityRemoteMaskTargets(mapShiftX, mapShiftY, centerX, centerY);
                         int viewrangeWidth = Math.Max(1, _clientOwnedViewrangeTexture.Width);
                         int viewrangeHeight = Math.Max(1, _clientOwnedViewrangeTexture.Height);
                         ExecuteClientOwnedDrawViewrangeOperationPlan(
@@ -624,7 +650,7 @@ namespace HaCreator.MapSimulator.Fields
                             BuildClientOwnedDrawViewrangeOperationPlan(
                                 _clientOwnedPreviousMaskTopLefts.ToArray(),
                                 localMaskTopLeft,
-                                remoteMaskTopLefts,
+                                remoteMaskTargets,
                                 _clientOwnedShareView,
                                 viewrangeWidth,
                                 viewrangeHeight,
@@ -1046,9 +1072,14 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_clientOwnedShareView)
             {
-                foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+                foreach (ClientOwnedRemoteFocusWorldPosition target in _clientOwnedRemoteFocusWorldPositions)
                 {
-                    _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenPosition(worldPosition, mapShiftX, mapShiftY, centerX, centerY));
+                    if (target.IsDelayedLoad)
+                    {
+                        continue;
+                    }
+
+                    _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenPosition(target.WorldPosition, mapShiftX, mapShiftY, centerX, centerY));
                 }
             }
 
@@ -1096,11 +1127,16 @@ namespace HaCreator.MapSimulator.Fields
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityRemoteMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
             _clientOwnedRemoteMaskTopLeftsBuffer.Clear();
-            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+            foreach (ClientOwnedRemoteFocusWorldPosition target in _clientOwnedRemoteFocusWorldPositions)
             {
+                if (target.IsDelayedLoad)
+                {
+                    continue;
+                }
+
                 _clientOwnedRemoteMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
-                    worldPosition.X,
-                    worldPosition.Y,
+                    target.WorldPosition.X,
+                    target.WorldPosition.Y,
                     mapShiftX,
                     mapShiftY,
                     centerX,
@@ -1110,6 +1146,26 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _clientOwnedRemoteMaskTopLeftsBuffer;
+        }
+
+        internal IReadOnlyList<ClientOwnedRemoteViewrangeTarget> GetClientOwnedUpdateParityRemoteMaskTargets(int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            List<ClientOwnedRemoteViewrangeTarget> targets = new();
+            foreach (ClientOwnedRemoteFocusWorldPosition target in _clientOwnedRemoteFocusWorldPositions)
+            {
+                Vector2 topLeft = ResolveClientOwnedMaskTopLeft(
+                    target.WorldPosition.X,
+                    target.WorldPosition.Y,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    _clientOwnedMaskOriginX,
+                    _clientOwnedMaskOriginY);
+                targets.Add(new ClientOwnedRemoteViewrangeTarget(topLeft, target.IsDelayedLoad));
+            }
+
+            return targets;
         }
 
         internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(

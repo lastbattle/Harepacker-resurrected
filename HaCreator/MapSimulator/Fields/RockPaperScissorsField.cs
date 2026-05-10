@@ -539,6 +539,11 @@ namespace HaCreator.MapSimulator.Fields
 
             int panelX = Math.Max(0, (viewportWidth - DialogWidth) / 2);
             int panelY = Math.Max(0, (viewportHeight - DialogHeight) / 2);
+            Rectangle panelRect = new Rectangle(panelX, panelY, DialogWidth, DialogHeight);
+            if (!panelRect.Contains(mousePosition))
+            {
+                return false;
+            }
 
             if (Translate(_exitButtonRect, panelX, panelY).Contains(mousePosition))
             {
@@ -585,7 +590,8 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            return false;
+            message = "RPS dialog body consumed the click without emitting a client request.";
+            return true;
         }
 
         public bool TrySelectChoice(RockPaperScissorsChoice choice, out string message)

@@ -2249,6 +2249,12 @@ namespace HaCreator.MapSimulator.Character
 
         internal static bool IsClientConfirmedMorphActionName(string actionName)
         {
+            actionName = actionName?.Trim();
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
             if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
             {
                 return IsWzConfirmedSkillOnlyMorphActionName(actionName);
@@ -2279,6 +2285,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsWzConfirmedSkillOnlyMorphActionName(string actionName)
         {
+            actionName = actionName?.Trim();
             if (string.IsNullOrWhiteSpace(actionName)
                 || !ClientPublishedAliasesWithoutDirectBodyRedirectRows.Contains(actionName))
             {

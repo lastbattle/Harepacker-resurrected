@@ -1569,10 +1569,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && unchecked(currentTime - targetTime) >= 0;
         }
 
+        internal static bool HasClientTickPassed(int currentTime, int targetTime)
+        {
+            return targetTime != int.MinValue
+                   && unchecked(currentTime - targetTime) > 0;
+        }
+
         internal static bool HasClientTickElapsedAtLeast(int currentTime, int startTime, int durationMs)
         {
             return startTime == int.MinValue
                    || ResolveClientTickElapsedMs(currentTime, startTime) >= Math.Max(0, durationMs);
+        }
+
+        internal static bool HasClientTickElapsedGreaterThan(int currentTime, int startTime, int durationMs)
+        {
+            return startTime == int.MinValue
+                   || unchecked(currentTime - startTime) > Math.Max(0, durationMs);
         }
 
         internal static bool CanInitiateTeslaCoilAttack(ActiveSummon summon, int teslaCoilSkillId)

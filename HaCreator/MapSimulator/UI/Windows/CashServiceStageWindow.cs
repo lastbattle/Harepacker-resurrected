@@ -2193,7 +2193,9 @@ namespace HaCreator.MapSimulator.UI
                 ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
                 CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
                 PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
-                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty,
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashNameChangeLastSummary;
             message = $"CCashShop::OnCashItemNameChangeResBuyDone confirmed {_cashNameChangeLastSummary}";
@@ -2248,7 +2250,9 @@ namespace HaCreator.MapSimulator.UI
                 ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
                 CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
                 PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
-                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty,
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashTransferWorldLastSummary;
             message = $"CCashShop::OnCashItemResTransferWorldDone confirmed {_cashTransferWorldLastSummary}";
@@ -3577,7 +3581,15 @@ namespace HaCreator.MapSimulator.UI
                 Detail = _noticeState,
                 Seller = "CCashShop",
                 PriceLabel = stateByte >= 0 ? stateByte.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                StateLabel = "Purchase EXP"
+                StateLabel = "Purchase EXP",
+                PacketSource = "CCashShop::OnPurchaseExpChanged",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    stateByte >= 0 ? 1 : 0,
+                    $"stateByte={stateByte.ToString(CultureInfo.InvariantCulture)}",
+                    includeSubtypeByte: false),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             return _noticeState;
         }
@@ -3592,7 +3604,11 @@ namespace HaCreator.MapSimulator.UI
                     Title = "Gift mate",
                     Detail = _noticeState,
                     Seller = "CCashShop",
-                    StateLabel = "Decode failed"
+                    StateLabel = "Decode failed",
+                    PacketSource = "CCashShop::OnGiftMateInfoResult",
+                    PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 _cashGiftLastSummary = _noticeState;
                 return _noticeState;
@@ -3612,7 +3628,15 @@ namespace HaCreator.MapSimulator.UI
                     Detail = _noticeState,
                     Seller = "CCashShop",
                     PriceLabel = "Result 0",
-                    StateLabel = "Unavailable"
+                    StateLabel = "Unavailable",
+                    PacketSource = "CCashShop::OnGiftMateInfoResult",
+                    PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                        payload,
+                        (int)stream.Position,
+                        $"result={resultByte.ToString(CultureInfo.InvariantCulture)}",
+                        includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 _cashGiftLastSummary = _noticeState;
                 return _noticeState;
@@ -3633,7 +3657,15 @@ namespace HaCreator.MapSimulator.UI
                     Detail = _noticeState,
                     Seller = "CCashShop",
                     PriceLabel = $"Result {resultByte.ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = "Header decode failed"
+                    StateLabel = "Header decode failed",
+                    PacketSource = "CCashShop::OnGiftMateInfoResult",
+                    PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                        payload,
+                        (int)stream.Position,
+                        $"result={resultByte.ToString(CultureInfo.InvariantCulture)}",
+                        includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 _cashGiftLastSummary = _noticeState;
                 return _noticeState;
@@ -3655,7 +3687,15 @@ namespace HaCreator.MapSimulator.UI
                         ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                         : $"Req {requestId.ToString(CultureInfo.InvariantCulture)}",
                     StateLabel = "String decode failed",
-                    ListingId = commoditySerialNumber
+                    ListingId = commoditySerialNumber,
+                    PacketSource = "CCashShop::OnGiftMateInfoResult",
+                    PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                        payload,
+                        (int)stream.Position,
+                        $"result={resultByte.ToString(CultureInfo.InvariantCulture)}, requestId={requestId.ToString(CultureInfo.InvariantCulture)}, commoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}",
+                        includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 _cashGiftLastSummary = _noticeState;
                 return _noticeState;
@@ -3702,7 +3742,15 @@ namespace HaCreator.MapSimulator.UI
                 StateLabel = "Recipient",
                 ListingId = commoditySerialNumber,
                 Quantity = 1,
-                PacketMessage = giftMessage
+                PacketMessage = giftMessage,
+                PacketSource = "CCashShop::OnGiftMateInfoResult",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    (int)stream.Position,
+                    $"result={resultByte.ToString(CultureInfo.InvariantCulture)}, requestId={requestId.ToString(CultureInfo.InvariantCulture)}, commoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, recipient={recipient}, messageBytes={Encoding.Default.GetByteCount(messageRaw ?? string.Empty).ToString(CultureInfo.InvariantCulture)}",
+                    includeSubtypeByte: false),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _cashGiftLastSummary = _noticeState;
             return _noticeState;
@@ -3719,7 +3767,11 @@ namespace HaCreator.MapSimulator.UI
                     Title = "Duplicate ID check",
                     Detail = _noticeState,
                     Seller = "CCashShop",
-                    StateLabel = "Decode failed"
+                    StateLabel = "Decode failed",
+                    PacketSource = "CCashShop::OnCheckDuplicatedIDResult",
+                    PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 return _noticeState;
             }
@@ -3738,12 +3790,17 @@ namespace HaCreator.MapSimulator.UI
                     Title = "Duplicate ID check",
                     Detail = _noticeState,
                     Seller = "CCashShop",
-                    StateLabel = "Decode failed"
+                    StateLabel = "Decode failed",
+                    PacketSource = "CCashShop::OnCheckDuplicatedIDResult",
+                    PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 return _noticeState;
             }
 
             string candidateName = SanitizePacketString(candidateRaw, "duplicate id");
+            int candidateByteLength = Encoding.Default.GetByteCount(candidateRaw ?? string.Empty);
             int resultByte = reader.ReadByte();
             _noticeState = resultByte switch
             {
@@ -3772,7 +3829,15 @@ namespace HaCreator.MapSimulator.UI
                 Detail = _noticeState,
                 Seller = candidateName,
                 PriceLabel = candidateName,
-                StateLabel = resultByte == 0 ? "Accepted" : "Rejected"
+                StateLabel = resultByte == 0 ? "Accepted" : "Rejected",
+                PacketSource = "CCashShop::OnCheckDuplicatedIDResult",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    (int)stream.Position,
+                    $"candidate={candidateName}, candidateBytes={candidateByteLength.ToString(CultureInfo.InvariantCulture)}, result={resultByte.ToString(CultureInfo.InvariantCulture)}",
+                    includeSubtypeByte: false),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             return _noticeState;
         }
@@ -4247,7 +4312,17 @@ namespace HaCreator.MapSimulator.UI
                     Title = $"Gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)}",
                     Detail = _cashGachaponLastSummary,
                     Seller = "CCashShop gachapon",
-                    StateLabel = "Failed"
+                    StateLabel = "Failed",
+                    PacketSource = packetType == 393
+                        ? "CCashShop::OnCashItemGachaponResult(copy)"
+                        : "CCashShop::OnCashItemGachaponResult(open)",
+                    PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                        payload,
+                        1,
+                        $"status={result.StatusCode.ToString(CultureInfo.InvariantCulture)}, hasReveal=false",
+                        includeSubtypeByte: false),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
                 });
                 _noticeState = _cashGachaponLastSummary;
                 return _cashGachaponLastSummary;
@@ -4293,7 +4368,17 @@ namespace HaCreator.MapSimulator.UI
                 StateLabel = result.RevealResult.IsJackpot ? "Reveal jackpot" : "Reveal",
                 SerialNumber = result.SerialNumber,
                 ItemId = result.RevealResult.ItemId,
-                Quantity = result.RevealResult.Count
+                Quantity = result.RevealResult.Count,
+                PacketSource = packetType == 393
+                    ? "CCashShop::OnCashItemGachaponResult(copy)"
+                    : "CCashShop::OnCashItemGachaponResult(open)",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    trailingOffset,
+                    $"status={result.StatusCode.ToString(CultureInfo.InvariantCulture)}, liSN={result.SerialNumber.ToString(CultureInfo.InvariantCulture)}, nItemID={result.RevealResult.ItemId.ToString(CultureInfo.InvariantCulture)}, nNumber={result.RevealResult.Count.ToString(CultureInfo.InvariantCulture)}, jackpot={result.RevealResult.IsJackpot}",
+                    includeSubtypeByte: false),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashGachaponLastSummary;
             RecordCashGachaponAnimationResult(

@@ -159,6 +159,23 @@ namespace HaCreator.MapSimulator.UI
             return snapshot.RemotePageIndex >= 0 ? snapshot.RemotePageIndex + 1 : 0;
         }
 
+        internal static bool TryResolveRemotePageTarget(
+            int currentRemotePageIndex,
+            int remotePageCount,
+            int delta,
+            out int targetRemotePageIndex)
+        {
+            targetRemotePageIndex = -1;
+            if (currentRemotePageIndex < 0 || remotePageCount <= 0)
+            {
+                return false;
+            }
+
+            int clampedCurrentPageIndex = System.Math.Clamp(currentRemotePageIndex, 0, remotePageCount - 1);
+            targetRemotePageIndex = System.Math.Clamp(clampedCurrentPageIndex + delta, 0, remotePageCount - 1);
+            return targetRemotePageIndex != clampedCurrentPageIndex;
+        }
+
         internal static bool ShouldRebindSearchResultOnServiceStateChange(
             string previousServiceStateSignature,
             string liveServiceStateSignature,

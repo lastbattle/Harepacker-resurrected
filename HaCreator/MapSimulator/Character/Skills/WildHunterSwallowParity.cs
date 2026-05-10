@@ -31,6 +31,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return BufferedAbsorbOutcomeLifetimeMs;
         }
 
+        public static int ResolveAbsorbOutcomeExpireTime(int currentTime, int actionDurationMs, int fallbackDurationMs = 0)
+        {
+            return unchecked(currentTime + ResolveAbsorbOutcomeTimeoutMs(actionDurationMs, fallbackDurationMs));
+        }
+
+        public static bool HasAbsorbOutcomeExpired(int currentTime, int expireTime)
+        {
+            return HasTickReached(currentTime, expireTime);
+        }
+
         public static bool CanFallbackConfirmWithoutAuthoritativeResult()
         {
             return false;

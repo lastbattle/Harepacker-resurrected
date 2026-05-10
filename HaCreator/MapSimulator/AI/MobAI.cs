@@ -303,6 +303,7 @@ namespace HaCreator.MapSimulator.AI
         public int NextTickTime { get; set; }
         public int SourceSkillId { get; set; }
         public int SourceSkillLevel { get; set; }
+        public int SourceOwnerId { get; set; }
     }
 
     public enum MobDamageType
@@ -393,6 +394,8 @@ namespace HaCreator.MapSimulator.AI
         private int _angerAttackIndex = -1;
         private int _runtimeAngerGaugeFullChargeEffectIntervalMs;
         private int _fullChargeEffectStartTime = int.MinValue;
+        private MobAttackEntry _pendingAngerGaugeFullChargeAttack;
+        private int _pendingAngerGaugeFullChargeStateStartTime = int.MinValue;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -504,6 +507,7 @@ namespace HaCreator.MapSimulator.AI
             _angerAttackIndex = -1;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
             _fullChargeEffectStartTime = int.MinValue;
+            ClearPendingAngerGaugeFullChargeEffect();
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -575,6 +579,7 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeCount = 0;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
             _fullChargeEffectStartTime = int.MinValue;
+            ClearPendingAngerGaugeFullChargeEffect();
         }
 
         public void AddAttack(int attackId, string animName, int damage, int range, int cooldown = 1500, bool isRanged = false)
@@ -1259,16 +1264,18 @@ namespace HaCreator.MapSimulator.AI
         {
             if (!IsAngerCharged)
             {
+                ClearPendingAngerGaugeFullChargeEffect();
                 return false;
             }
 
-            MobAttackEntry attack = GetCurrentAttack();
+            MobAttackEntry attack = ResolveCurrentOrPendingAngerGaugeFullChargeAttack(
+                currentTick,
+                out int elapsed);
             if (attack?.IsSpecialAttack != true)
             {
                 return false;
             }
 
-            int elapsed = StateElapsed(currentTick);
             if (!MobAngerGaugeBurstParity.HasOwnerTriggerDelayElapsed(elapsed, attack))
             {
                 return false;
@@ -1296,10 +1303,11 @@ namespace HaCreator.MapSimulator.AI
         {
             if (!IsAngerCharged)
             {
+                ClearPendingAngerGaugeFullChargeEffect();
                 return false;
             }
 
-            MobAttackEntry attack = GetCurrentAttack();
+            MobAttackEntry attack = GetCurrentAttack() ?? _pendingAngerGaugeFullChargeAttack;
             if (attack?.IsSpecialAttack == true)
             {
                 return !attack.AttackAfterIsAuthored || attack.AttackAfter <= 0;
@@ -1316,6 +1324,7 @@ namespace HaCreator.MapSimulator.AI
             }
 
             _fullChargeEffectStartTime = currentTick;
+            ClearPendingAngerGaugeFullChargeEffect();
         }
 
         /// <summary>
@@ -1524,6 +1533,7 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeCount = 0;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
             _fullChargeEffectStartTime = int.MinValue;
+            ClearPendingAngerGaugeFullChargeEffect();
             _skillUseCounts.Clear();
             _skillForbidUntil = 0;
             _externalTargetSource = MobExternalTargetSource.None;
@@ -1597,7 +1607,8 @@ namespace HaCreator.MapSimulator.AI
             int secondaryValue = 0,
             int tertiaryValue = 0,
             int sourceSkillId = 0,
-            int sourceSkillLevel = 0)
+            int sourceSkillLevel = 0,
+            int sourceOwnerId = 0)
         {
             _statusEffects |= effect;
             bool wasActive = _statusEntries.TryGetValue(effect, out MobStatusEntry existingEntry);
@@ -1614,7 +1625,8 @@ namespace HaCreator.MapSimulator.AI
                 TickIntervalMs = Math.Max(1, tickIntervalMs),
                 NextTickTime = unchecked(currentTick + Math.Max(1, tickIntervalMs)),
                 SourceSkillId = sourceSkillId,
-                SourceSkillLevel = Math.Max(0, sourceSkillLevel)
+                SourceSkillLevel = Math.Max(0, sourceSkillLevel),
+                SourceOwnerId = Math.Max(0, sourceOwnerId)
             };
 
             // Special handling for certain effects
@@ -1821,7 +1833,7 @@ namespace HaCreator.MapSimulator.AI
                     return 0;
                 }
 
-                return Math.Max(0, unchecked(entry.ExpirationTime - currentTick));
+                return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(entry.ExpirationTime, currentTick);
             }
             return 0;
         }
@@ -1845,6 +1857,26 @@ namespace HaCreator.MapSimulator.AI
 
             sourceSkillId = 0;
             sourceSkillLevel = 0;
+            return false;
+        }
+
+        internal bool TryGetStatusSourceContext(
+            MobStatusEffect effect,
+            out int sourceSkillId,
+            out int sourceSkillLevel,
+            out int sourceOwnerId)
+        {
+            if (_statusEntries.TryGetValue(effect, out MobStatusEntry entry))
+            {
+                sourceSkillId = entry.SourceSkillId;
+                sourceSkillLevel = entry.SourceSkillLevel;
+                sourceOwnerId = entry.SourceOwnerId;
+                return true;
+            }
+
+            sourceSkillId = 0;
+            sourceSkillLevel = 0;
+            sourceOwnerId = 0;
             return false;
         }
         #endregion
@@ -2062,6 +2094,7 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
+            ClearPendingAngerGaugeFullChargeEffect();
             _currentAttackIndex = attackIndex;
             MobAttackEntry attack = _attacks[attackIndex];
             UpdateAngerGaugeFullChargeEffectInterval(attack);
@@ -2192,6 +2225,7 @@ namespace HaCreator.MapSimulator.AI
         {
             _actionAnimationCompleted = false;
             _actionRecoveryUntil = 0;
+            CapturePendingAngerGaugeFullChargeEffectBeforeActionExit(currentTick);
 
             if (_selfDestructPending)
             {
@@ -2675,10 +2709,78 @@ namespace HaCreator.MapSimulator.AI
             if (attackIndex == _angerAttackIndex)
             {
                 _angerChargeCount = 0;
+                ClearPendingAngerGaugeFullChargeEffect();
                 return;
             }
 
             _angerChargeCount = Math.Min(_angerChargeTarget, _angerChargeCount + 1);
+        }
+
+        private void CapturePendingAngerGaugeFullChargeEffectBeforeActionExit(int currentTick)
+        {
+            if (!IsAngerCharged || _state != MobAIState.Attack)
+            {
+                return;
+            }
+
+            MobAttackEntry attack = GetCurrentAttack();
+            if (attack?.IsSpecialAttack != true)
+            {
+                return;
+            }
+
+            int elapsed = StateElapsed(currentTick);
+            if (!MobAngerGaugeBurstParity.HasOwnerTriggerDelayElapsed(elapsed, attack))
+            {
+                return;
+            }
+
+            UpdateAngerGaugeFullChargeEffectInterval(attack);
+            if (_runtimeAngerGaugeFullChargeEffectIntervalMs <= 0)
+            {
+                return;
+            }
+
+            if (!MobAngerGaugeBurstParity.HasReplayGateElapsed(
+                    currentTick,
+                    _fullChargeEffectStartTime,
+                    _runtimeAngerGaugeFullChargeEffectIntervalMs))
+            {
+                return;
+            }
+
+            _pendingAngerGaugeFullChargeAttack = attack;
+            _pendingAngerGaugeFullChargeStateStartTime = _stateStartTime;
+        }
+
+        private MobAttackEntry ResolveCurrentOrPendingAngerGaugeFullChargeAttack(
+            int currentTick,
+            out int elapsed)
+        {
+            MobAttackEntry attack = GetCurrentAttack();
+            if (attack != null)
+            {
+                elapsed = StateElapsed(currentTick);
+                return attack;
+            }
+
+            if (_pendingAngerGaugeFullChargeAttack != null
+                && _pendingAngerGaugeFullChargeStateStartTime != int.MinValue)
+            {
+                elapsed = ResolveClientTickElapsedMs(
+                    currentTick,
+                    _pendingAngerGaugeFullChargeStateStartTime);
+                return _pendingAngerGaugeFullChargeAttack;
+            }
+
+            elapsed = 0;
+            return null;
+        }
+
+        private void ClearPendingAngerGaugeFullChargeEffect()
+        {
+            _pendingAngerGaugeFullChargeAttack = null;
+            _pendingAngerGaugeFullChargeStateStartTime = int.MinValue;
         }
 
         private void UpdateAngerGaugeFullChargeEffectInterval(MobAttackEntry attack)

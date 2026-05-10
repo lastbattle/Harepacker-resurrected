@@ -2137,7 +2137,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            Texture2D boardTexture = ResolveMiniRoomBalloonBoardTexture(_activeSnapshot, assets, _activeMiniRoomBoardAssets);
+            MiniRoomBoardTextureAsset boardAsset = ResolveMiniRoomBalloonBoardAsset(_activeSnapshot, assets, _activeMiniRoomBoardAssets);
+            Texture2D boardTexture = boardAsset.Texture;
             if (boardTexture == null)
             {
                 return false;
@@ -2156,12 +2157,12 @@ namespace HaCreator.MapSimulator.Interaction
                 boardAnchor,
                 boardTexture.Width,
                 boardTexture.Height,
-                _activeMiniRoomBoardAssets?.SignboardOrigin);
+                boardAsset.Origin);
             MiniRoomBalloonLayout layout = ResolveMiniRoomBalloonLayout(
                 boardTexture.Width,
                 boardTexture.Height,
-                useTemplateLayoutScaling: _activeMiniRoomBoardAssets?.Signboard != null,
-                boardOrigin: _activeMiniRoomBoardAssets?.SignboardOrigin);
+                boardAsset.UseTemplateLayoutScaling,
+                boardAsset.Origin);
             int boardX = (int)boardPosition.X;
             int boardY = (int)boardPosition.Y;
 
@@ -2486,19 +2487,22 @@ namespace HaCreator.MapSimulator.Interaction
             return (int)Math.Round(legacyOffset * scale);
         }
 
-        private static Texture2D ResolveMiniRoomBalloonBoardTexture(
+        private static MiniRoomBoardTextureAsset ResolveMiniRoomBalloonBoardAsset(
             SocialRoomFieldActorSnapshot snapshot,
             MiniRoomBalloonAssets assets,
             EmployeeMiniRoomBoardAssets templateAssets)
         {
             if (snapshot == null || assets == null)
             {
-                return null;
+                return default;
             }
 
             if (templateAssets?.Signboard != null)
             {
-                return templateAssets.Signboard;
+                return new MiniRoomBoardTextureAsset(
+                    templateAssets.Signboard,
+                    templateAssets.SignboardOrigin,
+                    UseTemplateLayoutScaling: true);
             }
 
             if (snapshot.MiniRoomType is 3 or 4 or 5)
@@ -2509,12 +2513,35 @@ namespace HaCreator.MapSimulator.Interaction
                     preferredSkinIndex = 1;
                 }
 
-                return assets.ShopBoards.Length > preferredSkinIndex && assets.ShopBoards[preferredSkinIndex] != null
-                    ? assets.ShopBoards[preferredSkinIndex]
-                    : assets.Background;
+                if (assets.ShopBoards.Length > preferredSkinIndex && assets.ShopBoards[preferredSkinIndex] != null)
+                {
+                    Vector2? origin = assets.ShopBoardOrigins.Length > preferredSkinIndex
+                        ? assets.ShopBoardOrigins[preferredSkinIndex]
+                        : null;
+                    return new MiniRoomBoardTextureAsset(
+                        assets.ShopBoards[preferredSkinIndex],
+                        origin,
+                        UseTemplateLayoutScaling: false);
+                }
+
+                return new MiniRoomBoardTextureAsset(
+                    assets.Background,
+                    assets.BackgroundOrigin,
+                    UseTemplateLayoutScaling: false);
             }
 
-            return assets.PointedBackground ?? assets.Background;
+            if (assets.PointedBackground != null)
+            {
+                return new MiniRoomBoardTextureAsset(
+                    assets.PointedBackground,
+                    assets.PointedBackgroundOrigin,
+                    UseTemplateLayoutScaling: false);
+            }
+
+            return new MiniRoomBoardTextureAsset(
+                assets.Background,
+                assets.BackgroundOrigin,
+                UseTemplateLayoutScaling: false);
         }
 
         private static Texture2D ResolveMiniRoomIconTexture(

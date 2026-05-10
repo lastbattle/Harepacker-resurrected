@@ -1429,6 +1429,7 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot = ApplyCharacterDataKnownSectionByteCountDefaults(snapshot);
                 snapshot = ApplyCharacterDataSectionOwnershipMaps(snapshot);
                 snapshot = ApplyCharacterDataNativeSectionRanges(snapshot);
+                snapshot = ApplyCharacterDataRawByteOwnership(snapshot, reader.BaseStream, startPosition, consumedBytes);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1440,6 +1441,71 @@ namespace HaCreator.MapSimulator.Interaction
                 consumedBytes = 0;
                 return false;
             }
+        }
+
+        private static PacketCharacterDataSnapshot ApplyCharacterDataRawByteOwnership(
+            PacketCharacterDataSnapshot snapshot,
+            Stream stream,
+            long characterDataStartPosition,
+            int consumedBytes)
+        {
+            if (snapshot == null || stream == null || !stream.CanSeek || consumedBytes <= 0)
+            {
+                return snapshot;
+            }
+
+            long restorePosition = stream.Position;
+            try
+            {
+                stream.Position = characterDataStartPosition;
+                byte[] rawBytes = new byte[consumedBytes];
+                stream.ReadExactly(rawBytes);
+
+                Dictionary<ulong, byte[]> rawBytesByFlag = new(CharacterDataKnownSectionFlags.Length);
+                Dictionary<ulong, int> rawByteCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+                for (int i = 0; i < CharacterDataKnownSectionFlags.Length; i++)
+                {
+                    ulong sectionFlag = CharacterDataKnownSectionFlags[i];
+                    int startOffset = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionStartOffsetsByFlag, sectionFlag);
+                    int endOffset = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionEndOffsetsByFlag, sectionFlag);
+                    byte[] sectionBytes = SliceCharacterDataRawBytes(rawBytes, startOffset, endOffset);
+                    rawBytesByFlag[sectionFlag] = sectionBytes;
+                    rawByteCountsByFlag[sectionFlag] = sectionBytes.Length;
+                }
+
+                byte[] preludeBytes = SliceCharacterDataRawBytes(rawBytes, 0, snapshot.CharacterDataDecodePreludeByteCount);
+                return snapshot with
+                {
+                    CharacterDataDecodeRawBytes = rawBytes,
+                    CharacterDataDecodePreludeBytes = preludeBytes,
+                    CharacterDataSectionRawBytesByFlag = rawBytesByFlag,
+                    CharacterDataSectionRawByteCountsByFlag = rawByteCountsByFlag
+                };
+            }
+            finally
+            {
+                stream.Position = restorePosition;
+            }
+        }
+
+        private static byte[] SliceCharacterDataRawBytes(byte[] rawBytes, int startOffset, int endOffset)
+        {
+            if (rawBytes == null || rawBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int boundedStart = Math.Max(0, Math.Min(startOffset, rawBytes.Length));
+            int boundedEnd = Math.Max(boundedStart, Math.Min(endOffset, rawBytes.Length));
+            int byteCount = checked(boundedEnd - boundedStart);
+            if (byteCount <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] slice = new byte[byteCount];
+            Array.Copy(rawBytes, boundedStart, slice, 0, byteCount);
+            return slice;
         }
 
         private static PacketCharacterDataSnapshot ApplyCharacterDataSectionOwnershipMaps(PacketCharacterDataSnapshot snapshot)
@@ -6405,6 +6471,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<string, int> CharacterStatFieldByteCounts { get; init; } = null;
 
         internal IReadOnlyDictionary<string, int> CharacterStatTrailerFieldByteCounts { get; init; } = null;
+
+        internal byte[] CharacterDataDecodeRawBytes { get; init; } = null;
+
+        internal byte[] CharacterDataDecodePreludeBytes { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, byte[]> CharacterDataSectionRawBytesByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRawByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordCountsByFlag { get; init; } = null;
 

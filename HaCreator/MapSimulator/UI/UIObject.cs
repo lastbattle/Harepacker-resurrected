@@ -223,10 +223,20 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
+            return CreateLocalSoundEffectWithWzProperty(wzSoundProperty);
+        }
+
+        private static WzSoundResourceStreamer CreateLocalSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
+        {
+            if (wzSoundProperty == null)
+            {
+                return null;
+            }
+
+            return new WzSoundResourceStreamer(wzSoundProperty, false)
+            {
                 Volume = 1.0f
             };
-            return currAudio;
         }
 
         internal static string BuildClientSoundKey(WzBinaryProperty wzSoundProperty, string semanticName)
@@ -259,7 +269,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryPlayClientSoundEffect(
             WzBinaryProperty soundProperty,
-            WzSoundResourceStreamer fallbackStreamer,
+            ref WzSoundResourceStreamer fallbackStreamer,
             string semanticName)
         {
             if (soundProperty == null)
@@ -278,8 +288,22 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (ShouldCreateLocalFallbackStreamer(
+                sharedPlaybackSucceeded: false,
+                hasExistingFallbackStreamer: fallbackStreamer != null))
+            {
+                fallbackStreamer = CreateLocalSoundEffectWithWzProperty(soundProperty);
+            }
+
             fallbackStreamer?.Play();
             return fallbackStreamer != null;
+        }
+
+        internal static bool ShouldCreateLocalFallbackStreamer(
+            bool sharedPlaybackSucceeded,
+            bool hasExistingFallbackStreamer)
+        {
+            return !sharedPlaybackSucceeded && !hasExistingFallbackStreamer;
         }
 
         /// <summary>
@@ -390,7 +414,7 @@ namespace HaCreator.MapSimulator.UI
                     SetButtonState(UIObjectState.Pressed);
 
                     if (_seMouseClickProperty != null || _seMouseClick != null) // play mouse click sound
-                        TryPlayClientSoundEffect(_seMouseClickProperty, _seMouseClick, "click");
+                        TryPlayClientSoundEffect(_seMouseClickProperty, ref _seMouseClick, "click");
                 }
                 else if (mouseState.LeftButton == ButtonState.Released && priorState == UIObjectState.Pressed)
                 {
@@ -404,7 +428,7 @@ namespace HaCreator.MapSimulator.UI
                     // hover over sound effect
                     if (priorState != UIObjectState.Pressed && priorState != UIObjectState.Disabled && priorState != UIObjectState.MouseOver) {
                         if (_seMouseOverProperty != null || _seMouseOver != null) // play mouse over sound
-                            TryPlayClientSoundEffect(_seMouseOverProperty, _seMouseOver, "hover");
+                            TryPlayClientSoundEffect(_seMouseOverProperty, ref _seMouseOver, "hover");
                     }
 
                     SetButtonState(UIObjectState.MouseOver);

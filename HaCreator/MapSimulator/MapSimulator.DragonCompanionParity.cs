@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)
         {
-            const string usage = "Usage: /dragoncompanion [status|capture <auto|payload|packet|keypad|keypadpacked|keypadmemory|keypadmemorypacked> <hex> [-- source...]]";
+            const string usage = "Usage: /dragoncompanion [status|capture <auto|payload|packet|keypad|keypadpacked|keypadmemory|keypadmemorypacked|keypadfoothold|keypadfootholdpacked> <hex> [-- source...]]";
             DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
             if (dragonRuntime == null)
             {
@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator
             bool keyPadCapture = false;
             bool packedKeyPadCapture = false;
             bool keyPadMemoryCapture = false;
+            bool keyPadByFootholdMemoryCapture = false;
             if (string.Equals(args[1], "auto", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "detect", StringComparison.OrdinalIgnoreCase))
             {
@@ -156,6 +157,26 @@ namespace HaCreator.MapSimulator
                 packedKeyPadCapture = true;
                 keyPadMemoryCapture = true;
             }
+            else if (string.Equals(args[1], "keypadfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "keypadbyfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "keypadmemorybyfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "makeypadstatebyfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "m_aKeyPadStateByFoothold", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+                keyPadMemoryCapture = true;
+                keyPadByFootholdMemoryCapture = true;
+            }
+            else if (string.Equals(args[1], "keypadfootholdpacked", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedkeypadfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedkeypadbyfoothold", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedmakeypadstatebyfoothold", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+                packedKeyPadCapture = true;
+                keyPadMemoryCapture = true;
+                keyPadByFootholdMemoryCapture = true;
+            }
             else
             {
                 return ChatCommandHandler.CommandResult.Error(usage);
@@ -170,7 +191,9 @@ namespace HaCreator.MapSimulator
             {
                 source = keyPadCapture
                     ? keyPadMemoryCapture
-                        ? packedKeyPadCapture ? "packed m_aKeyPadState capture" : "m_aKeyPadState capture"
+                        ? keyPadByFootholdMemoryCapture
+                            ? packedKeyPadCapture ? "packed m_aKeyPadStateByFoothold capture" : "m_aKeyPadStateByFoothold capture"
+                            : packedKeyPadCapture ? "packed m_aKeyPadState capture" : "m_aKeyPadState capture"
                         : packedKeyPadCapture ? "packed keypad capture" : "keypad capture"
                     : autoDetectPacketShape ? "auto-detected capture"
                     : opcodeFramed ? "opcode-framed capture" : "payload capture";
@@ -179,11 +202,17 @@ namespace HaCreator.MapSimulator
             if (keyPadCapture)
             {
                 bool recorded = keyPadMemoryCapture
-                    ? dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadMemoryCapture(
+                    ? keyPadByFootholdMemoryCapture
+                        ? dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadByFootholdMemoryCapture(
+                            bytes,
+                            packedKeyPadCapture,
+                            source,
+                            out string keyPadMessage)
+                        : dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadMemoryCapture(
                         bytes,
                         packedKeyPadCapture,
                         source,
-                        out string keyPadMessage)
+                        out keyPadMessage)
                     : dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadStateCapture(
                         bytes,
                         packedKeyPadCapture,

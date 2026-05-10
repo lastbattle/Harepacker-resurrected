@@ -135,7 +135,7 @@ namespace HaCreator.MapSimulator.Managers
                 _liveInboundCarnivalPacketEvidence.HasValue,
                 HasPairedCurrentLiveOwnershipEvidence());
             string evidence = DescribeLiveOwnershipVerificationEvidence();
-            return $"Monster Carnival official-session bridge {lifecycle}; {session}; {initializedSession}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; observedOutbound={ObservedOutboundRequestCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; {initializedSession}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; observedOutbound={ObservedOutboundRequestCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {verification} {evidence} {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -706,24 +706,16 @@ namespace HaCreator.MapSimulator.Managers
             _passiveEstablishedSession = null;
             _currentInitializedProxySessionId = null;
             _currentInitializedSessionVersion = null;
+            ClearCurrentSessionScopedEvidence(clearRecentPackets: true);
             if (!clearPending)
             {
                 return;
-            }
-
-            while (_pendingMessages.TryDequeue(out _))
-            {
             }
 
             while (_pendingOutboundRequests.TryDequeue(out _))
             {
             }
 
-            while (_observedOutboundRequests.TryDequeue(out _))
-            {
-            }
-
-            _recentPackets.Clear();
             ReceivedCount = 0;
             SentCount = 0;
             QueuedCount = 0;
@@ -805,7 +797,12 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!TryMapInboundPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out MonsterCarnivalPacketInboxMessage message)
+            if (!TryMapInboundPacket(
+                    e.RawPacket,
+                    $"official-session:{e.SourceEndpoint}",
+                    e.ProxySessionId,
+                    e.SessionVersion,
+                    out MonsterCarnivalPacketInboxMessage message)
                 || message == null)
             {
                 LastStatus = _roleSessionProxy.LastStatus;
@@ -834,7 +831,13 @@ namespace HaCreator.MapSimulator.Managers
 
             if (TryDecodeOutboundRequestPacket(e.RawPacket, out int tab, out int entryIndex))
             {
-                RecordRecentPacket(OutboundRequestOpcode, e.RawPacket, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
+                RecordRecentPacket(
+                    OutboundRequestOpcode,
+                    e.RawPacket,
+                    OutboundRequestOpcode,
+                    $"outbound-request tab={tab} index={entryIndex}",
+                    e.ProxySessionId,
+                    e.SessionVersion);
                 if (!IsCurrentInitializedProxySession(e.ProxySessionId, e.SessionVersion))
                 {
                     LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}; ignored it as stale ownership evidence for proxy session {DescribeProxySession(e.ProxySessionId, e.SessionVersion)}.";
@@ -951,7 +954,12 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private bool TryMapInboundPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
+        private bool TryMapInboundPacket(
+            byte[] rawPacket,
+            string source,
+            long? proxySessionId,
+            short? sessionVersion,
+            out MonsterCarnivalPacketInboxMessage message)
         {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort))
@@ -971,14 +979,14 @@ namespace HaCreator.MapSimulator.Managers
                     source,
                     $"packetclientraw {Convert.ToHexString(rawPacket)}",
                     mappedPacketType);
-                RecordRecentPacket(opcode, rawPacket, mappedPacketType, "mapped");
+                RecordRecentPacket(opcode, rawPacket, mappedPacketType, "mapped", proxySessionId, sessionVersion);
                 return true;
             }
 
             bool decoded = TryDecodeInboundCarnivalPacket(rawPacket, source, out message);
             if (decoded)
             {
-                RecordRecentPacket(opcode, rawPacket, message.OwnerPacketType, "direct");
+                RecordRecentPacket(opcode, rawPacket, message.OwnerPacketType, "direct", proxySessionId, sessionVersion);
             }
 
             return decoded;
@@ -1020,6 +1028,12 @@ namespace HaCreator.MapSimulator.Managers
             _currentInitializedProxySessionId = proxySessionId;
             _currentInitializedSessionVersion = sessionVersion;
 
+            int cleared = ClearCurrentSessionScopedEvidence(clearRecentPackets: true);
+            return cleared;
+        }
+
+        private int ClearCurrentSessionScopedEvidence(bool clearRecentPackets)
+        {
             int cleared = 0;
             while (_pendingMessages.TryDequeue(out _))
             {
@@ -1041,6 +1055,15 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _liveOutboundRequestEvidence = null;
                 cleared++;
+            }
+
+            if (clearRecentPackets)
+            {
+                lock (_sync)
+                {
+                    cleared += _recentPackets.Count;
+                    _recentPackets.Clear();
+                }
             }
 
             return cleared;
@@ -1068,7 +1091,13 @@ namespace HaCreator.MapSimulator.Managers
 
         private void LastSentRecord(byte[] rawPacket, MonsterCarnivalTab tab, int entryIndex)
         {
-            RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"flush-request tab={(int)tab} index={entryIndex}");
+            RecordRecentPacket(
+                OutboundRequestOpcode,
+                rawPacket,
+                OutboundRequestOpcode,
+                $"flush-request tab={(int)tab} index={entryIndex}",
+                _currentInitializedProxySessionId,
+                _currentInitializedSessionVersion);
         }
 
         private static bool TryDecodeOutboundRequestPacket(byte[] rawPacket, out int tab, out int entryIndex)
@@ -1121,11 +1150,20 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private void RecordRecentPacket(int opcode, byte[] rawPacket, int packetType, string source)
+        private void RecordRecentPacket(
+            int opcode,
+            byte[] rawPacket,
+            int packetType,
+            string source,
+            long? proxySessionId = null,
+            short? sessionVersion = null)
         {
             lock (_sync)
             {
-                _recentPackets.Enqueue($"opcode={opcode} type={DescribePacketType(packetType)} source={source} raw={Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}");
+                string proxySession = proxySessionId.HasValue
+                    ? $" proxySession={DescribeProxySession(proxySessionId, sessionVersion)}"
+                    : string.Empty;
+                _recentPackets.Enqueue($"opcode={opcode} type={DescribePacketType(packetType)} source={source}{proxySession} raw={Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}");
                 while (_recentPackets.Count > RecentPacketCapacity)
                 {
                     _recentPackets.Dequeue();

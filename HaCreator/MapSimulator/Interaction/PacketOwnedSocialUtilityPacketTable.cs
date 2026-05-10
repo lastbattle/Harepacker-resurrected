@@ -107,6 +107,14 @@ namespace HaCreator.MapSimulator.Interaction
                 [3] = "CMapleTVMan::OnSendMessageResult queue-too-long (StringPool 0xF9F)"
             };
 
+        private static readonly IReadOnlyDictionary<ushort, string> MapleTvInboundOpcodeHandlers =
+            new Dictionary<ushort, string>
+            {
+                [MapleTvInboundSetMessageOpcode] = "CMapleTVMan::OnSetMessage",
+                [MapleTvInboundClearMessageOpcode] = "CMapleTVMan::OnClearMessage",
+                [MapleTvInboundSendResultOpcode] = "CMapleTVMan::OnSendMessageResult"
+            };
+
         private static readonly IReadOnlyDictionary<byte, string> MerchantInboundSubtypeHandlers =
             new Dictionary<byte, string>
             {
@@ -216,6 +224,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMapleTvSendResultHandlers()
         {
             return MapleTvSendResultHandlers;
+        }
+
+        internal static IReadOnlyDictionary<ushort, string> GetRecoveredMapleTvInboundOpcodeHandlers()
+        {
+            return MapleTvInboundOpcodeHandlers;
         }
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMerchantInboundSubtypeHandlers()
@@ -390,10 +403,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string DescribeMapleTvRecoveredPacketTable()
         {
             string inboundSet = string.Join("/", MapleTvInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string inboundBranches = string.Join(
+                ", ",
+                MapleTvInboundOpcodeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
             string resultCodes = string.Join(
                 ", ",
                 MapleTvSendResultHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
-            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult result codes {resultCodes}); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
+            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket ({inboundBranches}; feedback result codes {resultCodes}); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
         }
 
         internal static string DescribeMerchantRecoveredPacketTable()
@@ -681,16 +697,21 @@ namespace HaCreator.MapSimulator.Interaction
                         if (payload.Length >= 2)
                         {
                             bool showFeedback = payload[0] != 0;
-                            resultCode = payload[1];
+                            byte decodedResultCode = payload[1];
                             if (showFeedback && MapleTvSendResultHandlers.TryGetValue(resultCode, out string resultHandler))
                             {
                                 branchSummary = resultHandler;
+                                resultCode = decodedResultCode;
                             }
                             else
                             {
                                 branchSummary = showFeedback
-                                    ? $"CMapleTVMan::OnSendMessageResult code={resultCode}"
+                                    ? $"CMapleTVMan::OnSendMessageResult code={decodedResultCode}"
                                     : "CMapleTVMan::OnSendMessageResult without feedback";
+                                if (showFeedback)
+                                {
+                                    resultCode = decodedResultCode;
+                                }
                             }
                         }
                         else

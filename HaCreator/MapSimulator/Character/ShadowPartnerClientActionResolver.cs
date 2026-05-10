@@ -2804,6 +2804,12 @@ namespace HaCreator.MapSimulator.Character
             "create4_f"
         };
 
+        private static readonly HashSet<string> MountedLegacyCreateFallbackActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "create0",
+            "create1"
+        };
+
         private const int ClientInitializedShadowPartnerActionCodeLimitExclusive = 0x111;
         private const int ClientPostInitActionDataFallbackStartRawActionCode = 0x111;
         private const int ClientPostInitActionDataFallbackEndRawActionCodeInclusive = 379;
@@ -3221,6 +3227,15 @@ namespace HaCreator.MapSimulator.Character
                 rawActionName = null;
             }
 
+            if (!ShouldResolveClientPlaybackActionName(
+                    resolvedActionName,
+                    playerActionName,
+                    rawActionName,
+                    supportedRawActionNames))
+            {
+                return null;
+            }
+
             IReadOnlyList<int> frameRemap = ResolveClientFrameRemap(
                 playerActionName,
                 rawActionName,
@@ -3255,6 +3270,23 @@ namespace HaCreator.MapSimulator.Character
             };
             remappedAnimation.CalculateDuration();
             return remappedAnimation;
+        }
+
+        private static bool ShouldResolveClientPlaybackActionName(
+            string resolvedActionName,
+            string playerActionName,
+            string rawActionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            if (string.IsNullOrWhiteSpace(resolvedActionName))
+            {
+                return false;
+            }
+
+            return IsNeutralShadowPartnerFallbackActionName(resolvedActionName)
+                   || IsSupportedRawActionName(resolvedActionName, supportedRawActionNames)
+                   || IsSupportedRawActionName(playerActionName, supportedRawActionNames)
+                   || IsSupportedRawActionName(rawActionName, supportedRawActionNames);
         }
 
         internal static IEnumerable<string> EnumeratePiecedShadowPartnerActionNames()
@@ -3377,6 +3409,71 @@ namespace HaCreator.MapSimulator.Character
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && MountedCreateActionFrameNames.Contains(actionName);
+        }
+
+        private static bool IsMountedLegacyCreateFallbackActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && MountedLegacyCreateFallbackActionNames.Contains(actionName);
+        }
+
+        private static bool IsSourceGatedPostInitActionDataName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (ClientActionDataFallbackOnlyActionNames.Contains(actionName)
+                       || IsGenericPostInitActionDataFallbackName(actionName)
+                       || IsMountedCreateActionFrameName(actionName)
+                       || IsMountedLegacyCreateFallbackActionName(actionName));
+        }
+
+        private static bool IsSupportedMountedCreateFamilySource(
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            if (supportedRawActionNames == null || supportedRawActionNames.Count == 0)
+            {
+                return false;
+            }
+
+            if (supportedRawActionNames.Contains(actionName))
+            {
+                return true;
+            }
+
+            if (IsMountedLegacyCreateFallbackActionName(actionName))
+            {
+                return MountedCreateActionFrameNames.Any(supportedRawActionNames.Contains);
+            }
+
+            if (!IsMountedCreateActionFrameName(actionName))
+            {
+                return false;
+            }
+
+            string baseActionName = ResolveMountedCreateBaseActionName(actionName);
+            return !string.IsNullOrWhiteSpace(baseActionName)
+                   && (supportedRawActionNames.Contains(baseActionName)
+                       || supportedRawActionNames.Any(supportedActionName =>
+                           string.Equals(
+                               ResolveMountedCreateBaseActionName(supportedActionName),
+                               baseActionName,
+                               StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static string ResolveMountedCreateBaseActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            if (actionName.EndsWith("_s", StringComparison.OrdinalIgnoreCase)
+                || actionName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+            {
+                return actionName[..^2];
+            }
+
+            return actionName;
         }
 
         internal static bool ShouldSynthesizeMountedCharacterActionName(
@@ -3506,6 +3603,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (IsClientInitializedShadowPartnerRawActionCode(rawActionCode))
             {
+                if (!IsSupportedRawActionName(actionName, supportedRawActionNames))
+                {
+                    return default;
+                }
+
                 return new ShadowPartnerActionDataFlags(
                     IsKnown: true,
                     IsClientInitRow: true,
@@ -3535,8 +3637,7 @@ namespace HaCreator.MapSimulator.Character
             return !string.IsNullOrWhiteSpace(actionName)
                    && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
                    && IsClientPostInitActionDataFallbackRawActionCode(rawActionCode)
-                   && (ClientActionDataFallbackOnlyActionNames.Contains(actionName)
-                       || IsGenericPostInitActionDataFallbackName(actionName));
+                   && IsSourceGatedPostInitActionDataName(actionName);
         }
 
         private static bool IsClientPostInitActionDataFallbackRawActionCode(int rawActionCode)
@@ -5218,12 +5319,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (ClientActionDataFallbackOnlyActionNames.Contains(actionName)
-                || IsGenericPostInitActionDataFallbackName(actionName))
+            if (IsSourceGatedPostInitActionDataName(actionName))
             {
-                return supportedRawActionNames != null
-                       && supportedRawActionNames.Count > 0
-                       && supportedRawActionNames.Contains(actionName);
+                return IsSupportedMountedCreateFamilySource(actionName, supportedRawActionNames);
             }
 
             if (supportedRawActionNames == null || supportedRawActionNames.Count == 0)

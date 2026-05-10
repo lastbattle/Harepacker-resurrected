@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int ScoreLayerScreenY = 30;
         private const int ScoreLayerWidth = 300;
         private const int ScoreLayerHeight = 300;
-        private const int ScoreLayerMaxVisibleRows = ScoreLayerHeight / RowSpacing;
+        private const int ScoreLayerMaxVisibleRows = ((ScoreLayerHeight - 1) - FirstIconY) / RowSpacing + 1;
         private const int IconX = 5;
         private const int NameX = 21;
         private const int ScoreX = 106;

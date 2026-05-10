@@ -207,7 +207,11 @@ namespace HaCreator.MapSimulator
             bool SetMsPositionBeforeMsPositionQuery = false,
             bool MsPositionQueryBeforeLastUpdate = false,
             bool LastUpdateBeforePlay = false,
-            bool PlayLoops = false);
+            bool PlayLoops = false,
+            bool IwzSoundQueryInterfaceAttempted = false,
+            bool IwzSoundInterfaceRetainedBeforeRawBuffer = false,
+            bool AilHandleStoredBeforeMsLength = false,
+            bool AilQuickPlayAfterLastUpdate = false);
 
         internal readonly record struct PacketOwnedRadioMmsStopPlan(
             bool EnteredStop,
@@ -241,7 +245,10 @@ namespace HaCreator.MapSimulator
             bool PolledAilQuickStatus,
             int AilQuickStatusValue,
             bool AdvancedLastUpdate,
-            int NextLastUpdateTick);
+            int NextLastUpdateTick,
+            bool UsesClientHandleCompletionGate = false,
+            bool CompletionRequiresAilQuickStatusDone = false,
+            bool StatusPollBeforeLastUpdateAdvance = false);
 
         internal sealed class PacketOwnedRadioClientPlaybackHandle
         {
@@ -12332,12 +12339,16 @@ namespace HaCreator.MapSimulator
 
         internal static int ResolvePacketOwnedRadioAilQuickStatus(PacketOwnedRadioClientHandleStatus currentStatus)
         {
+            const int AilQuickStatusDone = 1;
+            const int AilQuickStatusActive = 0;
+            const int AilQuickStatusUnavailable = -1;
+
             return currentStatus switch
             {
-                PacketOwnedRadioClientHandleStatus.Done => 1,
-                PacketOwnedRadioClientHandleStatus.Playing => 0,
-                PacketOwnedRadioClientHandleStatus.Loaded => 0,
-                _ => -1,
+                PacketOwnedRadioClientHandleStatus.Done => AilQuickStatusDone,
+                PacketOwnedRadioClientHandleStatus.Playing => AilQuickStatusActive,
+                PacketOwnedRadioClientHandleStatus.Loaded => AilQuickStatusActive,
+                _ => AilQuickStatusUnavailable,
             };
         }
 
@@ -12456,15 +12467,16 @@ namespace HaCreator.MapSimulator
             }
 
             int ailQuickStatusValue = ResolvePacketOwnedRadioAilQuickStatus(currentHandleStatus);
-            bool shouldStopOnComplete = currentHandleStatus != PacketOwnedRadioClientHandleStatus.None
-                && currentHandleStatus != PacketOwnedRadioClientHandleStatus.Unloaded
-                    ? ailQuickStatusValue == 1
-                    : ShouldCompletePacketOwnedRadioSchedule(
-                        currentTickCount,
-                        expectedStopTick,
-                        clientHandleStopped,
-                        useBackendStopSignal,
-                        backendStopped);
+            bool usesClientHandleCompletionGate = currentHandleStatus != PacketOwnedRadioClientHandleStatus.None
+                && currentHandleStatus != PacketOwnedRadioClientHandleStatus.Unloaded;
+            bool shouldStopOnComplete = usesClientHandleCompletionGate
+                ? ailQuickStatusValue == 1
+                : ShouldCompletePacketOwnedRadioSchedule(
+                    currentTickCount,
+                    expectedStopTick,
+                    clientHandleStopped,
+                    useBackendStopSignal,
+                    backendStopped);
 
             return new PacketOwnedRadioUpdatePlan(
                 ShouldPoll: true,
@@ -12472,7 +12484,19 @@ namespace HaCreator.MapSimulator
                 PolledAilQuickStatus: true,
                 AilQuickStatusValue: ailQuickStatusValue,
                 AdvancedLastUpdate: true,
-                NextLastUpdateTick: currentTickCount);
+                NextLastUpdateTick: currentTickCount,
+                UsesClientHandleCompletionGate: usesClientHandleCompletionGate,
+                CompletionRequiresAilQuickStatusDone: usesClientHandleCompletionGate,
+                StatusPollBeforeLastUpdateAdvance: true);
+        }
+
+        internal static bool ShouldPacketOwnedRadioStopAfterAilQuickStatus(
+            PacketOwnedRadioClientHandleStatus currentHandleStatus,
+            int ailQuickStatusValue)
+        {
+            return currentHandleStatus != PacketOwnedRadioClientHandleStatus.None
+                && currentHandleStatus != PacketOwnedRadioClientHandleStatus.Unloaded
+                && ailQuickStatusValue == 1;
         }
 
         internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
@@ -12523,7 +12547,8 @@ namespace HaCreator.MapSimulator
                     MsPosition: normalizedPosition,
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
-                    FailureReason: "CRadioManager::MMS_Play could not query the StringPool[0x1502] IWzSound object.");
+                    FailureReason: "CRadioManager::MMS_Play could not query the StringPool[0x1502] IWzSound object.",
+                    IwzSoundQueryInterfaceAttempted: true);
             }
 
             if (!rawBufferLoaded)
@@ -12547,7 +12572,9 @@ namespace HaCreator.MapSimulator
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
                     FailureReason: failureReason,
-                    IwzSoundRawBufferQueried: true);
+                    IwzSoundRawBufferQueried: true,
+                    IwzSoundQueryInterfaceAttempted: true,
+                    IwzSoundInterfaceRetainedBeforeRawBuffer: true);
             }
 
             if (normalizedLength < normalizedPosition)
@@ -12571,7 +12598,10 @@ namespace HaCreator.MapSimulator
                     IwzSoundRawBufferQueried: true,
                     AilQuickLoadMemSucceeded: true,
                     AilQuickLoadMemBeforeMsLength: true,
-                    AilQuickUnloadOnRejectedPosition: true);
+                    AilQuickUnloadOnRejectedPosition: true,
+                    IwzSoundQueryInterfaceAttempted: true,
+                    IwzSoundInterfaceRetainedBeforeRawBuffer: true,
+                    AilHandleStoredBeforeMsLength: true);
             }
 
             int lastUpdateTick = HasPacketOwnedRadioClientTrackDuration(normalizedLength)
@@ -12602,7 +12632,11 @@ namespace HaCreator.MapSimulator
                 SetMsPositionBeforeMsPositionQuery: true,
                 MsPositionQueryBeforeLastUpdate: true,
                 LastUpdateBeforePlay: true,
-                PlayLoops: true);
+                PlayLoops: true,
+                IwzSoundQueryInterfaceAttempted: true,
+                IwzSoundInterfaceRetainedBeforeRawBuffer: true,
+                AilHandleStoredBeforeMsLength: true,
+                AilQuickPlayAfterLastUpdate: true);
         }
 
         private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out int rawBufferLength, out string failureReason)
@@ -13214,7 +13248,7 @@ namespace HaCreator.MapSimulator
                 : _lastPacketOwnedRadioClientMmsPlayFailureReason;
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
-                $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, failure={failure}; " +
+                $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }

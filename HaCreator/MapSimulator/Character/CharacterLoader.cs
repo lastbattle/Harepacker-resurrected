@@ -711,14 +711,31 @@ namespace HaCreator.MapSimulator.Character
             Point? rb = GetVectorValue(resolvedMetadataNode?[rightBottomPropertyName]) ?? GetVectorValue(canvas?[rightBottomPropertyName]);
             if (lt.HasValue && rb.HasValue)
             {
-                int left = lt.Value.X;
-                int top = lt.Value.Y;
-                int width = Math.Max(1, rb.Value.X - left);
-                int height = Math.Max(1, rb.Value.Y - top);
-                return new Rectangle(left, top, width, height);
+                return BuildClientMorphFrameBounds(lt.Value, rb.Value);
             }
 
-            return new Rectangle(-origin.X, -origin.Y, texture?.Width ?? 0, texture?.Height ?? 0);
+            // CActionMan::LoadMorphAction uses SetRectEmpty when either client bounds
+            // vector is missing instead of synthesizing a canvas-sized rectangle.
+            return Rectangle.Empty;
+        }
+
+        internal static Rectangle BuildClientMorphFrameBoundsForTesting(Point lt, Point rb)
+        {
+            return BuildClientMorphFrameBounds(lt, rb);
+        }
+
+        internal static Rectangle GetClientMorphFrameBoundsFallbackForTesting()
+        {
+            return Rectangle.Empty;
+        }
+
+        private static Rectangle BuildClientMorphFrameBounds(Point lt, Point rb)
+        {
+            int left = lt.X;
+            int top = lt.Y;
+            int width = Math.Max(1, rb.X - left);
+            int height = Math.Max(1, rb.Y - top);
+            return new Rectangle(left, top, width, height);
         }
 
         private static Point? GetVectorValue(WzImageProperty property)

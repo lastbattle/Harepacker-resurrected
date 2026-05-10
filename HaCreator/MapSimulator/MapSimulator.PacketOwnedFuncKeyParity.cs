@@ -803,7 +803,7 @@ namespace HaCreator.MapSimulator
             }
 
             PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
-            if (entry.Type == 0 || entry.Id <= 0)
+            if (!IsPacketOwnedKeyConfigEntryDrawable(entry))
             {
                 return default;
             }
@@ -932,7 +932,7 @@ namespace HaCreator.MapSimulator
             int sourceScanCode,
             PacketOwnedFuncKeyMappedEntry entry)
         {
-            if (entry.Type == 0 || entry.Id <= 0)
+            if (!IsPacketOwnedKeyConfigEntryDrawable(entry))
             {
                 return false;
             }
@@ -955,7 +955,7 @@ namespace HaCreator.MapSimulator
 
         private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(PacketOwnedFuncKeyMappedEntry entry)
         {
-            if (entry.Id <= 0)
+            if (!IsPacketOwnedKeyConfigEntryDrawable(entry))
             {
                 return default;
             }
@@ -971,7 +971,7 @@ namespace HaCreator.MapSimulator
                         entry.Type,
                         fromLiveHotkeySlot: false),
                 PacketOwnedFuncKeyMacroType => BuildPacketOwnedKeyConfigMacroShortcutVisualState(
-                    ResolvePacketOwnedMacroIndex(entry.Id),
+                    ResolvePacketOwnedMacroDisplayIndex(entry.Id),
                     entry.Id,
                     fromLiveHotkeySlot: false),
                 _ => default,
@@ -1155,11 +1155,26 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private static int ResolvePacketOwnedMacroIndex(int packetMacroId)
+        private int ResolvePacketOwnedMacroDisplayIndex(int packetMacroId)
         {
+            if (packetMacroId < 0)
+            {
+                return -1;
+            }
+
+            // CUIKeyConfig::DrawFuncKeyMapped formats the WZ path as
+            // UI/UIWindow2.img/Skill/macro/Macroicon/%d/icon with nID directly.
+            if (uiWindowManager?.SkillMacroWindow?.GetMacro(packetMacroId) != null
+                || uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(packetMacroId) != null)
+            {
+                return packetMacroId;
+            }
+
+            // Older simulator snapshots stored the packet macro id as a one-based value.
+            // Keep that readback fallback without changing the native display preference.
             return packetMacroId > 0
                 ? packetMacroId - 1
-                : -1;
+                : packetMacroId;
         }
 
         private bool TryResolvePacketOwnedCastEntryForBindableHotkeyAction(
@@ -1183,7 +1198,7 @@ namespace HaCreator.MapSimulator
             }
 
             entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
-            return IsPacketOwnedCastEntryType(entry.Type) && entry.Id > 0;
+            return IsPacketOwnedCastEntryValueValid(entry);
         }
 
         private static int ResolvePacketOwnedMacroDisplaySkillId(SkillMacro macro)
@@ -1240,7 +1255,7 @@ namespace HaCreator.MapSimulator
             int nextUnclaimedBindableSlotIndex = 0;
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
-                if (!IsPacketOwnedCastEntryType(entry.Type) || entry.Id <= 0)
+                if (!IsPacketOwnedCastEntryValueValid(entry))
                 {
                     continue;
                 }
@@ -1326,6 +1341,42 @@ namespace HaCreator.MapSimulator
                 || type == PacketOwnedFuncKeyMacroType;
         }
 
+        private static bool IsPacketOwnedKeyConfigEntryDrawable(PacketOwnedFuncKeyMappedEntry entry)
+        {
+            return entry.Type switch
+            {
+                0 => false,
+                PacketOwnedFuncKeySkillType => entry.Id > 0,
+                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash => entry.Id > 0,
+                PacketOwnedFuncKeyFunctionType => entry.Id >= 0,
+                PacketOwnedFuncKeyClientControlType => entry.Id >= 50 && entry.Id <= 54,
+                PacketOwnedFuncKeyEmotionType => entry.Id >= 100 && entry.Id <= 106,
+                PacketOwnedFuncKeyMacroType => entry.Id >= 0,
+                _ => entry.Id > 0,
+            };
+        }
+
+        private static bool IsPacketOwnedCastEntryValueValid(PacketOwnedFuncKeyMappedEntry entry)
+        {
+            return entry.Type switch
+            {
+                PacketOwnedFuncKeySkillType => entry.Id > 0,
+                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash => entry.Id > 0,
+                PacketOwnedFuncKeyMacroType => entry.Id >= 0,
+                _ => false,
+            };
+        }
+
+        internal static bool IsPacketOwnedKeyConfigEntryDrawableForTests(byte packetEntryType, int packetEntryId)
+        {
+            return IsPacketOwnedKeyConfigEntryDrawable(new PacketOwnedFuncKeyMappedEntry(packetEntryType, packetEntryId));
+        }
+
+        internal static bool IsPacketOwnedCastEntryValueValidForTests(byte packetEntryType, int packetEntryId)
+        {
+            return IsPacketOwnedCastEntryValueValid(new PacketOwnedFuncKeyMappedEntry(packetEntryType, packetEntryId));
+        }
+
         private bool TryApplyPacketOwnedCastMappingToSkillSlot(int slotIndex, PacketOwnedFuncKeyMappedEntry entry)
         {
             if (slotIndex < 0 || _playerManager?.Skills == null)
@@ -1362,7 +1413,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedMacroHotkey(int slotIndex, int packetMacroId)
         {
-            if (_playerManager?.Skills == null || packetMacroId <= 0)
+            if (_playerManager?.Skills == null || packetMacroId < 0)
             {
                 return false;
             }
@@ -1379,7 +1430,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedOwnerMacroHotkey(int ownerSlotIndex, int packetMacroId)
         {
-            if (_playerManager?.Skills == null || packetMacroId <= 0)
+            if (_playerManager?.Skills == null || packetMacroId < 0)
             {
                 return false;
             }
@@ -1396,7 +1447,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryExecutePacketOwnedMacro(int packetMacroId, int currentTime)
         {
-            if (_playerManager?.Skills == null || packetMacroId <= 0)
+            if (_playerManager?.Skills == null || packetMacroId < 0)
             {
                 return false;
             }
@@ -1481,8 +1532,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (!IsPacketOwnedCastEntryType(entry.Type)
-                    || entry.Id <= 0)
+                if (!IsPacketOwnedCastEntryValueValid(entry))
                 {
                     continue;
                 }

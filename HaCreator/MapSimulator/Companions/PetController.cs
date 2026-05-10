@@ -1228,28 +1228,38 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TryTriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)
         {
+            return TriggerSpeechEvent(eventType, currentTime, slotIndex) > 0;
+        }
+
+        public int TriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)
+        {
             if (_fieldUsageBlocked)
             {
-                return false;
+                return 0;
             }
 
             if (slotIndex.HasValue)
             {
                 PetRuntime pet = GetPetAt(slotIndex.Value);
-                return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTime);
+                return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTime) ? 1 : 0;
             }
 
-            return TryPetAutoSpeaking(eventType, currentTime);
+            return DispatchPetAutoSpeakingByEvent(eventType, currentTime);
         }
 
         public bool TryPetAutoSpeaking(PetAutoSpeechEvent eventType, int currentTime)
         {
+            return DispatchPetAutoSpeakingByEvent(eventType, currentTime) > 0;
+        }
+
+        public int DispatchPetAutoSpeakingByEvent(PetAutoSpeechEvent eventType, int currentTime)
+        {
             if (_fieldUsageBlocked)
             {
-                return false;
+                return 0;
             }
 
-            return TryDispatchPetAutoSpeakingByEvent(_activePets, eventType, currentTime) > 0;
+            return TryDispatchPetAutoSpeakingByEvent(_activePets, eventType, currentTime);
         }
 
         internal static int TryDispatchPetAutoSpeakingByEvent(

@@ -76,6 +76,13 @@ namespace HaCreator.MapSimulator.Character
         Escape
     }
 
+    public enum InputSource
+    {
+        None = 0,
+        Keyboard = 1,
+        Gamepad = 2
+    }
+
     /// <summary>
     /// Key binding for an action
     /// </summary>
@@ -793,6 +800,38 @@ namespace HaCreator.MapSimulator.Character
         public bool IsPressed(InputAction action)
         {
             return TryGetInputToken(action, released: false, out _);
+        }
+
+        public bool TryResolvePressedInputSource(InputAction action, out InputSource source)
+        {
+            source = InputSource.None;
+
+            if (!_bindings.TryGetValue(action, out var binding))
+            {
+                return false;
+            }
+
+            if (binding.PrimaryKey != Keys.None && DidKeyTransition(binding.PrimaryKey, released: false))
+            {
+                source = InputSource.Keyboard;
+                return true;
+            }
+
+            if (binding.SecondaryKey != Keys.None && DidKeyTransition(binding.SecondaryKey, released: false))
+            {
+                source = InputSource.Keyboard;
+                return true;
+            }
+
+            if (_currentGamepad.IsConnected
+                && binding.GamepadButton != 0
+                && DidButtonTransition(binding.GamepadButton, released: false))
+            {
+                source = InputSource.Gamepad;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>

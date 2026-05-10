@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -107,6 +108,13 @@ namespace HaCreator.MapSimulator.UI
         internal const int ShopResultPreviousButtonId = 4001;
         internal const int SearchResultPageSize = 10;
         internal const int ScanRequestThrottleMilliseconds = 500;
+        internal const int ScanConfirmationFormatStringPoolId = 0x0E55;
+        internal const int ScanConfirmationAscendingStringPoolId = 0x0E56;
+        internal const int ScanConfirmationDescendingStringPoolId = 0x0E57;
+        internal const int SearchResultChildCheckBoxX = 35;
+        internal const int SearchResultChildCheckBoxY = 10;
+        internal const int SearchResultChildCheckBoxWidth = 105;
+        internal const int SearchResultChildCheckBoxHeight = 11;
         internal const int ShopLinkSuccessResultCode = 0;
         internal const int ShopLinkNoShopResultCode = 1;
         internal const int ShopLinkAlreadyMovedResultCode = 2;
@@ -129,6 +137,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _closeButton;
         private readonly List<UIObject> _rowButtons = new();
         private readonly GraphicsDevice _device;
+        private readonly bool _searchResultChildAssetAvailable;
+        private readonly int _searchResultChildAssetWidth;
+        private readonly int _searchResultChildAssetHeight;
 
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -178,7 +189,10 @@ namespace HaCreator.MapSimulator.UI
             UIObject categoryButton,
             UIObject searchButton,
             UIObject closeButton,
-            GraphicsDevice device)
+            GraphicsDevice device,
+            bool searchResultChildAssetAvailable = false,
+            int searchResultChildAssetWidth = 0,
+            int searchResultChildAssetHeight = 0)
             : base(frame)
         {
             _searchBackgroundTexture = searchBackgroundTexture;
@@ -189,6 +203,9 @@ namespace HaCreator.MapSimulator.UI
             _searchButton = searchButton;
             _closeButton = closeButton;
             _device = device;
+            _searchResultChildAssetAvailable = searchResultChildAssetAvailable;
+            _searchResultChildAssetWidth = searchResultChildAssetWidth;
+            _searchResultChildAssetHeight = searchResultChildAssetHeight;
 
             _pixelTexture = new Texture2D(device, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
@@ -254,6 +271,19 @@ namespace HaCreator.MapSimulator.UI
             public bool SearchResultChildShown { get; init; }
             public bool ExclusiveScannerRequestPending { get; init; }
             public bool DescendingOrderChecked { get; init; }
+            public bool SearchResultChildAssetAvailable { get; init; }
+            public int SearchResultChildAssetWidth { get; init; }
+            public int SearchResultChildAssetHeight { get; init; }
+            public int SearchResultChildRowsPerPage { get; init; }
+            public bool ChildPreviousButtonEnabled { get; init; }
+            public bool ChildNextButtonEnabled { get; init; }
+            public IReadOnlyList<int> PreviousPageItemIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> CurrentPageItemIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> NextPageItemIds { get; init; } = Array.Empty<int>();
+            public int DescendingCheckBoxX { get; init; }
+            public int DescendingCheckBoxY { get; init; }
+            public int DescendingCheckBoxWidth { get; init; }
+            public int DescendingCheckBoxHeight { get; init; }
             public bool ScanConfirmationPending { get; init; }
             public int PendingScanConfirmationItemId { get; init; }
             public string PendingScanConfirmationSummary { get; init; } = string.Empty;
@@ -396,6 +426,19 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultChildShown = _searchResultChildShown,
                 ExclusiveScannerRequestPending = _exclusiveScannerRequestPending,
                 DescendingOrderChecked = _descendingOrderChecked,
+                SearchResultChildAssetAvailable = _searchResultChildAssetAvailable,
+                SearchResultChildAssetWidth = _searchResultChildAssetWidth,
+                SearchResultChildAssetHeight = _searchResultChildAssetHeight,
+                SearchResultChildRowsPerPage = GetCurrentChildPageSize(),
+                ChildPreviousButtonEnabled = IsChildPreviousButtonEnabled(),
+                ChildNextButtonEnabled = IsChildNextButtonEnabled(),
+                PreviousPageItemIds = GetChildPageItemIds(_searchResultPageIndex - 1),
+                CurrentPageItemIds = GetChildPageItemIds(_searchResultPageIndex),
+                NextPageItemIds = GetChildPageItemIds(_searchResultPageIndex + 1),
+                DescendingCheckBoxX = SearchResultChildCheckBoxX,
+                DescendingCheckBoxY = SearchResultChildCheckBoxY,
+                DescendingCheckBoxWidth = SearchResultChildCheckBoxWidth,
+                DescendingCheckBoxHeight = SearchResultChildCheckBoxHeight,
                 ScanConfirmationPending = _scanConfirmationPending,
                 PendingScanConfirmationItemId = _pendingScanConfirmationItemId,
                 PendingScanConfirmationSummary = _pendingScanConfirmationSummary,
@@ -947,6 +990,31 @@ namespace HaCreator.MapSimulator.UI
             return _activeAddOnMode == ScannerAddOnMode.SearchResult && _results.Any(result => result.IsPacketFedShopRow)
                 ? ShopResultRowsPerPage
                 : SearchResultPageSize;
+        }
+
+        private bool IsChildPreviousButtonEnabled()
+        {
+            return _results.Count > 0 && _searchResultPageIndex > 0;
+        }
+
+        private bool IsChildNextButtonEnabled()
+        {
+            return _results.Count > 0 && _searchResultPageIndex < _searchResultTotalPages - 1;
+        }
+
+        private IReadOnlyList<int> GetChildPageItemIds(int pageIndex)
+        {
+            if (pageIndex < 0 || pageIndex >= _searchResultTotalPages || _results.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int pageSize = GetCurrentChildPageSize();
+            return _results
+                .Skip(pageIndex * pageSize)
+                .Take(pageSize)
+                .Select(result => result.ItemId)
+                .ToList();
         }
 
         private void RefreshRows()

@@ -47,6 +47,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PrimaryAcceptButtonWzOriginY = -213;
         internal const int PrimaryAcceptButtonWidth = 57;
         internal const int PrimaryAcceptButtonHeight = 23;
+        internal const int DisabledAcceptButtonWzOriginX = -88;
+        internal const int DisabledAcceptButtonWzOriginY = -213;
+        internal const int DisabledAcceptButtonWidth = 58;
+        internal const int DisabledAcceptButtonHeight = 23;
         internal const bool AcceptButtonAcceptFocus = true;
         internal const bool AcceptButtonDrawBack = false;
         internal const bool AcceptButtonAnimateOnce = false;
@@ -300,6 +304,8 @@ namespace HaCreator.MapSimulator.Interaction
                 InvitationAssetSize = (InvitationAssetWidth, InvitationAssetHeight),
                 PrimaryAcceptButtonWzOrigin = (PrimaryAcceptButtonWzOriginX, PrimaryAcceptButtonWzOriginY),
                 PrimaryAcceptButtonSize = (PrimaryAcceptButtonWidth, PrimaryAcceptButtonHeight),
+                DisabledAcceptButtonWzOrigin = (DisabledAcceptButtonWzOriginX, DisabledAcceptButtonWzOriginY),
+                DisabledAcceptButtonSize = (DisabledAcceptButtonWidth, DisabledAcceptButtonHeight),
                 AcceptButtonAcceptFocus = AcceptButtonAcceptFocus,
                 AcceptButtonDrawBack = AcceptButtonDrawBack,
                 AcceptButtonAnimateOnce = AcceptButtonAnimateOnce,
@@ -586,6 +592,8 @@ namespace HaCreator.MapSimulator.Interaction
         public (int Width, int Height) InvitationAssetSize { get; init; }
         public (int X, int Y) PrimaryAcceptButtonWzOrigin { get; init; }
         public (int Width, int Height) PrimaryAcceptButtonSize { get; init; }
+        public (int X, int Y) DisabledAcceptButtonWzOrigin { get; init; }
+        public (int Width, int Height) DisabledAcceptButtonSize { get; init; }
         public (int X, int Y) GroomNamePosition { get; init; }
         public (int X, int Y) BrideNamePosition { get; init; }
         public (int X, int Y) AcceptButtonPosition { get; init; }

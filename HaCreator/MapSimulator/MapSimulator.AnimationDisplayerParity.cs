@@ -22,6 +22,22 @@ using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator
 {
+    internal readonly record struct AnimationDisplayerCombatFeedbackSpecialTextOwnerTrace(
+        string RedOwnerBaseUol,
+        string BlueOwnerBaseUol,
+        string VioletOwnerBaseUol,
+        string RedOwnerSetName,
+        string BlueOwnerSetName,
+        string VioletOwnerSetName,
+        string[] RedSpecialTextNames,
+        string[] BlueSpecialTextNames,
+        string[] VioletSpecialTextNames,
+        bool RedHasShot,
+        bool BlueHasShot,
+        bool VioletHasShot,
+        bool UsesNoRed0ForDamageNumberSpecialTextComposition,
+        bool RejectsUnsupportedColorValues);
+
     public partial class MapSimulator
     {
         private static readonly string AnimationDisplayerNewYearEffectUol =
@@ -35,6 +51,7 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerBuffItemUseFallbackEffectUol = "Effect/BasicEff.img/Buff";
         private const string AnimationDisplayerItemUnreleaseBaseEffectUol = "Effect/BasicEff.img/Enchant/Success";
         private const string AnimationDisplayerRedCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoRed0";
+        private const string AnimationDisplayerBlueCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoBlue0";
         private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
         private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
         private const int AnimationDisplayerCatchMobHeadVerticalOffset = 15;
@@ -51,6 +68,8 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerSessionValueCoolKeyStringPoolId = 0x14F1;
         private const string AnimationDisplayerSessionValueCoolFallbackKey = "massacre_cool";
         private const int AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs = 1200;
+        private const int AnimationDisplayerReservedSquibProbabilityDenominator = 1001;
+        private const int AnimationDisplayerReservedSquibSoundCooldownMs = 50;
         private const int AnimationDisplayerFallingFallbackDurationMs = 1000;
         private const int AnimationDisplayerExplosionFallbackIntervalMs = 100;
         private const int AnimationDisplayerExplosionFallbackCount = 1;
@@ -157,6 +176,7 @@ namespace HaCreator.MapSimulator
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
         private int _animationDisplayerSessionValueCoolRank;
+        private int? _animationDisplayerReservedSquibLastSoundTime;
         private int _packetOwnedAnimationDisplayerFollowDriverId;
         private int _packetOwnedAnimationDisplayerFollowRegistrationKey;
 
@@ -249,6 +269,8 @@ namespace HaCreator.MapSimulator
         private sealed class AnimationDisplayerRemoteUpgradeTombOwnerState
         {
             public int ItemId { get; init; }
+            public string EffectUol { get; init; }
+            public Vector2 Position { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public int AnimationStartTime { get; init; }
@@ -865,6 +887,7 @@ namespace HaCreator.MapSimulator
             _animationDisplayerRemoteGrenadeActors.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
             _animationDisplayerSessionValueCoolRank = 0;
+            _animationDisplayerReservedSquibLastSoundTime = null;
             _packetOwnedAnimationDisplayerFollowDriverId = 0;
             _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
             ResetAnimationDisplayerLocalFadeLayer();
@@ -1514,13 +1537,79 @@ namespace HaCreator.MapSimulator
             DamageColorType colorType)
         {
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            string[] authoredNames = ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(colorType);
+            for (int i = 0; i < authoredNames.Length; i++)
+            {
+                if (string.Equals(authoredNames[i], resolvedSpecialTextName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static string ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(DamageColorType colorType)
+        {
             return colorType switch
             {
-                DamageColorType.Red => DamageNumberRenderer.IsSupportedSpecialTextName(resolvedSpecialTextName),
-                DamageColorType.Violet => !string.Equals(resolvedSpecialTextName, "shot", StringComparison.OrdinalIgnoreCase)
-                    && DamageNumberRenderer.IsSupportedSpecialTextName(resolvedSpecialTextName),
-                _ => false
+                DamageColorType.Red => "NoRed0",
+                DamageColorType.Blue => "NoBlue0",
+                DamageColorType.Violet => "NoViolet0",
+                _ => null
             };
+        }
+
+        internal static string[] ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(DamageColorType colorType)
+        {
+            return colorType switch
+            {
+                DamageColorType.Red => new[] { "Miss", "guard", "shot", "counter", "resist" },
+                DamageColorType.Violet => new[] { "Miss", "guard", "counter", "resist" },
+                _ => Array.Empty<string>()
+            };
+        }
+
+        internal static AnimationDisplayerCombatFeedbackSpecialTextOwnerTrace BuildAnimationDisplayerCombatFeedbackSpecialTextOwnerTrace()
+        {
+            string[] redSpecialTextNames = ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(DamageColorType.Red);
+            string[] blueSpecialTextNames = ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(DamageColorType.Blue);
+            string[] violetSpecialTextNames = ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(DamageColorType.Violet);
+            return new AnimationDisplayerCombatFeedbackSpecialTextOwnerTrace(
+                AnimationDisplayerRedCombatFeedbackEffectBaseUol,
+                AnimationDisplayerBlueCombatFeedbackEffectBaseUol,
+                AnimationDisplayerVioletCombatFeedbackEffectBaseUol,
+                ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(DamageColorType.Red),
+                ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(DamageColorType.Blue),
+                ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(DamageColorType.Violet),
+                redSpecialTextNames,
+                blueSpecialTextNames,
+                violetSpecialTextNames,
+                HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(redSpecialTextNames, "shot"),
+                HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(blueSpecialTextNames, "shot"),
+                HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(violetSpecialTextNames, "shot"),
+                UsesNoRed0ForDamageNumberSpecialTextComposition: true,
+                RejectsUnsupportedColorValues: true);
+        }
+
+        private static bool HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(
+            IReadOnlyList<string> authoredNames,
+            string specialTextName)
+        {
+            if (authoredNames == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < authoredNames.Count; i++)
+            {
+                if (string.Equals(authoredNames[i], specialTextName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static string ResolveAnimationDisplayerCombatFeedbackFrameCacheKey(
@@ -2084,10 +2173,32 @@ namespace HaCreator.MapSimulator
         {
             if (float.IsNaN(probability) || probability <= 0f)
             {
-                return 0f;
+                return 1f / AnimationDisplayerReservedSquibProbabilityDenominator;
             }
 
-            return Math.Min(1f, probability);
+            if (probability >= 1f)
+            {
+                return 1f;
+            }
+
+            int threshold = Math.Clamp(
+                (int)(probability * (AnimationDisplayerReservedSquibProbabilityDenominator - 1)),
+                0,
+                AnimationDisplayerReservedSquibProbabilityDenominator - 1);
+            return (threshold + 1) / (float)AnimationDisplayerReservedSquibProbabilityDenominator;
+        }
+
+        internal static bool ShouldPlayAnimationDisplayerReservedSquibSound(
+            int currentTime,
+            int? lastSoundPlayedTime)
+        {
+            if (!lastSoundPlayedTime.HasValue)
+            {
+                return true;
+            }
+
+            int nextAllowedTime = unchecked(lastSoundPlayedTime.Value + AnimationDisplayerReservedSquibSoundCooldownMs);
+            return HasAnimationDisplayerReservedUpdateTimePassed(currentTime, nextAllowedTime);
         }
 
         internal static int ResolveAnimationDisplayerReservedVisualVariantIndex(
@@ -4377,7 +4488,7 @@ namespace HaCreator.MapSimulator
                         updateNextMs: 0,
                         durationMs,
                         registerTime,
-                        onSpawn: () => TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor),
+                        onSpawn: () => TryPlayAnimationDisplayerReservedSquibSoundEffect(metadata.SoundEffectDescriptor, currTickCount),
                         zOrder: metadata.LayerZ,
                         spawnProbability: ResolveAnimationDisplayerReservedAreaSpawnProbability(metadata.Probability));
                     if (registrationId >= 0)
@@ -4774,6 +4885,24 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool TryPlayAnimationDisplayerReservedSquibSoundEffect(string descriptor, int currentTime)
+        {
+            if (!ShouldPlayAnimationDisplayerReservedSquibSound(
+                    currentTime,
+                    _animationDisplayerReservedSquibLastSoundTime))
+            {
+                return false;
+            }
+
+            if (!TryPlayAnimationDisplayerReservedSoundEffect(descriptor))
+            {
+                return false;
+            }
+
+            _animationDisplayerReservedSquibLastSoundTime = currentTime;
+            return true;
         }
 
         internal static bool TryResolveAnimationDisplayerReservedEmbeddedEffectSoundUol(
@@ -5426,12 +5555,14 @@ namespace HaCreator.MapSimulator
         private int ResolveAnimationDisplayerRemoteUpgradeTombInitialElapsed(
             int characterId,
             int itemId,
+            string effectUol,
+            Vector2 position,
             string ownerActionName,
             bool ownerFacingRight,
             int currentTime,
             int durationMs)
         {
-            if (characterId <= 0 || itemId <= 0 || durationMs <= 0)
+            if (characterId <= 0 || itemId <= 0 || string.IsNullOrWhiteSpace(effectUol) || durationMs <= 0)
             {
                 return 0;
             }
@@ -5444,10 +5575,14 @@ namespace HaCreator.MapSimulator
             {
                 initialElapsedMs = ResolveAnimationDisplayerRemoteUpgradeTombRestoreElapsedCore(
                     existingState.ItemId,
+                    existingState.EffectUol,
+                    existingState.Position,
                     existingState.OwnerActionName,
                     existingState.OwnerFacingRight,
                     existingState.AnimationStartTime,
                     itemId,
+                    effectUol,
+                    position,
                     ownerActionName,
                     ownerFacingRight,
                     currentTime,
@@ -5458,6 +5593,8 @@ namespace HaCreator.MapSimulator
                 new AnimationDisplayerRemoteUpgradeTombOwnerState
                 {
                     ItemId = itemId,
+                    EffectUol = effectUol,
+                    Position = position,
                     OwnerActionName = ownerActionName,
                     OwnerFacingRight = ownerFacingRight,
                     AnimationStartTime = unchecked(currentTime - initialElapsedMs),
@@ -6294,10 +6431,14 @@ namespace HaCreator.MapSimulator
 
         private static int ResolveAnimationDisplayerRemoteUpgradeTombRestoreElapsedCore(
             int previousItemId,
+            string previousEffectUol,
+            Vector2 previousPosition,
             string previousActionName,
             bool previousFacingRight,
             int previousAnimationStartTime,
             int currentItemId,
+            string currentEffectUol,
+            Vector2 currentPosition,
             string currentActionName,
             bool currentFacingRight,
             int currentTime,
@@ -6306,6 +6447,8 @@ namespace HaCreator.MapSimulator
             if (durationMs <= 0
                 || previousAnimationStartTime == int.MinValue
                 || previousItemId != currentItemId
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
+                || !RoundedVectorEquals(previousPosition, currentPosition)
                 || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
                 || previousFacingRight != currentFacingRight)
             {
@@ -6314,6 +6457,12 @@ namespace HaCreator.MapSimulator
 
             int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
+        private static bool RoundedVectorEquals(Vector2 left, Vector2 right)
+        {
+            return (int)Math.Round(left.X) == (int)Math.Round(right.X)
+                && (int)Math.Round(left.Y) == (int)Math.Round(right.Y);
         }
 
         private static int ResolveAnimationDisplayerRemoteMobAttackHitRestoreElapsedCore(
@@ -6663,10 +6812,14 @@ namespace HaCreator.MapSimulator
 
         internal static int ResolveAnimationDisplayerRemoteUpgradeTombRestoreElapsedForTesting(
             int previousItemId,
+            string previousEffectUol,
+            Vector2 previousPosition,
             string previousActionName,
             bool previousFacingRight,
             int previousAnimationStartTime,
             int currentItemId,
+            string currentEffectUol,
+            Vector2 currentPosition,
             string currentActionName,
             bool currentFacingRight,
             int currentTime,
@@ -6674,10 +6827,14 @@ namespace HaCreator.MapSimulator
         {
             return ResolveAnimationDisplayerRemoteUpgradeTombRestoreElapsedCore(
                 previousItemId,
+                previousEffectUol,
+                previousPosition,
                 previousActionName,
                 previousFacingRight,
                 previousAnimationStartTime,
                 currentItemId,
+                currentEffectUol,
+                currentPosition,
                 currentActionName,
                 currentFacingRight,
                 currentTime,

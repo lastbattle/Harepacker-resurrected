@@ -13,9 +13,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NewYearCardRatioOriginX = 1;
         internal const int NewYearCardRatioOriginY = 1;
         internal const int NewYearCardLoadLayerAlpha = 255;
-        internal const int NewYearCardLoadLayerX = 0;
-        internal const int NewYearCardLoadLayerY = 0;
-        internal const int NewYearCardLoadLayerZ = 0;
+        internal const int NewYearCardLoadLayerCanvas = 0;
+        internal const int NewYearCardLoadLayerOption = unchecked((int)0xC00614A4);
+        internal const int NewYearCardLoadLayerReserved = 0;
+        internal const bool NewYearCardLoadLayerFlip = false;
         internal const int NewYearCardAnimateModeRepeat = 2;
 
         private const string NewYearCardVectorClassFallback = "Shape2D#Vector2D";
@@ -51,7 +52,12 @@ namespace HaCreator.MapSimulator.Interaction
                 NewYearCardRatioDenominator,
                 NewYearCardRatioOriginX,
                 NewYearCardRatioOriginY,
-                NewYearCardLoadLayerAlpha);
+                NewYearCardLoadLayerCanvas,
+                NewYearCardLoadLayerOption,
+                NewYearCardLoadLayerAlpha,
+                NewYearCardLoadLayerReserved,
+                NewYearCardLoadLayerFlip,
+                NewYearCardAnimateModeRepeat);
         }
     }
 
@@ -64,5 +70,10 @@ namespace HaCreator.MapSimulator.Interaction
         int RatioDenominator,
         int RatioOriginX,
         int RatioOriginY,
-        int Alpha);
+        int LoadLayerCanvas,
+        int LoadLayerOption,
+        int Alpha,
+        int LoadLayerReserved,
+        bool LoadLayerFlip,
+        int AnimateMode);
 }

@@ -299,13 +299,14 @@ namespace HaCreator.MapSimulator
             int stateIndex,
             int currentTick)
         {
-            int? repeat = metadata?.ResolveStateRepeat(stateIndex);
-            if (!repeat.HasValue)
-            {
-                return;
-            }
+            mapObject?.ApplyMapObjectAnimationRepeatMode(
+                ResolvePacketOwnedNamedObjectSelectedRepeatMode(metadata?.ResolveStateRepeat(stateIndex)),
+                currentTick);
+        }
 
-            mapObject?.ApplyMapObjectAnimationRepeatMode(repeat.Value, currentTick);
+        internal static int ResolvePacketOwnedNamedObjectSelectedRepeatMode(int? authoredRepeat)
+        {
+            return authoredRepeat ?? -2;
         }
 
         private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(

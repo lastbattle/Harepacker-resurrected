@@ -758,6 +758,7 @@ namespace HaCreator.MapSimulator
                     new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
                     {
                         Index = 0,
+                        SourceStringPoolId = 0x16A1,
                         Label = string.IsNullOrWhiteSpace(todayLabel) ? "Today" : todayLabel.Trim(),
                         IsActive = true
                     }
@@ -769,12 +770,14 @@ namespace HaCreator.MapSimulator
                 new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
                 {
                     Index = 0,
+                    SourceStringPoolId = 0x16A1,
                     Label = string.IsNullOrWhiteSpace(todayLabel) ? "Today" : todayLabel.Trim(),
                     IsActive = clampedSelectorIndex == 0
                 },
                 new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
                 {
                     Index = 1,
+                    SourceStringPoolId = 0x16A2,
                     Label = string.IsNullOrWhiteSpace(previousLabel) ? "Previous" : previousLabel.Trim(),
                     IsActive = clampedSelectorIndex == 1
                 }

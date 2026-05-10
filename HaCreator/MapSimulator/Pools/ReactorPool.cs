@@ -1777,6 +1777,7 @@ namespace HaCreator.MapSimulator.Pools
                 bool promoteExistingTouch = ShouldPromotePacketEnterLocalTouch(
                     IsLocallyTouchedReactor(existingIndex, existingTouchData));
                 ApplyPacketOwnershipToReactor(existingIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteExistingTouch);
+                ApplyPacketEnterName(existingIndex, name);
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData existingData = GetReactorData(existingIndex);
                 if (existingData != null)
@@ -1808,6 +1809,7 @@ namespace HaCreator.MapSimulator.Pools
                 bool promoteAuthoredTouch = ShouldPromotePacketEnterLocalTouch(
                     IsLocallyTouchedReactor(authoredIndex, authoredTouchData));
                 ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteAuthoredTouch);
+                ApplyPacketEnterName(authoredIndex, name);
                 ApplyPacketReactorState(authoredIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData authoredData = GetReactorData(authoredIndex);
                 if (authoredData != null)
@@ -1916,6 +1918,33 @@ namespace HaCreator.MapSimulator.Pools
             reactorIndex = spawnPoint.SpawnId;
             message = $"Spawned packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
             return true;
+        }
+
+        private void ApplyPacketEnterName(int index, string name)
+        {
+            string runtimeName = ResolvePacketEnterRuntimeName(name);
+            if (runtimeName.Length == 0)
+            {
+                return;
+            }
+
+            ReactorItem reactor = GetReactor(index);
+            if (reactor?.ReactorInstance != null)
+            {
+                reactor.ReactorInstance.Name = runtimeName;
+            }
+
+            if (index >= 0 && index < _spawnPoints.Count && _spawnPoints[index] != null)
+            {
+                _spawnPoints[index].Name = runtimeName;
+            }
+        }
+
+        internal static string ResolvePacketEnterRuntimeName(string name)
+        {
+            return string.IsNullOrWhiteSpace(name)
+                ? string.Empty
+                : name.Trim();
         }
 
         public bool TryChangePacketOwnedReactorState(

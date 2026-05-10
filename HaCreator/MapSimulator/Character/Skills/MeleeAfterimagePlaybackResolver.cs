@@ -523,7 +523,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 targetLayerObjectId,
                 ClientRemoveAllCanvasesIndex);
 
-            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 12) + 13)
+            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 27) + 13)
             {
                 new(
                     AfterimageLayerReferenceOperationKind.AddTargetLayerRef,
@@ -617,6 +617,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
+                    AddLoadCanvasPropertyReadOperations(
+                        operations,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.InsertCanvas,
                         targetLayerObjectId,
@@ -700,6 +707,51 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static void AddLoadCanvasPropertyReadOperations(
+            List<AfterimageLayerReferenceOperation> operations,
+            int targetLayerObjectId,
+            int canvasObjectId,
+            int canvasOrdinal,
+            int? rawActionCode,
+            string actionName)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            for (int ordinal = 0; ordinal < ClientLoadCanvasPropertyReadCount; ordinal++)
+            {
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.AddLoadCanvasPropertyRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    CanvasPropertyRefDelta: 1));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ClearLoadCanvasPropertyValueVariant,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    LoadCanvasPropertyValueVariantRefDelta: -1));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ReleaseLoadCanvasPropertyRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LoadCanvasPropertyOrdinal: ordinal,
+                    CanvasPropertyRefDelta: -1));
+            }
+        }
+
         private static void AddRelMoveArgumentVariantCleanupOperations(
             List<AfterimageLayerReferenceOperation> operations,
             int targetLayerObjectId)
@@ -739,6 +791,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public const int ClientRelMoveArgumentVariantCount = 2;
         public const int ClientRemoveCanvasArgumentVariantCount = 1;
+        public const int ClientLoadCanvasPropertyReadCount = 5;
         public const int ClientLoadCanvasArgumentVariantCount = 5;
         public static readonly AfterimageRelMoveArguments ClientResetAlphaRelMoveArguments = new(255, 0);
 

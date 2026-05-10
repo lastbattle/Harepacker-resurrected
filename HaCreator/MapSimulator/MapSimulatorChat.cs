@@ -610,7 +610,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 _imeCandidateListState = ResolveClientEditImeCandidateDownKeySelection(_imeCandidateListState);
-                return true;
+                // CCtrlEdit::OnKey calls m_pIMECandWnd->OnKey(VK_DOWN) and then forwards
+                // the same key to the parent owner. Chat stays active, so this does not
+                // leak into player movement, but the parent-forwarded ownership is visible
+                // to callers that model the client edit lane.
+                return false;
             }
 
             // Handle Up arrow - browse history (older)
@@ -2181,7 +2185,7 @@ namespace HaCreator.MapSimulator
                 (int)ClientChatLogType.OutgoingWhisper,
                 _whisperTarget);
             _lastOutgoingWhisperTarget = _whisperTarget ?? string.Empty;
-            _lastOutgoingWhisperText = message?.Trim() ?? string.Empty;
+            _lastOutgoingWhisperText = message ?? string.Empty;
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
