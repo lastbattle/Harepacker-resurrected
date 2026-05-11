@@ -88,6 +88,8 @@ namespace HaSharedLibrary.Render.DX
             private set => _layerAlpha = value;
         }
 
+        public bool IsAnimationRunning => !notAnimated && !animationStopped;
+
         private float _layerRotationDegrees;
         public float LayerRotationDegrees => _layerRotationDegrees;
 
