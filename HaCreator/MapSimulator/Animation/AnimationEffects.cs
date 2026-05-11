@@ -34,7 +34,8 @@ namespace HaCreator.MapSimulator.Animation
                 int simulatedLayerHandleRefCount = 0,
                 int simulatedSnapshotLayerHandleId = 0,
                 int simulatedSnapshotLayerHandleRefCount = 0,
-                int simulatedRepeatAnimationStateId = 0)
+                int simulatedRepeatAnimationStateId = 0,
+                int sourceLayerColorAlpha = byte.MaxValue)
             {
                 DrawOrder = Math.Max(0, drawOrder);
                 SourceLayerCode = sourceLayerCode;
@@ -52,6 +53,7 @@ namespace HaCreator.MapSimulator.Animation
                         ? simulatedSnapshotLayerHandleRefCount
                         : SimulatedSnapshotLayerHandleId > 0 ? 1 : 0);
                 SimulatedRepeatAnimationStateId = Math.Max(0, simulatedRepeatAnimationStateId);
+                SourceLayerColorAlpha = Math.Clamp(sourceLayerColorAlpha, 0, byte.MaxValue);
             }
 
             public int DrawOrder { get; }
@@ -62,6 +64,7 @@ namespace HaCreator.MapSimulator.Animation
             public int SimulatedSnapshotLayerHandleId { get; }
             public int SimulatedSnapshotLayerHandleRefCount { get; }
             public int SimulatedRepeatAnimationStateId { get; }
+            public int SourceLayerColorAlpha { get; }
         }
 
         internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
@@ -76,6 +79,14 @@ namespace HaCreator.MapSimulator.Animation
             return frame?.Tag is SecondaryMotionBlurLayerStackEntryTag metadata
                 ? metadata.DrawOrder
                 : fallbackOrder;
+        }
+
+        internal static byte ResolveSecondaryMotionBlurLayerStackSourceAlpha(IDXObject frame, byte ownerAlpha)
+        {
+            byte sourceAlpha = frame?.Tag is SecondaryMotionBlurLayerStackEntryTag metadata
+                ? (byte)Math.Clamp(metadata.SourceLayerColorAlpha, 0, byte.MaxValue)
+                : byte.MaxValue;
+            return sourceAlpha < ownerAlpha ? sourceAlpha : ownerAlpha;
         }
 
         internal sealed class FollowAnimationOptions
@@ -1293,6 +1304,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly List<RepeatAnimation> _repeatAnimations = new();
         private readonly List<ChainLightning> _chainLightnings = new();
         private readonly List<FallingAnimation> _fallingAnimations = new();
+        private readonly List<FallingAnimationRegistration> _fallingRegistrations = new();
         private readonly List<FollowAnimation> _followAnimations = new();
         private readonly List<FollowParticleAnimation> _followParticleAnimations = new();
         private readonly List<AreaAnimationRegistration> _areaAnimations = new();
@@ -2925,10 +2937,20 @@ namespace HaCreator.MapSimulator.Animation
             float fallSpeed,
             int currentTimeMs,
             byte alpha,
+            int updateIntervalMs,
+            int updateNextMs,
+            int durationMs,
             int initialElapsedMs = 0)
         {
-            AddFallingBurst(
+            if (!HasFrames(frames) || count <= 0)
+            {
+                return;
+            }
+
+            var registration = new FallingAnimationRegistration();
+            registration.Initialize(
                 frames,
+                sourceUol,
                 centerX,
                 startY,
                 endY,
@@ -2937,9 +2959,40 @@ namespace HaCreator.MapSimulator.Animation
                 fallSpeed,
                 currentTimeMs,
                 alpha,
-                AnimationFallingOwner.PacketOwnedFalling,
-                sourceUol,
+                updateIntervalMs,
+                updateNextMs,
+                durationMs,
                 initialElapsedMs);
+            _fallingRegistrations.Add(registration);
+        }
+
+        internal void AddPacketOwnedFallingSingle(
+            List<IDXObject> frames,
+            string sourceUol,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            Random random)
+        {
+            float x = centerX + (float)((random?.NextDouble() ?? 0.5) * 2 - 1) * spreadX;
+            float drift = (float)((random?.NextDouble() ?? 0.5) * 0.4 - 0.2);
+
+            AddFalling(
+                frames,
+                x,
+                startY,
+                endY,
+                fallSpeed,
+                drift,
+                true,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.PacketOwnedFalling,
+                sourceUol);
         }
 
         private void AddFallingBurst(
@@ -3362,6 +3415,14 @@ namespace HaCreator.MapSimulator.Animation
                 }
             }
 
+            for (int i = _fallingRegistrations.Count - 1; i >= 0; i--)
+            {
+                if (!_fallingRegistrations[i].Update(this, currentTimeMs, _random))
+                {
+                    _fallingRegistrations.RemoveAt(i);
+                }
+            }
+
             // Update follow animations
             for (int i = _followAnimations.Count - 1; i >= 0; i--)
             {
@@ -3549,6 +3610,7 @@ namespace HaCreator.MapSimulator.Animation
             _repeatAnimations.Clear();
             _chainLightnings.Clear();
             _fallingAnimations.Clear();
+            _fallingRegistrations.Clear();
             for (int i = 0; i < _followAnimations.Count; i++)
             {
                 _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
@@ -3575,7 +3637,7 @@ namespace HaCreator.MapSimulator.Animation
         /// </summary>
         public int ActiveCount =>
             _oneTimeAnimations.Count + _oneTimeCanvasLayers.Count + _repeatAnimations.Count +
-            _chainLightnings.Count + _fallingAnimations.Count +
+            _chainLightnings.Count + _fallingAnimations.Count + _fallingRegistrations.Count +
             _followAnimations.Count + _followParticleAnimations.Count + _areaAnimations.Count +
             _userStateAnimations.Count + SecondarySkillAnimationOwnerCount;
 
@@ -3965,6 +4027,7 @@ namespace HaCreator.MapSimulator.Animation
         internal IReadOnlyList<FollowAnimation> FollowAnimations => _followAnimations;
         internal IReadOnlyList<OneTimeAnimation> OneTimeAnimations => _oneTimeAnimations;
         internal IReadOnlyList<FallingAnimation> FallingAnimations => _fallingAnimations;
+        internal IReadOnlyList<FallingAnimationRegistration> FallingRegistrations => _fallingRegistrations;
         internal IReadOnlyList<AreaAnimationRegistration> AreaAnimations => _areaAnimations;
 
         #endregion
@@ -4393,10 +4456,13 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             _lastUpdateTime = currentTimeMs;
-            while (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextUpdateTime)
-                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateTime, _endTime))
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextUpdateTime)
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateTime, _endTime))
             {
-                List<IDXObject> snapshotFrames = _snapshotFrameFactory?.Invoke(_nextUpdateTime);
+                int sampleTime = _nextUpdateTime;
+                _nextUpdateTime += _intervalMs;
+
+                List<IDXObject> snapshotFrames = _snapshotFrameFactory?.Invoke(sampleTime);
                 if (!AnimationEffects.HasFrames(snapshotFrames))
                 {
                     snapshotFrames = _fallbackFrames;
@@ -4406,8 +4472,8 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     Vector2 snapshotPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
                     bool snapshotFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
-                    Vector2? samplePosition = _snapshotPositionFactory?.Invoke(_nextUpdateTime);
-                    bool? sampleFlip = _snapshotFlipFactory?.Invoke(_nextUpdateTime);
+                    Vector2? samplePosition = _snapshotPositionFactory?.Invoke(sampleTime);
+                    bool? sampleFlip = _snapshotFlipFactory?.Invoke(sampleTime);
                     if (samplePosition.HasValue)
                     {
                         snapshotPosition = samplePosition.Value;
@@ -4421,12 +4487,10 @@ namespace HaCreator.MapSimulator.Animation
                     _snapshots.Add(new MotionBlurSnapshot(
                         snapshotPosition,
                         snapshotFlip,
-                        _nextUpdateTime,
+                        sampleTime,
                         snapshotFrames,
-                        CaptureSnapshotTrace(_nextUpdateTime, snapshotFrames)));
+                        CaptureSnapshotTrace(sampleTime, snapshotFrames)));
                 }
-
-                _nextUpdateTime += _intervalMs;
             }
 
             for (int i = _snapshots.Count - 1; i >= 0; i--)
@@ -4490,9 +4554,11 @@ namespace HaCreator.MapSimulator.Animation
             bool ownerFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
             foreach (MotionBlurSnapshot snapshot in _snapshots)
             {
+                int snapshotAgeMs = ResolveClientOwnedAvatarEffectElapsedMs(currentTime, snapshot.StartTime);
+                int snapshotRetentionMs = ResolveSnapshotRetentionMs(snapshot);
                 byte snapshotAlpha = ResolveSnapshotAlpha(
-                    ageMs: ResolveClientOwnedAvatarEffectElapsedMs(currentTime, snapshot.StartTime),
-                    retentionMs: ResolveSnapshotRetentionMs(snapshot),
+                    ageMs: snapshotAgeMs,
+                    retentionMs: snapshotRetentionMs,
                     baseAlpha: _alpha);
                 if (snapshotAlpha == 0)
                 {
@@ -4502,7 +4568,7 @@ namespace HaCreator.MapSimulator.Animation
                 List<IDXObject> frames = snapshot.Frames;
                 int frameIndex = ResolveFrameIndex(
                     frames,
-                    ResolveClientOwnedAvatarEffectElapsedMs(currentTime, snapshot.StartTime),
+                    snapshotAgeMs,
                     loop: false);
                 if (frames == null || frameIndex < 0 || frameIndex >= frames.Count)
                 {
@@ -4530,7 +4596,10 @@ namespace HaCreator.MapSimulator.Animation
                         drawShiftX,
                         drawShiftY,
                         drawFlip,
-                        tint);
+                        tint,
+                        snapshotAgeMs,
+                        snapshotRetentionMs,
+                        _alpha);
                     continue;
                 }
 
@@ -4554,7 +4623,10 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftX,
             int drawShiftY,
             bool drawFlip,
-            Color tint)
+            Color tint,
+            int snapshotAgeMs,
+            int snapshotRetentionMs,
+            byte ownerAlpha)
         {
             if (frames == null || frames.Count == 0)
             {
@@ -4580,13 +4652,20 @@ namespace HaCreator.MapSimulator.Animation
                         continue;
                     }
 
+                    byte layerBaseAlpha = AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(layer, ownerAlpha);
+                    byte layerAlpha = ResolveSnapshotAlpha(snapshotAgeMs, snapshotRetentionMs, layerBaseAlpha);
+                    if (layerAlpha == 0)
+                    {
+                        continue;
+                    }
+
                     layer.DrawBackground(
                         spriteBatch,
                         skeletonRenderer,
                         gameTime,
                         layer.X - drawShiftX,
                         layer.Y - drawShiftY,
-                        tint,
+                        new Color(tint.R, tint.G, tint.B, layerAlpha),
                         drawFlip,
                         null);
                 }
@@ -4601,13 +4680,20 @@ namespace HaCreator.MapSimulator.Animation
                     continue;
                 }
 
+                byte layerBaseAlpha = AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(layer, ownerAlpha);
+                byte layerAlpha = ResolveSnapshotAlpha(snapshotAgeMs, snapshotRetentionMs, layerBaseAlpha);
+                if (layerAlpha == 0)
+                {
+                    continue;
+                }
+
                 layer.DrawBackground(
                     spriteBatch,
                     skeletonRenderer,
                     gameTime,
                     layer.X - drawShiftX,
                     layer.Y - drawShiftY,
-                    tint,
+                    new Color(tint.R, tint.G, tint.B, layerAlpha),
                     drawFlip,
                     null);
             }
@@ -5412,6 +5498,39 @@ namespace HaCreator.MapSimulator.Animation
         int OverlayParentReferenceCountAfterOwnerRelease,
         bool RegistersOneTimeAnimation,
         bool LoadedLayerReleasedByOwnerAfterRegistration);
+
+    /// <summary>
+    /// Managed rendering surface used for one-time animation-displayer owners.
+    /// This keeps the native IWzGr2DLayer contract visible while the simulator
+    /// draws loaded WZ canvases through the existing IDXObject/XNA path.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredLayerSurfaceState(
+        string NativeLayerInterfaceName,
+        string NativeLayerInterfaceGuid,
+        string NativeOriginInterfaceName,
+        string NativeOriginInterfaceGuid,
+        string ManagedFrameListType,
+        string ManagedFrameType,
+        string ManagedDrawEntrypoint,
+        string ManagedRendererBackend,
+        bool UsesNativeIWzGr2DLayer,
+        bool UsesNativeIWzVector2D,
+        bool IsByteIdenticalNativeLayer);
+
+    /// <summary>
+    /// Recovered GA_STOP Animate variant setup from one-time animation-displayer owners.
+    /// The native path initializes two VARIANTARG values, copies vtMissing into both,
+    /// passes them to IWzGr2DLayer::Animate, and then clears both variants.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredNativeAnimateVariantState(
+        bool StartTimeVariantInitialized,
+        bool StartTimeVariantCopiedFromMissing,
+        bool StartTimeVariantClearedAfterAnimate,
+        bool RepeatCountVariantInitialized,
+        bool RepeatCountVariantCopiedFromMissing,
+        bool RepeatCountVariantClearedAfterAnimate,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool AnimateCalled);
 
     internal enum OneTimeAnimationRecoveredNativeFinalReleaseReason
     {
@@ -6717,6 +6836,8 @@ namespace HaCreator.MapSimulator.Animation
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperationState> RecoveredNativeOperationStates { get; private set; }
             = Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
         internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
+        internal OneTimeAnimationRecoveredLayerSurfaceState RecoveredLayerSurfaceState { get; private set; }
+        internal OneTimeAnimationRecoveredNativeAnimateVariantState RecoveredNativeAnimateVariantState { get; private set; }
         internal int CurrentFrameIndex => _currentFrame;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
@@ -6796,6 +6917,10 @@ namespace HaCreator.MapSimulator.Animation
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
             RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
+                recoveredRegistrationTrace,
+                RecoveredNativeExecutionTrace);
+            RecoveredLayerSurfaceState = BuildRecoveredLayerSurfaceState(recoveredRegistrationTrace);
+            RecoveredNativeAnimateVariantState = BuildRecoveredNativeAnimateVariantState(
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
 
@@ -7469,6 +7594,62 @@ namespace HaCreator.MapSimulator.Animation
                 trace.RegistersOneTimeAnimation
                     && HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation),
                 HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer));
+        }
+
+        internal static OneTimeAnimationRecoveredLayerSurfaceState BuildRecoveredLayerSurfaceState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            return new OneTimeAnimationRecoveredLayerSurfaceState(
+                NativeLayerInterfaceName: "IWzGr2DLayer",
+                NativeLayerInterfaceGuid: "6dc8c7ce-8e81-4420-b4f6-4b60b7d5fcdf",
+                NativeOriginInterfaceName: "IWzVector2D",
+                NativeOriginInterfaceGuid: "f28bd1ed-3deb-4f92-9eec-10ef5a1c3fb4",
+                ManagedFrameListType: "List<IDXObject>",
+                ManagedFrameType: "IDXObject",
+                ManagedDrawEntrypoint: "IDXObject.DrawObject",
+                ManagedRendererBackend: "XNA/MonoGame SpriteBatch",
+                UsesNativeIWzGr2DLayer: false,
+                UsesNativeIWzVector2D: false,
+                IsByteIdenticalNativeLayer: false);
+        }
+
+        internal static OneTimeAnimationRecoveredNativeAnimateVariantState BuildRecoveredNativeAnimateVariantState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(registrationTrace);
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            bool animateCalled = HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.Animate);
+            bool createsStartTimeVariant = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant);
+            bool createsRepeatCountVariant = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant);
+
+            return new OneTimeAnimationRecoveredNativeAnimateVariantState(
+                StartTimeVariantInitialized: createsStartTimeVariant,
+                StartTimeVariantCopiedFromMissing: createsStartTimeVariant,
+                StartTimeVariantClearedAfterAnimate: HasOperation(
+                    executionTrace,
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant),
+                RepeatCountVariantInitialized: createsRepeatCountVariant,
+                RepeatCountVariantCopiedFromMissing: createsRepeatCountVariant,
+                RepeatCountVariantClearedAfterAnimate: HasOperation(
+                    executionTrace,
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant),
+                trace.AnimatePlaybackMode,
+                animateCalled);
         }
 
         internal OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
@@ -8173,6 +8354,97 @@ namespace HaCreator.MapSimulator.Animation
         }
     }
 
+    internal sealed class FallingAnimationRegistration
+    {
+        private static int _nextId;
+
+        private List<IDXObject> _frames;
+        private string _sourceUol;
+        private float _centerX;
+        private float _startY;
+        private float _endY;
+        private float _spreadX;
+        private float _fallSpeed;
+        private byte _alpha;
+        private int _remainingUpdates;
+        private int _totalUpdates;
+        private int _updateIntervalMs;
+        private int _nextUpdateAt;
+        private int _endTime;
+
+        public int Id { get; private set; }
+        public AnimationFallingOwner Owner { get; private set; } = AnimationFallingOwner.PacketOwnedFalling;
+        public string SourceUol => _sourceUol;
+        public int RemainingUpdates => _remainingUpdates;
+        public int TotalUpdates => _totalUpdates;
+        public int NextUpdateAt => _nextUpdateAt;
+        public int EndTime => _endTime;
+
+        public void Initialize(
+            List<IDXObject> frames,
+            string sourceUol,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            int updateCount,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            int updateIntervalMs,
+            int updateNextMs,
+            int durationMs,
+            int initialElapsedMs)
+        {
+            Id = ++_nextId;
+            _frames = frames;
+            _sourceUol = sourceUol;
+            _centerX = centerX;
+            _startY = startY;
+            _endY = endY;
+            _spreadX = Math.Max(0f, spreadX);
+            _fallSpeed = Math.Max(1f, fallSpeed);
+            _alpha = alpha;
+            _remainingUpdates = Math.Max(1, updateCount);
+            _totalUpdates = _remainingUpdates;
+            _updateIntervalMs = Math.Max(1, updateIntervalMs);
+            int startTime = unchecked(currentTimeMs - Math.Max(0, initialElapsedMs));
+            _nextUpdateAt = unchecked(startTime + Math.Max(0, updateNextMs));
+            _endTime = unchecked(startTime + Math.Max(1, durationMs));
+            Owner = AnimationFallingOwner.PacketOwnedFalling;
+        }
+
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
+        {
+            if (effects == null || !AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
+            while (_remainingUpdates > 0
+                   && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextUpdateAt)
+                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateAt, _endTime))
+            {
+                effects.AddPacketOwnedFallingSingle(
+                    _frames,
+                    _sourceUol,
+                    _centerX,
+                    _startY,
+                    _endY,
+                    _spreadX,
+                    _fallSpeed,
+                    _nextUpdateAt,
+                    _alpha,
+                    random);
+                _remainingUpdates--;
+                _nextUpdateAt = unchecked(_nextUpdateAt + _updateIntervalMs);
+            }
+
+            return _remainingUpdates > 0
+                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime);
+        }
+    }
+
     /// <summary>
     /// Animation that follows a target
     /// </summary>
@@ -8328,7 +8600,7 @@ namespace HaCreator.MapSimulator.Animation
                 itemId,
                 clientEquipIndex,
                 normalizedVariantIndices);
-            int allocatedItemEffectCount = normalizedVariantIndices.Count;
+            int allocatedItemEffectCount = 1;
             return new FollowItemEffectRecoveredNativeOwnerState(
                 itemId,
                 clientEquipIndex,

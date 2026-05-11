@@ -9,18 +9,23 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class CoconutPacketInboxMessage
     {
-        public CoconutPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        public CoconutPacketInboxMessage(int packetType, byte[] payload, string source, string rawText, long? proxySessionId = null)
         {
             PacketType = packetType;
             Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "coconut-inbox" : source;
             RawText = rawText ?? string.Empty;
+            ProxySessionId = proxySessionId;
         }
 
         public int PacketType { get; }
         public byte[] Payload { get; }
         public string Source { get; }
         public string RawText { get; }
+        public long? ProxySessionId { get; }
+        public string SourceWithProxySession => ProxySessionId.HasValue
+            ? $"{Source} proxySession={ProxySessionId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : Source;
         public int? LocalTeam { get; init; }
         public bool IsLocalTeamUpdate => LocalTeam.HasValue;
 
@@ -500,7 +505,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string source = string.IsNullOrWhiteSpace(statusSource)
-                ? message.Source
+                ? message.SourceWithProxySession
                 : statusSource;
             _socketState.SetStatus(message.IsLocalTeamUpdate
                 ? $"Queued Coconut local team {(message.LocalTeam == 1 ? "Story" : "Maple")} from {source}."

@@ -126,6 +126,29 @@ namespace HaCreator.MapSimulator.Managers
             TryPlaySound(name, volumeScale, suppressWhileActive: false, out _);
         }
 
+        public void PlaySoundAt(
+            string name,
+            float startVolumeScale,
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY)
+        {
+            float positionedStartVolumeScale = ResolveClientPositionedStartVolumeScale(
+                startVolumeScale,
+                listenerX,
+                listenerY,
+                sourceX,
+                sourceY);
+
+            if (TryPlayRegisteredClientSoundEffect(name, positionedStartVolumeScale, suppressWhileActive: false, out _))
+            {
+                return;
+            }
+
+            TryPlaySound(name, positionedStartVolumeScale, suppressWhileActive: false, out _);
+        }
+
         internal bool TryGetRegisteredSoundSource(string name, out WzBinaryProperty sound)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -154,10 +177,33 @@ namespace HaCreator.MapSimulator.Managers
                 sound,
                 startVolumeScale,
                 loop: false,
-                suppressWhileActive,
+                suppressWhileActive: suppressWhileActive,
                 out _,
                 out reason);
             return true;
+        }
+
+        internal bool TryPlayRegisteredClientSoundEffectAt(
+            string name,
+            float startVolumeScale,
+            bool suppressWhileActive,
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY,
+            out string reason)
+        {
+            float positionedStartVolumeScale = ResolveClientPositionedStartVolumeScale(
+                startVolumeScale,
+                listenerX,
+                listenerY,
+                sourceX,
+                sourceY);
+            return TryPlayRegisteredClientSoundEffect(
+                name,
+                positionedStartVolumeScale,
+                suppressWhileActive,
+                out reason);
         }
 
         internal bool TryPlayClientSoundEffect(
@@ -196,6 +242,35 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason);
+        }
+
+        internal bool TryPlayClientSoundEffectAt(
+            string key,
+            WzBinaryProperty sound,
+            float startVolumeScale,
+            bool loop,
+            bool suppressWhileActive,
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY,
+            out uint handle,
+            out string reason)
+        {
+            float positionedStartVolumeScale = ResolveClientPositionedStartVolumeScale(
+                startVolumeScale,
+                listenerX,
+                listenerY,
+                sourceX,
+                sourceY);
+            return TryPlayClientSoundEffect(
+                key,
+                sound,
+                positionedStartVolumeScale,
+                loop,
+                suppressWhileActive,
+                out handle,
+                out reason);
         }
 
         private void RegisterClientSoundSource(string key, WzBinaryProperty sound)
@@ -590,25 +665,34 @@ namespace HaCreator.MapSimulator.Managers
             float sourceX,
             float sourceY)
         {
+            return ResolveClientPositionVolumePercent(listenerX, listenerY, sourceX, sourceY) / 100f;
+        }
+
+        internal static int ResolveClientPositionVolumePercent(
+            float? listenerX,
+            float? listenerY,
+            float sourceX,
+            float sourceY)
+        {
             if (!listenerX.HasValue || !listenerY.HasValue)
             {
-                return 0.4f;
+                return 40;
             }
 
             double dx = listenerX.Value - sourceX;
             double dy = listenerY.Value - sourceY;
-            double distance = Math.Sqrt(dx * dx + dy * dy);
+            double distance = Math.Sqrt(dx * dx + dy * dy + 0.001d);
             if (distance < 250.0d)
             {
-                return 1f;
+                return 100;
             }
 
             if (distance <= 1000.0d)
             {
-                return (float)Math.Clamp((120.0d - distance * 0.08d) / 100.0d, 0.4d, 1.0d);
+                return (int)Math.Clamp(120.0d - distance * 0.08d, 40.0d, 100.0d);
             }
 
-            return 0.4f;
+            return 40;
         }
 
         internal static float ResolveClientPositionedStartVolumeScale(

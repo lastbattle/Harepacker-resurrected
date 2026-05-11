@@ -522,6 +522,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int removedCanvasCollectionObjectId = ResolveRemovedCanvasCollectionObjectId(
                 targetLayerObjectId,
                 ClientRemoveAllCanvasesIndex);
+            int actionCanvasArrayObjectId = ResolveAfterimageActionCanvasArrayObjectId(rawActionCode, actionName);
 
             var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 27) + 13)
             {
@@ -570,12 +571,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     targetLayerObjectId,
                     RawActionCode: rawActionCode,
                     ActionName: actionName,
-                    AfterimageUolRefDelta: 1),
+                    AfterimageUolRefDelta: 1,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId),
                 new(
                     AfterimageLayerReferenceOperationKind.GetWeaponAfterImage,
                     targetLayerObjectId,
                     RawActionCode: rawActionCode,
-                    ActionName: actionName)
+                    ActionName: actionName,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId)
             });
 
             if (frames != null && frames.Count > 0)
@@ -600,7 +603,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        CanvasRefDelta: 1));
+                        CanvasRefDelta: 1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.AddLayerRef,
                         targetLayerObjectId,
@@ -608,7 +612,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        LayerRefDelta: 1));
+                        LayerRefDelta: 1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.LoadCanvas,
                         targetLayerObjectId,
@@ -616,6 +621,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                         LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
                     AddLoadCanvasPropertyReadOperations(
                         operations,
@@ -623,7 +629,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasObjectId,
                         canvasOrdinal,
                         frameRawActionCode,
-                        frameActionName);
+                        frameActionName,
+                        actionCanvasArrayObjectId);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.InsertCanvas,
                         targetLayerObjectId,
@@ -632,6 +639,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         InsertCanvasResultVariantRefDelta: 1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                         LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ClearInsertCanvasResultVariant,
@@ -640,14 +648,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        InsertCanvasResultVariantRefDelta: -1));
+                        InsertCanvasResultVariantRefDelta: -1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                     AddLoadCanvasArgumentVariantCleanupOperations(
                         operations,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
                         frameRawActionCode,
-                        frameActionName);
+                        frameActionName,
+                        actionCanvasArrayObjectId);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
                         targetLayerObjectId,
@@ -655,7 +665,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        LayerRefDelta: -1));
+                        LayerRefDelta: -1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseCanvasRef,
                         targetLayerObjectId,
@@ -663,7 +674,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        CanvasRefDelta: -1));
+                        CanvasRefDelta: -1,
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                 }
             }
 
@@ -672,7 +684,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 targetLayerObjectId,
                 RawActionCode: rawActionCode,
                 ActionName: actionName,
-                AfterimageUolRefDelta: -1));
+                AfterimageUolRefDelta: -1,
+                AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
             operations.Add(new AfterimageLayerReferenceOperation(
                 AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
                 targetLayerObjectId,
@@ -687,7 +700,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int canvasObjectId,
             int canvasOrdinal,
             int? rawActionCode,
-            string actionName)
+            string actionName,
+            int actionCanvasArrayObjectId)
         {
             if (operations == null)
             {
@@ -703,6 +717,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     canvasOrdinal,
                     rawActionCode,
                     actionName,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                     LoadCanvasArgumentVariantOrdinal: ordinal));
             }
         }
@@ -713,7 +728,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int canvasObjectId,
             int canvasOrdinal,
             int? rawActionCode,
-            string actionName)
+            string actionName,
+            int actionCanvasArrayObjectId)
         {
             if (operations == null)
             {
@@ -722,6 +738,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             for (int ordinal = 0; ordinal < ClientLoadCanvasPropertyReadCount; ordinal++)
             {
+                AfterimageLoadCanvasPropertySpec propertySpec = ClientLoadCanvasPropertyReadSpecs[ordinal];
                 operations.Add(new AfterimageLayerReferenceOperation(
                     AfterimageLayerReferenceOperationKind.AddLoadCanvasPropertyRef,
                     targetLayerObjectId,
@@ -730,7 +747,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     rawActionCode,
                     actionName,
                     LoadCanvasPropertyOrdinal: ordinal,
-                    CanvasPropertyRefDelta: 1));
+                    CanvasPropertyRefDelta: 1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                 operations.Add(new AfterimageLayerReferenceOperation(
                     AfterimageLayerReferenceOperationKind.ClearLoadCanvasPropertyValueVariant,
                     targetLayerObjectId,
@@ -739,7 +759,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     rawActionCode,
                     actionName,
                     LoadCanvasPropertyOrdinal: ordinal,
-                    LoadCanvasPropertyValueVariantRefDelta: -1));
+                    LoadCanvasPropertyValueVariantRefDelta: -1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
                 operations.Add(new AfterimageLayerReferenceOperation(
                     AfterimageLayerReferenceOperationKind.ReleaseLoadCanvasPropertyRef,
                     targetLayerObjectId,
@@ -748,7 +771,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     rawActionCode,
                     actionName,
                     LoadCanvasPropertyOrdinal: ordinal,
-                    CanvasPropertyRefDelta: -1));
+                    CanvasPropertyRefDelta: -1,
+                    LoadCanvasPropertyName: propertySpec.Name,
+                    LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
             }
         }
 
@@ -794,6 +820,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int ClientLoadCanvasPropertyReadCount = 5;
         public const int ClientLoadCanvasArgumentVariantCount = 5;
         public static readonly AfterimageRelMoveArguments ClientResetAlphaRelMoveArguments = new(255, 0);
+        public static readonly IReadOnlyList<AfterimageLoadCanvasPropertySpec> ClientLoadCanvasPropertyReadSpecs =
+            new[]
+            {
+                new AfterimageLoadCanvasPropertySpec("delay", SkillLoader.ClientAfterimageCanvasDelayFallbackMs),
+                new AfterimageLoadCanvasPropertySpec("a0", -1),
+                new AfterimageLoadCanvasPropertySpec("a1", -1),
+                new AfterimageLoadCanvasPropertySpec("z0", 0),
+                new AfterimageLoadCanvasPropertySpec("z1", 0)
+            };
 
         internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)
         {
@@ -1021,6 +1056,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 hash = (hash * 31) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveAfterimageActionCanvasArrayObjectId(int? rawActionCode, string actionName)
+        {
+            int resolvedRawActionCode = rawActionCode.GetValueOrDefault(-1);
+            unchecked
+            {
+                int hash = 29;
+                hash = (hash * 41) + resolvedRawActionCode;
+                if (resolvedRawActionCode < 0 && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    foreach (char token in actionName.Trim())
+                    {
+                        hash = (hash * 41) + char.ToLowerInvariant(token);
+                    }
+                }
+
                 return hash == 0 ? 1 : hash;
             }
         }

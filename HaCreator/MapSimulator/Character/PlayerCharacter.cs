@@ -503,6 +503,8 @@ namespace HaCreator.MapSimulator.Character
         public enum MirrorImagePreparedLayerNativeReferenceKind
         {
             SourceLayer,
+            CreateLayerCanvasVariant,
+            CreateLayerFilterVariant,
             HelperLayerLocal,
             UnderFaceOverlayVariant,
             SourceOriginVariant
@@ -796,6 +798,7 @@ namespace HaCreator.MapSimulator.Character
         internal const string ClientOwnedDoubleJumpAvatarEffectOwnerName = "aux.clientOwned.doubleJump.oneTime";
         internal const string ClientOwnedFinalCutAvatarEffectOwnerName = "aux.clientOwned.finalCut.persistent";
         internal const string ClientOwnedSuddenDeathAvatarEffectOwnerName = "aux.clientOwned.suddenDeath.persistent";
+        internal const string ClientOwnedEnergyChargeAvatarEffectOwnerName = "aux.clientOwned.energyCharge.persistent";
         private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, AuxiliaryLayerOwnerCounterState> _auxiliaryLayerOwnerCounters =
@@ -7375,6 +7378,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
                 preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
                 preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
                 preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
                 preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
@@ -7555,14 +7559,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int sourceLayerObjectId = ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, sourceParts);
+            int sourceCanvasObjectId = ResolveMirrorImageSourceCanvasObjectId(sourceParts);
             int underFaceLayerObjectId = ResolveMirrorImageSourceLayerObjectId(AvatarRenderLayer.UnderFace, underFaceSourceParts);
             int sourceOriginObjectId = ComputeMirrorImageSourceLayerOriginSignature(sourceParts);
+            int createLayerFilterObjectId = ResolveMirrorImagePreparedLayerFilterObjectId(
+                preparedLayer.PreparedLayerFilter,
+                ResolveMirrorImageClientScalePercentFromFilter(preparedLayer.PreparedLayerFilter));
             IReadOnlyList<MirrorImagePreparedLayerNativeOperation> operations = BuildMirrorImagePreparedLayerNativeOperations(
                 preparedLayer.RenderLayer,
                 preparedLayer.PreparedLayerObjectId,
                 sourceLayerObjectId,
+                sourceCanvasObjectId,
                 underFaceLayerObjectId,
                 sourceOriginObjectId,
+                createLayerFilterObjectId,
                 sourceLayerCurrentTime,
                 preparedLayer.PreparedRelMoveEndTime);
             IReadOnlyList<MirrorImagePreparedLayerNativeReferenceBalance> balances =
@@ -7582,6 +7592,22 @@ namespace HaCreator.MapSimulator.Character
             return scalePercent == MirrorImageClientDefaultScalePercent
                 ? MirrorImageClientDefaultLayerFilter
                 : MirrorImageClientScaledLayerFilter;
+        }
+
+        internal static int ResolveMirrorImageClientScalePercentFromFilter(int preparedLayerFilter)
+        {
+            return preparedLayerFilter == MirrorImageClientScaledLayerFilter
+                ? MirrorImageClientScaledLayerFilter
+                : MirrorImageClientDefaultScalePercent;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilterObjectId(int preparedLayerFilter, int scalePercent)
+        {
+            var identity = new HashCode();
+            identity.Add(nameof(MirrorImagePreparedLayerNativeReferenceKind.CreateLayerFilterVariant), StringComparer.Ordinal);
+            identity.Add(preparedLayerFilter);
+            identity.Add(NormalizeMirrorImageAvatarScalePercent(scalePercent));
+            return identity.ToHashCode();
         }
 
         internal static int ResolveMirrorImagePreparedLayerFilterForPreparedLayer(
@@ -8104,8 +8130,10 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer sourceLayer,
             int preparedLayerObjectId,
             int sourceLayerObjectId,
+            int sourceCanvasObjectId,
             int underFaceLayerObjectId,
             int sourceOriginObjectId,
+            int createLayerFilterObjectId,
             int sourceCurrentTime,
             int relMoveEndTime)
         {
@@ -8129,16 +8157,16 @@ namespace HaCreator.MapSimulator.Character
                 MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerCanvasVariant,
                 ++sequence,
                 sourceLayer,
-                preparedLayerObjectId,
-                RelatedObjectId: 0,
-                ReferenceDelta: 0));
+                sourceCanvasObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? 1 : 0));
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerFilterVariant,
                 ++sequence,
                 sourceLayer,
-                preparedLayerObjectId,
-                RelatedObjectId: 0,
-                ReferenceDelta: 0));
+                createLayerFilterObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: createLayerFilterObjectId != 0 ? 1 : 0));
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.CreateHelperLayer,
                 ++sequence,
@@ -8157,16 +8185,16 @@ namespace HaCreator.MapSimulator.Character
                 MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerCanvasVariant,
                 ++sequence,
                 sourceLayer,
-                preparedLayerObjectId,
-                RelatedObjectId: 0,
-                ReferenceDelta: 0));
+                sourceCanvasObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? -1 : 0));
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerFilterVariant,
                 ++sequence,
                 sourceLayer,
-                preparedLayerObjectId,
-                RelatedObjectId: 0,
-                ReferenceDelta: 0));
+                createLayerFilterObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: createLayerFilterObjectId != 0 ? -1 : 0));
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.AddRefUnderFaceOverlayVariant,
                 ++sequence,
@@ -8325,6 +8353,22 @@ namespace HaCreator.MapSimulator.Character
                         AddMirrorImagePreparedNativeReferenceDelta(
                             balances,
                             MirrorImagePreparedLayerNativeReferenceKind.SourceLayer,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerCanvasVariant:
+                    case MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerCanvasVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.CreateLayerCanvasVariant,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerFilterVariant:
+                    case MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerFilterVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.CreateLayerFilterVariant,
                             operation.ObjectId,
                             operation.ReferenceDelta);
                         break;

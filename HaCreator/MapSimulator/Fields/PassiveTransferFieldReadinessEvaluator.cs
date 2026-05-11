@@ -104,7 +104,8 @@ namespace HaCreator.MapSimulator.Fields
             PacketChairSitResult = 13,
             PacketQuestResult = 14,
             InterfaceGateAdmission = 15,
-            FollowCharacterReleaseInput = 16
+            FollowCharacterReleaseInput = 16,
+            HorizontalOnJoystickButton = 17
         }
 
         public enum QueuedRetryWriterOwner
@@ -116,6 +117,13 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         public enum HandleUpKeyDownInputOwner
+        {
+            None = 0,
+            OnKey = 1,
+            OnJoystickButton = 2
+        }
+
+        public enum HorizontalInputOwner
         {
             None = 0,
             OnKey = 1,
@@ -359,10 +367,14 @@ namespace HaCreator.MapSimulator.Fields
         public static PassiveTransferFieldHorizontalOnKeyDownDecision EvaluateHorizontalOnKeyDown(
             bool hasPendingRequest,
             bool leftKeyPressed,
-            bool rightKeyPressed)
+            bool rightKeyPressed,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
         {
             QueuedRetryLifecycleClearOwner clearOwner =
-                ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed);
+                ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
+                    leftKeyPressed,
+                    rightKeyPressed,
+                    inputOwner);
 
             return new PassiveTransferFieldHorizontalOnKeyDownDecision(
                 ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
@@ -375,11 +387,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
             bool leftKeyPressed,
-            bool rightKeyPressed)
+            bool rightKeyPressed,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
         {
-            return leftKeyPressed || rightKeyPressed
-                ? QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown
-                : QueuedRetryLifecycleClearOwner.None;
+            if (!leftKeyPressed && !rightKeyPressed)
+            {
+                return QueuedRetryLifecycleClearOwner.None;
+            }
+
+            return inputOwner == HorizontalInputOwner.OnJoystickButton
+                ? QueuedRetryLifecycleClearOwner.HorizontalOnJoystickButton
+                : QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown;
         }
 
         public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(

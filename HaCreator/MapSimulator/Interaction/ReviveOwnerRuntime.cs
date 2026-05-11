@@ -120,6 +120,11 @@ namespace HaCreator.MapSimulator.Interaction
         public int ClientWindowHeight { get; init; }
         public int ClientWindowZ { get; init; }
         public string ClientWindowOrigin { get; init; } = string.Empty;
+        public int ClientDialogCreateDelayMs { get; init; }
+        public int ClientAutoResolveMs { get; init; }
+        public int ClientOpenedElapsedMs { get; init; }
+        public bool ClientCloseClearsReviveDialogSlot { get; init; }
+        public bool ClientCloseDestroysSingleton { get; init; }
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
         public string PrimaryTitle { get; init; } = string.Empty;
@@ -143,6 +148,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NativeWindowTop = -195;
         internal const int NativeWindowZ = 10;
         internal const string NativeWindowOrigin = "Origin_CC";
+        internal const bool NativeCloseClearsReviveDialogSlot = true;
+        internal const bool NativeCloseDestroysSingleton = true;
         internal const string ClientPremiumSafetyCharmBackgroundUolSymbol = "aUi_138";
         internal const string ClientYesButtonUolSymbol = "aUi_139";
         internal const string ClientNoButtonUolSymbol = "aUi_140";
@@ -428,6 +435,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int remainingMs = Math.Max(0, AutoResolveMs - unchecked(currentTick - _openedAtTick));
+            int openedElapsedMs = Math.Max(0, unchecked(currentTick - _openedAtTick));
             TimeSpan remaining = TimeSpan.FromMilliseconds(remainingMs);
             string subtitle = string.IsNullOrWhiteSpace(_mapName)
                 ? "Dedicated death-recovery owner"
@@ -456,6 +464,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientWindowHeight = NativeWindowHeight,
                 ClientWindowZ = NativeWindowZ,
                 ClientWindowOrigin = NativeWindowOrigin,
+                ClientDialogCreateDelayMs = NativeDialogCreateDelayMs,
+                ClientAutoResolveMs = AutoResolveMs,
+                ClientOpenedElapsedMs = openedElapsedMs,
+                ClientCloseClearsReviveDialogSlot = NativeCloseClearsReviveDialogSlot,
+                ClientCloseDestroysSingleton = NativeCloseDestroysSingleton,
                 Title = "Revive",
                 Subtitle = subtitle,
                 PrimaryTitle = ResolvePrimaryTitle(Variant),

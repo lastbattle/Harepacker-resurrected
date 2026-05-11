@@ -105,10 +105,12 @@ namespace HaCreator.MapSimulator.UI
         public string PendingWishlistSearchCategoryKey { get; private set; } = "all";
         public int PendingWishlistSearchPriceRangeIndex { get; private set; } = -1;
         public int PendingWishlistSearchRemotePageIndex { get; private set; } = -1;
+        public int PendingWishlistSearchRemotePageCount { get; private set; } = -1;
         public bool HasPendingWishlistSearch => PendingWishlistSearchRequestId >= 0
             || !string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
             || PendingWishlistSearchPriceRangeIndex >= 0
-            || PendingWishlistSearchRemotePageIndex >= 0;
+            || PendingWishlistSearchRemotePageIndex >= 0
+            || PendingWishlistSearchRemotePageCount > 0;
         public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResults.Count > 0;
         public int DeferredOwnerGatedResultCount => _deferredOwnerGatedResults.Count;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
@@ -592,7 +594,8 @@ namespace HaCreator.MapSimulator.UI
             string query,
             string categoryKey,
             int priceRangeIndex,
-            int remotePageIndex = -1)
+            int remotePageIndex = -1,
+            int remotePageCount = -1)
         {
             int normalizedRequestId = localSearchRequestId < 0 ? -1 : localSearchRequestId;
             string normalizedQuery = query ?? string.Empty;
@@ -601,16 +604,19 @@ namespace HaCreator.MapSimulator.UI
                 : categoryKey.Trim();
             int normalizedPriceRangeIndex = Math.Max(-1, priceRangeIndex);
             int normalizedRemotePageIndex = Math.Max(-1, remotePageIndex);
+            int normalizedRemotePageCount = remotePageCount > 0 ? remotePageCount : -1;
             bool changed = PendingWishlistSearchRequestId != normalizedRequestId
                 || !string.Equals(PendingWishlistSearchQuery, normalizedQuery, StringComparison.Ordinal)
                 || !string.Equals(PendingWishlistSearchCategoryKey, normalizedCategoryKey, StringComparison.Ordinal)
                 || PendingWishlistSearchPriceRangeIndex != normalizedPriceRangeIndex
-                || PendingWishlistSearchRemotePageIndex != normalizedRemotePageIndex;
+                || PendingWishlistSearchRemotePageIndex != normalizedRemotePageIndex
+                || PendingWishlistSearchRemotePageCount != normalizedRemotePageCount;
             PendingWishlistSearchRequestId = normalizedRequestId;
             PendingWishlistSearchQuery = normalizedQuery;
             PendingWishlistSearchCategoryKey = normalizedCategoryKey;
             PendingWishlistSearchPriceRangeIndex = normalizedPriceRangeIndex;
             PendingWishlistSearchRemotePageIndex = normalizedRemotePageIndex;
+            PendingWishlistSearchRemotePageCount = normalizedRemotePageCount;
             if (changed)
             {
                 TouchWishlistSearchStateToken();
@@ -625,6 +631,7 @@ namespace HaCreator.MapSimulator.UI
             PendingWishlistSearchCategoryKey = "all";
             PendingWishlistSearchPriceRangeIndex = -1;
             PendingWishlistSearchRemotePageIndex = -1;
+            PendingWishlistSearchRemotePageCount = -1;
             if (hadPending)
             {
                 TouchWishlistSearchStateToken();
@@ -734,6 +741,7 @@ namespace HaCreator.MapSimulator.UI
                 PendingWishlistSearchCategoryKey ?? "all",
                 PendingWishlistSearchPriceRangeIndex,
                 PendingWishlistSearchRemotePageIndex,
+                PendingWishlistSearchRemotePageCount,
                 DeferredOwnerGatedResultCount,
                 HasDeferredOwnerGatedResult ? DescribeDeferredOwnerGatedResult() : string.Empty,
                 ((int)OwnerVisibilityState).ToString(),
@@ -1147,7 +1155,9 @@ namespace HaCreator.MapSimulator.UI
                 ? $"price-band {PendingWishlistSearchPriceRangeIndex}"
                 : "price-band any";
             string remotePageText = PendingWishlistSearchRemotePageIndex >= 0
-                ? $", remote page {PendingWishlistSearchRemotePageIndex + 1}"
+                ? PendingWishlistSearchRemotePageCount > 0
+                    ? $", remote page {PendingWishlistSearchRemotePageIndex + 1}/{PendingWishlistSearchRemotePageCount}"
+                    : $", remote page {PendingWishlistSearchRemotePageIndex + 1}"
                 : string.Empty;
             return $"{requestText}, {queryText}, {categoryText}, {priceText}{remotePageText}";
         }

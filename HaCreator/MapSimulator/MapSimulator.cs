@@ -845,6 +845,8 @@ namespace HaCreator.MapSimulator
         private readonly MonsterBookManager _monsterBookManager;
         private readonly LoginCharacterAccountStore _loginCharacterAccountStore;
         private readonly SocialRoomPersistenceStore _socialRoomPersistenceStore;
+        private const int LoginAccountAuthorityPollIntervalMs = 1000;
+        private int _lastLoginAccountAuthorityPollTick = int.MinValue;
         private readonly Dictionary<int, string> _mapTransferTitleCache = new();
         private WorldMapRequestMode _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
         private MapTransferUI.DestinationEntry _mapTransferManualDestination;
@@ -877,6 +879,7 @@ namespace HaCreator.MapSimulator
         private LoginUtilityDialogVisualStyle _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogFrameVariant _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+        private LoginPacketResultDialogOwner _loginUtilityDialogPacketResultOwner = LoginPacketResultDialogOwner.None;
         private bool _loginUtilityDialogPrimaryEnabled = true;
         private bool _loginUtilityDialogTracksDirectionModeOwner;
         private int _loginUtilityDialogTargetIndex = -1;
@@ -4291,6 +4294,49 @@ namespace HaCreator.MapSimulator
             }
 
             return message;
+        }
+
+        private bool TryApplyAvatarMegaphonePacketRaw(byte[] payload, out string message)
+        {
+            if (!AvatarMegaphonePacketCodec.TryDecodeSetAvatarMegaphonePayload(payload, out AvatarMegaphonePacket packet, out message))
+            {
+                return false;
+            }
+
+            if (_playerManager?.Loader == null)
+            {
+                message = "Character loader is not available.";
+                return false;
+            }
+
+            CharacterBuild avatarLookTemplate = _playerManager.Player?.Build?.Clone();
+            CharacterBuild avatarLookBuild = _playerManager.Loader.LoadFromAvatarLook(packet.AvatarLook, avatarLookTemplate);
+            if (!_avatarMegaphoneRuntime.TryActivatePacketPresentation(
+                packet.ItemId,
+                packet.Sender,
+                packet.MessageFragments,
+                packet.Whisper,
+                packet.ChannelId,
+                avatarLookBuild,
+                currTickCount,
+                out AvatarMegaphoneChatLogEntry chatLogEntry,
+                out message))
+            {
+                return false;
+            }
+
+            _chat?.AddClientChatMessage(
+                chatLogEntry.Text,
+                currTickCount,
+                chatLogEntry.Type,
+                chatLogEntry.WhisperTargetCandidate,
+                chatLogEntry.ChannelId);
+            if (_avatarMegaphoneRuntime.ShouldTriggerTremble)
+            {
+                _screenEffects.TriggerTremble(AvatarMegaphoneRuntime.TrembleForce, false, 0, 0, true, currTickCount);
+            }
+
+            return true;
         }
 
 
@@ -9314,7 +9360,7 @@ namespace HaCreator.MapSimulator
 
         private string ClearMapleTvMessage()
         {
-            return _mapleTvRuntime.OnClearMessage(preserveQueue: false);
+            return _mapleTvRuntime.OnClearMessage(preserveQueue: false, currentTick: currTickCount);
         }
         private bool TryApplyMapleTvPacket(int packetType, byte[] payload, out string message)
         {
@@ -9764,7 +9810,8 @@ namespace HaCreator.MapSimulator
                 GetChannelSelectionStates(_selectorBrowseWorldId),
                 _loginAccountIsAdult,
                 requestAllowed: IsWorldChannelSelectorRequestAllowed(),
-                statusMessage: GetChannelSelectorStatusMessage());
+                statusMessage: GetChannelSelectorStatusMessage(),
+                populationLevel: GetLoginWorldPopulationLevel(_selectorBrowseWorldId));
             channelSelectWindow.Show();
             uiWindowManager.BringToFront(channelSelectWindow);
         }
@@ -9848,7 +9895,8 @@ namespace HaCreator.MapSimulator
                     GetChannelSelectionStates(_selectorBrowseWorldId),
                     _loginAccountIsAdult,
                     requestAllowed: IsWorldChannelSelectorRequestAllowed(),
-                    statusMessage: GetChannelSelectorStatusMessage());
+                    statusMessage: GetChannelSelectorStatusMessage(),
+                    populationLevel: GetLoginWorldPopulationLevel(_selectorBrowseWorldId));
             }
 
             SyncUtilityChannelSelectorAvailability();
@@ -9870,6 +9918,14 @@ namespace HaCreator.MapSimulator
 
 
         private bool ShouldUseLoginWorldMetadata => IsLoginRuntimeSceneActive && _loginRuntime.HasWorldInformation;
+
+        private byte GetLoginWorldPopulationLevel(int worldId)
+        {
+            return ShouldUseLoginWorldMetadata &&
+                   _loginWorldMetadataByWorld.TryGetValue(worldId, out LoginWorldSelectorMetadata metadata)
+                ? metadata.PopulationLevel
+                : (byte)0;
+        }
 
 
 
@@ -10889,7 +10945,8 @@ namespace HaCreator.MapSimulator
                 metadata.RecommendOrder,
                 metadata.WorldState,
                 metadata.BlocksCharacterCreation,
-                metadata.WorldName);
+                metadata.WorldName,
+                populationLevel);
         }
 
 
@@ -12048,7 +12105,8 @@ namespace HaCreator.MapSimulator
                             LoginUtilityDialogButtonLayout.Ok,
                             LoginUtilityDialogAction.DismissOnly,
                             frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                            returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true));
+                            returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true),
+                            packetResultOwner: LoginPacketResultDialogParity.ResolveViewAllCharOwner());
                         return true;
                     }
 
@@ -12096,7 +12154,8 @@ namespace HaCreator.MapSimulator
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.DismissOnly,
                         frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true));
+                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true),
+                        packetResultOwner: LoginPacketResultDialogParity.ResolveViewAllCharOwner());
                     return true;
 
                 case LoginViewAllCharResultKind.Error:
@@ -12115,7 +12174,8 @@ namespace HaCreator.MapSimulator
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.DismissOnly,
                         frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: false));
+                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: false),
+                        packetResultOwner: LoginPacketResultDialogParity.ResolveViewAllCharOwner());
                     return true;
             }
 
@@ -12923,7 +12983,8 @@ namespace HaCreator.MapSimulator
                     noticeTextIndex: noticeTextIndex,
                     visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
                     frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                    returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile));
+                    returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile),
+                    packetResultOwner: LoginPacketResultDialogParity.ResolveSelectCharacterOwner());
                 return;
             }
 
@@ -12934,7 +12995,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: noticeTextIndex,
                 frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile));
+                returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile),
+                packetResultOwner: LoginPacketResultDialogParity.ResolveSelectCharacterOwner());
         }
         private void ShowSelectCharacterByVacFailureDialog(LoginSelectCharacterByVacResultProfile packetProfile, string message)
         {
@@ -12956,7 +13018,8 @@ namespace HaCreator.MapSimulator
                     noticeTextIndex: noticeTextIndex,
                     visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
                     frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                    returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile));
+                    returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile),
+                    packetResultOwner: LoginPacketResultDialogParity.ResolveSelectCharacterByVacOwner());
                 return;
             }
 
@@ -12968,7 +13031,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: noticeTextIndex,
                 frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
-                returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile));
+                returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile),
+                packetResultOwner: LoginPacketResultDialogParity.ResolveSelectCharacterByVacOwner());
         }
 
 
@@ -14008,28 +14072,15 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile),
                 frameVariant: ResolveDeleteCharacterFailureFrameVariant(packetProfile),
-                returnWindowName: MapSimulatorWindowNames.CharacterSelect);
+                returnWindowName: MapSimulatorWindowNames.CharacterSelect,
+                packetResultOwner: LoginPacketResultDialogParity.ResolveDeleteCharacterOwner(packetProfile.ResultCode));
         }
 
         private static LoginUtilityDialogFrameVariant ResolveDeleteCharacterFailureFrameVariant(LoginAccountDialogPacketProfile packetProfile)
         {
-            byte? resultCode = packetProfile?.ResultCode;
-            if (resultCode is 6 or 9 or 20 or 22 or 24 or 29 or 35 or 36)
-            {
-                return LoginUtilityDialogFrameVariant.LoginNoticeCog;
-            }
-
-            if (resultCode == 26)
-            {
-                return LoginUtilityDialogFrameVariant.Default;
-            }
-
-            if (ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile).HasValue)
-            {
-                return LoginUtilityDialogFrameVariant.LoginNotice;
-            }
-
-            return LoginUtilityDialogFrameVariant.Default;
+            return LoginPacketResultDialogParity.ResolveDeleteCharacterFrameVariant(
+                packetProfile?.ResultCode,
+                ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile).HasValue);
         }
 
         private static int? ResolveDeleteCharacterFailureNoticeTextIndex(LoginAccountDialogPacketProfile packetProfile)
@@ -14750,6 +14801,47 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool TrySendLiveOfficialSelectCharacterByVacRequest(LoginCharacterRosterEntry selectedEntry, out string status)
+        {
+            if (!IsLoginRuntimeSceneActive ||
+                !_loginOfficialSessionBridge.HasConnectedSession ||
+                GetActiveLoginRosterSource() != LoginRosterSource.ViewAllCharResult)
+            {
+                status = "Login official-session SelectCharacterByVAC entry is unavailable.";
+                return false;
+            }
+
+            if (selectedEntry?.Build == null || selectedEntry.Build.Id <= 0)
+            {
+                status = "The selected VAC roster character does not have a valid live-session character id.";
+                return false;
+            }
+
+            if (!TryGetActiveLoginRosterPacketProfile(out LoginSelectWorldResultProfile rosterProfile, out _) ||
+                rosterProfile == null)
+            {
+                status = "The attached login session does not currently expose a packet-authored VAC roster.";
+                return false;
+            }
+
+            byte loginOpt = rosterProfile.LoginOpt ? (byte)1 : (byte)2;
+            if (loginOpt is 0 or 1 && string.IsNullOrWhiteSpace(_loginAccountSecondaryPassword))
+            {
+                status = "Live SelectCharacterByVAC injection requires a stored secondary password from the login bootstrap flow.";
+                return false;
+            }
+
+            int worldId = selectedEntry.WorldId
+                          ?? _loginBackendSessionManager.ActiveWorldId;
+            LoginSelectCharacterByVacRequest request = new(
+                selectedEntry.Build.Id,
+                Math.Max(0, worldId),
+                loginOpt,
+                _loginAccountSecondaryPassword);
+
+            return _loginOfficialSessionBridge.TrySendSelectCharacterByVacRequest(request, out status);
+        }
+
 
 
 
@@ -14871,6 +14963,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            _loginCharacterAccountStore.RefreshFromDisk();
             if (!_loginCharacterAccountStore.TryResolveExtraCharacterEntitlementForAccount(
                     ResolveLoginRosterAccountName(),
                     accountId.Value,
@@ -14887,6 +14980,60 @@ namespace HaCreator.MapSimulator
                 extraCharInfoResult,
                 ResolveLoginRosterWorldId());
             return CloneLoginExtraCharInfoResultProfile(extraCharInfoResult);
+        }
+
+        private void PollLoginAccountAuthority(int currentTickCount)
+        {
+            if (!IsLoginRuntimeSceneActive)
+            {
+                return;
+            }
+
+            if (_lastLoginAccountAuthorityPollTick != int.MinValue &&
+                unchecked(currentTickCount - _lastLoginAccountAuthorityPollTick) < LoginAccountAuthorityPollIntervalMs)
+            {
+                return;
+            }
+
+            _lastLoginAccountAuthorityPollTick = currentTickCount;
+            int? accountId = ResolveLoginRosterAccountId();
+            if (!accountId.HasValue || accountId.Value <= 0)
+            {
+                return;
+            }
+
+            bool refreshed = _loginCharacterAccountStore.RefreshFromDisk();
+            if (!_loginCharacterAccountStore.TryResolveAuthoritativeExtraCharacterEntitlementForAccount(
+                    ResolveLoginRosterAccountName(),
+                    accountId.Value,
+                    out LoginExtraCharInfoResultProfile extraCharInfoResult,
+                    out int buyCharacterCount))
+            {
+                return;
+            }
+
+            bool entitlementChanged = !AreEquivalentLoginExtraCharInfoResultProfiles(
+                _loginBackendSessionManager.SnapshotExtraCharInfoResult(),
+                extraCharInfoResult);
+            bool buyCharacterCountChanged =
+                _loginCharacterRoster != null &&
+                _loginCharacterRoster.BuyCharacterCount != Math.Clamp(Math.Max(0, buyCharacterCount), 0, 1);
+            if (!refreshed && !entitlementChanged && !buyCharacterCountChanged)
+            {
+                return;
+            }
+
+            _loginBackendSessionManager.SetAuthenticatedAccountId(accountId.Value);
+            _loginBackendSessionManager.ApplyExtraCharInfoResult(extraCharInfoResult);
+            _loginCanHaveExtraCharacter = _loginBackendSessionManager.CanHaveExtraCharacter;
+            _loginPacketExtraCharInfoResultProfile = _loginBackendSessionManager.SnapshotExtraCharInfoResult();
+            SyncActiveLoginRosterExtraCharacterEntitlement();
+            SyncLoginCharacterSelectWindow();
+            SyncAvatarPreviewCarouselWindow();
+
+            string gateState = _loginCanHaveExtraCharacter ? "enabled" : "denied";
+            _loginCharacterStatusMessage =
+                $"Account billing authority refreshed the extra-character gate to {gateState} for account {accountId.Value.ToString(CultureInfo.InvariantCulture)}.";
         }
 
         private IReadOnlyDictionary<int, LoginSelectWorldResultProfile> BuildPersistedLoginRosterProfilesForAccount()
@@ -14938,6 +15085,20 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private static bool AreEquivalentLoginExtraCharInfoResultProfiles(
+            LoginExtraCharInfoResultProfile left,
+            LoginExtraCharInfoResultProfile right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            return left.AccountId == right.AccountId &&
+                   left.ResultFlag == right.ResultFlag &&
+                   left.CanHaveExtraCharacter == right.CanHaveExtraCharacter;
+        }
+
         private LoginExtraCharInfoResultProfile ResolvePersistedLoginExtraCharInfoResult()
         {
             LoginExtraCharInfoResultProfile resolvedProfile =
@@ -14969,12 +15130,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _loginCharacterAccountStore.UpdateExtraCharacterEntitlementForAccount(
+            _loginCharacterAccountStore.SetAuthoritativeExtraCharacterEntitlementForAccount(
                 ResolveLoginRosterAccountName(),
                 accountId.Value,
                 Math.Max(0, buyCharacterCount),
                 extraCharInfoResult ?? ResolvePersistedLoginExtraCharInfoResult(),
-                ResolveLoginRosterWorldId());
+                ResolveLoginRosterWorldId(),
+                "simulator-login-entitlement-seam");
         }
 
 
@@ -16162,7 +16324,8 @@ namespace HaCreator.MapSimulator
                 _loginUtilityDialogVisualStyle,
                 _loginUtilityDialogFrameVariant,
                 _loginUtilityDialogInputBoundsOverride,
-                _loginUtilityDialogPrimaryEnabled);
+                _loginUtilityDialogPrimaryEnabled,
+                _loginUtilityDialogPacketResultOwner);
             if (_loginUtilityDialogTracksDirectionModeOwner)
             {
                 ShowWindow(
@@ -16197,7 +16360,8 @@ namespace HaCreator.MapSimulator
             string returnWindowName = null,
             bool trackDirectionModeOwner = false,
             bool hasExplicitTrackDirectionModeOwner = false,
-            bool primaryButtonEnabled = true)
+            bool primaryButtonEnabled = true,
+            LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None)
         {
             if (!string.IsNullOrWhiteSpace(returnWindowName))
             {
@@ -16231,6 +16395,7 @@ namespace HaCreator.MapSimulator
                 noticeTextIndex,
                 inputLabel,
                 visualStyle);
+            _loginUtilityDialogPacketResultOwner = packetResultOwner;
             _loginUtilityDialogTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
                 trackDirectionModeOwner,
                 hasExplicitTrackDirectionModeOwner,
@@ -16464,6 +16629,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
             _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
             _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+            _loginUtilityDialogPacketResultOwner = LoginPacketResultDialogOwner.None;
             _loginUtilityDialogTracksDirectionModeOwner = false;
             _loginUtilityDialogInputValue = string.Empty;
             _loginUtilityDialogPrimaryEnabled = true;
@@ -16660,7 +16826,7 @@ namespace HaCreator.MapSimulator
 
 
             HideLoginUtilityDialog();
-            if (_loginOfficialSessionBridge.HasConnectedSession && HasLiveOfficialCheckPasswordAuth)
+            if (_loginOfficialSessionBridge.HasConnectedSession)
             {
                 if (TrySendLiveOfficialCheckPasswordRequest(password, out string liveCheckPasswordStatus))
                 {
@@ -16944,6 +17110,29 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (GetActiveLoginRosterSource() == LoginRosterSource.ViewAllCharResult &&
+                _loginOfficialSessionBridge.HasConnectedSession)
+            {
+                HideLoginUtilityDialog();
+                if (!TrySendLiveOfficialSelectCharacterByVacRequest(entry, out string liveStatus))
+                {
+                    _loginCharacterStatusMessage = liveStatus;
+                    SyncLoginCharacterSelectWindow();
+                    ShowLoginUtilityDialog(
+                        "Login Utility",
+                        liveStatus,
+                        LoginUtilityDialogButtonLayout.Ok,
+                        LoginUtilityDialogAction.DismissOnly);
+                    return;
+                }
+
+                _loginRuntime.MarkRequestSent("Sent client-shaped SelectCharacterByVAC request through the attached login session.");
+                _loginRuntime.SetCharacterSelectReady(false);
+                _loginCharacterStatusMessage = liveStatus;
+                SyncLoginCharacterSelectWindow();
+                SyncLoginEntryDialogs();
+                return;
+            }
 
             CharacterBuild selectedBuild = entry.CreateRuntimeBuild(_playerManager?.Loader);
 
@@ -17781,6 +17970,7 @@ namespace HaCreator.MapSimulator
                 visualStyle: prompt.VisualStyle,
                 frameVariant: prompt.FrameVariant,
                 inputBoundsOverride: prompt.InputBoundsOverride,
+                packetResultOwner: prompt.PacketResultOwner,
                 trackDirectionModeOwner: ResolveSharedHostDirectionModeOwnerTracking(
                     prompt.TrackDirectionModeOwner,
                     prompt.HasExplicitTrackDirectionModeOwner,
@@ -18043,6 +18233,9 @@ namespace HaCreator.MapSimulator
                 VisualStyle = overridePrompt.VisualStyle != LoginUtilityDialogVisualStyle.Default
                     ? overridePrompt.VisualStyle
                     : basePrompt.VisualStyle,
+                PacketResultOwner = overridePrompt.PacketResultOwner != LoginPacketResultDialogOwner.None
+                    ? overridePrompt.PacketResultOwner
+                    : basePrompt.PacketResultOwner,
                 Action = overridePrompt.Action ?? basePrompt.Action,
                 PrimaryLabel = string.IsNullOrWhiteSpace(overridePrompt.PrimaryLabel) ? basePrompt.PrimaryLabel : overridePrompt.PrimaryLabel,
                 SecondaryLabel = string.IsNullOrWhiteSpace(overridePrompt.SecondaryLabel) ? basePrompt.SecondaryLabel : overridePrompt.SecondaryLabel,
@@ -18300,25 +18493,43 @@ namespace HaCreator.MapSimulator
             return packetProfile?.ResultCode switch
             {
                 0 => null,
-                6 => BuildClientNoticePrompt(packetText, "Character deletion could not continue.", packetDetail, 15),
-                9 => BuildClientNoticePrompt(packetText, "Character deletion is not available.", packetDetail, 18),
-                10 => BuildClientNoticePrompt(packetText, "Character deletion could not continue.", packetDetail, 19),
-                18 => BuildClientNoticePrompt(packetText, "Character deletion prerequisites are not satisfied.", packetDetail, 11),
-                20 => BuildClientNoticePrompt(packetText, "Character deletion hit the client security warning path.", packetDetail, 93),
-                22 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 34.", packetDetail, 34),
-                24 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 39.", packetDetail, 39),
+                6 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion could not continue.", packetDetail, 15),
+                9 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion is not available.", packetDetail, 18),
+                10 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion could not continue.", packetDetail, 19),
+                18 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion prerequisites are not satisfied.", packetDetail, 11),
+                20 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion hit the client security warning path.", packetDetail, 93),
+                22 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion returned the client warning 34.", packetDetail, 34),
+                24 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion returned the client warning 39.", packetDetail, 39),
                 26 => new LoginPacketDialogPromptConfiguration
                 {
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, directNoticeText, packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                     Action = LoginUtilityDialogAction.DismissOnly,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveDeleteCharacterOwner(26),
                 },
-                29 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 54.", packetDetail, 54),
-                35 or 36 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 50.", packetDetail, 50),
-                byte => BuildClientNoticePrompt(packetText, "Character deletion failed.", packetDetail, 18),
+                29 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion returned the client warning 54.", packetDetail, 54),
+                35 or 36 => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion returned the client warning 50.", packetDetail, 50),
+                byte => BuildDeleteCharacterNoticePrompt(packetProfile, packetText, "Character deletion failed.", packetDetail, 18),
                 _ => null,
             };
+        }
+
+        private static LoginPacketDialogPromptConfiguration BuildDeleteCharacterNoticePrompt(
+            LoginAccountDialogPacketProfile packetProfile,
+            string packetText,
+            string defaultBody,
+            string packetDetail,
+            int noticeTextIndex)
+        {
+            byte? resultCode = packetProfile?.ResultCode;
+            return BuildClientNoticePrompt(
+                packetText,
+                defaultBody,
+                packetDetail,
+                noticeTextIndex,
+                LoginPacketResultDialogParity.ResolveDeleteCharacterOwner(resultCode),
+                LoginPacketResultDialogParity.ResolveDeleteCharacterFrameVariant(resultCode, hasNoticeText: true));
         }
 
         private static LoginPacketDialogPromptConfiguration BuildEnableSpwResultPrompt(
@@ -18371,7 +18582,9 @@ namespace HaCreator.MapSimulator
             string packetText,
             string defaultBody,
             string packetDetail,
-            int noticeTextIndex)
+            int noticeTextIndex,
+            LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None,
+            LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.LoginNotice)
         {
             return new LoginPacketDialogPromptConfiguration
             {
@@ -18380,7 +18593,8 @@ namespace HaCreator.MapSimulator
                 NoticeTextIndex = noticeTextIndex,
                 ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                 Action = LoginUtilityDialogAction.DismissOnly,
-                FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                FrameVariant = frameVariant,
+                PacketResultOwner = packetResultOwner,
             };
         }
 
@@ -30653,6 +30867,22 @@ namespace HaCreator.MapSimulator
             PlayRegisteredClientSoundEffect("DropItem", _dropItemSoundProperty, volumeScale);
         }
 
+        private void PlayDropItemSE(DropItem drop, float volumeScale = 1f)
+        {
+            if (drop == null)
+            {
+                PlayDropItemSE(volumeScale);
+                return;
+            }
+
+            PlayRegisteredClientSoundEffect(
+                "DropItem",
+                _dropItemSoundProperty,
+                volumeScale,
+                suppressWhileActive: false,
+                sourcePosition: new Vector2(drop.X, drop.Y));
+        }
+
         private void HandlePacketOwnedDropEnterSoundRequested(DropItem drop, int currentTime)
         {
             if (drop?.IsPacketControlled != true)
@@ -30660,7 +30890,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            PlayDropItemSE();
+            PlayDropItemSE(drop);
         }
 
         private void HandlePacketOwnedDropExploded(DropItem drop, int currentTime)
@@ -30691,27 +30921,64 @@ namespace HaCreator.MapSimulator
             string soundKey,
             WzBinaryProperty soundProperty,
             float startVolumeScale = 1f,
-            bool suppressWhileActive = false)
+            bool suppressWhileActive = false,
+            Vector2? sourcePosition = null)
         {
             if (_soundManager == null || string.IsNullOrWhiteSpace(soundKey))
             {
                 return;
             }
 
+            Vector2? listenerPosition = sourcePosition.HasValue
+                ? _playerManager?.Player?.Position
+                : null;
+
             if (soundProperty != null)
             {
-                _soundManager.TryPlayClientSoundEffect(
-                    soundKey,
-                    soundProperty,
-                    startVolumeScale,
-                    loop: false,
-                    suppressWhileActive,
-                    out _,
-                    out _);
+                if (sourcePosition.HasValue)
+                {
+                    _soundManager.TryPlayClientSoundEffectAt(
+                        soundKey,
+                        soundProperty,
+                        startVolumeScale,
+                        loop: false,
+                        suppressWhileActive: suppressWhileActive,
+                        listenerX: listenerPosition?.X,
+                        listenerY: listenerPosition?.Y,
+                        sourceX: sourcePosition.Value.X,
+                        sourceY: sourcePosition.Value.Y,
+                        out _,
+                        out _);
+                }
+                else
+                {
+                    _soundManager.TryPlayClientSoundEffect(
+                        soundKey,
+                        soundProperty,
+                        startVolumeScale,
+                        loop: false,
+                        suppressWhileActive: suppressWhileActive,
+                        out _,
+                        out _);
+                }
+
                 return;
             }
 
-            _soundManager.PlaySound(soundKey, startVolumeScale);
+            if (sourcePosition.HasValue)
+            {
+                _soundManager.PlaySoundAt(
+                    soundKey,
+                    startVolumeScale,
+                    listenerPosition?.X,
+                    listenerPosition?.Y,
+                    sourcePosition.Value.X,
+                    sourcePosition.Value.Y);
+            }
+            else
+            {
+                _soundManager.PlaySound(soundKey, startVolumeScale);
+            }
         }
 
 
@@ -34232,7 +34499,27 @@ namespace HaCreator.MapSimulator
             return PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
                 hasPendingRequest,
                 input.IsPressed(InputAction.MoveLeft),
-                input.IsPressed(InputAction.MoveRight));
+                input.IsPressed(InputAction.MoveRight),
+                ResolvePassiveTransferFieldHorizontalInputOwner(input));
+        }
+
+        private static PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner ResolvePassiveTransferFieldHorizontalInputOwner(
+            PlayerInput input)
+        {
+            if (input == null)
+            {
+                return PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner.None;
+            }
+
+            if ((input.TryResolvePressedInputSource(InputAction.MoveLeft, out InputSource leftSource)
+                 && leftSource == InputSource.Gamepad)
+                || (input.TryResolvePressedInputSource(InputAction.MoveRight, out InputSource rightSource)
+                    && rightSource == InputSource.Gamepad))
+            {
+                return PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner.OnJoystickButton;
+            }
+
+            return PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner.OnKey;
         }
 
         internal static bool ShouldHandleFreshUpKeyDownAsChairGetUp(PlayerCharacter player)
@@ -46449,6 +46736,7 @@ namespace HaCreator.MapSimulator
             RefreshLoginOfficialSessionBridgeDiscovery(currTickCount);
             DrainLoginPacketInbox();
             _loginRuntime.Update(currTickCount);
+            PollLoginAccountAuthority(currTickCount);
             UpdateWorldChannelSelectorRequestState();
             UpdateLoginWorldPopulationDrift();
             SyncLoginTitleWindow();
@@ -46676,10 +46964,24 @@ namespace HaCreator.MapSimulator
                 : $"configured for 127.0.0.1:{_loginOfficialSessionBridgeConfiguredListenPort}";
             string mappingText = _loginOfficialSessionBridge.DescribePacketMappings();
             string recentText = _loginOfficialSessionBridge.DescribeRecentPackets();
-            string checkPasswordAuthText = HasLiveOfficialCheckPasswordAuth
-                ? $"CheckPassword auth configured (machine id {_loginOfficialSessionCheckPasswordMachineId.Length} bytes, gameStartMode {_loginOfficialSessionCheckPasswordGameStartMode}, partner {_loginOfficialSessionCheckPasswordPartnerCode})"
-                : "CheckPassword auth not configured";
+            string checkPasswordAuthText = DescribeLoginCheckPasswordAuthStatus();
             return $"Login packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, received {_loginOfficialSessionBridge.ReceivedCount} packet(s), sent {_loginOfficialSessionBridge.SentCount} packet(s), mappings {mappingText}, {checkPasswordAuthText}. Recent: {recentText}. {_loginOfficialSessionBridge.LastStatus}";
+        }
+
+        private string DescribeLoginCheckPasswordAuthStatus()
+        {
+            if (HasManualLiveOfficialCheckPasswordAuth)
+            {
+                return $"CheckPassword auth configured manually (machine id {_loginOfficialSessionCheckPasswordMachineId.Length} bytes, gameStartMode {_loginOfficialSessionCheckPasswordGameStartMode}, partner {_loginOfficialSessionCheckPasswordPartnerCode})";
+            }
+
+            if (_loginOfficialSessionBridge.TryGetCapturedCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial))
+            {
+                int machineIdLength = authMaterial.MachineId?.Length ?? 0;
+                return $"CheckPassword auth captured from live client opcode 1 ({authMaterial.Source}, machine id {machineIdLength} bytes, gameStartMode {authMaterial.GameStartMode}, partner {authMaterial.PartnerCode})";
+            }
+
+            return "CheckPassword auth not configured or captured";
         }
         private string DescribeLoginPacketTransportStatus()
         {

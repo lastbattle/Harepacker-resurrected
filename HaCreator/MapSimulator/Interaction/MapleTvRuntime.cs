@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _activeDurationMs;
         private int _queueConfirmationWaitSeconds;
         private int _messageStartedAt = int.MinValue;
+        private int _presentationStateStartedAt = int.MinValue;
         private int _lastClientSendResultCode = -1;
         private int _lastClientSendResultStringPoolId = -1;
         private bool _useReceiver;
@@ -153,6 +154,7 @@ namespace HaCreator.MapSimulator.Interaction
             _showMessage = false;
             _queueExists = true;
             _messageStartedAt = int.MinValue;
+            _presentationStateStartedAt = currentTick;
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
             _statusMessage = "MapleTV display interval elapsed. The queue remains visible until it is dismissed.";
@@ -162,10 +164,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int remainingMs = 0;
             int messageAnimationTick = 0;
+            int presentationAnimationTick = 0;
             if (_showMessage && _messageStartedAt != int.MinValue)
             {
                 messageAnimationTick = Math.Max(0, currentTick - _messageStartedAt);
                 remainingMs = Math.Max(0, _activeDurationMs - Math.Max(0, currentTick - _messageStartedAt));
+            }
+
+            if ((_showMessage || _queueExists) && _presentationStateStartedAt != int.MinValue)
+            {
+                presentationAnimationTick = Math.Max(0, currentTick - _presentationStateStartedAt);
             }
 
             int totalWaitMs = ResolveSnapshotTotalWaitMs();
@@ -198,6 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ReceiverBuild = _receiverBuild,
                 RemainingMs = remainingMs,
                 MessageAnimationTick = messageAnimationTick,
+                PresentationAnimationTick = presentationAnimationTick,
                 TotalWaitMs = totalWaitMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
                 CanClear = _showMessage || _queueExists,
@@ -447,6 +456,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetOwnedDisplayAwaitingClear = false;
             _awaitingQueueReuseConfirmation = false;
             _messageStartedAt = currentTick;
+            _presentationStateStartedAt = currentTick;
             _activeDurationMs = _draftDurationMs;
             SetQueueConfirmationWaitFromDurationMs(_activeDurationMs);
             _isSelfMessage = !_useReceiver;
@@ -462,12 +472,16 @@ namespace HaCreator.MapSimulator.Interaction
         internal string OnClearMessage(
             bool preserveQueue = true,
             bool preserveDisplayLines = false,
-            bool preservePendingSendResultFeedback = false)
+            bool preservePendingSendResultFeedback = false,
+            int currentTick = int.MinValue)
         {
             _showMessage = false;
             _queueExists = preserveQueue;
             _packetOwnedDisplayAwaitingClear = false;
             _messageStartedAt = int.MinValue;
+            _presentationStateStartedAt = preserveQueue && currentTick != int.MinValue
+                ? currentTick
+                : int.MinValue;
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
             _awaitingQueueReuseConfirmation = false;
@@ -679,6 +693,7 @@ namespace HaCreator.MapSimulator.Interaction
             _queueExists = true;
             _packetOwnedDisplayAwaitingClear = false;
             _messageStartedAt = int.MinValue;
+            _presentationStateStartedAt = currentTick;
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
             _awaitingQueueReuseConfirmation = false;
@@ -847,6 +862,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetOwnedDisplayAwaitingClear = true;
                 _awaitingQueueReuseConfirmation = false;
                 _messageStartedAt = currentTick;
+                _presentationStateStartedAt = currentTick;
                 _activeDurationMs = 0;
                 SetQueueConfirmationWaitFromPacketValue(totalWaitTime);
                 // CMapleTVMan::OnSetMessage stores m_nMessageType but determines
@@ -890,7 +906,8 @@ namespace HaCreator.MapSimulator.Interaction
             string cleared = OnClearMessage(
                 preserveQueue: true,
                 preserveDisplayLines: true,
-                preservePendingSendResultFeedback: true);
+                preservePendingSendResultFeedback: true,
+                currentTick: currentTick);
             RecordOfficialPacket(PacketTypeClearMessage, currentTick, -1, -1, source);
             return cleared;
         }
@@ -1283,6 +1300,7 @@ namespace HaCreator.MapSimulator.Interaction
         public CharacterBuild ReceiverBuild { get; init; }
         public int RemainingMs { get; init; }
         public int MessageAnimationTick { get; init; }
+        public int PresentationAnimationTick { get; init; }
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }
         public bool CanClear { get; init; }

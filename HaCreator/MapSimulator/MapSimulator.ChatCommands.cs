@@ -2395,6 +2395,7 @@ namespace HaCreator.MapSimulator
                                 _loginOfficialSessionCheckPasswordGameRoomClient = 0;
                                 _loginOfficialSessionCheckPasswordGameStartMode = 0;
                                 _loginOfficialSessionCheckPasswordPartnerCode = 0;
+                                _loginOfficialSessionBridge.ClearCapturedCheckPasswordAuth();
                                 return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
                             }
 
@@ -11228,7 +11229,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "avatarmegaphone",
                 "Inspect or drive the avatar megaphone sender dialog and presentation owner",
-                "/avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]",
+                "/avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|packetraw <hex>|clear]",
                 args =>
                 {
                     _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -11327,12 +11328,24 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(message);
                         }
 
+                        case "packet":
+                        case "packetraw":
+                        case "clientraw":
+                            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPayload))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone packetraw <CWvsContext::OnSetAvatarMegaphone payload hex>");
+                            }
+
+                            return TryApplyAvatarMegaphonePacketRaw(rawPayload, out string packetMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                : ChatCommandHandler.CommandResult.Error(packetMessage);
+
                         case "clear":
                         case "bye":
                             return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.Clear(currTickCount));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|packetraw <hex>|clear]");
                     }
                 });
 

@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
@@ -223,6 +224,7 @@ namespace HaCreator.MapSimulator
                 },
                 ShowUtilityFeedback = ShowUtilityFeedbackMessage,
                 ShowModalWarning = ShowPacketOwnedFieldWarning,
+                ShowModalNotice = ShowPacketOwnedFieldNotice,
                 RememberWhisperTarget = target => _chat?.RememberWhisperTarget(target),
                 GetCurrentChannelId = () => 1,
                 GetLastOutgoingWhisperText = () => _chat?.LastOutgoingWhisperText ?? string.Empty,
@@ -345,6 +347,11 @@ namespace HaCreator.MapSimulator
 
         private void ShowPacketOwnedFieldWarning(string message)
         {
+            ShowPacketOwnedFieldNotice(message, trackDirectionModeOwner: true);
+        }
+
+        private void ShowPacketOwnedFieldNotice(string message, bool trackDirectionModeOwner)
+        {
             if (string.IsNullOrWhiteSpace(message))
             {
                 return;
@@ -356,7 +363,7 @@ namespace HaCreator.MapSimulator
                 Title = "Warning",
                 Body = message.Trim(),
                 NoticeVariant = ConnectionNoticeWindowVariant.Notice,
-                TrackDirectionModeOwner = true,
+                TrackDirectionModeOwner = trackDirectionModeOwner,
                 DurationMs = 5000
             });
         }
@@ -402,21 +409,25 @@ namespace HaCreator.MapSimulator
             string defaultImageName = string.IsNullOrWhiteSpace(presentation.DefaultImageName)
                 ? "UI.img"
                 : presentation.DefaultImageName;
-            float volumeScale = 1f;
             if (presentation.WorldOrigin.HasValue)
             {
                 Vector2 origin = presentation.WorldOrigin.Value;
                 Vector2? localPlayerPosition = _playerManager?.Player?.Position;
-                volumeScale = ResolvePacketOwnedSummonSoundVolumeScale(
-                    localPlayerPosition,
-                    (int)MathF.Round(origin.X),
-                    (int)MathF.Round(origin.Y));
+                TryPlayPacketOwnedWzSoundAt(
+                    presentation.SoundPath,
+                    defaultImageName,
+                    startVolumeScale: 1f,
+                    listenerPosition: localPlayerPosition,
+                    sourcePosition: origin,
+                    out _,
+                    out _);
+                return;
             }
 
             TryPlayPacketOwnedWzSound(
                 presentation.SoundPath,
                 defaultImageName,
-                volumeScale,
+                1f,
                 out _,
                 out _);
         }
@@ -474,11 +485,13 @@ namespace HaCreator.MapSimulator
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId, int x, int y)
         {
             string descriptor = ResolvePacketOwnedSummonSoundDescriptor(effectId);
-            float volumeScale = ResolvePacketOwnedSummonSoundVolumeScale(x, y);
-            bool played = TryPlayPacketOwnedWzSound(
+            Vector2? playerPosition = _playerManager?.Player?.Position;
+            bool played = TryPlayPacketOwnedWzSoundAt(
                 descriptor,
                 "Summon.img",
-                volumeScale,
+                startVolumeScale: 1f,
+                listenerPosition: playerPosition,
+                sourcePosition: new Vector2(x, y),
                 out _,
                 out _);
             return played || ShouldBypassPacketOwnedSummonSoundResourceProbe(effectId);
@@ -502,25 +515,11 @@ namespace HaCreator.MapSimulator
 
         private static int ResolvePacketOwnedSummonSoundVolumePercent(Vector2? playerPosition, int x, int y)
         {
-            if (!playerPosition.HasValue)
-            {
-                return 40;
-            }
-
-            double dx = playerPosition.Value.X - x;
-            double dy = playerPosition.Value.Y - y;
-            double distance = Math.Sqrt((dx * dx) + (dy * dy) + 0.001d);
-            if (distance < 250d)
-            {
-                return 100;
-            }
-
-            if (distance <= 1000d)
-            {
-                return (int)Math.Clamp(Math.Floor(120d - (distance * 0.08d)), 40d, 100d);
-            }
-
-            return 40;
+            return SoundManager.ResolveClientPositionVolumePercent(
+                playerPosition?.X,
+                playerPosition?.Y,
+                x,
+                y);
         }
 
         private static string ResolvePacketOwnedFieldBgmOverrideName(string descriptor)

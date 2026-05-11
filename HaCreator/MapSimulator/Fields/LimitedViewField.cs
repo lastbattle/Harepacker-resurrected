@@ -1241,6 +1241,7 @@ namespace HaCreator.MapSimulator.Fields
                 darkLayerBounds,
                 viewrangeOriginX,
                 viewrangeOriginY));
+            List<ClientOwnedDrawViewrangeOperation> deferredReleaseOperations = RemoveTrailingClientOwnedDrawViewrangeReleaseOperations(operations);
 
             if (shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
@@ -1293,7 +1294,33 @@ namespace HaCreator.MapSimulator.Fields
                     -1));
             }
 
+            operations.AddRange(deferredReleaseOperations);
             return operations;
+        }
+
+        private static List<ClientOwnedDrawViewrangeOperation> RemoveTrailingClientOwnedDrawViewrangeReleaseOperations(
+            List<ClientOwnedDrawViewrangeOperation> operations)
+        {
+            List<ClientOwnedDrawViewrangeOperation> releaseOperations = new();
+            if (operations == null || operations.Count == 0)
+            {
+                return releaseOperations;
+            }
+
+            while (operations.Count > 0 && IsClientOwnedDrawViewrangeReleaseOperation(operations[^1].Kind))
+            {
+                releaseOperations.Insert(0, operations[^1]);
+                operations.RemoveAt(operations.Count - 1);
+            }
+
+            return releaseOperations;
+        }
+
+        private static bool IsClientOwnedDrawViewrangeReleaseOperation(ClientOwnedDrawViewrangeOperationKind kind)
+        {
+            return kind == ClientOwnedDrawViewrangeOperationKind.ReleaseGraphicsCenterVector
+                || kind == ClientOwnedDrawViewrangeOperationKind.ReleaseActiveUserVector
+                || kind == ClientOwnedDrawViewrangeOperationKind.ReleaseDarkLayerCanvas;
         }
 
         private static IReadOnlyList<ClientOwnedRemoteViewrangeTarget> ConvertClientOwnedRemoteViewrangeTargets(IReadOnlyList<Vector2> remoteMaskTopLefts)

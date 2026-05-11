@@ -182,6 +182,10 @@ namespace HaCreator.MapSimulator
             internal bool CreatesBstrPerCall => true;
             internal bool ReleasesFontAfterCall => true;
             internal bool ClearsVariantsAfterCall => true;
+            internal bool UsesVtMissingTabOrigin => true;
+            internal bool UsesVtMissingAlpha => true;
+            internal bool ReleasesStringPoolTextAfterCall => StringPoolId != 0;
+            internal bool ReleasesCanvasAtDrawEnd => true;
         }
 
         internal readonly record struct InitialQuizOwnerTimerGlyphDrawCall(
@@ -194,6 +198,12 @@ namespace HaCreator.MapSimulator
             internal bool UsesStringPoolFormat => FormatArgument.HasValue;
             internal string ClientCanvasMethodName => "IWzCanvas::Copy";
             internal int Alpha => 255;
+            internal bool GetsResourceThroughWzResManObjectA => true;
+            internal bool QueriesCanvasInterfacePerGlyph => true;
+            internal bool ReleasesGlyphCanvasAfterCopy => true;
+            internal bool ClearsResourceVariantAfterCopy => true;
+            internal int ClientMissingVariantArgumentCount => 2;
+            internal bool ClearsAlphaVariantAfterCopy => true;
         }
 
         internal readonly record struct InitialQuizOwnerAnimationDrawCall(

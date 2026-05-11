@@ -456,11 +456,10 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
 
-                // Trigger regular attack hit effect (from attack/info/hit in mob data)
-                // Reuse currentAttack from above (already retrieved at line 266)
-                if (currentAttack != null)
+                // Scheduler-owned mob attacks spawn WZ attack/info/hit through
+                // MobAttackSystem so hitAfter and attach metadata stay intact.
+                if (ShouldUseLegacyImmediateAttackHitEffect(attackOverride, skillOverride, currentAttack))
                 {
-                    // Get the hit effect frames for this attack action
                     var hitFrames = mob.GetAttackHitFrames(currentAttack.AnimationName);
                     if (hitFrames != null && hitFrames.Count > 0)
                     {
@@ -506,6 +505,16 @@ namespace HaCreator.MapSimulator.Character
         internal static bool ShouldApplyMobAttackKnockback(MobAttackEntry attack, bool isSkillAttack)
         {
             return attack == null || isSkillAttack || attack.Knockback;
+        }
+
+        internal static bool ShouldUseLegacyImmediateAttackHitEffect(
+            MobAttackEntry attackOverride,
+            MobSkillEntry skillOverride,
+            MobAttackEntry currentAttack)
+        {
+            return currentAttack != null &&
+                   skillOverride == null &&
+                   attackOverride == null;
         }
 
         internal static MobDamageType ResolveMobAttackDamageType(MobAttackEntry attack, bool isSkillAttack)

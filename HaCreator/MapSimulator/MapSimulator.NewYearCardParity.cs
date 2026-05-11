@@ -15,7 +15,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "newyearcard",
                 "Inspect or drive CUINewYearCardDlg and CUINewYearCardSenderDlg parity",
-                "/newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|result <hex>|hide]",
+                "/newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]",
                 HandleNewYearCardCommand);
         }
 
@@ -98,6 +98,17 @@ namespace HaCreator.MapSimulator
                         ? ChatCommandHandler.CommandResult.Ok(sendMessage)
                         : ChatCommandHandler.CommandResult.Error(sendMessage);
 
+                case "readrequest":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int serialNumber))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard readrequest <serial>");
+                    }
+
+                    return TrySendNewYearCardReadRequest(serialNumber, out string readRequestMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(readRequestMessage)
+                        : ChatCommandHandler.CommandResult.Error(readRequestMessage);
+
                 case "result":
                 case "packet":
                     string parseError = null;
@@ -106,7 +117,7 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error($"Usage: /newyearcard result <CWvsContext::OnNewYearCardRes payload hex>. {parseError}");
                     }
 
-                    return _newYearCardRuntime.TryApplyResultPayload(resultPayload, out string resultMessage)
+                    return TryApplyNewYearCardResultPayload(resultPayload, out string resultMessage)
                         ? ChatCommandHandler.CommandResult.Ok(resultMessage)
                         : ChatCommandHandler.CommandResult.Error(resultMessage);
 
@@ -117,7 +128,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok("Closed New Year Card sender/read dialog owners.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|result <hex>|hide]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]");
             }
         }
 
@@ -170,12 +181,87 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TrySendNewYearCardReadRequest(int serialNumber, out string message)
+        {
+            if (!_newYearCardRuntime.TryBuildReadRequest(serialNumber, out NewYearCardReadRequest request, out message))
+            {
+                return false;
+            }
+
+            string dispatchStatus = DispatchNewYearCardReadRequest(request);
+            _newYearCardRuntime.MarkReadRequestDispatched(request.SerialNumber, dispatchStatus);
+            message = $"{message} {dispatchStatus}";
+            return true;
+        }
+
+        private bool TryApplyNewYearCardResultPayload(byte[] payload, out string message)
+        {
+            if (!_newYearCardRuntime.TryApplyResultPayload(payload, out message))
+            {
+                return false;
+            }
+
+            NewYearCardResultSnapshot snapshot = _newYearCardRuntime.LastResultSnapshot;
+            if (snapshot.Subtype == NewYearCardResultSubtype.ReceiveSuccess)
+            {
+                ShowNewYearCardReadWindow();
+            }
+            else if ((snapshot.Subtype == NewYearCardResultSubtype.ArrivalList
+                    || snapshot.Subtype == NewYearCardResultSubtype.ArrivalSingle)
+                && snapshot.Arrivals.Count > 0)
+            {
+                ShowNewYearCardArrivalPrompt(snapshot.Arrivals[0], snapshot.Arrivals.Count);
+            }
+
+            return true;
+        }
+
         private string DispatchNewYearCardSendRequest(NewYearCardSendRequest request)
         {
             return DispatchPacketOwnedAccountMoreInfoClientRequest(
                 request.Opcode,
                 request.Payload,
                 "CUINewYearCardSenderDlg::_SendNewYearCard");
+        }
+
+        private string DispatchNewYearCardReadRequest(NewYearCardReadRequest request)
+        {
+            return DispatchPacketOwnedAccountMoreInfoClientRequest(
+                request.Opcode,
+                request.Payload,
+                "CUIFadeYesNo::CreateNewYearCardArrived accept");
+        }
+
+        private void ShowNewYearCardArrivalPrompt(NewYearCardArrivalPrompt prompt, int promptCount)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return;
+            }
+
+            string senderName = string.IsNullOrWhiteSpace(prompt.SenderName)
+                ? "Unknown"
+                : prompt.SenderName;
+            string body = promptCount > 1
+                ? $"{promptCount} New Year Cards arrived."
+                : "New Year Card arrived.";
+            ConfigureInGameConfirmDialog(
+                "New Year Card",
+                body,
+                string.Empty,
+                onConfirm: () => TrySendNewYearCardReadRequest(prompt.SerialNumber, out _),
+                onCancel: null,
+                presentation: confirmDialogWindow.CreateParcelAlarmPresentation(),
+                fadeYesNoType: SharedFadeYesNoModalType.NewYearCardArrived,
+                fadeYesNoLifetimeMilliseconds: SharedFadeYesNoModalOwner.NativeInviteLifetimeMilliseconds,
+                fadeYesNoPayloadFields: new SharedFadeYesNoPayloadFields(
+                    RequesterName: senderName,
+                    Message: body,
+                    SerialNumber: prompt.SerialNumber));
+            ShowWindow(
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmDialogWindow,
+                trackDirectionModeOwner: true);
         }
 
         private void UpdateNewYearCardLocalSender()

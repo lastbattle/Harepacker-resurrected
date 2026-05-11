@@ -303,7 +303,7 @@ namespace HaCreator.MapSimulator.Interaction
             Rectangle buttonBounds = GetADBoardButtonRect();
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "CChatBalloon ADBoard active: type={0}, layer=({1},{2},{3},{4}), button=({5},{6},{7},{8}), canvas={9}, pressed={10}, clicked={11}.",
+                "CChatBalloon ADBoard active: type={0}, layer=({1},{2},{3},{4}), button=({5},{6},{7},{8}), canvas={9}, source={10}, pressed={11}, clicked={12}.",
                 ChatBalloonPresentationRules.ADBoardNativeBalloonType,
                 _adBoardState.LayerBounds.X,
                 _adBoardState.LayerBounds.Y,
@@ -314,6 +314,7 @@ namespace HaCreator.MapSimulator.Interaction
                 buttonBounds.Width,
                 buttonBounds.Height,
                 _adBoardState.CurrentButtonCanvas,
+                _adBoardState.CurrentButtonCanvasSource,
                 _adBoardState.IsPressed,
                 _adBoardState.ClickCount);
         }
@@ -358,6 +359,8 @@ namespace HaCreator.MapSimulator.Interaction
                     new[]
                     {
                         "Load(UI/ChatBalloon.img/miniroom)",
+                        "Copy(background/icon/private/status/count canvases)",
+                        "Copy(PSSkin/effect canvases when present)",
                         "CalcLongestText(width=100)",
                         "format_string(remaining title)",
                         "AdjustCoordY"
@@ -651,6 +654,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ClickCount { get; private set; }
         public ChatBalloonADBoardButtonCanvasKind CurrentButtonCanvas { get; private set; }
         public int CurrentButtonAlpha { get; private set; }
+        public string CurrentButtonCanvasSource => ChatBalloonPresentationRules.ResolveADBoardButtonCanvasSource(CurrentButtonCanvas);
 
         internal ChatBalloonADBoardButtonCanvasKind ApplyMouseMove(bool overButton)
         {

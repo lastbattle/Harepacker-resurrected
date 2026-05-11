@@ -32,6 +32,12 @@ namespace HaCreator.MapSimulator
         string[] RedSpecialTextNames,
         string[] BlueSpecialTextNames,
         string[] VioletSpecialTextNames,
+        int RedOwnerCanvasChildCount,
+        int BlueOwnerCanvasChildCount,
+        int VioletOwnerCanvasChildCount,
+        bool RedOwnerHasOnlyDigitCanvases,
+        bool BlueOwnerHasOnlyDigitCanvases,
+        bool VioletOwnerHasOnlyDigitCanvases,
         bool RedHasShot,
         bool BlueHasShot,
         bool VioletHasShot,
@@ -448,6 +454,8 @@ namespace HaCreator.MapSimulator
             int FrameCount)
         {
             public int EffectiveFallDistance => Math.Max(1, FallDistance);
+            public int EffectiveUpdateIntervalMs => Math.Max(1, UpdateIntervalMs);
+            public int EffectiveUpdateNextMs => Math.Max(0, UpdateNextMs);
             public int EffectiveUpdateCount => Math.Max(1, UpdateCount > 0 ? UpdateCount : FrameCount);
             public int EffectiveDurationMs => Math.Max(120, DurationMs > 0 ? DurationMs : AnimationDisplayerFallingFallbackDurationMs);
             public float EffectiveFallSpeed => EffectiveFallDistance * 1000f / EffectiveDurationMs;
@@ -1129,7 +1137,7 @@ namespace HaCreator.MapSimulator
                 profile.EffectiveFallDistance,
                 profile.UpdateIntervalMs,
                 profile.EffectiveUpdateCount,
-                profile.UpdateNextMs,
+                profile.EffectiveUpdateNextMs,
                 profile.EffectiveDurationMs,
                 profile.EffectiveAlpha,
                 currTickCount);
@@ -1142,8 +1150,11 @@ namespace HaCreator.MapSimulator
                 Math.Max(1f, profile.StartArea.Width / 2f),
                 profile.EffectiveUpdateCount,
                 Math.Max(120f, profile.EffectiveFallSpeed),
-                currTickCount + profile.UpdateNextMs,
+                currTickCount,
                 profile.EffectiveAlpha,
+                profile.EffectiveUpdateIntervalMs,
+                profile.EffectiveUpdateNextMs,
+                profile.EffectiveDurationMs,
                 initialElapsedMs);
             message = $"Registered falling animation-displayer effect from {effectUol} ({profile.EffectiveUpdateCount} drops).";
             return true;
@@ -1585,11 +1596,34 @@ namespace HaCreator.MapSimulator
                 redSpecialTextNames,
                 blueSpecialTextNames,
                 violetSpecialTextNames,
+                ResolveAnimationDisplayerCombatFeedbackAuthoredCanvasChildCount(DamageColorType.Red),
+                ResolveAnimationDisplayerCombatFeedbackAuthoredCanvasChildCount(DamageColorType.Blue),
+                ResolveAnimationDisplayerCombatFeedbackAuthoredCanvasChildCount(DamageColorType.Violet),
+                HasOnlyAnimationDisplayerCombatFeedbackDigitCanvases(redSpecialTextNames),
+                HasOnlyAnimationDisplayerCombatFeedbackDigitCanvases(blueSpecialTextNames),
+                HasOnlyAnimationDisplayerCombatFeedbackDigitCanvases(violetSpecialTextNames),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(redSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(blueSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(violetSpecialTextNames, "shot"),
                 UsesNoRed0ForDamageNumberSpecialTextComposition: true,
                 RejectsUnsupportedColorValues: true);
+        }
+
+        internal static int ResolveAnimationDisplayerCombatFeedbackAuthoredCanvasChildCount(DamageColorType colorType)
+        {
+            const int digitCanvasCount = 10;
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return 0;
+            }
+
+            return digitCanvasCount
+                   + ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(colorType).Length;
+        }
+
+        private static bool HasOnlyAnimationDisplayerCombatFeedbackDigitCanvases(IReadOnlyList<string> authoredSpecialTextNames)
+        {
+            return authoredSpecialTextNames == null || authoredSpecialTextNames.Count == 0;
         }
 
         private static bool HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(
@@ -8240,7 +8274,8 @@ namespace HaCreator.MapSimulator
                 Loop = animation.Loop,
                 Origin = animation.Origin,
                 ZOrder = animation.ZOrder,
-                PositionCode = animation.PositionCode
+                PositionCode = animation.PositionCode,
+                HitAfterMs = animation.HitAfterMs
             };
             scaledAnimation.CalculateDuration();
             return scaledAnimation;
@@ -8296,7 +8331,8 @@ namespace HaCreator.MapSimulator
                 Loop = animation.Loop,
                 Origin = new Point(animation.Origin.X - originOffset.X, animation.Origin.Y - originOffset.Y),
                 ZOrder = animation.ZOrder,
-                PositionCode = animation.PositionCode
+                PositionCode = animation.PositionCode,
+                HitAfterMs = animation.HitAfterMs
             };
             shiftedAnimation.CalculateDuration();
             return shiftedAnimation;

@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const bool ClientDialogReleasedAfterModal = true;
         internal const bool ClientOpenSubtypeSkipsResultNotice = true;
         internal const bool InvitationOwnsDownstreamHandoff = false;
+        internal const bool ClientHasDismissShortcut = false;
 
         private const string DefaultGroomName = "Groom";
         private const string DefaultBrideName = "Bride";
@@ -127,7 +128,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             SetObservedSocialMessages(_groomName, _brideName);
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ button states normal/pressed/mouseOver share origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, disabled uses origin=({DisabledAcceptButtonWzOriginX},{DisabledAcceptButtonWzOriginY}) size={DisabledAcceptButtonWidth}x{DisabledAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ button states normal/pressed/mouseOver share origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, disabled uses origin=({DisabledAcceptButtonWzOriginX},{DisabledAcceptButtonWzOriginY}) size={DisabledAcceptButtonWidth}x{DisabledAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}; recovered client surface has no dedicated dismiss shortcut beyond the modal close path.";
             return _statusMessage;
         }
 
@@ -256,7 +257,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ModalReturnIgnored = ClientModalReturnIgnored,
                 DialogReleasedAfterModal = ClientDialogReleasedAfterModal,
                 OpenSubtypeSkipsResultNotice = ClientOpenSubtypeSkipsResultNotice,
-                OwnsDownstreamHandoff = InvitationOwnsDownstreamHandoff
+                OwnsDownstreamHandoff = InvitationOwnsDownstreamHandoff,
+                HasDismissShortcut = ClientHasDismissShortcut
             };
             string packetState = observation.LastOpenUsedMarriageResultPacket
                 ? $" packet=[{FormatPayload(observation.LastMarriageResultPacketPayload)}];"
@@ -328,6 +330,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DialogReleasedAfterModal = ClientDialogReleasedAfterModal,
                 OpenSubtypeSkipsResultNotice = ClientOpenSubtypeSkipsResultNotice,
                 OwnsDownstreamHandoff = InvitationOwnsDownstreamHandoff,
+                HasDismissShortcut = ClientHasDismissShortcut,
                 LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone()),
                 SourceDescription = _sourceDescription,
                 GroomNamePosition = (GroomNameX, ParticipantNameY),
@@ -594,6 +597,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool DialogReleasedAfterModal { get; init; }
         public bool OpenSubtypeSkipsResultNotice { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
+        public bool HasDismissShortcut { get; init; }
         public bool UseClientDialogInvitationSurface { get; init; }
         public bool AcceptButtonAcceptFocus { get; init; }
         public bool AcceptButtonDrawBack { get; init; }
@@ -623,6 +627,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool DialogReleasedAfterModal { get; init; }
         public bool OpenSubtypeSkipsResultNotice { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
+        public bool HasDismissShortcut { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
         public string GroomName { get; init; } = string.Empty;

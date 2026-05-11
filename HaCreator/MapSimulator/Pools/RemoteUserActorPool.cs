@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.Pools
         CreateCanvas,
         RemoveCanvas,
         InsertCanvas,
+        ReleaseCanvasTemporaryReference,
         ReleaseLayerReference
     }
 
@@ -3001,6 +3002,10 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            int currentTime = Environment.TickCount;
+            CharacterPart previousMountPart = null;
+            actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out previousMountPart);
+            CharacterPart newMountPart = null;
             if (!tamingMobItemId.HasValue || tamingMobItemId.Value <= 0)
             {
                 if (!TryRestoreRidingChairMountAfterVehicleClear(actor))
@@ -3009,20 +3014,30 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 SyncTemporaryStatPresentation(actor);
-                RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
+                ApplyRemoteSetRidingVehicleTransition(
+                    actor,
+                    previousMountPart,
+                    newMountPart,
+                    currentTime);
+                RegisterMeleeAfterImage(actor, 0, actor.ActionName, currentTime, 10, 0);
                 return true;
             }
 
-            CharacterPart mountPart = _loader.LoadEquipment(tamingMobItemId.Value);
-            if (mountPart?.Slot != EquipSlot.TamingMob)
+            newMountPart = _loader.LoadEquipment(tamingMobItemId.Value);
+            if (newMountPart?.Slot != EquipSlot.TamingMob)
             {
                 message = $"Item {tamingMobItemId.Value} is not a taming mob mount.";
                 return false;
             }
 
-            actor.Build.Equip(mountPart);
+            actor.Build.Equip(newMountPart);
             SyncTemporaryStatPresentation(actor);
-            RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
+            ApplyRemoteSetRidingVehicleTransition(
+                actor,
+                previousMountPart,
+                newMountPart,
+                currentTime);
+            RegisterMeleeAfterImage(actor, 0, actor.ActionName, currentTime, 10, 0);
             return true;
         }
 
@@ -5950,20 +5965,32 @@ namespace HaCreator.MapSimulator.Pools
             actor.PartyHpGaugeCanvasLayerRefCount = 0;
 
             actor.PartyHpGaugeCanvasHandleId = NextRemoteReceiveHpGaugeCanvasHandleId();
+            actor.PartyHpGaugeCanvasLayerRefCount = 1;
             actor.PartyHpGaugeLayerMutations.Add(
                 RemoteReceiveHpGaugeLayerMutation.Create(
                     RemoteReceiveHpGaugeLayerMutationKind.CreateCanvas,
                     RemoteReceiveHpGaugeActionOwnerName,
                     actor.PartyHpGaugeLayerHandleId,
                     actor.PartyHpGaugeCanvasHandleId,
-                    canvasLayerRefCount: 0,
+                    actor.PartyHpGaugeCanvasLayerRefCount,
+                    gaugePos,
+                    actor.PartyHpGaugeLayerMutations.Count));
+
+            actor.PartyHpGaugeCanvasLayerRefCount = 2;
+            actor.PartyHpGaugeLayerMutations.Add(
+                RemoteReceiveHpGaugeLayerMutation.Create(
+                    RemoteReceiveHpGaugeLayerMutationKind.InsertCanvas,
+                    RemoteReceiveHpGaugeActionOwnerName,
+                    actor.PartyHpGaugeLayerHandleId,
+                    actor.PartyHpGaugeCanvasHandleId,
+                    actor.PartyHpGaugeCanvasLayerRefCount,
                     gaugePos,
                     actor.PartyHpGaugeLayerMutations.Count));
 
             actor.PartyHpGaugeCanvasLayerRefCount = 1;
             actor.PartyHpGaugeLayerMutations.Add(
                 RemoteReceiveHpGaugeLayerMutation.Create(
-                    RemoteReceiveHpGaugeLayerMutationKind.InsertCanvas,
+                    RemoteReceiveHpGaugeLayerMutationKind.ReleaseCanvasTemporaryReference,
                     RemoteReceiveHpGaugeActionOwnerName,
                     actor.PartyHpGaugeLayerHandleId,
                     actor.PartyHpGaugeCanvasHandleId,
@@ -13806,6 +13833,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.BaseActionName = normalizedActionName;
             actor.BaseActionRawCode = rawActionCode;
+            actor.ClearRidingVehicleTransitionOverrideIfActionChanged(normalizedActionName);
             if (currentTime != int.MinValue && (forceReplay || baseActionChanged || rawActionChanged))
             {
                 actor.BaseActionStartTime = currentTime;
@@ -13813,6 +13841,79 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, actor.TemporaryStats.KnownState);
             actor.RidingVehicleId = ResolveRemoteRidingVehicleId(actor);
+        }
+
+        private void ApplyRemoteSetRidingVehicleTransition(
+            RemoteUserActor actor,
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart,
+            int currentTime)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            string actionName = PlayerCharacter.ResolveClientRidingVehicleTransitionActionName(
+                oldMountPart,
+                newMountPart);
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                actor.ClearRidingVehicleTransitionOverride();
+                return;
+            }
+
+            CharacterPart transitionOwner = ResolveRemoteSetRidingVehicleTransitionOwner(
+                oldMountPart,
+                newMountPart,
+                actionName);
+            actor.SetRidingVehicleTransitionOverride(transitionOwner, actionName);
+            SetActorAction(
+                actor,
+                actionName,
+                actor.Build?.ActivePortableChair != null,
+                currentTime,
+                forceReplay: true,
+                rawActionCode: CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                    ? rawActionCode
+                    : null);
+
+            if (SkillManager.TryCreateRideVehicleTemporaryStatSetSkillUseEffectRequest(
+                    oldMountPart?.ItemId ?? 0,
+                    newMountPart?.ItemId ?? 0,
+                    currentTime,
+                    out SkillUseEffectRequest request))
+            {
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    actor.CharacterId,
+                    request.EffectSkillId,
+                    null,
+                    request.FacingRightOverride ?? actor.FacingRight,
+                    request.RequestTime,
+                    request.BranchNames,
+                    request.WorldOrigin,
+                    request.FollowOwnerPosition,
+                    request.FollowOwnerFacing,
+                    request.DelayRateOverride,
+                    request.OriginOffset));
+            }
+        }
+
+        private static CharacterPart ResolveRemoteSetRidingVehicleTransitionOwner(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart,
+            string actionName)
+        {
+            if (newMountPart?.Slot == EquipSlot.TamingMob)
+            {
+                return newMountPart;
+            }
+
+            return oldMountPart?.Slot == EquipSlot.TamingMob
+                   && (PlayerCharacter.SupportsTamingMobTransitionAction(oldMountPart, actionName)
+                       || PlayerCharacter.IsClientRidingVehicleJaguarBodyTransitionAction(oldMountPart, actionName))
+                ? oldMountPart
+                : null;
         }
 
         private static string ResolvePortableChairVisibleActionName(
@@ -15659,7 +15760,8 @@ namespace HaCreator.MapSimulator.Pools
                 Loop = true,
                 Origin = animation.Origin,
                 ZOrder = animation.ZOrder,
-                PositionCode = animation.PositionCode
+                PositionCode = animation.PositionCode,
+                HitAfterMs = animation.HitAfterMs
             };
         }
 
@@ -18849,6 +18951,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool HiddenLikeClient { get; set; }
         public int LastNameTagRedrawSerial { get; set; }
         public int RidingVehicleId { get; set; }
+        public CharacterPart RidingVehicleTransitionTamingMobPart { get; private set; }
+        public string RidingVehicleTransitionActionName { get; private set; }
         public CharacterPart TemporaryStatAvatarOverridePart { get; set; }
         public CharacterPart TemporaryStatTamingMobOverridePart { get; set; }
         public int? TemporaryStatShadowPartnerSkillId { get; set; }
@@ -18947,6 +19051,13 @@ namespace HaCreator.MapSimulator.Pools
 
         internal CharacterPart ResolveMountedStateTamingMobPart()
         {
+            if (RidingVehicleTransitionTamingMobPart?.Slot == EquipSlot.TamingMob
+                && !string.IsNullOrWhiteSpace(RidingVehicleTransitionActionName)
+                && string.Equals(BaseActionName, RidingVehicleTransitionActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return RidingVehicleTransitionTamingMobPart;
+            }
+
             if (TemporaryStatTamingMobOverridePart?.Slot == EquipSlot.TamingMob)
             {
                 return TemporaryStatTamingMobOverridePart;
@@ -18958,6 +19069,31 @@ namespace HaCreator.MapSimulator.Pools
                 Build.Equipment.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
             }
             return equippedMountPart;
+        }
+
+        internal void SetRidingVehicleTransitionOverride(CharacterPart mountPart, string actionName)
+        {
+            RidingVehicleTransitionTamingMobPart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            RidingVehicleTransitionActionName = RidingVehicleTransitionTamingMobPart == null
+                ? null
+                : actionName;
+        }
+
+        internal void ClearRidingVehicleTransitionOverride()
+        {
+            RidingVehicleTransitionTamingMobPart = null;
+            RidingVehicleTransitionActionName = null;
+        }
+
+        internal void ClearRidingVehicleTransitionOverrideIfActionChanged(string actionName)
+        {
+            if (RidingVehicleTransitionTamingMobPart == null
+                || string.Equals(RidingVehicleTransitionActionName, actionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            ClearRidingVehicleTransitionOverride();
         }
 
         public AssembledFrame GetFrameAtTimeForRendering(int currentTime)

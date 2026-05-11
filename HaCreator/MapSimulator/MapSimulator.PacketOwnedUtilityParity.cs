@@ -165,7 +165,27 @@ namespace HaCreator.MapSimulator
             bool HasPassiveTemporaryStatObject,
             bool AllocatePassiveTemporaryStatObject,
             bool CanUpdatePassively,
-            bool RecordPassiveTemporaryStatUpdate);
+            bool RecordPassiveTemporaryStatUpdate,
+            IReadOnlyList<PacketOwnedBattleshipTemporaryStatNativeOperation> NativeOperations);
+
+        internal enum PacketOwnedBattleshipTemporaryStatNativeOperationKind
+        {
+            RequireVehicleTemporaryStatTrackingOwner,
+            RequireRidingSkillVehicle,
+            AllocateTemporaryStatObject,
+            AttachParentLayer,
+            AttachMainLayer,
+            AttachShadowLayer,
+            InitializeConstructorLeft,
+            UpdatePassively
+        }
+
+        internal readonly record struct PacketOwnedBattleshipTemporaryStatNativeOperation(
+            PacketOwnedBattleshipTemporaryStatNativeOperationKind Kind,
+            int SkillId = PacketOwnedBattleshipSkillId,
+            int CurrentValue = 0,
+            int MaxValue = 0,
+            int LayerOrdinal = 0);
 
         private sealed class PacketOwnedRadioTrackResolution
         {
@@ -392,6 +412,23 @@ namespace HaCreator.MapSimulator
             int OffsetY = 0,
             string Source = null);
 
+        internal readonly record struct PacketOwnedTutorMessageLayerState(
+            TutorMessageKind MessageKind,
+            int SkillId,
+            int BoundCharacterId,
+            int MessageSequenceId,
+            int MessageIndex,
+            int DurationMs,
+            int LayerWidth,
+            int LayerHeight,
+            int SummonHeight,
+            int OffsetX,
+            int OffsetY,
+            string Source,
+            bool Repeats,
+            bool SayPlaybackRequested,
+            bool EmptyTextSkipped);
+
         internal sealed class ClassCompetitionRemotePagePayload
         {
             public string AuthKey { get; init; } = string.Empty;
@@ -469,6 +506,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private readonly HashSet<int> _packetOwnedTutorTrackedSummonObjectIds = new();
         private readonly Dictionary<int, int> _packetOwnedTutorSummonMessageSequenceIdsByObjectId = new();
+        private readonly Dictionary<long, PacketOwnedTutorMessageLayerState> _packetOwnedTutorMessageLayerStatesByVariant = new();
         private int _packetOwnedTutorObservedCharacterId;
         private int _packetOwnedTutorObservedLevel;
         private int _packetOwnedTutorObservedJobId;
@@ -5730,6 +5768,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.AccountMoreInfoPacketType:
                     return TryApplyPacketOwnedAccountMoreInfoPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.NewYearCardResultClientPacketType:
+                    return TryApplyNewYearCardResultPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.SetGenderPacketType:
                     return TryApplyPacketOwnedSetGenderPayload(payload, out message);
 
@@ -6901,7 +6942,8 @@ namespace HaCreator.MapSimulator
                             frame,
                             layer,
                             delay,
-                            out IDXObject layerFrame))
+                            out IDXObject layerFrame,
+                            out byte sourceLayerColorAlpha))
                     {
                         continue;
                     }
@@ -6913,7 +6955,8 @@ namespace HaCreator.MapSimulator
                         simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
                         simulatedLayerHandleRefCount: ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(layer, copiedLayerHandleRefCounts),
                         simulatedSnapshotLayerHandleId: NextPacketOwnedActiveEffectMotionBlurLayerHandleId(),
-                        simulatedRepeatAnimationStateId: NextPacketOwnedActiveEffectMotionBlurStateId());
+                        simulatedRepeatAnimationStateId: NextPacketOwnedActiveEffectMotionBlurStateId(),
+                        sourceLayerColorAlpha: sourceLayerColorAlpha);
                     frames.Add(layerFrame);
                 }
             }
@@ -6934,19 +6977,51 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        internal static byte ResolvePacketOwnedActiveEffectMotionBlurSourceLayerColorAlphaForTesting(
+            IReadOnlyList<AssembledPart> layerParts)
+        {
+            return ResolvePacketOwnedActiveEffectMotionBlurSourceLayerColorAlpha(layerParts);
+        }
+
+        private static byte ResolvePacketOwnedActiveEffectMotionBlurSourceLayerColorAlpha(
+            IReadOnlyList<AssembledPart> layerParts)
+        {
+            if (layerParts == null || layerParts.Count == 0)
+            {
+                return byte.MaxValue;
+            }
+
+            int sourceAlpha = byte.MaxValue;
+            for (int i = 0; i < layerParts.Count; i++)
+            {
+                AssembledPart part = layerParts[i];
+                if (part == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                sourceAlpha = Math.Min(sourceAlpha, part.Tint.A);
+            }
+
+            return (byte)Math.Clamp(sourceAlpha, 0, byte.MaxValue);
+        }
+
         private bool TryCreatePacketOwnedActiveEffectMotionBlurLayerFrame(
             AssembledFrame frame,
             AvatarRenderLayer layer,
             int frameDelayMs,
-            out IDXObject frameObject)
+            out IDXObject frameObject,
+            out byte sourceLayerColorAlpha)
         {
             frameObject = null;
+            sourceLayerColorAlpha = byte.MaxValue;
             IReadOnlyList<AssembledPart> layerParts = ResolvePacketOwnedActiveEffectMotionBlurLayerParts(frame, layer);
             if (layerParts == null || layerParts.Count == 0 || frame.Bounds.Width <= 0 || frame.Bounds.Height <= 0)
             {
                 return false;
             }
 
+            sourceLayerColorAlpha = ResolvePacketOwnedActiveEffectMotionBlurSourceLayerColorAlpha(layerParts);
             RenderTargetBinding[] previousTargets = GraphicsDevice.GetRenderTargets();
             Viewport previousViewport = GraphicsDevice.Viewport;
             var renderTarget = new RenderTarget2D(
@@ -14535,7 +14610,68 @@ namespace HaCreator.MapSimulator
                 (allocatePassiveTemporaryStatObject || canUpdatePassively)
                     && ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
                         recordPassiveTemporaryStatUpdate,
-                        allocatePassiveTemporaryStatObject));
+                        allocatePassiveTemporaryStatObject),
+                BuildPacketOwnedBattleshipTemporaryStatNativeOperationPlan(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    isVehiclePresentationActive,
+                    hasPassiveTemporaryStatObject,
+                    allocatePassiveTemporaryStatObject,
+                    canUpdatePassively,
+                    recordPassiveTemporaryStatUpdate));
+        }
+
+        internal static IReadOnlyList<PacketOwnedBattleshipTemporaryStatNativeOperation> BuildPacketOwnedBattleshipTemporaryStatNativeOperationPlan(
+            bool hasPassiveTemporaryStatTrackingOwner,
+            bool isVehiclePresentationActive,
+            bool hasPassiveTemporaryStatObject,
+            bool allocatePassiveTemporaryStatObject,
+            bool canUpdatePassively,
+            bool recordPassiveTemporaryStatUpdate)
+        {
+            List<PacketOwnedBattleshipTemporaryStatNativeOperation> operations = new();
+            if (!hasPassiveTemporaryStatTrackingOwner)
+            {
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.RequireVehicleTemporaryStatTrackingOwner));
+                return operations;
+            }
+
+            if (!isVehiclePresentationActive)
+            {
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.RequireRidingSkillVehicle));
+                return operations;
+            }
+
+            if (allocatePassiveTemporaryStatObject)
+            {
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.AllocateTemporaryStatObject));
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.AttachParentLayer));
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.AttachMainLayer,
+                    LayerOrdinal: 0));
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.AttachShadowLayer,
+                    LayerOrdinal: 1));
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.InitializeConstructorLeft));
+            }
+            else if (!hasPassiveTemporaryStatObject)
+            {
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.RequireVehicleTemporaryStatTrackingOwner));
+                return operations;
+            }
+
+            if (canUpdatePassively || recordPassiveTemporaryStatUpdate)
+            {
+                operations.Add(new PacketOwnedBattleshipTemporaryStatNativeOperation(
+                    PacketOwnedBattleshipTemporaryStatNativeOperationKind.UpdatePassively));
+            }
+
+            return operations;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -18098,6 +18234,57 @@ namespace HaCreator.MapSimulator
                     Math.Clamp(volumeScale, 0f, 1f),
                     loop: false,
                     suppressWhileActive: false,
+                    out _,
+                    out string playbackReason))
+            {
+                error = $"Packet-owned sound '{resolvedDescriptor}' was resolved but was not admitted by the shared CSoundMan playback plan ({playbackReason}).";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryPlayPacketOwnedWzSoundAt(
+            string descriptor,
+            string defaultImageName,
+            float startVolumeScale,
+            Vector2? listenerPosition,
+            Vector2 sourcePosition,
+            out string resolvedDescriptor,
+            out string error,
+            bool strictClientSoundFamily = false)
+        {
+            resolvedDescriptor = null;
+            error = null;
+
+            if (_soundManager == null)
+            {
+                error = "Sound manager is not available in this simulator build.";
+                return false;
+            }
+
+            if (!TryResolvePacketOwnedWzSound(
+                    descriptor,
+                    defaultImageName,
+                    out WzBinaryProperty soundProperty,
+                    out resolvedDescriptor,
+                    strictClientSoundFamily))
+            {
+                error = $"Packet-owned sound '{descriptor}' was not found in the loaded Sound/*.img data.";
+                return false;
+            }
+
+            string soundKey = $"PacketOwnedSound:{resolvedDescriptor}";
+            if (!_soundManager.TryPlayClientSoundEffectAt(
+                    soundKey,
+                    soundProperty,
+                    Math.Clamp(startVolumeScale, 0f, 1f),
+                    loop: false,
+                    suppressWhileActive: false,
+                    listenerX: listenerPosition?.X,
+                    listenerY: listenerPosition?.Y,
+                    sourceX: sourcePosition.X,
+                    sourceY: sourcePosition.Y,
                     out _,
                     out string playbackReason))
             {

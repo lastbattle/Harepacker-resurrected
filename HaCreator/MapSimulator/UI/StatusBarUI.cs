@@ -1083,11 +1083,26 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             int maxEntries = BUFF_TRAY_COLUMNS * BUFF_TRAY_ROWS;
-            int visibleCount = Math.Min(buffEntries.Count, maxEntries);
+            List<StatusBarBuffRenderData> visibleEntries = new List<StatusBarBuffRenderData>(maxEntries);
+            foreach (StatusBarBuffRenderData buffEntry in buffEntries)
+            {
+                if (!ShouldDrawStatusBarBuffEntryForClientParity(buffEntry))
+                {
+                    continue;
+                }
+
+                visibleEntries.Add(buffEntry);
+                if (visibleEntries.Count == maxEntries)
+                {
+                    break;
+                }
+            }
+
+            int visibleCount = visibleEntries.Count;
 
             for (int i = 0; i < visibleCount; i++)
             {
-                StatusBarBuffRenderData buffEntry = buffEntries[i];
+                StatusBarBuffRenderData buffEntry = visibleEntries[i];
                 int row = i / BUFF_TRAY_COLUMNS;
                 int col = i % BUFF_TRAY_COLUMNS;
                 int entriesInRow = Math.Min(BUFF_TRAY_COLUMNS, visibleCount - (row * BUFF_TRAY_COLUMNS));
@@ -1176,6 +1191,17 @@ namespace HaCreator.MapSimulator.UI {
                    && buffEntry.TemporaryStatViewMainLayerReferenceCount > 0
                    && buffEntry.TemporaryStatViewShadowLayerReferenceCount > 0
                    && buffEntry.ShadowCanvasReferenceCount > 0;
+        }
+
+        internal static bool ShouldDrawStatusBarBuffEntryForClientParity(StatusBarBuffRenderData buffEntry)
+        {
+            if (buffEntry == null)
+            {
+                return false;
+            }
+
+            return !buffEntry.UseTemporaryStatViewArtworkOnly
+                   || ShouldDrawTemporaryStatViewForParity(buffEntry);
         }
 
         private static bool TryResolveTemporaryStatViewShadowTextureForParity(

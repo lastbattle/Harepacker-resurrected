@@ -33,6 +33,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort FamilySetPreceptRequestOpcode = 176;
         internal const ushort ExpeditionInboundResultOpcode = 64;
         internal const ushort ExpeditionOutboundRequestOpcode = 147;
+        internal const ushort SocialListFriendResultOpcode = 65;
+        internal const ushort SocialListPartyResultOpcode = 62;
+        internal const ushort SocialListGuildResultOpcode = 67;
+        internal const ushort SocialListAllianceResultOpcode = 68;
+        internal const ushort SocialListBlacklistRequestOpcode = 144;
+        internal const ushort SocialListPartyRequestOpcode = 145;
+        internal const ushort SocialListGuildRequestOpcode = 149;
+        internal const ushort SocialListFriendRequestOpcode = 153;
+        internal const ushort SocialListAllianceRequestOpcode = 167;
 
         private static readonly ushort[] MessengerInboundOpcodeSet =
         {
@@ -74,6 +83,21 @@ namespace HaCreator.MapSimulator.Interaction
         };
         private static readonly ushort[] ExpeditionInboundOpcodeSet = { ExpeditionInboundResultOpcode };
         private static readonly ushort[] ExpeditionOutboundOpcodeSet = { ExpeditionOutboundRequestOpcode };
+        private static readonly ushort[] SocialListInboundOpcodeSet =
+        {
+            SocialListPartyResultOpcode,
+            SocialListFriendResultOpcode,
+            SocialListGuildResultOpcode,
+            SocialListAllianceResultOpcode
+        };
+        private static readonly ushort[] SocialListOutboundOpcodeSet =
+        {
+            SocialListBlacklistRequestOpcode,
+            SocialListPartyRequestOpcode,
+            SocialListGuildRequestOpcode,
+            SocialListFriendRequestOpcode,
+            SocialListAllianceRequestOpcode
+        };
 
         private static readonly IReadOnlyDictionary<byte, string> MessengerInboundSubtypeHandlers =
             new Dictionary<byte, string>
@@ -181,6 +205,75 @@ namespace HaCreator.MapSimulator.Interaction
                 [54] = "ExpeditionIntermediary change-master request",
                 [55] = "ExpeditionIntermediary change-party-boss request",
                 [56] = "ExpeditionIntermediary relocate-party request"
+            };
+
+        private static readonly IReadOnlyDictionary<ushort, string> SocialListInboundOpcodeHandlers =
+            new Dictionary<ushort, string>
+            {
+                [SocialListFriendResultOpcode] = "CWvsContext::OnFriendResult",
+                [SocialListPartyResultOpcode] = "CWvsContext::OnPartyResult",
+                [SocialListGuildResultOpcode] = "CWvsContext::OnGuildResult",
+                [SocialListAllianceResultOpcode] = "CWvsContext::OnAllianceResult"
+            };
+
+        private static readonly IReadOnlyDictionary<ushort, string> SocialListOutboundOpcodeHandlers =
+            new Dictionary<ushort, string>
+            {
+                [SocialListFriendRequestOpcode] = "friend-list request family",
+                [SocialListPartyRequestOpcode] = "party request family",
+                [SocialListGuildRequestOpcode] = "guild request family",
+                [SocialListAllianceRequestOpcode] = "alliance request family",
+                [SocialListBlacklistRequestOpcode] = "blacklist request family"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> SocialListFriendResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [(byte)SocialListClientFriendResultKind.Reset] = "CWvsContext::OnFriendResult reset roster",
+                [(byte)SocialListClientFriendResultKind.Update] = "CWvsContext::OnFriendResult update roster",
+                [(byte)SocialListClientFriendResultKind.Insert] = "CWvsContext::OnFriendResult insert friend",
+                [(byte)SocialListClientFriendResultKind.Refresh] = "CWvsContext::OnFriendResult refresh roster",
+                [(byte)SocialListClientFriendResultKind.Channel] = "CWvsContext::OnFriendResult channel update",
+                [(byte)SocialListClientFriendResultKind.Capacity] = "CWvsContext::OnFriendResult capacity update",
+                [(byte)SocialListClientFriendResultKind.ResetBlocked] = "CWvsContext::OnFriendResult blocked-list reset",
+                [(byte)SocialListClientFriendResultKind.NoticeInviteBlocked] = "CWvsContext::OnFriendResult notice",
+                [(byte)SocialListClientFriendResultKind.NoticeFailure] = "CWvsContext::OnFriendResult failure notice",
+                [(byte)SocialListClientFriendResultKind.NoticeRequestDenied] = "CWvsContext::OnFriendResult request denied"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> SocialListPartyResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [(byte)SocialListClientPartyResultKind.Invite] = "CWvsContext::OnPartyResult invite",
+                [(byte)SocialListClientPartyResultKind.Load] = "CWvsContext::OnPartyResult load roster",
+                [(byte)SocialListClientPartyResultKind.Create] = "CWvsContext::OnPartyResult create roster",
+                [(byte)SocialListClientPartyResultKind.Join] = "CWvsContext::OnPartyResult join roster",
+                [(byte)SocialListClientPartyResultKind.Refresh] = "CWvsContext::OnPartyResult refresh roster",
+                [(byte)SocialListClientPartyResultKind.LeaderChange] = "CWvsContext::OnPartyResult leader change",
+                [(byte)SocialListClientPartyResultKind.MemberJobLevel] = "CWvsContext::OnPartyResult member job/level",
+                [(byte)SocialListClientPartyResultKind.Notice9] = "CWvsContext::OnPartyResult notice",
+                [(byte)SocialListClientPartyResultKind.Notice10] = "CWvsContext::OnPartyResult notice"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> SocialListGuildResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [(byte)SocialListClientGuildResultKind.GuildInvite] = "CWvsContext::OnGuildResult invite",
+                [(byte)SocialListClientGuildResultKind.GuildDataSnapshot] = "CWvsContext::OnGuildResult guild snapshot",
+                [(byte)SocialListClientGuildResultKind.GradeChange] = "CWvsContext::OnGuildResult grade change",
+                [(byte)SocialListClientGuildResultKind.RankTitles] = "CWvsContext::OnGuildResult rank titles",
+                [(byte)SocialListClientGuildResultKind.Notice] = "CWvsContext::OnGuildResult notice text",
+                [(byte)SocialListClientGuildResultKind.Mark] = "CWvsContext::OnGuildResult guild mark",
+                [(byte)SocialListClientGuildResultKind.PointsAndLevel] = "CWvsContext::OnGuildResult points/level",
+                [(byte)SocialListClientGuildResultKind.ResultNotice] = "CWvsContext::OnGuildResult result notice"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> SocialListAllianceResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [(byte)SocialListClientAllianceResultKind.RankTitles] = "CWvsContext::OnAllianceResult rank titles",
+                [(byte)SocialListClientAllianceResultKind.GradeChange] = "CWvsContext::OnAllianceResult grade change",
+                [(byte)SocialListClientAllianceResultKind.Notice] = "CWvsContext::OnAllianceResult notice text"
             };
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerInboundSubtypeHandlers()
@@ -388,6 +481,36 @@ namespace HaCreator.MapSimulator.Interaction
             return DescribeMessengerRecoveredPacketTable();
         }
 
+        internal static string DescribeRecoveredOwnerEvidence(string ownerName)
+        {
+            if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                return "MapleTV owner evidence: WZ UI/UIWindow.img/MapleTV; IDA CMapleTVMan::OnPacket 0x60fe10 -> 405/406/407.";
+            }
+
+            if (string.Equals(ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Messenger owner evidence: WZ UI/UIWindow.img/Messenger and UI/UIWindow2.img/Messenger; IDA CUIMessenger::OnPacket 0x7f5e40 -> subtypes 0-8, with subtype 3 handled before the singleton gate.";
+            }
+
+            if (string.Equals(ownerName, "Merchant", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Merchant owner evidence: IDA CPersonalShopDlg::OnPacket and CEntrustedShopDlg::OnPacket share opcode 373 result ownership.";
+            }
+
+            if (string.Equals(ownerName, "Expedition", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Expedition owner evidence: IDA CWvsContext::OnExpedtionResult forwards opcode 64 results into ExpeditionIntermediary::OnPacket.";
+            }
+
+            if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Family owner evidence: IDA family result owners route local chart, info, result, and privilege packets through CWvsContext/CUIFamily seams.";
+            }
+
+            return "Packet-owned social utility owner evidence unavailable.";
+        }
+
         internal static string DescribeMessengerRecoveredPacketTable()
         {
             string inboundSet = string.Join("/", MessengerInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
@@ -397,7 +520,7 @@ namespace HaCreator.MapSimulator.Interaction
             string outboundSubtypes = string.Join(
                 ", ",
                 MessengerOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
-            return $"Recovered Messenger packet table: inbound opcode {MessengerInboundOpcode} to CUIMessenger::OnPacket (subtypes {inboundSubtypes}); subtype 3 is the static invite branch that runs before the CUIMessenger singleton/window gate, while subtypes 0/1/2/4/5/6/7/8 dispatch on the live Messenger instance; claim-result opcode {MessengerClaimResultOpcode} to CWvsContext::OnClaimResult, claim-server time opcode {MessengerClaimServerAvailableTimeOpcode}, claim-server status opcode {MessengerClaimServerStatusChangedOpcode}; inbound opcode set {inboundSet}; outbound opcode {MessengerOutboundOpcode} (subtypes {outboundSubtypes}); claim-request opcode {MessengerClaimRequestOpcode} via CWvsContext::SendClaimRequest.";
+            return $"{DescribeRecoveredOwnerEvidence("Messenger")} Recovered Messenger packet table: inbound opcode {MessengerInboundOpcode} to CUIMessenger::OnPacket (subtypes {inboundSubtypes}); subtype 3 is the static invite branch that runs before the CUIMessenger singleton/window gate, while subtypes 0/1/2/4/5/6/7/8 dispatch on the live Messenger instance; claim-result opcode {MessengerClaimResultOpcode} to CWvsContext::OnClaimResult, claim-server time opcode {MessengerClaimServerAvailableTimeOpcode}, claim-server status opcode {MessengerClaimServerStatusChangedOpcode}; inbound opcode set {inboundSet}; outbound opcode {MessengerOutboundOpcode} (subtypes {outboundSubtypes}); claim-request opcode {MessengerClaimRequestOpcode} via CWvsContext::SendClaimRequest.";
         }
 
         internal static string DescribeMapleTvRecoveredPacketTable()
@@ -409,7 +532,7 @@ namespace HaCreator.MapSimulator.Interaction
             string resultCodes = string.Join(
                 ", ",
                 MapleTvSendResultHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
-            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket ({inboundBranches}; feedback result codes {resultCodes}); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
+            return $"{DescribeRecoveredOwnerEvidence("MapleTV")} Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket ({inboundBranches}; feedback result codes {resultCodes}); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
         }
 
         internal static string DescribeMerchantRecoveredPacketTable()

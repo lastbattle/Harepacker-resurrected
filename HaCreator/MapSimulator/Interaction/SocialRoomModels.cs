@@ -308,6 +308,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private static readonly Dictionary<string, string> EmployeeNpcFuncHeadlineCache = new(StringComparer.Ordinal);
         private const int MiniRoomOmokBoardSize = 15;
+        private const int ClientMiniGameRecordByteLength = 0x14;
         private const int TradingRoomClientItemSlotCount = 9;
         private const byte TradingRoomPutItemPacketType = 15;
         private const byte TradingRoomPutMoneyPacketType = 16;
@@ -445,6 +446,30 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly record struct MerchantShopRowRefresh(byte PacketSlotIndex, int ItemId, int BundleQuantity, int BundlePrice, string DecodeShape, PacketOwnedTradeItem? PacketItem);
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
+        public sealed class MiniGameRecord
+        {
+            public MiniGameRecord(int slot, int wins, int draws, int losses, int score, int grade, byte[] rawBytes)
+            {
+                Slot = Math.Max(0, slot);
+                Wins = wins;
+                Draws = draws;
+                Losses = losses;
+                Score = score;
+                Grade = grade;
+                RawBytes = rawBytes == null ? Array.Empty<byte>() : (byte[])rawBytes.Clone();
+            }
+
+            public int Slot { get; }
+            public int Wins { get; }
+            public int Draws { get; }
+            public int Losses { get; }
+            public int Score { get; }
+            public int Grade { get; }
+            public byte[] RawBytes { get; }
+            public int TotalGames => Math.Max(0, Wins) + Math.Max(0, Draws) + Math.Max(0, Losses);
+            public int WinRatePercent => TotalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, Wins) * 100d / TotalGames);
+        }
+
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
         private readonly record struct MiniRoomNestedEnvelopeDispatchResult(
             bool Handled,
@@ -476,6 +501,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<SocialRoomOccupant> _defaultOccupants;
         private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
         private readonly List<OmokMoveHistoryEntry> _miniRoomOmokMoveHistory;
+        private readonly Dictionary<int, MiniGameRecord> _miniRoomOmokRecords;
         private readonly List<TradeVerificationEntry> _tradeLocalVerificationEntries;
         private readonly List<TradeVerificationEntry> _tradeRemoteVerificationEntries;
         private readonly SocialRoomRuntimeSnapshot _defaultSnapshot;
@@ -597,6 +623,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? new List<SocialRoomOccupant>();
             _defaultRemoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
             _miniRoomOmokMoveHistory = new List<OmokMoveHistoryEntry>();
+            _miniRoomOmokRecords = new Dictionary<int, MiniGameRecord>();
             _tradeLocalVerificationEntries = new List<TradeVerificationEntry>();
             _tradeRemoteVerificationEntries = new List<TradeVerificationEntry>();
             _miniRoomLocalSeatIndex = 0;
@@ -687,6 +714,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
         public string MiniRoomOmokLastOutboundPacketHex => _miniRoomOmokLastOutboundPacketHex;
+        public IReadOnlyDictionary<int, MiniGameRecord> MiniRoomOmokRecords => _miniRoomOmokRecords;
         public bool IsMiniRoomOmokLocalTurn => IsMiniRoomOmokActive && _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
         public bool MiniRoomOmokReadyButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex != 0;
         public bool MiniRoomOmokBanButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0;
@@ -800,6 +828,19 @@ namespace HaCreator.MapSimulator.Interaction
                         Y = move.Y,
                         StoneValue = move.StoneValue,
                         SeatIndex = move.SeatIndex
+                    })
+                    .ToList(),
+                MiniRoomOmokRecords = _miniRoomOmokRecords.Values
+                    .OrderBy(record => record.Slot)
+                    .Select(record => new SocialRoomMiniGameRecordSnapshot
+                    {
+                        Slot = record.Slot,
+                        Wins = record.Wins,
+                        Draws = record.Draws,
+                        Losses = record.Losses,
+                        Score = record.Score,
+                        Grade = record.Grade,
+                        RawBytes = (byte[])record.RawBytes.Clone()
                     })
                     .ToList(),
                 TradeLocalOfferMeso = _tradeLocalOfferMeso,
@@ -1110,6 +1151,27 @@ namespace HaCreator.MapSimulator.Interaction
                         move.Y,
                         NormalizeOmokStoneValue(move.StoneValue, fallback: ResolveOmokStoneValueForSeat(move.SeatIndex)),
                         Math.Clamp(move.SeatIndex, 0, 1)));
+                }
+
+                _miniRoomOmokRecords.Clear();
+                IEnumerable<SocialRoomMiniGameRecordSnapshot> miniGameRecords = source?.MiniRoomOmokRecords?.Count > 0
+                    ? source.MiniRoomOmokRecords
+                    : _defaultSnapshot.MiniRoomOmokRecords;
+                foreach (SocialRoomMiniGameRecordSnapshot record in miniGameRecords ?? Enumerable.Empty<SocialRoomMiniGameRecordSnapshot>())
+                {
+                    if (record == null || record.Slot < 0 || record.Slot > 1)
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokRecords[record.Slot] = new MiniGameRecord(
+                        record.Slot,
+                        record.Wins,
+                        record.Draws,
+                        record.Losses,
+                        record.Score,
+                        record.Grade,
+                        record.RawBytes);
                 }
 
                 _tradeLocalVerificationEntries.Clear();
@@ -2072,6 +2134,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     int resultType = reader.ReadByte();
                     int winnerSeat = resultType == 1 ? -1 : reader.ReadByte();
+                    if (!TryDecodeOmokGameResultRecords(reader, out string recordMessage))
+                    {
+                        message = recordMessage;
+                        return false;
+                    }
+
                     ApplyOmokGameResultPacket(resultType, winnerSeat);
                     message = StatusMessage;
                     return true;
@@ -2102,7 +2170,19 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    return TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
+                {
+                    byte[] payload = reader.ReadBytes(reader.Remaining);
+                    if (TryApplyMerchantShopFullRefreshPacket(
+                        payload,
+                        "direct CPersonalShopDlg::OnPacket packet 25 OnRefresh payload",
+                        out message))
+                    {
+                        return true;
+                    }
+
+                    PacketReader baseReader = new(payload);
+                    return TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+                }
                 default:
                     return FailPacket(packetType, out message);
             }
@@ -4462,7 +4542,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop &&
-                TryApplyMerchantShopFullRefreshPacket(nestedPayload, out string fullRefreshMessage))
+                TryApplyMerchantShopFullRefreshPacket(
+                    nestedPayload,
+                    "CMiniRoomBaseDlg::OnPacketBase subtype 6",
+                    out string fullRefreshMessage))
             {
                 string fullRefreshPayloadPreview = BuildPacketHexPreview(nestedPayload);
                 string fullRefreshDetail = $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded direct CPersonalShopDlg::OnRefresh item-array payload into {_shopDialogPacketOwner?.OwnerName ?? "CPersonalShopDlg"}. {fullRefreshMessage} | payload={fullRefreshPayloadPreview} | bytes={nestedPayload.Length}";
@@ -6614,6 +6697,80 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
         }
 
+        private bool TryDecodeOmokGameResultRecords(PacketReader reader, out string message)
+        {
+            message = string.Empty;
+            if (reader.Remaining == 0)
+            {
+                return true;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength * 2)
+            {
+                message = $"COmokDlg::OnGameResult expected two GW_MiniGameRecord rows ({ClientMiniGameRecordByteLength * 2} bytes), but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            if (!TryDecodeMiniGameRecord(reader, 0, out MiniGameRecord firstRecord, out message)
+                || !TryDecodeMiniGameRecord(reader, 1, out MiniGameRecord secondRecord, out message))
+            {
+                return false;
+            }
+
+            ApplyMiniGameRecord(firstRecord);
+            ApplyMiniGameRecord(secondRecord);
+            if (reader.Remaining > 0)
+            {
+                message = $"COmokDlg::OnGameResult decoded two GW_MiniGameRecord rows and ignored {reader.Remaining} trailing byte(s).";
+            }
+
+            return true;
+        }
+
+        private bool TryDecodeMiniGameRecord(PacketReader reader, int slot, out MiniGameRecord record, out string message)
+        {
+            record = null;
+            if (slot < 0)
+            {
+                message = $"MiniGame record used invalid slot {slot}.";
+                return false;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            byte[] rawBytes = reader.ReadBytes(ClientMiniGameRecordByteLength);
+            if (rawBytes.Length != ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but decoded {rawBytes.Length} byte(s).";
+                return false;
+            }
+
+            record = new MiniGameRecord(
+                slot,
+                BitConverter.ToInt32(rawBytes, 0),
+                BitConverter.ToInt32(rawBytes, 4),
+                BitConverter.ToInt32(rawBytes, 8),
+                BitConverter.ToInt32(rawBytes, 12),
+                BitConverter.ToInt32(rawBytes, 16),
+                rawBytes);
+            message = string.Empty;
+            return true;
+        }
+
+        private void ApplyMiniGameRecord(MiniGameRecord record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            _miniRoomOmokRecords[record.Slot] = record;
+        }
+
         private void ApplyOmokGameResultPacket(int resultType, int winnerSeat)
         {
             _miniRoomOmokInProgress = false;
@@ -6800,7 +6957,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryApplyMerchantShopFullRefreshPacket(byte[] payload, out string message)
+        private bool TryApplyMerchantShopFullRefreshPacket(byte[] payload, string refreshOwner, out string message)
         {
             int? refreshedEntrustedMoney = null;
             byte[] refreshPayload = payload;
@@ -6863,9 +7020,12 @@ namespace HaCreator.MapSimulator.Interaction
             _notes[1] = rows.Count == 0
                 ? "The server refresh cleared every client-visible merchant row."
                 : $"First refreshed row: {ResolveItemName(rows[0].Item.ItemId)} x{Math.Max(1, (int)rows[0].Number)} for {Math.Max(0, rows[0].Price):N0} meso.";
+            string ownerLabel = string.IsNullOrWhiteSpace(refreshOwner)
+                ? "CPersonalShopDlg::OnRefresh"
+                : refreshOwner;
             StatusMessage = refreshedEntrustedMoney.HasValue
-                ? $"CEntrustedShopDlg::OnRefresh applied leading m_nMoney {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase."
-                : $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
+                ? $"CEntrustedShopDlg::OnRefresh applied leading m_nMoney {MesoAmount:N0}, then CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from {ownerLabel}: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase."
+                : $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from {ownerLabel}: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -11116,7 +11276,10 @@ namespace HaCreator.MapSimulator.Interaction
                     : _miniRoomOmokInProgress
                         ? "Waiting"
                         : "Ready";
-            return $"{seatLabel} | {stoneName} stones | {state}";
+            string recordSummary = _miniRoomOmokRecords.TryGetValue(playerIndex, out MiniGameRecord record)
+                ? $" | W/D/L {record.Wins}/{record.Draws}/{record.Losses} | Rate {record.WinRatePercent}% | Score {record.Score} | Grade {record.Grade}"
+                : string.Empty;
+            return $"{seatLabel} | {stoneName} stones | {state}{recordSummary}";
         }
 
         private string ResolveMiniRoomSeatName(int index)

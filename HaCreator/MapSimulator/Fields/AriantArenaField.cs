@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AriantArenaScoreEntry> _entries = new();
         private readonly List<IDXObject> _resultFrames = new();
         private readonly List<IDXObject> _rankIcons = new();
+        private readonly List<AriantArenaScoreLayerOperation> _scoreLayerOperations = new();
         private GraphicsDevice _graphicsDevice;
         private bool _assetsLoaded;
         private bool _isActive;
@@ -129,6 +130,7 @@ namespace HaCreator.MapSimulator.Fields
         internal int ResultFrameIndexForTesting => _resultFrameIndex;
         internal int ScoreLayerHandleIdForTesting => _scoreLayerHandleId;
         internal int ResultLayerHandleIdForTesting => _resultLayerHandleId;
+        internal IReadOnlyList<AriantArenaScoreLayerOperation> ScoreLayerOperationsForTesting => _scoreLayerOperations;
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -159,6 +161,7 @@ namespace HaCreator.MapSimulator.Fields
             _nextSimulatedLayerHandleId = 1;
             _lastResultMessage = null;
             _lastPacketType = null;
+            _scoreLayerOperations.Clear();
             ClearRemoteParticipants();
             EnsureAssetsLoaded();
         }
@@ -317,6 +320,7 @@ namespace HaCreator.MapSimulator.Fields
             _scoreRefreshSerial++;
             _scoreCanvasMutationSerial++;
             EnsureScoreLayerHandle();
+            RebuildScoreLayerCanvasTrace();
             MarkRemoteNameTagsRedrawnForScoreRefresh();
             _showScoreboard = true;
             _showResult = false;
@@ -330,6 +334,7 @@ namespace HaCreator.MapSimulator.Fields
             EnsureAssetsLoaded();
             _showScoreboard = false;
             _showResult = _resultFrames.Count > 0;
+            ReleaseScoreLayerHandle();
             _scoreLayerHandleId = 0;
             _resultLayerHandleId = _showResult ? AllocateSimulatedLayerHandle() : 0;
             _resultFrameIndex = 0;
@@ -369,6 +374,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultLayerHandleId = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
+            _scoreLayerOperations.Clear();
         }
         public void UpsertRemoteParticipant(CharacterBuild build, Vector2 position, bool facingRight = true, string actionName = null, int? characterId = null)
         {
@@ -554,6 +560,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultMessage = null;
             _localPlayerName = null;
             _lastPacketType = null;
+            _scoreLayerOperations.Clear();
             ClearRemoteParticipants();
         }
         public string DescribeStatus()
@@ -670,15 +677,76 @@ namespace HaCreator.MapSimulator.Fields
             if (_scoreLayerHandleId <= 0)
             {
                 _scoreLayerHandleId = AllocateSimulatedLayerHandle();
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.CreateLayer(
+                    _scoreLayerHandleId,
+                    ScoreLayerWidth,
+                    ScoreLayerHeight,
+                    ScoreLayerScreenX,
+                    ScoreLayerScreenY,
+                    z: -1));
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.AttachOriginLt(_scoreLayerHandleId));
             }
+        }
+        private void ReleaseScoreLayerHandle()
+        {
+            if (_scoreLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.ReleaseLayer(_scoreLayerHandleId));
         }
         private int AllocateSimulatedLayerHandle()
         {
             return _nextSimulatedLayerHandleId++;
         }
+        private void RebuildScoreLayerCanvasTrace()
+        {
+            if (_scoreLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.CreateCanvas(
+                _scoreLayerHandleId,
+                ScoreLayerWidth,
+                ScoreLayerHeight,
+                _scoreCanvasMutationSerial));
+            int rowCount = ResolveVisibleScoreRowCount(_entries.Count);
+            for (int i = 0; i < rowCount; i++)
+            {
+                AriantArenaScoreEntry entry = _entries[i];
+                int iconY = FirstIconY + (i * RowSpacing);
+                int textY = FirstTextY + (i * RowSpacing);
+                if (entry.IconIndex >= 0 && entry.IconIndex < MaxRankEntries)
+                {
+                    _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.InsertRankIcon(
+                        _scoreLayerHandleId,
+                        i,
+                        entry.IconIndex,
+                        IconX,
+                        iconY));
+                }
+
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.DrawNameText(
+                    _scoreLayerHandleId,
+                    i,
+                    entry.Name,
+                    NameX,
+                    textY));
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.DrawScoreText(
+                    _scoreLayerHandleId,
+                    i,
+                    FormatScoreText(entry.Score),
+                    ScoreX,
+                    textY));
+            }
+        }
         private void MarkRemoteNameTagsRedrawnForScoreRefresh()
         {
             _remoteUserPool?.MarkNameTagsRedrawnForClientScoreRefresh();
+            _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.RedrawRemoteNameTags(_scoreLayerHandleId));
+            _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.RedrawLocalNameTag(_scoreLayerHandleId));
         }
         private static string FormatScoreText(int score)
         {
@@ -1417,5 +1485,199 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct AriantArenaScoreEntry(string Name, int Score, int IconIndex = -1);
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     public readonly record struct AriantArenaRemoteParticipantSnapshot(string Name, Vector2 Position, bool FacingRight, string ActionName);
+    public enum AriantArenaScoreLayerOperationKind
+    {
+        CreateLayer,
+        AttachOriginLt,
+        CreateCanvas,
+        InsertRankIcon,
+        DrawNameText,
+        DrawScoreText,
+        RedrawRemoteNameTags,
+        RedrawLocalNameTag,
+        ReleaseLayer
+    }
+    public readonly record struct AriantArenaScoreLayerOperation(
+        AriantArenaScoreLayerOperationKind Kind,
+        int LayerHandleId,
+        int Width,
+        int Height,
+        int X,
+        int Y,
+        int Z,
+        int RowIndex,
+        int IconIndex,
+        string Text,
+        int MutationSerial)
+    {
+        public static AriantArenaScoreLayerOperation CreateLayer(
+            int layerHandleId,
+            int width,
+            int height,
+            int x,
+            int y,
+            int z)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.CreateLayer,
+                layerHandleId,
+                width,
+                height,
+                x,
+                y,
+                z,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation AttachOriginLt(int layerHandleId)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.AttachOriginLt,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation CreateCanvas(
+            int layerHandleId,
+            int width,
+            int height,
+            int mutationSerial)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.CreateCanvas,
+                layerHandleId,
+                width,
+                height,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                mutationSerial);
+        }
+
+        public static AriantArenaScoreLayerOperation InsertRankIcon(
+            int layerHandleId,
+            int rowIndex,
+            int iconIndex,
+            int x,
+            int y)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.InsertRankIcon,
+                layerHandleId,
+                0,
+                0,
+                x,
+                y,
+                0,
+                rowIndex,
+                iconIndex,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation DrawNameText(
+            int layerHandleId,
+            int rowIndex,
+            string text,
+            int x,
+            int y)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.DrawNameText,
+                layerHandleId,
+                0,
+                0,
+                x,
+                y,
+                0,
+                rowIndex,
+                -1,
+                text ?? string.Empty,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation DrawScoreText(
+            int layerHandleId,
+            int rowIndex,
+            string text,
+            int x,
+            int y)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.DrawScoreText,
+                layerHandleId,
+                0,
+                0,
+                x,
+                y,
+                0,
+                rowIndex,
+                -1,
+                text ?? string.Empty,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation RedrawRemoteNameTags(int layerHandleId)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.RedrawRemoteNameTags,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation RedrawLocalNameTag(int layerHandleId)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.RedrawLocalNameTag,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation ReleaseLayer(int layerHandleId)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.ReleaseLayer,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+    }
     #endregion
 }

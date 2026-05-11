@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Rendering
 {
@@ -42,6 +43,54 @@ namespace HaCreator.MapSimulator.Rendering
             using Graphics graphics = Graphics.FromImage(destination);
             ApplySettings(graphics);
             graphics.DrawImageUnscaled(source, x, y);
+        }
+
+        internal static Color[] CopyAlpha255PixelsForTesting(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            Color[] sourcePixels,
+            int sourceWidth,
+            int sourceHeight,
+            int x,
+            int y)
+        {
+            if (destinationPixels == null ||
+                sourcePixels == null ||
+                destinationWidth <= 0 ||
+                destinationHeight <= 0 ||
+                sourceWidth <= 0 ||
+                sourceHeight <= 0 ||
+                destinationPixels.Length < destinationWidth * destinationHeight ||
+                sourcePixels.Length < sourceWidth * sourceHeight)
+            {
+                return Array.Empty<Color>();
+            }
+
+            Color[] result = destinationPixels.Take(destinationWidth * destinationHeight).ToArray();
+            for (int sourceY = 0; sourceY < sourceHeight; sourceY++)
+            {
+                int destinationY = y + sourceY;
+                if (destinationY < 0 || destinationY >= destinationHeight)
+                {
+                    continue;
+                }
+
+                for (int sourceX = 0; sourceX < sourceWidth; sourceX++)
+                {
+                    int destinationX = x + sourceX;
+                    if (destinationX < 0 || destinationX >= destinationWidth)
+                    {
+                        continue;
+                    }
+
+                    int destinationIndex = destinationY * destinationWidth + destinationX;
+                    int sourceIndex = sourceY * sourceWidth + sourceX;
+                    result[destinationIndex] = BlendAlpha255(result[destinationIndex], sourcePixels[sourceIndex]);
+                }
+            }
+
+            return result;
         }
 
         internal static Color BlendAlpha255(Color destination, Color source)

@@ -128,6 +128,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>map|filter|flatMap|flat)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ArrayReduceAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reduce\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayFactoryAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Array\s*\.\s*(?<method>of|from)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -944,6 +948,21 @@ namespace HaCreator.MapSimulator.Fields
                 CopyObjectValuesAsArrayMemberAliases(targetMemberAliasMap, sourceEntriesMap);
             }
 
+            foreach ((string TargetName, string SourceName) entriesAssignment in EnumerateObjectEntriesAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(entriesAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(entriesAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(entriesAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    entriesAssignment.TargetName);
+                CopyObjectMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
+            }
+
             foreach ((string TargetName, string SourceName, IReadOnlyList<string> Arguments) concatAssignment in EnumerateArrayConcatAliasAssignments(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(concatAssignment.TargetName)
@@ -993,6 +1012,40 @@ namespace HaCreator.MapSimulator.Fields
                     objectMemberAliasMap,
                     transformAssignment.TargetName);
                 if (!transformAssignment.TargetName.Equals(transformAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
+                }
+            }
+
+            foreach ((string TargetName, string SourceName, IReadOnlyList<string> Arguments) reduceAssignment in EnumerateArrayReduceAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(reduceAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(reduceAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(reduceAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    reduceAssignment.TargetName);
+
+                if (IsRecoverableStaticArrayReduceToObject(reduceAssignment.Arguments))
+                {
+                    if (!reduceAssignment.TargetName.Equals(reduceAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        CopyObjectMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
+                    }
+
+                    continue;
+                }
+
+                if (!IsRecoverableStaticArrayReduceToArray(reduceAssignment.Arguments))
+                {
+                    continue;
+                }
+
+                if (!reduceAssignment.TargetName.Equals(reduceAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
                 {
                     CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
                 }
@@ -2020,6 +2073,47 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static IEnumerable<(string TargetName, string SourceName)> EnumerateObjectEntriesAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ObjectEntriesMapAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName))
+                {
+                    continue;
+                }
+
+                int entriesOpenIndex = value.IndexOf('(', match.Index);
+                if (entriesOpenIndex < 0)
+                {
+                    continue;
+                }
+
+                int entriesCloseIndex = FindMatchingCloseParenthesis(value, entriesOpenIndex);
+                if (entriesCloseIndex <= entriesOpenIndex || SkipWhitespace(value, entriesCloseIndex + 1) >= 0)
+                {
+                    continue;
+                }
+
+                var entriesArguments = new List<string>(SplitFunctionArguments(value[(entriesOpenIndex + 1)..entriesCloseIndex]));
+                if (entriesArguments.Count != 1)
+                {
+                    continue;
+                }
+
+                string sourceName = NormalizeFunctionAliasArgument(entriesArguments[0]).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(sourceName))
+                {
+                    yield return (targetName, sourceName);
+                }
+            }
+        }
+
         private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayStaticTransformAliasAssignments(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -2056,6 +2150,38 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     yield return (targetName, sourceName, methodName);
                 }
+            }
+        }
+
+        private static IEnumerable<(string TargetName, string SourceName, IReadOnlyList<string> Arguments)> EnumerateArrayReduceAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ArrayReduceAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName) || !IsPotentialFunctionAliasName(sourceName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                yield return (targetName, sourceName, new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex])));
             }
         }
 
@@ -2119,6 +2245,222 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryResolveIdentityCallback(callback);
+        }
+
+        private static bool IsRecoverableStaticArrayReduceToArray(IReadOnlyList<string> arguments)
+        {
+            if (arguments == null || arguments.Count < 2)
+            {
+                return false;
+            }
+
+            string initialValue = StripOuterBalancedParentheses(arguments[1]?.Trim());
+            if (!initialValue.Equals("[]", StringComparison.Ordinal)
+                && !initialValue.Equals("Array()", StringComparison.OrdinalIgnoreCase)
+                && !initialValue.Equals("new Array()", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return TryResolveArrayReducePushIdentityCallback(arguments[0]);
+        }
+
+        private static bool IsRecoverableStaticArrayReduceToObject(IReadOnlyList<string> arguments)
+        {
+            if (arguments == null || arguments.Count < 2)
+            {
+                return false;
+            }
+
+            string initialValue = StripOuterBalancedParentheses(arguments[1]?.Trim());
+            return initialValue.Equals("{}", StringComparison.Ordinal)
+                && TryResolveObjectReduceAssignIdentityCallback(arguments[0]);
+        }
+
+        private static bool TryResolveArrayReducePushIdentityCallback(string callback)
+        {
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression)
+                && TryResolveArrayReducePushIdentityCallbackFromParts(parameterText, bodyExpression, normalizedCallback))
+            {
+                return true;
+            }
+
+            return TryParseTwoParameterFunctionCallback(normalizedCallback, out parameterText, out string bodyText)
+                && TryResolveArrayReducePushIdentityCallbackFromParts(parameterText, bodyText, bodyText);
+        }
+
+        private static bool TryResolveObjectReduceAssignIdentityCallback(string callback)
+        {
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression)
+                && TryResolveObjectReduceAssignIdentityCallbackFromParts(parameterText, bodyExpression, normalizedCallback))
+            {
+                return true;
+            }
+
+            return TryParseTwoParameterFunctionCallback(normalizedCallback, out parameterText, out string bodyText)
+                && TryResolveObjectReduceAssignIdentityCallbackFromParts(parameterText, bodyText, bodyText);
+        }
+
+        private static bool TryResolveArrayReducePushIdentityCallbackFromParts(
+            string parameterText,
+            string bodyExpression,
+            string callbackBodyText)
+        {
+            IReadOnlyList<string> parameters = SplitTopLevelByComma(
+                StripOuterBalancedParentheses(parameterText?.Trim()));
+            if (parameters.Count < 2)
+            {
+                return false;
+            }
+
+            string accumulatorName = NormalizeFunctionAliasArgument(parameters[0]).TrimEnd(';');
+            string itemName = NormalizeFunctionAliasArgument(parameters[1]).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(accumulatorName) || !IsPotentialFunctionAliasName(itemName))
+            {
+                return false;
+            }
+
+            return ReducerBodyPushesItemAndReturnsAccumulator(
+                accumulatorName,
+                itemName,
+                bodyExpression,
+                callbackBodyText);
+        }
+
+        private static bool TryResolveObjectReduceAssignIdentityCallbackFromParts(
+            string parameterText,
+            string bodyExpression,
+            string callbackBodyText)
+        {
+            IReadOnlyList<string> parameters = SplitTopLevelByComma(
+                StripOuterBalancedParentheses(parameterText?.Trim()));
+            if (parameters.Count < 2)
+            {
+                return false;
+            }
+
+            string accumulatorName = NormalizeFunctionAliasArgument(parameters[0]).TrimEnd(';');
+            string entryParameter = StripOuterBalancedParentheses(parameters[1]?.Trim());
+            if (!IsPotentialFunctionAliasName(accumulatorName) || string.IsNullOrWhiteSpace(entryParameter))
+            {
+                return false;
+            }
+
+            return ReducerBodyReturnsAccumulator(accumulatorName, bodyExpression, callbackBodyText)
+                && ReducerBodyContainsEntryObjectAssignment(accumulatorName, entryParameter, callbackBodyText);
+        }
+
+        private static bool ReducerBodyPushesItemAndReturnsAccumulator(
+            string accumulatorName,
+            string itemName,
+            string bodyExpression,
+            string callbackBodyText)
+        {
+            return ReducerBodyReturnsAccumulator(accumulatorName, bodyExpression, callbackBodyText)
+                && ReducerBodyContainsAccumulatorPush(accumulatorName, itemName, callbackBodyText);
+        }
+
+        private static bool ReducerBodyReturnsAccumulator(
+            string accumulatorName,
+            string bodyExpression,
+            string callbackBodyText)
+        {
+            string normalizedBody = StripOuterBalancedParentheses(bodyExpression?.Trim()).TrimEnd(';');
+            bool returnsAccumulator = NormalizeFunctionAliasArgument(normalizedBody)
+                .Equals(accumulatorName, StringComparison.OrdinalIgnoreCase);
+            foreach (string sequenceTail in EnumerateSequenceExpressionTailCandidates(normalizedBody))
+            {
+                if (NormalizeFunctionAliasArgument(sequenceTail).TrimEnd(';')
+                    .Equals(accumulatorName, StringComparison.OrdinalIgnoreCase))
+                {
+                    returnsAccumulator = true;
+                    break;
+                }
+            }
+
+            if (!returnsAccumulator)
+            {
+                foreach (string returnExpression in EnumerateFunctionReturnExpressions(callbackBodyText))
+                {
+                    if (NormalizeFunctionAliasArgument(returnExpression).TrimEnd(';')
+                        .Equals(accumulatorName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        returnsAccumulator = true;
+                        break;
+                    }
+                }
+            }
+
+            return returnsAccumulator;
+        }
+
+        private static bool ReducerBodyContainsAccumulatorPush(
+            string accumulatorName,
+            string itemName,
+            string callbackBodyText)
+        {
+            if (string.IsNullOrWhiteSpace(accumulatorName)
+                || string.IsNullOrWhiteSpace(itemName)
+                || string.IsNullOrWhiteSpace(callbackBodyText))
+            {
+                return false;
+            }
+
+            string pattern = $@"\b{Regex.Escape(accumulatorName)}\s*\.\s*push\s*\(\s*{Regex.Escape(itemName)}\s*\)";
+            return Regex.IsMatch(callbackBodyText, pattern, RegexOptions.CultureInvariant);
+        }
+
+        private static bool ReducerBodyContainsEntryObjectAssignment(
+            string accumulatorName,
+            string entryParameter,
+            string callbackBodyText)
+        {
+            if (string.IsNullOrWhiteSpace(accumulatorName)
+                || string.IsNullOrWhiteSpace(entryParameter)
+                || string.IsNullOrWhiteSpace(callbackBodyText))
+            {
+                return false;
+            }
+
+            if (entryParameter.Length >= 2 && entryParameter[0] == '[' && entryParameter[^1] == ']')
+            {
+                IReadOnlyList<string> names = SplitTopLevelByComma(entryParameter[1..^1]);
+                if (names.Count < 2)
+                {
+                    return false;
+                }
+
+                string keyName = NormalizeFunctionAliasArgument(names[0]).TrimEnd(';');
+                string valueName = NormalizeFunctionAliasArgument(names[1]).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(keyName) || !IsPotentialFunctionAliasName(valueName))
+                {
+                    return false;
+                }
+
+                string destructuredPattern = $@"\b{Regex.Escape(accumulatorName)}\s*\[\s*{Regex.Escape(keyName)}\s*\]\s*=\s*{Regex.Escape(valueName)}\b";
+                return Regex.IsMatch(callbackBodyText, destructuredPattern, RegexOptions.CultureInvariant);
+            }
+
+            string entryName = NormalizeFunctionAliasArgument(entryParameter).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(entryName))
+            {
+                return false;
+            }
+
+            string indexedPattern = $@"\b{Regex.Escape(accumulatorName)}\s*\[\s*{Regex.Escape(entryName)}\s*\[\s*0\s*\]\s*\]\s*=\s*{Regex.Escape(entryName)}\s*\[\s*1\s*\]";
+            return Regex.IsMatch(callbackBodyText, indexedPattern, RegexOptions.CultureInvariant);
         }
 
         private static bool TryResolveObjectEntriesProjectionFromParts(string parameterText, string bodyExpression, out bool projectKeys)
@@ -2281,6 +2623,54 @@ namespace HaCreator.MapSimulator.Fields
 
             returnExpressions = expressions;
             return true;
+        }
+
+        private static bool TryParseTwoParameterFunctionCallback(
+            string callback,
+            out string parameterText,
+            out string bodyText)
+        {
+            parameterText = string.Empty;
+            bodyText = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback)
+                || !callback.StartsWith("function", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int openIndex = callback.IndexOf('(');
+            if (openIndex < 0)
+            {
+                return false;
+            }
+
+            int closeIndex = FindMatchingCloseParenthesis(callback, openIndex);
+            if (closeIndex <= openIndex)
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> parameters = SplitTopLevelByComma(callback[(openIndex + 1)..closeIndex]);
+            if (parameters.Count < 2)
+            {
+                return false;
+            }
+
+            int bodyOpenIndex = SkipWhitespace(callback, closeIndex + 1);
+            if (bodyOpenIndex < 0 || bodyOpenIndex >= callback.Length || callback[bodyOpenIndex] != '{')
+            {
+                return false;
+            }
+
+            int bodyCloseIndex = FindMatchingCloseBrace(callback, bodyOpenIndex);
+            if (bodyCloseIndex <= bodyOpenIndex)
+            {
+                return false;
+            }
+
+            parameterText = callback[(openIndex + 1)..closeIndex];
+            bodyText = callback[(bodyOpenIndex + 1)..bodyCloseIndex];
+            return !string.IsNullOrWhiteSpace(parameterText) && !string.IsNullOrWhiteSpace(bodyText);
         }
 
         private static int SkipWhitespace(string value, int startIndex)
@@ -5184,6 +5574,56 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 if (current != ')')
+                {
+                    continue;
+                }
+
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int FindMatchingCloseBrace(string value, int openIndex)
+        {
+            int depth = 0;
+            char quote = '\0';
+            for (int i = openIndex; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '{')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (current != '}')
                 {
                     continue;
                 }

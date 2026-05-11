@@ -196,14 +196,14 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            if (_choiceButtonsEnabled && _npcChoice == RockPaperScissorsChoice.None && currentTick >= _lastSwitchTick + ChoiceSwitchCadenceMs)
+            if (_choiceButtonsEnabled && _npcChoice == RockPaperScissorsChoice.None && currentTick > _lastSwitchTick + ChoiceSwitchCadenceMs)
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
                 _lastSwitchTick = currentTick;
                 PlayMinigameSound(SwitchSoundStringPoolId);
             }
 
-            if (_switchCadenceMs > 0 && _npcChoice != RockPaperScissorsChoice.None && currentTick >= _lastSwitchTick + _switchCadenceMs)
+            if (_switchCadenceMs > 0 && _npcChoice != RockPaperScissorsChoice.None && currentTick > _lastSwitchTick + _switchCadenceMs)
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
                 _lastSwitchTick = currentTick;
@@ -217,7 +217,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (_choiceButtonsEnabled && _roundDeadlineTick > 0 && currentTick >= _roundDeadlineTick)
+            if (_choiceButtonsEnabled && _roundDeadlineTick > 0 && currentTick > _roundDeadlineTick)
             {
                 QueueClientPacket(RockPaperScissorsClientRequestType.Timeout, RockPaperScissorsChoice.None);
                 _choiceButtonsEnabled = false;
@@ -238,7 +238,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (_resultRevealTick > 0 && currentTick >= _resultRevealTick && _resultType != RockPaperScissorsResultType.None)
+            if (_resultRevealTick > 0 && currentTick > _resultRevealTick && _resultType != RockPaperScissorsResultType.None)
             {
                 _resultRevealTick = 0;
                 _resultLayerVisible = true;
@@ -247,7 +247,7 @@ namespace HaCreator.MapSimulator.Fields
                 LastPacketSummary = $"result-reveal -> {DescribeResultType(_resultType)}";
             }
 
-            if (_resultExpireTick > 0 && currentTick >= _resultExpireTick && _resultType != RockPaperScissorsResultType.None)
+            if (_resultExpireTick > 0 && currentTick > _resultExpireTick && _resultType != RockPaperScissorsResultType.None)
             {
                 _resultRevealTick = 0;
                 _resultLayerVisible = false;
@@ -887,12 +887,8 @@ namespace HaCreator.MapSimulator.Fields
             }
             else
             {
-                _resultType = EvaluateRoundResult(_playerChoice, _npcChoice)
-                    ? RockPaperScissorsResultType.Win
-                    : RockPaperScissorsResultType.Lose;
-                _mainButtonType = _resultType == RockPaperScissorsResultType.Win
-                    ? RockPaperScissorsMainButtonType.Continue
-                    : RockPaperScissorsMainButtonType.Retry;
+                _resultType = RockPaperScissorsResultType.Win;
+                _mainButtonType = RockPaperScissorsMainButtonType.Continue;
             }
 
             _choiceButtonsEnabled = false;
@@ -1035,7 +1031,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private Texture2D ResolveNpcDisplayTexture()
         {
-            if (_npcChoice != RockPaperScissorsChoice.None)
+            if (IsRenderableChoice(_npcChoice))
             {
                 return _choiceTextures[(int)_npcChoice];
             }
@@ -1067,15 +1063,9 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
-        private static bool EvaluateRoundResult(RockPaperScissorsChoice playerChoice, RockPaperScissorsChoice npcChoice)
+        internal static bool IsRenderableChoice(RockPaperScissorsChoice choice)
         {
-            return (playerChoice, npcChoice) switch
-            {
-                (RockPaperScissorsChoice.Rock, RockPaperScissorsChoice.Scissor) => true,
-                (RockPaperScissorsChoice.Paper, RockPaperScissorsChoice.Rock) => true,
-                (RockPaperScissorsChoice.Scissor, RockPaperScissorsChoice.Paper) => true,
-                _ => false
-            };
+            return choice is >= RockPaperScissorsChoice.Rock and <= RockPaperScissorsChoice.Scissor;
         }
 
         private static Rectangle Translate(Rectangle rect, int offsetX, int offsetY)

@@ -1563,6 +1563,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return elapsed > 0 ? elapsed : 0;
         }
 
+        internal static int AddClientTickDelta(int currentTime, int deltaMs)
+        {
+            return unchecked(currentTime + Math.Max(0, deltaMs));
+        }
+
         internal static bool HasClientTickReached(int currentTime, int targetTime)
         {
             return targetTime != int.MinValue

@@ -164,6 +164,16 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        public string ClearLiveOwnershipVerificationEvidence()
+        {
+            lock (_sync)
+            {
+                ClearLiveOwnershipVerificationEvidenceCore();
+                LastStatus = "Cleared transport live ownership verification evidence for the current proxy session; retained outbound history.";
+                return LastStatus;
+            }
+        }
+
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
         {
             if (!TryResolveRecentOutboundPacket(historyIndexFromNewest, "replay", out byte[] rawPacket, out string resolveStatus))
@@ -1122,6 +1132,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _recentOutboundPackets.Clear();
+            ClearLiveOwnershipVerificationEvidenceCore();
             ReceivedCount = 0;
             SentCount = 0;
             ForwardedOutboundCount = 0;
@@ -1131,6 +1142,14 @@ namespace HaCreator.MapSimulator.Managers
             LastSentRawPacket = Array.Empty<byte>();
             LastQueuedOpcode = -1;
             LastQueuedRawPacket = Array.Empty<byte>();
+        }
+
+        private void ClearLiveOwnershipVerificationEvidenceCore()
+        {
+            _hasObservedLiveInboundTransportPacket = false;
+            _hasObservedLiveOutboundFieldInitRequest = false;
+            _liveInboundTransportPacketEvidence = null;
+            _liveOutboundFieldInitRequestEvidence = null;
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

@@ -2413,6 +2413,67 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(1, "stabO1", 0, 120, move: new Point(8, 0)),
                     CreateIndexedPiece(2, "stabO1", 0, 120, move: new Point(9, 0)),
                     CreateIndexedPiece(3, "stabO1", 0, 150, move: new Point(10, 0))
+                },
+                ["flamesplash"] = new[]
+                {
+                    CreateIndexedPiece(0, "shootF", 0, -120, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "shootF", 0, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 120, move: new Point(5, 0)),
+                    CreateIndexedPiece(3, "stabO1", 0, 120, move: new Point(12, 0)),
+                    CreateIndexedPiece(4, "stabO1", 0, 120, move: new Point(14, 0)),
+                    CreateIndexedPiece(5, "stabO1", 0, 120, move: new Point(15, 0)),
+                    CreateIndexedPiece(6, "stabO1", 0, 120, move: new Point(15, 0)),
+                    CreateIndexedPiece(7, "alert", 2, 120)
+                },
+                ["maxForce3"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO2", 2, -90),
+                    CreateIndexedPiece(1, "swingO1", 2, -90, move: new Point(13, 0)),
+                    CreateIndexedPiece(2, "swingO3", 0, -90, move: new Point(-4, 0)),
+                    CreateIndexedPiece(3, "stabOF", 2, -90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(4, "stabOF", 2, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(5, "stabOF", 2, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(6, "stabOF", 2, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(7, "stabOF", 2, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(8, "stabOF", 2, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(9, "stabOF", 2, 90, move: new Point(-2, 0))
+                },
+                ["darkSpin"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 90),
+                    CreateIndexedPiece(1, "alert", 0, 90),
+                    CreateIndexedPiece(2, "alert", 0, 90),
+                    CreateIndexedPiece(3, "alert", 0, 90),
+                    CreateIndexedPiece(4, "alert", 0, 90),
+                    CreateIndexedPiece(5, "alert", 0, 90),
+                    CreateIndexedPiece(6, "alert", 0, 90),
+                    CreateIndexedPiece(7, "alert", 0, 90),
+                    CreateIndexedPiece(8, "alert", 0, 90),
+                    CreateIndexedPiece(9, "alert", 0, 90),
+                    CreateIndexedPiece(10, "alert", 0, 90),
+                    CreateIndexedPiece(11, "alert", 0, 90),
+                    CreateIndexedPiece(12, "alert", 0, 90),
+                    CreateIndexedPiece(13, "swingT1", 0, 90, move: new Point(38, 1)),
+                    CreateIndexedPiece(14, "swingT1", 0, 90, move: new Point(38, 3)),
+                    CreateIndexedPiece(15, "swingT1", 0, 90, move: new Point(38, 4)),
+                    CreateIndexedPiece(16, "swingT1", 0, 90, move: new Point(38, 4)),
+                    CreateIndexedPiece(17, "swingT1", 0, 90, move: new Point(38, 5)),
+                    CreateIndexedPiece(18, "swingT1", 0, 90, move: new Point(38, 5)),
+                    CreateIndexedPiece(19, "swingT1", 0, 90, move: new Point(38, 4)),
+                    CreateIndexedPiece(20, "alert", 0, 90, move: new Point(8, 0))
+                },
+                ["darkThrust"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 1, 90),
+                    CreateIndexedPiece(1, "stabT1", 0, 90),
+                    CreateIndexedPiece(2, "swingT1", 0, 90),
+                    CreateIndexedPiece(3, "swingT1", 0, 90),
+                    CreateIndexedPiece(4, "swingT1", 0, 90),
+                    CreateIndexedPiece(5, "swingT1", 1, 90),
+                    CreateIndexedPiece(6, "swingT1", 2, 90),
+                    CreateIndexedPiece(7, "swingT1", 2, 90),
+                    CreateIndexedPiece(8, "swingT1", 2, 90),
+                    CreateIndexedPiece(9, "swingT1", 2, 90)
                 }
             };
 
@@ -5353,6 +5414,11 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlySet<string> supportedRawActionNames)
         {
             if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (IsClientActionManInitSkippedActionName(actionName))
             {
                 return false;
             }

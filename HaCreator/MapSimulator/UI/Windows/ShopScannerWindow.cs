@@ -53,6 +53,8 @@ namespace HaCreator.MapSimulator.UI
             public int InventoryTypeCode { get; init; }
             public bool HasItemSlotPayload { get; init; }
             public int ItemSlotPayloadLength { get; init; }
+            public int DecodedItemSlotType { get; init; }
+            public int DecodedItemSlotItemId { get; init; }
             public bool IsNpcShop { get; init; }
         }
 
@@ -834,7 +836,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _searchResultPageIndex = nextPage;
-            _selectedIndex = Math.Clamp(_searchResultPageIndex * SearchResultPageSize, 0, _results.Count - 1);
+            int pageSize = GetCurrentChildPageSize();
+            _selectedIndex = Math.Clamp(_searchResultPageIndex * pageSize, 0, _results.Count - 1);
             _scrollOffset = Math.Min(_selectedIndex, Math.Max(0, _results.Count - VisibleRows));
             _statusMessage = $"CUIShopScanner child owner moved to page {(_searchResultPageIndex + 1).ToString(CultureInfo.InvariantCulture)} / {_searchResultTotalPages.ToString(CultureInfo.InvariantCulture)}.";
         }
@@ -1387,7 +1390,12 @@ namespace HaCreator.MapSimulator.UI
 
                     int inventoryTypeCode = payload[offset++];
                     int itemSlotPayloadStart = offset;
-                    bool hasItemSlotPayload = inventoryTypeCode == 1 && TrySkipItemSlotPayload(payload, ref offset);
+                    bool hasItemSlotPayload = TrySkipItemSlotPayload(
+                        payload,
+                        ref offset,
+                        itemId,
+                        out int decodedItemSlotType,
+                        out int decodedItemSlotItemId);
                     rows.Add(new ScannerPacketShopRow
                     {
                         ShopOwnerName = ownerName,
@@ -1401,6 +1409,8 @@ namespace HaCreator.MapSimulator.UI
                         InventoryTypeCode = inventoryTypeCode,
                         HasItemSlotPayload = hasItemSlotPayload,
                         ItemSlotPayloadLength = Math.Max(0, offset - itemSlotPayloadStart),
+                        DecodedItemSlotType = decodedItemSlotType,
+                        DecodedItemSlotItemId = decodedItemSlotItemId,
                         IsNpcShop = false
                     });
                 }
@@ -1466,6 +1476,68 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private static bool TryReadInt16(byte[] payload, ref int offset, out short value)
+        {
+            value = 0;
+            if (payload == null || payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            offset += sizeof(short);
+            return true;
+        }
+
+        private static bool TryReadUInt16(byte[] payload, ref int offset, out ushort value)
+        {
+            value = 0;
+            if (payload == null || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            offset += sizeof(ushort);
+            return true;
+        }
+
+        private static bool TryReadInt64(byte[] payload, ref int offset, out long value)
+        {
+            value = 0;
+            if (payload == null || payload.Length - offset < sizeof(long))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(offset, sizeof(long)));
+            offset += sizeof(long);
+            return true;
+        }
+
+        private static bool TryReadByte(byte[] payload, ref int offset, out byte value)
+        {
+            value = 0;
+            if (payload == null || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            value = payload[offset++];
+            return true;
+        }
+
+        private static bool TrySkipBytes(byte[] payload, ref int offset, int count)
+        {
+            if (payload == null || count < 0 || payload.Length - offset < count)
+            {
+                return false;
+            }
+
+            offset += count;
+            return true;
+        }
+
         private static bool TryReadMapleString(byte[] payload, ref int offset, out string value)
         {
             value = string.Empty;
@@ -1486,11 +1558,133 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static bool TrySkipItemSlotPayload(byte[] payload, ref int offset)
+        private static bool TrySkipMapleString(byte[] payload, ref int offset)
         {
-            // GW_ItemSlotBase::Decode is versioned and large. For scanner ownership we only need to
-            // preserve row boundaries; leaving trailing bytes is safer than guessing too far.
-            return false;
+            return TryReadMapleString(payload, ref offset, out _);
+        }
+
+        private static bool TrySkipItemSlotPayload(
+            byte[] payload,
+            ref int offset,
+            int expectedItemId,
+            out int decodedItemSlotType,
+            out int decodedItemSlotItemId)
+        {
+            decodedItemSlotType = 0;
+            decodedItemSlotItemId = 0;
+            int startOffset = offset;
+
+            if (!TryReadByte(payload, ref offset, out byte itemSlotType)
+                || itemSlotType is < 1 or > 3
+                || !TryReadInt32(payload, ref offset, out int itemSlotItemId)
+                || itemSlotItemId != expectedItemId
+                || !TryReadByte(payload, ref offset, out byte cashSerialFlag))
+            {
+                offset = startOffset;
+                return false;
+            }
+
+            if (cashSerialFlag != 0 && !TryReadInt64(payload, ref offset, out _))
+            {
+                offset = startOffset;
+                return false;
+            }
+
+            if (!TryReadInt64(payload, ref offset, out _))
+            {
+                offset = startOffset;
+                return false;
+            }
+
+            bool decoded = itemSlotType switch
+            {
+                1 => TrySkipEquipItemSlotBody(payload, ref offset, cashSerialFlag != 0),
+                2 => TrySkipBundleItemSlotBody(payload, ref offset, itemSlotItemId),
+                3 => TrySkipPetItemSlotBody(payload, ref offset),
+                _ => false
+            };
+
+            if (!decoded)
+            {
+                offset = startOffset;
+                return false;
+            }
+
+            decodedItemSlotType = itemSlotType;
+            decodedItemSlotItemId = itemSlotItemId;
+            return true;
+        }
+
+        private static bool TrySkipEquipItemSlotBody(byte[] payload, ref int offset, bool hasCashItemSerialNumber)
+        {
+            if (!TryReadByte(payload, ref offset, out _)
+                || !TryReadByte(payload, ref offset, out _))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < 15; i++)
+            {
+                if (!TryReadInt16(payload, ref offset, out _))
+                {
+                    return false;
+                }
+            }
+
+            if (!TrySkipMapleString(payload, ref offset)
+                || !TryReadInt16(payload, ref offset, out _)
+                || !TryReadByte(payload, ref offset, out _)
+                || !TryReadByte(payload, ref offset, out _)
+                || !TryReadInt32(payload, ref offset, out _)
+                || !TryReadInt32(payload, ref offset, out _)
+                || !TryReadInt32(payload, ref offset, out _)
+                || !TryReadByte(payload, ref offset, out _)
+                || !TryReadByte(payload, ref offset, out _))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < 5; i++)
+            {
+                if (!TryReadInt16(payload, ref offset, out _))
+                {
+                    return false;
+                }
+            }
+
+            if (!hasCashItemSerialNumber && !TryReadInt64(payload, ref offset, out _))
+            {
+                return false;
+            }
+
+            return TryReadInt64(payload, ref offset, out _);
+        }
+
+        private static bool TrySkipBundleItemSlotBody(byte[] payload, ref int offset, int itemId)
+        {
+            if (!TryReadUInt16(payload, ref offset, out _)
+                || !TrySkipMapleString(payload, ref offset)
+                || !TryReadInt16(payload, ref offset, out _))
+            {
+                return false;
+            }
+
+            return (itemId / 10000) is 207 or 233
+                ? TryReadInt64(payload, ref offset, out _)
+                : true;
+        }
+
+        private static bool TrySkipPetItemSlotBody(byte[] payload, ref int offset)
+        {
+            return TrySkipBytes(payload, ref offset, 13)
+                && TryReadByte(payload, ref offset, out _)
+                && TryReadInt16(payload, ref offset, out _)
+                && TryReadByte(payload, ref offset, out _)
+                && TryReadInt64(payload, ref offset, out _)
+                && TryReadInt16(payload, ref offset, out _)
+                && TryReadUInt16(payload, ref offset, out _)
+                && TryReadInt32(payload, ref offset, out _)
+                && TryReadInt16(payload, ref offset, out _);
         }
 
         private static int ResolveClientInventoryTypeCode(int itemId)

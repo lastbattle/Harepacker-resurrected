@@ -773,31 +773,62 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            foreach (string candidateName in BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(name))
-            {
-                const string prefix = "platform-";
-                if (candidateName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(candidateName[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int platformId))
+            if (TryResolvePacketOwnedDynamicPlatformIdFromLookupCandidatesForPacketParity(
+                name,
+                _dynamicFootholds.PlatformCount,
+                candidateName =>
                 {
-                    platform = _dynamicFootholds.GetPlatform(platformId);
-                    if (platform != null)
+                    if (_dynamicFootholdField != null
+                        && _dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(candidateName, out int authoredPlatformId))
                     {
-                        return true;
+                        return authoredPlatformId;
                     }
-                }
 
-                if (_dynamicFootholdField != null
-                    && _dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(candidateName, out int authoredPlatformId))
-                {
-                    platform = _dynamicFootholds.GetPlatform(authoredPlatformId);
-                    if (platform != null)
-                    {
-                        return true;
-                    }
-                }
+                    return null;
+                },
+                out int platformId))
+            {
+                platform = _dynamicFootholds.GetPlatform(platformId);
             }
 
             return platform != null;
+        }
+
+        internal static bool TryResolvePacketOwnedDynamicPlatformIdFromLookupCandidatesForPacketParity(
+            string name,
+            int runtimePlatformCount,
+            Func<string, int?> authoredPlatformResolver,
+            out int platformId)
+        {
+            platformId = -1;
+            if (runtimePlatformCount <= 0)
+            {
+                return false;
+            }
+
+            foreach (string candidateName in BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(name))
+            {
+                int? authoredPlatformId = authoredPlatformResolver?.Invoke(candidateName);
+                if (authoredPlatformId is int authoredId
+                    && authoredId >= 0
+                    && authoredId < runtimePlatformCount)
+                {
+                    platformId = authoredId;
+                    return true;
+                }
+
+                const string prefix = "platform-";
+                if (candidateName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(candidateName[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int fallbackPlatformId)
+                    && fallbackPlatformId >= 0
+                    && fallbackPlatformId < runtimePlatformCount)
+                {
+                    platformId = fallbackPlatformId;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IReadOnlyList<string> BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(string name)

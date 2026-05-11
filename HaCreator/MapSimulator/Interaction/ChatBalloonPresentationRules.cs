@@ -44,10 +44,31 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MiniRoomTitleSecondLineY = 22;
         internal const int MiniRoomTitleSecondLineOffsetY = 14;
         internal const string MiniRoomRootPath = "UI/ChatBalloon.img/miniroom";
+        internal const int MiniRoomShopIconX = 12;
+        internal const int MiniRoomShopIconY = 83;
+        internal const int MiniRoomShopPrivacyIconX = 66;
+        internal const int MiniRoomShopPrivacyIconY = 83;
+        internal const int MiniRoomShopCurrentCountX = 29;
+        internal const int MiniRoomShopCurrentCountY = 85;
+        internal const int MiniRoomShopMaxCountX = 46;
+        internal const int MiniRoomShopMaxCountY = 85;
+        internal const int MiniRoomShopStatusX = 97;
+        internal const int MiniRoomShopStatusY = 84;
+        internal const int MiniRoomLegacyIconX = 12;
+        internal const int MiniRoomLegacyIconY = 34;
+        internal const int MiniRoomLegacyPrivacyIconX = 66;
+        internal const int MiniRoomLegacyPrivacyIconY = 34;
+        internal const int MiniRoomLegacyCurrentCountX = 29;
+        internal const int MiniRoomLegacyCurrentCountY = 49;
+        internal const int MiniRoomLegacyMaxCountX = 46;
+        internal const int MiniRoomLegacyMaxCountY = 49;
+        internal const int MiniRoomLegacyStatusX = 58;
+        internal const int MiniRoomLegacyStatusY = 47;
         internal const int ADBoardNativeBalloonType = 1003;
         internal const int ADBoardButtonWidth = 12;
         internal const int ADBoardButtonHeight = 12;
         internal const int ADBoardPressedAlpha = 253;
+        internal const string ADBoardButtonOwnerPath = "CChatBalloon.m_pButton";
         internal static ChatBalloonCanvasSkinMetrics OrdinarySkinMetrics { get; } = new(
             "UI/ChatBalloon.img/0",
             CornerWidth: 6,
@@ -142,16 +163,37 @@ namespace HaCreator.MapSimulator.Interaction
             ChatBalloonMiniRoomBackground background,
             IReadOnlyList<string> titleLines)
         {
+            string iconPath = ResolveMiniRoomIconPath(icon, spec);
+            string privacyIconPath = ResolveMiniRoomPrivacyIconPath(privacyIcon);
+            string statusPath = ResolveMiniRoomStatusPath(status);
+            string currentCountPath = ResolveMiniRoomCountPath("cNum", currentUsers);
+            string maxCountPath = ResolveMiniRoomCountPath("mNum", maxUsers);
+            string shopEffectPath = ResolveMiniRoomShopEffectPath(miniRoomType, spec);
             return new ChatBalloonMiniRoomComposition(
                 background.Path,
-                ResolveMiniRoomIconPath(icon, spec),
-                ResolveMiniRoomPrivacyIconPath(privacyIcon),
-                ResolveMiniRoomStatusPath(status),
-                ResolveMiniRoomCountPath("cNum", currentUsers),
-                ResolveMiniRoomCountPath("mNum", maxUsers),
-                ResolveMiniRoomShopEffectPath(miniRoomType, spec),
+                iconPath,
+                privacyIconPath,
+                statusPath,
+                currentCountPath,
+                maxCountPath,
+                shopEffectPath,
                 new Point(background.Width, background.Height),
-                ResolveMiniRoomTitleYOffsets(titleLines));
+                ResolveMiniRoomTitleYOffsets(titleLines),
+                ResolveMiniRoomPastePlan(
+                    miniRoomType,
+                    spec,
+                    currentUsers,
+                    maxUsers,
+                    background,
+                    icon,
+                    iconPath,
+                    privacyIcon,
+                    privacyIconPath,
+                    status,
+                    statusPath,
+                    currentCountPath,
+                    maxCountPath,
+                    shopEffectPath));
         }
 
         internal static IReadOnlyList<string> ResolveMiniRoomTitleLines(
@@ -222,6 +264,11 @@ namespace HaCreator.MapSimulator.Interaction
             return isMouseOverButton
                 ? ChatBalloonADBoardButtonCanvasKind.Hover
                 : ChatBalloonADBoardButtonCanvasKind.Normal;
+        }
+
+        internal static string ResolveADBoardButtonCanvasSource(ChatBalloonADBoardButtonCanvasKind canvas)
+        {
+            return $"{ADBoardButtonOwnerPath}[{(int)canvas}]";
         }
 
         internal static bool ADBoardMouseDown(Rectangle layerBounds, Point buttonOffset, Point point, ref bool pressed)
@@ -354,6 +401,123 @@ namespace HaCreator.MapSimulator.Interaction
                 ? new[] { MiniRoomTitleFirstLineY }
                 : new[] { MiniRoomTitleFirstLineY, MiniRoomTitleSecondLineY };
         }
+
+        private static IReadOnlyList<ChatBalloonCanvasPasteEntry> ResolveMiniRoomPastePlan(
+            byte miniRoomType,
+            byte spec,
+            byte currentUsers,
+            byte maxUsers,
+            ChatBalloonMiniRoomBackground background,
+            ChatBalloonMiniRoomIconKind icon,
+            string iconPath,
+            ChatBalloonMiniRoomPrivacyIconKind privacyIcon,
+            string privacyIconPath,
+            ChatBalloonMiniRoomStatusKind status,
+            string statusPath,
+            string currentCountPath,
+            string maxCountPath,
+            string shopEffectPath)
+        {
+            List<ChatBalloonCanvasPasteEntry> entries = new()
+            {
+                new("background", background.Path, Point.Zero, new Point(background.Width, background.Height), 255)
+            };
+
+            if (!string.IsNullOrEmpty(shopEffectPath))
+            {
+                entries.Add(new("shopSkin", shopEffectPath, Point.Zero, new Point(background.Width, background.Height), 255));
+            }
+
+            bool useShopLayout = miniRoomType is 3 or 4 or 5 && background.Width >= 156;
+            AddIfPresent(entries, "icon", iconPath, ResolveMiniRoomIconDestination(useShopLayout), ResolveMiniRoomIconSize(icon));
+            AddIfPresent(entries, "privacy", privacyIconPath, ResolveMiniRoomPrivacyDestination(useShopLayout), ResolveMiniRoomPrivacyIconSize(privacyIcon));
+            AddIfPresent(entries, "currentCount", currentCountPath, ResolveMiniRoomCurrentCountDestination(useShopLayout), ResolveMiniRoomCountSize(currentUsers));
+            AddIfPresent(entries, "maxCount", maxCountPath, ResolveMiniRoomMaxCountDestination(useShopLayout), ResolveMiniRoomCountSize(maxUsers));
+            AddIfPresent(entries, "status", statusPath, ResolveMiniRoomStatusDestination(useShopLayout), ResolveMiniRoomStatusSize(status));
+            return entries;
+        }
+
+        private static void AddIfPresent(
+            List<ChatBalloonCanvasPasteEntry> entries,
+            string role,
+            string sourcePath,
+            Point destination,
+            Point sourceSize)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || sourceSize == Point.Zero)
+            {
+                return;
+            }
+
+            entries.Add(new ChatBalloonCanvasPasteEntry(role, sourcePath, destination, sourceSize, 255));
+        }
+
+        private static Point ResolveMiniRoomIconDestination(bool useShopLayout)
+        {
+            return useShopLayout
+                ? new Point(MiniRoomShopIconX, MiniRoomShopIconY)
+                : new Point(MiniRoomLegacyIconX, MiniRoomLegacyIconY);
+        }
+
+        private static Point ResolveMiniRoomPrivacyDestination(bool useShopLayout)
+        {
+            return useShopLayout
+                ? new Point(MiniRoomShopPrivacyIconX, MiniRoomShopPrivacyIconY)
+                : new Point(MiniRoomLegacyPrivacyIconX, MiniRoomLegacyPrivacyIconY);
+        }
+
+        private static Point ResolveMiniRoomCurrentCountDestination(bool useShopLayout)
+        {
+            return useShopLayout
+                ? new Point(MiniRoomShopCurrentCountX, MiniRoomShopCurrentCountY)
+                : new Point(MiniRoomLegacyCurrentCountX, MiniRoomLegacyCurrentCountY);
+        }
+
+        private static Point ResolveMiniRoomMaxCountDestination(bool useShopLayout)
+        {
+            return useShopLayout
+                ? new Point(MiniRoomShopMaxCountX, MiniRoomShopMaxCountY)
+                : new Point(MiniRoomLegacyMaxCountX, MiniRoomLegacyMaxCountY);
+        }
+
+        private static Point ResolveMiniRoomStatusDestination(bool useShopLayout)
+        {
+            return useShopLayout
+                ? new Point(MiniRoomShopStatusX, MiniRoomShopStatusY)
+                : new Point(MiniRoomLegacyStatusX, MiniRoomLegacyStatusY);
+        }
+
+        private static Point ResolveMiniRoomIconSize(ChatBalloonMiniRoomIconKind icon)
+        {
+            return icon switch
+            {
+                ChatBalloonMiniRoomIconKind.Omok => new Point(16, 16),
+                ChatBalloonMiniRoomIconKind.MemoryGame => new Point(17, 16),
+                ChatBalloonMiniRoomIconKind.PersonalShop => new Point(14, 13),
+                _ => Point.Zero
+            };
+        }
+
+        private static Point ResolveMiniRoomPrivacyIconSize(ChatBalloonMiniRoomPrivacyIconKind privacyIcon)
+        {
+            return privacyIcon == ChatBalloonMiniRoomPrivacyIconKind.None
+                ? Point.Zero
+                : new Point(12, 15);
+        }
+
+        private static Point ResolveMiniRoomStatusSize(ChatBalloonMiniRoomStatusKind status)
+        {
+            return status == ChatBalloonMiniRoomStatusKind.None
+                ? Point.Zero
+                : new Point(48, 15);
+        }
+
+        private static Point ResolveMiniRoomCountSize(byte value)
+        {
+            return value is >= 1 and <= 4
+                ? new Point(12, 11)
+                : Point.Zero;
+        }
     }
 
     internal readonly record struct ChatBalloonCanvasSkinMetrics(
@@ -375,6 +539,13 @@ namespace HaCreator.MapSimulator.Interaction
         Point ArrowPosition,
         bool IncludesArrow);
 
+    internal readonly record struct ChatBalloonCanvasPasteEntry(
+        string Role,
+        string SourcePath,
+        Point Destination,
+        Point SourceSize,
+        int Alpha);
+
     internal sealed class ChatBalloonMiniRoomComposition
     {
         internal ChatBalloonMiniRoomComposition(
@@ -386,7 +557,8 @@ namespace HaCreator.MapSimulator.Interaction
             string maxCountPath,
             string shopEffectPath,
             Point canvasSize,
-            IReadOnlyList<int> titleLineYOffsets)
+            IReadOnlyList<int> titleLineYOffsets,
+            IReadOnlyList<ChatBalloonCanvasPasteEntry> pastedCanvases)
         {
             BackgroundPath = backgroundPath ?? string.Empty;
             IconPath = iconPath ?? string.Empty;
@@ -397,6 +569,7 @@ namespace HaCreator.MapSimulator.Interaction
             ShopEffectPath = shopEffectPath ?? string.Empty;
             CanvasSize = canvasSize;
             TitleLineYOffsets = titleLineYOffsets ?? Array.Empty<int>();
+            PastedCanvases = pastedCanvases ?? Array.Empty<ChatBalloonCanvasPasteEntry>();
         }
 
         public string BackgroundPath { get; }
@@ -408,5 +581,6 @@ namespace HaCreator.MapSimulator.Interaction
         public string ShopEffectPath { get; }
         public Point CanvasSize { get; }
         public IReadOnlyList<int> TitleLineYOffsets { get; }
+        public IReadOnlyList<ChatBalloonCanvasPasteEntry> PastedCanvases { get; }
     }
 }

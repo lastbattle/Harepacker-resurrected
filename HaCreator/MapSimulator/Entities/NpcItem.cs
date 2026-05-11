@@ -758,7 +758,7 @@ namespace HaCreator.MapSimulator.Entities
             if (!snapshot.IsShowingMessage)
             {
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = ResolveActorLocalMapleTvIdleFrames(visualAssets, snapshot.QueueExists);
-                MapleTvAnimationFrame idleFrame = SelectMapleTvFrame(idleFrames, tickCount);
+                MapleTvAnimationFrame idleFrame = SelectMapleTvFrame(idleFrames, ResolveActorLocalMapleTvAnimationTick(snapshot, tickCount));
                 int idleOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
                 int idleOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
                 DrawMapleTvFrame(
@@ -781,10 +781,11 @@ namespace HaCreator.MapSimulator.Entities
             IReadOnlyList<MapleTvAnimationFrame> onFrames = visualAssets.OnFrames.Count > 0
                 ? visualAssets.OnFrames
                 : visualAssets.BasicFrames;
-            MapleTvAnimationFrame mediaFrame = SelectMapleTvFrame(mediaFrames, tickCount);
-            MapleTvAnimationFrame onFrame = SelectMapleTvFrame(onFrames, tickCount);
+            int mapleTvAnimationTick = ResolveActorLocalMapleTvAnimationTick(snapshot, tickCount);
+            MapleTvAnimationFrame mediaFrame = SelectMapleTvFrame(mediaFrames, mapleTvAnimationTick);
+            MapleTvAnimationFrame onFrame = SelectMapleTvFrame(onFrames, mapleTvAnimationTick);
             IReadOnlyList<MapleTvAnimationFrame> chatFrames = ResolveActorLocalMapleTvChatFrames(visualAssets, snapshot);
-            MapleTvAnimationFrame chatFrame = SelectMapleTvFrame(chatFrames, tickCount);
+            MapleTvAnimationFrame chatFrame = SelectMapleTvFrame(chatFrames, mapleTvAnimationTick);
             if (chatFrame == null)
             {
                 return;
@@ -913,6 +914,26 @@ namespace HaCreator.MapSimulator.Entities
             return new Point(
                 textBounds.X + MapleTvNativeReceiverNameXDelta - (receiverLength * MapleTvNativeReceiverGlyphWidth),
                 textBounds.Y + MapleTvNativeNameYDelta);
+        }
+
+        internal static int ResolveActorLocalMapleTvAnimationTick(MapleTvSnapshot snapshot, int fieldTickCount)
+        {
+            if (snapshot == null)
+            {
+                return fieldTickCount;
+            }
+
+            if (snapshot.PresentationAnimationTick > 0)
+            {
+                return snapshot.PresentationAnimationTick;
+            }
+
+            if (snapshot.IsShowingMessage)
+            {
+                return Math.Max(0, snapshot.MessageAnimationTick);
+            }
+
+            return snapshot.QueueExists ? 0 : fieldTickCount;
         }
 
         private static int ResolveActorLocalMapleTvChatVariantKey(MapleTvSnapshot snapshot)

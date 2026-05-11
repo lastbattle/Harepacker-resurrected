@@ -292,6 +292,8 @@ namespace HaCreator.MapSimulator.UI
         private byte[] _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
         private bool _cashOneADayHasPacketRewardSessionByte;
         private int _cashOneADayPacketRewardSessionByte;
+        private int _cashOneADayRewardHistoryByteCount;
+        private string _cashOneADayRewardHistoryPayloadHex = string.Empty;
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
         private string _cashPacketPaneLabel = "Packet wishlist";
         private string _cashPacketBrowseModeLabel = "Wish";
@@ -374,6 +376,8 @@ namespace HaCreator.MapSimulator.UI
         public bool CashOneADayHasPacketRewardSessionByte => _cashOneADayHasPacketRewardSessionByte;
         public int CashOneADayPacketRewardSessionByte => _cashOneADayPacketRewardSessionByte;
         public int CashOneADayRewardSessionByteOffset { get; private set; } = -1;
+        public int CashOneADayRewardHistoryByteCount => _cashOneADayRewardHistoryByteCount;
+        public string CashOneADayRewardHistoryPayloadHex => _cashOneADayRewardHistoryPayloadHex;
         public int CashItemMutationCount => _cashItemMutationCount;
         public int CashLockerItemCount => _cashLockerItemCount;
         public int CashLockerSlotLimit => _cashLockerSlotLimit;
@@ -571,6 +575,8 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayHasPacketRewardSessionByte = false;
             _cashOneADayPacketRewardSessionByte = 0;
             CashOneADayRewardSessionByteOffset = -1;
+            _cashOneADayRewardHistoryByteCount = 0;
+            _cashOneADayRewardHistoryPayloadHex = string.Empty;
             _cashOneADayHistoryEntries.Clear();
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
@@ -2448,18 +2454,36 @@ namespace HaCreator.MapSimulator.UI
         private bool TryApplyCashMaplePointChangeDone(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < 1 + sizeof(int))
+            if (!TryDecodeCashMaplePointChangePayload(
+                payload,
+                out long serialNumber,
+                out int maplePoint,
+                out int decodedByteLength,
+                out string decodeFailure))
             {
+                message = decodeFailure;
                 return false;
             }
 
             long previousMaplePoint = Math.Max(0L, _maplePoint);
-            long maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1));
             _maplePoint = maplePoint;
-            _noticeState = $"Cash-service Maple Point balance changed to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}.";
+            PacketCatalogEntry existingLockerEntry = FindCashLockerPacketEntryBySerialNumber(serialNumber);
+            string itemTitle = existingLockerEntry != null
+                ? existingLockerEntry.Title
+                : serialNumber > 0
+                    ? $"Serial {serialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "the selected locker item";
+            bool decremented = DecrementCashLockerPacketEntryBySerialNumber(serialNumber);
+            if (decremented)
+            {
+                _cashLockerItemCount = Math.Max(0, _cashLockerPacketEntries.Sum(entry => Math.Max(1, entry.Quantity)));
+            }
+
+            _noticeState =
+                $"Cash-service Maple Point balance changed to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} after CCashShop consumed {itemTitle} from CCSWnd_Locker.";
             string trailingSummary = AppendTrailingCashItemInfoFromPayload(
                 payload,
-                1 + sizeof(int),
+                decodedByteLength,
                 maxCount: 2,
                 paneLabel: "Packet maple-point",
                 browseModeLabel: "Point",
@@ -2478,9 +2502,66 @@ namespace HaCreator.MapSimulator.UI
                 Seller = "CCSWnd_Status",
                 PriceLabel = $"{previousMaplePoint.ToString("N0", CultureInfo.InvariantCulture)} -> {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}",
                 StateLabel = "Updated",
-                Price = (int)Math.Clamp(_maplePoint, 0L, int.MaxValue)
+                SerialNumber = serialNumber,
+                ListingId = existingLockerEntry?.ListingId ?? 0,
+                ItemId = existingLockerEntry?.ItemId ?? 0,
+                CommodityId = existingLockerEntry?.CommodityId ?? 0,
+                Quantity = existingLockerEntry?.Quantity ?? 1,
+                Price = (int)Math.Clamp(_maplePoint, 0L, int.MaxValue),
+                PacketSource = "CCashShop::OnCashItemResChangeMaplePointDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    decodedByteLength,
+                    $"liSN={serialNumber.ToString(CultureInfo.InvariantCulture)}, nMaplePoint={_maplePoint.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
-            message = $"CCashShop::OnCashItemResChangeMaplePointDone updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $"; {trailingSummary}")}.";
+            AppendCashPacketCatalogEntry("Packet locker", "Locker", new PacketCatalogEntry
+            {
+                Title = itemTitle,
+                Detail = $"CCSWnd_Locker consumed {itemTitle} for Maple Point conversion; status balance is now {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}.",
+                Seller = "CCSWnd_Locker",
+                PriceLabel = serialNumber > 0 ? $"SN {serialNumber.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Maple Point",
+                SerialNumber = serialNumber,
+                ListingId = existingLockerEntry?.ListingId ?? 0,
+                ItemId = existingLockerEntry?.ItemId ?? 0,
+                CommodityId = existingLockerEntry?.CommodityId ?? 0,
+                Quantity = existingLockerEntry?.Quantity ?? 1,
+                PacketSource = "CCashShop::OnCashItemResChangeMaplePointDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    decodedByteLength,
+                    $"liSN={serialNumber.ToString(CultureInfo.InvariantCulture)}, nMaplePoint={_maplePoint.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
+            });
+            message = $"CCashShop::OnCashItemResChangeMaplePointDone consumed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $"; {trailingSummary}")}.";
+            return true;
+        }
+
+        internal static bool TryDecodeCashMaplePointChangePayload(
+            byte[] payload,
+            out long serialNumber,
+            out int maplePoint,
+            out int decodedByteLength,
+            out string failureReason)
+        {
+            serialNumber = 0;
+            maplePoint = 0;
+            decodedByteLength = 0;
+            failureReason = string.Empty;
+            if (payload == null || payload.Length < 1 + sizeof(long) + sizeof(int))
+            {
+                failureReason = "CCashShop::OnCashItemResChangeMaplePointDone requires subtype, liSN, and nMaplePoint.";
+                return false;
+            }
+
+            // Client evidence: CCashShop::OnCashItemResChangeMaplePointDone @ 0x498520
+            // DecodeBuffer(liSN, 8) runs before Decode4(nMaplePoint), then the matching locker row is decremented.
+            serialNumber = BitConverter.ToInt64(payload, 1);
+            maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1 + sizeof(long)));
+            decodedByteLength = 1 + sizeof(long) + sizeof(int);
             return true;
         }
 
@@ -4805,6 +4886,8 @@ namespace HaCreator.MapSimulator.UI
                 _cashOneADayHasPacketRewardSessionByte = false;
                 _cashOneADayPacketRewardSessionByte = 0;
                 CashOneADayRewardSessionByteOffset = -1;
+                _cashOneADayRewardHistoryByteCount = 0;
+                _cashOneADayRewardHistoryPayloadHex = string.Empty;
                 _cashOneADayHistoryEntries.Clear();
                 _noticeState = "One-a-day owner received an empty packet payload.";
                 return "CCashShop::OnOneADay cleared the current item and previous history from an empty payload.";
@@ -4824,6 +4907,8 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayHasPacketRewardSessionByte = state.HasPacketRewardSessionByte;
             _cashOneADayPacketRewardSessionByte = Math.Max(0, state.PacketRewardSessionByte);
             CashOneADayRewardSessionByteOffset = state.RewardSessionByteOffset;
+            _cashOneADayRewardHistoryByteCount = Math.Max(0, state.RewardHistoryByteCount);
+            _cashOneADayRewardHistoryPayloadHex = state.RewardHistoryPayloadHex ?? string.Empty;
             _cashOneADayHistoryEntries.Clear();
             _cashOneADayHistoryEntries.AddRange(state.HistoryEntries);
 
@@ -7432,6 +7517,40 @@ namespace HaCreator.MapSimulator.UI
 
             _cashLockerPacketEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
             _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
+        }
+
+        private bool DecrementCashLockerPacketEntryBySerialNumber(long serialNumber)
+        {
+            if (serialNumber <= 0)
+            {
+                return false;
+            }
+
+            int index = _cashLockerPacketEntries.FindIndex(entry => entry.SerialNumber == serialNumber);
+            if (index < 0)
+            {
+                _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
+                return false;
+            }
+
+            PacketCatalogEntry entryToUpdate = _cashLockerPacketEntries[index];
+            if (entryToUpdate.Quantity > 1)
+            {
+                entryToUpdate.Quantity--;
+                entryToUpdate.Detail = $"{entryToUpdate.Detail} CCashShop decremented this locker stack after Maple Point conversion.";
+                PacketCatalogEntry catalogEntry = _cashPacketCatalogEntries.FirstOrDefault(entry => entry.SerialNumber == serialNumber);
+                if (catalogEntry != null && catalogEntry.Quantity > 1)
+                {
+                    catalogEntry.Quantity--;
+                    catalogEntry.Detail = $"{catalogEntry.Detail} CCashShop decremented this locker stack after Maple Point conversion.";
+                }
+
+                return true;
+            }
+
+            _cashLockerPacketEntries.RemoveAt(index);
+            _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
+            return true;
         }
 
         private void RemoveCashGiftPacketCatalogEntry(PacketCatalogEntry giftEntry)

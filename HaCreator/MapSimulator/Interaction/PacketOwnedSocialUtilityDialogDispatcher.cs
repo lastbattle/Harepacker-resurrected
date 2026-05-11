@@ -231,11 +231,31 @@ namespace HaCreator.MapSimulator.Interaction
             out PacketOwnedNpcUtilityOutboundRequest request,
             out string message)
         {
+            return TryBuildTrunkPutItemOutboundRequest(
+                inventoryType,
+                inventoryRowIndex,
+                slotData,
+                requestedQuantity,
+                null,
+                out request,
+                out message);
+        }
+
+        internal bool TryBuildTrunkPutItemOutboundRequest(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity,
+            InventorySlotData characterDataSlot,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
             bool built = _trunkDialogRuntime.TryBuildPutItemOutboundRequest(
                 inventoryType,
                 inventoryRowIndex,
                 slotData,
                 requestedQuantity,
+                characterDataSlot,
                 out request,
                 out message);
             _lastTrunkDispatchSummary = built
@@ -993,6 +1013,25 @@ namespace HaCreator.MapSimulator.Interaction
             out PacketOwnedNpcUtilityOutboundRequest request,
             out string message)
         {
+            return TryBuildPutItemOutboundRequest(
+                inventoryType,
+                inventoryRowIndex,
+                slotData,
+                requestedQuantity,
+                null,
+                out request,
+                out message);
+        }
+
+        internal bool TryBuildPutItemOutboundRequest(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity,
+            InventorySlotData characterDataSlot,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
             request = default;
             if (!IsOpen)
             {
@@ -1042,6 +1081,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (characterDataSlot != null && !ReferenceEquals(slotData, characterDataSlot))
+            {
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the live CharacterData::GetItem pointer-identity guard no longer matches the staged m_aPutItem pointer.";
+                message = StatusMessage;
+                return false;
+            }
+
             if (!TryResolveInventoryPosition(inventoryRowIndex, slotData, out short inventoryPosition))
             {
                 StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the selected inventory row does not carry the packet-authored native inventory position token.";
@@ -1073,8 +1119,12 @@ namespace HaCreator.MapSimulator.Interaction
                 : normalizedQuantity == availableQuantity
                 ? $"full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
                 : $"partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}";
+            string characterDataGuardSummary = characterDataSlot != null
+                ? "Live CharacterData::GetItem pointer-identity guard matched the staged m_aPutItem pointer before encoding opcode 67 [05]. "
+                : string.Empty;
             StatusMessage =
                 $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with {quantitySummary}. " +
+                characterDataGuardSummary +
                 $"{preConfirmSummary} " +
                 $"{askCountSummary} " +
                 $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}.";

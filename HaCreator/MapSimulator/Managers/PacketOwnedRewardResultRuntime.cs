@@ -15,10 +15,16 @@ namespace HaCreator.MapSimulator.Managers
 
     internal sealed class PacketOwnedRandomMesoBagPresentation
     {
+        public byte RawRank { get; init; }
         public int Rank { get; init; }
         public string BackgroundKey { get; init; } = "Back1";
         public string DialogResourcePath { get; init; } = string.Empty;
+        public int DialogCreateFlag { get; init; }
+        public int DialogCreateX { get; init; }
+        public int DialogCreateY { get; init; }
         public string OkButtonResourcePath { get; init; } = string.Empty;
+        public int OkButtonControlId { get; init; }
+        public bool OkButtonAcceptsFocus { get; init; }
         public string DescriptionText { get; init; } = string.Empty;
         public string AmountText { get; init; } = string.Empty;
         public string ChatLineText { get; init; } = string.Empty;
@@ -34,6 +40,11 @@ namespace HaCreator.MapSimulator.Managers
         public const int RandomMesoBagStatusBarChatType = 12;
         public const int RandomMesoBagStatusBarChannelId = -1;
         public const int RandomMesoBagSoundVolume = 100;
+        public const int RandomMesoBagCreateDlgFlag = 1;
+        public const int RandomMesoBagCreateDlgX = 0;
+        public const int RandomMesoBagCreateDlgY = 0;
+        public const int RandomMesoBagOkButtonControlId = 1;
+        public const bool RandomMesoBagOkButtonAcceptsFocus = true;
         public const bool UtilDlgNoticeAutoSeparated = true;
         public const bool UtilDlgNoticeTightLine = false;
         private const int MesoGiveSucceededStringPoolId = 0x32E;
@@ -250,10 +261,16 @@ namespace HaCreator.MapSimulator.Managers
             string dialogResourcePath = ResolveRandomMesoBagDialogResourcePath(normalizedRank);
             return new PacketOwnedRandomMesoBagPresentation
             {
+                RawRank = rank,
                 Rank = normalizedRank,
                 BackgroundKey = ResolveRandomMesoBagBackgroundKey(normalizedRank, dialogResourcePath),
                 DialogResourcePath = dialogResourcePath,
+                DialogCreateFlag = RandomMesoBagCreateDlgFlag,
+                DialogCreateX = RandomMesoBagCreateDlgX,
+                DialogCreateY = RandomMesoBagCreateDlgY,
                 OkButtonResourcePath = GetRandomMesoBagOkButtonResourcePath(),
+                OkButtonControlId = RandomMesoBagOkButtonControlId,
+                OkButtonAcceptsFocus = RandomMesoBagOkButtonAcceptsFocus,
                 DescriptionText = ResolveRandomMesoBagDescription(normalizedRank),
                 AmountText = FormatRandomMesoBagDialogAmountText(mesoAmount),
                 ChatLineText = FormatRandomMesoBagChatLineText(mesoAmount),

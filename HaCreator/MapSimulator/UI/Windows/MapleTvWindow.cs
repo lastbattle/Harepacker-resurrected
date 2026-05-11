@@ -209,10 +209,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (!snapshot.IsShowingMessage)
             {
+                int mapleTvAnimationTick = ResolveMapleTvPresentationAnimationTick(snapshot, tickCount);
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = _visualAssets.OffFrames.Count > 0
                     ? _visualAssets.OffFrames
                     : _visualAssets.BasicFrames;
-                MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, tickCount);
+                MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, mapleTvAnimationTick);
                 Point idleOverlayOrigin = ResolveClientOwnedSurfaceOrigin(
                     renderWidth,
                     WorldOverlayTopMargin,
@@ -226,11 +227,12 @@ namespace HaCreator.MapSimulator.UI
                 ? _visualAssets.OnFrames
                 : _visualAssets.BasicFrames;
             IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.MessageType, snapshot.ResolvedMediaIndex);
-            MapleTvAnimationFrame mediaFrame = SelectFrame(mediaFrames, tickCount);
+            int activeAnimationTick = ResolveMapleTvPresentationAnimationTick(snapshot, tickCount);
+            MapleTvAnimationFrame mediaFrame = SelectFrame(mediaFrames, activeAnimationTick);
             MapleTvAnimationFrame onFrame = SelectFrame(
                 onFrames,
-                tickCount);
-            MapleTvAnimationFrame chatFrame = SelectFrame(chatFrames, tickCount);
+                activeAnimationTick);
+            MapleTvAnimationFrame chatFrame = SelectFrame(chatFrames, activeAnimationTick);
             Point overlayOrigin = ResolveClientOwnedSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
@@ -247,7 +249,7 @@ namespace HaCreator.MapSimulator.UI
             DrawOverlayAvatars(
                 sprite,
                 skeletonMeshRenderer,
-                tickCount,
+                activeAnimationTick,
                 ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(_visualAssets.ClientSurfaceWidth, _visualAssets.ClientMediaSurfaceHeight, mediaFrames)),
                 snapshot);
             DrawChatText(
@@ -401,22 +403,23 @@ namespace HaCreator.MapSimulator.UI
                     ? _visualAssets.OnFrames
                     : _visualAssets.BasicFrames;
                 IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.MessageType, snapshot.ResolvedMediaIndex);
+                int mapleTvAnimationTick = ResolveMapleTvPresentationAnimationTick(snapshot, tickCount);
                 MapleTvAnimationFrame mediaFrame = SelectFrame(
                     mediaFrames,
-                    tickCount);
+                    mapleTvAnimationTick);
                 DrawAnimationFrame(sprite, mediaFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 MapleTvAnimationFrame onFrame = SelectFrame(
                     onFrames,
-                    tickCount);
+                    mapleTvAnimationTick);
                 DrawAnimationFrame(sprite, onFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 MapleTvAnimationFrame chatFrame = SelectFrame(
                     chatFrames,
-                    tickCount);
+                    mapleTvAnimationTick);
                 DrawAnimationFrame(sprite, chatFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 DrawPreviewAvatars(
                     sprite,
                 skeletonMeshRenderer,
-                tickCount,
+                mapleTvAnimationTick,
                 ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(_visualAssets.ClientSurfaceWidth, _visualAssets.ClientMediaSurfaceHeight, mediaFrames)),
                 snapshot);
                 DrawChatText(
@@ -435,10 +438,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
+                int mapleTvAnimationTick = ResolveMapleTvPresentationAnimationTick(snapshot, tickCount);
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = snapshot.QueueExists
                     ? _visualAssets.OffFrames
                     : _visualAssets.BasicFrames;
-                MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, tickCount);
+                MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, mapleTvAnimationTick);
                 DrawAnimationFrame(
                     sprite,
                     idleFrame,
@@ -534,6 +538,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return frames[^1];
+        }
+
+        internal static int ResolveMapleTvPresentationAnimationTick(MapleTvSnapshot snapshot, int fieldTickCount)
+        {
+            if (snapshot == null)
+            {
+                return fieldTickCount;
+            }
+
+            if (snapshot.PresentationAnimationTick > 0)
+            {
+                return snapshot.PresentationAnimationTick;
+            }
+
+            if (snapshot.IsShowingMessage)
+            {
+                return Math.Max(0, snapshot.MessageAnimationTick);
+            }
+
+            return snapshot.QueueExists ? 0 : fieldTickCount;
         }
 
         private static void DrawAnimationFrame(

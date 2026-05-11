@@ -1,6 +1,6 @@
 namespace HaCreator.MapSimulator
 {
-    internal enum LoginPacketResultDialogOwner
+    public enum LoginPacketResultDialogOwner
     {
         None = 0,
         ViewAllCharResult = 1,

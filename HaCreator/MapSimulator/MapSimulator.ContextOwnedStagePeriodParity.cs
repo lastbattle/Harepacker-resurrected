@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
         private HashSet<int> _contextOwnedStageAffectedMapIds = new();
         private ContextOwnedStagePeriodCatalogEntry _contextOwnedStageCurrentPeriod;
         private IReadOnlyList<ContextOwnedStageBackImageEntry> _contextOwnedStageCurrentBackImages = Array.Empty<ContextOwnedStageBackImageEntry>();
+        private ContextOwnedStageCacheMutationTrace _contextOwnedStageLastCacheMutationTrace = ContextOwnedStageCacheMutationTrace.Empty;
         private uint? _contextOwnedStageCurrentBackColorArgb;
         private int _contextOwnedStagePeriodStartTick;
 
@@ -97,7 +98,7 @@ namespace HaCreator.MapSimulator
                 return $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the simulator could not resolve the validated period entry.";
             }
 
-            catalog.ApplyCacheData(
+            _contextOwnedStageLastCacheMutationTrace = catalog.ApplyCacheDataWithTrace(
                 period,
                 _contextOwnedStageKeywordCache,
                 _contextOwnedStageQuestCache,
@@ -397,8 +398,9 @@ namespace HaCreator.MapSimulator
                 : "none";
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
             string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} themeModes={_contextOwnedStagePeriodCache.Count.ToString(CultureInfo.InvariantCulture)} elapsedMs={CalculateContextOwnedStagePeriodElapsedMilliseconds(currTickCount, _contextOwnedStagePeriodStartTick).ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
+            string cacheTraceSummary = $"cacheTrace theme='{_contextOwnedStageLastCacheMutationTrace.StageTheme}' mode={_contextOwnedStageLastCacheMutationTrace.Mode.ToString(CultureInfo.InvariantCulture)} keywordMutations={_contextOwnedStageLastCacheMutationTrace.KeywordMutations.Count.ToString(CultureInfo.InvariantCulture)} questMutations={_contextOwnedStageLastCacheMutationTrace.QuestMutations.Count.ToString(CultureInfo.InvariantCulture)} stagePeriodReused={_contextOwnedStageLastCacheMutationTrace.StagePeriodMutation.Reused}";
             string inboxSummary = "stageperiod inbox adapter-only; listener fallback retired.";
-            return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{inboxSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
+            return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{cacheTraceSummary}{Environment.NewLine}{inboxSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
         }
 
         private void EnsureContextOwnedStagePeriodInboxState(bool shouldRun)

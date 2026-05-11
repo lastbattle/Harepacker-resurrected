@@ -156,6 +156,21 @@ namespace HaCreator.MapSimulator.Effects
         private List<DojoFrame> _clearFrames;
         private List<DojoFrame> _timeOverFrames;
         private DojoResultEffect _resultEffect = DojoResultEffect.None;
+        private static readonly DojoSharedDispatchContract[] SharedDispatchContracts =
+        {
+            new(
+                FieldSpecificDataRelayOpcode,
+                "field-specific-data",
+                "CField::OnPacket",
+                "opcode 149 calls CField::OnFieldSpecificData, then the active field-specific virtual handler",
+                IsClientConfirmed: true),
+            new(
+                CurrentWrapperRelayOpcode,
+                "current-wrapper-relay",
+                "CField::OnPacket",
+                "opcode 163 calls the active field's current-wrapper relay and preserves nested packet-id prefixes",
+                IsClientConfirmed: true)
+        };
         private static readonly DojoPacketContract[] PacketContracts =
         {
             new(
@@ -205,6 +220,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         public static IReadOnlyList<DojoPacketContract> KnownPacketContracts => PacketContracts;
+        public static IReadOnlyList<DojoSharedDispatchContract> KnownSharedDispatchContracts => SharedDispatchContracts;
         internal static DojoHudGeometry ClientHudGeometry => new(
             PlayerGaugeOffsetX,
             MonsterGaugeOffsetX,
@@ -322,14 +338,20 @@ namespace HaCreator.MapSimulator.Effects
         {
             return string.Join(
                 Environment.NewLine,
-                PacketContracts.Select(static contract =>
-                {
-                    string aliases = contract.Aliases.Count == 0
-                        ? string.Empty
-                        : $" aliases={string.Join(",", contract.Aliases)}";
-                    string proof = contract.IsClientConfirmed ? "client-confirmed" : "simulator-recovered";
-                    return $"{contract.PacketType}:{contract.Name}{aliases} [{proof}] {contract.PayloadContract} ({contract.OwnerEvidence})";
-                }));
+                SharedDispatchContracts
+                    .Select(static contract =>
+                    {
+                        string proof = contract.IsClientConfirmed ? "client-confirmed" : "simulator-recovered";
+                        return $"opcode {contract.Opcode}:{contract.Name} [{proof}] {contract.PayloadContract} ({contract.OwnerEvidence})";
+                    })
+                    .Concat(PacketContracts.Select(static contract =>
+                    {
+                        string aliases = contract.Aliases.Count == 0
+                            ? string.Empty
+                            : $" aliases={string.Join(",", contract.Aliases)}";
+                        string proof = contract.IsClientConfirmed ? "client-confirmed" : "simulator-recovered";
+                        return $"payload {contract.PacketType}:{contract.Name}{aliases} [{proof}] {contract.PayloadContract} ({contract.OwnerEvidence})";
+                    })));
         }
         public static bool TryInferFieldSpecificPacketType(byte[] payload, out int packetType, out string reason)
         {
@@ -2445,6 +2467,12 @@ namespace HaCreator.MapSimulator.Effects
             int PacketType,
             string Name,
             IReadOnlyList<string> Aliases,
+            string OwnerEvidence,
+            string PayloadContract,
+            bool IsClientConfirmed);
+        public readonly record struct DojoSharedDispatchContract(
+            int Opcode,
+            string Name,
             string OwnerEvidence,
             string PayloadContract,
             bool IsClientConfirmed);

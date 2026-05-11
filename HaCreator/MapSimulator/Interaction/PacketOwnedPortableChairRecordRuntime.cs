@@ -216,7 +216,7 @@ namespace HaCreator.MapSimulator.Interaction
                     addPacket.CharacterId,
                     LastPayloadLength,
                     normalizedSource,
-                    ResolveDispatchReason(normalizedSource, "derived=CUser::SetActivePortableChair"));
+                    ResolveDispatchReason(normalizedSource, $"derived=CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}"));
                 bool addApplied = remoteUserPool.TryApplyPortableChairRecordAdd(addPacket, out string addDetail);
                 if (addApplied)
                 {
@@ -246,7 +246,7 @@ namespace HaCreator.MapSimulator.Interaction
                 removePacket.CharacterId,
                 LastPayloadLength,
                 normalizedSource,
-                ResolveDispatchReason(normalizedSource, "derived=CUser::SetActivePortableChair"));
+                ResolveDispatchReason(normalizedSource, "derived=CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordRemove"));
             bool removeApplied = remoteUserPool.TryApplyPortableChairRecordRemove(removePacket, out string removeDetail);
             if (removeApplied)
             {

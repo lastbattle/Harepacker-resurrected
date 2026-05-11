@@ -1829,6 +1829,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => null
             };
 
+            if (IsClientFamilyResultChatLogNotice(packet.Type) && !string.IsNullOrWhiteSpace(message))
+            {
+                NotifySocialChatObserved(message);
+            }
+
             if (_pendingPrivilegeRequest != null
                 && TryResolvePendingPrivilegeRequest(packet, out string completionMessage))
             {
@@ -1854,6 +1859,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static bool IsClientFamilyResultChatLogNotice(int resultType)
+        {
+            // CWvsContext::OnFamilyResult sends result 0x4B/0x4C through
+            // CHATLOG_ADD(type=0xC); neighboring result types use CUtilDlg::Notice.
+            return resultType is 0x4B or 0x4C;
         }
 
         private bool TryResolvePendingManagementRequest(FamilyResultPacket packet, out string message)

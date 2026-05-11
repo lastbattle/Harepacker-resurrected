@@ -118,6 +118,9 @@ namespace HaCreator.MapSimulator.Pools
             PlayerMobStatusEffect.StopPotion,
             PlayerMobStatusEffect.Fear,
             PlayerMobStatusEffect.Bomb,
+            PlayerMobStatusEffect.DamageDown,
+            PlayerMobStatusEffect.PhysicalDefenseDown,
+            PlayerMobStatusEffect.MagicDefenseDown,
             PlayerMobStatusEffect.BattlefieldFlag
         };
 
@@ -938,6 +941,46 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
+            if (ContainsToken(hostileSearchText, "reduceTargetDam")
+                || levelData.PAD < 0
+                || levelData.MAD < 0)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.DamageDown,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(
+                        levelData,
+                        fallback: 10,
+                        preferAttackReduction: true),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "reduceTargetPDP")
+                || levelData.PDD < 0)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.PhysicalDefenseDown,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(
+                        levelData,
+                        fallback: 10,
+                        preferPhysicalDefenseReduction: true),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "reduceTargetMDP")
+                || levelData.MDD < 0)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.MagicDefenseDown,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(
+                        levelData,
+                        fallback: 10,
+                        preferMagicDefenseReduction: true),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
             if (ContainsToken(hostileSearchText, "slow", "web") || levelData.Speed < 0)
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
@@ -1369,7 +1412,10 @@ namespace HaCreator.MapSimulator.Pools
             int fallback,
             bool preferDotDamage = false,
             bool preferSpeed = false,
-            bool preferAccuracyReduction = false)
+            bool preferAccuracyReduction = false,
+            bool preferAttackReduction = false,
+            bool preferPhysicalDefenseReduction = false,
+            bool preferMagicDefenseReduction = false)
         {
             if (levelData == null)
             {
@@ -1397,6 +1443,33 @@ namespace HaCreator.MapSimulator.Pools
                 if (accuracyReduction > 0)
                 {
                     return accuracyReduction;
+                }
+            }
+
+            if (preferAttackReduction)
+            {
+                int attackReduction = ResolveHostilePlayerAreaAttackReductionMagnitude(levelData);
+                if (attackReduction > 0)
+                {
+                    return attackReduction;
+                }
+            }
+
+            if (preferPhysicalDefenseReduction)
+            {
+                int physicalDefenseReduction = ResolveHostilePlayerAreaPhysicalDefenseReductionMagnitude(levelData);
+                if (physicalDefenseReduction > 0)
+                {
+                    return physicalDefenseReduction;
+                }
+            }
+
+            if (preferMagicDefenseReduction)
+            {
+                int magicDefenseReduction = ResolveHostilePlayerAreaMagicDefenseReductionMagnitude(levelData);
+                if (magicDefenseReduction > 0)
+                {
+                    return magicDefenseReduction;
                 }
             }
 
@@ -1440,6 +1513,88 @@ namespace HaCreator.MapSimulator.Pools
                 Math.Abs(levelData.W),
                 Math.Abs(levelData.Y),
                 Math.Abs(levelData.X)
+            };
+
+            foreach (int candidate in candidates)
+            {
+                if (candidate > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int ResolveHostilePlayerAreaAttackReductionMagnitude(SkillLevelData levelData)
+        {
+            if (levelData == null)
+            {
+                return 0;
+            }
+
+            int[] candidates =
+            {
+                Math.Abs(levelData.PAD),
+                Math.Abs(levelData.MAD),
+                Math.Abs(levelData.X),
+                Math.Abs(levelData.V),
+                Math.Abs(levelData.Y),
+                Math.Abs(levelData.W)
+            };
+
+            foreach (int candidate in candidates)
+            {
+                if (candidate > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int ResolveHostilePlayerAreaPhysicalDefenseReductionMagnitude(SkillLevelData levelData)
+        {
+            if (levelData == null)
+            {
+                return 0;
+            }
+
+            int[] candidates =
+            {
+                Math.Abs(levelData.PDD),
+                Math.Abs(levelData.Y),
+                Math.Abs(levelData.X),
+                Math.Abs(levelData.Z),
+                Math.Abs(levelData.V)
+            };
+
+            foreach (int candidate in candidates)
+            {
+                if (candidate > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int ResolveHostilePlayerAreaMagicDefenseReductionMagnitude(SkillLevelData levelData)
+        {
+            if (levelData == null)
+            {
+                return 0;
+            }
+
+            int[] candidates =
+            {
+                Math.Abs(levelData.MDD),
+                Math.Abs(levelData.Z),
+                Math.Abs(levelData.Y),
+                Math.Abs(levelData.X),
+                Math.Abs(levelData.W)
             };
 
             foreach (int candidate in candidates)

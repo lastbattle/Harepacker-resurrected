@@ -471,6 +471,8 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            DrawOmokPlayerRecordRows(sprite);
+
             DrawText(sprite, "Room State", new Vector2(statePanel.X + 12, statePanel.Y + 10), HeaderColor, 0.68f);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 36, "Capacity", $"{_runtime.Occupants.Count}/{_runtime.Capacity}");
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 58, "Turn", ResolveOmokTurnSummary());
@@ -553,6 +555,34 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
             }
+        }
+
+        private void DrawOmokPlayerRecordRows(SpriteBatch sprite)
+        {
+            DrawOmokPlayerRecordRow(sprite, 0, Position.X + 404, Position.Y + 149);
+            DrawOmokPlayerRecordRow(sprite, 1, Position.X + 490, Position.Y + 149);
+        }
+
+        private void DrawOmokPlayerRecordRow(SpriteBatch sprite, int slot, int x, int y)
+        {
+            string playerName = slot < _runtime.Occupants.Count ? _runtime.Occupants[slot].Name : slot == 0 ? _runtime.OwnerName : "Opponent";
+            Rectangle nameBar = new Rectangle(x, y, 77, 17);
+            Rectangle recordBar = new Rectangle(x, y + 18, 77, 34);
+            sprite.Draw(_panelTexture, nameBar, new Color(255, 246, 210, 214));
+            sprite.Draw(_panelTexture, recordBar, slot == _runtime.MiniRoomOmokCurrentTurnIndex && _runtime.IsMiniRoomOmokInProgress
+                ? new Color(238, 229, 187, 218)
+                : new Color(229, 221, 205, 205));
+
+            DrawText(sprite, Truncate(playerName, 12), new Vector2(x + 3, y + 3), HeaderColor, 0.36f);
+            if (!_runtime.MiniRoomOmokRecords.TryGetValue(slot, out SocialRoomRuntime.MiniGameRecord record))
+            {
+                DrawText(sprite, "W 0  D 0", new Vector2(x + 4, y + 22), MutedColor, 0.34f);
+                DrawText(sprite, "L 0  0%", new Vector2(x + 4, y + 35), MutedColor, 0.34f);
+                return;
+            }
+
+            DrawText(sprite, $"W {record.Wins}  D {record.Draws}", new Vector2(x + 4, y + 22), ValueColor, 0.34f);
+            DrawText(sprite, $"L {record.Losses}  {record.WinRatePercent}%", new Vector2(x + 4, y + 35), ValueColor, 0.34f);
         }
 
         private Texture2D ResolveOmokStoneTexture(int stoneValue, bool isLastMove)
@@ -897,15 +927,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool canTrade = _runtime.Occupants.Count > 1 && !_runtime.TradeLocalLocked;
-            bool canCoin = !_runtime.TradeLocalLocked;
-            bool canAccept = _runtime.TradeLocalLocked && _runtime.TradeRemoteLocked && !_runtime.TradeVerificationPending;
-
-            _tradingRoomTradeButton?.SetEnabled(canTrade);
-            _tradingRoomCoinButton?.SetEnabled(canCoin);
-            _tradingRoomAcceptButton?.SetEnabled(canAccept);
-            _tradingRoomResetButton?.SetEnabled(true);
-            _tradingRoomEnterButton?.SetEnabled(_runtime.Occupants.Count > 0);
+            int currentUserCount = _runtime.Occupants.Count;
+            bool localLocked = _runtime.TradeLocalLocked;
+            _tradingRoomTradeButton?.SetEnabled(TradingRoomPacketTable.ResolveClientDrawButtonEnabled("BtTrade", currentUserCount, localLocked));
+            _tradingRoomCoinButton?.SetEnabled(TradingRoomPacketTable.ResolveClientDrawButtonEnabled("BtCoin", currentUserCount, localLocked));
+            _tradingRoomAcceptButton?.SetEnabled(TradingRoomPacketTable.ResolveClientDrawButtonEnabled("BtClame", currentUserCount, localLocked));
+            _tradingRoomResetButton?.SetEnabled(TradingRoomPacketTable.ResolveClientDrawButtonEnabled("BtReset", currentUserCount, localLocked));
+            _tradingRoomEnterButton?.SetEnabled(TradingRoomPacketTable.ResolveClientDrawButtonEnabled("BtEnter", currentUserCount, localLocked));
         }
 
         private void DrawTradeOfferSummary(SpriteBatch sprite, Rectangle panel, bool isLocalParty)

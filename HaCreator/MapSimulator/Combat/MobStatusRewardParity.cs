@@ -176,7 +176,8 @@ namespace HaCreator.MapSimulator.Combat
         internal static int ResolveMesoBonusPercent(MobAI mobAI)
         {
             int richBonusPercent = ResolveRichBonusPercent(mobAI);
-            return richBonusPercent;
+            int playerSkillMesoBonusPercent = Math.Max(0, mobAI?.GetStatusEffectValue(MobStatusEffect.MesoUp) ?? 0);
+            return richBonusPercent + playerSkillMesoBonusPercent;
         }
 
         private static int ResolveRichBonusPercent(MobAI mobAI)

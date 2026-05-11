@@ -44,6 +44,14 @@ namespace HaCreator.MapSimulator.Managers
         string MacAddress = null,
         string MacAddressWithHddSerial = null);
 
+    public readonly record struct LoginSelectCharacterByVacRequest(
+        int CharacterId,
+        int WorldId,
+        byte LoginOpt,
+        string SecondaryPassword = null,
+        string MacAddress = null,
+        string MacAddressWithHddSerial = null);
+
     /// <summary>
     /// Built-in login bridge that proxies a live Maple login session and mirrors
     /// inbound login packets into the existing login packet inbox seam.
@@ -55,6 +63,7 @@ namespace HaCreator.MapSimulator.Managers
         public const short OutboundCheckUserLimitOpcode = 6;
         public const short OutboundReturnToTitleOpcode = 12;
         public const short OutboundViewAllCharacterOpcode = 13;
+        public const short OutboundSelectCharacterByVacOpcode = 14;
         public const short OutboundSelectCharacterOpcode = 19;
         public const short OutboundCheckDuplicateIdOpcode = 21;
         public const short OutboundNewCharacterOpcode = 22;
@@ -62,6 +71,8 @@ namespace HaCreator.MapSimulator.Managers
         public const short OutboundDeleteCharacterOpcode = 24;
         public const short OutboundSelectCharacterLoginOpt0Opcode = 28;
         public const short OutboundSelectCharacterLoginOpt1Opcode = 29;
+        public const short OutboundSelectCharacterByVacLoginOpt0Opcode = 30;
+        public const short OutboundSelectCharacterByVacLoginOpt1Opcode = 31;
         public const int ClientMachineIdLength = 16;
         private const int RecentPacketCapacity = 8;
 
@@ -425,6 +436,37 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendSelectCharacterByVacRequest(LoginSelectCharacterByVacRequest request, out string status)
+        {
+            if (request.CharacterId <= 0)
+            {
+                status = "Login official-session SelectCharacterByVAC injection requires a valid character id.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.WorldId < 0)
+            {
+                status = "Login official-session SelectCharacterByVAC injection requires a non-negative world id.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.LoginOpt is 0 or 1 &&
+                string.IsNullOrWhiteSpace(request.SecondaryPassword))
+            {
+                status = "Login official-session SelectCharacterByVAC injection requires a secondary password for the client secondary-password branch.";
+                LastStatus = status;
+                return false;
+            }
+
+            short opcode = ResolveSelectCharacterByVacOpcode(request.LoginOpt);
+            return TrySendPacket(
+                BuildSelectCharacterByVacPacket(request),
+                $"Injected login opcode {opcode} for SelectCharacterByVAC character {request.CharacterId} in world {request.WorldId} into live session",
+                out status);
+        }
+
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
         {
             if (string.IsNullOrWhiteSpace(request.CharacterName))
@@ -540,6 +582,47 @@ namespace HaCreator.MapSimulator.Managers
             return writer.ToArray();
         }
 
+        public static byte[] BuildSelectCharacterByVacPacket(LoginSelectCharacterByVacRequest request)
+        {
+            // Client evidence: CLogin::SendSelectCharPacketByVAC (0x5d7550) mirrors
+            // SendSelectCharPacket but writes the selected ViewAllChar world id after the character id.
+            byte loginOpt = NormalizeSelectCharacterLoginOpt(request.LoginOpt);
+            PacketWriter writer = new();
+            writer.WriteShort(ResolveSelectCharacterByVacOpcode(loginOpt));
+
+            string macAddress = request.MacAddress ?? string.Empty;
+            string macAddressWithHddSerial = request.MacAddressWithHddSerial ?? string.Empty;
+            string secondaryPassword = (request.SecondaryPassword ?? string.Empty).Trim();
+            int worldId = Math.Max(0, request.WorldId);
+
+            switch (loginOpt)
+            {
+                case 0:
+                    writer.WriteByte(1);
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteInt(worldId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    writer.WriteMapleString(secondaryPassword);
+                    break;
+                case 1:
+                    writer.WriteMapleString(secondaryPassword);
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteInt(worldId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    break;
+                default:
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteInt(worldId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    break;
+            }
+
+            return writer.ToArray();
+        }
+
         public static byte[] BuildNewCharacterPacket(LoginNewCharacterRequest request)
         {
             PacketWriter writer = new();
@@ -603,6 +686,16 @@ namespace HaCreator.MapSimulator.Managers
                 0 => OutboundSelectCharacterLoginOpt0Opcode,
                 1 => OutboundSelectCharacterLoginOpt1Opcode,
                 _ => OutboundSelectCharacterOpcode,
+            };
+        }
+
+        private static short ResolveSelectCharacterByVacOpcode(byte loginOpt)
+        {
+            return NormalizeSelectCharacterLoginOpt(loginOpt) switch
+            {
+                0 => OutboundSelectCharacterByVacLoginOpt0Opcode,
+                1 => OutboundSelectCharacterByVacLoginOpt1Opcode,
+                _ => OutboundSelectCharacterByVacOpcode,
             };
         }
 

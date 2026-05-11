@@ -1902,7 +1902,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetCashEmoticonPageCount()
         {
-            return Math.Max(1, (int)Math.Ceiling(_cashEmoticonCount / (double)VisibleCashEmoticonCount));
+            return Math.Max(1, (int)Math.Ceiling(OwnedCashEmoticonCount / (double)VisibleCashEmoticonCount));
         }
 
         private int GetSelectableEmoticonCount()

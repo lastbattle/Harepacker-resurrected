@@ -102,7 +102,7 @@ namespace HaCreator.MapSimulator.UI
                 ShowFeedback(_acceptHandler?.Invoke());
             }
 
-            if (IsVisible && Pressed(keyboardState, Keys.Escape))
+            if (IsVisible && snapshot.HasDismissShortcut && Pressed(keyboardState, Keys.Escape))
             {
                 ShowFeedback(_dismissHandler?.Invoke());
             }

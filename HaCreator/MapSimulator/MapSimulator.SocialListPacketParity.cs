@@ -499,13 +499,7 @@ namespace HaCreator.MapSimulator
                 return detail;
             }
 
-            bool isClientResultNotice = packet.Kind == SocialListClientGuildResultKind.ResultNotice;
-            bool isClientNoticeOnlyResult = IsClientGuildNoticeOnlyResult(packet);
-            bool isClientGuildQuestNoticeResult = IsClientGuildQuestNoticeResult(packet);
-            bool shouldResolvePendingFromNotice = isClientResultNotice ||
-                                                  isClientNoticeOnlyResult ||
-                                                  isClientGuildQuestNoticeResult ||
-                                                  packet.UsesSharedResultNoticeFallback;
+            bool shouldResolvePendingFromNotice = ShouldResolveGuildSkillPendingFromClientGuildResult(packet);
             if (shouldResolvePendingFromNotice)
             {
                 string pendingResolutionDetail = _guildSkillRuntime.TryResolvePendingFromClientResultNotice(
@@ -600,11 +594,11 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static bool IsClientGuildQuestNoticeResult(SocialListClientGuildResultPacket packet)
+        internal static bool ShouldResolveGuildSkillPendingFromClientGuildResult(SocialListClientGuildResultPacket packet)
         {
-            return packet.Kind is SocialListClientGuildResultKind.GuildQuestNotEnoughMembers
-                or SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
-                or SocialListClientGuildResultKind.GuildQuestQueueNotice;
+            return packet.Kind == SocialListClientGuildResultKind.ResultNotice ||
+                   IsClientGuildNoticeOnlyResult(packet) ||
+                   packet.UsesSharedResultNoticeFallback;
         }
 
         private static bool IsClientGuildNoticeOnlyResult(SocialListClientGuildResultPacket packet)

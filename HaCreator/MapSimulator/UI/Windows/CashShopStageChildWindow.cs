@@ -75,8 +75,52 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class CashShopWrapperOwnerState
         {
+            public sealed class CanvasSlotState
+            {
+                public int SlotIndex { get; init; }
+                public string WzPath { get; init; } = string.Empty;
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public bool IsBackedByWz { get; init; }
+            }
+
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int SourceStringPoolId { get; init; }
+            }
+
+            public sealed class PriceRangeState
+            {
+                public int Index { get; init; }
+                public int LowPrice { get; init; }
+                public int HighPrice { get; init; }
+            }
+
             public string OwnerName { get; init; } = string.Empty;
             public string Status { get; init; } = string.Empty;
+            public string NativeCreateFunction { get; init; } = string.Empty;
+            public string NativeDrawFunction { get; init; } = string.Empty;
+            public string SourceSurface { get; init; } = string.Empty;
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ButtonControlState SortComboControl { get; init; }
+            public ButtonControlState SearchButtonControl { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+            public IReadOnlyList<CanvasSlotState> CanvasSlots { get; init; } = Array.Empty<CanvasSlotState>();
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public IReadOnlyList<PriceRangeState> PriceRanges { get; init; } = Array.Empty<PriceRangeState>();
+            public int LastKeyDownTick { get; init; }
+            public int CurrentCategory { get; init; }
+            public int CurrentSortType { get; init; }
+            public int BestSlotCount { get; init; }
+            public int BestRowHeight { get; init; }
+            public Point BestEventBadgePosition { get; init; }
+            public int PendingCommoditySerialNumber { get; init; }
+            public bool HasDedicatedWzSurface { get; init; }
             public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
         }
 
@@ -849,9 +893,94 @@ namespace HaCreator.MapSimulator.UI
                 case MapSimulatorWindowNames.CashShopOneADay:
                     DrawOneADayOwner(sprite, contentBounds, titleOrigin);
                     return;
+                case MapSimulatorWindowNames.CashShopTab:
+                case MapSimulatorWindowNames.CashShopBest:
+                case MapSimulatorWindowNames.CashShopItemSearch:
+                    DrawCashShopWrapperOwner(sprite, contentBounds, titleOrigin);
+                    return;
             }
 
             DrawFallbackContent(sprite, contentBounds, titleOrigin);
+        }
+
+        private void DrawCashShopWrapperOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            CashShopWrapperOwnerState state = _cashShopWrapperStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 6f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+
+            DrawWrapped(sprite, state.Status, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), accentColor);
+            if (!string.IsNullOrWhiteSpace(state.NativeCreateFunction))
+            {
+                DrawWrapped(sprite, $"Native {state.NativeCreateFunction}{(string.IsNullOrWhiteSpace(state.NativeDrawFunction) ? string.Empty : $" / {state.NativeDrawFunction}")}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.SelectorRuntime != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Selector#{state.SelectorRuntime.ControlId.ToString(CultureInfo.InvariantCulture)} at {state.SelectorRuntime.Position.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorRuntime.Position.Y.ToString(CultureInfo.InvariantCulture)} start {state.SelectorRuntime.StartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorRuntime.StartY.ToString(CultureInfo.InvariantCulture)} {state.SelectorRuntime.StartWidth.ToString(CultureInfo.InvariantCulture)}x{state.SelectorRuntime.StartHeight.ToString(CultureInfo.InvariantCulture)} labels {state.SelectorRuntime.TotalCount.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            if (state.SortComboControl != null)
+            {
+                DrawWrapped(sprite, $"Sort combo {FormatWrapperButton(state.SortComboControl)}; sort type {state.CurrentSortType.ToString(CultureInfo.InvariantCulture)}; last-key {state.LastKeyDownTick.ToString(CultureInfo.InvariantCulture)}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.SearchButtonControl != null)
+            {
+                DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.CanvasSlots.Count > 0)
+            {
+                string canvasLine = string.Join(
+                    " ",
+                    state.CanvasSlots.Select(slot =>
+                        $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(slot.IsBackedByWz ? $"{slot.Width.ToString(CultureInfo.InvariantCulture)}x{slot.Height.ToString(CultureInfo.InvariantCulture)}" : "null")}"));
+                DrawWrapped(sprite, $"Canvas slots {canvasLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.PriceRanges.Count > 0)
+            {
+                string priceLine = string.Join(
+                    ", ",
+                    state.PriceRanges.Select(range =>
+                        $"{range.Index.ToString(CultureInfo.InvariantCulture)}:{range.LowPrice.ToString(CultureInfo.InvariantCulture)}-{range.HighPrice.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, $"Price ranges {priceLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.BestSlotCount > 0)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Best slots {state.BestSlotCount.ToString(CultureInfo.InvariantCulture)} row {state.BestRowHeight.ToString(CultureInfo.InvariantCulture)}px; event badge {state.BestEventBadgePosition.X.ToString(CultureInfo.InvariantCulture)},{state.BestEventBadgePosition.Y.ToString(CultureInfo.InvariantCulture)}; pending SN {state.PendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            foreach (string line in state.Lines.Skip(1).Take(3))
+            {
+                DrawWrapped(sprite, line, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+        }
+
+        private static string FormatWrapperButton(CashShopWrapperOwnerState.ButtonControlState button)
+        {
+            return $"{button.ActionKey}#{button.ControlId.ToString(CultureInfo.InvariantCulture)} at {button.Position.X.ToString(CultureInfo.InvariantCulture)},{button.Position.Y.ToString(CultureInfo.InvariantCulture)} {button.Width.ToString(CultureInfo.InvariantCulture)}x{button.Height.ToString(CultureInfo.InvariantCulture)}";
         }
 
         private void DrawLockerOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)

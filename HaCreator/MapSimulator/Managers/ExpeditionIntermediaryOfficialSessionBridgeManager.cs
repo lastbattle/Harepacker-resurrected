@@ -249,6 +249,27 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryRecordSynthesizedOutboundPacket(byte[] rawPacket, string source, out string status)
+        {
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                status = "Expedition intermediary outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedPacket = (byte[])rawPacket.Clone();
+            int opcode = BitConverter.ToUInt16(clonedPacket, 0);
+            int payloadLength = Math.Max(0, clonedPacket.Length - sizeof(ushort));
+            RecordObservedOutboundPacket(clonedPacket);
+            LastSentOpcode = opcode;
+            LastSentPayloadLength = payloadLength;
+            string sourceText = string.IsNullOrWhiteSpace(source) ? "simulator owner flow" : source.Trim();
+            status = $"Synthesized expedition opcode {opcode} ({payloadLength} byte(s)) from {sourceText} and saved it to outbound history for inspection or replay.";
+            LastStatus = status;
+            return true;
+        }
+
         public string DescribeRecentOutboundPackets(int count)
         {
             lock (_sync)

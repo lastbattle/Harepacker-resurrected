@@ -224,6 +224,19 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private void MarkPersonalShopVisitorTimeoutRequestSent(int seatIndex)
+        {
+            if (Kind != SocialRoomKind.PersonalShop || seatIndex is < 1 or > 3)
+            {
+                return;
+            }
+
+            if (_personalShopVisitorEnterTimes.TryGetValue(seatIndex, out PersonalShopVisitorEnterTime enterTime))
+            {
+                enterTime.MarkRequestSent();
+            }
+        }
+
         private bool TryResolveOccupiedPersonalShopVisitorSeat(int seatIndex, out string visitorName)
         {
             visitorName = string.Empty;

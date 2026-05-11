@@ -794,10 +794,9 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                int globalSlotIndex = visibleCashSlots[i];
                 ShowFeedback(composing
-                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, compose.CashEmoticonPageIndex)
-                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, compose.CashEmoticonPageIndex));
+                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, visibleCashSlots[i], compose.CashEmoticonPageIndex)
+                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, visibleCashSlots[i], compose.CashEmoticonPageIndex));
                 return true;
             }
 
@@ -840,10 +839,9 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                int globalSlotIndex = visibleCashSlots[i];
                 ShowFeedback(composing
-                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, replyDraft.CashEmoticonPageIndex)
-                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, replyDraft.CashEmoticonPageIndex));
+                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, visibleCashSlots[i], replyDraft.CashEmoticonPageIndex)
+                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, visibleCashSlots[i], replyDraft.CashEmoticonPageIndex));
                 return true;
             }
 
@@ -1670,22 +1668,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<int> visibleCashSlots = BuildVisibleCashEmoticonSlots(cashOwnership, cashPageIndex, VisibleCashEmoticonCount);
-            for (int i = 0; i < VisibleCashEmoticonCount; i++)
+            for (int i = 0; i < visibleCashSlots.Count; i++)
             {
-                int globalSlotIndex = i < visibleCashSlots.Count ? visibleCashSlots[i] : -1;
+                int globalSlotIndex = visibleCashSlots[i];
                 Texture2D texture = globalSlotIndex >= 0 && globalSlotIndex < _cashEmoticonTextures.Length
                     ? _cashEmoticonTextures[globalSlotIndex]
                     : null;
-                bool isOwned = globalSlotIndex >= 0
-                    && cashOwnership != null
-                    && globalSlotIndex < cashOwnership.Count
-                    && cashOwnership[globalSlotIndex];
                 DrawEmoticonSlot(
                     sprite,
                     texture,
                     GetCashEmoticonBounds(i),
                     selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == globalSlotIndex && selectedEmoticon.CashPageIndex == cashPageIndex,
-                    isOwned);
+                    isOwned: true);
             }
 
             Rectangle cashRow = GetCashEmoticonRowBounds();
@@ -3243,11 +3237,20 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<int>();
             }
 
-            int maxPageIndex = Math.Max(0, (cashOwnership.Count - 1) / visibleSlotCount);
+            int ownedSlotCount = cashOwnership.Count(static owned => owned);
+            if (ownedSlotCount == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int maxPageIndex = Math.Max(0, (ownedSlotCount - 1) / visibleSlotCount);
             int resolvedPageIndex = Math.Clamp(cashPageIndex, 0, maxPageIndex);
-            int firstSlotIndex = resolvedPageIndex * visibleSlotCount;
-            return Enumerable.Range(firstSlotIndex, Math.Max(0, cashOwnership.Count - firstSlotIndex))
+            return cashOwnership
+                .Select(static (owned, index) => (owned, index))
+                .Where(static slot => slot.owned)
+                .Skip(resolvedPageIndex * visibleSlotCount)
                 .Take(visibleSlotCount)
+                .Select(static slot => slot.index)
                 .ToArray();
         }
     }

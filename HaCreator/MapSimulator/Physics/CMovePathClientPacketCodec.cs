@@ -7,6 +7,29 @@ namespace HaCreator.MapSimulator.Physics
 {
     internal static class CMovePathClientPacketCodec
     {
+        internal readonly struct ClientFlushTail
+        {
+            public ClientFlushTail(
+                IReadOnlyList<byte> passiveKeyPadStates,
+                short left,
+                short top,
+                short right,
+                short bottom)
+            {
+                PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<byte>();
+                Left = left;
+                Top = top;
+                Right = right;
+                Bottom = bottom;
+            }
+
+            public IReadOnlyList<byte> PassiveKeyPadStates { get; }
+            public short Left { get; }
+            public short Top { get; }
+            public short Right { get; }
+            public short Bottom { get; }
+        }
+
         public static bool TryEncode(
             IReadOnlyList<MovePathElement> path,
             out byte[] payload,
@@ -60,7 +83,41 @@ namespace HaCreator.MapSimulator.Physics
             out string error,
             bool includeClientRandomCounts = false)
         {
+            return TryDecodeCore(
+                payload,
+                out path,
+                out _,
+                out error,
+                includeClientRandomCounts,
+                includeClientFlushTail: false);
+        }
+
+        internal static bool TryDecodeWithClientFlushTail(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out ClientFlushTail flushTail,
+            out string error,
+            bool includeClientRandomCounts = false)
+        {
+            return TryDecodeCore(
+                payload,
+                out path,
+                out flushTail,
+                out error,
+                includeClientRandomCounts,
+                includeClientFlushTail: true);
+        }
+
+        private static bool TryDecodeCore(
+            byte[] payload,
+            out IReadOnlyList<MovePathElement> path,
+            out ClientFlushTail flushTail,
+            out string error,
+            bool includeClientRandomCounts,
+            bool includeClientFlushTail)
+        {
             path = Array.Empty<MovePathElement>();
+            flushTail = default;
             error = null;
             if (payload == null || payload.Length == 0)
             {
@@ -100,6 +157,11 @@ namespace HaCreator.MapSimulator.Physics
                         currentVx = element.VelocityX;
                         currentVy = element.VelocityY;
                     }
+                }
+
+                if (includeClientFlushTail)
+                {
+                    flushTail = ReadFlushTail(reader);
                 }
 
                 if (stream.Position != stream.Length)
@@ -762,6 +824,27 @@ namespace HaCreator.MapSimulator.Physics
             writer.Write(top);
             writer.Write(right);
             writer.Write(bottom);
+        }
+
+        private static ClientFlushTail ReadFlushTail(System.IO.BinaryReader reader)
+        {
+            int stateCount = reader.ReadByte();
+            byte[] passiveKeyPadStates = new byte[stateCount];
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte packed = reader.ReadByte();
+                passiveKeyPadStates[i] = (byte)(packed & 0x0F);
+                if (i + 1 < stateCount)
+                {
+                    passiveKeyPadStates[i + 1] = (byte)((packed >> 4) & 0x0F);
+                }
+            }
+
+            short left = reader.ReadInt16();
+            short top = reader.ReadInt16();
+            short right = reader.ReadInt16();
+            short bottom = reader.ReadInt16();
+            return new ClientFlushTail(passiveKeyPadStates, left, top, right, bottom);
         }
 
         private static bool ShouldUpdateClientMoveRectFromEncodedElement(MovePathElement element)

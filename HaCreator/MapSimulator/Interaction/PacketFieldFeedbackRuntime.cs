@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action<string, int, string> AddClientChatMessage { get; init; }
         internal Action<string> ShowUtilityFeedback { get; init; }
         internal Action<string> ShowModalWarning { get; init; }
+        internal Action<string, bool> ShowModalNotice { get; init; }
         internal Action<string> RememberWhisperTarget { get; init; }
         internal Func<int> GetCurrentChannelId { get; init; }
         internal Func<string> GetLastOutgoingWhisperText { get; init; }
@@ -819,7 +820,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string sender = ReadMapleString(reader);
-            string body = NormalizeFieldChatText(ReadMapleString(reader));
+            string body = NormalizePacketOwnedFieldChatBody(ReadMapleString(reader));
 
             if (ShouldSuppressBlacklistedGroupMessage(family, sender, callbacks))
             {
@@ -870,7 +871,7 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        body = NormalizeFieldChatText(body);
+                        body = NormalizePacketOwnedFieldChatBody(body);
                         TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         string text = ResolveIncomingWhisperLogText(sender, channelId, body, callbacks);
                         callbacks?.AddClientChatMessage?.Invoke(text, 1, sender);
@@ -985,7 +986,7 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         ReadMapleString(reader);
                         reader.ReadByte();
-                        string text = NormalizeFieldChatText(ReadMapleString(reader));
+                        string text = NormalizePacketOwnedFieldChatBody(ReadMapleString(reader));
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             callbacks?.ShowBlowWeatherMessage?.Invoke(text);
@@ -1027,7 +1028,7 @@ namespace HaCreator.MapSimulator.Interaction
                         }
 
                         string body = ReadMapleString(reader);
-                        body = NormalizeFieldChatText(body);
+                        body = NormalizePacketOwnedFieldChatBody(body);
                         callbacks?.AddClientChatMessage?.Invoke(body, 6, null);
                         _statusMessage = "Applied packet-owned couple notice.";
                         message = _statusMessage;
@@ -1038,7 +1039,7 @@ namespace HaCreator.MapSimulator.Interaction
                         string sender = ReadMapleString(reader);
                         reader.ReadByte();
                         string body = ReadMapleString(reader);
-                        body = NormalizeFieldChatText(body);
+                        body = NormalizePacketOwnedFieldChatBody(body);
                         callbacks?.AddClientChatMessage?.Invoke(
                             FormatFieldFeedbackStringPoolText(
                                 CoupleSharedChatStringPoolId,
@@ -1250,7 +1251,7 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             string text = ReadMapleString(reader);
             _lastWarningMessage = text;
-            callbacks?.ShowModalWarning?.Invoke(text);
+            ShowNotice(callbacks, text, trackDirectionModeOwner: true);
             _statusMessage = "Applied packet-owned warning dialog.";
             message = _statusMessage;
             return true;
@@ -1309,7 +1310,7 @@ namespace HaCreator.MapSimulator.Interaction
             callbacks?.ConsumeTransferFieldRequestFailure?.Invoke();
             if (reason is 4 or 8)
             {
-                callbacks?.ShowModalWarning?.Invoke(text);
+                ShowNotice(callbacks, text, trackDirectionModeOwner: reason == 8);
             }
             else
             {
@@ -1368,7 +1369,7 @@ namespace HaCreator.MapSimulator.Interaction
             string text = MapleStoryStringPool.GetOrFallback(
                 SummonItemUnavailableNoticeStringPoolId,
                 SummonItemUnavailableNoticeFallback);
-            callbacks?.ShowModalWarning?.Invoke(text);
+            ShowNotice(callbacks, text, trackDirectionModeOwner: false);
             _statusMessage = "Applied packet-owned summon-item availability feedback.";
             message = _statusMessage;
             return true;
@@ -1708,6 +1709,17 @@ namespace HaCreator.MapSimulator.Interaction
             return callbacks?.SetObjectTagState?.Invoke(tag, isEnabled, 0, currentTick) == true;
         }
 
+        private static void ShowNotice(PacketFieldFeedbackCallbacks callbacks, string text, bool trackDirectionModeOwner)
+        {
+            if (callbacks?.ShowModalNotice != null)
+            {
+                callbacks.ShowModalNotice(text, trackDirectionModeOwner);
+                return;
+            }
+
+            callbacks?.ShowModalWarning?.Invoke(text);
+        }
+
         private static string BuildWhisperLocationMessage(string target, string locationName)
         {
             return FormatWhisperStringPoolText(
@@ -1841,6 +1853,22 @@ namespace HaCreator.MapSimulator.Interaction
         private static string NormalizeFieldChatText(string text)
         {
             return NormalizeFieldChatText(text, static value => IsDbcsLeadByte(value));
+        }
+
+        private static string NormalizePacketOwnedFieldChatBody(string text)
+        {
+            string source = text ?? string.Empty;
+            if (!ClientCurseProcessParity.TryProcessString(
+                    source,
+                    ignoreNewLine: false,
+                    out string processedText,
+                    out _,
+                    out _))
+            {
+                processedText = ClientCurseProcessParity.GetInappropriateContentNotice();
+            }
+
+            return NormalizeFieldChatText(processedText);
         }
 
         private static string NormalizeFieldChatText(string text, Func<byte, bool> isDbcsLeadByte)

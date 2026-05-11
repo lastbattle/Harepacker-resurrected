@@ -2358,30 +2358,12 @@ namespace HaCreator.MapSimulator.Managers
                 normalizedByByte[byteIndex] = normalizedPair;
             }
 
-            if (normalizedByByte.Count == 0)
+            TryExtractSg88ReplayParityMismatchPairsFromTextComparison(rawPairSegment, normalizedByByte);
+            TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
+            if (!ReferenceEquals(rawPairSegment, decodeDetail))
             {
-                TryExtractSg88ReplayParityMismatchPairsFromTextComparison(rawPairSegment, normalizedByByte);
-            }
-
-            if (normalizedByByte.Count == 0)
-            {
-                TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
-                if (normalizedByByte.Count == 0
-                    && !ReferenceEquals(rawPairSegment, decodeDetail))
-                {
-                    TryExtractSg88ReplayParityMismatchPairsFromTextComparison(decodeDetail, normalizedByByte);
-                }
-
-                if (normalizedByByte.Count == 0
-                    && !ReferenceEquals(rawPairSegment, decodeDetail))
-                {
-                    TryExtractSg88ReplayParityMismatchPairsJsonLike(decodeDetail, normalizedByByte);
-                }
-
-                if (normalizedByByte.Count == 0)
-                {
-                    return false;
-                }
+                TryExtractSg88ReplayParityMismatchPairsFromTextComparison(decodeDetail, normalizedByByte);
+                TryExtractSg88ReplayParityMismatchPairsJsonLike(decodeDetail, normalizedByByte);
             }
 
             if (normalizedByByte.Count == 0)
@@ -2543,7 +2525,8 @@ namespace HaCreator.MapSimulator.Managers
                         bool childPairContainer = insidePairContainer
                             || IsSg88MismatchPairJsonLabel(property.Name);
                         bool childPacketComparisonContainer = insidePacketComparisonContainer
-                            || IsSg88PacketComparisonByteArrayLabel(property.Name);
+                            || IsSg88PacketComparisonByteArrayLabel(property.Name)
+                            || IsSg88PacketComparisonParticipantArrayLabel(property.Name);
                         bool childPayloadComparisonContainer = insidePayloadComparisonContainer
                             || IsSg88PayloadComparisonByteArrayLabel(property.Name);
                         CollectSg88ReplayParityMismatchPairsFromJsonElement(
@@ -2903,6 +2886,27 @@ namespace HaCreator.MapSimulator.Managers
                 or "lane"
                 or "name"
                 or "label";
+        }
+
+        private static bool IsSg88PacketComparisonParticipantArrayLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "participants"
+                or "participantcomparisons"
+                or "packetsides"
+                or "payloadsides"
+                or "sides"
+                or "lanes"
+                or "streams";
         }
 
         private static bool ShouldInspectSg88PacketComparisonParticipant(

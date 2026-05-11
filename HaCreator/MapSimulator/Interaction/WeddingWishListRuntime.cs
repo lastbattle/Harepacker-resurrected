@@ -865,7 +865,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
 
                 case ClientGetItemFailureSubtype:
-                    message = ApplyClientGetItemFailure(subtype, "Wedding wish-list receive request failed; reopened Get actions.", restoreOptimisticState: _hasPendingTransferRequest);
+                    message = ApplyClientGetItemSilentFailure();
                     return true;
 
                 case ClientGetItemInventoryFullSubtype:
@@ -935,6 +935,23 @@ namespace HaCreator.MapSimulator.Interaction
             ClampSelections();
             NormalizeViewportState();
             _statusMessage = $"Applied CWishListRecvDlg::OnPacket subtype {ClientGetItemSuccessSubtype}; refreshed receive rows and reopened Get actions without closing the modeless receive dialog.";
+            return _statusMessage;
+        }
+
+        private string ApplyClientGetItemSilentFailure()
+        {
+            if (_hasPendingTransferRequest && _pendingTransferSubtype == SendGetItemRequestSubtype)
+            {
+                RestoreRejectedGetTransfer();
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = $"Applied CWishListRecvDlg::OnPacket subtype {ClientGetItemFailureSubtype}; cleared the client request gate and reopened Get actions without showing a CUtilDlg notice.";
             return _statusMessage;
         }
 

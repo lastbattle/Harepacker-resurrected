@@ -29,6 +29,9 @@ namespace HaCreator.MapSimulator.Character
         Fear,
         Burn,
         Bomb,
+        DamageDown,
+        PhysicalDefenseDown,
+        MagicDefenseDown,
         BattlefieldFlag
     }
 

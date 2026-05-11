@@ -44,9 +44,10 @@ namespace HaCreator.MapSimulator.Loaders
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
         private const int COLLAPSED_MINIMAP_TOP_ROW_BUTTON_RIGHT_PADDING = 6;
         private const int COLLAPSED_MINIMAP_CLIENT_TEXT_LEFT = 6;
-        private const int COLLAPSED_MINIMAP_CLIENT_SEPARATOR_LEFT_OFFSET = 2;
-        private const int COLLAPSED_MINIMAP_CLIENT_MAPNAME_LEFT_OFFSET = 6;
-        private const string COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR = "/";
+        private const int COLLAPSED_MINIMAP_CLIENT_TEXT_TOP = 5;
+        private const int COLLAPSED_MINIMAP_CLIENT_SEPARATOR_LEFT_OFFSET = 1;
+        private const int COLLAPSED_MINIMAP_CLIENT_MAPNAME_LEFT_OFFSET = 5;
+        private const string COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR = ":";
         private const SWF.TextFormatFlags CollapsedMinimapTitleTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |
@@ -2093,7 +2094,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset, int RightInset);
         internal readonly record struct CollapsedMinimapButtonChromeMetrics(int LaneTop, int LaneHeight);
-        internal readonly record struct CollapsedMinimapClientTitleLayout(int StreetNameX, int SeparatorX, int MapNameX);
+        internal readonly record struct CollapsedMinimapClientTitleLayout(int StreetNameX, int SeparatorX, int MapNameX, int TextY);
 
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int stateButtonWidth,
@@ -2307,7 +2308,7 @@ namespace HaCreator.MapSimulator.Loaders
             int mapNameX = streetNameX
                 + Math.Max(0, streetNameTextWidth)
                 + COLLAPSED_MINIMAP_CLIENT_MAPNAME_LEFT_OFFSET;
-            return new CollapsedMinimapClientTitleLayout(streetNameX, separatorX, mapNameX);
+            return new CollapsedMinimapClientTitleLayout(streetNameX, separatorX, mapNameX, COLLAPSED_MINIMAP_CLIENT_TEXT_TOP);
         }
 
         internal static SD.Rectangle ResolveCollapsedMinimapIconOpaqueBoundsForTesting(SD.Bitmap icon)
@@ -2526,7 +2527,7 @@ namespace HaCreator.MapSimulator.Loaders
                         CollapsedMinimapTitleTextFormatFlags);
                     CollapsedMinimapClientTitleLayout layout =
                         ResolveCollapsedMinimapClientTitleLayoutForTesting(streetSize.Width);
-                    int textTop = textRect.Y;
+                    int textTop = layout.TextY;
                     DrawCollapsedMinimapTitleSegment(graphics, renderStreetName, titleFont, textColor, layout.StreetNameX, textTop, maxTextWidth, textRect.Height);
                     DrawCollapsedMinimapTitleSegment(graphics, COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR, titleFont, textColor, layout.SeparatorX, textTop, maxTextWidth, textRect.Height);
                     DrawCollapsedMinimapTitleSegment(graphics, renderMapName, titleFont, textColor, layout.MapNameX, textTop, maxTextWidth, textRect.Height);

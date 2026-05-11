@@ -48,10 +48,16 @@ namespace HaCreator.MapSimulator.Interaction
             window.SetActionHandlers(
                 elapsedMs =>
                 {
-                    string message = _runtime.Advance(elapsedMs);
+                    string message = _runtime.Advance(elapsedMs, out GuildCreateAgreementAcceptance timeoutAcceptance);
                     if (!string.IsNullOrWhiteSpace(message))
                     {
                         feedbackHandler?.Invoke(message);
+                        string acceptanceMessage = acceptanceHandler?.Invoke(timeoutAcceptance);
+                        if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                        {
+                            feedbackHandler?.Invoke(acceptanceMessage);
+                        }
+
                         windowManager.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
                     }
                 },

@@ -174,6 +174,27 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Recovered TradingRoom button table from CTradingRoomDlg::OnCreate/OnButtonClicked: {controls}.";
         }
 
+        internal static bool ResolveClientDrawButtonEnabled(string buttonName, int currentUserCount, bool localLocked)
+        {
+            if (string.IsNullOrWhiteSpace(buttonName))
+            {
+                return false;
+            }
+
+            // IDA: Draw refreshes BtTrade from m_nCurUsers/m_bMyLock, while Trade disables BtCoin after locking.
+            int normalizedUserCount = Math.Max(0, currentUserCount);
+            bool hasPeer = normalizedUserCount > 1;
+            return buttonName.Trim() switch
+            {
+                "BtTrade" => hasPeer && !localLocked,
+                "BtCoin" => hasPeer && !localLocked,
+                "BtEnter" => true,
+                "BtReset" => true,
+                "BtClame" => true,
+                _ => false
+            };
+        }
+
         internal static bool TryBuildRecoveredResultExpectation(
             int requestOpcode,
             ReadOnlySpan<byte> payload,

@@ -80,8 +80,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             int safeAttackWindowMs = Math.Max(0, attackWindowMs);
             int safeRemovalWindowMs = Math.Max(1, removalWindowMs);
-            int removalAnimationStartTime = currentTime + safeAttackWindowMs;
-            return (removalAnimationStartTime, removalAnimationStartTime + safeRemovalWindowMs);
+            int removalAnimationStartTime = SummonRuntimeRules.AddClientTickDelta(currentTime, safeAttackWindowMs);
+            return (
+                removalAnimationStartTime,
+                SummonRuntimeRules.AddClientTickDelta(removalAnimationStartTime, safeRemovalWindowMs));
         }
 
         public static Vector2 ResolvePassiveTargetPosition(

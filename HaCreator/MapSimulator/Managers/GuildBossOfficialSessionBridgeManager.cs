@@ -44,6 +44,9 @@ namespace HaCreator.MapSimulator.Managers
         private InboundPacketTrace? _liveInboundGuildBossPacketEvidence;
         private OutboundPacketTrace? _liveOutboundOpcode259Evidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+        private short? _currentInitializedSessionVersion;
+        private long? _currentInitializedProxySessionId;
+        private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -54,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int PacketType,
             int PayloadLength,
+            short? SessionVersion,
             string Source,
             string Summary,
             string RawPacketHex,
@@ -62,10 +66,12 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int Sequence,
             int PayloadLength,
+            short? SessionVersion,
             string Source,
             string Summary,
             string RawPacketHex,
             long? ProxySessionId);
+        private readonly record struct InitializedProxySessionKey(short SessionVersion, long ProxySessionId);
         public enum LiveOwnershipVerificationState
         {
             Idle,
@@ -134,7 +140,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected Maple session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}"
+                ? $"connected Maple session {DescribeCurrentInitializedProxySession()}"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -720,6 +726,7 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
+                RecordInitializedProxySession(_roleSessionProxy.CurrentSessionVersion, _roleSessionProxy.CurrentProxySessionId);
                 int flushed = FlushQueuedPulleyRequestsViaProxy();
                 byte[] packet = BuildPulleyRequestPacket();
                 if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
@@ -730,7 +737,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
-                RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject", _roleSessionProxy.CurrentProxySessionId));
+                RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject", _roleSessionProxy.CurrentSessionVersion, _roleSessionProxy.CurrentProxySessionId));
                 string proxySessionText = FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId);
                 status = flushed > 0
                     ? $"Flushed {flushed} queued Guild Boss opcode {OutboundPulleyRequestOpcode} request(s), then injected opcode {OutboundPulleyRequestOpcode} into live session proxySession={proxySessionText}."
@@ -783,7 +790,7 @@ namespace HaCreator.MapSimulator.Managers
             byte[] rawPacket = BuildPulleyRequestPacket();
             _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, rawPacket));
             QueuedCount++;
-            RecordOutboundTrace(BuildOutboundTrace(rawPacket, request.Sequence, "simulator-queue", proxySessionId: null));
+            RecordOutboundTrace(BuildOutboundTrace(rawPacket, request.Sequence, "simulator-queue", sessionVersion: null, proxySessionId: null));
             status = HasPassiveEstablishedSocketPair
                 ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} while observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost to flush it after the proxied handshake initializes."
                 : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
@@ -863,7 +870,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}", e.ProxySessionId));
+            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}", e.SessionVersion, e.ProxySessionId));
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
@@ -886,7 +893,7 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
                 && opcode == OutboundPulleyRequestOpcode)
             {
-                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
+                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, source: $"official-session:{e.SourceEndpoint}", sessionVersion: e.SessionVersion, proxySessionId: e.ProxySessionId));
                 LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
             }
         }
@@ -915,6 +922,9 @@ namespace HaCreator.MapSimulator.Managers
                 _hasObservedLiveOutboundOpcode259 = false;
                 _liveInboundGuildBossPacketEvidence = null;
                 _liveOutboundOpcode259Evidence = null;
+                _currentInitializedSessionVersion = null;
+                _currentInitializedProxySessionId = null;
+                _initializedProxySessions.Clear();
             }
         }
         private int FlushQueuedPulleyRequestsViaProxy()
@@ -938,7 +948,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
-                RecordOutboundTrace(BuildOutboundTrace(pending.RawPacket, pending.Request.Sequence, "official-session:proxy-flush", _roleSessionProxy.CurrentProxySessionId));
+                RecordOutboundTrace(BuildOutboundTrace(pending.RawPacket, pending.Request.Sequence, "simulator-proxy-flush", _roleSessionProxy.CurrentSessionVersion, _roleSessionProxy.CurrentProxySessionId));
                 flushed++;
             }
 
@@ -1176,10 +1186,10 @@ namespace HaCreator.MapSimulator.Managers
                 InboundPacketTrace inbound = inboundEvidence.Value;
                 OutboundPacketTrace outbound = outboundEvidence.Value;
                 long? currentProxySessionId = _roleSessionProxy.CurrentProxySessionId;
-                string pairLabel = IsPairedCurrentProxySession(currentProxySessionId, outbound.ProxySessionId, inbound.ProxySessionId)
+                string pairLabel = IsPairedInitializedProxySession(outbound.SessionVersion, outbound.ProxySessionId, inbound.SessionVersion, inbound.ProxySessionId)
                     ? $"paired proxySession={outbound.ProxySessionId.Value}"
                     : IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
-                        ? $"stale paired proxySession={FormatProxySessionId(outbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}"
+                        ? $"uninitialized or stale paired proxySession={FormatProxySessionId(outbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}"
                         : $"unpaired proxy sessions outbound={FormatProxySessionId(outbound.ProxySessionId)} inbound={FormatProxySessionId(inbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}";
                 return $"Live ownership verification evidence: {pairLabel} outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
@@ -1209,11 +1219,7 @@ namespace HaCreator.MapSimulator.Managers
                     _recentInboundPackets.RemoveAt(0);
                 }
 
-                if (IsLiveProxiedSource(trace.Source))
-                {
-                    _hasObservedLiveInboundGuildBossPacket = true;
-                    _liveInboundGuildBossPacketEvidence = trace;
-                }
+                RefreshInboundVerificationEvidence();
             }
         }
 
@@ -1227,11 +1233,7 @@ namespace HaCreator.MapSimulator.Managers
                     _recentOutboundPackets.RemoveAt(0);
                 }
 
-                if (IsLiveProxiedSource(trace.Source))
-                {
-                    _hasObservedLiveOutboundOpcode259 = true;
-                    _liveOutboundOpcode259Evidence = trace;
-                }
+                RefreshOutboundVerificationEvidence();
             }
         }
 
@@ -1241,10 +1243,153 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return _liveInboundGuildBossPacketEvidence.HasValue
                     && _liveOutboundOpcode259Evidence.HasValue
-                    && IsPairedCurrentProxySession(
-                        _roleSessionProxy.CurrentProxySessionId,
+                    && IsPairedInitializedProxySession(
+                        _liveOutboundOpcode259Evidence.Value.SessionVersion,
                         _liveOutboundOpcode259Evidence.Value.ProxySessionId,
+                        _liveInboundGuildBossPacketEvidence.Value.SessionVersion,
                         _liveInboundGuildBossPacketEvidence.Value.ProxySessionId);
+            }
+        }
+
+        private void RecordInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            lock (_sync)
+            {
+                if (sessionVersion.HasValue && proxySessionId.HasValue)
+                {
+                    _currentInitializedSessionVersion = sessionVersion;
+                    _currentInitializedProxySessionId = proxySessionId;
+                    _initializedProxySessions.Add(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+                }
+                else
+                {
+                    _currentInitializedSessionVersion = null;
+                    _currentInitializedProxySessionId = null;
+                }
+
+                RefreshOutboundVerificationEvidence();
+                RefreshInboundVerificationEvidence();
+            }
+        }
+
+        internal void RecordInitializedProxySessionForTests(short sessionVersion, long proxySessionId)
+        {
+            RecordInitializedProxySession(sessionVersion, proxySessionId);
+        }
+
+        internal bool TryRecordOutboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out _)
+                || opcode != OutboundPulleyRequestOpcode)
+            {
+                return false;
+            }
+
+            RecordOutboundTrace(BuildOutboundTrace(rawPacket, sequence: 0, source, sessionVersion, proxySessionId));
+            return true;
+        }
+
+        internal bool TryRecordInboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                || (opcode != PacketTypeHealerMove && opcode != PacketTypePulleyStateChange))
+            {
+                return false;
+            }
+
+            RecordInboundTrace(BuildInboundTrace(rawPacket, opcode, payload.Length, source, sessionVersion, proxySessionId));
+            return true;
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+                _hasObservedLiveOutboundOpcode259 = false;
+                _liveOutboundOpcode259Evidence = null;
+            }
+
+            LastStatus = $"Cleared Guild Boss opcode {OutboundPulleyRequestOpcode} outbound trace history.";
+            return LastStatus;
+        }
+
+        private void RefreshOutboundVerificationEvidence()
+        {
+            OutboundPacketTrace? latestLiveTrace = null;
+            for (int i = _recentOutboundPackets.Count - 1; i >= 0; i--)
+            {
+                OutboundPacketTrace candidate = _recentOutboundPackets[i];
+                if (IsInitializedLiveProxiedSource(candidate))
+                {
+                    latestLiveTrace = candidate;
+                    break;
+                }
+            }
+
+            _liveOutboundOpcode259Evidence = latestLiveTrace;
+            _hasObservedLiveOutboundOpcode259 = latestLiveTrace.HasValue;
+        }
+
+        private void RefreshInboundVerificationEvidence()
+        {
+            InboundPacketTrace? latestLiveTrace = null;
+            for (int i = _recentInboundPackets.Count - 1; i >= 0; i--)
+            {
+                InboundPacketTrace candidate = _recentInboundPackets[i];
+                if (IsInitializedLiveProxiedSource(candidate))
+                {
+                    latestLiveTrace = candidate;
+                    break;
+                }
+            }
+
+            _liveInboundGuildBossPacketEvidence = latestLiveTrace;
+            _hasObservedLiveInboundGuildBossPacket = latestLiveTrace.HasValue;
+        }
+
+        private bool IsInitializedLiveProxiedSource(OutboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId)
+                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private bool IsInitializedLiveProxiedSource(InboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId)
+                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private bool IsPairedInitializedProxySession(
+            short? outboundSessionVersion,
+            long? outboundProxySessionId,
+            short? inboundSessionVersion,
+            long? inboundProxySessionId)
+        {
+            return outboundSessionVersion.HasValue
+                && inboundSessionVersion.HasValue
+                && outboundSessionVersion.Value == inboundSessionVersion.Value
+                && IsSameProxySession(outboundProxySessionId, inboundProxySessionId)
+                && IsInitializedProxySession(outboundSessionVersion, outboundProxySessionId);
+        }
+
+        private bool IsInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            if (!sessionVersion.HasValue || !proxySessionId.HasValue)
+            {
+                return false;
+            }
+
+            return _initializedProxySessions.Contains(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+        }
+
+        private string DescribeCurrentInitializedProxySession()
+        {
+            lock (_sync)
+            {
+                return _currentInitializedSessionVersion.HasValue && _currentInitializedProxySessionId.HasValue
+                    ? $"version={_currentInitializedSessionVersion.Value} proxySession={_currentInitializedProxySessionId.Value} initializedSessionCount={_initializedProxySessions.Count}"
+                    : $"proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}";
             }
         }
 
@@ -1269,20 +1414,21 @@ namespace HaCreator.MapSimulator.Managers
             return proxySessionId.HasValue ? proxySessionId.Value.ToString(CultureInfo.InvariantCulture) : "unknown";
         }
 
-        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source, long? proxySessionId)
+        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source, short? sessionVersion, long? proxySessionId)
         {
             string summary = $"opcode={opcode} payload={payloadLength}";
             return new InboundPacketTrace(
                 opcode,
                 opcode,
                 payloadLength,
+                sessionVersion,
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
                 summary,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 proxySessionId);
         }
 
-        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source, long? proxySessionId)
+        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source, short? sessionVersion, long? proxySessionId)
         {
             int payloadLength = rawPacket == null ? 0 : Math.Max(0, rawPacket.Length - sizeof(short));
             string summary = sequence > 0
@@ -1292,16 +1438,22 @@ namespace HaCreator.MapSimulator.Managers
                 OutboundPulleyRequestOpcode,
                 sequence,
                 payloadLength,
+                sessionVersion,
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-local" : source,
                 summary,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 proxySessionId);
         }
 
-        private static bool IsLiveProxiedSource(string source)
+        private static bool IsLiveProxiedSource(string source, short? sessionVersion, long? proxySessionId)
         {
-            return !string.IsNullOrWhiteSpace(source)
-                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+            const string officialSessionPrefix = "official-session:";
+            return sessionVersion.HasValue
+                && proxySessionId.HasValue
+                && !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith(officialSessionPrefix, StringComparison.OrdinalIgnoreCase)
+                && source.Length > officialSessionPrefix.Length
+                && !string.IsNullOrWhiteSpace(source[officialSessionPrefix.Length..]);
         }
 
         private static string NormalizeProcessSelector(string selector)

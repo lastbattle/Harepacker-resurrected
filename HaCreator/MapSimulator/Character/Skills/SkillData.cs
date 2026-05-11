@@ -380,6 +380,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         int RemoveCanvasArgumentVariantOrdinal = -1,
         int CanvasPropertyRefDelta = 0,
         int LoadCanvasPropertyValueVariantRefDelta = 0,
+        string LoadCanvasPropertyName = null,
+        int LoadCanvasPropertyDefaultValue = 0,
+        int AfterimageActionCanvasArrayObjectId = 0,
         AfterimageLoadCanvasArguments? LoadCanvasArguments = null,
         AfterimageRelMoveArguments? RelMoveArguments = null);
 
@@ -389,6 +392,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         int AlphaEnd,
         int ZoomStart,
         int ZoomEnd);
+
+    public readonly record struct AfterimageLoadCanvasPropertySpec(
+        string Name,
+        int DefaultValue);
 
     public readonly record struct AfterimageRelMoveArguments(
         int Alpha,
@@ -407,6 +414,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Point Origin { get; set; }           // Animation origin relative to caster
         public int ZOrder { get; set; } = 0;        // Draw order
         public int? PositionCode { get; set; }      // Optional WZ `pos` anchor selection
+        public int HitAfterMs { get; set; }         // Optional WZ `hitAfter` delay before damage presentation
         public int? ClientEventDelayMs { get; set; }
 
         public List<IDXObject> ToTextureFrames()
@@ -2305,6 +2313,24 @@ namespace HaCreator.MapSimulator.Character.Skills
         int Time = 0,
         int Value = 0);
 
+    public enum BulletAfterimageNativeReleaseOperationKind
+    {
+        ReleaseRegisteredAnimationState,
+        ReleaseListNode,
+        ReleaseSourceCanvas,
+        ReleaseOriginVector,
+        ReleaseAlphaVector,
+        ReleaseRepeatLayerContainer
+    }
+
+    public readonly record struct BulletAfterimageNativeReleaseOperation(
+        BulletAfterimageNativeReleaseOperationKind Kind,
+        int ObjectId,
+        int RelatedObjectId = 0,
+        int Sequence = 0,
+        int RefCountDelta = 0,
+        int Time = 0);
+
     public enum BulletRegistrationNativeOperationKind
     {
         RetainEffectOrBallUol,
@@ -2430,6 +2456,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float FrameAlphaMultiplier { get; init; } = 1f;
         public IReadOnlyList<BulletAfterimageNativeUpdateOperation> NativeUpdateOperations { get; init; } =
             Array.Empty<BulletAfterimageNativeUpdateOperation>();
+        public IReadOnlyList<BulletAfterimageNativeReleaseOperation> NativeReleaseOperations { get; private set; } =
+            Array.Empty<BulletAfterimageNativeReleaseOperation>();
 
         public void ReleaseRegisteredReferences(int currentTime)
         {
@@ -2440,6 +2468,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SimulatedReleaseTime = currentTime;
             SimulatedReleaseSequence = 1;
+            NativeReleaseOperations = SkillManager.ResolveBulletAfterimageNativeReleaseOperations(
+                this,
+                currentTime);
             SetSimulatedReleased();
         }
 
@@ -2851,7 +2882,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int[] PendingTeslaAttackTargetMobIds { get; set; } = Array.Empty<int>();
         public int[] PendingTeslaAttackConfirmedTargetMobIds { get; set; } = Array.Empty<int>();
         public int LastTeslaAttackResolvedTime { get; set; } = int.MinValue;
-        public int NextSupportTime { get; set; }
+        public int NextSupportTime { get; set; } = int.MinValue;
         public int SupportSuspendUntilTime { get; set; } = int.MinValue;
         public int NextHealTime { get; set; } = int.MinValue;
         public int NextBuffTime { get; set; } = int.MinValue;

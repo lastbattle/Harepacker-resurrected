@@ -167,6 +167,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (_chatBalloonPresentationRuntime.HasMiniRoomBalloon)
+            {
+                DrawMiniRoomBalloonPresentationOverlay(_chatBalloonPresentationRuntime.MiniRoomState);
+                return;
+            }
+
             if (_chatBalloonPresentationRuntime.HasChatBalloon)
             {
                 DrawChatBalloonLayerOverlay(_chatBalloonPresentationRuntime.ChatState);
@@ -198,6 +204,49 @@ namespace HaCreator.MapSimulator
             };
             DrawFilledBorder(button, buttonColor * (state.CurrentButtonAlpha / 255f), Color.Black);
             DrawChatTextWithFallback("x", new Vector2(button.X + 3, button.Y - 2), Color.Black);
+        }
+
+        private void DrawMiniRoomBalloonPresentationOverlay(ChatBalloonMiniRoomBalloonState state)
+        {
+            int width = Math.Clamp(state.Composition.CanvasSize.X, 48, 260);
+            int height = Math.Clamp(state.Composition.CanvasSize.Y, 32, 180);
+            int x = Math.Max(8, (Width - width) / 2);
+            int y = Math.Max(8, (Height / 2) - height - 80);
+            Rectangle bounds = new(x, y, width, height);
+            DrawFilledBorder(bounds, Color.White * 0.92f, Color.Black * 0.75f);
+
+            foreach (ChatBalloonCanvasPasteEntry paste in state.Composition.PastedCanvases)
+            {
+                if (paste.Role == "background" || paste.Role == "shopSkin")
+                {
+                    continue;
+                }
+
+                Rectangle pasteBounds = new(
+                    x + paste.Destination.X,
+                    y + paste.Destination.Y,
+                    Math.Max(1, paste.SourceSize.X),
+                    Math.Max(1, paste.SourceSize.Y));
+                DrawFilledBorder(pasteBounds, Color.LightGray * 0.55f, Color.Black * 0.45f);
+            }
+
+            for (int i = 0; i < state.TitleLines.Count && i < state.Composition.TitleLineYOffsets.Count; i++)
+            {
+                string titleLine = state.TitleLines[i];
+                Vector2 titleSize = _fontChat.MeasureString(titleLine);
+                float titleX = x + (width / 2f) - (titleSize.X / 2f);
+                DrawChatTextWithFallback(titleLine, new Vector2(titleX, y + state.Composition.TitleLineYOffsets[i]), Color.Black);
+            }
+
+            ChatBalloonCanvasPasteEntry countPaste = state.Composition.PastedCanvases
+                .FirstOrDefault(static paste => paste.Role == "currentCount");
+            Point countDestination = countPaste.SourcePath == null
+                ? new Point(8, Math.Max(8, height - 16))
+                : countPaste.Destination;
+            DrawChatTextWithFallback(
+                $"{state.CurrentUserText}/{state.MaxUserText}",
+                new Vector2(x + countDestination.X, y + countDestination.Y + 13),
+                Color.Black);
         }
 
         private void DrawFilledBorder(Rectangle bounds, Color fill, Color border)

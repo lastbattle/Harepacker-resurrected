@@ -1146,6 +1146,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
             bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
             bool isSuddenDeathSkill = GetInt(infoNode, "suddenDeath") == 1;
+            bool isEnergyChargeSkill = skill.UsesEnergyChargeRuntime
+                                       && !string.IsNullOrWhiteSpace(skill.FullChargeEffectName);
             skill.UsesSuddenDeathAvatarEffectOwner = isSuddenDeathSkill;
             bool hasPersistentAvatarEffect = HasPersistentAvatarEffectBranches(
                 skillNode.WzProperties.Select(child => child.Name),
@@ -1155,7 +1157,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 isSuddenDeathSkill);
             skill.ClientAvatarEffectLayerOwnerName = ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(
                 skill.SkillId,
-                isSuddenDeathSkill);
+                isSuddenDeathSkill,
+                isEnergyChargeSkill);
 
             var commonNode = skillNode["common"];
             int commonDamage = GetInt(commonNode, "damage");
@@ -2314,18 +2317,25 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static string ResolveClientOwnedPersistentAvatarEffectLayerOwnerNameForTesting(
             int skillId,
-            bool suddenDeath)
+            bool suddenDeath,
+            bool energyCharge = false)
         {
-            return ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(skillId, suddenDeath);
+            return ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(skillId, suddenDeath, energyCharge);
         }
 
         private static string ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(
             int skillId,
-            bool suddenDeath)
+            bool suddenDeath,
+            bool energyCharge)
         {
             if (skillId == FinalCutSkillId)
             {
                 return PlayerCharacter.ClientOwnedFinalCutAvatarEffectOwnerName;
+            }
+
+            if (energyCharge)
+            {
+                return PlayerCharacter.ClientOwnedEnergyChargeAvatarEffectOwnerName;
             }
 
             return suddenDeath
@@ -4157,6 +4167,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Get z-order
             animation.ZOrder = GetInt(node, "z");
             animation.PositionCode = node["pos"] != null ? GetInt(node, "pos") : null;
+            animation.HitAfterMs = Math.Max(0, GetInt(node, "hitAfter"));
             if (GetInt(node, "flip") != 0)
             {
                 ApplyBranchFlipToAnimationFrames(animation);
@@ -8501,6 +8512,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (!foundOwnerField || valueCandidates.Count == 0)
+            {
+                foreach (ClientSummonedUolStructuredRecordCandidateValue tupleCandidate in EnumerateClientSummonedUolUnlabeledStructuredRecordCandidateValues(
+                             recordText,
+                             skillId))
+                {
+                    yield return tupleCandidate;
+                }
+
+                yield break;
+            }
+
             if (!foundOwnerField || !ownerMatches)
             {
                 yield break;
@@ -8518,6 +8541,149 @@ namespace HaCreator.MapSimulator.Character.Skills
                         variantLevel);
                 }
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolStructuredRecordCandidateValue> EnumerateClientSummonedUolUnlabeledStructuredRecordCandidateValues(
+            string recordText,
+            int skillId)
+        {
+            if (string.IsNullOrWhiteSpace(recordText) || skillId <= 0)
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(recordText))
+            {
+                if (string.IsNullOrWhiteSpace(FieldName)
+                    || string.IsNullOrWhiteSpace(FieldValue)
+                    || !ClientSummonedUolRecordTokenReferencesSkill(FieldName, skillId)
+                    || !LooksLikeClientSummonedUolHeuristicCandidateValue(FieldValue))
+                {
+                    continue;
+                }
+
+                if (yieldedValues.Add(FieldValue))
+                {
+                    yield return new ClientSummonedUolStructuredRecordCandidateValue(
+                        FieldValue,
+                        HasVariantLevel: false,
+                        IsCharacterLevelVariant: false,
+                        VariantLevel: 0);
+                }
+            }
+
+            foreach (IReadOnlyList<string> tokens in EnumerateClientSummonedUolUnlabeledStructuredRecordTokenRows(recordText))
+            {
+                if (tokens.Count < 2)
+                {
+                    continue;
+                }
+
+                bool rowMatchesOwner = tokens.Any(token => ClientSummonedUolRecordTokenReferencesSkill(token, skillId));
+                if (!rowMatchesOwner)
+                {
+                    continue;
+                }
+
+                foreach (string token in tokens)
+                {
+                    if (!LooksLikeClientSummonedUolHeuristicCandidateValue(token)
+                        || LooksLikeClientSummonedUolOwnerOnlyTupleToken(token, skillId))
+                    {
+                        continue;
+                    }
+
+                    if (yieldedValues.Add(token))
+                    {
+                        yield return new ClientSummonedUolStructuredRecordCandidateValue(
+                            token,
+                            HasVariantLevel: false,
+                            IsCharacterLevelVariant: false,
+                            VariantLevel: 0);
+                    }
+                }
+            }
+        }
+
+        private static bool LooksLikeClientSummonedUolOwnerOnlyTupleToken(string token, int skillId)
+        {
+            if (!ClientSummonedUolRecordTokenReferencesSkill(token, skillId))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizeClientSummonedUolPath(token);
+            return normalizedToken.IndexOf("/summon", StringComparison.OrdinalIgnoreCase) < 0
+                   && normalizedToken.IndexOf("/tile", StringComparison.OrdinalIgnoreCase) < 0
+                   && normalizedToken.IndexOf("/ball", StringComparison.OrdinalIgnoreCase) < 0
+                   && normalizedToken.IndexOf("/flipBall", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static IEnumerable<IReadOnlyList<string>> EnumerateClientSummonedUolUnlabeledStructuredRecordTokenRows(string recordText)
+        {
+            string normalizedText = NormalizeClientSummonedUolEncodedPathSyntax(recordText).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                yield break;
+            }
+
+            bool yieldedNestedRows = false;
+            foreach (string nestedRowText in EnumerateClientSummonedUolTopLevelBracketGroups(normalizedText))
+            {
+                IReadOnlyList<string> row = SplitClientSummonedUolDelimitedList(
+                    nestedRowText,
+                    DetectClientSummonedUolListDelimiter(nestedRowText));
+                if (row.Count < 2)
+                {
+                    continue;
+                }
+
+                yieldedNestedRows = true;
+                yield return row;
+            }
+
+            if (yieldedNestedRows)
+            {
+                yield break;
+            }
+
+            if (normalizedText[0] == '{' && normalizedText[^1] == '}')
+            {
+                yield break;
+            }
+
+            char delimiter = DetectClientSummonedUolListDelimiter(normalizedText);
+            if (delimiter == '\0')
+            {
+                yield break;
+            }
+
+            IReadOnlyList<string> scalarRow = SplitClientSummonedUolDelimitedList(
+                normalizedText.Trim('[', ']', '{', '}'),
+                delimiter);
+            if (scalarRow.Count >= 2)
+            {
+                yield return scalarRow;
+            }
+        }
+
+        private static bool ClientSummonedUolRecordTokenReferencesSkill(string token, int skillId)
+        {
+            if (string.IsNullOrWhiteSpace(token) || skillId <= 0)
+            {
+                return false;
+            }
+
+            foreach (int ownerSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(token))
+            {
+                if (ownerSkillId == skillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolStructuredTableRecordFragments(string recordText)

@@ -1758,10 +1758,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool HasUnresolvedCompletionPvpGradeDemand(int? requiredPvpGrade)
         {
-            // CQuestMan::CheckCompleteDemand in the v95 client does not gate
-            // completion on the WZ-authored completion pvpGrade rows. Keep the
-            // parsed metadata available for conversation branch selection, but
-            // do not let it hold packet-owned auto-completion alert ownership.
+            // Quest/Check.img has completion pvpGrade rows (for example
+            // 11014/1/pvpGrade = 9), but v95 CQuestMan::CheckCompleteDemand
+            // at 0x6BC3D0 has no PvP-grade branch. Keep the parsed metadata
+            // available for stop-page selection without letting it hold
+            // packet-owned auto-completion alert ownership.
             return false;
         }
 
@@ -6316,6 +6317,11 @@ namespace HaCreator.MapSimulator.Interaction
                     "fieldSet",
                     "timeKeep",
                     "timeKeepFieldSet",
+                    "fieldsetkeeptime",
+                    "fieldSetKeepTime",
+                    "timeKeepFieldSetKeepTime",
+                    "keepTime",
+                    "keptTime",
                     "kept"))
             {
                 return timeKeepPages;
@@ -13557,8 +13563,13 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("card", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("cards", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("fieldSet", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("fieldsetkeeptime", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("fieldSetKeepTime", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("timeKeep", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("timeKeepFieldSet", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("timeKeepFieldSetKeepTime", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("keepTime", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("keptTime", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("kept", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("pvp", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("pvpGrade", StringComparison.OrdinalIgnoreCase) ||

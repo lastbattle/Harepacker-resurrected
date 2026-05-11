@@ -2397,6 +2397,13 @@ namespace HaCreator.MapSimulator.Fields
             return TryResolveRemoteTownPortalTownMapForSourceMap(sourceMapId, out townMapId);
         }
 
+        internal static bool TryResolveRemoteTownPortalConfiguredTownMapFromMapImageForTesting(
+            WzImage mapImage,
+            out int townMapId)
+        {
+            return TryResolveRemoteTownPortalConfiguredTownMapFromMapImage(mapImage, out townMapId);
+        }
+
         private static bool TryResolveRemoteTownPortalTownMapForSourceMap(int sourceMapId, out int townMapId)
         {
             townMapId = -1;
@@ -2461,8 +2468,8 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 int configuredReturnMap = NormalizeRemoteTownPortalConfiguredReturnMap(
-                    (infoProperty["returnMap"] as WzIntProperty)?.GetInt() ?? 0,
-                    (infoProperty["forcedReturn"] as WzIntProperty)?.GetInt() ?? 0);
+                    InfoTool.GetOptionalInt(infoProperty["returnMap"]) ?? 0,
+                    InfoTool.GetOptionalInt(infoProperty["forcedReturn"]) ?? 0);
                 if (configuredReturnMap <= 0)
                 {
                     return false;

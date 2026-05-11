@@ -132,7 +132,8 @@ namespace HaCreator.MapSimulator.Character
                 Loop = true,
                 Origin = animation.Origin,
                 ZOrder = animation.ZOrder,
-                PositionCode = animation.PositionCode
+                PositionCode = animation.PositionCode,
+                HitAfterMs = animation.HitAfterMs
             };
         }
 

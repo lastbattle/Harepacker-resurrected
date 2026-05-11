@@ -1452,13 +1452,56 @@ namespace HaCreator.MapSimulator.UI
             InventorySlotData slot = slots[forcedSlotIndex.Value];
             if (slot == null || slot.IsDisabled || slot.ItemId != consumable.ItemId)
             {
-                return finalCount == 0;
+                if (finalCount == 0)
+                {
+                    return true;
+                }
+
+                if (_inventory is InventoryUI inventoryWindow)
+                {
+                    return inventoryWindow.TrySetPacketOwnedSlotState(
+                        forcedInventoryType.Value,
+                        forcedSlotIndex.Value,
+                        new InventorySlotData
+                        {
+                            ItemId = consumable.ItemId,
+                            Quantity = finalCount,
+                            PreferredInventoryType = forcedInventoryType.Value
+                        });
+                }
+
+                return false;
             }
 
             int currentCount = Math.Max(1, slot.Quantity);
-            if (currentCount <= finalCount)
+            if (currentCount == finalCount)
             {
                 return true;
+            }
+
+            if (_inventory is InventoryUI packetOwnedInventoryWindow)
+            {
+                if (finalCount == 0)
+                {
+                    return packetOwnedInventoryWindow.TrySetPacketOwnedSlotState(
+                        forcedInventoryType.Value,
+                        forcedSlotIndex.Value,
+                        null);
+                }
+
+                InventorySlotData packetOwnedSlot = slot.Clone();
+                packetOwnedSlot.Quantity = finalCount;
+                packetOwnedSlot.PreferredInventoryType = forcedInventoryType.Value;
+                return packetOwnedInventoryWindow.TrySetPacketOwnedSlotState(
+                    forcedInventoryType.Value,
+                    forcedSlotIndex.Value,
+                    packetOwnedSlot);
+            }
+
+            if (currentCount < finalCount)
+            {
+                failureReason = $"{consumable.Name} packet-authored count cannot be raised by this inventory runtime.";
+                return false;
             }
 
             int consumeCount = currentCount - finalCount;

@@ -318,7 +318,7 @@ namespace HaCreator.MapSimulator.Loaders
         public static DamageNumberDigitSet GetDigitSet(DamageColorType colorType, DamageNumberSize size, bool isCritical)
         {
             string typeName = GetTypeName(colorType, size, isCritical);
-            return _digitSets.TryGetValue(typeName, out var set) ? set : null;
+            return !string.IsNullOrWhiteSpace(typeName) && _digitSets.TryGetValue(typeName, out var set) ? set : null;
         }
 
         /// <summary>
@@ -336,6 +336,13 @@ namespace HaCreator.MapSimulator.Loaders
         /// </summary>
         private static string GetTypeName(DamageColorType colorType, DamageNumberSize size, bool isCritical)
         {
+            if (colorType != DamageColorType.Red
+                && colorType != DamageColorType.Blue
+                && colorType != DamageColorType.Violet)
+            {
+                return null;
+            }
+
             if (isCritical && colorType == DamageColorType.Red)
             {
                 return size == DamageNumberSize.Large ? "NoCri1" : "NoCri0";
@@ -346,8 +353,13 @@ namespace HaCreator.MapSimulator.Loaders
                 DamageColorType.Red => "NoRed",
                 DamageColorType.Blue => "NoBlue",
                 DamageColorType.Violet => "NoViolet",
-                _ => "NoRed"
+                _ => null
             };
+
+            if (string.IsNullOrWhiteSpace(colorName))
+            {
+                return null;
+            }
 
             return colorName + (size == DamageNumberSize.Large ? "1" : "0");
         }

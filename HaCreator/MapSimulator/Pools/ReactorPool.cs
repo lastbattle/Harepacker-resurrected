@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PacketHitAnimationState { get; set; } = -1;
         public int PacketPendingVisualState { get; set; } = -1;
         public int PacketProperEventIndex { get; set; } = -1;
+        public int LocalHitLayerEndTime { get; set; }
         internal PacketReactorAnimationPhase PacketAnimationPhase { get; set; } = PacketReactorAnimationPhase.Idle;
         public int PacketMoveStartTime { get; set; }
         public int PacketMoveEndTime { get; set; }
@@ -1156,7 +1157,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState, out int selectedAuthoredOrder))
+            int selectedAuthoredOrder = -1;
+            if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState, out selectedAuthoredOrder))
             {
                 data.VisualState = nextVisualState;
                 SyncReactorVisualState(reactor, data, currentTick);
@@ -1184,6 +1186,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (activationType == ReactorActivationType.Hit)
             {
+                TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick);
                 TryPlayReactorHitSound(reactor, previousVisualState);
             }
 
@@ -1238,6 +1241,7 @@ namespace HaCreator.MapSimulator.Pools
                         data.ActivatingPlayerId = playerId;
                         UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, selectedAuthoredOrder);
                         RefreshReactorLayerPlacement(reactor);
+                        TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick);
                         TryPlayReactorHitSound(reactor, data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : previousVisualState);
                     }
                     else
@@ -1267,6 +1271,8 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Destroyed;
             data.StateStartTime = currentTick;
             data.PacketLeavePending = false;
+            data.LocalHitLayerEndTime = 0;
+            reactor.ClearTransientAnimation();
             data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
             QueuePacketTouchRequestRemoval(data);
             ClearLocalTouchOwnership(index, data);
@@ -1323,6 +1329,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketHitAnimationState = -1;
             data.PacketPendingVisualState = -1;
             data.PacketProperEventIndex = -1;
+            data.LocalHitLayerEndTime = 0;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
             data.PacketMoveStartTime = 0;
             data.PacketMoveEndTime = 0;
@@ -2326,6 +2333,12 @@ namespace HaCreator.MapSimulator.Pools
                     case ReactorState.Activated:
                         if (currentTick - data.StateStartTime >= GetActivationDuration(index))
                         {
+                            if (data.LocalHitLayerEndTime > 0)
+                            {
+                                reactor.ClearTransientAnimation();
+                                data.LocalHitLayerEndTime = 0;
+                            }
+
                             if (ShouldAutoChainStates(data)
                                 && TryAdvanceToNextVisualState(reactor, data, currentTick, data.ActivationType))
                             {
@@ -3689,7 +3702,35 @@ namespace HaCreator.MapSimulator.Pools
                 return ACTIVATION_ANIMATION_TIME;
 
             int stateDuration = reactor.GetStateDuration(data.VisualState);
-            return stateDuration > 0 ? stateDuration : ACTIVATION_ANIMATION_TIME;
+            int activationDuration = stateDuration > 0 ? stateDuration : ACTIVATION_ANIMATION_TIME;
+            if (data.LocalHitLayerEndTime > data.StateStartTime)
+            {
+                activationDuration = Math.Max(
+                    activationDuration,
+                    data.LocalHitLayerEndTime - data.StateStartTime);
+            }
+
+            return activationDuration;
+        }
+
+        private static void TryStartLocalHitLayer(
+            ReactorItem reactor,
+            ReactorRuntimeData data,
+            int sourceState,
+            int properEventIndex,
+            int currentTick)
+        {
+            if (reactor == null || data == null)
+            {
+                return;
+            }
+
+            data.LocalHitLayerEndTime = 0;
+            if (reactor.TryStartHitAnimation(sourceState, properEventIndex, currentTick, out int hitDuration)
+                && hitDuration > 0)
+            {
+                data.LocalHitLayerEndTime = unchecked(currentTick + hitDuration);
+            }
         }
 
         private static bool ShouldAutoChainStates(ReactorRuntimeData data)

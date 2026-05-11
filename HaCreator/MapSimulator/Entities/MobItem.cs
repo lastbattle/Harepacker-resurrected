@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeActionSpeechChatBalloon;
         private int _activeActionSpeechFloatNotice;
         private int _activeActionSpeechFadeDurationMs;
+        private int _activeActionSpeechNativeWidth;
         private Func<MobAnimationSet.ActionSpeakConditionContext> _actionSpeakConditionContextProvider;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
@@ -128,6 +129,8 @@ namespace HaCreator.MapSimulator.Entities
         public int ActiveActionSpeechFloatNotice => _activeActionSpeechFloatNotice;
 
         public int ActiveActionSpeechFadeDurationMs => _activeActionSpeechFadeDurationMs;
+
+        public int ActiveActionSpeechNativeWidth => _activeActionSpeechNativeWidth;
 
         internal bool PacketOwnedExpiryClientSuspended { get; private set; }
 
@@ -1595,6 +1598,9 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechText = SanitizeActionSpeakMessage(message);
             _activeActionSpeechChatBalloon = selectedVariant.ChatBalloon;
             _activeActionSpeechFloatNotice = selectedVariant.FloatNotice;
+            _activeActionSpeechNativeWidth = ResolveActionSpeakNativeWidth(
+                selectedVariant.Width,
+                _mobInstance?.Width ?? 0);
             ResolveActionSpeakTiming(
                 ResolveCurrentActionDelayMs(action),
                 IsClientOneShotMobAction(action),
@@ -1627,6 +1633,7 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechChatBalloon = 0;
             _activeActionSpeechFloatNotice = 0;
             _activeActionSpeechFadeDurationMs = 0;
+            _activeActionSpeechNativeWidth = 0;
         }
 
         internal static bool ShouldTriggerActionSpeak(
@@ -1762,9 +1769,17 @@ namespace HaCreator.MapSimulator.Entities
                     ChatBalloon = metadata.ChatBalloon,
                     FloatNotice = metadata.FloatNotice,
                     HpThreshold = metadata.HpThreshold,
+                    Width = metadata.Width,
                     Messages = metadata.Messages,
                     ConditionGroups = metadata.ConditionGroups
                 };
+        }
+
+        internal static int ResolveActionSpeakNativeWidth(int authoredWidth, int templateWidth)
+        {
+            return authoredWidth > 0
+                ? authoredWidth
+                : Math.Max(0, templateWidth);
         }
 
         internal static bool AreActionSpeakConditionsSatisfiedForTests(

@@ -4114,7 +4114,8 @@ namespace HaCreator.MapSimulator.Fields
             if (TryConsumePendingLocalRequest(
                     tab,
                     entryIndex,
-                    pending => pending.AcceptsOfficialClientResultOwner
+                    pending => (isLocalRequestOwner || hasMissingRequestOwner)
+                               && pending.AcceptsOfficialClientResultOwner
                                && TryResolveEntryFromPendingLocalRequest(pending, out _),
                     out consumedToken))
             {
@@ -4124,7 +4125,9 @@ namespace HaCreator.MapSimulator.Fields
             return TryConsumeNextResolvablePendingLocalRequest(
                 pending => isLocalRequestOwner
                            || hasMissingRequestOwner
-                           || (!packetEntryResolvable && pending.AcceptsOfficialClientResultOwner),
+                           || (!packetEntryResolvable
+                               && pending.AcceptsOfficialClientResultOwner
+                               && (isLocalRequestOwner || hasMissingRequestOwner)),
                 out consumedToken);
         }
 

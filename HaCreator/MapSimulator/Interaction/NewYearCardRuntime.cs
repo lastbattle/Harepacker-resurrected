@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class NewYearCardRuntime
     {
         internal const int SendCardOpcode = 183;
+        internal const byte SendCardSubtype = 0;
+        internal const byte ReadArrivedCardSubtype = 1;
         internal const int DefaultItemId = 4300000;
         internal const int DefaultInventoryPosition = 1;
         internal const int MemoWrapWidth = 150;
@@ -343,6 +345,28 @@ namespace HaCreator.MapSimulator.Interaction
             return new NewYearCardSendRequest(SendCardOpcode, payload, _inventoryPosition, _itemId, _targetName, _memo);
         }
 
+        internal NewYearCardReadRequest BuildReadRequest(int serialNumber)
+        {
+            byte[] payload = EncodeReadPayload(serialNumber);
+            return new NewYearCardReadRequest(SendCardOpcode, payload, serialNumber);
+        }
+
+        internal bool TryBuildReadRequest(int serialNumber, out NewYearCardReadRequest request, out string message)
+        {
+            request = null;
+            if (serialNumber <= 0)
+            {
+                message = "CUIFadeYesNo New Year Card arrival prompt requires a positive card serial number.";
+                _lastStatus = message;
+                return false;
+            }
+
+            request = BuildReadRequest(serialNumber);
+            message = $"CUIFadeYesNo New Year Card arrival prompt prepared opcode {SendCardOpcode} read request for serial {serialNumber}.";
+            _lastStatus = message;
+            return true;
+        }
+
         internal bool TryBuildSendRequest(out NewYearCardSendRequest request, out string message, bool confirmedEmptyMemo = false)
         {
             request = null;
@@ -376,6 +400,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal void MarkSendDispatched(string dispatchStatus)
         {
             _lastStatus = $"CUINewYearCardSenderDlg::_SendNewYearCard emitted opcode {SendCardOpcode} for '{DisplayTargetName}'. {dispatchStatus}";
+        }
+
+        internal void MarkReadRequestDispatched(int serialNumber, string dispatchStatus)
+        {
+            _lastStatus = $"CUIFadeYesNo New Year Card arrival prompt emitted opcode {SendCardOpcode} read request for serial {serialNumber}. {dispatchStatus}";
         }
 
         internal void MarkSendRejected(string reason)
@@ -483,11 +512,21 @@ namespace HaCreator.MapSimulator.Interaction
         {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream);
-            writer.Write((byte)0);
+            writer.Write(SendCardSubtype);
             writer.Write((short)Math.Max(0, inventoryPosition));
             writer.Write(itemId);
             WriteMapleString(writer, NormalizeName(targetName, string.Empty));
             WriteMapleString(writer, NormalizeMemo(memo));
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static byte[] EncodeReadPayload(int serialNumber)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write(ReadArrivedCardSubtype);
+            writer.Write(serialNumber);
             writer.Flush();
             return stream.ToArray();
         }
@@ -630,6 +669,11 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         string TargetName,
         string Memo);
+
+    internal sealed record NewYearCardReadRequest(
+        int Opcode,
+        byte[] Payload,
+        int SerialNumber);
 
     internal enum NewYearCardCompletionKind
     {

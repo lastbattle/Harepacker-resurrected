@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string MiniRoomOmokLastOutboundPacketHex { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
         public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
+        public List<SocialRoomMiniGameRecordSnapshot> MiniRoomOmokRecords { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }
         public int TradeRemoteOfferMeso { get; set; }
         public bool TradeLocalLocked { get; set; }
@@ -222,6 +223,17 @@ namespace HaCreator.MapSimulator.Interaction
         public int Y { get; set; }
         public int StoneValue { get; set; }
         public int SeatIndex { get; set; }
+    }
+
+    public sealed class SocialRoomMiniGameRecordSnapshot
+    {
+        public int Slot { get; set; }
+        public int Wins { get; set; }
+        public int Draws { get; set; }
+        public int Losses { get; set; }
+        public int Score { get; set; }
+        public int Grade { get; set; }
+        public byte[] RawBytes { get; set; } = Array.Empty<byte>();
     }
 
     public sealed class SocialRoomTradeVerificationEntrySnapshot

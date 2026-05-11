@@ -730,6 +730,27 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
         }
 
+        public QuestRewardRaiseState CloseWindowWithOwnerItemId(int ownerItemId)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (ownerItemId <= 0)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.OwnerItemId == ownerItemId)
+            {
+                QuestRewardRaiseState closed = ActiveRaise;
+                RetainClosedRaise(closed);
+                return closed;
+            }
+
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? GetObservedRaiseByQuestId(questId)
+                : null;
+        }
+
         public int QuestToItem(int questId)
         {
             questId = Math.Max(0, questId);

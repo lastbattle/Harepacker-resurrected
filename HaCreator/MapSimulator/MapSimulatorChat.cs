@@ -731,18 +731,15 @@ namespace HaCreator.MapSimulator
                 }
                 else if (_historyIndex > -1)
                 {
-                    _historyIndex--;
-                    _inputText.Clear();
+                    // CChatHelper::HistoryDown clamps at the newest retained entry once
+                    // history browsing is active instead of restoring the pre-browse draft.
+                    if (_historyIndex > 0)
+                    {
+                        _historyIndex--;
+                    }
 
-                    if (_historyIndex == -1)
-                    {
-                        // Restore the saved current input
-                        _inputText.Append(_savedCurrentInput);
-                    }
-                    else
-                    {
-                        _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
-                    }
+                    _inputText.Clear();
+                    _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                     _cursorPosition = _inputText.Length; // Move cursor to end
                     ClearInputSelection();
                 }

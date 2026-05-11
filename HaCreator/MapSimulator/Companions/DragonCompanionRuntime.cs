@@ -299,6 +299,7 @@ namespace HaCreator.MapSimulator.Companions
         private readonly Queue<byte[]> _pendingVecCtrlEndUpdateActiveFlushPayloads = new();
         private readonly List<MovePathElement> _clientVecCtrlMovePathBuffer = new();
         private readonly List<byte> _clientVecCtrlMovePathKeyPadStates = new();
+        private MovePathElement? _clientVecCtrlLastFlushedMovePathElement;
         private ClientDragonFlushTail? _lastSimulatorVecCtrlEndUpdateActiveFlushTail;
         private ClientDragonFlushTail? _lastCapturedVecCtrlEndUpdateActiveFlushTail;
         private bool _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds;
@@ -648,6 +649,7 @@ namespace HaCreator.MapSimulator.Companions
             _pendingVecCtrlEndUpdateActiveFlushPayloads.Clear();
             _clientVecCtrlMovePathBuffer.Clear();
             _clientVecCtrlMovePathKeyPadStates.Clear();
+            _clientVecCtrlLastFlushedMovePathElement = null;
             _lastSimulatorVecCtrlEndUpdateActiveFlushTail = null;
             _lastCapturedVecCtrlEndUpdateActiveFlushTail = null;
             _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds = false;
@@ -1023,8 +1025,11 @@ namespace HaCreator.MapSimulator.Companions
 
             for (int i = 0; i < flushPacketCount; i++)
             {
-                EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(
-                    BuildClientVecCtrlEndUpdateActiveFlushPacketPayload());
+                byte[] payload = BuildClientVecCtrlEndUpdateActiveFlushPacketPayload(out bool shouldDispatch);
+                if (shouldDispatch)
+                {
+                    EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(payload);
+                }
             }
         }
 
@@ -1218,19 +1223,25 @@ namespace HaCreator.MapSimulator.Companions
             return ResolveClientDragonFlushRetainedGatherDuration(sourceElements);
         }
 
-        private byte[] BuildClientVecCtrlEndUpdateActiveFlushPacketPayload()
+        private byte[] BuildClientVecCtrlEndUpdateActiveFlushPacketPayload(out bool shouldDispatch)
         {
             EnsureClientVecCtrlMovePathSeed(owner: null);
             IReadOnlyList<MovePathElement> movePath = _clientVecCtrlMovePathBuffer;
-            if (!TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
+            shouldDispatch = ResolveClientDragonFlushShouldDispatch(
+                movePath,
+                _clientVecCtrlLastFlushedMovePathElement);
+            if (!TryResolveClientDragonFlushLastEncodedElement(movePath, out MovePathElement lastEncodedElement)
+                || !TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
                     movePath,
                     _clientVecCtrlMovePathKeyPadStates,
                     out byte[] payload,
                     out _))
             {
                 payload = Array.Empty<byte>();
+                shouldDispatch = false;
             }
 
+            _clientVecCtrlLastFlushedMovePathElement = lastEncodedElement;
             _vecCtrlEndUpdateActiveFlushCarryMilliseconds = ApplyClientVecCtrlPostFlushRetainedElements(
                 movePath,
                 _clientVecCtrlMovePathKeyPadStates);
@@ -1476,6 +1487,81 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return false;
+        }
+
+        internal static bool ResolveClientDragonFlushShouldDispatch(
+            IReadOnlyList<MovePathElement> movePath,
+            MovePathElement? lastFlushedElement)
+        {
+            if (!TryResolveClientDragonFlushLastEncodedElement(movePath, out MovePathElement lastEncodedElement))
+            {
+                return false;
+            }
+
+            if (!lastFlushedElement.HasValue)
+            {
+                return true;
+            }
+
+            if (ContainsClientDragonStatChangeMovePathElement(movePath))
+            {
+                return true;
+            }
+
+            return !AreClientDragonFlushLastElementsEqual(lastFlushedElement.Value, lastEncodedElement);
+        }
+
+        private static bool TryResolveClientDragonFlushLastEncodedElement(
+            IReadOnlyList<MovePathElement> movePath,
+            out MovePathElement element)
+        {
+            element = default;
+            if (movePath == null || movePath.Count <= 0)
+            {
+                return false;
+            }
+
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(movePath);
+            int lastEncodedIndex = retainedStartIndex >= 0
+                ? retainedStartIndex - 1
+                : movePath.Count - 1;
+            if (lastEncodedIndex < 0 || lastEncodedIndex >= movePath.Count)
+            {
+                return false;
+            }
+
+            element = movePath[lastEncodedIndex];
+            return true;
+        }
+
+        private static bool ContainsClientDragonStatChangeMovePathElement(IReadOnlyList<MovePathElement> movePath)
+        {
+            if (movePath == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < movePath.Count; i++)
+            {
+                if (movePath[i].MovePathAttribute == 9)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool AreClientDragonFlushLastElementsEqual(MovePathElement left, MovePathElement right)
+        {
+            return left.MovePathAttribute == right.MovePathAttribute
+                   && left.X == right.X
+                   && left.Y == right.Y
+                   && left.VelocityX == right.VelocityX
+                   && left.VelocityY == right.VelocityY
+                   && left.FootholdId == right.FootholdId
+                   && left.Action == right.Action
+                   && left.FacingRight == right.FacingRight;
         }
 
         internal static bool TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(

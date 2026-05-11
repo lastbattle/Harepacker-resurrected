@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _sync = new();
         private readonly MassacreSessionValueInfoState _sessionValueInfoState = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private long _packetHistorySequence;
         private InboundPacketTrace? _liveRecoveredInboundEvidence;
         private OutboundPacketTrace? _liveOutboundInjectionEvidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
@@ -84,6 +85,7 @@ namespace HaCreator.MapSimulator.Managers
             bool IsDecodedOwner,
             short? SessionVersion,
             long? ProxySessionId,
+            long Sequence,
             string PayloadHex,
             string RawPacketHex,
             string Source);
@@ -92,6 +94,7 @@ namespace HaCreator.MapSimulator.Managers
             int PayloadLength,
             short? SessionVersion,
             long? ProxySessionId,
+            long Sequence,
             string RawPacketHex,
             string Source);
         public enum LiveOwnershipVerificationState
@@ -677,21 +680,16 @@ namespace HaCreator.MapSimulator.Managers
                     return "Massacre official-session bridge packet history is empty.";
                 }
 
-                InboundPacketTrace[] entries = _recentInboundPackets
-                    .Reverse()
+                string[] entries = _recentInboundPackets
+                    .Select(entry => new PacketHistoryLine(entry.Sequence, DescribeRecentInboundPacketTrace(entry)))
+                    .Concat(_recentOutboundPackets.Select(entry => new PacketHistoryLine(entry.Sequence, DescribeRecentOutboundPacketTrace(entry))))
+                    .OrderByDescending(entry => entry.Sequence)
                     .Take(normalizedCount)
+                    .Select(entry => entry.Line)
                     .ToArray();
-                OutboundPacketTrace[] outboundEntries = _recentOutboundPackets
-                    .Reverse()
-                    .Take(normalizedCount)
-                    .ToArray();
-                IEnumerable<string> inboundLines = entries.Select(entry =>
-                    $"in opcode=0x{entry.Opcode:X4} kind={entry.Kind} packetType={entry.PacketType} payloadLen={entry.PayloadLength} proxySession={FormatProxySessionId(entry.ProxySessionId)} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}");
-                IEnumerable<string> outboundLines = outboundEntries.Select(entry =>
-                    $"out opcode=0x{entry.Opcode:X4} payloadLen={entry.PayloadLength} proxySession={FormatProxySessionId(entry.ProxySessionId)} source={entry.Source} raw={entry.RawPacketHex}");
                 return "Massacre official-session bridge packet history:"
                     + Environment.NewLine
-                    + string.Join(Environment.NewLine, inboundLines.Concat(outboundLines));
+                    + string.Join(Environment.NewLine, entries);
             }
         }
 
@@ -1584,7 +1582,7 @@ namespace HaCreator.MapSimulator.Managers
             short? sessionVersion = null,
             long? proxySessionId = null)
         {
-            InboundPacketTrace trace = BuildInboundPacketTrace(rawPacket, message, source, sessionVersion, proxySessionId);
+            InboundPacketTrace trace = BuildInboundPacketTrace(rawPacket, message, source, sessionVersion, proxySessionId, GetNextPacketHistorySequence());
             lock (_sync)
             {
                 _recentInboundPackets.Enqueue(trace);
@@ -1603,7 +1601,7 @@ namespace HaCreator.MapSimulator.Managers
             short? sessionVersion = null,
             long? proxySessionId = null)
         {
-            OutboundPacketTrace trace = BuildOutboundPacketTrace(rawPacket, source, sessionVersion, proxySessionId);
+            OutboundPacketTrace trace = BuildOutboundPacketTrace(rawPacket, source, sessionVersion, proxySessionId, GetNextPacketHistorySequence());
             lock (_sync)
             {
                 _recentOutboundPackets.Enqueue(trace);
@@ -1620,13 +1618,15 @@ namespace HaCreator.MapSimulator.Managers
             byte[] rawPacket,
             string source,
             short? sessionVersion = null,
-            long? proxySessionId = null)
+            long? proxySessionId = null,
+            long sequence = 0)
         {
             return new OutboundPacketTrace(
                 TryDecodePacketOpcode(rawPacket),
                 rawPacket != null ? Math.Max(0, rawPacket.Length - sizeof(ushort)) : 0,
                 sessionVersion,
                 proxySessionId,
+                sequence,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 source ?? string.Empty);
         }
@@ -1636,7 +1636,8 @@ namespace HaCreator.MapSimulator.Managers
             MassacrePacketInboxMessage message,
             string source,
             short? sessionVersion = null,
-            long? proxySessionId = null)
+            long? proxySessionId = null,
+            long sequence = 0)
         {
             int opcode = TryDecodePacketOpcode(rawPacket);
             byte[] payload = rawPacket != null && rawPacket.Length > sizeof(ushort)
@@ -1650,6 +1651,7 @@ namespace HaCreator.MapSimulator.Managers
                 message != null,
                 sessionVersion,
                 proxySessionId,
+                sequence,
                 Convert.ToHexString(message?.Payload ?? payload),
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 source ?? string.Empty);
@@ -1660,6 +1662,23 @@ namespace HaCreator.MapSimulator.Managers
             string owner = trace.IsDecodedOwner ? "decoded" : "undecoded";
             return $"{owner} opcode=0x{trace.Opcode:X4} packetType={trace.PacketType} kind={trace.Kind} payloadLen={trace.PayloadLength} source={trace.Source}";
         }
+
+        private long GetNextPacketHistorySequence()
+        {
+            return Interlocked.Increment(ref _packetHistorySequence);
+        }
+
+        private static string DescribeRecentInboundPacketTrace(InboundPacketTrace entry)
+        {
+            return $"in opcode=0x{entry.Opcode:X4} kind={entry.Kind} packetType={entry.PacketType} payloadLen={entry.PayloadLength} proxySession={FormatProxySessionId(entry.ProxySessionId)} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}";
+        }
+
+        private static string DescribeRecentOutboundPacketTrace(OutboundPacketTrace entry)
+        {
+            return $"out opcode=0x{entry.Opcode:X4} payloadLen={entry.PayloadLength} proxySession={FormatProxySessionId(entry.ProxySessionId)} source={entry.Source} raw={entry.RawPacketHex}";
+        }
+
+        private readonly record struct PacketHistoryLine(long Sequence, string Line);
 
         internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
             bool hasConnectedSession,

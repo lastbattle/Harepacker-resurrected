@@ -13,13 +13,6 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class AvatarMegaphoneSendDialogWindow : UIWindowBase
     {
-        private const int EditX = 48;
-        private const int EditY = 81;
-        private const int EditWidth = 107;
-        private const int EditHeight = 60;
-        private const int WhisperCheckX = 10;
-        private const int WhisperCheckY = 147;
-        private const int WhisperCheckSize = 14;
         private const int MaxInputCharacters = 240;
 
         private readonly Texture2D _pixel;
@@ -100,7 +93,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            Rectangle checkBounds = new(Position.X + WhisperCheckX, Position.Y + WhisperCheckY, WhisperCheckSize, WhisperCheckSize);
+            Rectangle checkBounds = new(
+                Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY,
+                AvatarMegaphoneRuntime.SendDialogWhisperCheckWidth,
+                AvatarMegaphoneRuntime.SendDialogWhisperCheckHeight);
             if (checkBounds.Contains(mouseState.X, mouseState.Y))
             {
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -145,10 +142,16 @@ namespace HaCreator.MapSimulator.UI
             DrawWindowText(sprite, "Whisper", new Vector2(Position.X + 28, Position.Y + 146), muted, 0.36f);
             DrawWindowText(sprite, Truncate(snapshot.LastStatus, 30), new Vector2(Position.X + 14, Position.Y + 160), muted, 0.3f, 168);
 
-            float y = Position.Y + EditY + 2;
+            float y = Position.Y + AvatarMegaphoneRuntime.SendDialogEditY + 2;
             foreach (string line in AvatarMegaphoneRuntime.SplitDialogTextIntoFragments(_editText))
             {
-                DrawWindowText(sprite, line, new Vector2(Position.X + EditX + 2, y), textColor, 0.38f, EditWidth - 4);
+                DrawWindowText(
+                    sprite,
+                    line,
+                    new Vector2(Position.X + AvatarMegaphoneRuntime.SendDialogEditX + 2, y),
+                    textColor,
+                    0.38f,
+                    AvatarMegaphoneRuntime.SendDialogEditWidth - 4);
                 y += 14f;
             }
 
@@ -164,18 +167,65 @@ namespace HaCreator.MapSimulator.UI
             Texture2D texture = _whisperChecked ? _checkBoxChecked : _checkBoxNormal;
             if (texture != null)
             {
-                sprite.Draw(texture, new Vector2(Position.X + WhisperCheckX, Position.Y + WhisperCheckY), Color.White);
+                sprite.Draw(
+                    texture,
+                    new Vector2(
+                        Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                        Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY),
+                    Color.White);
                 return;
             }
 
-            DrawPixel(sprite, new Rectangle(Position.X + WhisperCheckX, Position.Y + WhisperCheckY, WhisperCheckSize, WhisperCheckSize), new Color(238, 231, 218));
-            DrawPixel(sprite, new Rectangle(Position.X + WhisperCheckX, Position.Y + WhisperCheckY, WhisperCheckSize, 1), Color.Black);
-            DrawPixel(sprite, new Rectangle(Position.X + WhisperCheckX, Position.Y + WhisperCheckY, 1, WhisperCheckSize), Color.Black);
-            DrawPixel(sprite, new Rectangle(Position.X + WhisperCheckX + WhisperCheckSize - 1, Position.Y + WhisperCheckY, 1, WhisperCheckSize), Color.Black);
-            DrawPixel(sprite, new Rectangle(Position.X + WhisperCheckX, Position.Y + WhisperCheckY + WhisperCheckSize - 1, WhisperCheckSize, 1), Color.Black);
+            DrawPixel(
+                sprite,
+                new Rectangle(
+                    Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                    Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckWidth,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckHeight),
+                new Color(238, 231, 218));
+            DrawPixel(
+                sprite,
+                new Rectangle(
+                    Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                    Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckWidth,
+                    1),
+                Color.Black);
+            DrawPixel(
+                sprite,
+                new Rectangle(
+                    Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                    Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY,
+                    1,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckHeight),
+                Color.Black);
+            DrawPixel(
+                sprite,
+                new Rectangle(
+                    Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX + AvatarMegaphoneRuntime.SendDialogWhisperCheckWidth - 1,
+                    Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY,
+                    1,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckHeight),
+                Color.Black);
+            DrawPixel(
+                sprite,
+                new Rectangle(
+                    Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX,
+                    Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY + AvatarMegaphoneRuntime.SendDialogWhisperCheckHeight - 1,
+                    AvatarMegaphoneRuntime.SendDialogWhisperCheckWidth,
+                    1),
+                Color.Black);
             if (_whisperChecked)
             {
-                DrawWindowText(sprite, "v", new Vector2(Position.X + WhisperCheckX + 2, Position.Y + WhisperCheckY - 2), Color.Black, 0.38f);
+                DrawWindowText(
+                    sprite,
+                    "v",
+                    new Vector2(
+                        Position.X + AvatarMegaphoneRuntime.SendDialogWhisperCheckX + 2,
+                        Position.Y + AvatarMegaphoneRuntime.SendDialogWhisperCheckY - 2),
+                    Color.Black,
+                    0.38f);
             }
         }
 
@@ -193,7 +243,9 @@ namespace HaCreator.MapSimulator.UI
             int lineIndex = Math.Clamp(fragments.Length - 1, 0, 3);
             string line = fragments.ElementAtOrDefault(lineIndex) ?? string.Empty;
             float width = MeasureWindowText(sprite, line, 0.38f).X;
-            return new Vector2(Position.X + EditX + 3 + Math.Min(width, EditWidth - 6), Position.Y + EditY + 4 + (lineIndex * 14));
+            return new Vector2(
+                Position.X + AvatarMegaphoneRuntime.SendDialogEditX + 3 + Math.Min(width, AvatarMegaphoneRuntime.SendDialogEditWidth - 6),
+                Position.Y + AvatarMegaphoneRuntime.SendDialogEditY + 4 + (lineIndex * 14));
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState)

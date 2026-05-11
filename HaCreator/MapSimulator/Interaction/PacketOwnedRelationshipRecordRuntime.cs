@@ -285,6 +285,30 @@ namespace HaCreator.MapSimulator.Interaction
             ICollection<string> details,
             ref bool allActiveAddsApplied)
         {
+            bool clientAvatarRefreshRemovesExistingRecord =
+                avatarModifiedPacket.AvatarLookModified
+                && relationshipType is RemoteRelationshipOverlayType.Couple
+                    or RemoteRelationshipOverlayType.Friendship
+                    or RemoteRelationshipOverlayType.Marriage;
+
+            if (clientAvatarRefreshRemovesExistingRecord)
+            {
+                RemoteUserRelationshipRecordRemovePacket preAddRemovePacket = CreateAvatarModifiedRemovePacket(
+                    relationshipType,
+                    avatarModifiedPacket.CharacterId,
+                    remoteUserPool);
+                string previousDispatchSummary = LastDispatchSummary;
+                bool preAddRemoved = TryApplyDecodedRemove(preAddRemovePacket, remoteUserPool, source, out string preAddRemoveMessage);
+                if (preAddRemoved)
+                {
+                    details?.Add(preAddRemoveMessage);
+                }
+                else
+                {
+                    LastDispatchSummary = previousDispatchSummary;
+                }
+            }
+
             if (relationshipRecord.IsActive)
             {
                 RemoteUserRelationshipRecord normalizedRecord = relationshipRecord with
@@ -322,22 +346,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            RemoteUserRelationshipRecordRemovePacket removePacket = CreateAvatarModifiedRemovePacket(
-                relationshipType,
-                avatarModifiedPacket.CharacterId,
-                remoteUserPool);
-            string previousDispatchSummary = LastDispatchSummary;
-            bool removed = TryApplyDecodedRemove(removePacket, remoteUserPool, source, out string removeMessage);
-            if (removed || !string.IsNullOrWhiteSpace(removeMessage))
+            if (!clientAvatarRefreshRemovesExistingRecord)
             {
-                if (removed)
-                {
-                    details?.Add(removeMessage);
-                }
-                else
-                {
-                    LastDispatchSummary = previousDispatchSummary;
-                }
+                details?.Add($"{relationshipType} avatar-modified record absent; preserved packet-owned relationship table state until the client remove owner is invoked.");
             }
         }
 

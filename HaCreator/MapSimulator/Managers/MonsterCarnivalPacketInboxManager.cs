@@ -6,13 +6,22 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class MonsterCarnivalPacketInboxMessage
     {
-        public MonsterCarnivalPacketInboxMessage(int packetType, byte[] payload, string source, string rawText, int? relayedPacketType = null)
+        public MonsterCarnivalPacketInboxMessage(
+            int packetType,
+            byte[] payload,
+            string source,
+            string rawText,
+            int? relayedPacketType = null,
+            long? proxySessionId = null,
+            short? sessionVersion = null)
         {
             PacketType = packetType;
             Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "mcarnival-inbox" : source;
             RawText = rawText ?? string.Empty;
             RelayedPacketType = relayedPacketType;
+            ProxySessionId = proxySessionId;
+            SessionVersion = sessionVersion;
         }
 
         public int PacketType { get; }
@@ -20,6 +29,8 @@ namespace HaCreator.MapSimulator.Managers
         public string Source { get; }
         public string RawText { get; }
         public int? RelayedPacketType { get; }
+        public long? ProxySessionId { get; }
+        public short? SessionVersion { get; }
         public int OwnerPacketType => RelayedPacketType ?? PacketType;
     }
 

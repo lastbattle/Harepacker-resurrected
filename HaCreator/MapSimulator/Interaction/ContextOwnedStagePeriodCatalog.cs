@@ -103,14 +103,32 @@ namespace HaCreator.MapSimulator.Interaction
             IDictionary<int, ContextOwnedStageUnitEnableState> questCache,
             IDictionary<string, byte> stagePeriodCache)
         {
+            ApplyCacheDataWithTrace(entry, keywordCache, questCache, stagePeriodCache);
+        }
+
+        internal ContextOwnedStageCacheMutationTrace ApplyCacheDataWithTrace(
+            ContextOwnedStagePeriodCatalogEntry entry,
+            IDictionary<string, ContextOwnedStageUnitEnableState> keywordCache,
+            IDictionary<int, ContextOwnedStageUnitEnableState> questCache,
+            IDictionary<string, byte> stagePeriodCache)
+        {
             if (entry == null)
             {
-                return;
+                return ContextOwnedStageCacheMutationTrace.Empty;
             }
 
-            ApplyThemeScopedEnableState(entry.StageTheme, entry.Keywords, keywordCache);
-            ApplyThemeScopedEnableState(entry.StageTheme, entry.EnabledQuestIds, questCache);
-            ApplyStagePeriodModeCache(entry.StageTheme, entry.Mode, stagePeriodCache);
+            IReadOnlyList<ContextOwnedStageUnitCacheMutation> keywordMutations =
+                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.Keywords, keywordCache);
+            IReadOnlyList<ContextOwnedStageUnitCacheMutation> questMutations =
+                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.EnabledQuestIds, questCache);
+            ContextOwnedStagePeriodModeCacheMutation stagePeriodMutation =
+                ApplyStagePeriodModeCacheWithTrace(entry.StageTheme, entry.Mode, stagePeriodCache);
+            return new ContextOwnedStageCacheMutationTrace(
+                NormalizeStageTheme(entry.StageTheme),
+                entry.Mode,
+                keywordMutations,
+                questMutations,
+                stagePeriodMutation);
         }
 
         internal static void ResetCacheData(
@@ -1581,17 +1599,27 @@ namespace HaCreator.MapSimulator.Interaction
             IEnumerable<TKey> enabledKeys,
             IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
         {
+            ApplyThemeScopedEnableStateWithTrace(stageTheme, enabledKeys, cache);
+        }
+
+        private static IReadOnlyList<ContextOwnedStageUnitCacheMutation> ApplyThemeScopedEnableStateWithTrace<TKey>(
+            string stageTheme,
+            IEnumerable<TKey> enabledKeys,
+            IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
+        {
             string normalizedTheme = NormalizeStageTheme(stageTheme);
             if (cache == null || string.IsNullOrWhiteSpace(normalizedTheme))
             {
-                return;
+                return Array.Empty<ContextOwnedStageUnitCacheMutation>();
             }
 
+            List<ContextOwnedStageUnitCacheMutation> mutations = new();
             foreach ((TKey key, ContextOwnedStageUnitEnableState state) in cache.ToArray())
             {
                 if (state != null && IsEquivalentStageTheme(state.StageTheme, normalizedTheme))
                 {
                     state.Enabled = false;
+                    mutations.Add(ContextOwnedStageUnitCacheMutation.Disabled(FormatCacheKey(key), normalizedTheme));
                 }
             }
 
@@ -1602,12 +1630,16 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     state = new ContextOwnedStageUnitEnableState(normalizedTheme, enabled: true);
                     cache[normalizedKey] = state;
+                    mutations.Add(ContextOwnedStageUnitCacheMutation.CreatedAndEnabled(FormatCacheKey(normalizedKey), normalizedTheme));
                     continue;
                 }
 
                 state.StageTheme = normalizedTheme;
                 state.Enabled = true;
+                mutations.Add(ContextOwnedStageUnitCacheMutation.ReusedAndEnabled(FormatCacheKey(normalizedKey), normalizedTheme));
             }
+
+            return mutations;
         }
 
         private static HashSet<TKey> CaptureEnabledValues<TKey>(IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
@@ -1634,14 +1666,36 @@ namespace HaCreator.MapSimulator.Interaction
             byte mode,
             IDictionary<string, byte> stagePeriodCache)
         {
+            ApplyStagePeriodModeCacheWithTrace(stageTheme, mode, stagePeriodCache);
+        }
+
+        private static ContextOwnedStagePeriodModeCacheMutation ApplyStagePeriodModeCacheWithTrace(
+            string stageTheme,
+            byte mode,
+            IDictionary<string, byte> stagePeriodCache)
+        {
             string normalizedTheme = NormalizeStageTheme(stageTheme);
             if (stagePeriodCache == null || string.IsNullOrWhiteSpace(normalizedTheme))
             {
-                return;
+                return ContextOwnedStagePeriodModeCacheMutation.Empty;
             }
 
             string existingTheme = ResolveExistingEquivalentStringKey(stagePeriodCache, normalizedTheme);
-            stagePeriodCache[existingTheme ?? normalizedTheme] = mode;
+            string cacheKey = existingTheme ?? normalizedTheme;
+            bool reused = stagePeriodCache.TryGetValue(cacheKey, out byte previousMode);
+            stagePeriodCache[cacheKey] = mode;
+            return new ContextOwnedStagePeriodModeCacheMutation(
+                cacheKey,
+                reused,
+                reused ? previousMode : null,
+                mode);
+        }
+
+        private static string FormatCacheKey<TKey>(TKey key)
+        {
+            return key is IFormattable formattable
+                ? formattable.ToString(null, CultureInfo.InvariantCulture)
+                : key?.ToString() ?? string.Empty;
         }
 
         private static string NormalizeStageTheme(string stageTheme)
@@ -1805,6 +1859,76 @@ namespace HaCreator.MapSimulator.Interaction
         WzImageProperty SourceStageBackContainerObject = null,
         int? NativeObjectKey = null,
         string NativeObjectRawName = null);
+
+    internal sealed record ContextOwnedStageCacheMutationTrace(
+        string StageTheme,
+        byte Mode,
+        IReadOnlyList<ContextOwnedStageUnitCacheMutation> KeywordMutations,
+        IReadOnlyList<ContextOwnedStageUnitCacheMutation> QuestMutations,
+        ContextOwnedStagePeriodModeCacheMutation StagePeriodMutation)
+    {
+        internal static ContextOwnedStageCacheMutationTrace Empty { get; } = new(
+            string.Empty,
+            0,
+            Array.Empty<ContextOwnedStageUnitCacheMutation>(),
+            Array.Empty<ContextOwnedStageUnitCacheMutation>(),
+            ContextOwnedStagePeriodModeCacheMutation.Empty);
+    }
+
+    internal readonly record struct ContextOwnedStageUnitCacheMutation(
+        string Key,
+        string StageTheme,
+        bool DisabledExisting,
+        bool Created,
+        bool Reused,
+        bool Enabled)
+    {
+        internal static ContextOwnedStageUnitCacheMutation Disabled(string key, string stageTheme)
+        {
+            return new ContextOwnedStageUnitCacheMutation(
+                key,
+                stageTheme,
+                DisabledExisting: true,
+                Created: false,
+                Reused: false,
+                Enabled: false);
+        }
+
+        internal static ContextOwnedStageUnitCacheMutation CreatedAndEnabled(string key, string stageTheme)
+        {
+            return new ContextOwnedStageUnitCacheMutation(
+                key,
+                stageTheme,
+                DisabledExisting: false,
+                Created: true,
+                Reused: false,
+                Enabled: true);
+        }
+
+        internal static ContextOwnedStageUnitCacheMutation ReusedAndEnabled(string key, string stageTheme)
+        {
+            return new ContextOwnedStageUnitCacheMutation(
+                key,
+                stageTheme,
+                DisabledExisting: false,
+                Created: false,
+                Reused: true,
+                Enabled: true);
+        }
+    }
+
+    internal readonly record struct ContextOwnedStagePeriodModeCacheMutation(
+        string StageTheme,
+        bool Reused,
+        byte? PreviousMode,
+        byte Mode)
+    {
+        internal static ContextOwnedStagePeriodModeCacheMutation Empty { get; } = new(
+            string.Empty,
+            Reused: false,
+            PreviousMode: null,
+            Mode: 0);
+    }
 
     internal sealed class ContextOwnedStageUnitEnableState
     {

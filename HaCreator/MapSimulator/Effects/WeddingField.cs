@@ -2584,8 +2584,12 @@ namespace HaCreator.MapSimulator.Effects
                 return relationshipRecord;
             }
 
+            RemoteUserRelationshipRecord ownerCanonicalRecord = hasExistingOwnerRecord
+                ? existingOwnerRecord
+                : relationshipRecord;
             bool packetOwnerIsCanonicalOwner = IsWeddingRelationshipPacketOwnerCanonicalOwner(
                 ownerCharacterId,
+                ownerCanonicalRecord,
                 matchedOwnerCharacterId,
                 matchedRecord);
             return relationshipRecord with
@@ -2604,27 +2608,62 @@ namespace HaCreator.MapSimulator.Effects
 
         private static bool IsWeddingRelationshipPacketOwnerCanonicalOwner(
             int packetOwnerCharacterId,
+            RemoteUserRelationshipRecord packetOwnerRecord,
             int matchedOwnerCharacterId,
             RemoteUserRelationshipRecord matchedRecord)
         {
-            int recoveredOwnerCharacterId = matchedRecord.CharacterId.GetValueOrDefault();
-            int recoveredPairCharacterId = matchedRecord.PairCharacterId.GetValueOrDefault();
-            if (recoveredOwnerCharacterId > 0 || recoveredPairCharacterId > 0)
+            if (TryResolveWeddingRelationshipCanonicalOwnerFromRecoveredRecord(
+                    packetOwnerCharacterId,
+                    matchedOwnerCharacterId,
+                    packetOwnerRecord,
+                    out bool packetOwnerIsCanonicalOwner))
             {
-                if (recoveredOwnerCharacterId == packetOwnerCharacterId
-                    || recoveredPairCharacterId == matchedOwnerCharacterId)
-                {
-                    return true;
-                }
+                return packetOwnerIsCanonicalOwner;
+            }
 
-                if (recoveredOwnerCharacterId == matchedOwnerCharacterId
-                    || recoveredPairCharacterId == packetOwnerCharacterId)
-                {
-                    return false;
-                }
+            if (TryResolveWeddingRelationshipCanonicalOwnerFromRecoveredRecord(
+                    packetOwnerCharacterId,
+                    matchedOwnerCharacterId,
+                    matchedRecord,
+                    out packetOwnerIsCanonicalOwner))
+            {
+                return packetOwnerIsCanonicalOwner;
             }
 
             return packetOwnerCharacterId <= matchedOwnerCharacterId;
+        }
+
+        private static bool TryResolveWeddingRelationshipCanonicalOwnerFromRecoveredRecord(
+            int packetOwnerCharacterId,
+            int matchedOwnerCharacterId,
+            RemoteUserRelationshipRecord recoveredRecord,
+            out bool packetOwnerIsCanonicalOwner)
+        {
+            packetOwnerIsCanonicalOwner = false;
+            int recoveredOwnerCharacterId = recoveredRecord.CharacterId.GetValueOrDefault();
+            int recoveredPairCharacterId = recoveredRecord.PairCharacterId.GetValueOrDefault();
+            if (recoveredOwnerCharacterId <= 0 && recoveredPairCharacterId <= 0)
+            {
+                return false;
+            }
+
+            if ((recoveredOwnerCharacterId == packetOwnerCharacterId && recoveredPairCharacterId == matchedOwnerCharacterId)
+                || recoveredOwnerCharacterId == packetOwnerCharacterId
+                || recoveredPairCharacterId == matchedOwnerCharacterId)
+            {
+                packetOwnerIsCanonicalOwner = true;
+                return true;
+            }
+
+            if ((recoveredOwnerCharacterId == matchedOwnerCharacterId && recoveredPairCharacterId == packetOwnerCharacterId)
+                || recoveredOwnerCharacterId == matchedOwnerCharacterId
+                || recoveredPairCharacterId == packetOwnerCharacterId)
+            {
+                packetOwnerIsCanonicalOwner = false;
+                return true;
+            }
+
+            return false;
         }
 
         private static long? ResolveWeddingRelationshipRecordSerialForOwner(
@@ -2670,6 +2709,7 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     bool packetOwnerIsCanonicalOwner = IsWeddingRelationshipPacketOwnerCanonicalOwner(
                         packetOwnerCharacterId,
+                        relationshipRecord,
                         pairCharacterId,
                         pairRecord);
                     return relationshipRecord with
@@ -2758,7 +2798,7 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-                ownerCharacterId = ResolveWeddingRelationshipRecordOwnerForLookupSerial(
+                ownerCharacterId = ResolveWeddingRelationshipRecordPartnerOwnerForLookupSerial(
                     participant.CharacterId,
                     candidate,
                     pairLookupSerial);
@@ -2793,22 +2833,23 @@ namespace HaCreator.MapSimulator.Effects
                 || (relationshipRecord.PairItemSerial.HasValue && relationshipRecord.PairItemSerial.Value == lookupSerial);
         }
 
-        private static int ResolveWeddingRelationshipRecordOwnerForLookupSerial(
+        private static int ResolveWeddingRelationshipRecordPartnerOwnerForLookupSerial(
             int participantCharacterId,
             RemoteUserRelationshipRecord relationshipRecord,
             long lookupSerial)
         {
             int ownerCharacterId = relationshipRecord.CharacterId.GetValueOrDefault();
             int pairCharacterId = relationshipRecord.PairCharacterId.GetValueOrDefault();
-            if (relationshipRecord.ItemSerial.HasValue
-                && relationshipRecord.ItemSerial.Value == lookupSerial
-                && ownerCharacterId > 0)
+            if (relationshipRecord.PairItemSerial.HasValue
+                && relationshipRecord.PairItemSerial.Value == lookupSerial)
             {
-                return ownerCharacterId;
+                return ownerCharacterId > 0
+                    ? ownerCharacterId
+                    : participantCharacterId;
             }
 
-            if (relationshipRecord.PairItemSerial.HasValue
-                && relationshipRecord.PairItemSerial.Value == lookupSerial
+            if (relationshipRecord.ItemSerial.HasValue
+                && relationshipRecord.ItemSerial.Value == lookupSerial
                 && pairCharacterId > 0)
             {
                 return pairCharacterId;

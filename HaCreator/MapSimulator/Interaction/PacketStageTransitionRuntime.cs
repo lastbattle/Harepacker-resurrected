@@ -1479,13 +1479,123 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataDecodeRawBytes = rawBytes,
                     CharacterDataDecodePreludeBytes = preludeBytes,
                     CharacterDataSectionRawBytesByFlag = rawBytesByFlag,
-                    CharacterDataSectionRawByteCountsByFlag = rawByteCountsByFlag
+                    CharacterDataSectionRawByteCountsByFlag = rawByteCountsByFlag,
+                    CharacterDataPreludeOwnershipEntries = DecorateCharacterDataPreludeOwnershipRawBytes(
+                        snapshot.CharacterDataPreludeOwnershipEntries,
+                        rawBytes),
+                    CharacterDataSectionOwnershipEntries = DecorateCharacterDataSectionOwnershipRawBytes(
+                        snapshot.CharacterDataSectionOwnershipEntries,
+                        rawBytes),
+                    CharacterDataSubsectionOwnershipEntries = DecorateCharacterDataSubsectionOwnershipRawBytes(
+                        snapshot.CharacterDataSubsectionOwnershipEntries,
+                        snapshot.CharacterDataSectionStartOffsetsByFlag,
+                        rawBytes),
+                    CharacterDataRecordOwnershipEntries = DecorateCharacterDataRecordOwnershipRawBytes(
+                        snapshot.CharacterDataRecordOwnershipEntries,
+                        snapshot.CharacterDataSectionStartOffsetsByFlag,
+                        rawBytes)
                 };
             }
             finally
             {
                 stream.Position = restorePosition;
             }
+        }
+
+        private static IReadOnlyList<PacketCharacterDataPreludeOwnership> DecorateCharacterDataPreludeOwnershipRawBytes(
+            IReadOnlyList<PacketCharacterDataPreludeOwnership> entries,
+            byte[] rawBytes)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return entries;
+            }
+
+            List<PacketCharacterDataPreludeOwnership> decoratedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketCharacterDataPreludeOwnership entry = entries[i];
+                decoratedEntries.Add(entry with
+                {
+                    RawBytes = SliceCharacterDataRawBytes(rawBytes, entry.StartOffset, entry.EndOffset)
+                });
+            }
+
+            return decoratedEntries;
+        }
+
+        private static IReadOnlyList<PacketCharacterDataSectionOwnership> DecorateCharacterDataSectionOwnershipRawBytes(
+            IReadOnlyList<PacketCharacterDataSectionOwnership> entries,
+            byte[] rawBytes)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return entries;
+            }
+
+            List<PacketCharacterDataSectionOwnership> decoratedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketCharacterDataSectionOwnership entry = entries[i];
+                decoratedEntries.Add(entry with
+                {
+                    RawBytes = SliceCharacterDataRawBytes(rawBytes, entry.StartOffset, entry.EndOffset)
+                });
+            }
+
+            return decoratedEntries;
+        }
+
+        private static IReadOnlyList<PacketCharacterDataSubsectionOwnership> DecorateCharacterDataSubsectionOwnershipRawBytes(
+            IReadOnlyList<PacketCharacterDataSubsectionOwnership> entries,
+            IReadOnlyDictionary<ulong, int> sectionStartOffsetsByFlag,
+            byte[] rawBytes)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return entries;
+            }
+
+            List<PacketCharacterDataSubsectionOwnership> decoratedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketCharacterDataSubsectionOwnership entry = entries[i];
+                int sectionStartOffset = ResolveCharacterDataSectionMapValue(sectionStartOffsetsByFlag, entry.SectionFlag);
+                int absoluteStartOffset = checked(sectionStartOffset + Math.Max(0, entry.StartOffset));
+                int absoluteEndOffset = checked(sectionStartOffset + Math.Max(0, entry.EndOffset));
+                decoratedEntries.Add(entry with
+                {
+                    RawBytes = SliceCharacterDataRawBytes(rawBytes, absoluteStartOffset, absoluteEndOffset)
+                });
+            }
+
+            return decoratedEntries;
+        }
+
+        private static IReadOnlyList<PacketCharacterDataRecordOwnership> DecorateCharacterDataRecordOwnershipRawBytes(
+            IReadOnlyList<PacketCharacterDataRecordOwnership> entries,
+            IReadOnlyDictionary<ulong, int> sectionStartOffsetsByFlag,
+            byte[] rawBytes)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return entries;
+            }
+
+            List<PacketCharacterDataRecordOwnership> decoratedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketCharacterDataRecordOwnership entry = entries[i];
+                int sectionStartOffset = ResolveCharacterDataSectionMapValue(sectionStartOffsetsByFlag, entry.SectionFlag);
+                int absoluteStartOffset = checked(sectionStartOffset + Math.Max(0, entry.StartOffset));
+                int absoluteEndOffset = checked(sectionStartOffset + Math.Max(0, entry.EndOffset));
+                decoratedEntries.Add(entry with
+                {
+                    RawBytes = SliceCharacterDataRawBytes(rawBytes, absoluteStartOffset, absoluteEndOffset)
+                });
+            }
+
+            return decoratedEntries;
         }
 
         private static byte[] SliceCharacterDataRawBytes(byte[] rawBytes, int startOffset, int endOffset)
@@ -6024,7 +6134,8 @@ namespace HaCreator.MapSimulator.Interaction
         int SemanticRecordByteCount,
         int NativeRecordCount,
         int NativeRecordByteCount,
-        bool IsPresent);
+        bool IsPresent,
+        byte[] RawBytes = null);
 
     internal readonly record struct PacketCharacterDataSubsectionOwnership(
         ulong SectionFlag,
@@ -6036,7 +6147,8 @@ namespace HaCreator.MapSimulator.Interaction
         int CountPrefixByteCount,
         int RecordByteCount,
         int RecordCount,
-        bool IsPresent);
+        bool IsPresent,
+        byte[] RawBytes = null);
 
     internal readonly record struct PacketCharacterDataRecordOwnership(
         ulong SectionFlag,
@@ -6046,7 +6158,8 @@ namespace HaCreator.MapSimulator.Interaction
         int EndOffset,
         int ByteCount,
         IReadOnlyDictionary<string, int> FieldByteCounts,
-        bool IsSemanticRecord);
+        bool IsSemanticRecord,
+        byte[] RawBytes = null);
 
     internal readonly record struct PacketCharacterDataPreludeOwnership(
         string Owner,
@@ -6055,7 +6168,8 @@ namespace HaCreator.MapSimulator.Interaction
         int StartOffset,
         int EndOffset,
         int ByteCount,
-        bool IsPresent);
+        bool IsPresent,
+        byte[] RawBytes = null);
 
     internal readonly record struct PacketCharacterDataSkillRecord(
         int SkillId,

@@ -535,15 +535,28 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static bool ShouldHideMinimap(MapInfo mapInfo)
+        {
+            return mapInfo?.hideMinimap == true || IsInfoFlagSet(mapInfo, "hideMinimap");
+        }
+
+        public static string GetMinimapHiddenMessage(MapInfo mapInfo)
+        {
+            return ShouldHideMinimap(mapInfo)
+                ? "Map metadata keeps the minimap hidden in this field."
+                : null;
+        }
+
         public static bool ResolvePacketOwnedMiniMapVisibility(
             long fieldLimit,
             MapInfo mapInfo,
             bool requestedVisible,
             out string overrideMessage)
         {
-            if (mapInfo?.hideMinimap == true)
+            string minimapHiddenMessage = GetMinimapHiddenMessage(mapInfo);
+            if (!string.IsNullOrWhiteSpace(minimapHiddenMessage))
             {
-                overrideMessage = "Map metadata keeps the minimap hidden in this field.";
+                overrideMessage = minimapHiddenMessage;
                 return false;
             }
 
@@ -840,6 +853,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetMinimapHiddenMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));

@@ -1143,7 +1143,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateClientPublishedPostureAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1165,7 +1165,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateClientPublishedMovementAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1187,7 +1187,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool ShouldPreferExactPublishedAction(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null
+            if (morphPart == null
                 || string.IsNullOrWhiteSpace(actionName)
                 || !HasPublishedAction(morphPart, actionName))
             {
@@ -1215,7 +1215,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateClientPublishedJumpAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1260,7 +1260,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateAuthoredAttackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1394,7 +1394,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateGenericMeleeAttackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || !IsGenericMeleeAttackAction(actionName))
+            if (morphPart == null || !IsGenericMeleeAttackAction(actionName))
             {
                 yield break;
             }
@@ -1439,7 +1439,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateClientPublishedGenericMeleeFallbackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1461,7 +1461,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumeratePublishedGenericMeleeFallbackSurface(CharacterPart morphPart, string requestedActionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(requestedActionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(requestedActionName))
             {
                 yield break;
             }
@@ -1507,7 +1507,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumeratePublishedCrossFamilyMeleeFallbackSurface(CharacterPart morphPart, string requestedActionName)
         {
-            if (morphPart?.Animations == null
+            if (morphPart == null
                 || !IsClientPublishedStabMorphFallbackAction(requestedActionName))
             {
                 yield break;
@@ -1582,7 +1582,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1628,7 +1628,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumeratePresentAliases(CharacterPart morphPart, IEnumerable<string> aliases)
         {
-            if (morphPart?.Animations == null || aliases == null)
+            if (morphPart == null || aliases == null)
             {
                 yield break;
             }
@@ -1646,7 +1646,7 @@ namespace HaCreator.MapSimulator.Character
             CharacterPart morphPart,
             IEnumerable<string> aliases)
         {
-            if (morphPart?.Animations == null || aliases == null)
+            if (morphPart == null || aliases == null)
             {
                 yield break;
             }
@@ -1671,7 +1671,7 @@ namespace HaCreator.MapSimulator.Character
             string requestedActionName,
             IEnumerable<string> aliases)
         {
-            if (morphPart?.Animations == null || aliases == null)
+            if (morphPart == null || aliases == null)
             {
                 yield break;
             }
@@ -1750,7 +1750,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateClientPublishedAuthoredAttackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 yield break;
             }
@@ -1772,7 +1772,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumeratePresentAlertAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null)
+            if (morphPart == null)
             {
                 yield break;
             }
@@ -1812,7 +1812,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumeratePublishedAliasLookupMatches(CharacterPart morphPart, string alias)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(alias))
+            if (morphPart == null || string.IsNullOrWhiteSpace(alias))
             {
                 yield break;
             }
@@ -1879,7 +1879,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)
         {
-            if (morphPart?.Animations == null)
+            if (morphPart == null)
             {
                 yield break;
             }
@@ -1912,7 +1912,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateRemainingPublishedCombatAliases(CharacterPart morphPart, string requestedActionName)
         {
-            if (morphPart?.Animations == null)
+            if (morphPart == null)
             {
                 yield break;
             }
@@ -1940,7 +1940,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateOrderedPublishedCombatAliases(CharacterPart morphPart, string requestedActionName)
         {
-            if (morphPart?.Animations == null)
+            if (morphPart == null)
             {
                 yield break;
             }
@@ -2170,7 +2170,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool PrefersIceAttackAliases(CharacterPart morphPart, string actionName)
         {
-            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return false;
             }
@@ -2302,6 +2302,14 @@ namespace HaCreator.MapSimulator.Character
                    || ClientPublishedJumpMorphFallbackAliases.ContainsKey(actionName)
                    || ClientPublishedMovementMorphFallbackAliases.ContainsKey(actionName)
                    || ClientPublishedPostureMorphFallbackAliases.ContainsKey(actionName);
+        }
+
+        internal static IReadOnlyList<string> EnumerateWzConfirmedSkillOnlyMorphActionNamesForTesting()
+        {
+            return ClientPublishedAliasesWithoutDirectBodyRedirectRows
+                .Where(IsWzConfirmedSkillOnlyMorphActionName)
+                .OrderBy(static actionName => actionName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
     }
 }

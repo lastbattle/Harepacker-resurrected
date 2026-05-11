@@ -1269,7 +1269,9 @@ namespace HaCreator.MapSimulator.UI
                 shortcutVisualState.DrawLayer,
                 !string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText),
                 compact);
-            Color tint = shortcutVisualState.Unavailable ? ClientFuncKeyMappedUnavailableTint : Color.White;
+            Color tint = ShouldTintClientFuncKeyMappedIcon(shortcutVisualState.DrawLayer, shortcutVisualState.Unavailable)
+                ? ClientFuncKeyMappedUnavailableTint
+                : Color.White;
             sprite.Draw(iconTexture, composition.IconBounds, tint);
 
             if (composition.HasUnavailableOverlay)
@@ -1391,6 +1393,20 @@ namespace HaCreator.MapSimulator.UI
                 unavailableOverlayBounds,
                 new Point(0, ClientFuncKeyMappedCellSize),
                 usesItemNumberImages);
+        }
+
+        internal static bool ShouldTintClientFuncKeyMappedIcon(ShortcutVisualState.ClientDrawLayer drawLayer, bool unavailable)
+        {
+            if (!unavailable)
+            {
+                return false;
+            }
+
+            // IDA: CUIKeyConfig::DrawFuncKeyMapped copies skill and macro canvases directly.
+            // Type-3 unavailable items draw the icon first and then add the gray slot rectangle.
+            return drawLayer is not ShortcutVisualState.ClientDrawLayer.Skill
+                and not ShortcutVisualState.ClientDrawLayer.Macro
+                and not ShortcutVisualState.ClientDrawLayer.ItemUnavailable;
         }
 
         private void DrawClientFuncKeyMappedQuantity(

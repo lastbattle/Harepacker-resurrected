@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Animation
             public int ChatBalloon { get; init; }
             public int FloatNotice { get; init; }
             public int HpThreshold { get; init; }
+            public int Width { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
             public IReadOnlyList<ActionSpeakVariant> Variants { get; init; }
             public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
@@ -97,6 +98,7 @@ namespace HaCreator.MapSimulator.Animation
             public int ChatBalloon { get; init; }
             public int FloatNotice { get; init; }
             public int HpThreshold { get; init; }
+            public int Width { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
             public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
         }

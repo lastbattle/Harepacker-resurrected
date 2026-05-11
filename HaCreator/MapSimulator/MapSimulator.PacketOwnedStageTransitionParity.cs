@@ -1120,7 +1120,13 @@ namespace HaCreator.MapSimulator
             float direction = ellipticalClockwise ? 1f : -1f;
             float angle = phase * MathF.PI * 2f * direction;
             x = startX + (int)Math.Round(targetX * MathF.Sin(angle));
-            y = startY + (int)Math.Round(targetY * (1f - MathF.Cos(angle)));
+            int yOffset = (int)Math.Round(targetY * (1f - MathF.Cos(angle)));
+            if (centerStart)
+            {
+                yOffset -= targetY;
+            }
+
+            y = startY + yOffset;
             progress = phase <= 0.5f
                 ? phase * 2f
                 : (1f - phase) * 2f;

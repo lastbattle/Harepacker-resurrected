@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientSlotIncreaseItem5431 = 5431000;
         private const int ClientSlotIncreaseItem5432 = 5432000;
         private const int ClientEquipExtItemFamily = 555;
+        private const int ClientEquipRingItemFamily = 111;
         private const int ClientCashItemTopLevelFamily = 5;
         private const int CloseButtonSize = 16;
 
@@ -516,7 +517,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal static ClientCommodityTooltipKind ResolveClientCommodityTooltipKind(int commoditySerialNumber, int itemId)
         {
-            if (commoditySerialNumber <= 0 || itemId <= 0)
+            if (itemId <= 0)
             {
                 return ClientCommodityTooltipKind.None;
             }
@@ -542,6 +543,12 @@ namespace HaCreator.MapSimulator.UI
             if (IsClientEquipExtItemFamily(itemId))
             {
                 return ClientCommodityTooltipKind.EquipExtension;
+            }
+
+            if ((IsClientCashCommoditySerialNumber(commoditySerialNumber) || IsClientCashItem(itemId))
+                && IsClientRingItem(itemId))
+            {
+                return ClientCommodityTooltipKind.Ring;
             }
 
             if (IsClientCashCommoditySerialNumber(commoditySerialNumber) || IsClientCashItem(itemId))
@@ -576,6 +583,11 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsClientEquipExtItemFamily(int itemId)
         {
             return itemId / 10000 == ClientEquipExtItemFamily;
+        }
+
+        private static bool IsClientRingItem(int itemId)
+        {
+            return itemId / 10000 == ClientEquipRingItemFamily;
         }
 
         private static bool IsClientSlotIncreaseItem(int itemId)
@@ -877,6 +889,7 @@ namespace HaCreator.MapSimulator.UI
         CashItemFamily5430 = 2,
         SlotIncrease = 3,
         EquipExtension = 4,
-        Item = 5,
+        Ring = 5,
+        Item = 6,
     }
 }

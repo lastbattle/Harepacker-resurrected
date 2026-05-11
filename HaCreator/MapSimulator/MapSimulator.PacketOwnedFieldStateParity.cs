@@ -369,14 +369,30 @@ namespace HaCreator.MapSimulator
             string stateSfx = metadata.ResolveStateSfx(stateIndex);
             if (!string.IsNullOrWhiteSpace(stateSfx))
             {
-                _ = TryPlayPacketOwnedWzSound(
+                Vector2? listenerPosition = _playerManager?.Player?.Position;
+                Vector2 sourcePosition = ResolvePacketOwnedNamedObjectSoundSourcePosition(
+                    metadata.X,
+                    metadata.Y,
+                    mapObject?.Position ?? Point.Zero);
+                _ = TryPlayPacketOwnedWzSoundAt(
                     stateSfx,
                     defaultImageName: "Field.img",
+                    startVolumeScale: 1f,
+                    listenerPosition,
+                    sourcePosition,
                     out _,
                     out _);
             }
 
             StampPacketOwnedNamedObjectDebugText(mapObject, stateIndex);
+        }
+
+        internal static Vector2 ResolvePacketOwnedNamedObjectSoundSourcePosition(
+            int objectX,
+            int objectY,
+            Point movingOffset)
+        {
+            return new Vector2(objectX + movingOffset.X, objectY + movingOffset.Y);
         }
 
         private void StampPacketOwnedNamedObjectDebugText(BaseDXDrawableItem mapObject, int stateIndex)

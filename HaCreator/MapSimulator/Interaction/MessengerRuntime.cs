@@ -17,6 +17,14 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BlinkPulseIntervalMs = 180;
         private const int DeleteRequestGraceDelayMs = 550;
         private const int ClaimRequestStageLifetimeMs = 30000;
+        private const int InvitePromptX = 389;
+        private const int InvitePromptBaseY = -113;
+        private const int InvitePromptStackStepY = -5;
+        private const int InvitePromptFadeInMs = 1000;
+        private const int InvitePromptFadeOutMs = 1000;
+        private const int InvitePromptWidth = 206;
+        private const int InvitePromptHeight = 60;
+        private const int InvitePromptZ = 10;
         private const byte MessengerChatClaimType = 3;
         private const string MessengerChatClaimContext = "Messenger";
         private const string ClaimDialogAssetRoot = "UI/UIWindow.img/Claim";
@@ -341,13 +349,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_incomingInvite != null)
             {
-                PendingMessengerInviteState queuedInvite = BuildIncomingInviteState(contact, packet, Environment.TickCount);
-                _incomingInviteQueue.Enqueue(queuedInvite);
-                _lastActionSummary = $"Queued Messenger invite from {contact.Name} while {_incomingInvite.ContactName}'s alarm is still visible.";
+                string replacedContactName = _incomingInvite.ContactName;
+                _incomingInviteQueue.Clear();
+                _incomingInvite = BuildIncomingInviteState(contact, packet, Environment.TickCount);
+                _incomingInviteCurrentStackIndex = NextIncomingInviteStackIndex();
+                _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
                 AddSystemLog(_lastActionSummary);
                 StartBlink(Environment.TickCount);
                 RecordPacketSummary(
-                    $"Queued simulated Messenger invite packet from {contact.Name}; active invite {_incomingInvite.ContactName} remains visible (queue depth {_incomingInviteQueue.Count}).");
+                    $"Applied CUIMessenger::OnInvite replacement from {contact.Name}; CWvsContext::SetNewFadeWnd destroys the prior type-0 Messenger invite fade from {replacedContactName} before adding the new one.");
+                NotifyIncomingInvitePromptChanged();
                 return _lastActionSummary;
             }
 
@@ -2429,7 +2440,20 @@ namespace HaCreator.MapSimulator.Interaction
                     _incomingInvite.SkipBlacklistAutoReject,
                     _incomingInviteCurrentStackIndex,
                     _incomingInviteQueue.Count,
-                    _incomingInviteAlarmCounter));
+                    _incomingInviteAlarmCounter,
+                    InvitePromptX,
+                    CalculateInvitePromptY(_incomingInviteCurrentStackIndex),
+                    InvitePromptWidth,
+                    InvitePromptHeight,
+                    InvitePromptZ,
+                    InvitePromptFadeInMs,
+                    InvitePromptLifetimeMs,
+                    InvitePromptFadeOutMs));
+        }
+
+        private static int CalculateInvitePromptY(int stackIndex)
+        {
+            return InvitePromptBaseY + (Math.Max(0, stackIndex) * InvitePromptStackStepY);
         }
 
         private int FindParticipantIndex(string name)
@@ -3490,7 +3514,7 @@ namespace HaCreator.MapSimulator.Interaction
             _incomingInviteAlarmCounter = _incomingInviteAlarmCounter == int.MaxValue
                 ? 1
                 : _incomingInviteAlarmCounter + 1;
-            return Math.Clamp(_incomingInviteAlarmCounter - 1, 0, 6);
+            return Math.Max(0, _incomingInviteAlarmCounter - 1);
         }
 
         private void PromoteQueuedIncomingInviteIfAvailable(int tickCount)
@@ -3672,10 +3696,18 @@ namespace HaCreator.MapSimulator.Interaction
         bool SkipBlacklistAutoReject,
         int StackIndex,
         int QueueCount,
-        int AlarmCounter)
+        int AlarmCounter,
+        int X,
+        int Y,
+        int Width,
+        int Height,
+        int Z,
+        int FadeInMs,
+        int HoldMs,
+        int FadeOutMs)
     {
         public static MessengerIncomingInvitePromptState Hidden { get; } =
-            new(false, string.Empty, string.Empty, string.Empty, 0, 0, false, 0, 0, 0);
+            new(false, string.Empty, string.Empty, string.Empty, 0, 0, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     internal sealed class MessengerParticipantSnapshot

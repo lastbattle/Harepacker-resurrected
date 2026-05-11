@@ -71,6 +71,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string _localCharacterName = DefaultPlayerName;
         private CharacterGender _localCharacterGender = CharacterGender.Male;
+        private bool _localHasAuthoritativeMarriage;
+        private bool _localIsMarried;
         private string _proposerName = DefaultPlayerName;
         private string _partnerName = DefaultPartnerName;
         private string _ringItemName = "Engagement Ring Box";
@@ -102,6 +104,8 @@ namespace HaCreator.MapSimulator.Interaction
             if (build != null)
             {
                 _localCharacterGender = build.Gender;
+                _localHasAuthoritativeMarriage = build.HasAuthoritativeProfileMarriage;
+                _localIsMarried = build.IsProfileMarried;
             }
         }
 
@@ -114,6 +118,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (enforceLocalRequesterChecks && _localCharacterGender != CharacterGender.Male)
             {
                 message = OutgoingGenderRequirementMessage;
+                return false;
+            }
+
+            if (enforceLocalRequesterChecks && HasLocalMarriageRecord())
+            {
+                message = _localIsMarried
+                    ? EngagementProposalDialogText.GetAlreadyMarriedText()
+                    : EngagementProposalDialogText.GetAlreadyEngagedText();
                 return false;
             }
 
@@ -620,6 +632,8 @@ namespace HaCreator.MapSimulator.Interaction
             if (subtype == EngagementProposalDialogText.ResultSubtypeEngaged)
             {
                 _lastPrimaryActionSent = true;
+                _localHasAuthoritativeMarriage = true;
+                _localIsMarried = false;
                 ResolveItemMetadata();
                 _acceptedProposal = new EngagementProposalAcceptedSnapshot
                 {
@@ -635,6 +649,21 @@ namespace HaCreator.MapSimulator.Interaction
                     RequestMessage = _outgoingRequestMessage,
                     CustomMessage = _customMessage
                 };
+            }
+            else if (subtype == EngagementProposalDialogText.ResultSubtypeMarried)
+            {
+                _lastPrimaryActionSent = true;
+                _localHasAuthoritativeMarriage = true;
+                _localIsMarried = true;
+                _acceptedProposal = null;
+            }
+            else if (subtype == EngagementProposalDialogText.ResultSubtypeEngagementBroken
+                || subtype == EngagementProposalDialogText.ResultSubtypeNoLongerMarried)
+            {
+                _lastPrimaryActionSent = false;
+                _localHasAuthoritativeMarriage = true;
+                _localIsMarried = false;
+                _acceptedProposal = null;
             }
             else if (subtype == EngagementProposalDialogText.ResultSubtypeDeclined
                 || subtype == EngagementProposalDialogText.ResultSubtypeWithdrawnRequest
@@ -660,6 +689,11 @@ namespace HaCreator.MapSimulator.Interaction
             _statusMessage = $"Applied CWvsContext::OnMarriageResult subtype {subtype}: {notice} The client {closeState} before showing the result notice.";
             message = _statusMessage;
             return true;
+        }
+
+        private bool HasLocalMarriageRecord()
+        {
+            return _acceptedProposal != null || (_localHasAuthoritativeMarriage && _localIsMarried);
         }
 
         internal string OpenProposal(

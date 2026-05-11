@@ -78,12 +78,35 @@ namespace HaCreator.MapSimulator.UI
         bool SendsAcceptPacket,
         bool SendsCancelPacket);
 
+    internal readonly record struct SharedFadeYesNoNativeCreateProfile(
+        int FrameStringPoolId,
+        int IconStringPoolId,
+        int NativeWidth,
+        int NativeHeight,
+        int NativeLifetimeMilliseconds);
+
+    internal readonly record struct SharedFadeYesNoNativeButtonResponseProfile(
+        bool SendsPacket,
+        int Opcode,
+        int SubOpcode,
+        string Route,
+        bool RequiresQuickDelivery = false,
+        bool RequiresGameOption = false);
+
+    internal readonly record struct SharedFadeYesNoNativeCallbackProfile(
+        SharedFadeYesNoNativeButtonResponseProfile Accept,
+        SharedFadeYesNoNativeButtonResponseProfile Cancel);
+
     internal sealed record SharedFadeYesNoPayloadFields(
         string RequesterName = "",
         int Level = 0,
         string JobName = "",
         string QuestName = "",
-        string Message = "");
+        string Message = "",
+        int RequesterId = 0,
+        int SerialNumber = 0,
+        int QuestId = 0,
+        bool GameOptionEnabled = true);
 
     internal readonly record struct SharedFadeYesNoResolvedText(
         string Title,
@@ -128,6 +151,9 @@ namespace HaCreator.MapSimulator.UI
         internal const int OkButtonId = (int)SharedFadeYesNoModalButton.Ok;
         internal const int CancelButtonId = (int)SharedFadeYesNoModalButton.Cancel;
         internal const int DefaultLifetimeMilliseconds = 6000;
+        internal const int NativeInviteLifetimeMilliseconds = 180000;
+        internal const int NativeQuestClearLifetimeMilliseconds = 30000;
+        internal const int NativeIndefiniteLifetimeMilliseconds = int.MaxValue;
         internal const int FadeInMilliseconds = 120;
         internal const int FadeOutMilliseconds = 120;
         internal const int InviteAnchorX = 389;
@@ -166,7 +192,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal void Show(SharedFadeYesNoModalRequest request, int currentTick)
         {
-            _activeRequest = request ?? throw new ArgumentNullException(nameof(request));
+            _activeRequest = NormalizeRequest(request ?? throw new ArgumentNullException(nameof(request)));
             _createdTick = currentTick;
             _phaseTick = currentTick;
             _phase = SharedFadeYesNoModalPhase.FadingIn;
@@ -408,13 +434,13 @@ namespace HaCreator.MapSimulator.UI
                 SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1"),
                 SharedFadeYesNoModalType.TradeInvite => InviteProfile("backgrnd", "icon2"),
                 SharedFadeYesNoModalType.CashTradeInvite => AlarmProfile("backgrnd6", "icon9", 160, 44),
-                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 154, 44, suppressesIcon: true),
+                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 155, 44, suppressesIcon: true),
                 SharedFadeYesNoModalType.ExpeditionApply => InviteProfile("backgrnd9", "icon0"),
                 SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5"),
-                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 154, 44),
+                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 155, 44),
                 SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5"),
-                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 154, 44),
-                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 154, 44),
+                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 155, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 155, 44),
                 SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoVisualProfile(
                     "backgrnd5",
                     null,
@@ -571,6 +597,81 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        internal static SharedFadeYesNoNativeCreateProfile ResolveNativeCreateProfile(
+            SharedFadeYesNoModalType type,
+            bool quickDelivery,
+            bool alternateIcon = false)
+        {
+            return type switch
+            {
+                SharedFadeYesNoModalType.FriendRegister => CreateProfile(0x538, 0x530, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.TradeInvite => CreateProfile(0x538, 0x531, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.CashTradeInvite => CreateProfile(0x1442, 0x1443, NativeInviteLifetimeMilliseconds, 160, 44),
+                SharedFadeYesNoModalType.NewMemo => CreateProfile(0x53A, -1, NativeIndefiniteLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.PartyInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.AllianceInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.QuestClear => CreateProfile(0x53B, alternateIcon ? 0x536 : 0x535, NativeQuestClearLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.GuildInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.UserAlarm => CreateProfile(0x539, alternateIcon ? 0x533 : 0x532, DefaultLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => CreateProfile(0x53B, 0xF71, quickDelivery ? NativeIndefiniteLifetimeMilliseconds : DefaultLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.PartyQuestAlarm => CreateProfile(0x53C, -1, NativeInviteLifetimeMilliseconds, 155, 51),
+                SharedFadeYesNoModalType.FamilyInvite => CreateProfile(0x538, 0x530, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.PartyApply => CreateProfile(0x15B2, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.ExpeditionInvite => CreateProfile(0x15B3, 0x530, NativeInviteLifetimeMilliseconds, 246, 60),
+                SharedFadeYesNoModalType.ExpeditionApply => CreateProfile(0x15B4, 0x530, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.FollowRequest => CreateProfile(0x15B4, -1, NativeInviteLifetimeMilliseconds, 206, 60),
+                SharedFadeYesNoModalType.NewYearCardArrived => CreateProfile(0x539, 0x536, NativeInviteLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.MessengerInvite => CreateProfile(0x538, 0x52F, NativeInviteLifetimeMilliseconds, 206, 60),
+                _ => CreateProfile(-1, -1, -1, 206, 60)
+            };
+        }
+
+        internal static SharedFadeYesNoNativeCallbackProfile ResolveNativeCallbackProfile(
+            SharedFadeYesNoModalType type,
+            bool quickDelivery,
+            bool gameOptionEnabled = true)
+        {
+            SharedFadeYesNoNativeButtonResponseProfile none = new(false, -1, -1, "CFadeWnd::Close only");
+            SharedFadeYesNoNativeButtonResponseProfile followCancel = new(
+                true,
+                -1,
+                -1,
+                "CWvsContext::SendFollowRequestApply(0)");
+
+            SharedFadeYesNoNativeButtonResponseProfile accept = type switch
+            {
+                SharedFadeYesNoModalType.MessengerInvite => new(false, -1, -1, "CUIMessenger::TryNew(dwSN)"),
+                SharedFadeYesNoModalType.FriendRegister => new(true, -1, -1, "CField::SendAcceptFriendMsg(dwFriendID)"),
+                SharedFadeYesNoModalType.TradeInvite => new(true, -1, -1, "CMiniRoomBaseDlg::SendInviteResult(dwSN, 0)"),
+                SharedFadeYesNoModalType.CashTradeInvite => new(true, -1, -1, "CMiniRoomBaseDlg::SendCashInviteResult(dwSN, 0)"),
+                SharedFadeYesNoModalType.NewMemo => new(false, -1, -1, "CUIFadeYesNo::TryShowMemoListDlg(446, 92)"),
+                SharedFadeYesNoModalType.PartyInvite => gameOptionEnabled
+                    ? new(true, 146, 27, "COutPacket(146): Encode1(27), Encode4(characterId)", RequiresGameOption: true)
+                    : new(false, -1, -1, "party invite ignored because m_bGameOpt_Party is false", RequiresGameOption: true),
+                SharedFadeYesNoModalType.AllianceInvite => new(true, 167, 4, "COutPacket(167): Encode1(4), Encode4(inviterId), EncodeStr(guildName)"),
+                SharedFadeYesNoModalType.QuestClear => new(false, -1, -1, "CWvsContext::ShowQuestInfoDetail(1, questId) when quest state is started"),
+                SharedFadeYesNoModalType.GuildInvite => gameOptionEnabled
+                    ? new(true, 149, 6, "COutPacket(149): Encode1(6), Encode4(inviterId), Encode4(localCharacterId)", RequiresGameOption: true)
+                    : new(false, -1, -1, "guild invite ignored because m_bGameOpt_Guild is false", RequiresGameOption: true),
+                SharedFadeYesNoModalType.ParcelAlarm => quickDelivery
+                    ? new(true, 70, 0, "COutPacket(70): Encode1(0), Encode4(-1), Encode4(2)", RequiresQuickDelivery: true)
+                    : new(false, -1, -1, "standard parcel alarm closes without dispatch", RequiresQuickDelivery: true),
+                SharedFadeYesNoModalType.PartyQuestAlarm => new(false, -1, -1, "CWvsContext::ShowQuestInfoDetail(0, questId)"),
+                SharedFadeYesNoModalType.FamilyInvite => new(true, -1, -1, "CUtilDlg::YesNo then CWvsContext::SendFamilyInviteResult(inviter, inviterId, result)"),
+                SharedFadeYesNoModalType.PartyApply or SharedFadeYesNoModalType.ExpeditionApply => new(true, 148, 86, "COutPacket(148): Encode1(86), Encode4(13), Encode4(applierId)"),
+                SharedFadeYesNoModalType.ExpeditionInvite => new(true, -1, -1, "ExpeditionIntermediary::SendResponseInvitePacket(inviter, true)"),
+                SharedFadeYesNoModalType.FollowRequest => new(true, -1, -1, "CWvsContext::SendFollowRequestApply(1)"),
+                SharedFadeYesNoModalType.NewYearCardArrived => new(true, 183, 1, "COutPacket(183): Encode1(1), Encode4(dwSN)"),
+                _ => new(false, -1, -1, "simulator fallback callback")
+            };
+
+            SharedFadeYesNoNativeButtonResponseProfile cancel = type == SharedFadeYesNoModalType.FollowRequest
+                ? followCancel
+                : none;
+
+            return new SharedFadeYesNoNativeCallbackProfile(accept, cancel);
+        }
+
         internal static string FormatSnapshotForTrace(SharedFadeYesNoModalSnapshot snapshot)
         {
             if (snapshot == null || !snapshot.IsActive)
@@ -580,10 +681,12 @@ namespace HaCreator.MapSimulator.UI
 
             SharedFadeYesNoVisualProfile visualProfile = ResolveVisualProfile(snapshot.Type, snapshot.QuickDelivery);
             SharedFadeYesNoPayloadProfile payloadProfile = ResolvePayloadProfile(snapshot.Type);
+            SharedFadeYesNoNativeCreateProfile createProfile = ResolveNativeCreateProfile(snapshot.Type, snapshot.QuickDelivery);
+            SharedFadeYesNoNativeCallbackProfile callbackProfile = ResolveNativeCallbackProfile(snapshot.Type, snapshot.QuickDelivery);
 
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}; create={15}; type={16}; phase={1}; stack={2}; pending={3}; lifetime={4}; frame={11}({12}x{13}); icon={14}; text=({17},{18})/({19},{20}); strings=0x{21:X}/{22}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}; packets yes={23} no={24}.",
+                "{0}; create={15}; type={16}; phase={1}; stack={2}; pending={3}; lifetime={4}/native={25}; frame={11}({12}x{13}) string=0x{26:X}; icon={14} string={27}; text=({17},{18})/({19},{20}); strings=0x{21:X}/{22}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}; accept={23}; cancel={24}.",
                 snapshot.DrawRoute,
                 snapshot.Phase,
                 snapshot.StackIndex,
@@ -609,8 +712,13 @@ namespace HaCreator.MapSimulator.UI
                 payloadProfile.SecondaryStringPoolId < 0
                     ? "none"
                     : "0x" + payloadProfile.SecondaryStringPoolId.ToString("X", CultureInfo.InvariantCulture),
-                payloadProfile.SendsAcceptPacket,
-                payloadProfile.SendsCancelPacket);
+                callbackProfile.Accept.Route,
+                callbackProfile.Cancel.Route,
+                createProfile.NativeLifetimeMilliseconds,
+                createProfile.FrameStringPoolId,
+                createProfile.IconStringPoolId < 0
+                    ? "none"
+                    : "0x" + createProfile.IconStringPoolId.ToString("X", CultureInfo.InvariantCulture));
         }
 
         private static SharedFadeYesNoPayloadProfile CenteredInvitePayload(
@@ -833,6 +941,35 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(value)
                 ? fallback ?? string.Empty
                 : value.Trim();
+        }
+
+        private static SharedFadeYesNoNativeCreateProfile CreateProfile(
+            int frameStringPoolId,
+            int iconStringPoolId,
+            int nativeLifetimeMilliseconds,
+            int nativeWidth,
+            int nativeHeight)
+        {
+            return new SharedFadeYesNoNativeCreateProfile(
+                frameStringPoolId,
+                iconStringPoolId,
+                nativeWidth,
+                nativeHeight,
+                nativeLifetimeMilliseconds);
+        }
+
+        private static SharedFadeYesNoModalRequest NormalizeRequest(SharedFadeYesNoModalRequest request)
+        {
+            if (request.Type == SharedFadeYesNoModalType.Generic
+                || request.LifetimeMilliseconds != DefaultLifetimeMilliseconds)
+            {
+                return request;
+            }
+
+            int nativeLifetime = ResolveNativeCreateProfile(request.Type, request.QuickDelivery).NativeLifetimeMilliseconds;
+            return nativeLifetime < 0
+                ? request
+                : request with { LifetimeMilliseconds = nativeLifetime };
         }
 
         private static bool IsSameModalPayload(

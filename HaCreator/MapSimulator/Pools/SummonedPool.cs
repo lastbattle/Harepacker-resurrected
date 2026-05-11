@@ -1144,7 +1144,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
-                ? currentTime + suspendDurationMs
+                ? SummonRuntimeRules.AddClientTickDelta(currentTime, suspendDurationMs)
                 : int.MinValue;
         }
 
@@ -1252,7 +1252,7 @@ namespace HaCreator.MapSimulator.Pools
 
             state.OneTimeAction = normalizedAction;
             state.OneTimeActionOwnedBySkillPacket = isSkillAction;
-            state.OneTimeActionEndTime = currentTime + duration;
+            state.OneTimeActionEndTime = SummonRuntimeRules.AddClientTickDelta(currentTime, duration);
             state.OneTimeActionClip = CreatePacketOwnedOneTimeActionClip(
                 actionAnimation,
                 animationTime: 0,
@@ -1262,7 +1262,7 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.OneTimeActionFallbackActionCode = normalizedAction;
             state.Summon.OneTimeActionFallbackStartTime = currentTime;
             state.Summon.OneTimeActionFallbackAnimationTime = 0;
-            state.Summon.OneTimeActionFallbackEndTime = currentTime + duration;
+            state.Summon.OneTimeActionFallbackEndTime = SummonRuntimeRules.AddClientTickDelta(currentTime, duration);
         }
 
         private static SkillAnimation ResolvePacketOwnedOneTimeActionAnimation(
@@ -1475,8 +1475,12 @@ namespace HaCreator.MapSimulator.Pools
                     state.Summon,
                     resolvedSkillLevel,
                     resolvedOwnerCharacterLevel),
-                StartTime = currentTime + attackDelayMs + tileDelayMs,
-                EndTime = currentTime + attackDelayMs + tileDelayMs + tileDurationMs,
+                StartTime = SummonRuntimeRules.AddClientTickDelta(
+                    currentTime,
+                    attackDelayMs + tileDelayMs),
+                EndTime = SummonRuntimeRules.AddClientTickDelta(
+                    currentTime,
+                    attackDelayMs + tileDelayMs + tileDurationMs),
                 StartAlpha = 128,
                 EndAlpha = byte.MaxValue
             });
@@ -2398,7 +2402,9 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.RemovalAnimationStartTime = currentTime;
             state.Summon.ActorState = SummonActorState.Die;
             state.Summon.LastStateChangeTime = currentTime;
-            state.Summon.PendingRemovalTime = currentTime + ResolveSummonRemovalPlaybackDurationMs(state.Summon);
+            state.Summon.PendingRemovalTime = SummonRuntimeRules.AddClientTickDelta(
+                currentTime,
+                ResolveSummonRemovalPlaybackDurationMs(state.Summon));
             RemovePuppet(state.Summon);
         }
 
@@ -2432,9 +2438,11 @@ namespace HaCreator.MapSimulator.Pools
             int actionDuration = ResolveSummonPendingRemovalActionDurationMs(summon);
             int removalDuration = ResolveSummonRemovalPlaybackDurationMs(summon);
             summon.RemovalAnimationStartTime = actionDuration > 0
-                ? currentTime + actionDuration
+                ? SummonRuntimeRules.AddClientTickDelta(currentTime, actionDuration)
                 : currentTime;
-            summon.PendingRemovalTime = summon.RemovalAnimationStartTime + removalDuration;
+            summon.PendingRemovalTime = SummonRuntimeRules.AddClientTickDelta(
+                summon.RemovalAnimationStartTime,
+                removalDuration);
 
             if (actionDuration <= 0)
             {
@@ -2811,8 +2819,8 @@ namespace HaCreator.MapSimulator.Pools
 
             state.OneTimeAction = 15;
             state.OneTimeActionEndTime = hasHitAnimation
-                ? currentTime + ResolveSummonHitActionDurationMs(state.Summon)
-                : state.OneTimeActionClip?.EndTime ?? currentTime + 240;
+                ? SummonRuntimeRules.AddClientTickDelta(currentTime, ResolveSummonHitActionDurationMs(state.Summon))
+                : state.OneTimeActionClip?.EndTime ?? SummonRuntimeRules.AddClientTickDelta(currentTime, 240);
             if (hasHitAnimation)
             {
                 state.Summon.ActorState = SummonActorState.Hit;
@@ -3132,7 +3140,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             Vector2 summonPosition = new(state.Summon.PositionX, state.Summon.PositionY);
-            int expirationTime = state.Summon.Duration > 0 ? state.Summon.StartTime + state.Summon.Duration : 0;
+            int expirationTime = state.Summon.Duration > 0
+                ? SummonRuntimeRules.AddClientTickDelta(state.Summon.StartTime, state.Summon.Duration)
+                : 0;
             float aggroRange = ResolvePuppetAggroRange(state);
 
             _mobPool.RegisterPuppet(new PuppetInfo
@@ -3301,7 +3311,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 SummonedObjectId = summon.ObjectId,
                 SkillId = summon.SkillId,
-                ExpireTime = summon.StartTime + summon.Duration
+                ExpireTime = SummonRuntimeRules.AddClientTickDelta(summon.StartTime, summon.Duration)
             });
         }
 
@@ -3478,9 +3488,11 @@ namespace HaCreator.MapSimulator.Pools
             int actionDuration = ResolveSummonPendingRemovalActionDurationMs(state.Summon);
             int removalDuration = ResolveSummonRemovalPlaybackDurationMs(state.Summon);
             state.Summon.RemovalAnimationStartTime = actionDuration > 0
-                ? currentTime + actionDuration
+                ? SummonRuntimeRules.AddClientTickDelta(currentTime, actionDuration)
                 : currentTime;
-            state.Summon.PendingRemovalTime = state.Summon.RemovalAnimationStartTime + removalDuration;
+            state.Summon.PendingRemovalTime = SummonRuntimeRules.AddClientTickDelta(
+                state.Summon.RemovalAnimationStartTime,
+                removalDuration);
 
             if (actionDuration <= 0)
             {
@@ -3926,10 +3938,12 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int executeTime = currentTime + ResolvePacketAttackImpactAuthoredDelayMs(
-                skill,
-                0,
-                summon.CurrentAnimationBranchName);
+            int executeTime = SummonRuntimeRules.AddClientTickDelta(
+                currentTime,
+                ResolvePacketAttackImpactAuthoredDelayMs(
+                    skill,
+                    0,
+                    summon.CurrentAnimationBranchName));
             ActiveHitEffect hitEffect = new()
             {
                 SkillId = summon.SkillId,
@@ -4046,16 +4060,13 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<int>();
             }
 
-            List<PacketOwnedExpiryTargetCandidate> candidateList = candidates
-                .Where(static candidate => candidate.MobObjectId > 0 && HasPacketOwnedExpiryCandidateHitbox(candidate))
-                .GroupBy(static candidate => candidate.MobObjectId)
-                .Select(group => SelectPacketOwnedExpiryCandidateForMobObjectId(
-                    group,
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList =
+                CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+                    candidates,
                     wishMobId,
                     wishTemplateId,
                     includeDazzledMob,
-                    includeEscortMob))
-                .ToList();
+                    includeEscortMob);
             Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidateList
                 .ToDictionary(static candidate => candidate.MobObjectId);
             if (candidateList.Count == 0)
@@ -4191,6 +4202,30 @@ namespace HaCreator.MapSimulator.Pools
             return hasFirstCandidate ? firstCandidate : default;
         }
 
+        private static IReadOnlyList<PacketOwnedExpiryTargetCandidate> CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            int wishMobId = 0,
+            int wishTemplateId = 0,
+            bool includeDazzledMob = false,
+            bool includeEscortMob = false)
+        {
+            if (candidates == null)
+            {
+                return Array.Empty<PacketOwnedExpiryTargetCandidate>();
+            }
+
+            return candidates
+                .Where(static candidate => candidate.MobObjectId > 0 && HasPacketOwnedExpiryCandidateHitbox(candidate))
+                .GroupBy(static candidate => candidate.MobObjectId)
+                .Select(group => SelectPacketOwnedExpiryCandidateForMobObjectId(
+                    group,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob))
+                .ToArray();
+        }
+
         internal static int[] ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
@@ -4238,10 +4273,17 @@ namespace HaCreator.MapSimulator.Pools
                 return new PacketOwnedExpiryFindHitMobInRectResult(Array.Empty<int>(), 0);
             }
 
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> coalescedCandidates =
+                CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+                    candidates,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob);
             IReadOnlyList<PacketOwnedExpiryTargetCandidate> orderedCandidates =
                 OrderPacketOwnedExpiryFallbackCandidates(
                     summon,
-                    candidates,
+                    coalescedCandidates,
                     facingRight,
                     exceptMobObjectId,
                     wishMobId,
@@ -4302,16 +4344,19 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<PacketOwnedExpiryTargetCandidate>();
             }
 
-            return candidates
-                .Where(candidate => candidate.MobObjectId > 0
-                                    && HasPacketOwnedExpiryCandidateHitbox(candidate)
-                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
-                                        candidate,
-                                        wishMobId,
-                                        wishTemplateId,
-                                        includeDazzledMob,
-                                        includeEscortMob,
-                                        exceptMobObjectId: exceptMobObjectId))
+            return CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+                    candidates,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob)
+                .Where(candidate => IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                    candidate,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob,
+                    exceptMobObjectId: exceptMobObjectId))
                 .Select(candidate => new
                 {
                     Candidate = candidate,
@@ -4395,8 +4440,13 @@ namespace HaCreator.MapSimulator.Pools
                 return summon?.FacingRight ?? true;
             }
 
-            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList = candidates as IReadOnlyList<PacketOwnedExpiryTargetCandidate>
-                ?? candidates.ToArray();
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList =
+                CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+                    candidates,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob);
             if (TryResolvePacketOwnedExpiryProbeFacingRight(
                     summon,
                     candidateList,
@@ -4474,9 +4524,16 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList =
+                CoalescePacketOwnedExpiryCandidatesByMobObjectId(
+                    candidates,
+                    wishMobId,
+                    wishTemplateId,
+                    includeDazzledMob,
+                    includeEscortMob);
             bool hasRightHit = FindFirstPacketOwnedExpiryTargetInRange(
                 summon,
-                candidates,
+                candidateList,
                 facingRight: true,
                 exceptMobObjectId: exceptMobObjectId,
                 wishMobId: wishMobId,
@@ -4485,7 +4542,7 @@ namespace HaCreator.MapSimulator.Pools
                 includeEscortMob: includeEscortMob) > 0;
             bool hasLeftHit = FindFirstPacketOwnedExpiryTargetInRange(
                 summon,
-                candidates,
+                candidateList,
                 facingRight: false,
                 exceptMobObjectId: exceptMobObjectId,
                 wishMobId: wishMobId,
@@ -5155,9 +5212,11 @@ namespace HaCreator.MapSimulator.Pools
                     target,
                     new Vector2(summon.PositionX, summon.PositionY),
                     currentTime);
-                int executeTime = currentTime + (useTeslaPerTargetDelayJitter
-                    ? ResolvePacketTeslaTargetImpactDelayMs(summon, target, currentTime, i)
-                    : ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
+                int executeTime = SummonRuntimeRules.AddClientTickDelta(
+                    currentTime,
+                    useTeslaPerTargetDelayJitter
+                        ? ResolvePacketTeslaTargetImpactDelayMs(summon, target, currentTime, i)
+                        : ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
                 _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
                 {
                     SequenceId = _nextScheduledHitEffectSequenceId++,
@@ -5221,7 +5280,9 @@ namespace HaCreator.MapSimulator.Pools
                         summon,
                         targetHitbox,
                         summon.FacingRight);
-                int executeTime = currentTime + PacketOwnedSummonUpdateRules.ResolveClientOwnedPostAttackEffectDelayMs(summon);
+                int executeTime = SummonRuntimeRules.AddClientTickDelta(
+                    currentTime,
+                    PacketOwnedSummonUpdateRules.ResolveClientOwnedPostAttackEffectDelayMs(summon));
                 _scheduledReactiveChainEffects.Add(new ScheduledPacketOwnedReactiveChainEffect
                 {
                     SequenceId = _nextScheduledHitEffectSequenceId++,
@@ -5565,7 +5626,9 @@ namespace HaCreator.MapSimulator.Pools
                 PlayOrSchedulePacketOwnedSound(
                     packetHitSoundKey,
                     ResolvePacketMobAttackSoundSource(mob, packetHitSoundKey),
-                    currentTime + ResolvePacketMobAttackFeedbackHitAfterMs(presentation),
+                    SummonRuntimeRules.AddClientTickDelta(
+                        currentTime,
+                        ResolvePacketMobAttackFeedbackHitAfterMs(presentation)),
                     currentTime);
             }
 
@@ -5723,7 +5786,9 @@ namespace HaCreator.MapSimulator.Pools
                     attackInfo,
                     _random)
                 : hitPosition;
-            int startTime = currentTime + ResolvePacketMobAttackFeedbackHitAfterMs(presentation);
+            int startTime = SummonRuntimeRules.AddClientTickDelta(
+                currentTime,
+                ResolvePacketMobAttackFeedbackHitAfterMs(presentation));
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
                 X = detachedFallbackPosition.X,
@@ -11139,7 +11204,7 @@ namespace HaCreator.MapSimulator.Pools
                 animation,
                 normalizedAnimationTime,
                 currentTime,
-                currentTime + duration);
+                SummonRuntimeRules.AddClientTickDelta(currentTime, duration));
         }
 
         internal static bool TryResolvePacketOwnedOneTimeActionPlayback(PacketOwnedOneTimeActionClip clip, int currentTime, out int animationTime)

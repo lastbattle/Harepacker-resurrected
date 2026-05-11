@@ -98,6 +98,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int CardBackTextureCount = 3;
         private const int CardWidth = 49;
         private const int CardHeight = 62;
+        private const int ClientCardStepX = 58;
+        private const int ClientCardStepY = 67;
         private const int DigitTextureCount = 10;
         private const byte MiniRoomBaseEnterPacketType = 4;
         private const byte MiniRoomBaseEnterResultPacketType = 5;
@@ -458,6 +460,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientStartButtonVisible => _clientStartButtonVisible;
         public bool ClientEndButtonVisible => _clientEndButtonVisible;
         public Point FirstCardOffset => _firstCardOffset;
+        public int ClientCardBackIndex => Math.Clamp(_gameKind, 0, CardBackTextureCount - 1);
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
         public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
@@ -1639,6 +1642,9 @@ namespace HaCreator.MapSimulator.Fields
             _playerNames[1] = "Opponent";
             _rows = 0;
             _columns = 0;
+            _gameKind = DefaultGameKind;
+            _cardsPerRow = 4;
+            _firstCardOffset = new Point(89, 106);
             _localPlayerIndex = DefaultLocalPlayerIndex;
             _currentTurnIndex = 0;
             _pendingHideTick = 0;
@@ -1690,7 +1696,7 @@ namespace HaCreator.MapSimulator.Fields
             _localGiveUpRequestSent = false;
 
 
-            int pairCount = (_rows * _columns) / 2;
+            int pairCount = Math.Max(1, (_rows * _columns) / 2);
             List<int> faceIds = new(pairCount * 2);
             for (int i = 0; i < pairCount; i++)
             {
@@ -2745,21 +2751,9 @@ namespace HaCreator.MapSimulator.Fields
             }
 
 
-            int gapX = _columns <= 0 ? 0 : Math.Max(6, (area.Width - (_columns * 49)) / (_columns + 1));
-
-            int gapY = _rows <= 0 ? 0 : Math.Max(8, (area.Height - (_rows * 62)) / (_rows + 1));
-
-
-
             for (int index = 0; index < _cards.Count; index++)
             {
-                int row = index / _columns;
-                int column = index % _columns;
-                Rectangle cardRect = new Rectangle(
-                    area.X + gapX + column * (49 + gapX),
-                    area.Y + gapY + row * (62 + gapY),
-                    49,
-                    62);
+                Rectangle cardRect = GetClientCardBounds(index, area);
 
 
                 Card card = _cards[index];
@@ -4096,21 +4090,9 @@ namespace HaCreator.MapSimulator.Fields
             }
 
 
-            int gapX = _columns <= 0 ? 0 : Math.Max(6, (area.Width - (_columns * 49)) / (_columns + 1));
-
-            int gapY = _rows <= 0 ? 0 : Math.Max(8, (area.Height - (_rows * 62)) / (_rows + 1));
-
-
-
             for (int index = 0; index < _cards.Count; index++)
             {
-                int row = index / _columns;
-                int column = index % _columns;
-                Rectangle cardRect = new Rectangle(
-                    area.X + gapX + column * (49 + gapX),
-                    area.Y + gapY + row * (62 + gapY),
-                    49,
-                    62);
+                Rectangle cardRect = GetClientCardBounds(index, area);
                 if (cardRect.Contains(mousePosition))
                 {
                     return index;
@@ -4120,6 +4102,20 @@ namespace HaCreator.MapSimulator.Fields
 
             return -1;
 
+        }
+
+        public Rectangle GetClientCardBounds(int cardIndex, Rectangle boardArea)
+        {
+            int cardsPerRow = _cardsPerRow > 0 ? _cardsPerRow : Math.Max(1, _columns);
+            int row = cardIndex / cardsPerRow;
+            int column = cardIndex % cardsPerRow;
+            int dialogX = boardArea.X - ClientBoardLeft;
+            int dialogY = boardArea.Y - ClientBoardTop;
+            return new Rectangle(
+                dialogX + _firstCardOffset.X + column * ClientCardStepX,
+                dialogY + _firstCardOffset.Y + row * ClientCardStepY,
+                CardWidth,
+                CardHeight);
         }
 
 
@@ -4455,7 +4451,8 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!card.IsFaceUp && !card.IsMatched)
             {
-                return _cardBackTextures[0];
+                Texture2D backTexture = _cardBackTextures[ClientCardBackIndex];
+                return backTexture ?? _cardBackTextures.FirstOrDefault(texture => texture != null);
             }
 
 

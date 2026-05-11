@@ -336,7 +336,7 @@ namespace HaCreator.MapSimulator
                 return observedRemotePetPosition;
             }
 
-            if (ResolveObservedRemotePetPickupPosition(sourceId) is Vector2 observedOwnerScopedRemotePetPosition)
+            if (ResolveExactObservedRemotePetPickupPosition(sourceId) is Vector2 observedOwnerScopedRemotePetPosition)
             {
                 return observedOwnerScopedRemotePetPosition;
             }
@@ -346,7 +346,7 @@ namespace HaCreator.MapSimulator
                 _remoteUserPool,
                 _predictedRemotePetPickupActorPositions,
                 out Vector2 remotePetPosition,
-                ResolveObservedRemotePetPickupPosition))
+                ResolveExactObservedRemotePetPickupPosition))
             {
                 RememberPredictedRemotePetPickupActorPosition(sourceId, remotePetPosition);
                 return remotePetPosition;
@@ -358,7 +358,7 @@ namespace HaCreator.MapSimulator
                 _observedDropPartyActorOwners,
                 _remoteUserPool,
                 _predictedRemotePetPickupActorPositions,
-                ResolveObservedRemotePetPickupPosition,
+                ResolveExactObservedRemotePetPickupPosition,
                 out int resolvedPetActorId,
                 out Vector2 linkedOwnerScopedPetPosition))
             {
@@ -384,6 +384,16 @@ namespace HaCreator.MapSimulator
                     out Vector2 ownerScopedPetPosition))
             {
                 return ownerScopedPetPosition;
+            }
+
+            if (ResolveObservedRemotePetPickupPosition(sourceId) is Vector2 closestObservedOwnerScopedRemotePetPosition)
+            {
+                return closestObservedOwnerScopedRemotePetPosition;
+            }
+
+            if (ResolvePredictedRemotePetPickupPosition(sourceId) is Vector2 closestPredictedOwnerScopedRemotePetPosition)
+            {
+                return closestPredictedOwnerScopedRemotePetPosition;
             }
 
             return null;
@@ -999,7 +1009,7 @@ namespace HaCreator.MapSimulator
                     actorId,
                     _remoteUserPool,
                     _predictedRemotePetPickupActorPositions,
-                    ResolveObservedRemotePetPickupPosition,
+                    ResolveExactObservedRemotePetPickupPosition,
                     out int resolvedPetActorId,
                     out position))
             {
@@ -1045,7 +1055,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (ResolveObservedRemotePetPickupPosition(predictedPetActorPositions, ownerCharacterId, normalizedSlotIndex) is Vector2 predictedPosition)
+            if (TryResolveExactRemotePetPickupPosition(
+                predictedPetActorPositions,
+                ownerCharacterId,
+                normalizedSlotIndex,
+                out Vector2 predictedPosition))
             {
                 position = predictedPosition;
                 return true;
@@ -1078,12 +1092,22 @@ namespace HaCreator.MapSimulator
             {
                 int decodedNormalizedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex);
                 if (decodedNormalizedSlotIndex != normalizedSlotIndex
-                    && ResolveObservedRemotePetPickupPosition(predictedPetActorPositions, ownerCharacterId, decodedNormalizedSlotIndex) is Vector2 decodedPredictedPosition)
+                    && TryResolveExactRemotePetPickupPosition(
+                        predictedPetActorPositions,
+                        ownerCharacterId,
+                        decodedNormalizedSlotIndex,
+                        out Vector2 decodedPredictedPosition))
                 {
                     resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, decodedNormalizedSlotIndex);
                     position = decodedPredictedPosition;
                     return true;
                 }
+            }
+
+            if (ResolveObservedRemotePetPickupPosition(predictedPetActorPositions, ownerCharacterId, normalizedSlotIndex) is Vector2 closestPredictedPosition)
+            {
+                position = closestPredictedPosition;
+                return true;
             }
 
             return false;
@@ -1113,16 +1137,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (observedOwnerSlotPositionResolver?.Invoke(ownerCharacterId, slotIndex) is Vector2 observedPosition)
+            int normalizedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(slotIndex);
+            if (observedOwnerSlotPositionResolver?.Invoke(ownerCharacterId, normalizedSlotIndex) is Vector2 observedPosition)
             {
-                resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, slotIndex);
+                resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
                 position = observedPosition;
                 return true;
             }
 
-            if (ResolveObservedRemotePetPickupPosition(predictedPetActorPositions, ownerCharacterId, slotIndex) is Vector2 predictedPosition)
+            if (TryResolveExactRemotePetPickupPosition(
+                predictedPetActorPositions,
+                ownerCharacterId,
+                normalizedSlotIndex,
+                out Vector2 predictedPosition))
             {
-                resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, slotIndex);
+                resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
                 position = predictedPosition;
                 return true;
             }
@@ -1131,9 +1160,16 @@ namespace HaCreator.MapSimulator
                 || ownerActor == null
                 || !TryResolveRemotePetPickupSlotIndexForPacketParity(
                     ownerActor.Build?.RemotePetItemIds,
-                    slotIndex,
+                    normalizedSlotIndex,
                     out int resolvedSlotIndex))
             {
+                if (ResolveObservedRemotePetPickupPosition(predictedPetActorPositions, ownerCharacterId, normalizedSlotIndex) is Vector2 closestPredictedPositionWithoutOwner)
+                {
+                    resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
+                    position = closestPredictedPositionWithoutOwner;
+                    return true;
+                }
+
                 return false;
             }
 
@@ -1313,11 +1349,63 @@ namespace HaCreator.MapSimulator
                 slotIndex);
         }
 
+        private Vector2? ResolveExactObservedRemotePetPickupPosition(int ownerCharacterId, int slotIndex)
+        {
+            return TryResolveExactRemotePetPickupPosition(
+                _observedRemotePetPickupActorPositions,
+                ownerCharacterId,
+                slotIndex,
+                out Vector2 position)
+                ? position
+                : null;
+        }
+
         private Vector2? ResolveObservedRemotePetPickupPosition(int petActorId)
         {
             return ResolveObservedRemotePetPickupPosition(
                 _observedRemotePetPickupActorPositions,
                 petActorId);
+        }
+
+        private Vector2? ResolveExactObservedRemotePetPickupPosition(int petActorId)
+        {
+            return TryResolveExactRemotePetPickupPosition(
+                _observedRemotePetPickupActorPositions,
+                petActorId,
+                out Vector2 position)
+                ? position
+                : null;
+        }
+
+        internal static bool TryResolveExactRemotePetPickupPosition(
+            IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
+            int petActorId,
+            out Vector2 position)
+        {
+            position = default;
+            return TryDecodeRemotePetPickupActorId(petActorId, out int ownerCharacterId, out int slotIndex)
+                && TryResolveExactRemotePetPickupPosition(
+                    observedPetActorPositions,
+                    ownerCharacterId,
+                    slotIndex,
+                    out position);
+        }
+
+        internal static bool TryResolveExactRemotePetPickupPosition(
+            IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
+            int ownerCharacterId,
+            int slotIndex,
+            out Vector2 position)
+        {
+            position = default;
+            if (observedPetActorPositions == null || ownerCharacterId <= 0 || slotIndex < 0)
+            {
+                return false;
+            }
+
+            int normalizedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(slotIndex);
+            int exactPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
+            return observedPetActorPositions.TryGetValue(exactPetActorId, out position);
         }
 
         internal static Vector2? ResolveObservedRemotePetPickupPosition(
@@ -2355,7 +2443,7 @@ namespace HaCreator.MapSimulator
                         return observedPetPosition;
                     }
 
-                    if (ResolveObservedRemotePetPickupPosition(actorId) is Vector2 ownerScopedObservedPetPosition)
+                    if (ResolveExactObservedRemotePetPickupPosition(actorId) is Vector2 ownerScopedObservedPetPosition)
                     {
                         return ownerScopedObservedPetPosition;
                     }
@@ -2365,7 +2453,10 @@ namespace HaCreator.MapSimulator
                         return predictedPetPosition;
                     }
 
-                    if (ResolvePredictedRemotePetPickupPosition(actorId) is Vector2 ownerScopedPredictedPetPosition)
+                    if (TryResolveExactRemotePetPickupPosition(
+                        _predictedRemotePetPickupActorPositions,
+                        actorId,
+                        out Vector2 ownerScopedPredictedPetPosition))
                     {
                         return ownerScopedPredictedPetPosition;
                     }
@@ -2386,7 +2477,7 @@ namespace HaCreator.MapSimulator
                         _remoteUserPool,
                         _predictedRemotePetPickupActorPositions,
                         out Vector2 remotePetPosition,
-                        ResolveObservedRemotePetPickupPosition))
+                        ResolveExactObservedRemotePetPickupPosition))
                     {
                         RememberPredictedRemotePetPickupActorPosition(actorId, remotePetPosition);
                         return remotePetPosition;
@@ -2420,6 +2511,16 @@ namespace HaCreator.MapSimulator
                             out Vector2 ownerScopedPetPosition))
                     {
                         return ownerScopedPetPosition;
+                    }
+
+                    if (ResolveObservedRemotePetPickupPosition(actorId) is Vector2 closestOwnerScopedObservedPetPosition)
+                    {
+                        return closestOwnerScopedObservedPetPosition;
+                    }
+
+                    if (ResolvePredictedRemotePetPickupPosition(actorId) is Vector2 closestOwnerScopedPredictedPetPosition)
+                    {
+                        return closestOwnerScopedPredictedPetPosition;
                     }
 
                     if (fallbackOwnerId > 0)

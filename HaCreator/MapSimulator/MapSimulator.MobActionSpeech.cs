@@ -120,6 +120,7 @@ namespace HaCreator.MapSimulator
                 mob.ActiveActionSpeechChatBalloon,
                 mob.ActiveActionSpeechFloatNotice,
                 isScreenNotice,
+                mob.ActiveActionSpeechNativeWidth,
                 renderContext.RenderParams.RenderWidth,
                 MeasureChatTextWithFallback,
                 skinMetrics);
@@ -437,10 +438,13 @@ namespace HaCreator.MapSimulator
 
         internal sealed class MobActionSpeechNativeCompositionTrace
         {
+            public string OwnerEntrypoint { get; init; }
             public string Entrypoint { get; init; }
             public int BalloonType { get; init; }
             public int ChatBalloon { get; init; }
             public string SkinPath { get; init; }
+            public int NativeWidth { get; init; }
+            public bool UsesTemplateWidthFallback { get; init; }
             public bool UsesScreenLayer { get; init; }
             public int ScreenLayerOption { get; init; }
             public int ScreenWidth { get; init; }
@@ -473,6 +477,7 @@ namespace HaCreator.MapSimulator
                 floatNotice,
                 authoredSkinLoaded,
                 isScreenNotice,
+                nativeWidth: 0,
                 1,
                 1);
         }
@@ -490,6 +495,26 @@ namespace HaCreator.MapSimulator
                 floatNotice,
                 authoredSkinLoaded,
                 isScreenNotice,
+                nativeWidth: 0,
+                nativeCanvasWidth,
+                nativeCanvasHeight);
+        }
+
+        internal static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTraceForTests(
+            int chatBalloon,
+            int floatNotice,
+            bool authoredSkinLoaded,
+            bool isScreenNotice,
+            int nativeWidth,
+            int nativeCanvasWidth,
+            int nativeCanvasHeight)
+        {
+            return BuildMobActionSpeechNativeCompositionTrace(
+                chatBalloon,
+                floatNotice,
+                authoredSkinLoaded,
+                isScreenNotice,
+                nativeWidth,
                 nativeCanvasWidth,
                 nativeCanvasHeight);
         }
@@ -499,6 +524,7 @@ namespace HaCreator.MapSimulator
             int floatNotice,
             bool authoredSkinLoaded,
             bool isScreenNotice,
+            int nativeWidth,
             int nativeCanvasWidth,
             int nativeCanvasHeight)
         {
@@ -510,6 +536,9 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<string> lifetimeOperations = useScreenLayer
                 ? new[]
                 {
+                    "MakeMobBalloon.ResolveMobSkin",
+                    "MakeMobBalloon.ReadProperty(screenChat)",
+                    "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
                     "AddRef(pProp)",
                     "AddRef(bsText)",
                     "CreateCanvas(type=1005)",
@@ -529,21 +558,27 @@ namespace HaCreator.MapSimulator
                     "Release(local layer)",
                     "Release(source canvas)",
                     "Release(pProp)",
-                    "Release(bsText)"
+                    "Release(bsText)",
+                    "SetFadeDelay"
                 }
                 : new[]
                 {
+                    "MakeMobBalloon.ResolveMobSkin",
+                    "MakeMobBalloon.ReadProperty(screenChat)",
+                    "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
                     "CreateCanvas(type=1004)",
                     "PcCreateObject(Canvas:StringPool=0x03D0)",
                     "CreateCanvas.CopyBase(alpha=253)",
                     "CalcTextWidth",
                     "DrawTextA(centered-line)",
                     "AttachOwnerOverlayLayer",
-                    "StoreTimeout"
+                    "StoreTimeout",
+                    "SetFadeDelay"
                 };
 
             return new MobActionSpeechNativeCompositionTrace
             {
+                OwnerEntrypoint = "CChatBalloon::MakeMobBalloon",
                 Entrypoint = useScreenLayer
                     ? "CChatBalloon::MakeScreenBalloon"
                     : "CChatBalloon::MakeBalloon",
@@ -552,6 +587,8 @@ namespace HaCreator.MapSimulator
                     : MobActionSpeechNativeOwnerBalloonType,
                 ChatBalloon = normalizedChatBalloon,
                 SkinPath = ResolveMobActionSpeechBalloonSkinPathForTests(normalizedChatBalloon),
+                NativeWidth = Math.Max(0, nativeWidth),
+                UsesTemplateWidthFallback = nativeWidth <= 0,
                 UsesScreenLayer = useScreenLayer,
                 ScreenLayerOption = useScreenLayer ? MobActionSpeechNativeScreenLayerOption : 0,
                 ScreenWidth = useScreenLayer ? MobActionSpeechNativeScreenWidth : 0,
@@ -689,6 +726,7 @@ namespace HaCreator.MapSimulator
                 chatBalloon,
                 floatNotice,
                 IsMobActionSpeechScreenNotice(chatBalloon, floatNotice),
+                nativeWidth: 0,
                 renderWidth,
                 measureText);
         }
@@ -706,6 +744,7 @@ namespace HaCreator.MapSimulator
                 chatBalloon,
                 floatNotice,
                 isScreenNotice,
+                nativeWidth: 0,
                 renderWidth,
                 measureText,
                 null);
@@ -716,6 +755,47 @@ namespace HaCreator.MapSimulator
             int chatBalloon,
             int floatNotice,
             bool isScreenNotice,
+            int nativeWidth,
+            int renderWidth,
+            Func<string, Vector2> measureText)
+        {
+            return BuildMobActionSpeechTextLayout(
+                text,
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                nativeWidth,
+                renderWidth,
+                measureText,
+                null);
+        }
+
+        internal static MobActionSpeechTextLayout BuildMobActionSpeechTextLayout(
+            string text,
+            int chatBalloon,
+            int floatNotice,
+            bool isScreenNotice,
+            int renderWidth,
+            Func<string, Vector2> measureText,
+            MobActionSpeechSkinMetrics skinMetrics)
+        {
+            return BuildMobActionSpeechTextLayout(
+                text,
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                nativeWidth: 0,
+                renderWidth,
+                measureText,
+                skinMetrics);
+        }
+
+        internal static MobActionSpeechTextLayout BuildMobActionSpeechTextLayout(
+            string text,
+            int chatBalloon,
+            int floatNotice,
+            bool isScreenNotice,
+            int nativeWidth,
             int renderWidth,
             Func<string, Vector2> measureText,
             MobActionSpeechSkinMetrics skinMetrics)
@@ -735,6 +815,7 @@ namespace HaCreator.MapSimulator
                 chatBalloon,
                 floatNotice,
                 isScreenNotice,
+                nativeWidth,
                 renderWidth,
                 skinMetrics);
             List<string> lines = WrapMobActionSpeechText(normalizedText, maxTextWidth, measureText);
@@ -778,6 +859,7 @@ namespace HaCreator.MapSimulator
                 chatBalloon,
                 floatNotice,
                 isScreenNotice,
+                nativeWidth: 0,
                 renderWidth,
                 null);
         }
@@ -786,12 +868,15 @@ namespace HaCreator.MapSimulator
             int chatBalloon,
             int floatNotice,
             bool isScreenNotice,
+            int nativeWidth,
             int renderWidth,
             MobActionSpeechSkinMetrics skinMetrics)
         {
-            int authoredMaxWidth = isScreenNotice
-                ? MobActionSpeechScreenMaxTextWidth
-                : MobActionSpeechOwnerMaxTextWidth;
+            int authoredMaxWidth = nativeWidth > 0
+                ? nativeWidth
+                : (isScreenNotice
+                    ? MobActionSpeechScreenMaxTextWidth
+                    : MobActionSpeechOwnerMaxTextWidth);
             int horizontalInset = skinMetrics == null
                 ? MobActionSpeechHorizontalPadding * 2
                 : skinMetrics.LeftTextInset + skinMetrics.RightTextInset;

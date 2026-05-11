@@ -16,6 +16,17 @@ namespace HaCreator.MapSimulator.Managers
         private sealed class PersistedStore
         {
             public Dictionary<string, PersistedAccountState> AccountsByKey { get; set; } = new(StringComparer.Ordinal);
+            public Dictionary<string, PersistedExtraCharacterEntitlementState> ExtraCharacterEntitlementsByAccountKey { get; set; } = new(StringComparer.Ordinal);
+        }
+
+        private sealed class PersistedExtraCharacterEntitlementState
+        {
+            public string AccountName { get; set; }
+            public int AccountId { get; set; }
+            public int BuyCharacterCount { get; set; }
+            public LoginExtraCharInfoResultProfile ExtraCharInfoResult { get; set; }
+            public string Source { get; set; }
+            public DateTime UpdatedAtUtc { get; set; }
         }
 
         private sealed class PersistedAccountState
@@ -122,6 +133,7 @@ namespace HaCreator.MapSimulator.Managers
         };
 
         private readonly Dictionary<string, PersistedAccountState> _accountsByKey = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PersistedExtraCharacterEntitlementState> _extraCharacterEntitlementsByAccountKey = new(StringComparer.Ordinal);
         private readonly string _storageFilePath;
 
         public LoginCharacterAccountStore(string storageFilePath = null)
@@ -159,8 +171,22 @@ namespace HaCreator.MapSimulator.Managers
             return $"login-roster:{normalizedAccount}:world:{Math.Max(0, worldId)}";
         }
 
+        public static string ResolveAccountExtraCharacterEntitlementKey(string accountName, int accountId)
+        {
+            if (accountId > 0)
+            {
+                return $"extra-character-entitlement:accountid:{accountId}";
+            }
+
+            string normalizedAccount = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim().ToLowerInvariant();
+            return $"extra-character-entitlement:{normalizedAccount}";
+        }
+
         public LoginCharacterAccountState GetState(string accountName, int worldId, int? accountId = null)
         {
+            RefreshFromDisk();
             PersistedAccountState persisted = TryGetPersistedState(accountName, worldId, accountId);
             if (persisted == null)
             {
@@ -204,6 +230,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public IReadOnlyList<LoginCharacterAccountState> SnapshotStatesForAccount(string accountName, int? accountId = null)
         {
+            RefreshFromDisk();
             Dictionary<int, LoginCharacterAccountState> statesByWorld = new();
             foreach (PersistedAccountState persisted in EnumeratePersistedStatesForAccount(accountName, accountId))
             {
@@ -240,6 +267,7 @@ namespace HaCreator.MapSimulator.Managers
             LoginExtraCharInfoResultProfile extraCharInfoResult = null,
             IEnumerable<CashShopStorageExpansionRecordState> storageExpansionHistory = null)
         {
+            RefreshFromDisk();
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
             PersistedAccountState existingState = TryGetPersistedState(normalizedAccountName, worldId, accountId);
             List<LoginCharacterAccountEntryState> normalizedEntries = entries?
@@ -543,6 +571,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            RefreshFromDisk();
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim();
@@ -602,6 +631,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            RefreshFromDisk();
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim();
@@ -676,6 +706,64 @@ namespace HaCreator.MapSimulator.Managers
             return changed;
         }
 
+        public bool SetAuthoritativeExtraCharacterEntitlementForAccount(
+            string accountName,
+            int accountId,
+            int buyCharacterCount,
+            LoginExtraCharInfoResultProfile extraCharInfoResult,
+            int fallbackWorldId = 0,
+            string source = null)
+        {
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            RefreshFromDisk();
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                buyCharacterCount,
+                normalizedExtraCharInfoResult,
+                accountId);
+            normalizedExtraCharInfoResult = CreateExtraCharInfoResultFromBuyCharacterCount(
+                accountId,
+                normalizedBuyCharacterCount);
+            PersistedExtraCharacterEntitlementState authoritativeState = new()
+            {
+                AccountName = normalizedAccountName,
+                AccountId = accountId,
+                BuyCharacterCount = normalizedBuyCharacterCount,
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(normalizedExtraCharInfoResult),
+                Source = string.IsNullOrWhiteSpace(source) ? "simulator-account-authority" : source.Trim(),
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+
+            bool changed = UpdateExtraCharacterEntitlementForAccount(
+                normalizedAccountName,
+                accountId,
+                normalizedBuyCharacterCount,
+                normalizedExtraCharInfoResult,
+                fallbackWorldId);
+
+            string entitlementKey = ResolveAccountExtraCharacterEntitlementKey(normalizedAccountName, accountId);
+            bool authorityChanged =
+                !_extraCharacterEntitlementsByAccountKey.TryGetValue(entitlementKey, out PersistedExtraCharacterEntitlementState existingState) ||
+                !AreEquivalentExtraCharacterEntitlementStates(existingState, authoritativeState);
+            _extraCharacterEntitlementsByAccountKey[entitlementKey] = authoritativeState;
+            changed |= authorityChanged;
+
+            if (changed)
+            {
+                SaveToDisk();
+            }
+
+            return changed;
+        }
+
         public bool TryResolveExtraCharacterEntitlementForAccount(
             string accountName,
             int accountId,
@@ -689,9 +777,19 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            RefreshFromDisk();
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim();
+            if (TryResolveAuthoritativeExtraCharacterEntitlementForAccount(
+                    normalizedAccountName,
+                    accountId,
+                    out extraCharInfoResult,
+                    out buyCharacterCount))
+            {
+                return true;
+            }
+
             bool sawEntitlementEvidence = false;
             bool sawGrantedEntitlement = false;
 
@@ -741,8 +839,42 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryResolveAuthoritativeExtraCharacterEntitlementForAccount(
+            string accountName,
+            int accountId,
+            out LoginExtraCharInfoResultProfile extraCharInfoResult,
+            out int buyCharacterCount)
+        {
+            extraCharInfoResult = null;
+            buyCharacterCount = 0;
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            string entitlementKey = ResolveAccountExtraCharacterEntitlementKey(normalizedAccountName, accountId);
+            if (!_extraCharacterEntitlementsByAccountKey.TryGetValue(entitlementKey, out PersistedExtraCharacterEntitlementState persistedState) ||
+                persistedState == null)
+            {
+                return false;
+            }
+
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(persistedState.ExtraCharInfoResult, accountId);
+            buyCharacterCount = NormalizeBuyCharacterCount(
+                persistedState.BuyCharacterCount,
+                normalizedExtraCharInfoResult,
+                accountId);
+            extraCharInfoResult = CreateExtraCharInfoResultFromBuyCharacterCount(accountId, buyCharacterCount);
+            return true;
+        }
+
         public int PruneStatesForAccount(string accountName, IEnumerable<int> keepWorldIds, int? accountId = null)
         {
+            RefreshFromDisk();
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim();
@@ -868,9 +1000,10 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (string.IsNullOrWhiteSpace(_storageFilePath) || !File.Exists(_storageFilePath))
             {
-                if (clearWhenMissing && _accountsByKey.Count > 0)
+                if (clearWhenMissing && (_accountsByKey.Count > 0 || _extraCharacterEntitlementsByAccountKey.Count > 0))
                 {
                     _accountsByKey.Clear();
+                    _extraCharacterEntitlementsByAccountKey.Clear();
                     return true;
                 }
 
@@ -887,6 +1020,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 Dictionary<string, PersistedAccountState> refreshedAccountsByKey = new(StringComparer.Ordinal);
+                Dictionary<string, PersistedExtraCharacterEntitlementState> refreshedEntitlementsByAccountKey = new(StringComparer.Ordinal);
                 foreach (KeyValuePair<string, PersistedAccountState> entry in persisted.AccountsByKey)
                 {
                     if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null)
@@ -897,27 +1031,48 @@ namespace HaCreator.MapSimulator.Managers
                     refreshedAccountsByKey[entry.Key] = entry.Value;
                 }
 
-                if (AreEquivalentAccountDictionaries(_accountsByKey, refreshedAccountsByKey))
+                foreach (KeyValuePair<string, PersistedExtraCharacterEntitlementState> entry in
+                         persisted.ExtraCharacterEntitlementsByAccountKey ?? new Dictionary<string, PersistedExtraCharacterEntitlementState>())
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null)
+                    {
+                        continue;
+                    }
+
+                    refreshedEntitlementsByAccountKey[entry.Key] = CloneExtraCharacterEntitlementState(entry.Value);
+                }
+
+                if (AreEquivalentAccountDictionaries(_accountsByKey, refreshedAccountsByKey) &&
+                    AreEquivalentExtraCharacterEntitlementDictionaries(
+                        _extraCharacterEntitlementsByAccountKey,
+                        refreshedEntitlementsByAccountKey))
                 {
                     return false;
                 }
 
                 _accountsByKey.Clear();
+                _extraCharacterEntitlementsByAccountKey.Clear();
                 foreach (KeyValuePair<string, PersistedAccountState> entry in refreshedAccountsByKey)
                 {
                     _accountsByKey[entry.Key] = entry.Value;
+                }
+
+                foreach (KeyValuePair<string, PersistedExtraCharacterEntitlementState> entry in refreshedEntitlementsByAccountKey)
+                {
+                    _extraCharacterEntitlementsByAccountKey[entry.Key] = entry.Value;
                 }
 
                 return true;
             }
             catch
             {
-                if (_accountsByKey.Count == 0)
+                if (_accountsByKey.Count == 0 && _extraCharacterEntitlementsByAccountKey.Count == 0)
                 {
                     return false;
                 }
 
                 _accountsByKey.Clear();
+                _extraCharacterEntitlementsByAccountKey.Clear();
                 return true;
             }
         }
@@ -931,7 +1086,12 @@ namespace HaCreator.MapSimulator.Managers
 
             PersistedStore persisted = new()
             {
-                AccountsByKey = new Dictionary<string, PersistedAccountState>(_accountsByKey, StringComparer.Ordinal)
+                AccountsByKey = new Dictionary<string, PersistedAccountState>(_accountsByKey, StringComparer.Ordinal),
+                ExtraCharacterEntitlementsByAccountKey = _extraCharacterEntitlementsByAccountKey
+                    .ToDictionary(
+                        entry => entry.Key,
+                        entry => CloneExtraCharacterEntitlementState(entry.Value),
+                        StringComparer.Ordinal)
             };
 
             try
@@ -1342,6 +1502,71 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        private static bool AreEquivalentExtraCharacterEntitlementDictionaries(
+            IReadOnlyDictionary<string, PersistedExtraCharacterEntitlementState> left,
+            IReadOnlyDictionary<string, PersistedExtraCharacterEntitlementState> right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+
+            foreach ((string key, PersistedExtraCharacterEntitlementState leftState) in left)
+            {
+                if (!right.TryGetValue(key, out PersistedExtraCharacterEntitlementState rightState) ||
+                    !AreEquivalentExtraCharacterEntitlementStates(leftState, rightState))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool AreEquivalentExtraCharacterEntitlementStates(
+            PersistedExtraCharacterEntitlementState left,
+            PersistedExtraCharacterEntitlementState right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            LoginExtraCharInfoResultProfile leftProfile = CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult);
+            LoginExtraCharInfoResultProfile rightProfile = CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult);
+            return string.Equals(left.AccountName ?? string.Empty, right.AccountName ?? string.Empty, StringComparison.Ordinal) &&
+                   Math.Max(0, left.AccountId) == Math.Max(0, right.AccountId) &&
+                   Math.Max(0, left.BuyCharacterCount) == Math.Max(0, right.BuyCharacterCount) &&
+                   string.Equals(left.Source ?? string.Empty, right.Source ?? string.Empty, StringComparison.Ordinal) &&
+                   leftProfile?.AccountId == rightProfile?.AccountId &&
+                   leftProfile?.ResultFlag == rightProfile?.ResultFlag &&
+                   leftProfile?.CanHaveExtraCharacter == rightProfile?.CanHaveExtraCharacter;
+        }
+
+        private static PersistedExtraCharacterEntitlementState CloneExtraCharacterEntitlementState(
+            PersistedExtraCharacterEntitlementState state)
+        {
+            if (state == null)
+            {
+                return null;
+            }
+
+            return new PersistedExtraCharacterEntitlementState
+            {
+                AccountName = string.IsNullOrWhiteSpace(state.AccountName) ? "explorergm" : state.AccountName.Trim(),
+                AccountId = Math.Max(0, state.AccountId),
+                BuyCharacterCount = Math.Max(0, state.BuyCharacterCount),
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(state.ExtraCharInfoResult),
+                Source = state.Source ?? string.Empty,
+                UpdatedAtUtc = state.UpdatedAtUtc == default ? DateTime.UtcNow : state.UpdatedAtUtc
+            };
+        }
+
         private static bool AreEquivalentEntryStateLists(
             IReadOnlyList<LoginCharacterAccountEntryState> left,
             IReadOnlyList<LoginCharacterAccountEntryState> right)
@@ -1486,6 +1711,19 @@ namespace HaCreator.MapSimulator.Managers
                    extraCharInfoResult.AccountId == accountId &&
                    extraCharInfoResult.ResultFlag == 0 &&
                    extraCharInfoResult.CanHaveExtraCharacter;
+        }
+
+        private static LoginExtraCharInfoResultProfile CreateExtraCharInfoResultFromBuyCharacterCount(
+            int accountId,
+            int buyCharacterCount)
+        {
+            bool canHaveExtraCharacter = accountId > 0 && Math.Max(0, buyCharacterCount) > 0;
+            return new LoginExtraCharInfoResultProfile
+            {
+                AccountId = Math.Max(0, accountId),
+                ResultFlag = canHaveExtraCharacter ? (byte)0 : (byte)1,
+                CanHaveExtraCharacter = canHaveExtraCharacter
+            };
         }
     }
 }

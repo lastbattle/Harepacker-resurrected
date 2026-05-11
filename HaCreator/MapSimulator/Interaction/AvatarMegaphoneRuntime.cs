@@ -526,7 +526,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            Texture2D backgroundTexture = ResolveBackgroundTexture(device);
             Texture2D shortNameTagTexture = ResolveNameTagTexture(device, longTag: false);
             Texture2D longNameTagTexture = ResolveNameTagTexture(device, longTag: true);
             IReadOnlyList<AvatarMegaphoneAnimationFrame> itemFrames = ResolveItemFrames(_activePresentation.ItemProfile.ResourcePath, device);
@@ -535,11 +534,6 @@ namespace HaCreator.MapSimulator.Interaction
             bool useLongNameTag = ResolveNameTagStringPoolIdForWidth(senderWidth) == 0x0FB1;
             Texture2D nameTagTexture = useLongNameTag ? longNameTagTexture : shortNameTagTexture;
             int nameTagX = layout.PanelX + ResolveNameTagXForWidth(senderWidth);
-
-            if (backgroundTexture != null)
-            {
-                spriteBatch.Draw(backgroundTexture, new Vector2(layout.PanelX, 0f), Color.White);
-            }
 
             DrawPreviewAvatar(spriteBatch, currentTick, layout.PanelX);
 

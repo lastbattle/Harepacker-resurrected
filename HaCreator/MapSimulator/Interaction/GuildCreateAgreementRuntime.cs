@@ -39,6 +39,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Advance(int elapsedMs)
         {
+            return Advance(elapsedMs, out _);
+        }
+
+        internal string Advance(int elapsedMs, out GuildCreateAgreementAcceptance timeoutAcceptance)
+        {
+            timeoutAcceptance = default;
             if (!_isOpen || elapsedMs <= 0)
             {
                 return null;
@@ -58,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _timedOut = true;
+            timeoutAcceptance = new GuildCreateAgreementAcceptance(_masterName, _guildName, DateTimeOffset.UtcNow, Accepted: false);
             string timeoutText = MapleStoryStringPool.GetOrFallback(0x015A, "The guild creation agreement timed out.");
             _statusMessage = $"{timeoutText} ({_masterName}, {_guildName})";
             NotifySocialChatObserved(_statusMessage);

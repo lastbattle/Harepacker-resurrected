@@ -1391,6 +1391,77 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveMobFirstCanvas(linkedMobImage, out canvas);
         }
 
+        public static bool TryResolveNpcPreviewCanvas(int itemId, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return TryResolveNpcPreviewCanvas(itemProperty, out canvas);
+        }
+
+        private static bool TryResolveNpcPreviewCanvas(WzSubProperty itemProperty, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (!TryResolveNpcReference(itemProperty, out int npcId) || npcId <= 0)
+            {
+                return false;
+            }
+
+            return TryResolveNpcFirstCanvas(npcId, out canvas);
+        }
+
+        private static bool TryResolveNpcFirstCanvas(int npcId, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (npcId <= 0)
+            {
+                return false;
+            }
+
+            WzImage npcImage = global::HaCreator.Program.FindImage(
+                "Npc",
+                npcId.ToString("D7", CultureInfo.InvariantCulture) + ".img");
+            if (npcImage == null)
+            {
+                return false;
+            }
+
+            npcImage.ParseImage();
+            if (TryResolveNpcFirstCanvas(npcImage, out canvas))
+            {
+                return true;
+            }
+
+            string linkedNpcId = (npcImage["info"]?["link"] as WzStringProperty)?.Value?.Trim();
+            if (string.IsNullOrWhiteSpace(linkedNpcId))
+            {
+                return false;
+            }
+
+            WzImage linkedNpcImage = global::HaCreator.Program.FindImage("Npc", linkedNpcId + ".img");
+            if (linkedNpcImage == null)
+            {
+                return false;
+            }
+
+            linkedNpcImage.ParseImage();
+            return TryResolveNpcFirstCanvas(linkedNpcImage, out canvas);
+        }
+
+        private static bool TryResolveNpcFirstCanvas(WzImage npcImage, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            return npcImage != null
+                   && (TryResolveCanvasAtPath(npcImage, "stand/0", out canvas)
+                       || TryResolveCanvasAtPath(npcImage, "move/0", out canvas)
+                       || TryResolveCanvasAtPath(npcImage, "say/0", out canvas)
+                       || TryResolveCanvasAtPath(npcImage, "fly/0", out canvas));
+        }
+
         private static bool TryResolveMobFirstCanvas(WzImage mobImage, out WzCanvasProperty canvas)
         {
             canvas = null;
@@ -5898,6 +5969,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryResolveRootEffectFirstCanvasForTests(WzSubProperty itemProperty, out WzCanvasProperty canvas)
         {
             return TryResolveRootEffectFirstCanvas(itemProperty, out canvas);
+        }
+
+        public static bool TryResolveNpcPreviewCanvasForTests(WzSubProperty itemProperty, out WzCanvasProperty canvas)
+        {
+            return TryResolveNpcPreviewCanvas(itemProperty, out canvas);
         }
 
         public static bool TryResolveFirstAnimationCanvasForTests(WzSubProperty property, out WzCanvasProperty canvas)

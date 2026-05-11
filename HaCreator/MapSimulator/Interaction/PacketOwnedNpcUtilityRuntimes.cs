@@ -1158,6 +1158,16 @@ namespace HaCreator.MapSimulator.Interaction
         internal int OwnerMoney => _money;
         internal string StatusMessage { get; private set; } = "CStoreBankDlg::OnPacket idle.";
 
+        internal bool IsOwnerGetButtonEnabledForSelection(int ownerRowIndex)
+        {
+            if (!IsOwnerGetButtonEnabled)
+            {
+                return false;
+            }
+
+            return HasPendingGetAllRequest || (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count);
+        }
+
         internal void Close()
         {
             IsOpen = false;
@@ -1551,6 +1561,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_hasAcceptedGetAllRequestInFlight)
+            {
+                StatusMessage = "CStoreBankDlg ignored BtGet because an accepted SendGetAllRequest is still request-owned until the next store-bank packet clears m_bRequestSent.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
             if (ownerRowIndex < 0 || ownerRowIndex >= _decodedItems.Count)
             {
                 NotifyOwnerGetButtonPressed(ownerRowIndex);
@@ -1645,6 +1663,10 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusMessage = _pendingFeeCalculationPacketRowIndex > 0
                     ? $"CStoreBankDlg ignored repeated BtGet while fee calculation for packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} is still pending."
                     : "CStoreBankDlg ignored repeated BtGet while a fee calculation request is still pending.";
+            }
+            else if (_hasAcceptedGetAllRequestInFlight)
+            {
+                StatusMessage = "CStoreBankDlg ignored BtGet because an accepted SendGetAllRequest is still request-owned until the next store-bank packet clears m_bRequestSent.";
             }
             else if (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count)
             {

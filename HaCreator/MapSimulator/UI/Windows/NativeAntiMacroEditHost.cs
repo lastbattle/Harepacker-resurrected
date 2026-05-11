@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.UI
         private const int WmSetFont = 0x0030;
         private const int WmSetFocus = 0x0007;
         private const int WmKillFocus = 0x0008;
+        private const int WmPaint = 0x000F;
+        private const int WmEraseBkgnd = 0x0014;
         private const int WmGetDlgCode = 0x0087;
         private const int WmImeComposition = 0x010F;
         private const int WmChar = 0x0102;
@@ -110,6 +112,12 @@ namespace HaCreator.MapSimulator.UI
         private static readonly IntPtr HwndTop = IntPtr.Zero;
         private static readonly object HostMapLock = new();
         private static readonly Dictionary<IntPtr, NativeAntiMacroEditHost> HostByHandle = new();
+
+        internal readonly record struct ClientEditSelectionSnapshot(
+            string Text,
+            int SelectionStart,
+            int SelectionEnd,
+            bool HasFocus);
 
         private readonly int _maxLength;
         private readonly Encoding _clientEncoding;
@@ -252,6 +260,23 @@ namespace HaCreator.MapSimulator.UI
 
             _lastKnownText = currentText;
             TextChanged?.Invoke(currentText);
+        }
+
+        public ClientEditSelectionSnapshot GetSelectionSnapshot()
+        {
+            if (!IsAttached)
+            {
+                return new ClientEditSelectionSnapshot(string.Empty, 0, 0, false);
+            }
+
+            string currentText = GetControlText();
+            GetSelection(out int selectionStart, out int selectionEnd);
+            int length = currentText.Length;
+            return new ClientEditSelectionSnapshot(
+                currentText,
+                Math.Clamp(selectionStart, 0, length),
+                Math.Clamp(selectionEnd, 0, length),
+                HasFocus);
         }
 
         internal static int GetClientOwnedAntiMacroDialogCode()
@@ -700,6 +725,12 @@ namespace HaCreator.MapSimulator.UI
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            if (ShouldSuppressNativeEditPainting(msg, clientCanvasPaintOwned: true))
+            {
+                ValidateRect(hWnd, IntPtr.Zero);
+                return IntPtr.Zero;
+            }
+
             if (msg == WmSetText)
             {
                 IntPtr setTextResult = HandleClientOwnedSetText(wParam, lParam);
@@ -1430,6 +1461,16 @@ namespace HaCreator.MapSimulator.UI
             // only rx into `CalcCaretPos`; use a stable single-line Y when the
             // hosted EDIT needs a Win32 point for equivalent X-only hit tests.
             return Math.Max(0, Math.Max(1, controlHeight) / 2);
+        }
+
+        internal static bool ShouldSuppressNativeEditPainting(uint msg, bool clientCanvasPaintOwned)
+        {
+            // `CCtrlEdit::Draw` paints into the owner canvas and honors
+            // nBackColor=0 as transparent. Keep the hosted Win32 EDIT as the input
+            // and IME message owner, but do not let it paint desktop chrome over
+            // the WZ-backed anti-macro frame.
+            return clientCanvasPaintOwned
+                && (msg == WmPaint || msg == WmEraseBkgnd);
         }
 
         private static bool IsControlKeyDown()
@@ -2298,6 +2339,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool ValidateRect(IntPtr hWnd, IntPtr lpRect);
 
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
         private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);

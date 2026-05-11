@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.AI
         Neutralise = 1L << 30,      // Neutralise (reduced magic defense)
         Hypnotize = 1L << 31,       // Hypnotized (attacks allies)
         Rich = 1L << 32,            // MobSkill 157 special status
+        MesoUp = 1L << 33,          // Player-skill incTargetMeso reward mark
     }
 
     /// <summary>
@@ -1185,6 +1186,18 @@ namespace HaCreator.MapSimulator.AI
             _currentMp = Math.Clamp(mp, 0, _maxMp);
         }
 
+        public bool ApplyServerMpCorrection(int currentMp)
+        {
+            int correctedMp = Math.Clamp(currentMp, 0, _maxMp);
+            if (_currentMp == correctedMp)
+            {
+                return false;
+            }
+
+            _currentMp = correctedMp;
+            return true;
+        }
+
         /// <summary>
         /// Restore HP to a specific value (used for map state restoration).
         /// Does not trigger any combat effects or state changes.
@@ -1240,10 +1253,15 @@ namespace HaCreator.MapSimulator.AI
         /// </summary>
         public void UseSkill(int skillIndex, int currentTick)
         {
-            if (skillIndex < 0 || skillIndex >= _skills.Count)
-                return;
+            TryUseSkill(skillIndex, currentTick);
+        }
 
-            StartSkill(skillIndex, currentTick);
+        public bool TryUseSkill(int skillIndex, int currentTick)
+        {
+            if (skillIndex < 0 || skillIndex >= _skills.Count)
+                return false;
+
+            return TryStartSkill(skillIndex, currentTick, requireSelectionGates: true);
         }
 
         /// <summary>
@@ -2106,12 +2124,22 @@ namespace HaCreator.MapSimulator.AI
 
         private bool StartSkill(int skillIndex, int currentTick)
         {
+            return TryStartSkill(skillIndex, currentTick, requireSelectionGates: false);
+        }
+
+        private bool TryStartSkill(int skillIndex, int currentTick, bool requireSelectionGates)
+        {
             if (skillIndex < 0 || skillIndex >= _skills.Count)
             {
                 return false;
             }
 
             MobSkillEntry skill = _skills[skillIndex];
+            if (requireSelectionGates && !CanStartRequestedSkill(skill, currentTick))
+            {
+                return false;
+            }
+
             if (!TryConsumeSkillMp(skill))
             {
                 return false;
@@ -2124,6 +2152,22 @@ namespace HaCreator.MapSimulator.AI
             _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(skill);
             TransitionToActionState(MobAIState.Skill, currentTick);
             return true;
+        }
+
+        private bool CanStartRequestedSkill(MobSkillEntry skill, int currentTick)
+        {
+            if (skill == null ||
+                IsDoomed ||
+                IsSealed ||
+                HasStatusEffect(MobStatusEffect.SealSkill) ||
+                skill.IsOnCooldown(currentTick) ||
+                !HasEnoughMpForSkill(skill) ||
+                !IsSkillPrerequisiteSatisfied(skill))
+            {
+                return false;
+            }
+
+            return _skillForbidUntil == 0 || HasClientTickReached(currentTick, _skillForbidUntil);
         }
 
         private void TransitionToActionState(MobAIState newState, int currentTick)
@@ -2469,6 +2513,7 @@ namespace HaCreator.MapSimulator.AI
                    effect == MobStatusEffect.SealSkill ||
                    effect == MobStatusEffect.Burned ||
                    effect == MobStatusEffect.Showdown ||
+                   effect == MobStatusEffect.MesoUp ||
                    effect == MobStatusEffect.Weakness ||
                    effect == MobStatusEffect.Neutralise ||
                    effect == MobStatusEffect.Hypnotize;

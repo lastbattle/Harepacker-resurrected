@@ -444,6 +444,7 @@ namespace HaCreator.MapSimulator.UI
                             playerMarker,
                             new Point(minimapPosX, minimapPosY),
                             true,
+                            null,
                             sprite,
                             skeletonMeshRenderer,
                             gameTime,
@@ -1366,7 +1367,7 @@ namespace HaCreator.MapSimulator.UI
                 if (marker == null)
                     continue;
 
-                DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, null, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
                 if (ShouldRegisterClientPaneMarkerHoverTargetForTesting(clientHoverBounds))
                 {
@@ -1393,7 +1394,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
-                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, null, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 if (!IsClientPortalHoverCandidate(portal))
                     continue;
 
@@ -1541,7 +1542,7 @@ namespace HaCreator.MapSimulator.UI
                 if (marker == null)
                     continue;
 
-                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, packetDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 bool isWithinMinimapImage = IsWithinMinimapImage(minimapPoint);
                 if (ShouldRegisterTrackedUserHoverTargetForTesting(
                         isWithinMinimapImage,
@@ -1667,7 +1668,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
-                DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, null, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
                 if (ShouldRegisterClientPaneMarkerHoverTargetForTesting(clientHoverBounds)
                     && !string.IsNullOrWhiteSpace(employee.TooltipText))
@@ -1681,6 +1682,7 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem marker,
             Point minimapPoint,
             bool showDirectionOverlay,
+            DirectionArrow? directionOverlay,
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
             GameTime gameTime,
@@ -1707,7 +1709,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 return DrawDirectionOverlayForPoint(
                     minimapPoint,
-                    null,
+                    directionOverlay,
                     sprite,
                     skeletonMeshRenderer,
                     gameTime,
