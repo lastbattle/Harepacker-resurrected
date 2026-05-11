@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int SetLeftThresholdValue { get; init; }
             public bool SetLeftUsedVehicleThreshold { get; init; }
             public bool SetLeftTriggeredLowAnimation { get; init; }
+            public IReadOnlyList<string> SetLeftMutationTrace { get; init; } = Array.Empty<string>();
             public int ShadowIndex { get; init; }
             public int ShadowIndexUpdateSequence { get; init; }
             public int MainLayerAnimationSequence { get; init; }
@@ -173,6 +174,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int TemporaryStatViewMainLayerReleaseReferenceCountAfter { get; init; }
             public int TemporaryStatViewShadowLayerReleaseReferenceCountBefore { get; init; }
             public int TemporaryStatViewShadowLayerReleaseReferenceCountAfter { get; init; }
+            public IReadOnlyList<string> TemporaryStatViewReleaseMutationTrace { get; init; } = Array.Empty<string>();
             public string ShadowCanvasPath { get; init; } = string.Empty;
             public int ShadowCanvasOwnerLayerIdentity { get; init; }
             public int ShadowCanvasRemoveIndex { get; init; }
@@ -518,6 +520,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             Point PlacementPosition,
             int MoveActionLowBit);
         internal const int ClientDoActiveSummonMonsterPacketOpcode = 103;
+        public readonly record struct ClientBoundJumpSkillUsePacketPayload(
+            int RequestTime,
+            int SkillId,
+            int SkillLevel,
+            short Delay);
         public readonly record struct ClientDoActiveTownPortalPacketPayload(
             int RequestTime,
             int SkillId,
@@ -863,6 +870,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string EnrageBuffLabel = "Enrage";
         private const string HolyShieldBuffLabel = "HolyShield";
         private const string BlessingArmorBuffLabel = "BlessingArmor";
+        private const string WaterShieldBuffLabel = "WaterShield";
 
         private static readonly IReadOnlyDictionary<string, int> ClientSecondaryStatSortOrderCatalog =
             BuildClientSecondaryStatSortOrderCatalog(
@@ -945,6 +953,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [EnrageBuffLabel] = CreateTemporaryStatPresentation(EnrageBuffLabel, "Enrage", null, ResolveClientSecondaryStatSortOrder("Enrage", 211), 211),
                 [HolyShieldBuffLabel] = CreateTemporaryStatPresentation(HolyShieldBuffLabel, "Holy Shield", null, ResolveClientSecondaryStatSortOrder("Holyshield", 280), 211),
                 [BlessingArmorBuffLabel] = CreateTemporaryStatPresentation(BlessingArmorBuffLabel, "Blessing Armor", null, ResolveClientSecondaryStatSortOrder("BlessingArmor", 212), 212),
+                [WaterShieldBuffLabel] = CreateTemporaryStatPresentation(WaterShieldBuffLabel, "Water Shield", null, 213, 213),
                 [ExperienceBuffLabel] = CreateTemporaryStatPresentation(ExperienceBuffLabel, "EXP Rate", null, ResolveClientSecondaryStatSortOrder("HolySymbol", 200), 200),
                 [MesoUpBuffLabel] = CreateTemporaryStatPresentation(MesoUpBuffLabel, "Meso Up", null, ResolveClientSecondaryStatSortOrder("MesoUp", 210), 210),
                 [MesoRateBuffLabel] = CreateTemporaryStatPresentation(MesoRateBuffLabel, "Meso Rate", null, ResolveClientSecondaryStatSortOrder("MesoUp", 210), 210),
@@ -1310,6 +1319,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
         public Action<SummonSkillRequest> OnSummonSkillRequested;
         public Action<ClientDoActiveSummonMonsterPacketPayload> OnClientDoActiveSummonMonsterPacketPayloadReady;
+        public Action<ClientBoundJumpSkillUsePacketPayload> OnClientBoundJumpSkillUsePacketPayloadReady;
         public Action<ClientDoActiveTownPortalPacketPayload> OnClientDoActiveTownPortalPacketPayloadReady;
         public Action<ClientDoActiveTeslaCoilPacketPayload> OnClientDoActiveTeslaCoilPacketPayloadReady;
         public Action<AnimationDisplayerCatchRegistrationRequest> OnAnimationDisplayerCatchRegistrationRequested;
@@ -3477,6 +3487,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            string mechanicSatelliteSafetyRestrictionMessage =
+                ResolveClientMechanicSatelliteSafetyRestrictionMessage(skill, _summons);
+            if (!string.IsNullOrWhiteSpace(mechanicSatelliteSafetyRestrictionMessage))
+            {
+                OnFieldSkillCastRejected?.Invoke(skill, mechanicSatelliteSafetyRestrictionMessage);
+                return false;
+            }
+
+            if (TryRequestClientMechanicSatelliteSafetyCancel(skill, currentTime))
+            {
+                return true;
+            }
+
             if (ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(skill, currentTime))
             {
                 return false;
@@ -3673,6 +3696,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             return MapleStoryStringPool.GetOrFallback(
                 ClientMechanicSatelliteRequiredStringPoolId,
                 "There is no Satellite nearby.");
+        }
+
+        private bool TryRequestClientMechanicSatelliteSafetyCancel(SkillData skill, int currentTime)
+        {
+            if (!ShouldRequestClientMechanicSatelliteSafetyCancel(skill, _buffs, currentTime))
+            {
+                return false;
+            }
+
+            CancelActiveBuffByClientRequest(35121006, currentTime);
+            return true;
+        }
+
+        internal static bool ShouldRequestClientMechanicSatelliteSafetyCancel(
+            SkillData skill,
+            IEnumerable<ActiveBuff> activeBuffs,
+            int currentTime)
+        {
+            // Client evidence: CUserLocal::DoActiveSkill@0x9445b0 checks
+            // SecondaryStat::nSafetyDamage after resolving active Satellite
+            // summons for 35121006, sends a skill-cancel request, and returns
+            // before CField::IsSkillForbiden. WZ anchor:
+            // Skill/3512.img/skill/35121006/info/safety=1.
+            if (skill?.SkillId != 35121006 || activeBuffs == null)
+            {
+                return false;
+            }
+
+            foreach (ActiveBuff activeBuff in activeBuffs)
+            {
+                if (activeBuff?.SkillId == 35121006
+                    && !activeBuff.IsExpired(currentTime))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasActiveClientMechanicSatellite(IEnumerable<ActiveSummon> activeSummons)
@@ -5576,6 +5637,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 alertLayerAnimationStartTime = currentTime;
             }
 
+            IReadOnlyList<string> setLeftMutationTrace = BuildTemporaryStatViewSetLeftMutationTraceForParity(
+                shadowIndexChanged,
+                crossedIntoAlertBucket);
+
             return new PassiveVehicleTemporaryStatState
             {
                 SkillId = skillId,
@@ -5597,6 +5662,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SetLeftThresholdValue = alertThresholdValue,
                 SetLeftUsedVehicleThreshold = skillId == 5221006 || skillId == 35001002,
                 SetLeftTriggeredLowAnimation = crossedIntoAlertBucket,
+                SetLeftMutationTrace = setLeftMutationTrace,
                 ShadowIndex = shadowIndex,
                 ShadowIndexUpdateSequence = shadowIndexUpdateSequence,
                 MainLayerAnimationSequence = mainLayerAnimationSequence,
@@ -5663,6 +5729,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AlertLayerAnimationFrameDelayMs = TemporaryStatViewShadowCanvasDelayMs,
                 AlertLayerAnimationFrameCount = TemporaryStatViewShadowCanvasFrameCount
             };
+        }
+
+        internal static IReadOnlyList<string> BuildTemporaryStatViewSetLeftMutationTraceForParity(
+            bool shadowIndexChanged,
+            bool crossedIntoAlertBucket)
+        {
+            List<string> trace = new()
+            {
+                "SetLeft.capturePreviousLeft",
+                "SetLeft.assignNewLeft",
+                "SetLeft.UpdateShadowIndex"
+            };
+
+            if (shadowIndexChanged)
+            {
+                trace.Add("UpdateShadowIndex.StringPool(0x0E32)");
+                trace.Add("UpdateShadowIndex.GetObjectA");
+                trace.Add("UpdateShadowIndex.QueryIWzCanvas");
+                trace.Add("UpdateShadowIndex.RemoveCanvas(-2)");
+                trace.Add("UpdateShadowIndex.ReleaseRemovedCanvas");
+                trace.Add("UpdateShadowIndex.InsertCanvas(delay=500,alpha=64->210)");
+                trace.Add("UpdateShadowIndex.CommitShadowIndex");
+                trace.Add("UpdateShadowIndex.ReleaseLoadedCanvas");
+            }
+
+            if (crossedIntoAlertBucket)
+            {
+                trace.Add("SetLeft.AnimateMainLayer(GA_REPEAT)");
+                trace.Add("SetLeft.AnimateShadowLayer(GA_REPEAT)");
+            }
+
+            return trace;
         }
 
         internal static int ResolveTemporaryStatViewOwnerIdentityForParity(int skillId, int startTime)
@@ -5773,6 +5871,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ?? ResolvePassiveVehicleDurabilityAlertThresholdForParity(maxValue)),
                 SetLeftUsedVehicleThreshold = passiveState?.SetLeftUsedVehicleThreshold ?? (skillId == 5221006 || skillId == 35001002),
                 SetLeftTriggeredLowAnimation = passiveState?.SetLeftTriggeredLowAnimation ?? false,
+                SetLeftMutationTrace = passiveState?.SetLeftMutationTrace ?? Array.Empty<string>(),
                 ShadowIndex = Math.Clamp(passiveState?.ShadowIndex
                     ?? ResolvePassiveVehicleDurabilityShadowIndexForParity(currentValue, maxValue), 0, 15),
                 ShadowIndexUpdateSequence = Math.Max(0, passiveState?.ShadowIndexUpdateSequence ?? 0),
@@ -5832,6 +5931,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewMainLayerReleaseReferenceCountAfter = Math.Max(0, passiveState?.TemporaryStatViewMainLayerReleaseReferenceCountAfter ?? 0),
                 TemporaryStatViewShadowLayerReleaseReferenceCountBefore = Math.Max(0, passiveState?.TemporaryStatViewShadowLayerReleaseReferenceCountBefore ?? 0),
                 TemporaryStatViewShadowLayerReleaseReferenceCountAfter = Math.Max(0, passiveState?.TemporaryStatViewShadowLayerReleaseReferenceCountAfter ?? 0),
+                TemporaryStatViewReleaseMutationTrace = passiveState?.TemporaryStatViewReleaseMutationTrace ?? Array.Empty<string>(),
                 ShadowCanvasPath = passiveState?.ShadowCanvasPath
                     ?? ResolveTemporaryStatViewShadowCanvasPathForParity(
                         ResolvePassiveVehicleDurabilityShadowIndexForParity(currentValue, maxValue)),
@@ -6054,6 +6154,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             int mainLayerReferenceCountBeforeRelease = Math.Max(0, previousState.TemporaryStatViewMainLayerReferenceCount);
             int shadowLayerReferenceCountBeforeRelease = Math.Max(0, previousState.TemporaryStatViewShadowLayerReferenceCount);
             int shadowCanvasReferenceCountBeforeRelease = Math.Max(0, previousState.ShadowCanvasReferenceCount);
+            IReadOnlyList<string> releaseMutationTrace = BuildTemporaryStatViewReleaseMutationTraceForParity(
+                previousState,
+                terminalReleaseOrder,
+                objectReleaseOrder,
+                parentLayerReleaseOrder,
+                mainLayerReleaseOrder,
+                shadowLayerReleaseOrder,
+                shadowCanvasRemoveOrder,
+                shadowCanvasReleaseOrder,
+                objectReleaseSequence,
+                parentReleaseSequence,
+                mainReleaseSequence,
+                shadowReleaseSequence,
+                shadowCanvasRemoveSequence,
+                shadowCanvasReleaseSequence,
+                objectReferenceCountBeforeRelease,
+                parentLayerReferenceCountBeforeRelease,
+                mainLayerReferenceCountBeforeRelease,
+                shadowLayerReferenceCountBeforeRelease,
+                shadowCanvasReferenceCountBeforeRelease);
 
             return new PassiveVehicleTemporaryStatState
             {
@@ -6147,6 +6267,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewMainLayerReleaseReferenceCountAfter = 0,
                 TemporaryStatViewShadowLayerReleaseReferenceCountBefore = shadowLayerReferenceCountBeforeRelease,
                 TemporaryStatViewShadowLayerReleaseReferenceCountAfter = 0,
+                TemporaryStatViewReleaseMutationTrace = releaseMutationTrace,
                 ShadowCanvasPath = previousState.ShadowCanvasPath,
                 ShadowCanvasOwnerLayerIdentity = previousState.ShadowCanvasOwnerLayerIdentity > 0
                     ? previousState.ShadowCanvasOwnerLayerIdentity
@@ -6188,6 +6309,170 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ? previousState.AlertLayerAnimationFrameCount
                     : TemporaryStatViewShadowCanvasFrameCount
             };
+        }
+
+        internal static IReadOnlyList<string> BuildTemporaryStatViewReleaseMutationTraceForParity(
+            PassiveVehicleTemporaryStatState previousState,
+            int terminalReleaseOrder,
+            int objectReleaseOrder,
+            int parentLayerReleaseOrder,
+            int mainLayerReleaseOrder,
+            int shadowLayerReleaseOrder,
+            int shadowCanvasRemoveOrder,
+            int shadowCanvasReleaseOrder,
+            int objectReleaseSequence,
+            int parentLayerReleaseSequence,
+            int mainLayerReleaseSequence,
+            int shadowLayerReleaseSequence,
+            int shadowCanvasRemoveSequence,
+            int shadowCanvasReleaseSequence,
+            int objectReferenceCountBeforeRelease,
+            int parentLayerReferenceCountBeforeRelease,
+            int mainLayerReferenceCountBeforeRelease,
+            int shadowLayerReferenceCountBeforeRelease,
+            int shadowCanvasReferenceCountBeforeRelease)
+        {
+            if (previousState == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var trace = new List<string>(7)
+            {
+                FormatTemporaryStatViewReleaseTraceEntry(
+                    terminalReleaseOrder,
+                    "terminal",
+                    previousState.TemporaryStatViewOwnerIdentity,
+                    Math.Max(0, previousState.TemporaryStatViewTerminalReleaseSequence) + 1,
+                    1,
+                    0,
+                    previousState.TemporaryStatViewOwnerName)
+            };
+
+            AddTemporaryStatViewReleaseTraceEntry(
+                trace,
+                objectReleaseOrder,
+                "object",
+                previousState.TemporaryStatViewOwnerIdentity,
+                objectReleaseSequence,
+                objectReferenceCountBeforeRelease,
+                previousState.TemporaryStatViewOwnerName);
+            AddTemporaryStatViewReleaseTraceEntry(
+                trace,
+                parentLayerReleaseOrder,
+                "parentLayer",
+                previousState.TemporaryStatViewParentLayerIdentity,
+                parentLayerReleaseSequence,
+                parentLayerReferenceCountBeforeRelease,
+                previousState.TemporaryStatViewParentLayerName);
+            AddTemporaryStatViewReleaseTraceEntry(
+                trace,
+                mainLayerReleaseOrder,
+                "mainLayer",
+                previousState.TemporaryStatViewMainLayerIdentity,
+                mainLayerReleaseSequence,
+                mainLayerReferenceCountBeforeRelease,
+                previousState.TemporaryStatViewMainLayerName);
+            AddTemporaryStatViewReleaseTraceEntry(
+                trace,
+                shadowLayerReleaseOrder,
+                "shadowLayer",
+                previousState.TemporaryStatViewShadowLayerIdentity,
+                shadowLayerReleaseSequence,
+                shadowLayerReferenceCountBeforeRelease,
+                previousState.TemporaryStatViewShadowLayerName);
+
+            if (shadowCanvasRemoveOrder > 0)
+            {
+                trace.Add(FormatTemporaryStatViewReleaseTraceEntry(
+                    shadowCanvasRemoveOrder,
+                    "shadowCanvasRemove",
+                    previousState.ShadowCanvasOwnerLayerIdentity > 0
+                        ? previousState.ShadowCanvasOwnerLayerIdentity
+                        : previousState.TemporaryStatViewShadowLayerIdentity,
+                    shadowCanvasRemoveSequence,
+                    shadowCanvasReferenceCountBeforeRelease,
+                    shadowCanvasReferenceCountBeforeRelease,
+                    previousState.ShadowCanvasPath));
+            }
+
+            AddTemporaryStatViewReleaseTraceEntry(
+                trace,
+                shadowCanvasReleaseOrder,
+                "shadowCanvasRelease",
+                previousState.ShadowCanvasOwnerLayerIdentity > 0
+                    ? previousState.ShadowCanvasOwnerLayerIdentity
+                    : previousState.TemporaryStatViewShadowLayerIdentity,
+                shadowCanvasReleaseSequence,
+                shadowCanvasReferenceCountBeforeRelease,
+                previousState.ShadowCanvasPath);
+
+            trace.Sort((left, right) => ResolveTemporaryStatViewReleaseTraceOrder(left)
+                .CompareTo(ResolveTemporaryStatViewReleaseTraceOrder(right)));
+            return trace.ToArray();
+        }
+
+        private static void AddTemporaryStatViewReleaseTraceEntry(
+            List<string> trace,
+            int order,
+            string kind,
+            int identity,
+            int sequence,
+            int referenceCountBeforeRelease,
+            string ownerName)
+        {
+            if (order <= 0)
+            {
+                return;
+            }
+
+            trace.Add(FormatTemporaryStatViewReleaseTraceEntry(
+                order,
+                kind,
+                identity,
+                sequence,
+                referenceCountBeforeRelease,
+                0,
+                ownerName));
+        }
+
+        private static string FormatTemporaryStatViewReleaseTraceEntry(
+            int order,
+            string kind,
+            int identity,
+            int sequence,
+            int referenceCountBeforeRelease,
+            int referenceCountAfterRelease,
+            string ownerName)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}:{1}:identity={2}:sequence={3}:ref={4}->{5}:owner={6}",
+                Math.Max(0, order),
+                kind ?? string.Empty,
+                identity,
+                Math.Max(0, sequence),
+                Math.Max(0, referenceCountBeforeRelease),
+                Math.Max(0, referenceCountAfterRelease),
+                ownerName ?? string.Empty);
+        }
+
+        private static int ResolveTemporaryStatViewReleaseTraceOrder(string traceEntry)
+        {
+            if (string.IsNullOrWhiteSpace(traceEntry))
+            {
+                return int.MaxValue;
+            }
+
+            int separatorIndex = traceEntry.IndexOf(':');
+            return separatorIndex > 0
+                   && int.TryParse(
+                       traceEntry.Substring(0, separatorIndex),
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out int order)
+                ? order
+                : int.MaxValue;
         }
 
         private static int AdvanceTemporaryStatViewReleaseSequence(int previousSequence, int referenceCount)
@@ -10393,7 +10678,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentTime,
                 skill.SkillId,
                 LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion,
-                resolvedOwnerCount: explosiveDrops.Count);
+                resolvedOwnerCount: explosiveDrops.Count,
+                skill,
+                levelData);
 
             _dropPool.ConsumeMesosForExplosion(explosiveDrops, currentTime);
 
@@ -11913,6 +12200,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ResolveClientShowSkillEffectDelayRateFromActionSpeed(6);
             }
 
+            if (IsTownPortalDoActiveSkillFamily(skill)
+                || ResolveDoActiveSkillExecutionLane(skill) == ClientDoActiveSkillExecutionLane.Summon)
+            {
+                // `CUserLocal::DoActiveSkill_TownPortal@0x93be00` and
+                // `CUserLocal::DoActiveSkill_Summon@0x93c0f0` forward
+                // `nActionSpeed = 6` to `CUser::ShowSkillEffect`.
+                return ResolveClientShowSkillEffectDelayRateFromActionSpeed(6);
+            }
+
             if (skill == null
                 || skill.IsAttack
                 || skill.IsKeydownSkill
@@ -11922,8 +12218,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             // Client non-melee `CUserLocal::DoActiveSkill_*` callers such as Heal,
-            // Aura, RecoveryAura, TownPortal, Summon, SmokeShell, MobCapture,
-            // Flying, BoundJump, and WeaponBooster pass nActionSpeed = 0 into
+            // Aura, RecoveryAura, SmokeShell, MobCapture, Flying, BoundJump, and
+            // WeaponBooster pass nActionSpeed = 0 into
             // `CUser::ShowSkillEffect`; the shared owner then applies the same
             // `1000 * (speed + 10) / 16` rate used by melee/shoot/magic callers.
             return ResolveClientShowSkillEffectDelayRateFromActionSpeed(0);
@@ -15022,6 +15318,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     MarkClientBoundJumpFlightActive(currentTime);
                 }
 
+                TryRequestClientBoundJumpSkillUsePacket(skill, level, currentTime);
                 TryRequestClientBoundJumpShowSkillEffect(skill, level, currentTime);
                 TryRequestClientBoundJumpGeneralEffect(skill, currentTime);
                 return;
@@ -15061,6 +15358,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MarkClientBoundJumpFlightActive(currentTime);
             }
 
+            TryRequestClientBoundJumpSkillUsePacket(skill, level, currentTime);
             TryRequestClientBoundJumpShowSkillEffect(skill, level, currentTime);
             TryRequestClientBoundJumpGeneralEffect(skill, currentTime);
         }
@@ -15433,6 +15731,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MarkClientBoundJumpFlightActive(currentTime);
             }
 
+            TryRequestClientBoundJumpSkillUsePacket(skill, level, currentTime);
             TryRequestClientBoundJumpShowSkillEffect(skill, level, currentTime);
             TryRequestClientBoundJumpGeneralEffect(skill, currentTime);
             _rocketBoosterState = new RocketBoosterState
@@ -15485,6 +15784,56 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ApplyClientMovementImpact(float impactX, float impactY, int movePathAttribute)
         {
             ApplyClientMovementImpactForParity(_player?.Physics, impactX, impactY, movePathAttribute);
+        }
+
+        private void TryRequestClientBoundJumpSkillUsePacket(SkillData skill, int level, int currentTime)
+        {
+            if (OnClientBoundJumpSkillUsePacketPayloadReady == null
+                || !TryBuildClientBoundJumpSkillUsePacketPayload(
+                    skill,
+                    level,
+                    currentTime,
+                    out ClientBoundJumpSkillUsePacketPayload payload))
+            {
+                return;
+            }
+
+            OnClientBoundJumpSkillUsePacketPayloadReady.Invoke(payload);
+        }
+
+        internal static bool TryBuildClientBoundJumpSkillUsePacketPayload(
+            SkillData skill,
+            int level,
+            int currentTime,
+            out ClientBoundJumpSkillUsePacketPayload payload)
+        {
+            payload = default;
+            if (!BoundJumpParityProfile.IsDirectBoundJumpSkillId(skill?.SkillId ?? 0))
+            {
+                return false;
+            }
+
+            payload = new ClientBoundJumpSkillUsePacketPayload(
+                currentTime,
+                skill.SkillId,
+                ResolveClientDoActiveSummonMonsterPacketSkillLevel(level),
+                Delay: 0);
+            return true;
+        }
+
+        internal static byte[] EncodeClientBoundJumpSkillUsePacketPayloadForTesting(
+            ClientBoundJumpSkillUsePacketPayload payload)
+        {
+            // `SendSkillUseRequest@0x93e930` emits opcode 103 and, for the bound-jump
+            // call shape `(bitmap=0, mobCount=-1)`, only request time, skill id,
+            // one-byte level, and the trailing two-byte action delay.
+            using var stream = new MemoryStream(capacity: 11);
+            using var writer = new BinaryWriter(stream);
+            writer.Write(payload.RequestTime);
+            writer.Write(payload.SkillId);
+            writer.Write(unchecked((byte)payload.SkillLevel));
+            writer.Write(payload.Delay);
+            return stream.ToArray();
         }
 
         private void TryRequestClientBoundJumpShowSkillEffect(SkillData skill, int level, int currentTime)
@@ -17637,7 +17986,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 mode,
                 skill?.SkillId ?? 0,
                 localAttackAreaOwnerLane);
-            if (!CanResolveLocalAttackArea(worldHitbox, currentTime, skill.SkillId, resolvedOwnerLane))
+            if (!CanResolveLocalAttackArea(worldHitbox, currentTime, skill, levelData, resolvedOwnerLane))
                 return false;
 
             NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId);
@@ -17655,12 +18004,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 attackTargetSelectionMode);
             if (targets.Count == 0)
             {
-                TryNotifyLocalAttackAreaResolved(
-                    worldHitbox,
-                    currentTime,
-                    skill.SkillId,
-                    resolvedOwnerLane,
-                    resolvedOwnerCount: 0);
+            TryNotifyLocalAttackAreaResolved(
+                worldHitbox,
+                currentTime,
+                skill.SkillId,
+                resolvedOwnerLane,
+                resolvedOwnerCount: 0,
+                skill,
+                levelData);
                 return false;
             }
 
@@ -17675,7 +18026,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentTime,
                 skill.SkillId,
                 resolvedOwnerLane,
-                targets.Count);
+                targets.Count,
+                skill,
+                levelData);
 
             if (queueFollowUps && ShouldUseQueuedSerialAttack(skill))
             {
@@ -21795,6 +22148,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 repeatLayerObjectId,
                 sourceLayerObjectId,
                 frameSnapshot);
+            int insertCanvasResultObjectId = ResolveBulletAfterimageInsertCanvasResultObjectId(
+                repeatLayerObjectId,
+                sourceCanvasObjectId);
             int sourceCanvasRefCount = ResolveBulletAfterimageSourceCanvasRefCount(sourceCanvasObjectId);
             int sourceCanvasTemporaryAddRefCount =
                 ResolveBulletAfterimageSourceCanvasTemporaryAddRefCount(sourceCanvasObjectId);
@@ -21812,6 +22168,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SimulatedAlphaVectorObjectId = alphaVectorObjectId,
                 SimulatedSourceCanvasObjectId = sourceCanvasObjectId,
                 SimulatedInsertCanvasSequence = ResolveBulletAfterimageInsertCanvasSequence(sourceCanvasObjectId),
+                SimulatedInsertCanvasResultObjectId = insertCanvasResultObjectId,
+                SimulatedInsertCanvasResultReleaseCount =
+                    ResolveBulletAfterimageInsertCanvasResultReleaseCount(insertCanvasResultObjectId),
                 SimulatedAnimateMode = ResolveBulletAfterimageRepeatAnimateMode(repeatLayerObjectId),
                 SimulatedAnimateSequence = ResolveBulletAfterimageAnimateSequence(repeatLayerObjectId),
                 SimulatedRegisterRepeatAnimationSequence =
@@ -21870,6 +22229,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     sourceCanvasObjectId,
                     repeatAnimationStateObjectId,
                     listNodeObjectId,
+                    insertCanvasResultObjectId,
                     currentTime,
                     registeredRepeatIntervalMs,
                     clockwiseBounds)
@@ -22306,6 +22666,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : 0;
         }
 
+        internal static int ResolveBulletAfterimageInsertCanvasResultObjectId(
+            int repeatLayerObjectId,
+            int sourceCanvasObjectId)
+        {
+            if (repeatLayerObjectId <= 0 || sourceCanvasObjectId <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, HashCode.Combine(repeatLayerObjectId, sourceCanvasObjectId, "InsertCanvasResult") & int.MaxValue);
+        }
+
+        internal static int ResolveBulletAfterimageInsertCanvasResultReleaseCount(int insertCanvasResultObjectId)
+        {
+            return insertCanvasResultObjectId > 0 ? 1 : 0;
+        }
+
         internal static int ResolveBulletAfterimageRegisterRepeatAnimationSequence(int animationStateObjectId)
         {
             return animationStateObjectId > 0
@@ -22321,6 +22698,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int sourceCanvasObjectId,
             int animationStateObjectId,
             int listNodeObjectId,
+            int insertCanvasResultObjectId,
             int currentTime,
             int repeatIntervalMs,
             bool clockwiseBounds)
@@ -22345,7 +22723,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 new(BulletAfterimageNativeUpdateOperationKind.AnimateStop, repeatLayerObjectId, Sequence: ResolveBulletAfterimageAnimateSequence(repeatLayerObjectId)),
                 new(BulletAfterimageNativeUpdateOperationKind.RetainSourceCanvasTemporary, sourceCanvasObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: ResolveBulletAfterimageSourceCanvasTemporaryAddRefCount(sourceCanvasObjectId)),
                 new(BulletAfterimageNativeUpdateOperationKind.InsertCanvas, repeatLayerObjectId, RelatedObjectId: sourceCanvasObjectId, Sequence: ResolveBulletAfterimageInsertCanvasSequence(sourceCanvasObjectId)),
-                new(BulletAfterimageNativeUpdateOperationKind.ReleaseInsertCanvasResult, repeatLayerObjectId, RelatedObjectId: sourceCanvasObjectId),
+                new(BulletAfterimageNativeUpdateOperationKind.ReleaseInsertCanvasResult, insertCanvasResultObjectId, RelatedObjectId: sourceCanvasObjectId, RefCountDelta: -ResolveBulletAfterimageInsertCanvasResultReleaseCount(insertCanvasResultObjectId), Value: repeatLayerObjectId),
                 new(BulletAfterimageNativeUpdateOperationKind.ReleaseSourceCanvasTemporary, sourceCanvasObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: -ResolveBulletAfterimageSourceCanvasTemporaryReleaseCount(sourceCanvasObjectId))
             };
 
@@ -23585,7 +23963,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             int summonObjectId,
             Rectangle mobHitbox,
             Rectangle summonHitbox,
-            bool mobIsDazzled = false)
+            bool mobIsDazzled = false,
+            bool mobIsOurTeam = false,
+            bool mobIsSamePhase = true)
         {
             return isMobAttackable
                    && PacketOwnedSummonUpdateRules.IsClientBodyAttackMobCandidate(
@@ -23593,7 +23973,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                        summonObjectId,
                        mobHitbox,
                        summonHitbox,
-                       mobIsDazzled);
+                       mobIsDazzled,
+                       mobIsOurTeam,
+                       mobIsSamePhase);
         }
 
         internal static SkillAnimation ResolveClientTargetHitAnimation(
@@ -23863,9 +24245,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            return randomHitBranchOrdinal.HasValue
+            int clientRandomBit = randomHitBranchOrdinal.HasValue
                 ? Math.Clamp(randomHitBranchOrdinal.Value, 0, 1)
                 : Random.Next(2);
+            // `CSkill_HitAni::CreateDefault` starts from the root afterimage UOL,
+            // then appends "2" when the native random bit is zero and "1"
+            // otherwise. Return the resolved branch ordinal consumed by
+            // `TryResolveClientDefaultHitAnimationBranchName`.
+            return clientRandomBit == 0 ? 1 : 0;
         }
 
         private static string ResolveClientDefaultHitAnimationRoot(int weaponCode, int weaponItemId)
@@ -28092,10 +28479,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             LocalAttackAreaOwnerLane ownerLane,
             int resolvedOwnerCount)
         {
+            TryNotifyLocalAttackAreaResolved(
+                worldHitbox,
+                currentTime,
+                skillId,
+                ownerLane,
+                resolvedOwnerCount,
+                skill: null,
+                levelData: null);
+        }
+
+        private void TryNotifyLocalAttackAreaResolved(
+            Rectangle worldHitbox,
+            int currentTime,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane,
+            int resolvedOwnerCount,
+            SkillData skill,
+            SkillLevelData levelData)
+        {
             if (worldHitbox.Width <= 0
                 || worldHitbox.Height <= 0
                 || skillId <= 0
-                || !ShouldDispatchLocalAttackAreaResolution(skillId, ownerLane, resolvedOwnerCount))
+                || !ShouldDispatchLocalAttackAreaResolution(skill, levelData, skillId, ownerLane, resolvedOwnerCount))
             {
                 return;
             }
@@ -28114,6 +28520,39 @@ namespace HaCreator.MapSimulator.Character.Skills
             int skillId,
             LocalAttackAreaOwnerLane ownerLane)
         {
+            return CanResolveLocalAttackArea(
+                worldHitbox,
+                currentTime,
+                skillId,
+                ownerLane,
+                skill: null,
+                levelData: null);
+        }
+
+        private bool CanResolveLocalAttackArea(
+            Rectangle worldHitbox,
+            int currentTime,
+            SkillData skill,
+            SkillLevelData levelData,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            return CanResolveLocalAttackArea(
+                worldHitbox,
+                currentTime,
+                skill?.SkillId ?? 0,
+                ownerLane,
+                skill,
+                levelData);
+        }
+
+        private bool CanResolveLocalAttackArea(
+            Rectangle worldHitbox,
+            int currentTime,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane,
+            SkillData skill,
+            SkillLevelData levelData)
+        {
             if (worldHitbox.Width <= 0
                 || worldHitbox.Height <= 0
                 || skillId <= 0
@@ -28123,7 +28562,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (!ShouldRunLocalAttackAreaPreflight(skillId, ownerLane))
+            if (!ShouldRunLocalAttackAreaPreflight(skill, levelData, skillId, ownerLane))
             {
                 return true;
             }
@@ -28146,6 +28585,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && ShouldRunLocalAttackAreaPreflight(skillId, ownerLane);
         }
 
+        internal static bool ShouldDispatchLocalAttackAreaResolution(
+            SkillData skill,
+            SkillLevelData levelData,
+            LocalAttackAreaOwnerLane ownerLane,
+            int resolvedOwnerCount)
+        {
+            return ShouldDispatchLocalAttackAreaResolution(
+                skill,
+                levelData,
+                skill?.SkillId ?? 0,
+                ownerLane,
+                resolvedOwnerCount);
+        }
+
+        internal static bool ShouldDispatchLocalAttackAreaResolution(
+            SkillData skill,
+            SkillLevelData levelData,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane,
+            int resolvedOwnerCount)
+        {
+            return ShouldDispatchLocalAttackAreaResolution(skillId, ownerLane, resolvedOwnerCount)
+                   && IsLocalAttackOwnedAffectedAreaCandidateForSkillManager(skill, levelData, ownerLane);
+        }
+
         private static bool IsClientNoTargetLocalAttackAreaLifecycleBranch(
             LocalAttackAreaOwnerLane ownerLane,
             int skillId)
@@ -28163,6 +28627,40 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && !IsKnownNonOwnerLocalAttackAffectedAreaSkillId(skillId)
                    && !IsClientExplicitLocalAttackAreaOwnerLaneMismatch(ownerLane, skillId)
                    && !IsClientPresentationOnlyMagicLocalAttackAreaBranch(ownerLane, skillId);
+        }
+
+        internal static bool ShouldRunLocalAttackAreaPreflight(
+            SkillData skill,
+            SkillLevelData levelData,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            return ShouldRunLocalAttackAreaPreflight(
+                skill,
+                levelData,
+                skill?.SkillId ?? 0,
+                ownerLane);
+        }
+
+        internal static bool ShouldRunLocalAttackAreaPreflight(
+            SkillData skill,
+            SkillLevelData levelData,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            return ShouldRunLocalAttackAreaPreflight(skillId, ownerLane)
+                   && IsLocalAttackOwnedAffectedAreaCandidateForSkillManager(skill, levelData, ownerLane);
+        }
+
+        private static bool IsLocalAttackOwnedAffectedAreaCandidateForSkillManager(
+            SkillData skill,
+            SkillLevelData levelData,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            return skill == null
+                   || HaCreator.MapSimulator.MapSimulator.IsLocalOwnedAffectedAreaCandidate(
+                       skill,
+                       levelData,
+                       ownerLane);
         }
 
         private static bool IsClientPresentationOnlyMagicLocalAttackAreaBranch(
@@ -31792,6 +32290,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
+                if (activeTemporaryStatsByLabel.ContainsKey(WaterShieldBuffLabel))
+                {
+                    labels = new[] { WaterShieldBuffLabel };
+                    return true;
+                }
+
                 if (activeTemporaryStatsByLabel.ContainsKey(BlessingArmorBuffLabel))
                 {
                     labels = new[] { BlessingArmorBuffLabel };
@@ -32143,6 +32647,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if ((string.Equals(propertyName, "asrR", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(propertyName, "terR", StringComparison.OrdinalIgnoreCase))
+                && activeTemporaryStatsByLabel.ContainsKey(WaterShieldBuffLabel))
+            {
+                labels = new[] { WaterShieldBuffLabel };
+                return true;
+            }
+
             if (string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase)
                 && activeTemporaryStatsByLabel.ContainsKey(StanceBuffLabel)
                 && !activeTemporaryStatsByLabel.ContainsKey(ChargeBuffLabel))
@@ -32222,7 +32734,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(contextualFamilyOwnerLabel, MagicShieldBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, EnrageBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, HolyShieldBuffLabel, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(contextualFamilyOwnerLabel, BlessingArmorBuffLabel, StringComparison.OrdinalIgnoreCase);
+                || string.Equals(contextualFamilyOwnerLabel, BlessingArmorBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contextualFamilyOwnerLabel, WaterShieldBuffLabel, StringComparison.OrdinalIgnoreCase);
             if (!isPayloadlessNoDirectFamily)
             {
                 return false;
@@ -32482,6 +32995,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && activeTemporaryStatsByLabel.ContainsKey(HolyShieldBuffLabel))
             {
                 label = HolyShieldBuffLabel;
+                return true;
+            }
+
+            if ((isX
+                    || string.Equals(propertyName, "asrR", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(propertyName, "terR", StringComparison.OrdinalIgnoreCase))
+                && activeTemporaryStatsByLabel.ContainsKey(WaterShieldBuffLabel))
+            {
+                label = WaterShieldBuffLabel;
                 return true;
             }
 
@@ -33594,6 +34116,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "magic shield", "damage absorption"), MagicShieldBuffLabel);
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "holy shield", "holy magic shell"), HolyShieldBuffLabel);
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "blessing armor", "divine shield"), BlessingArmorBuffLabel);
+            TrackIfMissing(temporaryStats, ContainsAny(combinedText, "water shield"), WaterShieldBuffLabel);
             bool hasWaterShieldPlaceholderProfile = hasLevelData
                 && levelData.X > 0
                 && levelData.Y <= 0

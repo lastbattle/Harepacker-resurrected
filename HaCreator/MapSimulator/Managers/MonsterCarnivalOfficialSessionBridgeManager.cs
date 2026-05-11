@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
+        internal int InitializedProxySessionGeneration { get; private set; }
         internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
             HasConnectedSession,
             HasPassiveEstablishedSocketPair,
@@ -1022,6 +1023,7 @@ namespace HaCreator.MapSimulator.Managers
 
             _currentInitializedProxySessionId = proxySessionId;
             _currentInitializedSessionVersion = sessionVersion;
+            InitializedProxySessionGeneration++;
 
             int cleared = ClearCurrentSessionScopedEvidence(clearRecentPackets: true);
             return cleared;

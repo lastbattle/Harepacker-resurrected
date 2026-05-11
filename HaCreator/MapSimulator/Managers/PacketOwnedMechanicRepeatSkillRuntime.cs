@@ -2883,6 +2883,14 @@ namespace HaCreator.MapSimulator.Managers
                 or "side"
                 or "source"
                 or "participant"
+                or "kind"
+                or "type"
+                or "comparisonrole"
+                or "comparisonkind"
+                or "capturetype"
+                or "capturekind"
+                or "streamtype"
+                or "streamkind"
                 or "lane"
                 or "name"
                 or "label";
@@ -3363,6 +3371,11 @@ namespace HaCreator.MapSimulator.Managers
                     bytes = parsed.ToArray();
                     return bytes.Length > 0;
                 case JsonValueKind.Object:
+                    if (TryParseSg88PacketComparisonJsonIndexedByteMap(value, out bytes))
+                    {
+                        return true;
+                    }
+
                     foreach (JsonProperty property in value.EnumerateObject())
                     {
                         if (!IsSg88MismatchPairJsonScalarValueLabel(property.Name)
@@ -3384,6 +3397,40 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static bool TryParseSg88PacketComparisonJsonIndexedByteMap(JsonElement value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (value.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            SortedDictionary<int, byte> parsedByIndex = new();
+            foreach (JsonProperty property in value.EnumerateObject())
+            {
+                if (!TryParseSg88MismatchPairPropertyByteIndex(property.Name, out int byteIndex)
+                    || !TryParseSg88MismatchPairJsonByteValue(property.Value, out byte byteValue))
+                {
+                    return false;
+                }
+
+                parsedByIndex[byteIndex] = byteValue;
+            }
+
+            if (parsedByIndex.Count == 0
+                || parsedByIndex.First().Key != 0
+                || parsedByIndex.Last().Key != parsedByIndex.Count - 1)
+            {
+                return false;
+            }
+
+            bytes = parsedByIndex
+                .OrderBy(pair => pair.Key)
+                .Select(pair => pair.Value)
+                .ToArray();
+            return bytes.Length > 0;
+        }
+
         private static bool TryParseSg88PacketComparisonHexBytes(string value, out byte[] bytes)
         {
             bytes = Array.Empty<byte>();
@@ -3400,6 +3447,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (TryParseSg88PacketComparisonDecimalByteList(trimmed, out bytes))
+            {
+                return true;
+            }
+
+            if (TryParseSg88PacketComparisonEscapedHexBytes(trimmed, out bytes))
             {
                 return true;
             }
@@ -3460,6 +3512,43 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+        }
+
+        private static bool TryParseSg88PacketComparisonEscapedHexBytes(string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            MatchCollection matches = Regex.Matches(
+                value,
+                @"(?:\\x|\\u00)(?<byte>[0-9A-Fa-f]{2})",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            if (matches.Count == 0)
+            {
+                return false;
+            }
+
+            List<byte> parsed = new(matches.Count);
+            foreach (Match match in matches.Cast<Match>())
+            {
+                if (!byte.TryParse(
+                        match.Groups["byte"].Value,
+                        System.Globalization.NumberStyles.HexNumber,
+                        null,
+                        out byte parsedByte))
+                {
+                    bytes = Array.Empty<byte>();
+                    return false;
+                }
+
+                parsed.Add(parsedByte);
+            }
+
+            bytes = parsed.ToArray();
+            return bytes.Length > 0;
         }
 
         private static bool TryParseSg88PacketComparisonDecimalByteList(string value, out byte[] bytes)

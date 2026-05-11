@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Character
         DamageDown,
         PhysicalDefenseDown,
         MagicDefenseDown,
+        ElementalWeaken,
         BattlefieldFlag
     }
 

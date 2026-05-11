@@ -943,6 +943,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
+                ResetSessionScopedMassacreRecoveryState(e.ProxySessionId);
                 int flushed = FlushQueuedOutboundPacketsViaProxy();
                 LastStatus = flushed > 0
                     ? $"Massacre official-session bridge initialized Maple crypto and flushed {flushed} queued outbound packet(s)."
@@ -1062,6 +1063,27 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return flushed;
+        }
+
+        private void ResetSessionScopedMassacreRecoveryState(long? proxySessionId)
+        {
+            _sessionValueInfoState.Clear();
+            if (!proxySessionId.HasValue)
+            {
+                _liveRecoveredInboundEvidence = null;
+                _liveOutboundInjectionEvidence = null;
+                return;
+            }
+
+            if (!IsSameProxySession(proxySessionId, _liveRecoveredInboundEvidence?.ProxySessionId))
+            {
+                _liveRecoveredInboundEvidence = null;
+            }
+
+            if (!IsSameProxySession(proxySessionId, _liveOutboundInjectionEvidence?.ProxySessionId))
+            {
+                _liveOutboundInjectionEvidence = null;
+            }
         }
 
         internal static bool TryBuildOpcodeFramedPacket(int opcode, byte[] payload, out byte[] rawPacket, out string error)

@@ -229,7 +229,8 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null,
         bool ClearsGuildData = false,
         int GuildDialogPartyId = 0,
-        string GuildDialogMasterName = null);
+        string GuildDialogMasterName = null,
+        bool OpensGuildNpcConversation = false);
 
     internal readonly record struct SocialListClientGuildMemberEntry(
         int MemberId,
@@ -989,10 +990,11 @@ namespace HaCreator.MapSimulator.Interaction
                                 0,
                                 0,
                                 null,
-                                null,
+                            null,
                             RawSubtype: rawSubtype,
                             UsesSharedResultNoticeFallback: false,
-                            ExplicitBranchSummary: "Client OnGuildResult(3) followed the party-boss create-guild branch.");
+                            ExplicitBranchSummary: "Client OnGuildResult(3) followed the party-boss create-guild NPC branch.",
+                            OpensGuildNpcConversation: true);
                         return true;
                     }
 

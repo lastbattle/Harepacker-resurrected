@@ -4364,6 +4364,8 @@ namespace HaCreator.MapSimulator
                 statusBarUi.MenuRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
                 statusBarUi.SystemRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.System, MapSimulatorWindowNames.Menu);
                 statusBarUi.ChannelRequested = HandleUtilityChannelPopupRequested;
+                statusBarUi.BuffCancelRequested = skillId =>
+                    RequestStatusBarBuffCancelForClientCancelIngress(skillId, currTickCount);
             }
             if (uiWindowManager != null)
             {
@@ -35252,22 +35254,9 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
             IReadOnlyList<MovePathElement> encodedPath)
         {
-            if (encodedPath == null
-                || encodedPath.Count == 0
-                || _playerManager?.LatestLocalClientKeyPadState is not byte keyPadState)
-            {
-                return Array.Empty<byte>();
-            }
-
-            int stateCount = Math.Min(encodedPath.Count, byte.MaxValue);
-            byte normalizedKeyPadState = (byte)(keyPadState & 0x0F);
-            byte[] states = new byte[stateCount];
-            for (int i = 0; i < states.Length; i++)
-            {
-                states[i] = normalizedKeyPadState;
-            }
-
-            return states;
+            return CMovePathClientPacketCodec.ResolveClientFlushTailPassiveKeyPadStates(
+                encodedPath,
+                _playerManager?.LatestLocalClientKeyPadState);
         }
 
         internal static bool ShouldAdmitPortalOwnedMovePathFlushCadence(
@@ -38300,6 +38289,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
             _playerManager.Skills.OnClientGeneralEffectRequested = HandleAnimationDisplayerClientGeneralEffectRequested;
             _playerManager.Skills.OnClientDoActiveSummonMonsterPacketPayloadReady = HandleClientDoActiveSummonMonsterPacketPayloadReady;
+            _playerManager.Skills.OnClientBoundJumpSkillUsePacketPayloadReady = HandleClientBoundJumpSkillUsePacketPayloadReady;
             _playerManager.Skills.OnClientDoActiveTownPortalPacketPayloadReady = HandleClientDoActiveTownPortalPacketPayloadReady;
             _playerManager.Skills.OnSwallowAbsorbRequested = HandleAnimationDisplayerSwallowAbsorbRequested;
             _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
@@ -40110,6 +40100,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryBuildLocalSkillCastClientSkillEffectRequestForTesting(castInfo, out SkillUseEffectRequest request)
+                && TryRegisterAnimationDisplayerLocalSkillUseRequest(request))
+            {
+                castInfo.SuppressEffectAnimation = true;
+                return true;
+            }
+
             return TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
@@ -40117,6 +40114,43 @@ namespace HaCreator.MapSimulator
             SkillManager.ClientDoActiveSummonMonsterPacketPayload payload)
         {
             byte[] encodedPayload = SkillManager.EncodeClientDoActiveSummonMonsterPacketPayloadForTesting(payload);
+            string bridgeStatus = "live bridge unavailable";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out bridgeStatus))
+            {
+                return;
+            }
+
+            string outboxStatus = "packet outbox unavailable";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out outboxStatus))
+            {
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    encodedPayload,
+                    out _))
+            {
+                return;
+            }
+
+            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+                SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                encodedPayload,
+                out _);
+        }
+
+        private void HandleClientBoundJumpSkillUsePacketPayloadReady(
+            SkillManager.ClientBoundJumpSkillUsePacketPayload payload)
+        {
+            byte[] encodedPayload = SkillManager.EncodeClientBoundJumpSkillUsePacketPayloadForTesting(payload);
             string bridgeStatus = "live bridge unavailable";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                     SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
@@ -44397,9 +44431,17 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewMainLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewMainLayerReleaseReferenceCountAfter;
             renderData.TemporaryStatViewShadowLayerReleaseReferenceCountBefore = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountBefore;
             renderData.TemporaryStatViewShadowLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountAfter;
+            renderData.TemporaryStatViewReleaseMutationTrace = buffEntry.TemporaryStatViewReleaseMutationTrace ?? Array.Empty<string>();
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
+            renderData.SetLeftSequence = buffEntry.SetLeftSequence;
+            renderData.SetLeftPreviousValue = buffEntry.SetLeftPreviousValue;
+            renderData.SetLeftNewValue = buffEntry.SetLeftNewValue;
+            renderData.SetLeftThresholdValue = buffEntry.SetLeftThresholdValue;
+            renderData.SetLeftUsedVehicleThreshold = buffEntry.SetLeftUsedVehicleThreshold;
+            renderData.SetLeftTriggeredLowAnimation = buffEntry.SetLeftTriggeredLowAnimation;
+            renderData.SetLeftMutationTrace = buffEntry.SetLeftMutationTrace ?? Array.Empty<string>();
             renderData.ShadowIndex = buffEntry.ShadowIndex;
             renderData.ShadowIndexUpdateSequence = buffEntry.ShadowIndexUpdateSequence;
             renderData.MainLayerAnimationSequence = buffEntry.MainLayerAnimationSequence;

@@ -259,6 +259,8 @@ namespace HaCreator.MapSimulator.Physics
                     tail.YOffset = current.YOffset;
                     tail.RandomCount = current.RandomCount;
                     tail.ActualRandomCount = current.ActualRandomCount;
+                    tail.HasClientKeyPadState = current.HasClientKeyPadState;
+                    tail.ClientKeyPadState = current.ClientKeyPadState;
                     normalized[tailIndex] = tail;
                     continue;
                 }
@@ -314,6 +316,8 @@ namespace HaCreator.MapSimulator.Physics
                     tail.YOffset = current.YOffset;
                     tail.RandomCount = current.RandomCount;
                     tail.ActualRandomCount = current.ActualRandomCount;
+                    tail.HasClientKeyPadState = current.HasClientKeyPadState;
+                    tail.ClientKeyPadState = current.ClientKeyPadState;
                     normalized[tailIndex] = tail;
                     normalizedKeyPadStates[tailIndex] = currentKeyPadState;
                     continue;
@@ -388,6 +392,39 @@ namespace HaCreator.MapSimulator.Physics
             consumedPostFlushCarry |= prependedPostFlushCarry;
 
             return NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
+        }
+
+        internal static IReadOnlyList<byte> ResolveClientFlushTailPassiveKeyPadStates(
+            IReadOnlyList<MovePathElement> encodedPath,
+            byte? fallbackKeyPadState = null)
+        {
+            if (encodedPath == null || encodedPath.Count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            bool hasAnySampledState = fallbackKeyPadState.HasValue;
+            for (int i = 0; i < encodedPath.Count && !hasAnySampledState; i++)
+            {
+                hasAnySampledState = encodedPath[i].HasClientKeyPadState;
+            }
+
+            if (!hasAnySampledState)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte fallback = (byte)(fallbackKeyPadState.GetValueOrDefault() & 0x0F);
+            byte[] states = new byte[Math.Min(encodedPath.Count, byte.MaxValue)];
+            for (int i = 0; i < states.Length; i++)
+            {
+                MovePathElement element = encodedPath[i];
+                states[i] = element.HasClientKeyPadState
+                    ? (byte)(element.ClientKeyPadState & 0x0F)
+                    : fallback;
+            }
+
+            return states;
         }
 
         internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(

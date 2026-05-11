@@ -1493,6 +1493,18 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataRecordOwnershipEntries = DecorateCharacterDataRecordOwnershipRawBytes(
                         snapshot.CharacterDataRecordOwnershipEntries,
                         snapshot.CharacterDataSectionStartOffsetsByFlag,
+                        rawBytes),
+                    BackwardUpdateCashMutationSequence = DecorateBackwardUpdateCashMutationRawBytes(
+                        snapshot.BackwardUpdateCashMutationSequence,
+                        snapshot.CharacterDataSectionStartOffsetsByFlag,
+                        rawBytes),
+                    BackwardUpdateCashMutationSequenceByType = DecorateBackwardUpdateCashMutationRawBytesByType(
+                        snapshot.BackwardUpdateCashMutationSequenceByType,
+                        snapshot.CharacterDataSectionStartOffsetsByFlag,
+                        rawBytes),
+                    BackwardUpdateCashMutationSequenceByFlag = DecorateBackwardUpdateCashMutationRawBytesByFlag(
+                        snapshot.BackwardUpdateCashMutationSequenceByFlag,
+                        snapshot.CharacterDataSectionStartOffsetsByFlag,
                         rawBytes)
                 };
             }
@@ -1596,6 +1608,90 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return decoratedEntries;
+        }
+
+        private static IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> DecorateBackwardUpdateCashMutationRawBytesByType(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByType,
+            IReadOnlyDictionary<ulong, int> sectionStartOffsetsByFlag,
+            byte[] rawBytes)
+        {
+            if (sequencesByType == null || sequencesByType.Count == 0)
+            {
+                return sequencesByType;
+            }
+
+            Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> decorated = new(sequencesByType.Count);
+            foreach (KeyValuePair<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequence in sequencesByType)
+            {
+                decorated[sequence.Key] = DecorateBackwardUpdateCashMutationRawBytes(
+                    sequence.Value,
+                    sectionStartOffsetsByFlag,
+                    rawBytes);
+            }
+
+            return decorated;
+        }
+
+        private static IReadOnlyDictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> DecorateBackwardUpdateCashMutationRawBytesByFlag(
+            IReadOnlyDictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByFlag,
+            IReadOnlyDictionary<ulong, int> sectionStartOffsetsByFlag,
+            byte[] rawBytes)
+        {
+            if (sequencesByFlag == null || sequencesByFlag.Count == 0)
+            {
+                return sequencesByFlag;
+            }
+
+            Dictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> decorated = new(sequencesByFlag.Count);
+            foreach (KeyValuePair<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequence in sequencesByFlag)
+            {
+                decorated[sequence.Key] = DecorateBackwardUpdateCashMutationRawBytes(
+                    sequence.Value,
+                    sectionStartOffsetsByFlag,
+                    rawBytes);
+            }
+
+            return decorated;
+        }
+
+        private static IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> DecorateBackwardUpdateCashMutationRawBytes(
+            IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> entries,
+            IReadOnlyDictionary<ulong, int> sectionStartOffsetsByFlag,
+            byte[] rawBytes)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return entries;
+            }
+
+            List<PacketCharacterDataBackwardUpdateCashMutation> decoratedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketCharacterDataBackwardUpdateCashMutation entry = entries[i];
+                ulong sectionFlag = ResolveCharacterDataInventoryFlag(entry.InventoryType);
+                int sectionStartOffset = ResolveCharacterDataSectionMapValue(sectionStartOffsetsByFlag, sectionFlag);
+                int absoluteStartOffset = checked(sectionStartOffset + Math.Max(0, entry.SectionRecordStartOffset));
+                int absoluteEndOffset = checked(sectionStartOffset + Math.Max(0, entry.SectionRecordEndOffset));
+                decoratedEntries.Add(entry with
+                {
+                    RawBytes = SliceCharacterDataRawBytes(rawBytes, absoluteStartOffset, absoluteEndOffset)
+                });
+            }
+
+            return decoratedEntries;
+        }
+
+        private static ulong ResolveCharacterDataInventoryFlag(InventoryType inventoryType)
+        {
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                if (CharacterDataInventoryOrder[inventoryIndex] == inventoryType)
+                {
+                    return CharacterDataInventorySectionFlags[inventoryIndex];
+                }
+            }
+
+            return 0;
         }
 
         private static byte[] SliceCharacterDataRawBytes(byte[] rawBytes, int startOffset, int endOffset)
@@ -4030,7 +4126,9 @@ namespace HaCreator.MapSimulator.Interaction
                         slot.FieldByteCounts,
                         slot.NativeIndex,
                         slot.SectionRecordStartOffset,
-                        slot.SectionRecordEndOffset);
+                        slot.SectionRecordEndOffset,
+                        MutationSequenceIndex: mutationSequenceForType.Count,
+                        MutationOperation: ResolveBackwardUpdateCashMutationOperation(usedFallback, usedReplacement));
                     mutationSequenceForType.Add(mutation);
                     aggregatedMutationSequence.Add(mutation);
                     mutationEffectivePositionsForType[slot.CashItemSerialNumber] = effectivePosition;
@@ -4180,6 +4278,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 1;
+        }
+
+        private static string ResolveBackwardUpdateCashMutationOperation(bool usedFallback, bool usedReplacement)
+        {
+            if (!usedFallback)
+            {
+                return PacketCharacterDataBackwardUpdateCashMutation.ValidatedPositionOperation;
+            }
+
+            return usedReplacement
+                ? PacketCharacterDataBackwardUpdateCashMutation.FallbackReplacementOperation
+                : PacketCharacterDataBackwardUpdateCashMutation.FallbackInsertionOperation;
         }
 
         private static BackwardUpdateCashItemPositionEvaluation EvaluateBackwardUpdateCashItemPosition(
@@ -6714,7 +6824,15 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<string, int> CarriedItemFieldByteCounts = null,
         int NativeIndex = -1,
         int SectionRecordStartOffset = -1,
-        int SectionRecordEndOffset = -1);
+        int SectionRecordEndOffset = -1,
+        int MutationSequenceIndex = -1,
+        string MutationOperation = null,
+        byte[] RawBytes = null)
+    {
+        internal const string ValidatedPositionOperation = "ValidatedPosition";
+        internal const string FallbackInsertionOperation = "FallbackInsertion";
+        internal const string FallbackReplacementOperation = "FallbackReplacement";
+    }
 
     internal readonly record struct PacketCharacterDataTwoIntValueRecord(
         int Value1,

@@ -868,6 +868,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
+            Player.Physics.SetClientKeyPadStateProvider(() => _latestLocalClientKeyPadState);
 
             Player.OnAttackHitbox = (combatPlayer, hitbox) =>
             {
@@ -2050,7 +2051,8 @@ namespace HaCreator.MapSimulator.Character
                 _currentMobStatusState.HpRecoveryReversed,
                 _currentMobStatusState.MaxHpPercentCap,
                 _currentMobStatusState.MaxMpPercentCap,
-                _currentMobStatusState.HpRecoveryDamagePercent);
+                _currentMobStatusState.HpRecoveryDamagePercent,
+                _currentMobStatusState.RecoveryBlocked);
             Player?.SetExternalMoveSpeedMultiplier(_currentMobStatusState.MoveSpeedMultiplier);
             Combat?.SetAdditionalPlayerMissChance(_currentMobStatusState.AdditionalMissChance);
         }

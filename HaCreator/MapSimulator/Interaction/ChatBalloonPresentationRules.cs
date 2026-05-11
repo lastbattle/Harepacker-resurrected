@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class ChatBalloonPresentationRules
     {
+        internal const int ADBoardLayerCanvasIndex = 0;
+        internal const int ADBoardHoverLayerCanvasIndex = 3;
         internal const int MiniRoomCountStringPoolId = 0x1A15;
         internal const string MiniRoomCountFallbackFormat = "%d";
         internal const int MiniRoomTitleClientLineWidth = 100;
@@ -271,6 +273,19 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{ADBoardButtonOwnerPath}[{(int)canvas}]";
         }
 
+        internal static ChatBalloonADBoardButtonCopyOperation ResolveADBoardButtonCopyOperation(
+            ChatBalloonADBoardButtonCanvasKind canvas,
+            Point buttonOffset)
+        {
+            return new ChatBalloonADBoardButtonCopyOperation(
+                ADBoardMouseMoveUsesHoverCanvasIndex(canvas)
+                    ? ADBoardHoverLayerCanvasIndex
+                    : ADBoardLayerCanvasIndex,
+                ResolveADBoardButtonCanvasSource(canvas),
+                buttonOffset,
+                ADBoardPressedAlpha);
+        }
+
         internal static bool ADBoardMouseDown(Rectangle layerBounds, Point buttonOffset, Point point, ref bool pressed)
         {
             if (!MousePointCheck(layerBounds, buttonOffset, point))
@@ -291,6 +306,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             pressed = false;
             return MousePointCheck(layerBounds, buttonOffset, point);
+        }
+
+        private static bool ADBoardMouseMoveUsesHoverCanvasIndex(ChatBalloonADBoardButtonCanvasKind canvas)
+        {
+            return canvas == ChatBalloonADBoardButtonCanvasKind.Hover;
         }
 
         internal static ChatBalloonCanvasComposition ResolveCreateCanvasComposition(
@@ -544,6 +564,12 @@ namespace HaCreator.MapSimulator.Interaction
         string SourcePath,
         Point Destination,
         Point SourceSize,
+        int Alpha);
+
+    internal readonly record struct ChatBalloonADBoardButtonCopyOperation(
+        int LayerCanvasIndex,
+        string SourceCanvas,
+        Point Destination,
         int Alpha);
 
     internal sealed class ChatBalloonMiniRoomComposition

@@ -741,12 +741,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (msg == WmImeComposition && ShouldHandleClientOwnedImeResultComposition(ExtractLowInt32(lParam)))
             {
-                if (TryApplyClientOwnedImeResultComposition())
+                bool appliedResultText = TryApplyClientOwnedImeResultComposition();
+                if (!appliedResultText)
                 {
-                    UpdateImePlacement();
-                    SynchronizeState();
-                    return IntPtr.Zero;
+                    ClearClientOwnedImeResultCompositionState();
                 }
+
+                UpdateImePlacement();
+                SynchronizeState();
+                return IntPtr.Zero;
             }
 
             int virtualKey = ExtractLowInt32(wParam);
@@ -1404,9 +1407,15 @@ namespace HaCreator.MapSimulator.UI
         {
             // IME result strings can enter a hosted Win32 EDIT without WM_CHAR,
             // bypassing the byte-oriented `nHorzMax` path recovered from
-            // `CCtrlEdit`. Keep committed IME text on the same replacement seam
-            // as key, paste, and programmatic text insertion.
+            // `CCtrlEdit`. `CCtrlEdit::OnIMEResult` owns even empty result
+            // callbacks so candidate/composition cleanup does not fall through
+            // to desktop EDIT behavior.
             return (((uint)compositionLParam) & GcsResultStr) != 0;
+        }
+
+        internal static bool ShouldSuppressDesktopEditImeResultFallback(int compositionLParam)
+        {
+            return ShouldHandleClientOwnedImeResultComposition(compositionLParam);
         }
 
         internal static bool ShouldHandleClientOwnedEditCommand(uint msg)
@@ -1638,6 +1647,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 ImmReleaseContext(_editHandle, inputContext);
             }
+        }
+
+        private void ClearClientOwnedImeResultCompositionState()
+        {
+            // `CCtrlEdit::OnIMEResult` clears composition extensions and destroys
+            // `m_pIMECandWnd` before optional insertion. The hosted seam cannot
+            // own MapleStory's native candidate window, but it can keep the IMM
+            // composition from continuing through the fallback EDIT proc.
+            CancelImeComposition();
         }
 
         private bool TryReadImeCompositionString(int stringType, out string text)

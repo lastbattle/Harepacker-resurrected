@@ -260,6 +260,8 @@ namespace HaCreator.MapSimulator
             int EditImeCandidateFormCount,
             uint EditImeCompositionStyle,
             int EditFontStringPoolId,
+            bool EditCreateParamGetsFontBstrFromStringPool,
+            bool EditCreateParamReleasesFontBstrOnDestroy,
             bool OkButtonVisible,
             bool OkButtonEnabled,
             bool OkButtonFocused,
@@ -275,7 +277,9 @@ namespace HaCreator.MapSimulator
             int OkButtonVisualHeight,
             int OkButtonFrameOriginX,
             int OkButtonFrameOriginY,
-            string OkButtonResourcePath)
+            string OkButtonResourcePath,
+            bool OkButtonCreateParamGetsUolFromStringPool,
+            bool OkButtonCreateParamReleasesUolOnDestroy)
         {
             internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
                 Created: false,
@@ -311,6 +315,8 @@ namespace HaCreator.MapSimulator
                 EditImeCandidateFormCount: 0,
                 EditImeCompositionStyle: 0,
                 EditFontStringPoolId: 0,
+                EditCreateParamGetsFontBstrFromStringPool: false,
+                EditCreateParamReleasesFontBstrOnDestroy: false,
                 OkButtonVisible: false,
                 OkButtonEnabled: false,
                 OkButtonFocused: false,
@@ -326,7 +332,9 @@ namespace HaCreator.MapSimulator
                 OkButtonVisualHeight: 0,
                 OkButtonFrameOriginX: 0,
                 OkButtonFrameOriginY: 0,
-                OkButtonResourcePath: null);
+                OkButtonResourcePath: null,
+                OkButtonCreateParamGetsUolFromStringPool: false,
+                OkButtonCreateParamReleasesUolOnDestroy: false);
         }
 
         internal readonly record struct InitialQuizOwnerWindowCreateSnapshot(
@@ -2022,6 +2030,8 @@ namespace HaCreator.MapSimulator
                 EditImeCandidateFormCount: NativeAntiMacroEditHost.CandidateListCount,
                 EditImeCompositionStyle: NativeAntiMacroEditHost.ImeExcludeStyle,
                 EditFontStringPoolId: AntiMacroEditControl.ClientFontStringPoolId,
+                EditCreateParamGetsFontBstrFromStringPool: true,
+                EditCreateParamReleasesFontBstrOnDestroy: true,
                 OkButtonVisible: okButtonVisible,
                 OkButtonEnabled: okButtonEnabled,
                 OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton,
@@ -2039,7 +2049,9 @@ namespace HaCreator.MapSimulator
                 OkButtonFrameOriginY: resolvedOkButtonFrameOrigin.Y,
                 OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
                     InitialQuizOwnerOkButtonStringPoolId,
-                    "UI/UIWindow2.img/InitialQuiz/BtOK"));
+                    "UI/UIWindow2.img/InitialQuiz/BtOK"),
+                OkButtonCreateParamGetsUolFromStringPool: true,
+                OkButtonCreateParamReleasesUolOnDestroy: true);
         }
 
         internal static InitialQuizOwnerWindowCreateSnapshot BuildInitialQuizOwnerWindowCreateSnapshot(

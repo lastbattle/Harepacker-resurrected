@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Rendering
@@ -67,30 +68,49 @@ namespace HaCreator.MapSimulator.Rendering
                 return Array.Empty<Color>();
             }
 
-            Color[] result = destinationPixels.Take(destinationWidth * destinationHeight).ToArray();
-            for (int sourceY = 0; sourceY < sourceHeight; sourceY++)
+            using Bitmap destination = CreateBitmapFromPixelsForTesting(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight);
+            using Bitmap source = CreateBitmapFromPixelsForTesting(
+                sourcePixels,
+                sourceWidth,
+                sourceHeight);
+            CopyAlpha255(destination, source, x, y);
+            return ReadBitmapPixelsForTesting(destination);
+        }
+
+        private static Bitmap CreateBitmapFromPixelsForTesting(Color[] pixels, int width, int height)
+        {
+            Bitmap bitmap = new(width, height, PixelFormat.Format32bppArgb);
+            for (int pixelY = 0; pixelY < height; pixelY++)
             {
-                int destinationY = y + sourceY;
-                if (destinationY < 0 || destinationY >= destinationHeight)
+                for (int pixelX = 0; pixelX < width; pixelX++)
                 {
-                    continue;
-                }
-
-                for (int sourceX = 0; sourceX < sourceWidth; sourceX++)
-                {
-                    int destinationX = x + sourceX;
-                    if (destinationX < 0 || destinationX >= destinationWidth)
-                    {
-                        continue;
-                    }
-
-                    int destinationIndex = destinationY * destinationWidth + destinationX;
-                    int sourceIndex = sourceY * sourceWidth + sourceX;
-                    result[destinationIndex] = BlendAlpha255(result[destinationIndex], sourcePixels[sourceIndex]);
+                    bitmap.SetPixel(pixelX, pixelY, pixels[pixelY * width + pixelX]);
                 }
             }
 
-            return result;
+            return bitmap;
+        }
+
+        private static Color[] ReadBitmapPixelsForTesting(Bitmap bitmap)
+        {
+            if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
+            {
+                return Array.Empty<Color>();
+            }
+
+            Color[] pixels = new Color[bitmap.Width * bitmap.Height];
+            for (int pixelY = 0; pixelY < bitmap.Height; pixelY++)
+            {
+                for (int pixelX = 0; pixelX < bitmap.Width; pixelX++)
+                {
+                    pixels[pixelY * bitmap.Width + pixelX] = bitmap.GetPixel(pixelX, pixelY);
+                }
+            }
+
+            return pixels;
         }
 
         internal static Color BlendAlpha255(Color destination, Color source)

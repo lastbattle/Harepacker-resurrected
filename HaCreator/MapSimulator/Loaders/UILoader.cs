@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Loaders
         private const int COLLAPSED_MINIMAP_CLIENT_TEXT_TOP = 5;
         private const int COLLAPSED_MINIMAP_CLIENT_SEPARATOR_LEFT_OFFSET = 1;
         private const int COLLAPSED_MINIMAP_CLIENT_MAPNAME_LEFT_OFFSET = 5;
-        private const string COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR = ":";
+        private const string COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR = "/";
         private const SWF.TextFormatFlags CollapsedMinimapTitleTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |

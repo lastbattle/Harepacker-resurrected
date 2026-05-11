@@ -164,6 +164,10 @@ namespace HaCreator.MapSimulator.UI
             public int Price { get; init; }
             public byte SaleState { get; init; }
             public int MaxPerSlot { get; init; }
+            public int PacketRowIndex { get; init; }
+            public int PacketRowOffset { get; init; }
+            public int PacketRawByteLength { get; init; }
+            public string PacketPayloadRawHex { get; init; } = string.Empty;
         }
 
         private enum AdminShopPane
@@ -738,7 +742,13 @@ namespace HaCreator.MapSimulator.UI
                     ListingId = entry.PacketSerialNumber > 0 ? entry.PacketSerialNumber : row.SerialNumber,
                     ItemId = entry.RewardItemId > 0 ? entry.RewardItemId : row.ItemId,
                     Quantity = Math.Max(1, entry.RewardQuantity),
-                    Price = (int)Math.Clamp(Math.Abs((long)entry.Price), 0L, int.MaxValue)
+                    Price = (int)Math.Clamp(Math.Abs((long)entry.Price), 0L, int.MaxValue),
+                    PacketRowIndex = row.PacketRowIndex,
+                    PacketSource = "CAdminShopDlg::SetAdminShopDlg packet catalog row",
+                    PacketFieldSummary =
+                        $"Packet-owned admin-shop commodity row mirrored into the CCashShop stage catalog owner: row={row.PacketRowIndex.ToString(CultureInfo.InvariantCulture)}, packetOffset={row.PacketRowOffset.ToString(CultureInfo.InvariantCulture)}, sn={row.SerialNumber.ToString(CultureInfo.InvariantCulture)}, itemID={row.ItemId.ToString(CultureInfo.InvariantCulture)}, price={row.Price.ToString(CultureInfo.InvariantCulture)}, saleState=0x{row.SaleState:X2}, maxPerSlot={row.MaxPerSlot.ToString(CultureInfo.InvariantCulture)}.",
+                    PacketRawByteLength = row.PacketRawByteLength,
+                    PacketPayloadRawHex = row.PacketPayloadRawHex
                 });
             }
 
@@ -2756,7 +2766,8 @@ namespace HaCreator.MapSimulator.UI
                 _packetOwnedWishlistPendingSearchQuery,
                 _packetOwnedWishlistPendingSearchCategoryKey,
                 _packetOwnedWishlistPendingSearchPriceRangeIndex,
-                _packetOwnedWishlistPendingSearchRemotePageIndex);
+                _packetOwnedWishlistPendingSearchRemotePageIndex,
+                _packetOwnedWishlistPendingSearchRemotePageCount);
             _packetOwnedAdminShopSession.SetLastOwnerState(
                 $"CUIAdminShopWishListSearchResult requested remote packet page {targetRemotePageIndex + 1} / {remotePageCount}; the result child is waiting for the next packet 366 subtype 4 WLSR snapshot.");
             AdvancePacketOwnedWishlistSearchStateToken();
@@ -5594,6 +5605,7 @@ namespace HaCreator.MapSimulator.UI
             int unresolvedItemCount = 0;
             int resolvedOutsideRequestedFilterCount = 0;
             int serialNumberBoundCount = 0;
+            int contextRejectedRowCount = 0;
             for (int rowIndex = 0; rowIndex < packetRowCount; rowIndex++)
             {
                 AdminShopPacketOwnedWishlistSearchResultRow packetRow = rowIndex < packetRows.Count
@@ -5606,6 +5618,13 @@ namespace HaCreator.MapSimulator.UI
                         ? packetRow.ResultItemId
                         : packetRow.ItemId;
                 }
+
+                if (!IsPacketOwnedWishlistRowCompatibleWithRequestContext(packetRow, categoryKey, priceRangeIndex))
+                {
+                    contextRejectedRowCount++;
+                    continue;
+                }
+
                 if (!TryResolvePacketOwnedWishlistCandidate(
                         wishlistRowsByItemId,
                         itemCursorByItemId,
@@ -5693,12 +5712,30 @@ namespace HaCreator.MapSimulator.UI
             if (results.Count <= 0)
             {
                 summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
+                if (contextRejectedRowCount > 0)
+                {
+                    summary = string.Concat(
+                        summary,
+                        " ",
+                        contextRejectedRowCount.ToString(CultureInfo.InvariantCulture),
+                        " packet-authored row(s) were filtered by the active SearchItemName category/price context.");
+                }
+
                 return true;
             }
 
             summary = unresolvedItemCount > 0
                 ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
                 : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}).";
+            if (contextRejectedRowCount > 0)
+            {
+                summary = string.Concat(
+                    summary,
+                    " ",
+                    contextRejectedRowCount.ToString(CultureInfo.InvariantCulture),
+                    " packet-authored row(s) were filtered by the active SearchItemName category/price context.");
+            }
+
             if (resolvedOutsideRequestedFilterCount > 0)
             {
                 summary = string.Concat(
@@ -5718,6 +5755,58 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return true;
+        }
+
+        private bool IsPacketOwnedWishlistRowCompatibleWithRequestContext(
+            AdminShopPacketOwnedWishlistSearchResultRow packetRow,
+            string requestedCategoryKey,
+            int requestedPriceRangeIndex)
+        {
+            if (packetRow == null)
+            {
+                return true;
+            }
+
+            if (!IsWishlistCategoryKeyWithinRequestedCategory(packetRow.CategoryKey, requestedCategoryKey))
+            {
+                return false;
+            }
+
+            return MatchesWishlistPriceRange(packetRow.Price, requestedPriceRangeIndex);
+        }
+
+        private static bool IsWishlistCategoryKeyWithinRequestedCategory(
+            string rowCategoryKey,
+            string requestedCategoryKey)
+        {
+            string normalizedRequestedKey = string.IsNullOrWhiteSpace(requestedCategoryKey)
+                ? "all"
+                : requestedCategoryKey.Trim();
+            if (string.Equals(normalizedRequestedKey, "all", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(rowCategoryKey)
+                || string.Equals(rowCategoryKey.Trim(), "all", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string currentKey = rowCategoryKey.Trim();
+            HashSet<string> visitedKeys = new(StringComparer.OrdinalIgnoreCase);
+            while (!string.IsNullOrWhiteSpace(currentKey) && visitedKeys.Add(currentKey))
+            {
+                if (string.Equals(currentKey, normalizedRequestedKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (!s_wishlistCategoryNodesByKey.TryGetValue(currentKey, out WishlistCategoryNode node))
+                {
+                    return false;
+                }
+
+                currentKey = node.ParentKey;
+            }
+
+            return false;
         }
 
         private static bool IsPacketOwnedWishlistSerialNumberMatch(
@@ -8773,14 +8862,24 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            return MatchesWishlistPriceRange(entry.Price, priceRangeIndex);
+        }
+
+        private bool MatchesWishlistPriceRange(long price, int priceRangeIndex)
+        {
+            if (price == long.MinValue)
+            {
+                return true;
+            }
+
             int normalizedIndex = Math.Clamp(priceRangeIndex, 0, _wishlistPriceRanges.Count - 1);
             WishlistPriceRange range = _wishlistPriceRanges[normalizedIndex];
             if (normalizedIndex == _wishlistPriceRanges.Count - 1)
             {
-                return entry.Price >= range.MinimumPrice && entry.Price <= range.MaximumPrice;
+                return price >= range.MinimumPrice && price <= range.MaximumPrice;
             }
 
-            return entry.Price >= range.MinimumPrice && entry.Price < range.MaximumPrice;
+            return price >= range.MinimumPrice && price < range.MaximumPrice;
         }
 
         private string GetWishlistPriceRangeLabel(int priceRangeIndex)

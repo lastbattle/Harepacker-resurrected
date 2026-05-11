@@ -39,11 +39,14 @@ namespace HaCreator.MapSimulator.UI
         private const int RankGlyphX = 170;
         private const int JobRankIconRightEdgeX = 83;
         private const int JobRankIconY = 120;
+        private const int NoRankMessageX = 36;
+        private const int NoRankMessageY = 99;
+        private const int NoRankMessageStringPoolId = 0x0BCB;
         private const int StatusPaddingX = 8;
         private const int StatusPaddingY = 8;
 
-        private static readonly XnaColor ValueColor = new XnaColor(64, 64, 64);
-        private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
+        private static readonly XnaColor ValueColor = XnaColor.Black;
+        private static readonly XnaColor StatusColor = XnaColor.Black;
         private const int BasicBlackFontHeight = 12;
         private const int BasicBlackFontFaceStringPoolId = 0x1A25;
         private const int TextRasterPadding = 2;
@@ -268,6 +271,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!HasRankInfo())
             {
+                DrawNoRankMessage(sprite);
                 return;
             }
 
@@ -371,19 +375,51 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, _statusMessage, StatusPaddingX, StatusPaddingY, StatusColor);
         }
 
-        private void DrawText(SpriteBatch sprite, string text, int x, int y, XnaColor color)
+        private void DrawNoRankMessage(SpriteBatch sprite)
+        {
+            string text = MapleStoryStringPool.GetOrFallback(
+                NoRankMessageStringPoolId,
+                "The Ranking Information can be referenced when your\r\ncharacter changes occupation or reaches above Lv. 10.");
+            DrawText(
+                sprite,
+                text,
+                NoRankMessageX,
+                NoRankMessageY,
+                ValueColor,
+                multiline: true,
+                maxWidth: Math.Max(0, ResolvePanelWidth() - NoRankMessageX),
+                maxHeight: Math.Max(0, ResolvePanelHeight() - NoRankMessageY));
+        }
+
+        private void DrawText(
+            SpriteBatch sprite,
+            string text,
+            int x,
+            int y,
+            XnaColor color,
+            bool multiline = false,
+            int? maxWidth = null,
+            int? maxHeight = null)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            RasterTextTexture textTexture = GetOrCreateTextTexture(text, color);
+            RasterTextTexture textTexture = GetOrCreateTextTexture(text, color, multiline);
             if (textTexture.Texture != null)
             {
+                Rectangle? sourceRectangle = ResolveTextSourceRectangle(textTexture, maxWidth, maxHeight);
+                if (sourceRectangle.HasValue &&
+                    (sourceRectangle.Value.Width <= 0 || sourceRectangle.Value.Height <= 0))
+                {
+                    return;
+                }
+
                 sprite.Draw(
                     textTexture.Texture,
                     new Vector2(Position.X + x + textTexture.OffsetX, Position.Y + y + textTexture.OffsetY),
+                    sourceRectangle,
                     XnaColor.White);
                 return;
             }
@@ -403,7 +439,7 @@ namespace HaCreator.MapSimulator.UI
                 return Vector2.Zero;
             }
 
-            RasterTextTexture textTexture = GetOrCreateTextTexture(text, ValueColor);
+            RasterTextTexture textTexture = GetOrCreateTextTexture(text, ValueColor, multiline: false);
             Vector2 rasterSize = textTexture.Measurement;
             if (rasterSize != Vector2.Zero)
             {
@@ -435,6 +471,12 @@ namespace HaCreator.MapSimulator.UI
         {
             return rank > 0 ? rank.ToString() : "-";
         }
+
+        internal static int DetailTextColorPackedForTesting => (int)ValueColor.PackedValue;
+
+        internal static int NoRankMessageStringPoolIdForTesting => NoRankMessageStringPoolId;
+
+        internal static Point NoRankMessagePositionForTesting => new Point(NoRankMessageX, NoRankMessageY);
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
@@ -1159,7 +1201,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = statusMessage ?? string.Empty;
         }
 
-        private Vector2 MeasureRasterText(string text)
+        private Vector2 MeasureRasterText(string text, bool multiline)
         {
             if (_basicBlackFont == null || string.IsNullOrEmpty(text))
             {
@@ -1171,19 +1213,19 @@ namespace HaCreator.MapSimulator.UI
                 text,
                 _basicBlackFont,
                 new SD.Size(int.MaxValue, int.MaxValue),
-                BasicBlackTextFormatFlags);
+                ResolveTextFormatFlags(multiline));
 
             return new Vector2(size.Width, size.Height);
         }
 
-        private RasterTextTexture GetOrCreateTextTexture(string text, XnaColor color)
+        private RasterTextTexture GetOrCreateTextTexture(string text, XnaColor color, bool multiline)
         {
             if (_basicBlackFont == null || string.IsNullOrEmpty(text))
             {
                 return default;
             }
 
-            TextRenderCacheKey cacheKey = new TextRenderCacheKey(text, color);
+            TextRenderCacheKey cacheKey = new TextRenderCacheKey(text, color, multiline);
             if (_textTextureCache.TryGetValue(cacheKey, out RasterTextTexture cachedTexture) &&
                 cachedTexture.Texture != null &&
                 !cachedTexture.Texture.IsDisposed)
@@ -1191,7 +1233,8 @@ namespace HaCreator.MapSimulator.UI
                 return cachedTexture;
             }
 
-            Vector2 measuredSize = MeasureRasterText(text);
+            SWF.TextFormatFlags textFormatFlags = ResolveTextFormatFlags(multiline);
+            Vector2 measuredSize = MeasureRasterText(text, multiline);
             int width = Math.Max(1, (int)measuredSize.X + (TextRasterPadding * 2));
             int height = Math.Max(1, (int)measuredSize.Y + (TextRasterPadding * 2));
 
@@ -1206,11 +1249,56 @@ namespace HaCreator.MapSimulator.UI
                 new SD.Rectangle(TextRasterPadding, TextRasterPadding, width - (TextRasterPadding * 2), height - (TextRasterPadding * 2)),
                 SD.Color.FromArgb(color.A, color.R, color.G, color.B),
                 SD.Color.Transparent,
-                BasicBlackTextFormatFlags);
+                textFormatFlags);
 
             RasterTextTexture texture = CreateRasterTextTexture(bitmap, measuredSize);
             _textTextureCache[cacheKey] = texture;
             return texture;
+        }
+
+        private static SWF.TextFormatFlags ResolveTextFormatFlags(bool multiline)
+        {
+            if (!multiline)
+            {
+                return BasicBlackTextFormatFlags;
+            }
+
+            return BasicBlackTextFormatFlags & ~SWF.TextFormatFlags.SingleLine;
+        }
+
+        private Rectangle? ResolveTextSourceRectangle(RasterTextTexture textTexture, int? maxWidth, int? maxHeight)
+        {
+            if (!maxWidth.HasValue && !maxHeight.HasValue)
+            {
+                return null;
+            }
+
+            int sourceWidth = textTexture.Texture.Width;
+            int sourceHeight = textTexture.Texture.Height;
+
+            if (maxWidth.HasValue)
+            {
+                sourceWidth = Math.Min(sourceWidth, Math.Max(0, maxWidth.Value - textTexture.OffsetX));
+            }
+
+            if (maxHeight.HasValue)
+            {
+                sourceHeight = Math.Min(sourceHeight, Math.Max(0, maxHeight.Value - textTexture.OffsetY));
+            }
+
+            return new Rectangle(0, 0, sourceWidth, sourceHeight);
+        }
+
+        private int ResolvePanelWidth()
+        {
+            Texture2D panelTexture = ResolvePanelTexture();
+            return panelTexture?.Width ?? 0;
+        }
+
+        private int ResolvePanelHeight()
+        {
+            Texture2D panelTexture = ResolvePanelTexture();
+            return panelTexture?.Height ?? 0;
         }
 
         private RasterTextTexture CreateRasterTextTexture(SD.Bitmap bitmap, Vector2 measuredSize)
@@ -1272,18 +1360,22 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
         {
-            public TextRenderCacheKey(string text, XnaColor color)
+            public TextRenderCacheKey(string text, XnaColor color, bool multiline)
             {
                 Text = text ?? string.Empty;
                 Color = color.PackedValue;
+                Multiline = multiline;
             }
 
             public string Text { get; }
             public uint Color { get; }
+            public bool Multiline { get; }
 
             public bool Equals(TextRenderCacheKey other)
             {
-                return Color == other.Color && string.Equals(Text, other.Text, StringComparison.Ordinal);
+                return Color == other.Color &&
+                    Multiline == other.Multiline &&
+                    string.Equals(Text, other.Text, StringComparison.Ordinal);
             }
 
             public override bool Equals(object obj)
@@ -1293,7 +1385,7 @@ namespace HaCreator.MapSimulator.UI
 
             public override int GetHashCode()
             {
-                return HashCode.Combine(Text, Color);
+                return HashCode.Combine(Text, Color, Multiline);
             }
         }
 

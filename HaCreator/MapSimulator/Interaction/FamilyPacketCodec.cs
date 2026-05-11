@@ -90,15 +90,16 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                // CWvsContext::OnFamilyResult is a compact client result-code seam.
-                // Keep the older int/int simulator command payload accepted for tests
-                // and manual injection, but prefer byte retcodes for live packets.
-                if (payload.Length >= sizeof(int) * 2 && payload[1] == 0 && payload[2] == 0 && payload[3] == 0)
+                // CWvsContext::OnFamilyResult decodes two 32-bit fields:
+                // result type followed by a branch-specific value.
+                if (payload.Length >= sizeof(int) * 2)
                 {
                     packet = new FamilyResultPacket(reader.ReadInt(), reader.ReadInt());
                     return true;
                 }
 
+                // Keep the older compact simulator command payload accepted for
+                // manual injection and focused tests.
                 int type = reader.ReadByte();
                 int value = reader.Remaining >= sizeof(int)
                     ? reader.ReadInt()

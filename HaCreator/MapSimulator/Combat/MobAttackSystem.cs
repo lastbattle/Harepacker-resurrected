@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -128,6 +129,8 @@ namespace HaCreator.MapSimulator.Combat
             public Vector2 Position { get; set; }
             public int TriggerTime { get; set; }
             public bool Flip { get; set; }
+            public string SourceUol { get; set; }
+            public bool IsAttackHit { get; set; }
         }
 
         private sealed class ScheduledMobAttachedVisualEffect
@@ -138,6 +141,7 @@ namespace HaCreator.MapSimulator.Combat
             public Vector2 FallbackPosition { get; set; }
             public bool FallbackFlip { get; set; }
             public int TriggerTime { get; set; }
+            public string SourceUol { get; set; }
         }
 
         private sealed class ScheduledMobFallingEffect
@@ -657,7 +661,26 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                animationEffects?.AddOneTime(effect.Frames, effect.Position.X, effect.Position.Y, effect.Flip, currentTime);
+                if (effect.IsAttackHit)
+                {
+                    animationEffects?.AddMobOwnedAttackHit(
+                        effect.Frames,
+                        effect.SourceUol,
+                        effect.Position.X,
+                        effect.Position.Y,
+                        effect.Flip,
+                        currentTime);
+                }
+                else
+                {
+                    animationEffects?.AddMobOwnedAttackEffect(
+                        effect.Frames,
+                        effect.SourceUol,
+                        effect.Position.X,
+                        effect.Position.Y,
+                        effect.Flip,
+                        currentTime);
+                }
                 _scheduledMobVisualEffects.RemoveAt(i);
             }
         }
@@ -672,8 +695,9 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                animationEffects?.AddOneTimeAttached(
+                animationEffects?.AddMobOwnedAttachedAttackHit(
                     effect.Frames,
+                    effect.SourceUol,
                     effect.GetPosition,
                     effect.GetFlip,
                     effect.FallbackPosition.X,
@@ -1015,7 +1039,13 @@ namespace HaCreator.MapSimulator.Combat
             if (effectFrames != null && effectFrames.Count > 0 && (!usedEffectAsProjectile || attack.IsAreaOfEffect))
             {
                 Vector2 groundedPosition = attack.IsAreaOfEffect ? ResolveGroundPoint(position.X, position.Y) : position;
-                animationEffects?.AddOneTime(effectFrames, groundedPosition.X, groundedPosition.Y, effectFlip, currentTime);
+                animationEffects?.AddMobOwnedAttackEffect(
+                    effectFrames,
+                    mobItem.GetAttackEffectSourceUol(attack.AnimationName) ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName),
+                    groundedPosition.X,
+                    groundedPosition.Y,
+                    effectFlip,
+                    currentTime);
             }
 
             MobAnimationSet.AttackHitEffectEntry hitEntry = mobItem.GetAttackHitEffectEntry(attack.AnimationName);
@@ -1042,6 +1072,7 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     ScheduleMobHitEffect(
                         hitEntry.Frames,
+                        hitEntry.SourceUol ?? BuildMobAttackHitSourceUol(mobItem, attack.AnimationName, hitEntry),
                         getPosition,
                         getFlip,
                         fallbackPosition,
@@ -1055,6 +1086,7 @@ namespace HaCreator.MapSimulator.Combat
                     bool hitFlip = facingAttach ? effectFlip : false;
                     ScheduleMobHitEffect(
                         hitEntry.Frames,
+                        hitEntry.SourceUol ?? BuildMobAttackHitSourceUol(mobItem, attack.AnimationName, hitEntry),
                         position,
                         hitFlip,
                         hitEffectTriggerTime,
@@ -1095,7 +1127,8 @@ namespace HaCreator.MapSimulator.Combat
                     Frames = effectFrames,
                     Position = sourcePosition,
                     TriggerTime = triggerTime,
-                    Flip = flip
+                    Flip = flip,
+                    SourceUol = mobItem.GetAttackEffectSourceUol(attack.AnimationName) ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName)
                 });
             }
 
@@ -1158,7 +1191,8 @@ namespace HaCreator.MapSimulator.Combat
                     Frames = frames,
                     Position = ResolveEffectNodePosition(positions[i], effectNode, flip),
                     TriggerTime = triggerTime + (interval * i),
-                    Flip = flip
+                    Flip = flip,
+                    SourceUol = effectNode.SourceUol ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName, effectNode.Name)
                 });
             }
         }
@@ -1196,7 +1230,8 @@ namespace HaCreator.MapSimulator.Combat
                 Frames = frames,
                 Position = ResolveEffectNodePosition(positions[clampedIndex], effectNode, flip),
                 TriggerTime = baseTime + Math.Max(0, effectNode.Delay) + Math.Max(0, effectNode.Start),
-                Flip = flip
+                Flip = flip,
+                SourceUol = effectNode.SourceUol ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName, effectNode.Name)
             });
             return true;
         }
@@ -1236,7 +1271,8 @@ namespace HaCreator.MapSimulator.Combat
                     Frames = frames,
                     Position = ResolveEffectNodePosition(positions[Math.Min(i, positions.Count - 1)], effectNode, flip),
                     TriggerTime = triggerTime + (interval * i),
-                    Flip = flip
+                    Flip = flip,
+                    SourceUol = effectNode.SourceUol ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName, effectNode.Name)
                 });
             }
         }
@@ -3056,6 +3092,7 @@ namespace HaCreator.MapSimulator.Combat
 
         private void ScheduleMobHitEffect(
             List<IDXObject> frames,
+            string sourceUol,
             Vector2 position,
             bool flip,
             int triggerTime,
@@ -3069,7 +3106,7 @@ namespace HaCreator.MapSimulator.Combat
 
             if (HasClientTickReached(currentTime, triggerTime))
             {
-                animationEffects?.AddOneTime(frames, position.X, position.Y, flip, currentTime);
+                animationEffects?.AddMobOwnedAttackHit(frames, sourceUol, position.X, position.Y, flip, currentTime);
                 return;
             }
 
@@ -3078,12 +3115,15 @@ namespace HaCreator.MapSimulator.Combat
                 Frames = frames,
                 Position = position,
                 TriggerTime = triggerTime,
-                Flip = flip
+                Flip = flip,
+                SourceUol = sourceUol,
+                IsAttackHit = true
             });
         }
 
         private void ScheduleMobHitEffect(
             List<IDXObject> frames,
+            string sourceUol,
             Func<Vector2> getPosition,
             Func<bool> getFlip,
             Vector2 fallbackPosition,
@@ -3099,8 +3139,9 @@ namespace HaCreator.MapSimulator.Combat
 
             if (HasClientTickReached(currentTime, triggerTime))
             {
-                animationEffects?.AddOneTimeAttached(
+                animationEffects?.AddMobOwnedAttachedAttackHit(
                     frames,
+                    sourceUol,
                     getPosition,
                     getFlip,
                     fallbackPosition.X,
@@ -3117,13 +3158,58 @@ namespace HaCreator.MapSimulator.Combat
                 GetFlip = getFlip,
                 FallbackPosition = fallbackPosition,
                 FallbackFlip = fallbackFlip,
-                TriggerTime = triggerTime
+                TriggerTime = triggerTime,
+                SourceUol = sourceUol
             });
         }
 
         internal static bool ShouldAttachMobHitEffect(MobAnimationSet.AttackInfoMetadata attackInfo, int sourceFrameIndex)
         {
             return attackInfo?.ResolveHitAttachForHitAnimationFrame(sourceFrameIndex) == true;
+        }
+
+        internal static string BuildMobAttackEffectSourceUol(MobItem mobItem, string attackAction, string effectNodeName = "effect")
+        {
+            return BuildMobAttackEffectSourceUol(mobItem?.MobId ?? 0, attackAction, effectNodeName);
+        }
+
+        internal static string BuildMobAttackEffectSourceUol(int mobId, string attackAction, string effectNodeName = "effect")
+        {
+            mobId = Math.Max(0, mobId);
+            string imageName = mobId.ToString("D7", CultureInfo.InvariantCulture);
+            string actionName = string.IsNullOrWhiteSpace(attackAction)
+                ? "attack1"
+                : attackAction.Trim();
+            string nodeName = string.IsNullOrWhiteSpace(effectNodeName)
+                ? "effect"
+                : effectNodeName.Trim();
+            return $"Mob/{imageName}.img/{actionName}/info/{nodeName}";
+        }
+
+        internal static string BuildMobAttackHitSourceUol(
+            MobItem mobItem,
+            string attackAction,
+            MobAnimationSet.AttackHitEffectEntry hitEntry)
+        {
+            return BuildMobAttackHitSourceUol(mobItem?.MobId ?? 0, attackAction, hitEntry);
+        }
+
+        internal static string BuildMobAttackHitSourceUol(
+            int mobId,
+            string attackAction,
+            MobAnimationSet.AttackHitEffectEntry hitEntry)
+        {
+            mobId = Math.Max(0, mobId);
+            string imageName = mobId.ToString("D7", CultureInfo.InvariantCulture);
+            string actionName = string.IsNullOrWhiteSpace(attackAction)
+                ? "attack1"
+                : attackAction.Trim();
+            if (hitEntry?.IsAttackFrameOwned == true)
+            {
+                return $"Mob/{imageName}.img/{actionName}/{Math.Max(0, hitEntry.SourceFrameIndex).ToString(CultureInfo.InvariantCulture)}/hit";
+            }
+
+            return $"Mob/{imageName}.img/{actionName}/info/hit";
         }
 
         internal static int ResolveMobAttackHitEffectTriggerTime(int currentTime, MobAnimationSet.AttackInfoMetadata attackInfo)
@@ -3715,6 +3801,11 @@ namespace HaCreator.MapSimulator.Combat
 
         private static bool ApplyMobDamage(MobItem sourceMob, MobAttackEntry attack, MobItem targetMob, int currentTime)
         {
+            if (!ShouldAllowDamagedBySelectedMob(sourceMob, targetMob))
+            {
+                return false;
+            }
+
             if (ShouldMobAttackMissTarget(sourceMob?.AI, targetMob?.AI, Random.Shared.NextDouble()))
             {
                 return false;
@@ -3764,6 +3855,35 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return true;
+        }
+
+        internal static bool ShouldAllowDamagedBySelectedMob(MobItem sourceMob, MobItem targetMob)
+        {
+            return ShouldAllowDamagedBySelectedMob(sourceMob?.MobId ?? 0, targetMob?.MobData);
+        }
+
+        internal static bool ShouldAllowDamagedBySelectedMob(int sourceMobId, MobData targetMobData)
+        {
+            IReadOnlyList<int> selectedMobIds = targetMobData?.DamagedBySelectedMob;
+            if (selectedMobIds == null || selectedMobIds.Count == 0)
+            {
+                return true;
+            }
+
+            if (sourceMobId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < selectedMobIds.Count; i++)
+            {
+                if (selectedMobIds[i] == sourceMobId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool ShouldMobAttackMissTarget(MobAI sourceMobAI, MobAI targetMobAI, double roll)

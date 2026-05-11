@@ -1131,6 +1131,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _pendingFeeCalculationPacketRowIndex = -1;
         private int _pendingFeeCalculationItemId;
         private string _pendingFeeCalculationItemTitle = string.Empty;
+        private int _lastOwnerReturnCode = -1;
         private int _lastPromptContextValue;
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
@@ -1305,6 +1306,9 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Dialog: {(IsOpen ? "open" : "closed")} | Pending get-all: {(HasPendingGetAllRequest ? "yes" : "no")} | Accepted: {GetAllRequestWasAccepted}",
                 $"Packets: 369={_packet369Count.ToString(CultureInfo.InvariantCulture)}, 370={_packet370Count.ToString(CultureInfo.InvariantCulture)}",
                 $"Last packet: {DescribePacket()}",
+                _lastOwnerReturnCode >= 0
+                    ? $"Last owner return: SetRet({_lastOwnerReturnCode.ToString(CultureInfo.InvariantCulture)}) from CStoreBankDlg::OnButtonClicked."
+                    : "Last owner return: none.",
                 _npcTemplateId > 0
                     ? $"NPC template: {_npcTemplateId.ToString(CultureInfo.InvariantCulture)} | Slot count: {_slotCount.ToString(CultureInfo.InvariantCulture)} | Money: {_money.ToString(CultureInfo.InvariantCulture)} | Flags: 0x{_dbcharFlagMask.ToString("X", CultureInfo.InvariantCulture)}"
                     : "No decoded SetStoreBankDlg payload is staged.",
@@ -1590,6 +1594,46 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with no selected-row body bytes and selection retained in owner state until subtype 36.");
             message = StatusMessage;
             return true;
+        }
+
+        internal bool TryBuildOwnerReturnOutboundRequest(int returnCode, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            if (!IsNativeOwnerReturnCode(returnCode))
+            {
+                StatusMessage = $"CStoreBankDlg ignored unsupported owner return code {returnCode.ToString(CultureInfo.InvariantCulture)}; recovered OnButtonClicked only routes ids 1, 2, and 8 into SetRet.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            if (!IsOpen)
+            {
+                StatusMessage = $"CStoreBankDlg ignored SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) because the owner is already closed.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            ResetTransientRequestState();
+            HasPendingGetAllRequest = false;
+            GetAllRequestWasAccepted = false;
+            IsOpen = false;
+            _hasStoreBankNpcOwnerReference = false;
+            _lastOwnerReturnCode = returnCode;
+            StatusMessage = $"CStoreBankDlg::OnButtonClicked routed owner button id {returnCode.ToString(CultureInfo.InvariantCulture)} into SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) and mirrored the return packet.";
+            AppendNote(StatusMessage);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                StoreBankOutboundOpcode,
+                BuildCloseRequestPayload(),
+                $"Mirrored CStoreBankDlg::SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) close/return request from owner button id {returnCode.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 28; IDA 0x743EB0 confirms the return code stays dialog-local and is not encoded after the mode byte).");
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool IsNativeOwnerReturnCode(int returnCode)
+        {
+            return returnCode is 1 or 2 or 8;
         }
 
         private static byte[] BuildCalculateFeeRequestPayload()

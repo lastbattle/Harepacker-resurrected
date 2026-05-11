@@ -574,7 +574,7 @@ namespace HaCreator.MapSimulator.Interaction
                     spriteBatch,
                     _activePresentation.Sender,
                     new Vector2(centeredX, NameTextY),
-                    Color.White * (layout.NameAlpha / 255f),
+                    Color.White * (ResolveClientSenderNameAlpha() / 255f),
                     font,
                     0.4f);
             }
@@ -630,6 +630,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static int ResolveClientNameAlpha(int elapsedMs)
         {
             return Math.Clamp((int)Math.Round(255f * MathHelper.Clamp(Math.Max(0, elapsedMs) / (float)NameFadeDurationMs, 0f, 1f)), 0, 255);
+        }
+
+        internal static int ResolveClientSenderNameAlpha()
+        {
+            return 255;
         }
 
         internal static IReadOnlyList<string> GetClientDrawPassOrder()

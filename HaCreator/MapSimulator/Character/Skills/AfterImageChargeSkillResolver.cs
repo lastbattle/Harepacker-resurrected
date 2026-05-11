@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal const int ChargeMetadataMissingMaskBaseNearestScanBytes = sizeof(int) * 16;
         internal const int ChargeMetadataMissingConsensusMinimumMatches = 2;
         internal const int ChargeMetadataMissingSeparatedPairMaxDistanceBytes = sizeof(int) * 2;
+        internal const int ChargeMetadataMissingSparsePairMaxDistanceBytes = sizeof(int) * 4;
         private const int PageFireChargeSkillId = 1211004;
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;

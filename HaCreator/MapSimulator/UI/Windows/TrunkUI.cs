@@ -119,6 +119,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _infoEffectPreviewTextureCache = new();
+        private readonly Dictionary<int, Texture2D> _infoPathPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _mobPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _consumeItemPreviewTextureCache = new();
@@ -172,7 +173,7 @@ namespace HaCreator.MapSimulator.UI
         internal Func<bool> CloseRequested { get; set; }
         internal Action<TrunkUI> WindowHidden { get; set; }
         internal Func<InventoryType, int, InventorySlotData, PacketOwnedTrunkRequestResult> PacketOwnedGetItemRequested { get; set; }
-        internal Func<InventoryType, int, InventorySlotData, int, PacketOwnedTrunkRequestResult> PacketOwnedPutItemRequested { get; set; }
+        internal Func<InventoryType, int, InventorySlotData, InventorySlotData, int, PacketOwnedTrunkRequestResult> PacketOwnedPutItemRequested { get; set; }
         internal Func<InventoryType, int, InventorySlotData, bool> PacketOwnedPutItemCountPreConfirmRequested { get; set; }
 
         internal readonly struct PacketOwnedTrunkRequestResult
@@ -973,6 +974,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
                     inventoryType,
                     _inventorySelectedIndex,
+                    selected,
                     liveSlot,
                     1);
                 _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
@@ -2426,6 +2428,7 @@ namespace HaCreator.MapSimulator.UI
             PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
                 _pendingPutInventoryType,
                 _pendingPutInventoryRowIndex,
+                _pendingPutSlotData,
                 liveSlot,
                 requestedQuantity);
             _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)

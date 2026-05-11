@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
         private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserCommonPacket (0x94cdb0) dispatches common-user ownership on 181-208 with no tutor owner branch; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; CWvsContext::OnPacket (0x9e5830) dispatches opcode 122 to CWvsContext::OnNewYearCardRes (0xa01fd0), whose subtypes 13 and 14 call CUserPool::OnNewYearCardRecordAdd/Remove; CUserPool::Update couple-chair lock admission at 0x94c9f4/0x94ca01 consumes raw pair records only when dwPairCharacterID is 0 or the current owner.";
-        private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides two seat-bound 300ms effect frames; v95 CUserPool::OnUserRemotePacket routes opcode 222 to CUserRemote::OnSetActivePortableChair, and CUser::SetActivePortableChair (0x8eff80) derives CUserPool::OnCoupleChairRecordAdd for 3012xxx chairs or OnCoupleChairRecordRemove otherwise, so native live traffic proves the record owner through opcode 222 rather than separate add/remove opcodes.";
+        private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides two seat-bound 300ms effect frames; v95 CUserPool::OnUserRemotePacket routes opcode 222 to CUserRemote::OnSetActivePortableChair, and CUser::SetActivePortableChair (0x8eff80) immediately derives CUserPool::OnCoupleChairRecordAdd for 3012xxx chairs or OnCoupleChairRecordRemove otherwise, so native v95 traffic proves the authoritative couple-chair record owner through opcode 222 instead of separate add/remove opcodes.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -538,6 +538,9 @@ namespace HaCreator.MapSimulator.Managers
             string Operation,
             ushort Opcode,
             int CharacterId,
+            int ChairItemId,
+            int PairCharacterId,
+            int Status,
             int PayloadLength,
             string Source,
             bool IsOfficialSession,
@@ -546,6 +549,9 @@ namespace HaCreator.MapSimulator.Managers
         private sealed class PortableChairRecordOpcodeEvidence
         {
             private readonly HashSet<int> _characterIds = new();
+            private readonly HashSet<int> _chairItemIds = new();
+            private readonly HashSet<int> _pairCharacterIds = new();
+            private readonly HashSet<int> _statuses = new();
             private readonly HashSet<int> _payloadLengths = new();
             private readonly HashSet<string> _sources = new(StringComparer.OrdinalIgnoreCase);
             private readonly HashSet<string> _reasons = new(StringComparer.OrdinalIgnoreCase);
@@ -566,7 +572,14 @@ namespace HaCreator.MapSimulator.Managers
             public bool HasCompactRemovePayload => string.Equals(Operation, "remove", StringComparison.OrdinalIgnoreCase)
                 && _payloadLengths.Contains(sizeof(int));
 
-            public void Record(int characterId, int payloadLength, string source, string reason)
+            public void Record(
+                int characterId,
+                int chairItemId,
+                int pairCharacterId,
+                int status,
+                int payloadLength,
+                string source,
+                string reason)
             {
                 ObservationCount++;
                 if (IsOfficialSessionSource(source))
@@ -577,6 +590,21 @@ namespace HaCreator.MapSimulator.Managers
                 if (characterId > 0)
                 {
                     _characterIds.Add(characterId);
+                }
+
+                if (chairItemId > 0)
+                {
+                    _chairItemIds.Add(chairItemId);
+                }
+
+                if (pairCharacterId > 0)
+                {
+                    _pairCharacterIds.Add(pairCharacterId);
+                }
+
+                if (status >= 0)
+                {
+                    _statuses.Add(status);
                 }
 
                 if (payloadLength >= 0)
@@ -600,6 +628,15 @@ namespace HaCreator.MapSimulator.Managers
                 string owners = _characterIds.Count == 0
                     ? "none"
                     : string.Join("|", _characterIds.OrderBy(id => id));
+                string chairItemIds = _chairItemIds.Count == 0
+                    ? "none"
+                    : string.Join("|", _chairItemIds.OrderBy(id => id));
+                string pairCharacterIds = _pairCharacterIds.Count == 0
+                    ? "none"
+                    : string.Join("|", _pairCharacterIds.OrderBy(id => id));
+                string statuses = _statuses.Count == 0
+                    ? "none"
+                    : string.Join("|", _statuses.OrderBy(status => status));
                 string payloadLengths = _payloadLengths.Count == 0
                     ? "none"
                     : string.Join("|", _payloadLengths.OrderBy(length => length));
@@ -610,7 +647,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? "none"
                     : string.Join("|", _reasons.OrderBy(reason => reason, StringComparer.OrdinalIgnoreCase).Take(2));
 
-                return $"{Operation}(type={RemoteUserPacketInboxManager.DescribePacketType(PacketType)}; count={ObservationCount}; official={OfficialSessionObservationCount}; owners={owners}; payloadBytes={payloadLengths}; sources={sources}; reasons={reasons})";
+                return $"{Operation}(type={RemoteUserPacketInboxManager.DescribePacketType(PacketType)}; count={ObservationCount}; official={OfficialSessionObservationCount}; owners={owners}; chairs={chairItemIds}; pairs={pairCharacterIds}; statuses={statuses}; payloadBytes={payloadLengths}; sources={sources}; reasons={reasons})";
             }
         }
 
@@ -702,8 +739,31 @@ namespace HaCreator.MapSimulator.Managers
                 return string.Join(
                     ", ",
                     _portableChairRecordCaptureOrder.Select(entry =>
-                        $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}({entry.PayloadLength}b; source={(entry.IsOfficialSession ? "official" : "manual-or-local")}:{entry.Source}; reason={entry.Reason})"));
+                        $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}{DescribePortableChairRecordCaptureDetails(entry)}({entry.PayloadLength}b; source={(entry.IsOfficialSession ? "official" : "manual-or-local")}:{entry.Source}; reason={entry.Reason})"));
             }
+        }
+
+        private static string DescribePortableChairRecordCaptureDetails(PortableChairRecordCaptureEntry entry)
+        {
+            List<string> details = new();
+            if (entry.ChairItemId > 0)
+            {
+                details.Add($"chair={entry.ChairItemId}");
+            }
+
+            if (entry.PairCharacterId > 0)
+            {
+                details.Add($"pair={entry.PairCharacterId}");
+            }
+
+            if (entry.Status >= 0)
+            {
+                details.Add($"status={entry.Status}");
+            }
+
+            return details.Count == 0
+                ? string.Empty
+                : $"[{string.Join(",", details)}]";
         }
 
         private string DescribePortableChairRecordOpcodeEvidence()
@@ -757,7 +817,7 @@ namespace HaCreator.MapSimulator.Managers
                     out PortableChairRecordCaptureEntry derivedAddEntry,
                     out PortableChairRecordCaptureEntry derivedRemoveEntry))
             {
-                return $"{buildTag}:official-setactive-portable-chair-derived-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
+                return $"{buildTag}:authoritative-official-setactive-portable-chair-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} chair={derivedAddEntry.ChairItemId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
             }
 
             if (HasOfficialSetActivePortableChairRecordCaptureForBuild(buildTag))
@@ -2307,6 +2367,9 @@ namespace HaCreator.MapSimulator.Managers
         {
             string operation;
             int characterId;
+            int chairItemId = 0;
+            int pairCharacterId = 0;
+            int status = -1;
             if (packetType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd)
             {
                 if (!Pools.RemoteUserPacketCodec.TryParsePortableChairRecordAdd(
@@ -2319,6 +2382,9 @@ namespace HaCreator.MapSimulator.Managers
 
                 operation = "add";
                 characterId = addPacket.CharacterId;
+                chairItemId = addPacket.ChairItemId;
+                pairCharacterId = addPacket.PairCharacterId.GetValueOrDefault();
+                status = addPacket.Status.GetValueOrDefault(-1);
             }
             else if (packetType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove)
             {
@@ -2352,6 +2418,9 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     operation = "add";
                     characterId = addPacket.CharacterId;
+                    chairItemId = addPacket.ChairItemId;
+                    pairCharacterId = addPacket.PairCharacterId.GetValueOrDefault();
+                    status = addPacket.Status.GetValueOrDefault(-1);
                     if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "mapped dispatch", StringComparison.OrdinalIgnoreCase))
                     {
                         reason = $"derived=CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}";
@@ -2382,6 +2451,9 @@ namespace HaCreator.MapSimulator.Managers
                 operation,
                 opcode,
                 characterId,
+                chairItemId,
+                pairCharacterId,
+                status,
                 payload?.Length ?? 0,
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
                 IsOfficialSessionSource(source),
@@ -2392,6 +2464,9 @@ namespace HaCreator.MapSimulator.Managers
                 packetType,
                 operation,
                 characterId,
+                chairItemId,
+                pairCharacterId,
+                status,
                 payload?.Length ?? 0,
                 source,
                 reason);
@@ -2410,6 +2485,9 @@ namespace HaCreator.MapSimulator.Managers
             int packetType,
             string operation,
             int characterId,
+            int chairItemId,
+            int pairCharacterId,
+            int status,
             int payloadLength,
             string source,
             string reason)
@@ -2431,6 +2509,9 @@ namespace HaCreator.MapSimulator.Managers
 
             evidence.Record(
                 characterId,
+                chairItemId,
+                pairCharacterId,
+                status,
                 payloadLength,
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
                 string.IsNullOrWhiteSpace(reason) ? "captured dispatch" : reason);

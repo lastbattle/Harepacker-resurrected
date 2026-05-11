@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Pools
             PlayerMobStatusEffect.DamageDown,
             PlayerMobStatusEffect.PhysicalDefenseDown,
             PlayerMobStatusEffect.MagicDefenseDown,
+            PlayerMobStatusEffect.ElementalWeaken,
             PlayerMobStatusEffect.BattlefieldFlag
         };
 
@@ -1115,6 +1116,15 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.PainMark,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 10),
+                    PropPercent: primaryStatusPropPercent));
+            }
+
+            if (ContainsToken(hostileSearchText, "elementalWeaken"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.ElementalWeaken,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20),
                     PropPercent: primaryStatusPropPercent));
             }
 

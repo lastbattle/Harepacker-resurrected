@@ -3618,8 +3618,9 @@ namespace HaCreator.MapSimulator.Pools
                     out RemoteUserRelationshipRecord normalizedRecord,
                     out string normalizeMessage))
             {
-                if (packet.PayloadKind == RemoteRelationshipRecordAddPayloadKind.PairLookup
-                    && packet.RelationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                if ((packet.PayloadKind == RemoteRelationshipRecordAddPayloadKind.PairLookup
+                        && packet.RelationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                    || packet.RelationshipType == RemoteRelationshipOverlayType.NewYearCard)
                 {
                     message = normalizeMessage;
                     return true;
@@ -3676,6 +3677,17 @@ namespace HaCreator.MapSimulator.Pools
         {
             normalizedRecord = packet.RelationshipRecord;
             message = null;
+            if (packet.RelationshipType == RemoteRelationshipOverlayType.NewYearCard
+                && !TryNormalizeNewYearCardRelationshipRecordAdd(
+                    packet,
+                    recordTable,
+                    pairLookupStateTable,
+                    out normalizedRecord,
+                    out message))
+            {
+                return false;
+            }
+
             if (packet.PayloadKind != RemoteRelationshipRecordAddPayloadKind.PairLookup
                 || packet.RelationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship))
             {
@@ -3693,6 +3705,12 @@ namespace HaCreator.MapSimulator.Pools
             bool hasOwnerPairLookupState =
                 TryGetActiveRelationshipPairLookupState(ownerCharacterId, normalizedRecord, pairLookupStateTable, out ownerPairLookupState);
             long? pairLookupSerial = packet.PairLookupSerial;
+            if (!pairLookupSerial.HasValue || pairLookupSerial.Value == 0)
+            {
+                message = $"{packet.RelationshipType} pair-item lookup add ignored zero pair-item serial.";
+                return false;
+            }
+
             if (!pairLookupSerial.HasValue
                 || !TryResolvePairLookupMatchedOwnerCharacterId(
                     ownerCharacterId,
@@ -3767,6 +3785,92 @@ namespace HaCreator.MapSimulator.Pools
                 PairCharacterId = entryPairCharacterId
             };
             return true;
+        }
+
+        private static bool TryNormalizeNewYearCardRelationshipRecordAdd(
+            RemoteUserRelationshipRecordPacket packet,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable,
+            out RemoteUserRelationshipRecord normalizedRecord,
+            out string message)
+        {
+            normalizedRecord = packet.RelationshipRecord;
+            message = null;
+            int ownerCharacterId = normalizedRecord.CharacterId.GetValueOrDefault();
+            long? cardSerial = normalizedRecord.ItemSerial;
+            if (ownerCharacterId <= 0 || !cardSerial.HasValue || cardSerial.Value == 0)
+            {
+                message = "New Year card record add requires a valid owner and card serial.";
+                return false;
+            }
+
+            if (normalizedRecord.PairCharacterId.GetValueOrDefault() > 0)
+            {
+                return true;
+            }
+
+            if (TryResolveNewYearCardMatchedOwnerCharacterId(
+                    ownerCharacterId,
+                    cardSerial.Value,
+                    recordTable,
+                    pairLookupStateTable,
+                    out int matchedOwnerCharacterId)
+                && matchedOwnerCharacterId > 0
+                && matchedOwnerCharacterId != ownerCharacterId)
+            {
+                normalizedRecord = normalizedRecord with
+                {
+                    ItemId = normalizedRecord.ItemId > 0 ? normalizedRecord.ItemId : 4300000,
+                    PairCharacterId = matchedOwnerCharacterId
+                };
+                return true;
+            }
+
+            message = $"New Year card record serial {cardSerial.Value} remembered for owner {ownerCharacterId}; waiting for a second owner entry before creating the paired CUserPool record.";
+            return false;
+        }
+
+        private static bool TryResolveNewYearCardMatchedOwnerCharacterId(
+            int ownerCharacterId,
+            long cardSerial,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable,
+            out int matchedOwnerCharacterId)
+        {
+            matchedOwnerCharacterId = 0;
+            if (pairLookupStateTable != null)
+            {
+                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in pairLookupStateTable)
+                {
+                    if (entry.Key == ownerCharacterId
+                        || !entry.Value.IsActive
+                        || entry.Value.ItemSerial != cardSerial)
+                    {
+                        continue;
+                    }
+
+                    matchedOwnerCharacterId = entry.Key;
+                    return true;
+                }
+            }
+
+            if (recordTable != null)
+            {
+                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable)
+                {
+                    if (entry.Key == ownerCharacterId
+                        || !entry.Value.IsActive
+                        || entry.Value.ItemSerial != cardSerial)
+                    {
+                        continue;
+                    }
+
+                    matchedOwnerCharacterId = entry.Key;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool TryGetActiveRelationshipPairLookupState(
@@ -4054,8 +4158,9 @@ namespace HaCreator.MapSimulator.Pools
                 removedOwnerCharacterIds.Add(ownerCharacterId);
             }
 
+            int removedPendingCount = RemovePendingRelationshipPairLookupState(packet.RelationshipType, packet);
             int removedCount = removedOwnerCharacterIds.Count;
-            if (removedCount == 0)
+            if (removedCount == 0 && removedPendingCount == 0)
             {
                 string discriminator = packet.ItemSerial.HasValue
                     ? $"serial {packet.ItemSerial.Value}"
@@ -4066,12 +4171,43 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-                message = removedCount == 1
+                message = removedCount == 1 && removedPendingCount == 0
                 ? $"Removed 1 {packet.RelationshipType} relationship overlay."
+                : removedCount == 0
+                    ? $"Removed {removedPendingCount} pending {packet.RelationshipType} relationship record entr{(removedPendingCount == 1 ? "y" : "ies")}."
                 : $"Removed {removedCount} {packet.RelationshipType} relationship overlays.";
 
             RefreshRelationshipOverlays(packet.RelationshipType, Environment.TickCount);
             return true;
+        }
+
+        private int RemovePendingRelationshipPairLookupState(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecordRemovePacket packet)
+        {
+            Dictionary<int, RemoteUserRelationshipRecord> pairLookupStateTable = GetRelationshipPairLookupStateTable(relationshipType);
+            int removedCount = 0;
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in pairLookupStateTable.ToArray())
+            {
+                RemoteUserRelationshipRecord record = entry.Value;
+                int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
+                    ? ResolveMarriagePairCharacterId(entry.Key, record)
+                    : record.PairCharacterId;
+                if (!DoesRelationshipRecordRemovalMatch(
+                        packet,
+                        entry.Key,
+                        record.ItemSerial,
+                        record.PairItemSerial,
+                        pairCharacterId))
+                {
+                    continue;
+                }
+
+                pairLookupStateTable.Remove(entry.Key);
+                removedCount++;
+            }
+
+            return removedCount;
         }
 
         public bool TryClearRelationshipRecordOwner(
@@ -9016,7 +9152,12 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int mutationStartIndex = actor.CarryItemEffectVisibleLayerReferenceMutations.Count;
             ReleaseCarryItemEffectVisibleLayerReferenceForParity(actor);
+            ArchiveRemoteVisibleLayerReferenceMutationsForParity(
+                actor.CarryItemEffectVisibleLayerReferenceMutations,
+                actor.CarryItemEffectReleasedVisibleLayerReferenceMutations,
+                mutationStartIndex);
             actor.CarryItemEffectTokenLayerHandleRefCounts =
                 BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: false);
             actor.CarryItemEffectLayerSuppressed = true;
@@ -9198,7 +9339,12 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int mutationStartIndex = actor.CompletedSetItemEffectVisibleLayerReferenceMutations.Count;
             ReleaseCompletedSetItemEffectVisibleLayerReferenceForParity(actor);
+            ArchiveRemoteVisibleLayerReferenceMutationsForParity(
+                actor.CompletedSetItemEffectVisibleLayerReferenceMutations,
+                actor.CompletedSetItemEffectReleasedVisibleLayerReferenceMutations,
+                mutationStartIndex);
             actor.CompletedSetItemEffectLayerSuppressed = true;
         }
 
@@ -9246,6 +9392,25 @@ namespace HaCreator.MapSimulator.Pools
             RemoteVisibleLayerReferenceMutation mutation)
         {
             mutations?.Add(mutation);
+        }
+
+        private static void ArchiveRemoteVisibleLayerReferenceMutationsForParity(
+            IReadOnlyList<RemoteVisibleLayerReferenceMutation> sourceMutations,
+            List<RemoteVisibleLayerReferenceMutation> archivedMutations,
+            int startIndex)
+        {
+            if (sourceMutations == null
+                || archivedMutations == null
+                || startIndex < 0
+                || startIndex >= sourceMutations.Count)
+            {
+                return;
+            }
+
+            for (int i = startIndex; i < sourceMutations.Count; i++)
+            {
+                archivedMutations.Add(sourceMutations[i]);
+            }
         }
 
         private static void UpdateRelationshipOverlayLayerAdmissionsForParity(RemoteUserActor actor)
@@ -11950,10 +12115,20 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (pairLookupStateTable == null
                 || ownerCharacterId <= 0
-                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
                 || !relationshipRecord.IsActive
-                || !relationshipRecord.ItemSerial.HasValue
-                || !relationshipRecord.PairItemSerial.HasValue)
+                || !relationshipRecord.ItemSerial.HasValue)
+            {
+                return;
+            }
+
+            if (relationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+            {
+                if (!relationshipRecord.PairItemSerial.HasValue)
+                {
+                    return;
+                }
+            }
+            else if (relationshipType != RemoteRelationshipOverlayType.NewYearCard)
             {
                 return;
             }
@@ -13237,7 +13412,21 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (TryResolveMechanicTamingMobOverrideItemId(knownState, actor.BaseActionName, out int mechanicTamingMobItemId))
+            if (TryResolveRemoteRidingVehicleTamingMobOverrideItemId(
+                    knownState,
+                    actor.BaseActionName,
+                    out int ridingVehicleTamingMobItemId))
+            {
+                overrideTamingMobPart = _loader?.LoadEquipment(ridingVehicleTamingMobItemId);
+                if (overrideTamingMobPart?.Slot != EquipSlot.TamingMob)
+                {
+                    overrideTamingMobPart = actor.TemporaryStatTamingMobOverridePart?.Slot == EquipSlot.TamingMob
+                        && actor.TemporaryStatTamingMobOverridePart.ItemId == ridingVehicleTamingMobItemId
+                        ? actor.TemporaryStatTamingMobOverridePart
+                        : null;
+                }
+            }
+            else if (TryResolveMechanicTamingMobOverrideItemId(knownState, actor.BaseActionName, out int mechanicTamingMobItemId))
             {
                 overrideTamingMobPart = _loader?.LoadEquipment(mechanicTamingMobItemId);
                 if (overrideTamingMobPart?.Slot != EquipSlot.TamingMob)
@@ -13695,9 +13884,19 @@ namespace HaCreator.MapSimulator.Pools
             UpdateCarryItemEffectLayerAdmissionForParity(actor);
         }
 
+        internal static void ReleaseCarryItemEffectLayerReferenceForTesting(RemoteUserActor actor)
+        {
+            ReleaseCarryItemEffectLayerReferenceForParity(actor);
+        }
+
         internal static void UpdateCompletedSetItemEffectLayerAdmissionForTesting(RemoteUserActor actor)
         {
             UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
+        }
+
+        internal static void ReleaseCompletedSetItemEffectLayerReferenceForTesting(RemoteUserActor actor)
+        {
+            ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
         }
 
         internal static void UpdateRelationshipOverlayLayerAdmissionForTesting(
@@ -13948,6 +14147,7 @@ namespace HaCreator.MapSimulator.Pools
             return ResolveRemoteRidingVehicleIdForTesting(
                 mountPart,
                 actor.ActionName,
+                actor.TemporaryStats.KnownState.RidingVehicleId,
                 actor.TemporaryStats.KnownState.MechanicMode,
                 activeMountedRenderOwner);
         }
@@ -13955,9 +14155,16 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolveRemoteRidingVehicleIdForTesting(
             CharacterPart equippedMountPart,
             string actionName,
+            int? decodedRidingVehicleId,
             int? mechanicMode,
             CharacterPart activeMountedRenderOwner)
         {
+            if (decodedRidingVehicleId is > 0
+                && IsRemoteRidingVehicleTamingMobItemId(decodedRidingVehicleId.Value))
+            {
+                return decodedRidingVehicleId.Value;
+            }
+
             return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
                 equippedMountPart,
                 actionName,
@@ -14022,6 +14229,65 @@ namespace HaCreator.MapSimulator.Pools
 
             tamingMobItemId = MechanicTamingMobItemId;
             return true;
+        }
+
+        internal static bool TryResolveRemoteRidingVehicleTamingMobOverrideItemId(
+            RemoteUserTemporaryStatKnownState knownState,
+            string baseActionName,
+            out int tamingMobItemId)
+        {
+            tamingMobItemId = 0;
+            if (knownState.RidingVehicleId is not int ridingVehicleId
+                || !IsRemoteRidingVehicleTamingMobItemId(ridingVehicleId))
+            {
+                return false;
+            }
+
+            // `CUserRemote::Init` calls `CAvatar::SetRidingVehicle` from the
+            // decoded remote secondary-stat slot, so this is an explicit render
+            // owner. Keep the current-action gate at the owner seam.
+            if (!SupportsRemoteRidingVehicleTemporaryStatAction(ridingVehicleId, baseActionName))
+            {
+                return false;
+            }
+
+            tamingMobItemId = ridingVehicleId;
+            return true;
+        }
+
+        private static bool IsRemoteRidingVehicleTamingMobItemId(int itemId)
+        {
+            int family = itemId / 10000;
+            return family == 190
+                   || family == 193
+                   || itemId / 1000 == 1983
+                   || family == 199;
+        }
+
+        private static bool SupportsRemoteRidingVehicleTemporaryStatAction(int itemId, string actionName)
+        {
+            CharacterPart probePart = new()
+            {
+                ItemId = itemId,
+                Slot = EquipSlot.TamingMob,
+                Type = CharacterPartType.TamingMob
+            };
+            if (SkillManager.SupportsClientOwnedVehicleMountedStateForCurrentAction(probePart, actionName))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return true;
+            }
+
+            return NormalizeActionName(actionName, allowSitFallback: false) switch
+            {
+                "stand1" or "stand2" or "sit" or "walk1" or "walk2" or "jump" or "prone"
+                    or "fly" or "swim" or "ladder" or "rope" or "alert" => true,
+                _ => false
+            };
         }
 
         internal static bool TryResolveMechanicVisibleActionName(
@@ -14451,7 +14717,8 @@ namespace HaCreator.MapSimulator.Pools
             bool hasEnergyChargeStyleValue = ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
                 actor?.TemporaryStats.HasWeaponCharge == true,
                 knownState.WeaponChargeValue,
-                resolvedChargeSkillId);
+                resolvedChargeSkillId,
+                actor?.Build?.Job ?? 0);
             if (hasEnergyChargeStyleValue)
             {
                 ResolveRemoteEnergyChargeSkill(actor, knownState, out skillId, out skill);
@@ -14519,7 +14786,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int jobId = actor?.Build?.Job ?? 0;
-            foreach (int candidateSkillId in EnumerateRemoteEnergyChargeSkillIds(jobId))
+            foreach (int candidateSkillId in EnumerateRemoteEnergyChargeSkillIds(jobId, weaponChargeValue))
             {
                 SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
                 if (!CanUseRemoteEnergyChargeAvatarEffect(candidateSkillId, weaponChargeValue, candidateSkill))
@@ -14533,16 +14800,35 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static IReadOnlyList<int> EnumerateRemoteEnergyChargeSkillIds(int jobId)
+        private static IReadOnlyList<int> EnumerateRemoteEnergyChargeSkillIds(int jobId, int? preferredSkillId = null)
         {
-            int preferredSkillId = jobId switch
+            int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
+            if (!IsKnownRemoteEnergyChargeSkillId(resolvedPreferredSkillId))
             {
-                >= 510 and <= 512 => 5110001,
-                >= 1510 and <= 1512 => 15100004,
-                _ => 0
-            };
+                resolvedPreferredSkillId = jobId switch
+                {
+                    >= 510 and <= 512 => 5110001,
+                    >= 1510 and <= 1512 => 15100004,
+                    _ => 0
+                };
+            }
 
-            return EnumeratePreferredSkillIds(RemoteEnergyChargeSkillIds, preferredSkillId);
+            if (resolvedPreferredSkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return EnumeratePreferredSkillIds(RemoteEnergyChargeSkillIds, resolvedPreferredSkillId);
+        }
+
+        private static bool IsRemoteEnergyChargeJobFamily(int jobId)
+        {
+            return jobId switch
+            {
+                >= 510 and <= 512 => true,
+                >= 1510 and <= 1512 => true,
+                _ => false
+            };
         }
 
         private static bool CanUseRemoteEnergyChargeAvatarEffect(
@@ -14564,7 +14850,8 @@ namespace HaCreator.MapSimulator.Pools
         private static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
             bool hasWeaponChargeMaskBit,
             int? weaponChargeValue,
-            int? resolvedChargeSkillId = null)
+            int? resolvedChargeSkillId = null,
+            int jobId = 0)
         {
             int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
             if (!hasWeaponChargeMaskBit || decodedWeaponChargeValue <= 0)
@@ -14575,6 +14862,11 @@ namespace HaCreator.MapSimulator.Pools
             if (IsKnownRemoteEnergyChargeSkillId(decodedWeaponChargeValue))
             {
                 return true;
+            }
+
+            if (!IsRemoteEnergyChargeJobFamily(jobId))
+            {
+                return false;
             }
 
             return !IsKnownNonEnergyRemoteWeaponChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
@@ -15567,12 +15859,37 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyleForTesting(
             bool hasWeaponChargeMaskBit,
             int? weaponChargeValue,
+            int jobId)
+        {
+            return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
+                hasWeaponChargeMaskBit,
+                weaponChargeValue,
+                resolvedChargeSkillId: null,
+                jobId);
+        }
+
+        internal static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyleForTesting(
+            bool hasWeaponChargeMaskBit,
+            int? weaponChargeValue,
             int? resolvedChargeSkillId)
         {
             return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
                 hasWeaponChargeMaskBit,
                 weaponChargeValue,
                 resolvedChargeSkillId);
+        }
+
+        internal static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyleForTesting(
+            bool hasWeaponChargeMaskBit,
+            int? weaponChargeValue,
+            int? resolvedChargeSkillId,
+            int jobId)
+        {
+            return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
+                hasWeaponChargeMaskBit,
+                weaponChargeValue,
+                resolvedChargeSkillId,
+                jobId);
         }
 
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(
@@ -16372,16 +16689,53 @@ namespace HaCreator.MapSimulator.Pools
 
                 for (int partIndex = 0; partIndex < layerSnapshot.Parts.Count; partIndex++)
                 {
-                    DrawRemoteAssembledPart(
+                    AssembledPart part = layerSnapshot.Parts[partIndex];
+                    DrawRemoteActiveEffectMotionBlurPart(
                         spriteBatch,
                         skeletonRenderer,
-                        layerSnapshot.Parts[partIndex],
+                        part,
                         screenX,
                         adjustedY,
                         facingRight,
-                        tint);
+                        ResolveRemoteActiveEffectMotionBlurPartTint(part?.Tint ?? Color.White, tint));
                 }
             }
+        }
+
+        private static void DrawRemoteActiveEffectMotionBlurPart(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledPart part,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color tint)
+        {
+            if (part?.Texture == null || !part.IsVisible)
+            {
+                return;
+            }
+
+            int partX = flip
+                ? screenX - part.OffsetX - part.Texture.Width
+                : screenX + part.OffsetX;
+            int partY = adjustedY + part.OffsetY;
+            part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, tint, flip, null);
+        }
+
+        internal static Color ResolveRemoteActiveEffectMotionBlurPartTint(
+            Color sourceTint,
+            Color motionBlurTint)
+        {
+            byte sourceAlpha = sourceTint == Color.White
+                ? byte.MaxValue
+                : sourceTint.A;
+            byte clampedBaseAlpha = sourceAlpha < motionBlurTint.A
+                ? sourceAlpha
+                : motionBlurTint.A;
+            return sourceTint == Color.White
+                ? new Color(motionBlurTint.R, motionBlurTint.G, motionBlurTint.B, clampedBaseAlpha)
+                : new Color(sourceTint.R, sourceTint.G, sourceTint.B, clampedBaseAlpha);
         }
 
         private static void DrawRemoteActorFrame(
@@ -18209,6 +18563,22 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSparsePairMaxDistanceBytes,
+                    out int uniqueSparsePairChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueSparsePairChargeElement,
+                    out int uniqueSparsePairChargeSkillId))
+            {
+                return uniqueSparsePairChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -18450,6 +18820,18 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSparsePairMaxDistanceBytes,
                     out chargeElement))
             {
                 return true;
@@ -19023,12 +19405,14 @@ namespace HaCreator.MapSimulator.Pools
         public IReadOnlyList<int> CarryItemEffectTokenLayerHandleIds { get; set; } = Array.Empty<int>();
         public IReadOnlyList<int> CarryItemEffectTokenLayerHandleRefCounts { get; set; } = Array.Empty<int>();
         public List<RemoteVisibleLayerReferenceMutation> CarryItemEffectVisibleLayerReferenceMutations { get; } = new();
+        public List<RemoteVisibleLayerReferenceMutation> CarryItemEffectReleasedVisibleLayerReferenceMutations { get; } = new();
         public bool CarryItemEffectLayerSuppressed { get; set; } = true;
         public int CompletedSetItemId { get; set; }
         public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;
         public int CompletedSetItemEffectLayerHandleId { get; set; }
         public int CompletedSetItemEffectLayerHandleRefCount { get; set; }
         public List<RemoteVisibleLayerReferenceMutation> CompletedSetItemEffectVisibleLayerReferenceMutations { get; } = new();
+        public List<RemoteVisibleLayerReferenceMutation> CompletedSetItemEffectReleasedVisibleLayerReferenceMutations { get; } = new();
         public bool CompletedSetItemEffectLayerSuppressed { get; set; } = true;
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }

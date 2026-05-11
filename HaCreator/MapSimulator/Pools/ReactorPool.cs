@@ -1186,8 +1186,10 @@ namespace HaCreator.MapSimulator.Pools
 
             if (activationType == ReactorActivationType.Hit)
             {
-                TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick);
-                TryPlayReactorHitSound(reactor, previousVisualState);
+                if (TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick))
+                {
+                    TryPlayReactorHitSound(reactor, previousVisualState);
+                }
             }
 
             _onReactorActivated?.Invoke(reactor, playerId);
@@ -1241,8 +1243,11 @@ namespace HaCreator.MapSimulator.Pools
                         data.ActivatingPlayerId = playerId;
                         UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, selectedAuthoredOrder);
                         RefreshReactorLayerPlacement(reactor);
-                        TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick);
-                        TryPlayReactorHitSound(reactor, data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : previousVisualState);
+                        int hitSoundSourceState = data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : previousVisualState;
+                        if (TryStartLocalHitLayer(reactor, data, previousVisualState, selectedAuthoredOrder, currentTick))
+                        {
+                            TryPlayReactorHitSound(reactor, hitSoundSourceState);
+                        }
                     }
                     else
                     {
@@ -3713,7 +3718,7 @@ namespace HaCreator.MapSimulator.Pools
             return activationDuration;
         }
 
-        private static void TryStartLocalHitLayer(
+        private static bool TryStartLocalHitLayer(
             ReactorItem reactor,
             ReactorRuntimeData data,
             int sourceState,
@@ -3722,7 +3727,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (reactor == null || data == null)
             {
-                return;
+                return false;
             }
 
             data.LocalHitLayerEndTime = 0;
@@ -3730,7 +3735,11 @@ namespace HaCreator.MapSimulator.Pools
                 && hitDuration > 0)
             {
                 data.LocalHitLayerEndTime = unchecked(currentTick + hitDuration);
+                return true;
             }
+
+            reactor.ClearTransientAnimation();
+            return false;
         }
 
         private static bool ShouldAutoChainStates(ReactorRuntimeData data)

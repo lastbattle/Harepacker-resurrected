@@ -100,7 +100,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int EnergyGaugeOffsetX = EnergyGaugeLayerAnchorX - (EnergyOffsetX - 11) - EnergyGaugeOriginX;
         private const int EnergyGaugeOffsetY = EnergyGaugeLayerAnchorY - (EnergyOffsetY - 50) - EnergyGaugeOriginY;
         private static readonly Point EnergyFullTopLeft = new(9, 80);
-        private const int ResultPresentationTransferDelayMs = 2400;
+        private const int ClearPresentationTransferDelayMs = 2400;
+        private const int TimeOverPresentationTransferDelayMs = 500;
         private const int EnergyMax = 10000;
         private bool _isActive;
         private int _mapId;
@@ -240,6 +241,9 @@ namespace HaCreator.MapSimulator.Effects
             EnergyGaugeOffsetX,
             EnergyGaugeOffsetY,
             EnergyFullTopLeft);
+        internal static DojoPresentationTiming ClientPresentationTiming => new(
+            ClearPresentationTransferDelayMs,
+            TimeOverPresentationTransferDelayMs);
         internal DojoHudLayerVisibility ResolveClientHudLayerVisibility()
         {
             bool active = _isActive;
@@ -824,7 +828,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTimeOverFieldSound = false;
             _activeClearTransferMapId = resolvedClearTransferMapId;
             _activeClearTransferPortalName = resolvedClearTransferPortalName;
-            SchedulePresentationTransfer(resolvedClearTransferMapId, resolvedClearTransferPortalName, _clearFrames, currentTimeMs, ResultPresentationTransferDelayMs);
+            SchedulePresentationTransfer(resolvedClearTransferMapId, resolvedClearTransferPortalName, _clearFrames, currentTimeMs, ClearPresentationTransferDelayMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
         {
@@ -839,7 +843,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTimeOverFieldSound = queueExpirySound;
             _activeClearTransferMapId = -1;
             _activeClearTransferPortalName = string.Empty;
-            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs, ResultPresentationTransferDelayMs);
+            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs, TimeOverPresentationTransferDelayMs);
         }
         public void Update(int currentTimeMs, float deltaSeconds)
         {
@@ -2463,6 +2467,9 @@ namespace HaCreator.MapSimulator.Effects
             bool EnergyEmptyVisible,
             bool EnergyGaugeVisible,
             bool EnergyFullVisible);
+        internal readonly record struct DojoPresentationTiming(
+            int ClearTransferDelayMs,
+            int TimeOverTransferDelayMs);
         public readonly record struct DojoPacketContract(
             int PacketType,
             string Name,

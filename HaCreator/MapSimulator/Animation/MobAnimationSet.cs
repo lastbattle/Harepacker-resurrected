@@ -310,6 +310,7 @@ namespace HaCreator.MapSimulator.Animation
             public int SourceFrameIndex { get; init; }
             public bool IsAttackFrameOwned { get; init; }
             public bool UsesAttackInfoHitEffect { get; init; }
+            public string SourceUol { get; init; }
         }
 
         public sealed class AttackEffectNode
@@ -331,6 +332,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool UseRangeGroupPlacement { get; set; }
             public int RangeGroupIndex { get; set; }
             public int RangeGroupCount { get; set; }
+            public string SourceUol { get; set; }
             public List<List<IDXObject>> Sequences { get; } = new List<List<IDXObject>>();
         }
 
@@ -339,6 +341,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, List<AttackHitEffectEntry>> _attackHitEffectEntries = new();
         private readonly Dictionary<string, List<IDXObject>> _attackProjectileEffects = new();
         private readonly Dictionary<string, List<IDXObject>> _attackEffects = new();
+        private readonly Dictionary<string, string> _attackEffectSourceUols = new();
         private readonly Dictionary<string, List<IDXObject>> _attackWarningEffects = new();
         private readonly Dictionary<string, List<AttackEffectNode>> _attackExtraEffects = new();
         private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
@@ -445,7 +448,8 @@ namespace HaCreator.MapSimulator.Animation
             List<IDXObject> hitFrames,
             int sourceFrameIndex,
             bool isAttackFrameOwned,
-            bool usesAttackInfoHitEffect = false)
+            bool usesAttackInfoHitEffect = false,
+            string sourceUol = null)
         {
             if (hitFrames == null || hitFrames.Count == 0)
                 return;
@@ -462,7 +466,8 @@ namespace HaCreator.MapSimulator.Animation
                 Frames = hitFrames,
                 SourceFrameIndex = sourceFrameIndex,
                 IsAttackFrameOwned = isAttackFrameOwned,
-                UsesAttackInfoHitEffect = usesAttackInfoHitEffect
+                UsesAttackInfoHitEffect = usesAttackInfoHitEffect,
+                SourceUol = sourceUol
             });
 
             if (!_attackHitEffects.ContainsKey(key) || !isAttackFrameOwned)
@@ -571,11 +576,17 @@ namespace HaCreator.MapSimulator.Animation
 
         public void AddAttackEffect(string attackAction, List<IDXObject> effectFrames)
         {
+            AddAttackEffect(attackAction, effectFrames, sourceUol: null);
+        }
+
+        public void AddAttackEffect(string attackAction, List<IDXObject> effectFrames, string sourceUol)
+        {
             if (effectFrames == null || effectFrames.Count == 0)
                 return;
 
             string key = attackAction.ToLower();
             _attackEffects[key] = effectFrames;
+            _attackEffectSourceUols[key] = sourceUol;
         }
 
         public List<IDXObject> GetAttackEffect(string attackAction)
@@ -584,6 +595,17 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (_attackEffects.TryGetValue(key, out var frames))
                     return frames;
+            }
+
+            return null;
+        }
+
+        public string GetAttackEffectSourceUol(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackEffectSourceUols.TryGetValue(key, out string sourceUol))
+                    return sourceUol;
             }
 
             return null;

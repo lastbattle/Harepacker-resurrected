@@ -74,6 +74,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientNameBarRightX = 490;
         private const int ClientRecordPanelX = 404;
         private const int ClientRecordPanelY = 167;
+        private const int ClientRecordColumnLeftX = 409;
+        private const int ClientRecordColumnRightX = 495;
+        private const int ClientRecordColumnY = 190;
+        private const int ClientRecordColumnWidth = 78;
+        private const int ClientRecordRowHeight = 14;
         private const int ClientMasterPanelX = 460;
         private const int ClientMasterPanelY = 63;
         private const int ClientTimerTextX = 295;
@@ -307,6 +312,38 @@ namespace HaCreator.MapSimulator.Fields
             public int WinRatePercent => TotalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, Wins) * 100d / TotalGames);
         }
 
+        public sealed class ClientMiniGameRecordWidget
+        {
+            public ClientMiniGameRecordWidget(int slot, string displayName, Rectangle bounds, IReadOnlyList<ClientMiniGameRecordWidgetRow> rows)
+            {
+                Slot = slot;
+                DisplayName = displayName ?? string.Empty;
+                Bounds = bounds;
+                Rows = rows ?? Array.Empty<ClientMiniGameRecordWidgetRow>();
+            }
+
+            public int Slot { get; }
+            public string DisplayName { get; }
+            public Rectangle Bounds { get; }
+            public IReadOnlyList<ClientMiniGameRecordWidgetRow> Rows { get; }
+        }
+
+        public sealed class ClientMiniGameRecordWidgetRow
+        {
+            public ClientMiniGameRecordWidgetRow(string label, int value, string text, Point position)
+            {
+                Label = label ?? string.Empty;
+                Value = value;
+                Text = text ?? string.Empty;
+                Position = position;
+            }
+
+            public string Label { get; }
+            public int Value { get; }
+            public string Text { get; }
+            public Point Position { get; }
+        }
+
 
         private sealed class MiniRoomParticipantState
         {
@@ -434,6 +471,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
         public IReadOnlyDictionary<int, MiniGameRecord> MiniGameRecords => _miniGameRecords;
+        public IReadOnlyList<ClientMiniGameRecordWidget> ClientRecordWidgets => BuildClientRecordWidgets();
         public int GameKind => _gameKind;
         public int CardsPerRow => _cardsPerRow;
         public string Title => _title;
@@ -4180,31 +4218,74 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawClientRecordSummary(SpriteBatch spriteBatch, SpriteFont font, int dialogX, int dialogY)
         {
-            int localIndex = Math.Clamp(_localPlayerIndex, 0, _wins.Length - 1);
             DrawBitmapNumber(spriteBatch, _scores[0], dialogX + ClientScoreLeftX, dialogY + ClientScoreY);
             if (ClientScoreLayerVisible)
             {
                 DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
             }
-            DrawOutlinedText(spriteBatch, font, BuildRecordDisplayText(localIndex), new Vector2(dialogX + 409, dialogY + 210), Color.Black, new Color(48, 48, 48));
-            DrawOutlinedText(spriteBatch, font, BuildRecordDisplayText(localIndex == 0 ? 1 : 0), new Vector2(dialogX + 409, dialogY + 228), Color.Black, new Color(48, 48, 48));
+
+            foreach (ClientMiniGameRecordWidget widget in BuildClientRecordWidgets())
+            {
+                foreach (ClientMiniGameRecordWidgetRow row in widget.Rows)
+                {
+                    DrawOutlinedText(
+                        spriteBatch,
+                        font,
+                        row.Text,
+                        new Vector2(dialogX + row.Position.X, dialogY + row.Position.Y),
+                        Color.Black,
+                        new Color(48, 48, 48));
+                }
+            }
+
             DrawOutlinedText(spriteBatch, font, $"Room: {_stage}", new Vector2(dialogX + 409, dialogY + 246), Color.Black, new Color(48, 48, 48));
         }
 
-        private string BuildRecordDisplayText(int slot)
+        private IReadOnlyList<ClientMiniGameRecordWidget> BuildClientRecordWidgets()
         {
-            string prefix = slot == _localPlayerIndex ? "You" : ResolveParticipantName(slot);
+            int localIndex = Math.Clamp(_localPlayerIndex, 0, _wins.Length - 1);
+            int remoteIndex = localIndex == 0 ? 1 : 0;
+            return new[]
+            {
+                BuildClientRecordWidget(localIndex, ClientRecordColumnLeftX),
+                BuildClientRecordWidget(remoteIndex, ClientRecordColumnRightX)
+            };
+        }
+
+        private ClientMiniGameRecordWidget BuildClientRecordWidget(int slot, int x)
+        {
+            string displayName = slot == _localPlayerIndex ? "You" : ResolveParticipantName(slot);
+            int wins = 0;
+            int draws = 0;
+            int losses = 0;
+            int rate = 0;
             if (_miniGameRecords.TryGetValue(slot, out MiniGameRecord record))
             {
-                return $"{prefix}: W {record.Wins} D {record.Draws} L {record.Losses} R {record.WinRatePercent}%";
+                wins = record.Wins;
+                draws = record.Draws;
+                losses = record.Losses;
+                rate = record.WinRatePercent;
             }
-
-            if (slot >= 0 && slot < _wins.Length)
+            else if (slot >= 0 && slot < _wins.Length)
             {
-                return $"{prefix}: W {_wins[slot]} D {_draws[slot]} L {_losses[slot]}";
+                wins = _wins[slot];
+                draws = _draws[slot];
+                losses = _losses[slot];
+                int totalGames = Math.Max(0, wins) + Math.Max(0, draws) + Math.Max(0, losses);
+                rate = totalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, wins) * 100d / totalGames);
             }
 
-            return $"{prefix}: no record";
+            return new ClientMiniGameRecordWidget(
+                slot,
+                displayName,
+                new Rectangle(x, ClientRecordColumnY, ClientRecordColumnWidth, ClientRecordRowHeight * 4),
+                new[]
+                {
+                    new ClientMiniGameRecordWidgetRow("Win", wins, $"W {wins}", new Point(x, ClientRecordColumnY)),
+                    new ClientMiniGameRecordWidgetRow("Draw", draws, $"D {draws}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
+                    new ClientMiniGameRecordWidgetRow("Lose", losses, $"L {losses}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
+                    new ClientMiniGameRecordWidgetRow("Rate", rate, $"R {rate}%", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 3))
+                });
         }
 
 

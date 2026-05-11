@@ -32,6 +32,18 @@ namespace HaCreator.MapSimulator.Managers
             PlayLooping
         }
 
+        public enum ClientSoundStateMutationKind
+        {
+            CreateState = 0,
+            SetStartVolume,
+            SetLoopMode,
+            RegisterOneShotCompletion,
+            RegisterLoopHandle,
+            ReleaseLocalStateReference,
+            ReleaseLoopHandle,
+            DisposeManager
+        }
+
         public readonly struct ClientSoundPlaybackPlan
         {
             public ClientSoundPlaybackPlan(ClientSoundPlaybackAction action, float startVolumeScale, string reason)
@@ -46,6 +58,67 @@ namespace HaCreator.MapSimulator.Managers
             public string Reason { get; }
         }
 
+        public readonly struct ClientSoundStateSnapshot
+        {
+            public ClientSoundStateSnapshot(
+                uint stateId,
+                string key,
+                bool loop,
+                float startVolumeScale,
+                float resolvedVolumeScale,
+                uint loopHandle,
+                bool localReferenceReleased,
+                bool active)
+            {
+                StateId = stateId;
+                Key = key;
+                Loop = loop;
+                StartVolumeScale = startVolumeScale;
+                ResolvedVolumeScale = resolvedVolumeScale;
+                LoopHandle = loopHandle;
+                LocalReferenceReleased = localReferenceReleased;
+                Active = active;
+            }
+
+            public uint StateId { get; }
+            public string Key { get; }
+            public bool Loop { get; }
+            public float StartVolumeScale { get; }
+            public float ResolvedVolumeScale { get; }
+            public uint LoopHandle { get; }
+            public bool LocalReferenceReleased { get; }
+            public bool Active { get; }
+        }
+
+        public readonly struct ClientSoundStateMutation
+        {
+            public ClientSoundStateMutation(
+                ClientSoundStateMutationKind kind,
+                uint stateId,
+                string key,
+                uint loopHandle,
+                float startVolumeScale,
+                float resolvedVolumeScale,
+                bool loop)
+            {
+                Kind = kind;
+                StateId = stateId;
+                Key = key;
+                LoopHandle = loopHandle;
+                StartVolumeScale = startVolumeScale;
+                ResolvedVolumeScale = resolvedVolumeScale;
+                Loop = loop;
+            }
+
+            public ClientSoundStateMutationKind Kind { get; }
+            public uint StateId { get; }
+            public string Key { get; }
+            public uint LoopHandle { get; }
+            public float StartVolumeScale { get; }
+            public float ResolvedVolumeScale { get; }
+            public bool Loop { get; }
+        }
+
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
         private readonly ConcurrentDictionary<string, WzBinaryProperty> _registeredSoundProperties;
         private readonly ConcurrentDictionary<string, ulong> _clientSoundSourceAccessSerials;
@@ -53,11 +126,15 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<OneShotSound> _activeSounds;
         private readonly ConcurrentDictionary<string, LoopingSound> _activeLoopingSounds;
         private readonly ConcurrentDictionary<uint, string> _loopingSoundHandles;
+        private readonly ConcurrentDictionary<uint, uint> _clientLoopingSoundStateIds;
+        private readonly ConcurrentDictionary<uint, ClientSoundStateSnapshot> _clientSoundStates;
+        private readonly List<ClientSoundStateMutation> _clientSoundStateMutations;
         private readonly object _lock = new object();
         private float _volume = 0.5f;
         private bool _disposed;
         private bool _focusActive = true;
         private uint _nextLoopingSerial;
+        private uint _nextClientSoundStateSerial;
         private ulong _nextClientSoundSourceAccessSerial;
 
         // Maximum concurrent sounds per effect type to prevent resource exhaustion
@@ -74,6 +151,9 @@ namespace HaCreator.MapSimulator.Managers
             _activeSounds = new List<OneShotSound>();
             _activeLoopingSounds = new ConcurrentDictionary<string, LoopingSound>();
             _loopingSoundHandles = new ConcurrentDictionary<uint, string>();
+            _clientLoopingSoundStateIds = new ConcurrentDictionary<uint, uint>();
+            _clientSoundStates = new ConcurrentDictionary<uint, ClientSoundStateSnapshot>();
+            _clientSoundStateMutations = new List<ClientSoundStateMutation>();
             _activeSoundCounts = new ConcurrentDictionary<string, int>();
         }
 
@@ -238,10 +318,21 @@ namespace HaCreator.MapSimulator.Managers
             {
                 handle = PlayLoopingSoundHandle(key, plan.StartVolumeScale);
                 reason = handle == 0 ? "loop-start-failed" : "played";
+                if (handle != 0 && !TryGetClientLoopingSoundState(handle, out _))
+                {
+                    AdmitClientSoundState(key, plan.StartVolumeScale, loop: true, handle);
+                }
+
                 return handle != 0;
             }
 
-            return TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason);
+            if (!TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason))
+            {
+                return false;
+            }
+
+            AdmitClientSoundState(key, plan.StartVolumeScale, loop: false, loopHandle: 0);
+            return true;
         }
 
         internal bool TryPlayClientSoundEffectAt(
@@ -422,7 +513,10 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (string.Equals(pair.Value, name, StringComparison.Ordinal))
                 {
-                    _loopingSoundHandles.TryRemove(pair.Key, out _);
+                    if (_loopingSoundHandles.TryRemove(pair.Key, out _))
+                    {
+                        ReleaseClientLoopingSoundState(pair.Key);
+                    }
                 }
             }
         }
@@ -436,6 +530,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (_loopingSoundHandles.TryRemove(handle, out string name))
             {
+                ReleaseClientLoopingSoundState(handle);
                 StopLoopingSound(name);
             }
         }
@@ -550,6 +645,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _activeLoopingSounds.Clear();
+                foreach (uint handle in _loopingSoundHandles.Keys)
+                {
+                    ReleaseClientLoopingSoundState(handle);
+                }
+
                 _loopingSoundHandles.Clear();
             }
         }
@@ -613,7 +713,14 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _activeLoopingSounds.Clear();
+            foreach (uint handle in _loopingSoundHandles.Keys)
+            {
+                ReleaseClientLoopingSoundState(handle, ClientSoundStateMutationKind.DisposeManager);
+            }
+
             _loopingSoundHandles.Clear();
+            _clientLoopingSoundStateIds.Clear();
+            _clientSoundStates.Clear();
 
             _soundSources.Clear();
             _registeredSoundProperties.Clear();
@@ -637,6 +744,29 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         internal int ActiveLoopingCount => _activeLoopingSounds.Count;
+
+        internal IReadOnlyList<ClientSoundStateMutation> ClientSoundStateMutations
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _clientSoundStateMutations.ToArray();
+                }
+            }
+        }
+
+        internal bool TryGetClientSoundState(uint stateId, out ClientSoundStateSnapshot state)
+        {
+            return _clientSoundStates.TryGetValue(stateId, out state);
+        }
+
+        internal bool TryGetClientLoopingSoundState(uint handle, out ClientSoundStateSnapshot state)
+        {
+            state = default;
+            return _clientLoopingSoundStateIds.TryGetValue(handle, out uint stateId)
+                && _clientSoundStates.TryGetValue(stateId, out state);
+        }
 
         internal static bool ShouldSuppressDuplicatePlayback(int activeCount, bool suppressWhileActive)
         {
@@ -778,6 +908,108 @@ namespace HaCreator.MapSimulator.Managers
             return radioPlaying && !radioMuted;
         }
 
+        internal static ClientSoundStateMutation[] BuildClientSoundStateAdmissionMutations(
+            uint stateId,
+            string key,
+            bool loop,
+            uint loopHandle,
+            float startVolumeScale,
+            float masterVolume)
+        {
+            float clampedStartVolumeScale = ResolveClientStartVolumeScale(startVolumeScale);
+            float resolvedVolumeScale = ResolveClientVolumeScale(clampedStartVolumeScale, masterVolume);
+            if (loop)
+            {
+                return new[]
+                {
+                    new ClientSoundStateMutation(
+                        ClientSoundStateMutationKind.CreateState,
+                        stateId,
+                        key,
+                        loopHandle,
+                        clampedStartVolumeScale,
+                        resolvedVolumeScale,
+                        loop),
+                    new ClientSoundStateMutation(
+                        ClientSoundStateMutationKind.SetStartVolume,
+                        stateId,
+                        key,
+                        loopHandle,
+                        clampedStartVolumeScale,
+                        resolvedVolumeScale,
+                        loop),
+                    new ClientSoundStateMutation(
+                        ClientSoundStateMutationKind.SetLoopMode,
+                        stateId,
+                        key,
+                        loopHandle,
+                        clampedStartVolumeScale,
+                        resolvedVolumeScale,
+                        loop),
+                    new ClientSoundStateMutation(
+                        ClientSoundStateMutationKind.RegisterLoopHandle,
+                        stateId,
+                        key,
+                        loopHandle,
+                        clampedStartVolumeScale,
+                        resolvedVolumeScale,
+                        loop),
+                    new ClientSoundStateMutation(
+                        ClientSoundStateMutationKind.ReleaseLocalStateReference,
+                        stateId,
+                        key,
+                        loopHandle,
+                        clampedStartVolumeScale,
+                        resolvedVolumeScale,
+                        loop)
+                };
+            }
+
+            return new[]
+            {
+                new ClientSoundStateMutation(
+                    ClientSoundStateMutationKind.CreateState,
+                    stateId,
+                    key,
+                    loopHandle,
+                    clampedStartVolumeScale,
+                    resolvedVolumeScale,
+                    loop),
+                new ClientSoundStateMutation(
+                    ClientSoundStateMutationKind.SetStartVolume,
+                    stateId,
+                    key,
+                    loopHandle,
+                    clampedStartVolumeScale,
+                    resolvedVolumeScale,
+                    loop),
+                new ClientSoundStateMutation(
+                    ClientSoundStateMutationKind.SetLoopMode,
+                    stateId,
+                    key,
+                    loopHandle,
+                    clampedStartVolumeScale,
+                    resolvedVolumeScale,
+                    loop),
+                new ClientSoundStateMutation(
+                    ClientSoundStateMutationKind.RegisterOneShotCompletion,
+                    stateId,
+                    key,
+                    loopHandle,
+                    clampedStartVolumeScale,
+                    resolvedVolumeScale,
+                    loop),
+                new ClientSoundStateMutation(
+                    ClientSoundStateMutationKind.ReleaseLocalStateReference,
+                    stateId,
+                    key,
+                    loopHandle,
+                    clampedStartVolumeScale,
+                    resolvedVolumeScale,
+                    loop)
+            };
+        }
+
         internal static string BuildRegisteredClientSoundKey(string registeredName, WzBinaryProperty sound)
         {
             string path = sound?.FullPath?.Replace('\\', '/');
@@ -869,6 +1101,88 @@ namespace HaCreator.MapSimulator.Managers
             return handle == 0
                 ? ++_nextLoopingSerial
                 : handle;
+        }
+
+        private uint AllocateClientSoundStateId()
+        {
+            uint stateId = ++_nextClientSoundStateSerial;
+            return stateId == 0
+                ? ++_nextClientSoundStateSerial
+                : stateId;
+        }
+
+        private uint AdmitClientSoundState(string key, float startVolumeScale, bool loop, uint loopHandle)
+        {
+            uint stateId = AllocateClientSoundStateId();
+            float clampedStartVolumeScale = ResolveClientStartVolumeScale(startVolumeScale);
+            float resolvedVolumeScale = ResolveClientVolumeScale(clampedStartVolumeScale, _volume);
+            ClientSoundStateSnapshot snapshot = new ClientSoundStateSnapshot(
+                stateId,
+                key,
+                loop,
+                clampedStartVolumeScale,
+                resolvedVolumeScale,
+                loopHandle,
+                localReferenceReleased: true,
+                active: loop);
+
+            _clientSoundStates[stateId] = snapshot;
+            if (loop && loopHandle != 0)
+            {
+                _clientLoopingSoundStateIds[loopHandle] = stateId;
+            }
+
+            ClientSoundStateMutation[] mutations = BuildClientSoundStateAdmissionMutations(
+                stateId,
+                key,
+                loop,
+                loopHandle,
+                clampedStartVolumeScale,
+                _volume);
+            lock (_lock)
+            {
+                _clientSoundStateMutations.AddRange(mutations);
+            }
+
+            return stateId;
+        }
+
+        private void ReleaseClientLoopingSoundState(
+            uint handle,
+            ClientSoundStateMutationKind mutationKind = ClientSoundStateMutationKind.ReleaseLoopHandle)
+        {
+            if (!_clientLoopingSoundStateIds.TryRemove(handle, out uint stateId))
+            {
+                return;
+            }
+
+            if (!_clientSoundStates.TryGetValue(stateId, out ClientSoundStateSnapshot state))
+            {
+                return;
+            }
+
+            ClientSoundStateSnapshot releasedState = new ClientSoundStateSnapshot(
+                state.StateId,
+                state.Key,
+                state.Loop,
+                state.StartVolumeScale,
+                state.ResolvedVolumeScale,
+                state.LoopHandle,
+                state.LocalReferenceReleased,
+                active: false);
+            _clientSoundStates[stateId] = releasedState;
+
+            lock (_lock)
+            {
+                _clientSoundStateMutations.Add(new ClientSoundStateMutation(
+                    mutationKind,
+                    state.StateId,
+                    state.Key,
+                    handle,
+                    state.StartVolumeScale,
+                    state.ResolvedVolumeScale,
+                    state.Loop));
+            }
         }
 
         /// <summary>

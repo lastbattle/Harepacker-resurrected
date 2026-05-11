@@ -421,9 +421,15 @@ namespace HaCreator.MapSimulator.Interaction
                     _pendingRequest = null;
                 }
 
+                string rejectedFundSync = ApplyRejectedPacketFundSync(packet.GuildFundMeso);
                 string rejectedMessage = pendingRequest != null
                     ? $"{ResolvePacketActionLabel(packet.Kind)} for {selectedSkill.SkillName} was rejected by the packet-owned guild authority."
                     : $"{ResolvePacketActionLabel(packet.Kind)} rejection for {selectedSkill.SkillName} arrived without a matching pending request.";
+                if (!string.IsNullOrWhiteSpace(rejectedFundSync))
+                {
+                    rejectedMessage = $"{rejectedMessage} {rejectedFundSync}";
+                }
+
                 return string.IsNullOrWhiteSpace(packet.Summary)
                     ? rejectedMessage
                     : $"{packet.Summary.Trim()} {rejectedMessage}";
@@ -1052,6 +1058,19 @@ namespace HaCreator.MapSimulator.Interaction
             SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();
             return $"Packet-owned guild-fund sync updated the dedicated guild-skill ledger to {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private string ApplyRejectedPacketFundSync(int? guildFundMeso)
+        {
+            if (!guildFundMeso.HasValue)
+            {
+                return string.Empty;
+            }
+
+            _guildFundMeso = Math.Max(0, guildFundMeso.Value);
+            SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
+            return $"Guild fund synced to {FormatMeso(_guildFundMeso)}.";
         }
 
         private static bool ShouldApplyPendingLocalFundDebit(GuildSkillPendingRequest pendingRequest)

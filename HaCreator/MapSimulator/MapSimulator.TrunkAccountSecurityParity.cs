@@ -104,7 +104,8 @@ namespace HaCreator.MapSimulator
         private TrunkUI.PacketOwnedTrunkRequestResult HandlePacketOwnedTrunkPutItemRequested(
             InventoryType inventoryType,
             int inventoryRowIndex,
-            InventorySlotData slotData,
+            InventorySlotData stagedSlotData,
+            InventorySlotData liveSlotData,
             int requestedQuantity)
         {
             PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
@@ -114,13 +115,19 @@ namespace HaCreator.MapSimulator
                     "Packet-owned trunk owner is not open; falling back to local trunk inventory mutation.");
             }
 
-            if (ShowPacketOwnedTrunkPutItemConfirmPrompt(inventoryType, inventoryRowIndex, slotData, requestedQuantity))
+            InventorySlotData requestSlotData = stagedSlotData ?? liveSlotData;
+            if (ShowPacketOwnedTrunkPutItemConfirmPrompt(inventoryType, inventoryRowIndex, requestSlotData, requestedQuantity))
             {
                 return TrunkUI.PacketOwnedTrunkRequestResult.Success(
                     "CTrunkDlg::SendPutItemRequest opened the recovered CUtilDlg::YesNo confirmation owner; opcode 67 [05] waits for acceptance.");
             }
 
-            return DispatchPacketOwnedTrunkPutItemRequest(inventoryType, inventoryRowIndex, slotData, requestedQuantity);
+            return DispatchPacketOwnedTrunkPutItemRequest(
+                inventoryType,
+                inventoryRowIndex,
+                requestSlotData,
+                liveSlotData,
+                requestedQuantity);
         }
 
         private bool HandlePacketOwnedTrunkPutItemCountPreConfirmRequested(
@@ -171,6 +178,7 @@ namespace HaCreator.MapSimulator
             InventoryType inventoryType,
             int inventoryRowIndex,
             InventorySlotData slotData,
+            InventorySlotData characterDataSlot,
             int requestedQuantity)
         {
             PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
@@ -179,6 +187,7 @@ namespace HaCreator.MapSimulator
                 inventoryRowIndex,
                 slotData,
                 requestedQuantity,
+                characterDataSlot,
                 out PacketOwnedNpcUtilityOutboundRequest request,
                 out string message);
             if (!built)
@@ -248,6 +257,7 @@ namespace HaCreator.MapSimulator
                     TrunkUI.PacketOwnedTrunkRequestResult result = DispatchPacketOwnedTrunkPutItemRequest(
                         inventoryType,
                         inventoryRowIndex,
+                        slotData,
                         acceptedSlotData,
                         requestedQuantity);
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)

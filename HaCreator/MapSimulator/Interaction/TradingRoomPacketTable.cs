@@ -262,5 +262,29 @@ namespace HaCreator.MapSimulator.Interaction
             branchSummary = $"CTradingRoomDlg::OnPacket subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)}";
             return true;
         }
+
+        internal static bool TryDecodeRecoveredOutboundBranch(
+            int outboundOpcode,
+            ReadOnlySpan<byte> payload,
+            out byte outboundSubtype,
+            out string branchSummary)
+        {
+            outboundSubtype = byte.MaxValue;
+            branchSummary = string.Empty;
+            if (outboundOpcode != TradingRoomOutboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            outboundSubtype = payload[0];
+            if (TradingRoomOutboundSubtypeHandlers.TryGetValue(outboundSubtype, out string handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {outboundSubtype.ToString(CultureInfo.InvariantCulture)})";
+                return true;
+            }
+
+            branchSummary = $"opcode {TradingRoomOutboundOpcode.ToString(CultureInfo.InvariantCulture)} subtype {outboundSubtype.ToString(CultureInfo.InvariantCulture)} is not a recovered CTradingRoomDlg outbound branch";
+            return false;
+        }
     }
 }

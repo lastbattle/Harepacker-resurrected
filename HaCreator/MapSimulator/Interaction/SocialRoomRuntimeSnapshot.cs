@@ -52,6 +52,15 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokDialogEffectTimeLeftMs { get; set; }
         public string MiniRoomOmokDialogStatus { get; set; }
         public string MiniRoomOmokPendingPromptText { get; set; }
+        public bool MiniRoomOmokTournamentActive { get; set; }
+        public int MiniRoomOmokTournamentRound { get; set; }
+        public int MiniRoomOmokTournamentMatchState { get; set; }
+        public int MiniRoomOmokTournamentNextOperationMs { get; set; }
+        public bool MiniRoomOmokTournamentRoundEffectVisible { get; set; }
+        public int MiniRoomOmokTournamentRoundEffectKey { get; set; }
+        public int MiniRoomOmokTournamentRoundEffectElapsedMs { get; set; }
+        public int MiniRoomOmokTournamentRoundEffectFadeMs { get; set; }
+        public string MiniRoomOmokTournamentTitle { get; set; }
         public int MiniRoomOmokLastClientSoundStringPoolId { get; set; } = -1;
         public string MiniRoomOmokLastClientSoundPath { get; set; }
         public string MiniRoomOmokLastOutboundPacketSummary { get; set; }
@@ -93,6 +102,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int EntrustedVisitListSelectedIndex { get; set; } = -1;
         public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
         public EntrustedShopChildDialogKind? EntrustedPendingChildDialogKind { get; set; }
+        public bool EntrustedVisitListDialogOpen { get; set; }
+        public bool EntrustedBlacklistDialogOpen { get; set; }
         public string EntrustedChildDialogStatus { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary { get; set; }
         public string EntrustedBlacklistPendingMutationName { get; set; }
@@ -100,6 +111,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string EntrustedBlacklistPendingMutationRawPacketHex { get; set; }
         public List<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries { get; set; } = new();
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog { get; set; }
+        public List<EntrustedShopChildDialogSnapshot> EntrustedChildDialogs { get; set; } = new();
         public List<string> BlockedVisitors { get; set; } = new();
         public int RemoteInventoryMeso { get; set; }
         public List<SocialRoomRemoteInventoryEntrySnapshot> RemoteInventoryEntries { get; set; } = new();
@@ -117,6 +129,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int SeatIndex { get; set; }
         public string Name { get; set; }
         public DateTime? EnteredAtUtc { get; set; }
+        public int? EnterTickCount { get; set; }
         public bool TimeoutRequestSent { get; set; }
     }
 

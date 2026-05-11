@@ -116,7 +116,6 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonVerticalPadding = 10;
         private const int PacketOwnedBalloonScreenMargin = 6;
         private const int PacketOwnedBalloonAvatarVerticalOffset = 15;
-        private const int PacketOwnedBalloonFadeOutMs = 220;
         private const int PacketOwnedBalloonCornerThreshold = 28;
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
         private const int PacketOwnedBalloonMaxOverlapPasses = 8;
@@ -2330,13 +2329,7 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedBalloonLayout(in PacketOwnedBalloonLayout layout, int currentTickCount)
         {
-            float alpha = 1f;
-            int fadeRemaining = layout.Message.ExpiresAt - currentTickCount;
-            if (fadeRemaining < PacketOwnedBalloonFadeOutMs)
-            {
-                alpha = MathHelper.Clamp(fadeRemaining / (float)PacketOwnedBalloonFadeOutMs, 0f, 1f);
-            }
-
+            float alpha = ResolvePacketOwnedBalloonLayerAlpha(currentTickCount, layout.Message.ExpiresAt);
             Color tint = Color.White * alpha;
             if (layout.VisualTexture != null &&
                 !layout.VisualTexture.IsDisposed)
@@ -2384,6 +2377,16 @@ namespace HaCreator.MapSimulator
 
                 drawY += layout.LineHeight;
             }
+        }
+
+        internal static float ResolvePacketOwnedBalloonLayerAlphaForTests(int currentTickCount, int expiresAt) =>
+            ResolvePacketOwnedBalloonLayerAlpha(currentTickCount, expiresAt);
+
+        private static float ResolvePacketOwnedBalloonLayerAlpha(int currentTickCount, int expiresAt)
+        {
+            return unchecked(currentTickCount - expiresAt) <= 0
+                ? 1f
+                : 0f;
         }
 
         private bool ShouldPlacePacketOwnedBalloonAbove(Point anchor, int bodyHeight, int arrowBelowBodyExtent, int arrowAboveBodyExtent)

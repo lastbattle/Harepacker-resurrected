@@ -143,6 +143,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _hasLinkedBoardAuthKey;
         private string _linkedBoardAuthKeySourceLabel;
         private bool _hasPacketCashOwnershipOverride;
+        private string _packetCashOwnershipDecodeDetail;
         private int _selectedThreadId;
         private int _threadPageIndex;
         private int _commentPageIndex;
@@ -280,14 +281,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _hasPacketCashOwnershipOverride = true;
+            _packetCashOwnershipDecodeDetail = detail;
             NormalizeDraftState();
-            return $"Decoded Guild BBS cash-entitlement packet -> {decodedOwnership.Count}/{_cashEmoticonCount} owned ({CashOwnershipSourceLabel}; {detail}).";
+            return $"Decoded Guild BBS cash-entitlement packet -> {decodedOwnership.Count}/{_cashEmoticonCount} owned ({CashOwnershipSourceLabel}; {detail}; {DescribeCashOwnershipComparison()}).";
         }
 
         public string ClearCashOwnershipPacket()
         {
             _packetOwnedCashEmoticonIds.Clear();
             _hasPacketCashOwnershipOverride = false;
+            _packetCashOwnershipDecodeDetail = null;
             NormalizeDraftState();
             return $"Guild BBS cash entitlement reverted to inventory-owned state: {OwnedCashEmoticonCount}/{_cashEmoticonCount}.";
         }
@@ -955,7 +958,7 @@ namespace HaCreator.MapSimulator.Interaction
             string lastRequest = _clientRequestHistory.Count == 0
                 ? "none"
                 : $"#{_clientRequestHistory[^1].Sequence} {_clientRequestHistory[^1].Kind}";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, board={_boardStateSourceLabel}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel}), lastClientRequest={lastRequest}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, board={_boardStateSourceLabel}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel}; {CashOwnershipComparisonLabel}), lastClientRequest={lastRequest}";
         }
 
         internal IReadOnlyList<GuildBbsClientRequestSnapshot> GetRecentClientRequestHistory()
@@ -1203,6 +1206,7 @@ namespace HaCreator.MapSimulator.Interaction
                 AuthoritySourceLabel = AuthoritySourceLabel,
                 BoardAuthoritySourceLabel = BoardAuthoritySourceLabel,
                 CashOwnershipSourceLabel = CashOwnershipSourceLabel,
+                CashOwnershipComparisonLabel = CashOwnershipComparisonLabel,
                 PermissionMaskText = DescribePermissionMask(EffectivePermissionMask)
             };
         }
@@ -2046,6 +2050,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ? string.IsNullOrWhiteSpace(_packetBoardAuthKeySourceLabel) ? "Packet guild-board auth key" : _packetBoardAuthKeySourceLabel
             : "Local board session";
         private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
+        private string CashOwnershipComparisonLabel => _hasPacketCashOwnershipOverride
+            ? DescribeCashOwnershipComparison()
+            : "client OnWrite inventory scan";
         private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
         {
             return permissionLevel switch
@@ -2702,6 +2709,41 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        private string DescribeCashOwnershipComparison()
+        {
+            if (!_hasPacketCashOwnershipOverride)
+            {
+                return "client OnWrite inventory scan";
+            }
+
+            string packetIds = FormatCashItemIdSet(_packetOwnedCashEmoticonIds);
+            string inventoryIds = FormatCashItemIdSet(_inventoryOwnedCashEmoticonIds);
+            bool matchesInventory = _packetOwnedCashEmoticonIds.SetEquals(_inventoryOwnedCashEmoticonIds);
+            string comparison = matchesInventory
+                ? "matches live inventory"
+                : $"differs from live inventory {inventoryIds}";
+            string decodeDetail = string.IsNullOrWhiteSpace(_packetCashOwnershipDecodeDetail)
+                ? "modeled capture shape"
+                : _packetCashOwnershipDecodeDetail;
+            return $"modeled capture ({decodeDetail}) owns {packetIds}; {comparison}; client-confirmed source remains CUIGuildBBS::OnWrite inventory scan 5290000..5290006";
+        }
+
+        private static string FormatCashItemIdSet(IEnumerable<int> itemIds)
+        {
+            if (itemIds == null)
+            {
+                return "[]";
+            }
+
+            int[] orderedItemIds = itemIds
+                .Where(IsClientInventoryCashEmoticonItemId)
+                .OrderBy(static itemId => itemId)
+                .ToArray();
+            return orderedItemIds.Length == 0
+                ? "[]"
+                : "[" + string.Join(",", orderedItemIds) + "]";
+        }
+
         private static bool IsClientInventoryCashEmoticonItemId(int itemId)
         {
             return itemId >= CashEmoticonItemIdStart
@@ -2967,6 +3009,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string AuthoritySourceLabel { get; init; } = string.Empty;
         public string BoardAuthoritySourceLabel { get; init; } = string.Empty;
         public string CashOwnershipSourceLabel { get; init; } = string.Empty;
+        public string CashOwnershipComparisonLabel { get; init; } = string.Empty;
         public string PermissionMaskText { get; init; } = string.Empty;
         public bool CanWrite { get; init; }
         public bool CanWriteNotice { get; init; }

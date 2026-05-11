@@ -861,6 +861,20 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Alliance authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canEditRanks)}, notice={FormatOnOff(canEditNotice)}).";
         }
 
+        private void SyncPacketAllianceAuthorityFromLocalGradeChange(string roleLabel, int absoluteGrade)
+        {
+            if (!_packetAllianceAuthority.HasValue)
+            {
+                return;
+            }
+
+            bool canManage = absoluteGrade == 1;
+            string resolvedRole = string.IsNullOrWhiteSpace(roleLabel)
+                ? $"Rank {Math.Max(1, absoluteGrade)}"
+                : roleLabel.Trim();
+            _packetAllianceAuthority = new PacketAllianceAuthorityState(resolvedRole, canManage, canManage);
+        }
+
         internal string GetEffectiveGuildRoleLabelForUi()
         {
             return GetEffectiveGuildRoleLabel();

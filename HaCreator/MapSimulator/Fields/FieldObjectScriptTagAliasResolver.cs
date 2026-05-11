@@ -132,6 +132,14 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reduce\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ArrayForEachAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*forEach\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex ForOfAliasLoopPattern = new(
+            @"(?:^|[;\{\(\s])for\s*\(\s*(?:(?:var|let|const)\s+)?(?<item>[A-Za-z_][A-Za-z0-9_]*)\s+of\s+(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayFactoryAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Array\s*\.\s*(?<method>of|from)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -5896,7 +5904,16 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(value, includeNested: false))
+            CollectStaticArrayIteratorTimerCallbackPublications(
+                value,
+                inheritedDelayMs,
+                publications,
+                seen,
+                localAliasMap,
+                objectMemberAliasMap);
+
+            string directCallbackScanValue = RemoveStaticArrayIteratorCallbackBodies(value);
+            foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(directCallbackScanValue, includeNested: false))
             {
                 if (!IsScriptCallbackFunctionName(call.FunctionName)
                     || call.Arguments.Count == 0
@@ -5971,6 +5988,434 @@ namespace HaCreator.MapSimulator.Fields
                                 localAliasMap,
                                 objectMemberAliasMap,
                                 localAliasCandidateMap);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void CollectStaticArrayIteratorTimerCallbackPublications(
+            string value,
+            int inheritedDelayMs,
+            ICollection<ScriptAliasPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seen,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || publications == null
+                || seen == null
+                || objectMemberAliasMap == null
+                || objectMemberAliasMap.Count == 0)
+            {
+                return;
+            }
+
+            foreach (Match match in ArrayForEachAliasCallPattern.Matches(value))
+            {
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                if (!TryGetStaticArrayAliasValues(sourceName, objectMemberAliasMap, out IReadOnlyList<string> aliasValues))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+                if (arguments.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!TryParseIteratorCallback(arguments[0], out string itemName, out string callbackBody))
+                {
+                    continue;
+                }
+
+                CollectIteratorBodyTimerCallbackPublications(
+                    callbackBody,
+                    itemName,
+                    aliasValues,
+                    inheritedDelayMs,
+                    publications,
+                    seen,
+                    localAliasMap,
+                    objectMemberAliasMap);
+            }
+
+            foreach (Match match in ForOfAliasLoopPattern.Matches(value))
+            {
+                string itemName = NormalizeFunctionAliasArgument(match.Groups["item"]?.Value).TrimEnd(';');
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(itemName)
+                    || !TryGetStaticArrayAliasValues(sourceName, objectMemberAliasMap, out IReadOnlyList<string> aliasValues))
+                {
+                    continue;
+                }
+
+                int bodyStart = SkipWhitespace(value, match.Index + match.Length);
+                if (bodyStart < 0 || bodyStart >= value.Length)
+                {
+                    continue;
+                }
+
+                string body;
+                if (value[bodyStart] == '{')
+                {
+                    int bodyEnd = FindMatchingCloseBrace(value, bodyStart);
+                    if (bodyEnd <= bodyStart)
+                    {
+                        continue;
+                    }
+
+                    body = value[(bodyStart + 1)..bodyEnd];
+                }
+                else
+                {
+                    int bodyEnd = value.IndexOf(';', bodyStart);
+                    if (bodyEnd < bodyStart)
+                    {
+                        continue;
+                    }
+
+                    body = value[bodyStart..bodyEnd];
+                }
+
+                CollectIteratorBodyTimerCallbackPublications(
+                    body,
+                    itemName,
+                    aliasValues,
+                    inheritedDelayMs,
+                    publications,
+                    seen,
+                    localAliasMap,
+                    objectMemberAliasMap);
+            }
+        }
+
+        private static string RemoveStaticArrayIteratorCallbackBodies(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            var ranges = new List<(int Start, int End)>();
+            foreach (Match match in ArrayForEachAliasCallPattern.Matches(value))
+            {
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                int endIndex = closeIndex + 1;
+                int semicolonIndex = SkipWhitespace(value, endIndex);
+                if (semicolonIndex >= 0 && semicolonIndex < value.Length && value[semicolonIndex] == ';')
+                {
+                    endIndex = semicolonIndex + 1;
+                }
+
+                ranges.Add((match.Index, endIndex));
+            }
+
+            foreach (Match match in ForOfAliasLoopPattern.Matches(value))
+            {
+                int bodyStart = SkipWhitespace(value, match.Index + match.Length);
+                if (bodyStart < 0 || bodyStart >= value.Length)
+                {
+                    continue;
+                }
+
+                int endIndex;
+                if (value[bodyStart] == '{')
+                {
+                    int bodyEnd = FindMatchingCloseBrace(value, bodyStart);
+                    if (bodyEnd <= bodyStart)
+                    {
+                        continue;
+                    }
+
+                    endIndex = bodyEnd + 1;
+                }
+                else
+                {
+                    int bodyEnd = value.IndexOf(';', bodyStart);
+                    if (bodyEnd < bodyStart)
+                    {
+                        continue;
+                    }
+
+                    endIndex = bodyEnd + 1;
+                }
+
+                ranges.Add((match.Index, endIndex));
+            }
+
+            if (ranges.Count == 0)
+            {
+                return value;
+            }
+
+            var builder = new StringBuilder(value);
+            for (int i = 0; i < ranges.Count; i++)
+            {
+                int start = Math.Max(0, ranges[i].Start);
+                int end = Math.Min(value.Length, ranges[i].End);
+                for (int index = start; index < end; index++)
+                {
+                    builder[index] = ' ';
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool TryGetStaticArrayAliasValues(
+            string sourceName,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out IReadOnlyList<string> aliasValues)
+        {
+            aliasValues = Array.Empty<string>();
+            if (!IsPotentialFunctionAliasName(sourceName)
+                || objectMemberAliasMap == null
+                || !objectMemberAliasMap.TryGetValue(sourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+            {
+                return false;
+            }
+
+            var values = new List<string>();
+            foreach ((_, string aliasName) in EnumerateArrayMemberAliasesInIndexOrder(sourceMemberAliasMap))
+            {
+                string normalizedAlias = NormalizeFunctionAliasArgument(aliasName).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(normalizedAlias))
+                {
+                    values.Add(normalizedAlias);
+                }
+            }
+
+            aliasValues = values.Count == 0 ? Array.Empty<string>() : values;
+            return aliasValues.Count > 0;
+        }
+
+        private static bool TryParseIteratorCallback(
+            string callback,
+            out string itemName,
+            out string callbackBody)
+        {
+            itemName = string.Empty;
+            callbackBody = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseIteratorArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression))
+            {
+                itemName = NormalizeFunctionAliasArgument(
+                    StripOuterBalancedParentheses(parameterText?.Trim())).TrimEnd(';');
+                callbackBody = StripOuterBalancedParentheses(bodyExpression?.Trim()).TrimEnd(';');
+                return IsPotentialFunctionAliasName(itemName) && !string.IsNullOrWhiteSpace(callbackBody);
+            }
+
+            if (TryParseSingleParameterFunctionBodyCallback(normalizedCallback, out parameterText, out string bodyText))
+            {
+                itemName = NormalizeFunctionAliasArgument(parameterText).TrimEnd(';');
+                callbackBody = bodyText;
+                return IsPotentialFunctionAliasName(itemName) && !string.IsNullOrWhiteSpace(callbackBody);
+            }
+
+            return false;
+        }
+
+        private static bool TryParseIteratorArrowCallback(
+            string callback,
+            out string parameterText,
+            out string bodyText)
+        {
+            parameterText = string.Empty;
+            bodyText = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            int arrowIndex = callback.IndexOf("=>", StringComparison.Ordinal);
+            if (arrowIndex <= 0 || arrowIndex >= callback.Length - 2)
+            {
+                return false;
+            }
+
+            parameterText = callback[..arrowIndex].Trim();
+            string body = callback[(arrowIndex + 2)..].Trim();
+            if (body.StartsWith("{", StringComparison.Ordinal) && body.EndsWith("}", StringComparison.Ordinal))
+            {
+                bodyText = body[1..^1];
+            }
+            else
+            {
+                bodyText = body;
+            }
+
+            return !string.IsNullOrWhiteSpace(parameterText) && !string.IsNullOrWhiteSpace(bodyText);
+        }
+
+        private static bool TryParseSingleParameterFunctionBodyCallback(
+            string callback,
+            out string parameterText,
+            out string bodyText)
+        {
+            parameterText = string.Empty;
+            bodyText = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback)
+                || !callback.StartsWith("function", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int openIndex = callback.IndexOf('(');
+            if (openIndex < 0)
+            {
+                return false;
+            }
+
+            int closeIndex = FindMatchingCloseParenthesis(callback, openIndex);
+            if (closeIndex <= openIndex)
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> parameters = SplitTopLevelByComma(callback[(openIndex + 1)..closeIndex]);
+            if (parameters.Count != 1)
+            {
+                return false;
+            }
+
+            int bodyOpenIndex = SkipWhitespace(callback, closeIndex + 1);
+            if (bodyOpenIndex < 0 || bodyOpenIndex >= callback.Length || callback[bodyOpenIndex] != '{')
+            {
+                return false;
+            }
+
+            int bodyCloseIndex = FindMatchingCloseBrace(callback, bodyOpenIndex);
+            if (bodyCloseIndex <= bodyOpenIndex)
+            {
+                return false;
+            }
+
+            parameterText = parameters[0];
+            bodyText = callback[(bodyOpenIndex + 1)..bodyCloseIndex];
+            return !string.IsNullOrWhiteSpace(parameterText) && !string.IsNullOrWhiteSpace(bodyText);
+        }
+
+        private static void CollectIteratorBodyTimerCallbackPublications(
+            string callbackBody,
+            string itemName,
+            IReadOnlyList<string> aliasValues,
+            int inheritedDelayMs,
+            ICollection<ScriptAliasPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seen,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (string.IsNullOrWhiteSpace(callbackBody)
+                || string.IsNullOrWhiteSpace(itemName)
+                || aliasValues == null
+                || aliasValues.Count == 0)
+            {
+                return;
+            }
+
+            string normalizedItemName = NormalizeFunctionAliasArgument(itemName).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(normalizedItemName))
+            {
+                return;
+            }
+
+            foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(callbackBody, includeNested: false))
+            {
+                if (!IsScriptCallbackFunctionName(call.FunctionName)
+                    || call.Arguments.Count == 0
+                    || !TryResolveCallbackCallDelayCandidates(
+                        call.FunctionName,
+                        call.Arguments,
+                        localAliasMap,
+                        out IReadOnlyList<int> callbackDelayCandidates))
+                {
+                    continue;
+                }
+
+                int firstDelayCandidateIndex = IsDelayedCallbackFunctionName(call.FunctionName) && call.Arguments.Count > 1
+                    ? 1
+                    : call.Arguments.Count;
+                for (int delayIndex = 0; delayIndex < callbackDelayCandidates.Count; delayIndex++)
+                {
+                    int callbackDelayMs = callbackDelayCandidates[delayIndex];
+                    int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
+                        ? int.MaxValue
+                        : inheritedDelayMs + callbackDelayMs;
+                    for (int argumentIndex = 0; argumentIndex < call.Arguments.Count; argumentIndex++)
+                    {
+                        string argument = NormalizeFunctionAliasArgument(call.Arguments[argumentIndex]).TrimEnd(';');
+                        if (string.IsNullOrWhiteSpace(argument)
+                            || (argumentIndex >= firstDelayCandidateIndex && IsRecoverableDelayArgument(argument, localAliasMap)))
+                        {
+                            continue;
+                        }
+
+                        if (argument.Equals(normalizedItemName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            for (int aliasIndex = 0; aliasIndex < aliasValues.Count; aliasIndex++)
+                            {
+                                AddPublication(
+                                    aliasValues[aliasIndex],
+                                    dueDelayMs,
+                                    publications,
+                                    seen,
+                                    localAliasMap,
+                                    objectMemberAliasMap);
+                            }
+
+                            continue;
+                        }
+
+                        foreach (string canonicalArgument in EnumerateCanonicalAliasCandidates(
+                                     argument,
+                                     localAliasMap,
+                                     objectMemberAliasMap))
+                        {
+                            if (!canonicalArgument.Equals(normalizedItemName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            for (int aliasIndex = 0; aliasIndex < aliasValues.Count; aliasIndex++)
+                            {
+                                AddPublication(
+                                    aliasValues[aliasIndex],
+                                    dueDelayMs,
+                                    publications,
+                                    seen,
+                                    localAliasMap,
+                                    objectMemberAliasMap);
+                            }
                         }
                     }
                 }

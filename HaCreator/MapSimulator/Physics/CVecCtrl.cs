@@ -444,6 +444,7 @@ namespace HaCreator.MapSimulator.Physics
         private ushort _movePathActualRandomCount;
         private bool _hasClientMovePathEncodeHeader;
         private MovePathElement _clientMovePathEncodeHeader;
+        private Func<byte?> _clientKeyPadStateProvider;
 
         /// <summary>
         /// Path flush interval in milliseconds
@@ -1615,6 +1616,7 @@ namespace HaCreator.MapSimulator.Physics
         public MovePathElement MakeNewMovePathElem(int? timeStampMs = null)
         {
             AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount);
+            byte? clientKeyPadState = _clientKeyPadStateProvider?.Invoke();
             return new MovePathElement
             {
                 X = (int)X,
@@ -1632,8 +1634,15 @@ namespace HaCreator.MapSimulator.Physics
                 YOffset = 0,
                 RandomCount = randomCount,
                 ActualRandomCount = actualRandomCount,
+                HasClientKeyPadState = clientKeyPadState.HasValue,
+                ClientKeyPadState = clientKeyPadState.GetValueOrDefault(),
                 StatChanged = false
             };
+        }
+
+        internal void SetClientKeyPadStateProvider(Func<byte?> clientKeyPadStateProvider)
+        {
+            _clientKeyPadStateProvider = clientKeyPadStateProvider;
         }
 
         private void AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount)
@@ -2278,6 +2287,13 @@ namespace HaCreator.MapSimulator.Physics
         /// Stat changed flag (for server validation)
         /// </summary>
         public bool StatChanged;
+
+        /// <summary>
+        /// Local-user passive keypad nibble sampled when this path element was opened.
+        /// Used by the recovered CMovePath::Encode flush tail.
+        /// </summary>
+        public bool HasClientKeyPadState;
+        public byte ClientKeyPadState;
     }
 
     /// <summary>

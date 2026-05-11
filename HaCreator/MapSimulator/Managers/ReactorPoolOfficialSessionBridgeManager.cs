@@ -8,6 +8,57 @@ using System.Net;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    internal interface IReactorPoolRoleSessionProxy
+    {
+        event EventHandler<MapleSessionPacketEventArgs> ServerPacketReceived;
+        event EventHandler<MapleSessionPacketEventArgs> ClientPacketReceived;
+
+        bool IsRunning { get; }
+        bool HasAttachedClient { get; }
+        bool HasConnectedSession { get; }
+        string LastStatus { get; }
+
+        bool Start(int listenPort, string remoteHost, int remotePort, out string status);
+        void Stop(bool resetCounters = true);
+        bool TrySendToServer(byte[] payload, out string status);
+    }
+
+    internal sealed class ReactorPoolRoleSessionProxyAdapter : IReactorPoolRoleSessionProxy
+    {
+        private readonly MapleRoleSessionProxy _proxy;
+
+        public ReactorPoolRoleSessionProxyAdapter(MapleRoleSessionProxy proxy)
+        {
+            _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
+        }
+
+        public event EventHandler<MapleSessionPacketEventArgs> ServerPacketReceived
+        {
+            add => _proxy.ServerPacketReceived += value;
+            remove => _proxy.ServerPacketReceived -= value;
+        }
+
+        public event EventHandler<MapleSessionPacketEventArgs> ClientPacketReceived
+        {
+            add => _proxy.ClientPacketReceived += value;
+            remove => _proxy.ClientPacketReceived -= value;
+        }
+
+        public bool IsRunning => _proxy.IsRunning;
+        public bool HasAttachedClient => _proxy.HasAttachedClient;
+        public bool HasConnectedSession => _proxy.HasConnectedSession;
+        public string LastStatus => _proxy.LastStatus;
+
+        public bool Start(int listenPort, string remoteHost, int remotePort, out string status) =>
+            _proxy.Start(listenPort, remoteHost, remotePort, out status);
+
+        public void Stop(bool resetCounters = true) =>
+            _proxy.Stop(resetCounters);
+
+        public bool TrySendToServer(byte[] payload, out string status) =>
+            _proxy.TrySendToServer(payload, out status);
+    }
+
     /// <summary>
     /// Proxies a live Maple session and forwards CReactorPool::OnPacket reactor
     /// opcodes into the existing packet-owned reactor runtime seam.
@@ -22,7 +73,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
         private readonly Queue<PendingTouchRequest> _pendingTouchRequests = new();
         private readonly object _sync = new();
-        private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private readonly IReactorPoolRoleSessionProxy _roleSessionProxy;
         private int _nextDeferredTouchFlushTick = int.MinValue;
         private bool _deferredTouchFlushTickInitialized;
 
@@ -69,8 +120,13 @@ namespace HaCreator.MapSimulator.Managers
         public string LastStatus { get; private set; } = "Reactor official-session bridge inactive.";
 
         public ReactorPoolOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+            : this(() => new ReactorPoolRoleSessionProxyAdapter((roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))()))
         {
-            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+        }
+
+        internal ReactorPoolOfficialSessionBridgeManager(Func<IReactorPoolRoleSessionProxy> roleSessionProxyFactory)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? throw new ArgumentNullException(nameof(roleSessionProxyFactory)))();
             _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
             _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }

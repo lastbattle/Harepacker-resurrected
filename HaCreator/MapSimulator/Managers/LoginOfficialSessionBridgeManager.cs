@@ -52,6 +52,38 @@ namespace HaCreator.MapSimulator.Managers
         string MacAddress = null,
         string MacAddressWithHddSerial = null);
 
+    public readonly record struct LoginSelectWorldRequest(
+        string NexonPassport,
+        byte[] MachineId,
+        int GameRoomClient,
+        byte GameStartMode,
+        int WorldId,
+        int ChannelId,
+        int LocalIpAddress = 0);
+
+    public sealed class LoginSelectCharacterByVacRoundTripEvidence
+    {
+        public int? RequestOpcode { get; init; }
+        public int? RequestCharacterId { get; init; }
+        public int? RequestWorldId { get; init; }
+        public string RequestPacketHex { get; init; }
+        public DateTime? RequestSentAtUtc { get; init; }
+        public string ResultSource { get; init; }
+        public string ResultPacketHex { get; init; }
+        public DateTime? ResultReceivedAtUtc { get; init; }
+        public byte? ResultCode { get; init; }
+        public byte? SecondaryCode { get; init; }
+        public string EndpointText { get; init; }
+        public int? ResultCharacterId { get; init; }
+        public DateTime? FieldHandoffAtUtc { get; init; }
+        public string FieldHandoffEndpointText { get; init; }
+
+        public bool HasRequest => RequestOpcode.HasValue;
+        public bool HasSuccessfulResult => ResultCode.HasValue && ResultCharacterId.HasValue;
+        public bool HasFieldHandoff => FieldHandoffAtUtc.HasValue;
+        public bool IsComplete => HasRequest && HasSuccessfulResult && HasFieldHandoff;
+    }
+
     /// <summary>
     /// Built-in login bridge that proxies a live Maple login session and mirrors
     /// inbound login packets into the existing login packet inbox seam.
@@ -60,6 +92,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18486;
         public const short OutboundCheckPasswordOpcode = 1;
+        public const short OutboundSelectWorldOpcode = 5;
         public const short OutboundCheckUserLimitOpcode = 6;
         public const short OutboundReturnToTitleOpcode = 12;
         public const short OutboundViewAllCharacterOpcode = 13;
@@ -83,6 +116,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private LoginCheckPasswordAuthMaterial? _capturedCheckPasswordAuth;
+        private LoginSelectCharacterByVacRoundTripEvidence _selectCharacterByVacRoundTripEvidence = new();
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -160,6 +194,45 @@ namespace HaCreator.MapSimulator.Managers
 
                 return string.Join(" | ", _recentPackets);
             }
+        }
+
+        public LoginSelectCharacterByVacRoundTripEvidence GetSelectCharacterByVacRoundTripEvidence()
+        {
+            lock (_sync)
+            {
+                return _selectCharacterByVacRoundTripEvidence;
+            }
+        }
+
+        public string DescribeSelectCharacterByVacRoundTripEvidence()
+        {
+            LoginSelectCharacterByVacRoundTripEvidence evidence = GetSelectCharacterByVacRoundTripEvidence();
+            if (evidence.IsComplete)
+            {
+                return $"VAC round-trip complete: opcode {evidence.RequestOpcode} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}, backend result {evidence.ResultCode}/{evidence.SecondaryCode} from {evidence.ResultSource} to {evidence.EndpointText}, simulator handoff {evidence.FieldHandoffEndpointText}.";
+            }
+
+            if (evidence.HasSuccessfulResult)
+            {
+                return $"VAC round-trip waiting for simulator field handoff: backend result {evidence.ResultCode}/{evidence.SecondaryCode} from {evidence.ResultSource} to {evidence.EndpointText}.";
+            }
+
+            if (evidence.HasRequest)
+            {
+                return $"VAC round-trip waiting for backend result: opcode {evidence.RequestOpcode} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}.";
+            }
+
+            return "VAC round-trip evidence not captured.";
+        }
+
+        public void ClearSelectCharacterByVacRoundTripEvidence()
+        {
+            lock (_sync)
+            {
+                _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence();
+            }
+
+            LastStatus = "Cleared SelectCharacterByVAC round-trip evidence.";
         }
 
         public bool TryGetCapturedCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial)
@@ -317,6 +390,7 @@ namespace HaCreator.MapSimulator.Managers
                     $"{mappedPacketType} payloadhex={Convert.ToHexString(payloadBytes)}",
                     arguments);
                 RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured");
+                RecordSelectCharacterByVacResultEvidence(mappedPacketType, payloadBytes, rawPacket, source);
                 LastStatus = $"Queued login packet {mappedPacketType} from live session opcode {opcode}.";
                 return true;
             }
@@ -334,6 +408,7 @@ namespace HaCreator.MapSimulator.Managers
                 $"{packetType} payloadhex={Convert.ToHexString(rawPacket.Length > sizeof(ushort) ? rawPacket[sizeof(ushort)..] : Array.Empty<byte>())}",
                 fallbackArguments);
             RecordRecentPacket(opcode, rawPacket, packetType, "direct");
+            RecordSelectCharacterByVacResultEvidence(packetType, rawPacket.Length > sizeof(ushort) ? rawPacket[sizeof(ushort)..] : Array.Empty<byte>(), rawPacket, source);
             LastStatus = $"Queued login packet {packetType} from live session opcode {opcode}.";
             return true;
         }
@@ -404,6 +479,42 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendSelectWorldRequest(LoginSelectWorldRequest request, out string status)
+        {
+            if (string.IsNullOrWhiteSpace(request.NexonPassport))
+            {
+                status = "Login official-session SelectWorld injection requires a Nexon passport captured from the client auth layer.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.MachineId == null || request.MachineId.Length != ClientMachineIdLength)
+            {
+                status = $"Login official-session SelectWorld injection requires a {ClientMachineIdLength}-byte client machine id.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.WorldId < 0 || request.WorldId > byte.MaxValue)
+            {
+                status = "Login official-session SelectWorld injection requires an 8-bit world id.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.ChannelId < 0 || request.ChannelId > byte.MaxValue)
+            {
+                status = "Login official-session SelectWorld injection requires an 8-bit channel id.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildSelectWorldPacket(request),
+                $"Injected login opcode {OutboundSelectWorldOpcode} for SelectWorld world {request.WorldId}, channel {request.ChannelId + 1} into live session",
+                out status);
+        }
+
         public bool TrySendViewAllCharacterRequest(bool includeTitleReturn, byte gameStartMode, out string status)
         {
             return TrySendPacket(
@@ -461,10 +572,50 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             short opcode = ResolveSelectCharacterByVacOpcode(request.LoginOpt);
-            return TrySendPacket(
-                BuildSelectCharacterByVacPacket(request),
+            byte[] packet = BuildSelectCharacterByVacPacket(request);
+            bool sent = TrySendPacket(
+                packet,
                 $"Injected login opcode {opcode} for SelectCharacterByVAC character {request.CharacterId} in world {request.WorldId} into live session",
                 out status);
+            if (sent)
+            {
+                RecordSelectCharacterByVacRequestEvidence(request, opcode, packet);
+            }
+
+            return sent;
+        }
+
+        public void RecordSelectCharacterByVacFieldHandoff(LoginIssuedDirectConnect directConnect)
+        {
+            if (directConnect == null ||
+                !string.Equals(directConnect.SourcePacket, "SelectCharacterByVACResult", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                LoginSelectCharacterByVacRoundTripEvidence current = _selectCharacterByVacRoundTripEvidence ?? new();
+                _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence
+                {
+                    RequestOpcode = current.RequestOpcode,
+                    RequestCharacterId = current.RequestCharacterId,
+                    RequestWorldId = current.RequestWorldId,
+                    RequestPacketHex = current.RequestPacketHex,
+                    RequestSentAtUtc = current.RequestSentAtUtc,
+                    ResultSource = current.ResultSource,
+                    ResultPacketHex = current.ResultPacketHex,
+                    ResultReceivedAtUtc = current.ResultReceivedAtUtc,
+                    ResultCode = current.ResultCode,
+                    SecondaryCode = current.SecondaryCode,
+                    EndpointText = current.EndpointText,
+                    ResultCharacterId = current.ResultCharacterId,
+                    FieldHandoffAtUtc = DateTime.UtcNow,
+                    FieldHandoffEndpointText = directConnect.EndpointText,
+                };
+            }
+
+            LastStatus = "Recorded SelectCharacterByVAC simulator field handoff evidence.";
         }
 
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
@@ -531,6 +682,23 @@ namespace HaCreator.MapSimulator.Managers
             PacketWriter writer = new();
             writer.WriteShort(OutboundCheckUserLimitOpcode);
             writer.WriteShort((short)Math.Clamp(worldId, 0, ushort.MaxValue));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildSelectWorldPacket(LoginSelectWorldRequest request)
+        {
+            // Client evidence: CLogin::SendLoginPacket (0x5dbef0), called from
+            // CUIChannelSelect::EnterChannel, writes the passport, machine id,
+            // game-room client, game-start mode, world, channel, and local socket IP.
+            PacketWriter writer = new();
+            writer.WriteShort(OutboundSelectWorldOpcode);
+            writer.WriteMapleString((request.NexonPassport ?? string.Empty).Trim());
+            writer.WriteBytes(request.MachineId ?? Array.Empty<byte>());
+            writer.WriteInt(request.GameRoomClient);
+            writer.WriteByte(request.GameStartMode);
+            writer.WriteByte((byte)Math.Clamp(request.WorldId, 0, byte.MaxValue));
+            writer.WriteByte((byte)Math.Clamp(request.ChannelId, 0, byte.MaxValue));
+            writer.WriteInt(request.LocalIpAddress);
             return writer.ToArray();
         }
 
@@ -812,6 +980,61 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _recentPackets.Dequeue();
                 }
+            }
+        }
+
+        private void RecordSelectCharacterByVacRequestEvidence(
+            LoginSelectCharacterByVacRequest request,
+            short opcode,
+            byte[] packet)
+        {
+            lock (_sync)
+            {
+                _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence
+                {
+                    RequestOpcode = opcode,
+                    RequestCharacterId = request.CharacterId,
+                    RequestWorldId = request.WorldId,
+                    RequestPacketHex = Convert.ToHexString(packet ?? Array.Empty<byte>()),
+                    RequestSentAtUtc = DateTime.UtcNow,
+                };
+            }
+        }
+
+        private void RecordSelectCharacterByVacResultEvidence(
+            LoginPacketType packetType,
+            byte[] payloadBytes,
+            byte[] rawPacket,
+            string source)
+        {
+            if (packetType != LoginPacketType.SelectCharacterByVacResult ||
+                !LoginSelectCharacterByVacResultCodec.TryDecode(payloadBytes, out LoginSelectCharacterByVacResultProfile profile, out _) ||
+                !profile.IsConnectSuccess)
+            {
+                return;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "official-session" : source.Trim();
+            lock (_sync)
+            {
+                LoginSelectCharacterByVacRoundTripEvidence current = _selectCharacterByVacRoundTripEvidence ?? new();
+                _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence
+                {
+                    RequestOpcode = current.RequestOpcode,
+                    RequestCharacterId = current.RequestCharacterId,
+                    RequestWorldId = current.RequestWorldId,
+                    RequestPacketHex = current.RequestPacketHex,
+                    RequestSentAtUtc = current.RequestSentAtUtc,
+                    ResultSource = normalizedSource,
+                    ResultPacketHex = Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    ResultReceivedAtUtc = DateTime.UtcNow,
+                    ResultCode = profile.ResultCode,
+                    SecondaryCode = profile.SecondaryCode,
+                    EndpointText = profile.EndpointText,
+                    ResultCharacterId = profile.CharacterId,
+                    FieldHandoffAtUtc = current.FieldHandoffAtUtc,
+                    FieldHandoffEndpointText = current.FieldHandoffEndpointText,
+                };
             }
         }
 

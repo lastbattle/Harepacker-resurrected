@@ -9,6 +9,15 @@ namespace HaCreator.MapSimulator
         DeleteCharacterResult = 4,
         DeleteCharacterResultChildModal = 5,
         DeleteCharacterResultDirectNotice = 6,
+        AccountInfoResult = 7,
+        SetAccountResult = 8,
+        ConfirmEulaResult = 9,
+        CheckPinCodeResultCreate = 10,
+        CheckPinCodeResultVerify = 11,
+        CheckPinCodeResultNotice = 12,
+        UpdatePinCodeResult = 13,
+        EnableSpwResult = 14,
+        CheckSpwResult = 15,
     }
 
     internal static class LoginPacketResultDialogParity
@@ -21,6 +30,34 @@ namespace HaCreator.MapSimulator
 
         public static LoginPacketResultDialogOwner ResolveSelectCharacterByVacOwner() =>
             LoginPacketResultDialogOwner.SelectCharacterByVacResult;
+
+        public static LoginPacketResultDialogOwner ResolveAccountInfoOwner() =>
+            LoginPacketResultDialogOwner.AccountInfoResult;
+
+        public static LoginPacketResultDialogOwner ResolveSetAccountOwner() =>
+            LoginPacketResultDialogOwner.SetAccountResult;
+
+        public static LoginPacketResultDialogOwner ResolveConfirmEulaOwner() =>
+            LoginPacketResultDialogOwner.ConfirmEulaResult;
+
+        public static LoginPacketResultDialogOwner ResolveCheckPinCodeOwner(byte? resultCode)
+        {
+            return resultCode switch
+            {
+                1 => LoginPacketResultDialogOwner.CheckPinCodeResultCreate,
+                2 or 4 => LoginPacketResultDialogOwner.CheckPinCodeResultVerify,
+                _ => LoginPacketResultDialogOwner.CheckPinCodeResultNotice,
+            };
+        }
+
+        public static LoginPacketResultDialogOwner ResolveUpdatePinCodeOwner() =>
+            LoginPacketResultDialogOwner.UpdatePinCodeResult;
+
+        public static LoginPacketResultDialogOwner ResolveEnableSpwOwner() =>
+            LoginPacketResultDialogOwner.EnableSpwResult;
+
+        public static LoginPacketResultDialogOwner ResolveCheckSpwOwner() =>
+            LoginPacketResultDialogOwner.CheckSpwResult;
 
         public static LoginPacketResultDialogOwner ResolveDeleteCharacterOwner(byte? resultCode)
         {

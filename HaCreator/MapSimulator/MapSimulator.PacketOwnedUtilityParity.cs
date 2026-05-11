@@ -419,6 +419,8 @@ namespace HaCreator.MapSimulator
             int MessageSequenceId,
             int MessageIndex,
             int DurationMs,
+            int StartedAt,
+            int ExpiresAt,
             int LayerWidth,
             int LayerHeight,
             int SummonHeight,
@@ -12602,6 +12604,44 @@ namespace HaCreator.MapSimulator
                 && ailQuickStatusValue == 1;
         }
 
+        internal static PacketOwnedRadioStopPlan ResolvePacketOwnedRadioStopPlan(
+            bool isPlaying,
+            bool trackPropertyLoaded,
+            bool hasTrackName,
+            bool emitCompletionChat)
+        {
+            bool enteredStop = isPlaying && trackPropertyLoaded;
+            if (!enteredStop)
+            {
+                return new PacketOwnedRadioStopPlan(
+                    EnteredStop: false,
+                    MmsStopBeforeShowUi: false,
+                    ShowUiBeforeMute: false,
+                    MuteBeforeTrackPropertyRelease: false,
+                    TrackPropertyReleaseBeforePlayingClear: false,
+                    PlayingClearBeforeCompletionChat: false,
+                    CompletionChatBeforeTrackNameRelease: false,
+                    ReleasedTrackProperty: false,
+                    ClearedPlaying: false,
+                    EmittedCompletionChat: false,
+                    ReleasedTrackName: false);
+            }
+
+            bool emittedCompletionChat = emitCompletionChat && hasTrackName;
+            return new PacketOwnedRadioStopPlan(
+                EnteredStop: true,
+                MmsStopBeforeShowUi: true,
+                ShowUiBeforeMute: true,
+                MuteBeforeTrackPropertyRelease: true,
+                TrackPropertyReleaseBeforePlayingClear: true,
+                PlayingClearBeforeCompletionChat: emittedCompletionChat,
+                CompletionChatBeforeTrackNameRelease: emittedCompletionChat && hasTrackName,
+                ReleasedTrackProperty: true,
+                ClearedPlaying: true,
+                EmittedCompletionChat: emittedCompletionChat,
+                ReleasedTrackName: hasTrackName);
+        }
+
         internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
             bool trackPropertyLoaded,
             bool soundObjectLoaded,
@@ -12963,6 +13003,15 @@ namespace HaCreator.MapSimulator
         private string StopPacketOwnedRadioSchedule(bool completed, bool emitChatNotice)
         {
             string displayName = _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor ?? "radio track";
+            bool wasPlaying = IsPacketOwnedRadioPlaying();
+            bool hadTrackProperty = _lastPacketOwnedRadioClientTrackPropertyLoaded;
+            bool hadTrackName = !string.IsNullOrWhiteSpace(_lastPacketOwnedRadioDisplayName)
+                || !string.IsNullOrWhiteSpace(_lastPacketOwnedRadioTrackDescriptor);
+            _lastPacketOwnedRadioStopPlan = ResolvePacketOwnedRadioStopPlan(
+                wasPlaying,
+                hadTrackProperty,
+                hadTrackName,
+                emitChatNotice);
             if (_packetOwnedRadioClientHandle != null)
             {
                 _lastPacketOwnedRadioMmsStopPlan = _packetOwnedRadioClientHandle.Stop(
@@ -12993,10 +13042,17 @@ namespace HaCreator.MapSimulator
             _packetOwnedRadioAudio?.Dispose();
             _packetOwnedRadioAudio = null;
             _packetOwnedRadioClientHandle = null;
-            _lastPacketOwnedRadioTrackDescriptor = null;
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Radio) is UIWindowBase radioWindow && radioWindow.IsVisible)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.Radio);
+            }
+
+            _packetOwnedRadioMuted = true;
+            ApplyUtilityAudioSettings();
+
             _lastPacketOwnedRadioResolvedTrackDescriptor = null;
             _lastPacketOwnedRadioResolvedDescriptor = null;
-            _lastPacketOwnedRadioDisplayName = null;
             _lastPacketOwnedRadioTimeValue = 0;
             _lastPacketOwnedRadioRequestedStartOffsetMs = 0;
             _lastPacketOwnedRadioStartOffsetMs = 0;
@@ -13016,15 +13072,8 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
-            _packetOwnedRadioMuted = true;
             ClearPacketOwnedRadioScheduleContext("radio-stop");
             ResetPacketOwnedRadioCreateLayerSessionState();
-            ApplyUtilityAudioSettings();
-
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Radio) is UIWindowBase radioWindow && radioWindow.IsVisible)
-            {
-                uiWindowManager.HideWindow(MapSimulatorWindowNames.Radio);
-            }
 
             _lastPacketOwnedRadioStatusMessage = completed
                 ? FormatPacketOwnedRadioCompletionStatusMessage(displayName)
@@ -13038,6 +13087,9 @@ namespace HaCreator.MapSimulator
                     : $"Radio stop requested for {FormatPacketOwnedRadioQuotedValue(displayName)}.";
                 _chat?.AddClientChatMessage(chatText, Environment.TickCount, 12);
             }
+
+            _lastPacketOwnedRadioTrackDescriptor = null;
+            _lastPacketOwnedRadioDisplayName = null;
 
             return _lastPacketOwnedRadioStatusMessage;
         }
@@ -13380,6 +13432,7 @@ namespace HaCreator.MapSimulator
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, ailLoadFailureAfterRaw={_lastPacketOwnedRadioMmsPlayPlan.AilQuickLoadMemFailureAfterRawBuffer}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
+                $"last CRadioManager::Stop entered={_lastPacketOwnedRadioStopPlan.EnteredStop}, mmsStopBeforeShowUi={_lastPacketOwnedRadioStopPlan.MmsStopBeforeShowUi}, showUiBeforeMute={_lastPacketOwnedRadioStopPlan.ShowUiBeforeMute}, muteBeforeTrackRelease={_lastPacketOwnedRadioStopPlan.MuteBeforeTrackPropertyRelease}, trackReleaseBeforePlayingClear={_lastPacketOwnedRadioStopPlan.TrackPropertyReleaseBeforePlayingClear}, playingClearBeforeCompletionChat={_lastPacketOwnedRadioStopPlan.PlayingClearBeforeCompletionChat}, completionChatBeforeTrackNameRelease={_lastPacketOwnedRadioStopPlan.CompletionChatBeforeTrackNameRelease}, releasedTrack={_lastPacketOwnedRadioStopPlan.ReleasedTrackProperty}, clearedPlaying={_lastPacketOwnedRadioStopPlan.ClearedPlaying}, emittedCompletionChat={_lastPacketOwnedRadioStopPlan.EmittedCompletionChat}, releasedTrackName={_lastPacketOwnedRadioStopPlan.ReleasedTrackName}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
@@ -16267,13 +16320,16 @@ namespace HaCreator.MapSimulator
             if (displayStates.Count == 0)
             {
                 RemovePacketOwnedTutorSummon();
+                _packetOwnedTutorMessageLayerStatesByVariant.Clear();
                 return;
             }
 
             HashSet<int> activeSummonObjectIds = new();
+            HashSet<long> activeVariantKeys = new();
             for (int i = 0; i < displayStates.Count; i++)
             {
                 PacketOwnedTutorDisplayState displayState = displayStates[i];
+                activeVariantKeys.Add(BuildPacketOwnedTutorDisplayVariantKey(displayState.Variant));
                 if (displayState.Variant.SummonObjectId > 0)
                 {
                     activeSummonObjectIds.Add(displayState.Variant.SummonObjectId);
@@ -16283,6 +16339,7 @@ namespace HaCreator.MapSimulator
             }
 
             PrunePacketOwnedTutorSummons(activeSummonObjectIds);
+            PrunePacketOwnedTutorMessageLayerStates(activeVariantKeys);
         }
 
         private void SyncPacketOwnedTutorSummonPose(
@@ -16340,8 +16397,68 @@ namespace HaCreator.MapSimulator
                 _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(summon.ObjectId);
             }
 
+            SyncPacketOwnedTutorMessageLayerState(displayVariant, displayMessage, hasVisibleMessage, localOwnerJobId);
+
             SummonActorState actorState = ResolvePacketOwnedTutorSyncedActorState(summon, currentTickCount);
             ApplyPacketOwnedTutorSyncedActorState(summon, actorState, poseChanged, currentTickCount);
+        }
+
+        private void SyncPacketOwnedTutorMessageLayerState(
+            TutorVariantSnapshot displayVariant,
+            TutorMessageSnapshot displayMessage,
+            bool hasVisibleMessage,
+            int localOwnerJobId)
+        {
+            long variantKey = BuildPacketOwnedTutorDisplayVariantKey(displayVariant);
+            if (!hasVisibleMessage)
+            {
+                _packetOwnedTutorMessageLayerStatesByVariant.Remove(variantKey);
+                return;
+            }
+
+            if (displayMessage.MessageKind == TutorMessageKind.Indexed)
+            {
+                int layerWidth = 0;
+                int layerHeight = 0;
+                List<IDXObject> frames = ResolvePacketOwnedTutorCueFrames(displayMessage.LastIndexedMessage);
+                IDXObject firstFrame = frames?.FirstOrDefault(frame => frame?.Texture != null);
+                if (firstFrame?.Texture != null)
+                {
+                    layerWidth = firstFrame.Texture.Width;
+                    layerHeight = firstFrame.Texture.Height;
+                }
+
+                _packetOwnedTutorMessageLayerStatesByVariant[variantKey] =
+                    BuildPacketOwnedTutorIndexedMessageLayerState(
+                        displayVariant,
+                        displayMessage,
+                        layerWidth,
+                        layerHeight,
+                        localOwnerJobId);
+                return;
+            }
+
+            if (displayMessage.MessageKind == TutorMessageKind.Text)
+            {
+                int requestedWidth = Math.Clamp(
+                    displayMessage.MessageWidth <= 0 ? TutorRuntime.DefaultTextWidth : displayMessage.MessageWidth,
+                    TutorRuntime.MinTextWidth,
+                    TutorRuntime.MaxTextWidth);
+                PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(displayMessage.MessageText, requestedWidth);
+                Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+                int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+                int contentHeight = Math.Max(0, lines.Length * lineHeight);
+
+                _packetOwnedTutorMessageLayerStatesByVariant[variantKey] =
+                    BuildPacketOwnedTutorTextMessageLayerState(
+                        displayVariant,
+                        displayMessage,
+                        requestedWidth,
+                        contentHeight);
+                return;
+            }
+
+            _packetOwnedTutorMessageLayerStatesByVariant.Remove(variantKey);
         }
 
         internal static bool HasPacketOwnedTutorSummonPoseChanged(
@@ -16426,6 +16543,7 @@ namespace HaCreator.MapSimulator
 
             _packetOwnedTutorTrackedSummonObjectIds.Clear();
             _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Clear();
+            _packetOwnedTutorMessageLayerStatesByVariant.Clear();
             IReadOnlyList<TutorVariantSnapshot> activeVariants = _packetOwnedTutorRuntime.SnapshotActiveDisplayTutorVariants();
             for (int i = 0; i < activeVariants.Count; i++)
             {
@@ -16459,6 +16577,12 @@ namespace HaCreator.MapSimulator
             _summonedPool.TryConsumeSummonByObjectId(summonObjectId);
             _packetOwnedTutorTrackedSummonObjectIds.Remove(summonObjectId);
             _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(summonObjectId);
+            if (_packetOwnedTutorRuntime.ActiveSkillId > 0)
+            {
+                long variantKey = ((long)Math.Max(0, _packetOwnedTutorRuntime.ActiveSkillId) << 32)
+                    | (uint)Math.Max(0, runtimeCharacterId);
+                _packetOwnedTutorMessageLayerStatesByVariant.Remove(variantKey);
+            }
         }
 
         private bool TryGetPacketOwnedTutorSummon(out ActiveSummon summon)
@@ -16793,6 +16917,106 @@ namespace HaCreator.MapSimulator
             return operations;
         }
 
+        internal static PacketOwnedTutorMessageLayerState BuildPacketOwnedTutorIndexedMessageLayerState(
+            TutorVariantSnapshot displayVariant,
+            TutorMessageSnapshot displayMessage,
+            int layerWidth,
+            int layerHeight,
+            int localJobId)
+        {
+            int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(displayVariant.SkillId)
+                ? displayVariant.SkillId
+                : TutorRuntime.AranTutorSkillId;
+            int summonHeight = displayVariant.ActorHeight > 0
+                ? displayVariant.ActorHeight
+                : ResolvePacketOwnedTutorActorHeight(normalizedSkillId);
+            IReadOnlyList<PacketOwnedTutorNativeOperation> operations =
+                BuildPacketOwnedTutorIndexedMessageNativeOperationPlan(
+                    normalizedSkillId,
+                    displayMessage.LastIndexedMessage,
+                    displayMessage.MessageDurationMs,
+                    layerWidth,
+                    layerHeight,
+                    summonHeight,
+                    localJobId);
+            PacketOwnedTutorNativeOperation move = operations.FirstOrDefault(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.MoveMessageLayerByHalfWidthAndSummonHeight);
+            PacketOwnedTutorNativeOperation source = operations.FirstOrDefault(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.LoadTutorialLayer);
+            bool sayPlaybackRequested = operations.Any(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction);
+
+            return new PacketOwnedTutorMessageLayerState(
+                TutorMessageKind.Indexed,
+                normalizedSkillId,
+                Math.Max(0, displayVariant.BoundCharacterId),
+                Math.Max(0, displayMessage.MessageSequenceId),
+                Math.Max(0, displayMessage.LastIndexedMessage),
+                Math.Max(0, displayMessage.MessageDurationMs),
+                displayMessage.MessageStartedAt,
+                displayMessage.MessageExpiresAt,
+                Math.Max(0, layerWidth),
+                Math.Max(0, layerHeight),
+                summonHeight,
+                move.OffsetX,
+                move.OffsetY,
+                source.Source,
+                Repeats: true,
+                SayPlaybackRequested: sayPlaybackRequested,
+                EmptyTextSkipped: false);
+        }
+
+        internal static PacketOwnedTutorMessageLayerState BuildPacketOwnedTutorTextMessageLayerState(
+            TutorVariantSnapshot displayVariant,
+            TutorMessageSnapshot displayMessage,
+            int requestedWidth,
+            int computedTextHeight)
+        {
+            int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(displayVariant.SkillId)
+                ? displayVariant.SkillId
+                : TutorRuntime.AranTutorSkillId;
+            int summonHeight = displayVariant.ActorHeight > 0
+                ? displayVariant.ActorHeight
+                : ResolvePacketOwnedTutorActorHeight(normalizedSkillId);
+            IReadOnlyList<PacketOwnedTutorNativeOperation> operations =
+                BuildPacketOwnedTutorTextMessageNativeOperationPlan(
+                    normalizedSkillId,
+                    displayMessage.MessageText,
+                    requestedWidth,
+                    displayMessage.MessageDurationMs,
+                    computedTextHeight,
+                    summonHeight);
+            PacketOwnedTutorNativeOperation layer = operations.FirstOrDefault(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.CreateTextMessageLayer);
+            PacketOwnedTutorNativeOperation move = operations.FirstOrDefault(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.MoveMessageLayerByHalfWidthAndSummonHeight);
+            PacketOwnedTutorNativeOperation frame = operations.FirstOrDefault(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.DrawTutorialBalloonFrame);
+            bool emptyTextSkipped = operations.Any(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.SkipEmptyTextMessageLayer);
+            bool sayPlaybackRequested = operations.Any(operation =>
+                operation.Kind == PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction);
+
+            return new PacketOwnedTutorMessageLayerState(
+                TutorMessageKind.Text,
+                normalizedSkillId,
+                Math.Max(0, displayVariant.BoundCharacterId),
+                Math.Max(0, displayMessage.MessageSequenceId),
+                -1,
+                Math.Max(0, displayMessage.MessageDurationMs),
+                displayMessage.MessageStartedAt,
+                displayMessage.MessageExpiresAt,
+                layer.LayerWidth,
+                layer.LayerHeight,
+                summonHeight,
+                move.OffsetX,
+                move.OffsetY,
+                frame.Source,
+                Repeats: false,
+                SayPlaybackRequested: sayPlaybackRequested,
+                EmptyTextSkipped: emptyTextSkipped);
+        }
+
         internal static Point ResolvePacketOwnedTutorTextMessageLayerSize(int requestedWidth, int computedTextHeight)
         {
             return new Point(
@@ -17095,6 +17319,17 @@ namespace HaCreator.MapSimulator
                     _summonedPool.TryConsumeSummonByObjectId(objectId);
                     _packetOwnedTutorTrackedSummonObjectIds.Remove(objectId);
                     _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(objectId);
+                }
+            }
+        }
+
+        private void PrunePacketOwnedTutorMessageLayerStates(HashSet<long> activeVariantKeys)
+        {
+            foreach (long variantKey in _packetOwnedTutorMessageLayerStatesByVariant.Keys.ToArray())
+            {
+                if (!activeVariantKeys.Contains(variantKey))
+                {
+                    _packetOwnedTutorMessageLayerStatesByVariant.Remove(variantKey);
                 }
             }
         }

@@ -181,6 +181,9 @@ namespace HaCreator.MapSimulator
         private readonly List<string> _inputHistory = new List<string>();
         private int _historyIndex = -1; // -1 means not browsing history
         private string _savedCurrentInput = ""; // Saves current input when browsing history
+        private bool _clientChatHelperUseSubmittedHistoryIndex;
+        private bool _pendingClientChatHelperSubmittedHistoryIndex;
+        private int _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
         private readonly List<string> _clientChatHelperRecentMessages = new List<string>(ClientChatHelperRecentRepeatLimit);
         private readonly int[] _clientChatHelperChatTimestamps = new int[ClientChatHelperChatTimestampLimit];
         private readonly bool[] _clientChatHelperChatTimestampValid = new bool[ClientChatHelperChatTimestampLimit];
@@ -448,6 +451,7 @@ namespace HaCreator.MapSimulator
                     if (_inputText.Length > 0)
                     {
                         string message = _inputText.ToString();
+                        RememberClientChatHelperSubmittedHistoryIndex(message);
 
                         _inputText.Clear();
                         _cursorPosition = 0;
@@ -669,14 +673,28 @@ namespace HaCreator.MapSimulator
                         _savedCurrentInput = _inputText.ToString();
                     }
 
-                    // Move to older entry
-                    if (_historyIndex < _inputHistory.Count - 1)
+                    if (_clientChatHelperUseSubmittedHistoryIndex
+                        && _historyIndex >= 0
+                        && _historyIndex < _inputHistory.Count)
                     {
-                        _historyIndex++;
+                        _clientChatHelperUseSubmittedHistoryIndex = false;
                         _inputText.Clear();
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                         _cursorPosition = _inputText.Length; // Move cursor to end
                         ClearInputSelection();
+                    }
+                    else
+                    {
+                        _clientChatHelperUseSubmittedHistoryIndex = false;
+                        // Move to older entry
+                        if (_historyIndex < _inputHistory.Count - 1)
+                        {
+                            _historyIndex++;
+                            _inputText.Clear();
+                            _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
+                            _cursorPosition = _inputText.Length; // Move cursor to end
+                            ClearInputSelection();
+                        }
                     }
                 }
 
@@ -1271,9 +1289,17 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void AddToInputHistory(string message)
         {
+            bool hasPendingSubmittedHistory = _pendingClientChatHelperSubmittedHistoryIndex
+                && _pendingClientChatHelperSubmittedHistoryForwardIndex >= 0;
+            int pendingForwardIndex = _pendingClientChatHelperSubmittedHistoryForwardIndex;
+            int removedFromFront = 0;
+
             // Don't add duplicates of the last entry
             if (_inputHistory.Count > 0 && _inputHistory[_inputHistory.Count - 1] == message)
+            {
+                ApplyClientChatHelperSubmittedHistoryIndex(message, pendingForwardIndex, removedFromFront, hasPendingSubmittedHistory);
                 return;
+            }
 
             _inputHistory.Add(message);
 
@@ -1281,7 +1307,10 @@ namespace HaCreator.MapSimulator
             while (_inputHistory.Count > MAX_INPUT_HISTORY)
             {
                 _inputHistory.RemoveAt(0);
+                removedFromFront++;
             }
+
+            ApplyClientChatHelperSubmittedHistoryIndex(message, pendingForwardIndex, removedFromFront, hasPendingSubmittedHistory);
         }
 
         /// <summary>
@@ -1291,6 +1320,60 @@ namespace HaCreator.MapSimulator
         {
             _historyIndex = -1;
             _savedCurrentInput = "";
+            _clientChatHelperUseSubmittedHistoryIndex = false;
+        }
+
+        private void RememberClientChatHelperSubmittedHistoryIndex(string message)
+        {
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+
+            if (_historyIndex < 0 || _historyIndex >= _inputHistory.Count)
+            {
+                return;
+            }
+
+            int forwardIndex = _inputHistory.Count - 1 - _historyIndex;
+            if (forwardIndex < 0 || forwardIndex >= _inputHistory.Count)
+            {
+                return;
+            }
+
+            if (!string.Equals(_inputHistory[forwardIndex], message, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _pendingClientChatHelperSubmittedHistoryIndex = true;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = forwardIndex;
+        }
+
+        private void ApplyClientChatHelperSubmittedHistoryIndex(
+            string message,
+            int pendingForwardIndex,
+            int removedFromFront,
+            bool hasPendingSubmittedHistory)
+        {
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+
+            if (!hasPendingSubmittedHistory)
+            {
+                return;
+            }
+
+            int adjustedForwardIndex = pendingForwardIndex - removedFromFront;
+            if (adjustedForwardIndex < 0
+                || adjustedForwardIndex >= _inputHistory.Count
+                || !string.Equals(_inputHistory[adjustedForwardIndex], message, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // CChatHelper::HistoryAdd preserves the submitted history row and marks
+            // m_bUseHistory so the next HistoryUp reopens that same native row.
+            _historyIndex = _inputHistory.Count - 1 - adjustedForwardIndex;
+            _clientChatHelperUseSubmittedHistoryIndex = true;
         }
 
         private bool TryApplyClientChatHelperTryChat(string originalMessage, int tickCount, out string processedMessage)
@@ -2351,7 +2434,7 @@ namespace HaCreator.MapSimulator
                 (int)ClientChatLogType.OutgoingWhisper,
                 _whisperTarget);
             _lastOutgoingWhisperTarget = _whisperTarget ?? string.Empty;
-            _lastOutgoingWhisperText = processedMessage ?? string.Empty;
+            _lastOutgoingWhisperText = message ?? string.Empty;
             MessageSubmitted?.Invoke(processedMessage, tickCount);
         }
 

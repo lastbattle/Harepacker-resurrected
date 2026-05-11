@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Managers
         public int DialogCreateFlag { get; init; }
         public int DialogCreateX { get; init; }
         public int DialogCreateY { get; init; }
+        public int DialogCreateMulti { get; init; }
         public string OkButtonResourcePath { get; init; } = string.Empty;
         public int OkButtonControlId { get; init; }
         public bool OkButtonAcceptsFocus { get; init; }
@@ -43,9 +44,16 @@ namespace HaCreator.MapSimulator.Managers
         public const int RandomMesoBagCreateDlgFlag = 1;
         public const int RandomMesoBagCreateDlgX = 0;
         public const int RandomMesoBagCreateDlgY = 0;
+        public const int RandomMesoBagCreateDlgMulti = 0;
         public const int RandomMesoBagOkButtonControlId = 1;
         public const bool RandomMesoBagOkButtonAcceptsFocus = true;
+        public const int UtilDlgNoticeType = 1000;
+        public const int UtilDlgNoticeCreateDlgX = 0;
+        public const int UtilDlgNoticeCreateDlgY = 0;
+        public const int UtilDlgNoticeCreateDlgScreenCoord = 1;
+        public const int UtilDlgNoticeCreateDlgMulti = 0;
         public const bool UtilDlgNoticeAutoSeparated = true;
+        public const bool UtilDlgNoticeComboBox = false;
         public const bool UtilDlgNoticeTightLine = false;
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
@@ -268,6 +276,7 @@ namespace HaCreator.MapSimulator.Managers
                 DialogCreateFlag = RandomMesoBagCreateDlgFlag,
                 DialogCreateX = RandomMesoBagCreateDlgX,
                 DialogCreateY = RandomMesoBagCreateDlgY,
+                DialogCreateMulti = RandomMesoBagCreateDlgMulti,
                 OkButtonResourcePath = GetRandomMesoBagOkButtonResourcePath(),
                 OkButtonControlId = RandomMesoBagOkButtonControlId,
                 OkButtonAcceptsFocus = RandomMesoBagOkButtonAcceptsFocus,

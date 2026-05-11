@@ -1393,6 +1393,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogBtOkBlockedCooldownRouteCount;
         private int _season2SubDialogBtOkMouseRouteCount;
         private int _season2SubDialogBodyClickRouteCount;
+        private int _season2UiWindowListSelectionRouteCount;
+        private int _season2UiWindowListDoubleClickSendRouteCount;
+        private int _season2UiWindowListNoSelectionRouteCount;
         private int _season2SubDialogLastSendTick = int.MinValue;
         private int _season2SubDialogCOutPacket262PayloadCount;
         private string _season2SubDialogLastCOutPacket262PayloadHex;
@@ -1481,6 +1484,9 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2SubDialogBtOkBlockedCooldownRouteCount => _season2SubDialogBtOkBlockedCooldownRouteCount;
         public int Season2SubDialogBtOkMouseRouteCount => _season2SubDialogBtOkMouseRouteCount;
         public int Season2SubDialogBodyClickRouteCount => _season2SubDialogBodyClickRouteCount;
+        public int Season2UiWindowListSelectionRouteCount => _season2UiWindowListSelectionRouteCount;
+        public int Season2UiWindowListDoubleClickSendRouteCount => _season2UiWindowListDoubleClickSendRouteCount;
+        public int Season2UiWindowListNoSelectionRouteCount => _season2UiWindowListNoSelectionRouteCount;
         public int Season2SubDialogCOutPacket262PayloadCount => _season2SubDialogCOutPacket262PayloadCount;
         public string Season2SubDialogLastCOutPacket262PayloadHex => _season2SubDialogLastCOutPacket262PayloadHex;
         public MonsterCarnivalSeason2BtOkSendLifecycle Season2SubDialogBtOkSendLifecycle => _season2SubDialogBtOkSendLifecycle;
@@ -3244,6 +3250,9 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkBlockedCooldownRouteCount = 0;
             _season2SubDialogBtOkMouseRouteCount = 0;
             _season2SubDialogBodyClickRouteCount = 0;
+            _season2UiWindowListSelectionRouteCount = 0;
+            _season2UiWindowListDoubleClickSendRouteCount = 0;
+            _season2UiWindowListNoSelectionRouteCount = 0;
             _season2SubDialogLastSendTick = int.MinValue;
             _season2SubDialogCOutPacket262PayloadCount = 0;
             _season2SubDialogLastCOutPacket262PayloadHex = null;

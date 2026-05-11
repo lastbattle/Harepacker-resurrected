@@ -2147,21 +2147,18 @@ namespace HaCreator.MapSimulator.Companions
             capture = null;
             matched = false;
 
-            foreach (ClientDragonFlushTailCaptureRecord candidate in _recentCapturedVecCtrlEndUpdateActiveFlushTails)
+            foreach (ClientDragonFlushTailCaptureRecord candidate in EnumerateRecentOfficialSessionFullTailCapturesNewestFirst())
             {
-                if (candidate?.HasBounds != true || !candidate.FromOfficialSession)
-                {
-                    continue;
-                }
-
-                capture = candidate;
                 if (hasSimulatorTail
                     && AreClientDragonFlushKeyPadStatesEqual(simulatorTail.KeyPadStates, candidate.Tail.KeyPadStates)
                     && ToBoundsRectangle(simulatorTail) == ToBoundsRectangle(candidate.Tail))
                 {
+                    capture = candidate;
                     matched = true;
                     return true;
                 }
+
+                capture ??= candidate;
             }
 
             return capture != null;
@@ -2180,13 +2177,8 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            foreach (ClientDragonFlushTailCaptureRecord candidate in _recentCapturedVecCtrlEndUpdateActiveFlushTails)
+            foreach (ClientDragonFlushTailCaptureRecord candidate in EnumerateRecentOfficialSessionFullTailCapturesNewestFirst())
             {
-                if (candidate?.HasBounds != true || !candidate.FromOfficialSession)
-                {
-                    continue;
-                }
-
                 if (AreClientDragonFlushKeyPadStatesEqual(candidate.Tail.KeyPadStates, keyPadMemoryStates))
                 {
                     capture = candidate;
@@ -2195,6 +2187,17 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return false;
+        }
+
+        private IEnumerable<ClientDragonFlushTailCaptureRecord> EnumerateRecentOfficialSessionFullTailCapturesNewestFirst()
+        {
+            foreach (ClientDragonFlushTailCaptureRecord candidate in _recentCapturedVecCtrlEndUpdateActiveFlushTails.Reverse())
+            {
+                if (candidate?.HasBounds == true && candidate.FromOfficialSession)
+                {
+                    yield return candidate;
+                }
+            }
         }
 
         internal static bool IsClientDragonOfficialSessionCaptureSource(string source)

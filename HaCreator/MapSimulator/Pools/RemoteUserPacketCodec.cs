@@ -186,7 +186,8 @@ namespace HaCreator.MapSimulator.Pools
         int? WeaknessValue = null,
         int? CurseValue = null,
         int? PoisonValue = null,
-        short? PoisonValueShort = null)
+        short? PoisonValueShort = null,
+        int? RidingVehicleId = null)
     {
         public const int DarkAuraSkillId = 32001003;
         public const int BlueAuraSkillId = 32101002;
@@ -227,7 +228,8 @@ namespace HaCreator.MapSimulator.Pools
             || WeaknessValue.HasValue
             || CurseValue.HasValue
             || PoisonValue.HasValue
-            || PoisonValueShort.HasValue;
+            || PoisonValueShort.HasValue
+            || RidingVehicleId.HasValue;
 
         public bool IsHiddenLikeClient =>
             HasDarkSight
@@ -4652,6 +4654,7 @@ namespace HaCreator.MapSimulator.Pools
             int? yellowAuraValue = null;
             bool hasBlessingArmor = false;
             int? stunValue = null;
+            int? ridingVehicleId = null;
             int? darknessValue = null;
             int? sealValue = null;
             int? weaknessValue = null;
@@ -4711,6 +4714,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Stun))
                 {
                     stunValue = reader.ReadInt32();
+                    ridingVehicleId = NormalizeRemoteRidingVehicleId(stunValue);
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Darkness))
@@ -5013,7 +5017,31 @@ namespace HaCreator.MapSimulator.Pools
                 weaknessValue,
                 curseValue,
                 poisonValue,
-                poisonValueShort);
+                poisonValueShort,
+                ridingVehicleId);
+        }
+
+        private static int? NormalizeRemoteRidingVehicleId(int? value)
+        {
+            // IDA `CUserRemote::Init` reads `aTemporaryStat[3]` and passes that value
+            // directly to `CAvatar::SetRidingVehicle` before `PrepareActionLayer`.
+            // Keep this as an explicit vehicle-id owner only when the decoded value
+            // is shaped like a checked taming-mob vehicle item id family.
+            if (value is int itemId && IsRemoteRidingVehicleTamingMobItemId(itemId))
+            {
+                return itemId;
+            }
+
+            return null;
+        }
+
+        private static bool IsRemoteRidingVehicleTamingMobItemId(int itemId)
+        {
+            int family = itemId / 10000;
+            return family == 190
+                   || family == 193
+                   || itemId / 1000 == 1983
+                   || family == 199;
         }
 
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
@@ -5239,6 +5267,22 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueSeparatedSkillElementPairFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSparsePairMaxDistanceBytes,
+                    out int uniqueSparsePairChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueSparsePairChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
                     rawPayload,
                     payloadMaskBaseOffset,
@@ -5433,6 +5477,9 @@ namespace HaCreator.MapSimulator.Pools
                     : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Poison)
                     ? knownState.PoisonValueShort
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Stun)
+                    ? knownState.RidingVehicleId
                     : null);
 
             return snapshot with

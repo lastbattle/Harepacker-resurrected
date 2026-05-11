@@ -65,6 +65,8 @@ namespace HaCreator.MapSimulator.Entities
         private const int MapleTvNativeReceiverNameXDelta = 146;
         private const int MapleTvNativeNameYDelta = 71;
         private const int MapleTvNativeReceiverGlyphWidth = 4;
+        private const int ClientFloatVectorRadiusPx = 5;
+        private const int ClientFloatVectorRotateMs = 2000;
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
@@ -88,6 +90,7 @@ namespace HaCreator.MapSimulator.Entities
         internal CharacterBuild ImitatedBuild => _imitatedBuild;
         public bool HasImitatedLook => !string.IsNullOrWhiteSpace(_imitatedName) || _imitatedAvatarLookPayload.Length > 0;
         public bool HasMapleTvPresentation { get; private set; }
+        public bool HasClientFloatPresentation { get; private set; }
         public int MapleTvMessageX => _mapleTvMessageX;
         public int MapleTvMessageY => _mapleTvMessageY;
         public int MapleTvAdX => _mapleTvAdX;
@@ -375,6 +378,11 @@ namespace HaCreator.MapSimulator.Entities
             _mapleTvAdY = adY;
         }
 
+        public void MarkClientFloatPresentationAvailable(bool available)
+        {
+            HasClientFloatPresentation = available;
+        }
+
         internal void ConfigureMapleTvPresentation(
             Func<MapleTvVisualAssets> visualAssetsProvider,
             Func<MapleTvSnapshot> snapshotProvider,
@@ -590,6 +598,10 @@ namespace HaCreator.MapSimulator.Entities
                 positionOffsetY = (int)(MovementInfo.Y - _npcInstance.Y);
             }
 
+            Point floatOffset = ResolveClientFloatVisualOffset(HasClientFloatPresentation, TickCount);
+            positionOffsetX += floatOffset.X;
+            positionOffsetY += floatOffset.Y;
+
             int adjustedMapShiftX = mapShiftX - positionOffsetX;
             int adjustedMapShiftY = mapShiftY - positionOffsetY;
 
@@ -600,8 +612,8 @@ namespace HaCreator.MapSimulator.Entities
                                            ?? _imitatedAssembler?.GetFrameAtTime(ResolveFallbackImitatedAvatarAction(), TickCount);
             if (imitatedFrame != null)
             {
-                int screenX = CurrentX - mapShiftX + centerX;
-                int screenY = CurrentY - mapShiftY + centerY;
+                int screenX = CurrentX + floatOffset.X - mapShiftX + centerX;
+                int screenY = CurrentY + floatOffset.Y - mapShiftY + centerY;
                 imitatedFrame.Draw(sprite, skeletonMeshRenderer, screenX, screenY, flip, Color.White);
             }
             else if (drawFrame != null)
@@ -755,12 +767,13 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            Point floatOffset = ResolveClientFloatVisualOffset(HasClientFloatPresentation, tickCount);
             if (!snapshot.IsShowingMessage)
             {
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = ResolveActorLocalMapleTvIdleFrames(visualAssets, snapshot.QueueExists);
                 MapleTvAnimationFrame idleFrame = SelectMapleTvFrame(idleFrames, ResolveActorLocalMapleTvAnimationTick(snapshot, tickCount));
-                int idleOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
-                int idleOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
+                int idleOriginX = CurrentX + floatOffset.X + _mapleTvAdX - mapShiftX + centerX;
+                int idleOriginY = CurrentY + floatOffset.Y + _mapleTvAdY - mapShiftY + centerY;
                 DrawMapleTvFrame(
                     idleFrame,
                     sprite,
@@ -791,8 +804,8 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            int adOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
-            int adOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
+            int adOriginX = CurrentX + floatOffset.X + _mapleTvAdX - mapShiftX + centerX;
+            int adOriginY = CurrentY + floatOffset.Y + _mapleTvAdY - mapShiftY + centerY;
             DrawMapleTvFrame(
                 mediaFrame,
                 sprite,
@@ -810,8 +823,8 @@ namespace HaCreator.MapSimulator.Entities
                 adOriginX,
                 adOriginY);
 
-            int chatOriginX = CurrentX + _mapleTvMessageX - mapShiftX + centerX;
-            int chatOriginY = CurrentY + _mapleTvMessageY - mapShiftY + centerY;
+            int chatOriginX = CurrentX + floatOffset.X + _mapleTvMessageX - mapShiftX + centerX;
+            int chatOriginY = CurrentY + floatOffset.Y + _mapleTvMessageY - mapShiftY + centerY;
             DrawMapleTvFrame(
                 chatFrame,
                 sprite,
@@ -934,6 +947,20 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return snapshot.QueueExists ? 0 : fieldTickCount;
+        }
+
+        internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount)
+        {
+            if (!hasFloatPresentation || ClientFloatVectorRotateMs <= 0)
+            {
+                return Point.Zero;
+            }
+
+            int normalizedTick = Math.Abs(tickCount % ClientFloatVectorRotateMs);
+            double angle = normalizedTick / (double)ClientFloatVectorRotateMs * Math.PI * 2.0;
+            return new Point(
+                (int)Math.Round(Math.Cos(angle) * ClientFloatVectorRadiusPx),
+                (int)Math.Round(Math.Sin(angle) * ClientFloatVectorRadiusPx));
         }
 
         private static int ResolveActorLocalMapleTvChatVariantKey(MapleTvSnapshot snapshot)

@@ -231,7 +231,7 @@ namespace HaCreator.MapSimulator
                 GetLastOutgoingWhisperTarget = () => _chat?.LastOutgoingWhisperTarget ?? string.Empty,
                 ClearWhisperSentState = () => _chat?.ClearLastOutgoingWhisperEcho(),
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
-                ClearFieldFade = () => ClearPacketOwnedLocalOverlayState("fade"),
+                ClearFieldFade = ClearPacketOwnedFieldFadeInAnimation,
                 RequestBgm = descriptor => RequestSpecialFieldBgmOverride(ResolvePacketOwnedFieldBgmOverrideName(descriptor)),
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
@@ -366,6 +366,16 @@ namespace HaCreator.MapSimulator
                 TrackDirectionModeOwner = trackDirectionModeOwner,
                 DurationMs = 5000
             });
+        }
+
+        private void ClearPacketOwnedFieldFadeInAnimation(int fadeKey)
+        {
+            ClearPacketOwnedLocalOverlayState("fade");
+            ShowUtilityFeedbackMessage(
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Removed packet-owned field fade-in animations for key {0}.",
+                    fadeKey));
         }
 
         private bool TryPlayPacketOwnedFieldFeedbackSound(string descriptor)

@@ -239,7 +239,8 @@ namespace HaCreator.MapSimulator.Fields
             QueuedRetryDecision decision,
             PassiveTransferFieldReplayState replayState)
         {
-            if (decision != QueuedRetryDecision.ReplayHandleUpKeyDown)
+            if (!hasPendingRequest
+                || decision != QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
                 return new PassiveTransferFieldQueuedReplayDecision(
                     ShouldStopSkillMacro: false,

@@ -214,7 +214,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|recovery|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|return <1|2|8>|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|recovery|packets>|close]]");
             }
         }
 
@@ -950,8 +950,36 @@ namespace HaCreator.MapSimulator
                             _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
                             getAllOutboundError));
 
+                case "return":
+                case "setret":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int returnCode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank return <1|2|8>");
+                    }
+
+                    bool hasReturnOutbound = _packetOwnedStoreBankRuntime.TryBuildOwnerReturnOutboundRequest(
+                        returnCode,
+                        out PacketOwnedNpcUtilityOutboundRequest returnRequest,
+                        out string returnLocalMessage);
+                    if (hasReturnOutbound)
+                    {
+                        uiWindowManager?.HideWindow(MapSimulatorWindowNames.StoreBank);
+                        HidePacketOwnedStoreBankGetAllPrompt();
+                    }
+
+                    return hasReturnOutbound
+                        ? ChatCommandHandler.CommandResult.Ok(
+                            DispatchPacketOwnedStoreBankOutboundRequest(
+                                hasReturnOutbound,
+                                returnRequest,
+                                returnLocalMessage,
+                                null))
+                        : ChatCommandHandler.CommandResult.Error(returnLocalMessage);
+
                 case "close":
-                    bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildCloseOutboundRequest(
+                    bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildOwnerReturnOutboundRequest(
+                        2,
                         out PacketOwnedNpcUtilityOutboundRequest closeRequest,
                         out string closeLocalMessage);
                     if (hasCloseOutbound)
@@ -968,7 +996,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeLocalMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|get <ownerRow>|getall|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|get <ownerRow>|getall|return <1|2|8>|close]");
             }
         }
 
@@ -996,7 +1024,8 @@ namespace HaCreator.MapSimulator
 
         private bool HandlePacketOwnedStoreBankCloseButtonClick()
         {
-            bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildCloseOutboundRequest(
+            bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildOwnerReturnOutboundRequest(
+                2,
                 out PacketOwnedNpcUtilityOutboundRequest request,
                 out string localMessage);
             DispatchPacketOwnedStoreBankOutboundRequest(

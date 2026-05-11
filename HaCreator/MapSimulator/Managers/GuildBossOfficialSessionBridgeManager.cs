@@ -856,6 +856,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
+                RecordInitializedProxySession(e.SessionVersion, e.ProxySessionId);
                 int flushed = FlushQueuedPulleyRequestsViaProxy();
                 LastStatus = flushed > 0
                     ? $"Guild boss official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued pulley request(s)."
@@ -1186,7 +1187,7 @@ namespace HaCreator.MapSimulator.Managers
                 InboundPacketTrace inbound = inboundEvidence.Value;
                 OutboundPacketTrace outbound = outboundEvidence.Value;
                 long? currentProxySessionId = _roleSessionProxy.CurrentProxySessionId;
-                string pairLabel = IsPairedInitializedProxySession(outbound.SessionVersion, outbound.ProxySessionId, inbound.SessionVersion, inbound.ProxySessionId)
+                string pairLabel = IsPairedCurrentInitializedProxySession(outbound.SessionVersion, outbound.ProxySessionId, inbound.SessionVersion, inbound.ProxySessionId)
                     ? $"paired proxySession={outbound.ProxySessionId.Value}"
                     : IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
                         ? $"uninitialized or stale paired proxySession={FormatProxySessionId(outbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}"
@@ -1243,7 +1244,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return _liveInboundGuildBossPacketEvidence.HasValue
                     && _liveOutboundOpcode259Evidence.HasValue
-                    && IsPairedInitializedProxySession(
+                    && IsPairedCurrentInitializedProxySession(
                         _liveOutboundOpcode259Evidence.Value.SessionVersion,
                         _liveOutboundOpcode259Evidence.Value.ProxySessionId,
                         _liveInboundGuildBossPacketEvidence.Value.SessionVersion,
@@ -1360,7 +1361,7 @@ namespace HaCreator.MapSimulator.Managers
                 && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
         }
 
-        private bool IsPairedInitializedProxySession(
+        private bool IsPairedCurrentInitializedProxySession(
             short? outboundSessionVersion,
             long? outboundProxySessionId,
             short? inboundSessionVersion,
@@ -1370,7 +1371,18 @@ namespace HaCreator.MapSimulator.Managers
                 && inboundSessionVersion.HasValue
                 && outboundSessionVersion.Value == inboundSessionVersion.Value
                 && IsSameProxySession(outboundProxySessionId, inboundProxySessionId)
-                && IsInitializedProxySession(outboundSessionVersion, outboundProxySessionId);
+                && IsCurrentInitializedProxySession(outboundSessionVersion, outboundProxySessionId);
+        }
+
+        private bool IsCurrentInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            return sessionVersion.HasValue
+                && proxySessionId.HasValue
+                && _currentInitializedSessionVersion.HasValue
+                && _currentInitializedProxySessionId.HasValue
+                && _currentInitializedSessionVersion.Value == sessionVersion.Value
+                && _currentInitializedProxySessionId.Value == proxySessionId.Value
+                && IsInitializedProxySession(sessionVersion, proxySessionId);
         }
 
         private bool IsInitializedProxySession(short? sessionVersion, long? proxySessionId)

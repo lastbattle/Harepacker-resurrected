@@ -363,6 +363,12 @@ namespace HaCreator.MapSimulator.Character
             public int PreparedFeetOffset { get; set; }
             public int NextPreparedLayerObjectId { get; set; } = 1;
             public MirrorImagePreparedSourceLayer[] PreparedSourceLayers { get; set; } = CreateEmptyMirrorImagePreparedSourceLayers();
+            public IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> LastPreparedLayerReleaseNativeOperations { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerReleaseNativeOperation>();
+            public IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> LastPreparedLayerReleaseNativeReferenceBalances { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            public int LastPreparedLayerReleaseNativeOperationSignature { get; set; }
+            public int LastPreparedLayerReleaseNativeReferenceBalanceSignature { get; set; }
         }
 
         private sealed class MirrorImagePreparedSourceLayer
@@ -516,6 +522,33 @@ namespace HaCreator.MapSimulator.Character
             int AddRefCount,
             int ReleaseCount,
             int NetReferenceDelta);
+
+        public enum MirrorImagePreparedLayerReleaseNativeOperationKind
+        {
+            CheckMirrorLayerSlot,
+            ClearMirrorLayerSlot,
+            ReleaseMirrorLayerObject
+        }
+
+        public readonly record struct MirrorImagePreparedLayerReleaseNativeOperation(
+            MirrorImagePreparedLayerReleaseNativeOperationKind Kind,
+            int Sequence,
+            AvatarRenderLayer SourceLayer,
+            int ObjectId,
+            int RelatedObjectId,
+            int ReferenceDelta);
+
+        public enum MirrorImagePreparedLayerReleaseNativeReferenceKind
+        {
+            MirrorLayerObject
+        }
+
+        public readonly record struct MirrorImagePreparedLayerReleaseNativeReferenceBalance(
+            MirrorImagePreparedLayerReleaseNativeReferenceKind Kind,
+            int ObjectId,
+            int AddRefCount,
+            int ReleaseCount,
+            int NetReferenceDelta);
         private readonly struct MirrorImageRenderableSourceLayer
         {
             public MirrorImageRenderableSourceLayer(
@@ -613,6 +646,7 @@ namespace HaCreator.MapSimulator.Character
         private const int MirrorImageClientSideOffsetPx = 50;
         private const int MirrorImageClientBackActionOffsetYPx = 50;
         private const int MirrorImageTransitionDurationMs = 200;
+        private const int MirrorImageClientSourceLayerCount = 5;
         private const int MirrorImageClientLayerZ = -2;
         private const int MirrorImageClientDefaultScalePercent = 100;
         private const int MirrorImageClientDefaultLayerFilter = 0;
@@ -829,6 +863,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _isFloatAnimationMoving;
         private bool _wasJumpHeldLastFrame;
         private bool _mobUndeadRecoveryActive;
+        private bool _mobRecoveryBlocked;
         private int _mobHpRecoveryCapPercent = 100;
         private int _mobMpRecoveryCapPercent = 100;
         private int _mobHpRecoveryDamagePercent = 100;
@@ -5722,9 +5757,10 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        public void ApplyMobRecoveryModifiers(bool hpRecoveryReversed, int maxHpPercentCap, int maxMpPercentCap, int hpRecoveryDamagePercent = 100)
+        public void ApplyMobRecoveryModifiers(bool hpRecoveryReversed, int maxHpPercentCap, int maxMpPercentCap, int hpRecoveryDamagePercent = 100, bool recoveryBlocked = false)
         {
             _mobUndeadRecoveryActive = hpRecoveryReversed;
+            _mobRecoveryBlocked = recoveryBlocked;
             _mobHpRecoveryCapPercent = Math.Clamp(maxHpPercentCap, 1, 100);
             _mobMpRecoveryCapPercent = Math.Clamp(maxMpPercentCap, 1, 100);
             _mobHpRecoveryDamagePercent = Math.Clamp(hpRecoveryDamagePercent, 1, 100);
@@ -5744,7 +5780,7 @@ namespace HaCreator.MapSimulator.Character
 
         public void Recover(int hp, int mp)
         {
-            if (!IsAlive)
+            if (!IsAlive || _mobRecoveryBlocked)
             {
                 return;
             }
@@ -6670,6 +6706,9 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            CaptureMirrorImagePreparedLayerReleaseNativeMetadata(
+                _activeMirrorImage,
+                CollectPreparedMirrorImageLayerObjectIds(_activeMirrorImage.PreparedSourceLayers));
             _activeMirrorImage.PreparedActionName = null;
             _activeMirrorImage.PreparedFrameIndex = -1;
             _activeMirrorImage.PreparedFeetOffset = 0;
@@ -6680,7 +6719,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static MirrorImagePreparedSourceLayer[] CreateEmptyMirrorImagePreparedSourceLayers()
         {
-            var layers = new MirrorImagePreparedSourceLayer[5];
+            var layers = new MirrorImagePreparedSourceLayer[MirrorImageClientSourceLayerCount];
             for (int layerIndex = 0; layerIndex < layers.Length; layerIndex++)
             {
                 AvatarRenderLayer renderLayer = (AvatarRenderLayer)layerIndex;
@@ -8125,6 +8164,170 @@ namespace HaCreator.MapSimulator.Character
             return hasSourceCanvas && currentPostReparentListNodeSignature != 0
                 ? currentPostReparentListNodeSignature
                 : existingPostReparentListNodeSignature;
+        }
+        private static void CaptureMirrorImagePreparedLayerReleaseNativeMetadata(
+            MirrorImageState mirrorImageState,
+            IReadOnlyList<int> preparedLayerObjectIds)
+        {
+            if (mirrorImageState == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations =
+                BuildMirrorImagePreparedLayerReleaseNativeOperations(preparedLayerObjectIds);
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> balances =
+                BuildMirrorImagePreparedLayerReleaseNativeReferenceBalances(operations);
+            mirrorImageState.LastPreparedLayerReleaseNativeOperations = operations;
+            mirrorImageState.LastPreparedLayerReleaseNativeOperationSignature =
+                ComputeMirrorImagePreparedLayerReleaseNativeOperationSignature(operations);
+            mirrorImageState.LastPreparedLayerReleaseNativeReferenceBalances = balances;
+            mirrorImageState.LastPreparedLayerReleaseNativeReferenceBalanceSignature =
+                ComputeMirrorImagePreparedLayerReleaseNativeReferenceBalanceSignature(balances);
+        }
+
+        internal static IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> BuildMirrorImagePreparedLayerReleaseNativeOperations(
+            IReadOnlyList<int> preparedLayerObjectIds)
+        {
+            if (preparedLayerObjectIds == null || preparedLayerObjectIds.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeOperation>();
+            }
+
+            var operations = new List<MirrorImagePreparedLayerReleaseNativeOperation>(preparedLayerObjectIds.Count * 3);
+            int sequence = 0;
+            int layerCount = Math.Min(preparedLayerObjectIds.Count, MirrorImageClientSourceLayerCount);
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                AvatarRenderLayer sourceLayer = (AvatarRenderLayer)layerIndex;
+                int layerObjectId = preparedLayerObjectIds[layerIndex];
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.CheckMirrorLayerSlot,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: 0));
+                if (layerObjectId == 0)
+                {
+                    continue;
+                }
+
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.ClearMirrorLayerSlot,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: 0));
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.ReleaseMirrorLayerObject,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: -1));
+            }
+
+            return operations;
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerReleaseNativeOperationSignature(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(operations.Count);
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeOperation operation = operations[operationIndex];
+                signature.Add((int)operation.Kind);
+                signature.Add(operation.Sequence);
+                signature.Add((int)operation.SourceLayer);
+                signature.Add(operation.ObjectId);
+                signature.Add(operation.RelatedObjectId);
+                signature.Add(operation.ReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> BuildMirrorImagePreparedLayerReleaseNativeReferenceBalances(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            }
+
+            var balances = new Dictionary<int, (int AddRefCount, int ReleaseCount, int NetReferenceDelta)>();
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeOperation operation = operations[operationIndex];
+                if (operation.Kind != MirrorImagePreparedLayerReleaseNativeOperationKind.ReleaseMirrorLayerObject
+                    || operation.ObjectId == 0
+                    || operation.ReferenceDelta == 0)
+                {
+                    continue;
+                }
+
+                (int AddRefCount, int ReleaseCount, int NetReferenceDelta) balance = balances.TryGetValue(operation.ObjectId, out var existing)
+                    ? existing
+                    : default;
+                if (operation.ReferenceDelta > 0)
+                {
+                    balance.AddRefCount += operation.ReferenceDelta;
+                }
+                else
+                {
+                    balance.ReleaseCount += -operation.ReferenceDelta;
+                }
+
+                balance.NetReferenceDelta += operation.ReferenceDelta;
+                balances[operation.ObjectId] = balance;
+            }
+
+            if (balances.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            }
+
+            return balances
+                .OrderBy(static entry => entry.Key)
+                .Select(static entry => new MirrorImagePreparedLayerReleaseNativeReferenceBalance(
+                    MirrorImagePreparedLayerReleaseNativeReferenceKind.MirrorLayerObject,
+                    entry.Key,
+                    entry.Value.AddRefCount,
+                    entry.Value.ReleaseCount,
+                    entry.Value.NetReferenceDelta))
+                .ToArray();
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerReleaseNativeReferenceBalanceSignature(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(balances.Count);
+            for (int balanceIndex = 0; balanceIndex < balances.Count; balanceIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeReferenceBalance balance = balances[balanceIndex];
+                signature.Add((int)balance.Kind);
+                signature.Add(balance.ObjectId);
+                signature.Add(balance.AddRefCount);
+                signature.Add(balance.ReleaseCount);
+                signature.Add(balance.NetReferenceDelta);
+            }
+
+            return signature.ToHashCode();
         }
         internal static IReadOnlyList<MirrorImagePreparedLayerNativeOperation> BuildMirrorImagePreparedLayerNativeOperations(
             AvatarRenderLayer sourceLayer,

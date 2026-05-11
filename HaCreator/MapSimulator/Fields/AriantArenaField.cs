@@ -93,6 +93,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int FirstTextY = 2;
         private const int RowSpacing = 17;
         private const int ResultOffsetY = 100;
+        private const int ResultOffsetX = 0;
+        private const int ResultLayerZ = -1073343324;
+        private const int ResultLayerAlpha = 255;
+        private const string ResultLayerOrigin = "Origin_CT";
+        private const string ResultLayerAnimation = "GA_STOP";
         private readonly List<AriantArenaScoreEntry> _entries = new();
         private readonly List<IDXObject> _resultFrames = new();
         private readonly List<IDXObject> _rankIcons = new();
@@ -336,7 +341,21 @@ namespace HaCreator.MapSimulator.Fields
             _showResult = _resultFrames.Count > 0;
             ReleaseScoreLayerHandle();
             _scoreLayerHandleId = 0;
+            ReleaseResultLayerHandle();
             _resultLayerHandleId = _showResult ? AllocateSimulatedLayerHandle() : 0;
+            if (_resultLayerHandleId > 0)
+            {
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.CreateResultLayer(
+                    _resultLayerHandleId,
+                    ResultOffsetX,
+                    ResultOffsetY,
+                    ResultLayerZ,
+                    ResultLayerAlpha,
+                    ResultLayerOrigin));
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.AnimateResultLayer(
+                    _resultLayerHandleId,
+                    ResultLayerAnimation));
+            }
             _resultFrameIndex = 0;
             _resultStartedAt = currentTimeMs;
             _resultFrameStartedAt = currentTimeMs;
@@ -695,6 +714,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.ReleaseLayer(_scoreLayerHandleId));
+        }
+        private void ReleaseResultLayerHandle()
+        {
+            if (_resultLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.ReleaseResultLayer(_resultLayerHandleId));
         }
         private int AllocateSimulatedLayerHandle()
         {
@@ -1495,7 +1523,10 @@ namespace HaCreator.MapSimulator.Fields
         DrawScoreText,
         RedrawRemoteNameTags,
         RedrawLocalNameTag,
-        ReleaseLayer
+        ReleaseLayer,
+        CreateResultLayer,
+        AnimateResultLayer,
+        ReleaseResultLayer
     }
     public readonly record struct AriantArenaScoreLayerOperation(
         AriantArenaScoreLayerOperationKind Kind,
@@ -1529,6 +1560,46 @@ namespace HaCreator.MapSimulator.Fields
                 -1,
                 -1,
                 null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation CreateResultLayer(
+            int layerHandleId,
+            int x,
+            int y,
+            int z,
+            int alpha,
+            string origin)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.CreateResultLayer,
+                layerHandleId,
+                0,
+                0,
+                x,
+                y,
+                z,
+                -1,
+                -1,
+                origin ?? string.Empty,
+                alpha);
+        }
+
+        public static AriantArenaScoreLayerOperation AnimateResultLayer(
+            int layerHandleId,
+            string animation)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.AnimateResultLayer,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                animation ?? string.Empty,
                 0);
         }
 
@@ -1667,6 +1738,22 @@ namespace HaCreator.MapSimulator.Fields
         {
             return new AriantArenaScoreLayerOperation(
                 AriantArenaScoreLayerOperationKind.ReleaseLayer,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation ReleaseResultLayer(int layerHandleId)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.ReleaseResultLayer,
                 layerHandleId,
                 0,
                 0,

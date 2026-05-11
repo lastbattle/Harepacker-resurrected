@@ -1070,7 +1070,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_showMessage || _queueExists)
             {
-                return _activeDurationMs;
+                if (_activeDurationMs > 0)
+                {
+                    return _activeDurationMs;
+                }
+
+                return Math.Max(0, _queueConfirmationWaitSeconds) * 1000;
             }
 
             return _draftDurationMs;
@@ -1158,6 +1163,8 @@ namespace HaCreator.MapSimulator.Interaction
             if (_pendingClientRequests.Count > 0)
             {
                 MapleTvClientRequestState request = _pendingClientRequests.Dequeue();
+                MapleTvClientRequestState[] remainingRequests = _pendingClientRequests.ToArray();
+                _pendingClientRequests.Clear();
                 MapleTvClientRequestState advancedRequest = request with
                 {
                     Stage = stage,
@@ -1170,6 +1177,11 @@ namespace HaCreator.MapSimulator.Interaction
                     && stage != MapleTvClientRequestStage.Cleared)
                 {
                     _pendingClientRequests.Enqueue(advancedRequest);
+                }
+
+                foreach (MapleTvClientRequestState remainingRequest in remainingRequests)
+                {
+                    _pendingClientRequests.Enqueue(remainingRequest);
                 }
 
                 return;

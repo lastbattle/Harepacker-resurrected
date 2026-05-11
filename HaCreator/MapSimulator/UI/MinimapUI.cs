@@ -1414,10 +1414,14 @@ namespace HaCreator.MapSimulator.UI
             GameTime gameTime,
             ReflectionDrawableBoundary drawReflectionInfo,
             RenderParameters renderParameters,
-            int tickCount)
+            int tickCount,
+            bool allowPacketDirectionInsidePane = false)
         {
-            if (IsWithinMinimapImage(minimapPoint))
+            if (IsWithinMinimapImage(minimapPoint)
+                && (!allowPacketDirectionInsidePane || !directionOverlay.HasValue))
+            {
                 return Rectangle.Empty;
+            }
 
             DirectionArrow direction = directionOverlay ?? ResolveDirectionArrow(minimapPoint);
             if (!_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) || arrow == null)
@@ -1577,7 +1581,12 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (!showDirectionOverlay || IsWithinMinimapImage(minimapPoint))
+            if (!ShouldDrawDirectionOnlyOverlayForTesting(
+                    minimapPoint,
+                    showDirectionOverlay,
+                    directionOverlay,
+                    _minimapImageWidth,
+                    _minimapImageHeight))
             {
                 return Rectangle.Empty;
             }
@@ -1590,7 +1599,31 @@ namespace HaCreator.MapSimulator.UI
                 gameTime,
                 drawReflectionInfo,
                 renderParameters,
-                tickCount);
+                tickCount,
+                allowPacketDirectionInsidePane: directionOverlay.HasValue);
+        }
+
+        internal static bool ShouldDrawDirectionOnlyOverlayForTesting(
+            Point minimapPoint,
+            bool showDirectionOverlay,
+            DirectionArrow? packetDirectionOverlay,
+            int paneWidth,
+            int paneHeight)
+        {
+            if (!showDirectionOverlay)
+            {
+                return false;
+            }
+
+            if (packetDirectionOverlay.HasValue)
+            {
+                return true;
+            }
+
+            return minimapPoint.X < 0
+                || minimapPoint.Y < 0
+                || minimapPoint.X >= paneWidth
+                || minimapPoint.Y >= paneHeight;
         }
 
         internal static bool ShouldRegisterTrackedUserHoverTargetForTesting(

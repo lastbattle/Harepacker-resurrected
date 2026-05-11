@@ -806,7 +806,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            foreach (string candidateName in BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(name))
+            IReadOnlyList<string> candidateNames = BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(name);
+            foreach (string candidateName in candidateNames)
             {
                 int? authoredPlatformId = authoredPlatformResolver?.Invoke(candidateName);
                 if (authoredPlatformId is int authoredId
@@ -816,7 +817,10 @@ namespace HaCreator.MapSimulator
                     platformId = authoredId;
                     return true;
                 }
+            }
 
+            foreach (string candidateName in candidateNames)
+            {
                 const string prefix = "platform-";
                 if (candidateName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                     && int.TryParse(candidateName[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int fallbackPlatformId)

@@ -817,9 +817,21 @@ namespace HaCreator.MapSimulator.Interaction
                         branchSummary = "CMapleTVMan::OnClearMessage";
                         return true;
                     case MapleTvInboundSendResultOpcode:
-                        if (payload.Length >= 2)
+                        if (payload.Length >= 1)
                         {
                             bool showFeedback = payload[0] != 0;
+                            if (!showFeedback)
+                            {
+                                branchSummary = "CMapleTVMan::OnSendMessageResult without feedback";
+                                return true;
+                            }
+
+                            if (payload.Length < 2)
+                            {
+                                branchSummary = "CMapleTVMan::OnSendMessageResult missing feedback result code";
+                                return true;
+                            }
+
                             byte decodedResultCode = payload[1];
                             if (showFeedback && MapleTvSendResultHandlers.TryGetValue(decodedResultCode, out string resultHandler))
                             {
@@ -828,13 +840,8 @@ namespace HaCreator.MapSimulator.Interaction
                             }
                             else
                             {
-                                branchSummary = showFeedback
-                                    ? $"CMapleTVMan::OnSendMessageResult code={decodedResultCode}"
-                                    : "CMapleTVMan::OnSendMessageResult without feedback";
-                                if (showFeedback)
-                                {
-                                    resultCode = decodedResultCode;
-                                }
+                                branchSummary = $"CMapleTVMan::OnSendMessageResult code={decodedResultCode}";
+                                resultCode = decodedResultCode;
                             }
                         }
                         else

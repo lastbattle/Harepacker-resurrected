@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Loaders
             public readonly Dictionary<string, List<MobAnimationSet.AttackHitEffectEntry>> AttackHitEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackProjectileEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, string> AttackEffectSourceUols = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackWarningEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<MobAnimationSet.AttackEffectNode>> AttackExtraEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<int, List<IDXObject>> AngerGaugeAnimations = new();
@@ -70,6 +71,14 @@ namespace HaCreator.MapSimulator.Loaders
             public List<int> FrameDelays { get; init; }
         }
 
+        private sealed class MobActionSpeakTemplateMetadata
+        {
+            public int ChatBalloon { get; init; }
+            public int Width { get; init; }
+            public IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> ConditionGroups { get; init; } =
+                Array.Empty<MobAnimationSet.ActionSpeakConditionGroup>();
+        }
+
         internal sealed class MobActionNativeCacheTrace
         {
             public string TemplateId { get; init; }
@@ -87,7 +96,11 @@ namespace HaCreator.MapSimulator.Loaders
             public int ActionSpeakVariantCount { get; init; }
             public int ActionSpeakMessageCount { get; init; }
             public int ActionSpeakWidth { get; init; }
+            public int TemplateActionSpeakChatBalloon { get; init; }
+            public int TemplateActionSpeakWidth { get; init; }
             public bool InheritsTemplateSpeakConditions { get; init; }
+            public bool InheritsTemplateChatBalloon { get; init; }
+            public bool UsesTemplateWidthFallback { get; init; }
             public bool AppendsReversePlayback { get; init; }
             public bool UsesClientSlotOwner { get; init; }
             public bool RefreshesLastAccessedOnCacheHit { get; init; }
@@ -591,8 +604,8 @@ namespace HaCreator.MapSimulator.Loaders
             ConcurrentBag<WzObject> usedProps)
         {
             var cached = new CachedMobActionAssets();
-            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> templateSpeakConditionGroups =
-                ReadMobTemplateSpeakConditionGroups(source);
+            MobActionSpeakTemplateMetadata templateSpeakMetadata =
+                ReadMobActionSpeakTemplateMetadata(source);
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
                 if (childProperty is not WzSubProperty mobStateProperty)
@@ -607,7 +620,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
                 MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata =
-                    BuildMobActionSpeakMetadata(mobStateProperty["speak"], templateSpeakConditionGroups);
+                    BuildMobActionSpeakMetadata(mobStateProperty["speak"], templateSpeakMetadata);
                 List<WzCanvasProperty> frameCanvases = BuildMobActionFrameCanvases(mobStateProperty);
                 if (frameCanvases.Count <= 0 && actionSpeakMetadata == null)
                 {
@@ -788,7 +801,8 @@ namespace HaCreator.MapSimulator.Loaders
                             actionName,
                             hitFrames,
                             sourceFrameIndex,
-                            isAttackFrameOwned);
+                            isAttackFrameOwned,
+                            sourceUol: BuildMobAttackSourceUol(mobInfo.ID, hitNode));
                         System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
                     }
                 }
@@ -818,12 +832,14 @@ namespace HaCreator.MapSimulator.Loaders
                     bool isPrimaryEffect = string.Equals(attackEffectProperty.Name, "effect", StringComparison.OrdinalIgnoreCase);
                     if (TryBuildAttackEffectNode(texturePool, attackEffectProperty, device, usedProps, out var structuredEffectNode))
                     {
+                        structuredEffectNode.SourceUol = BuildMobAttackSourceUol(mobInfo.ID, attackEffectProperty);
                         AddCachedAttackExtraEffect(cached, actionName, structuredEffectNode);
                         continue;
                     }
 
                     if (TryBuildPlainAttackEffectNode(texturePool, attackEffectProperty, device, usedProps, out var plainEffectNode))
                     {
+                        plainEffectNode.SourceUol = BuildMobAttackSourceUol(mobInfo.ID, attackEffectProperty);
                         if (plainEffectGrouping.TryGetValue(attackEffectProperty.Name, out int groupIndex))
                         {
                             plainEffectNode.RangeGroupIndex = groupIndex;
@@ -835,6 +851,7 @@ namespace HaCreator.MapSimulator.Loaders
                         if (isPrimaryEffect)
                         {
                             cached.AttackEffects[actionName] = plainEffectNode.Sequences[0];
+                            cached.AttackEffectSourceUols[actionName] = BuildMobAttackSourceUol(mobInfo.ID, attackEffectProperty);
                         }
 
                         continue;
@@ -849,6 +866,7 @@ namespace HaCreator.MapSimulator.Loaders
                     if (effectFrames.Count > 0)
                     {
                         cached.AttackEffects[actionName] = effectFrames;
+                        cached.AttackEffectSourceUols[actionName] = BuildMobAttackSourceUol(mobInfo.ID, attackEffectProperty);
                     }
                 }
 
@@ -1043,7 +1061,8 @@ namespace HaCreator.MapSimulator.Loaders
                         hitEffectEntry.Frames,
                         hitEffectEntry.SourceFrameIndex,
                         hitEffectEntry.IsAttackFrameOwned,
-                        hitEffectEntry.UsesAttackInfoHitEffect);
+                        hitEffectEntry.UsesAttackInfoHitEffect,
+                        hitEffectEntry.SourceUol);
                 }
             }
 
@@ -1054,7 +1073,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackEffects)
             {
-                animationSet.AddAttackEffect(entry.Key, entry.Value);
+                cachedAssets.AttackEffectSourceUols.TryGetValue(entry.Key, out string sourceUol);
+                animationSet.AddAttackEffect(entry.Key, entry.Value, sourceUol);
             }
 
             foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackWarningEffects)
@@ -1096,7 +1116,8 @@ namespace HaCreator.MapSimulator.Loaders
             List<IDXObject> hitFrames,
             int sourceFrameIndex,
             bool isAttackFrameOwned,
-            bool usesAttackInfoHitEffect = false)
+            bool usesAttackInfoHitEffect = false,
+            string sourceUol = null)
         {
             if (cachedAssets == null || string.IsNullOrEmpty(actionName) || hitFrames == null || hitFrames.Count == 0)
             {
@@ -1114,8 +1135,22 @@ namespace HaCreator.MapSimulator.Loaders
                 Frames = hitFrames,
                 SourceFrameIndex = sourceFrameIndex,
                 IsAttackFrameOwned = isAttackFrameOwned,
-                UsesAttackInfoHitEffect = usesAttackInfoHitEffect
+                UsesAttackInfoHitEffect = usesAttackInfoHitEffect,
+                SourceUol = sourceUol
             });
+        }
+
+        private static string BuildMobAttackSourceUol(string mobId, WzImageProperty property)
+        {
+            string fullPath = property?.FullPath;
+            if (!string.IsNullOrWhiteSpace(fullPath))
+            {
+                return fullPath.Replace('\\', '/');
+            }
+
+            return string.IsNullOrWhiteSpace(mobId)
+                ? null
+                : $"Mob/{mobId}.img";
         }
 
         /// <summary>
@@ -1507,6 +1542,23 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty actionProperty,
             WzImageProperty templateSpeakConProperty)
         {
+            return BuildMobActionNativeCacheTraceForTests(
+                templateId,
+                authoredActionName,
+                actionProperty,
+                templateSpeakConProperty,
+                templateChatBalloon: 0,
+                templateWidth: 0);
+        }
+
+        internal static MobActionNativeCacheTrace BuildMobActionNativeCacheTraceForTests(
+            string templateId,
+            string authoredActionName,
+            WzSubProperty actionProperty,
+            WzImageProperty templateSpeakConProperty,
+            int templateChatBalloon,
+            int templateWidth)
+        {
             string normalizedTemplateId = NormalizeMobTemplateId(templateId);
             string normalizedActionName = string.IsNullOrWhiteSpace(authoredActionName)
                 ? actionProperty?.Name?.ToLowerInvariant() ?? string.Empty
@@ -1520,14 +1572,18 @@ namespace HaCreator.MapSimulator.Loaders
                 ? BuildNativeMobActionCacheKey(normalizedTemplateId, clientActionSlot)
                 : null;
 
-            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> templateSpeakConditionGroups =
-                ReadMobSpeakConditionGroups(templateSpeakConProperty);
+            MobActionSpeakTemplateMetadata templateSpeakMetadata =
+                BuildMobActionSpeakTemplateMetadata(
+                    templateChatBalloon,
+                    templateWidth,
+                    ReadMobSpeakConditionGroups(templateSpeakConProperty));
             MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata =
-                BuildMobActionSpeakMetadata(actionProperty?["speak"], templateSpeakConditionGroups);
+                BuildMobActionSpeakMetadata(actionProperty?["speak"], templateSpeakMetadata);
             CountMobActionSpeakConditionGroups(
                 actionSpeakMetadata,
                 out int parentConditionGroupCount,
                 out int variantConditionGroupCount);
+            int actionSpeakWidth = actionSpeakMetadata?.Width ?? 0;
 
             return new MobActionNativeCacheTrace
             {
@@ -1547,9 +1603,15 @@ namespace HaCreator.MapSimulator.Loaders
                 VariantActionSpeakConditionGroupCount = variantConditionGroupCount,
                 ActionSpeakVariantCount = actionSpeakMetadata?.Variants?.Count ?? 0,
                 ActionSpeakMessageCount = actionSpeakMetadata?.Messages?.Count ?? 0,
-                ActionSpeakWidth = actionSpeakMetadata?.Width ?? 0,
-                InheritsTemplateSpeakConditions = (templateSpeakConditionGroups?.Count ?? 0) > 0 &&
+                ActionSpeakWidth = actionSpeakWidth,
+                TemplateActionSpeakChatBalloon = templateSpeakMetadata.ChatBalloon,
+                TemplateActionSpeakWidth = templateSpeakMetadata.Width,
+                InheritsTemplateSpeakConditions = (templateSpeakMetadata.ConditionGroups?.Count ?? 0) > 0 &&
                                                   actionSpeakMetadata != null,
+                InheritsTemplateChatBalloon = templateSpeakMetadata.ChatBalloon > 0 &&
+                                               actionSpeakMetadata?.ChatBalloon == templateSpeakMetadata.ChatBalloon,
+                UsesTemplateWidthFallback = templateSpeakMetadata.Width > 0 &&
+                                            actionSpeakWidth == templateSpeakMetadata.Width,
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
                 UsesClientSlotOwner = usesClientSlotOwner,
                 RefreshesLastAccessedOnCacheHit = usesClientSlotOwner,
@@ -1947,7 +2009,23 @@ namespace HaCreator.MapSimulator.Loaders
         {
             return BuildMobActionSpeakMetadata(
                 speakProperty,
-                ReadMobSpeakConditionGroups(templateSpeakConProperty));
+                BuildMobActionSpeakTemplateMetadata(
+                    chatBalloon: 0,
+                    width: 0,
+                    ReadMobSpeakConditionGroups(templateSpeakConProperty)));
+        }
+
+        internal static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadataForTests(
+            WzImageProperty speakProperty,
+            int templateChatBalloon,
+            int templateWidth)
+        {
+            return BuildMobActionSpeakMetadata(
+                speakProperty,
+                BuildMobActionSpeakTemplateMetadata(
+                    templateChatBalloon,
+                    templateWidth,
+                    Array.Empty<MobAnimationSet.ActionSpeakConditionGroup>()));
         }
 
         internal static int CountMobActionSpeakConditionGroupsForTests(MobAnimationSet.ActionSpeakMetadata metadata)
@@ -1989,7 +2067,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadata(
             WzImageProperty speakProperty,
-            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> templateConditionGroups = null)
+            MobActionSpeakTemplateMetadata templateMetadata = null)
         {
             if (WzInfoTools.GetRealProperty(speakProperty) is not WzSubProperty speakNode)
             {
@@ -1997,10 +2075,10 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             List<string> messages = ReadMobSpeakMessages(speakNode);
-            IReadOnlyList<MobAnimationSet.ActionSpeakVariant> variants = ReadMobSpeakVariants(speakNode);
+            IReadOnlyList<MobAnimationSet.ActionSpeakVariant> variants = ReadMobSpeakVariants(speakNode, templateMetadata);
             IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups =
                 MergeMobSpeakConditionGroups(
-                    templateConditionGroups,
+                    templateMetadata?.ConditionGroups,
                     ReadMobSpeakConditionGroups(speakNode?["con"]));
             if (messages.Count == 0 && (variants == null || variants.Count == 0))
             {
@@ -2008,10 +2086,10 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
-            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon"));
+            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.ChatBalloon ?? 0, "chataBalloon", "chatBalloon"));
             int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
             int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
-            int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, 0, "width", "nWidth"));
+            int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.Width ?? 0, "width", "nWidth"));
 
             return new MobAnimationSet.ActionSpeakMetadata
             {
@@ -2051,7 +2129,9 @@ namespace HaCreator.MapSimulator.Loaders
             return messages;
         }
 
-        private static IReadOnlyList<MobAnimationSet.ActionSpeakVariant> ReadMobSpeakVariants(WzSubProperty speakNode)
+        private static IReadOnlyList<MobAnimationSet.ActionSpeakVariant> ReadMobSpeakVariants(
+            WzSubProperty speakNode,
+            MobActionSpeakTemplateMetadata templateMetadata)
         {
             var variants = new List<MobAnimationSet.ActionSpeakVariant>();
             if (speakNode?.WzProperties == null)
@@ -2060,10 +2140,10 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
-            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon"));
+            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.ChatBalloon ?? 0, "chataBalloon", "chatBalloon"));
             int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
             int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
-            int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, 0, "width", "nWidth"));
+            int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.Width ?? 0, "width", "nWidth"));
 
             foreach (WzImageProperty childProperty in speakNode.WzProperties
                          .Where(property => int.TryParse(property?.Name, out _))
@@ -2095,12 +2175,29 @@ namespace HaCreator.MapSimulator.Loaders
             return variants;
         }
 
-        private static IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> ReadMobTemplateSpeakConditionGroups(
+        private static MobActionSpeakTemplateMetadata ReadMobActionSpeakTemplateMetadata(
             MobImgEntry source)
         {
             WzImageProperty infoProperty = source?.WzProperties?
                 .FirstOrDefault(property => string.Equals(property?.Name, "info", StringComparison.OrdinalIgnoreCase));
-            return ReadMobSpeakConditionGroups(infoProperty?["speak"]?["con"]);
+            WzImageProperty templateSpeakProperty = infoProperty?["speak"];
+            return BuildMobActionSpeakTemplateMetadata(
+                ReadOptionalInt(templateSpeakProperty, 0, "chataBalloon", "chatBalloon"),
+                ReadOptionalInt(templateSpeakProperty, 0, "width", "nWidth"),
+                ReadMobSpeakConditionGroups(templateSpeakProperty?["con"]));
+        }
+
+        private static MobActionSpeakTemplateMetadata BuildMobActionSpeakTemplateMetadata(
+            int chatBalloon,
+            int width,
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups)
+        {
+            return new MobActionSpeakTemplateMetadata
+            {
+                ChatBalloon = Math.Max(0, chatBalloon),
+                Width = Math.Max(0, width),
+                ConditionGroups = conditionGroups ?? Array.Empty<MobAnimationSet.ActionSpeakConditionGroup>()
+            };
         }
 
         private static IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> MergeMobSpeakConditionGroups(
@@ -2863,6 +2960,7 @@ namespace HaCreator.MapSimulator.Loaders
                 infoProperty?["MapleTVmsgY"]?.GetInt() ?? 0,
                 infoProperty?["MapleTVadX"]?.GetInt() ?? 0,
                 infoProperty?["MapleTVadY"]?.GetInt() ?? 0);
+            npcItem.MarkClientFloatPresentationAvailable(infoProperty?["float"]?.GetInt() != 0);
             return npcItem;
         }
 

@@ -2223,12 +2223,17 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
+                PacketOwnedExpiryCandidateClientState clientState =
+                    _packetOwnedExpiryCandidateClientStateResolver?.Invoke(state.OwnerCharacterId, mob)
+                    ?? new PacketOwnedExpiryCandidateClientState();
                 if (!PacketOwnedSummonUpdateRules.IsClientBodyAttackMobCandidate(
                         mob.AI?.IsDead == true,
                         state.Summon.ObjectId,
                         mobHitbox,
                         summonHitbox,
-                        mob.AI?.IsDazzled == true))
+                        mob.AI?.IsDazzled == true,
+                        clientState.IsOurTeam,
+                        clientState.IsSamePhase))
                 {
                     continue;
                 }

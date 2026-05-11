@@ -1393,78 +1393,79 @@ namespace HaCreator.MapSimulator.Fields
                         ClientOwnedDrawViewrangeOperationKind.AcquireSmallDarkCanvas,
                         Vector2.Zero,
                         -1,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.QuerySmallDarkCanvasDimensions,
                         Vector2.Zero,
                         -1,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight));
                 }
 
                 for (int i = 0; i < previousMaskTopLefts.Count; i++)
                 {
+                    Vector2 normalizedPreviousTopLeft = NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]);
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.AcquirePreviousSmallDarkPatchDestinationCanvas,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight,
-                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
-                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
-                        destinationWidth: sourceWidth,
-                        destinationHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight,
+                        destinationX: (int)MathF.Round(normalizedPreviousTopLeft.X),
+                        destinationY: (int)MathF.Round(normalizedPreviousTopLeft.Y),
+                        destinationWidth: ClientOwnedSmallDarkCanvasWidth,
+                        destinationHeight: ClientOwnedSmallDarkCanvasHeight));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.InitializePreviousSmallDarkPatchCopyVariant,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight,
-                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
-                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
-                        destinationWidth: sourceWidth,
-                        destinationHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight,
+                        destinationX: (int)MathF.Round(normalizedPreviousTopLeft.X),
+                        destinationY: (int)MathF.Round(normalizedPreviousTopLeft.Y),
+                        destinationWidth: ClientOwnedSmallDarkCanvasWidth,
+                        destinationHeight: ClientOwnedSmallDarkCanvasHeight));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.PreparePreviousSmallDarkPatchRestoreCopy,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight,
-                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
-                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
-                        destinationWidth: sourceWidth,
-                        destinationHeight: sourceHeight,
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight,
+                        destinationX: (int)MathF.Round(normalizedPreviousTopLeft.X),
+                        destinationY: (int)MathF.Round(normalizedPreviousTopLeft.Y),
+                        destinationWidth: ClientOwnedSmallDarkCanvasWidth,
+                        destinationHeight: ClientOwnedSmallDarkCanvasHeight,
                         usesRemoveAlphaCopy: false,
                         copyFunctionName: ClientOwnedCanvasCopyFunctionName));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight,
-                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
-                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
-                        destinationWidth: sourceWidth,
-                        destinationHeight: sourceHeight,
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight,
+                        destinationX: (int)MathF.Round(normalizedPreviousTopLeft.X),
+                        destinationY: (int)MathF.Round(normalizedPreviousTopLeft.Y),
+                        destinationWidth: ClientOwnedSmallDarkCanvasWidth,
+                        destinationHeight: ClientOwnedSmallDarkCanvasHeight,
                         usesRemoveAlphaCopy: false,
                         copyFunctionName: ClientOwnedCanvasCopyFunctionName));
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.ClearPreviousSmallDarkPatchCopyVariant,
-                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        normalizedPreviousTopLeft,
                         i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight,
-                        destinationX: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).X),
-                        destinationY: (int)MathF.Round(NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]).Y),
-                        destinationWidth: sourceWidth,
-                        destinationHeight: sourceHeight));
+                        sourceWidth: ClientOwnedSmallDarkCanvasWidth,
+                        sourceHeight: ClientOwnedSmallDarkCanvasHeight,
+                        destinationX: (int)MathF.Round(normalizedPreviousTopLeft.X),
+                        destinationY: (int)MathF.Round(normalizedPreviousTopLeft.Y),
+                        destinationWidth: ClientOwnedSmallDarkCanvasWidth,
+                        destinationHeight: ClientOwnedSmallDarkCanvasHeight));
                 }
             }
 
@@ -1479,6 +1480,12 @@ namespace HaCreator.MapSimulator.Fields
                     ClientOwnedDrawViewrangeOperationKind.DrawDarkLayerFallback,
                     Vector2.Zero,
                     -1));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.ReleaseDarkLayerCanvas,
+                    Vector2.Zero,
+                    -1,
+                    destinationWidth: ClientOwnedDarkCanvasWidth,
+                    destinationHeight: ClientOwnedDarkCanvasHeight));
                 return operations;
             }
 

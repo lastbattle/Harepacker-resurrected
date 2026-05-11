@@ -23,6 +23,12 @@ namespace HaCreator.MapSimulator.UI
             public int WheelRange { get; init; }
             public int Offset { get; init; }
             public int MaxOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int PageSize { get; init; }
+            public int TrackHeight { get; init; }
+            public int ThumbY { get; init; }
+            public int ThumbHeight { get; init; }
             public bool IsDragging { get; init; }
         }
 
@@ -130,10 +136,14 @@ namespace HaCreator.MapSimulator.UI
             public int SessionByte { get; init; }
             public int SessionByteOffset { get; init; } = -1;
             public bool IsPending { get; init; }
+            public int RemainingSeconds { get; init; }
+            public int CountdownDeadlineTick { get; init; } = int.MinValue;
             public int SelectorIndex { get; init; }
             public bool ShortcutHelpActive { get; init; }
             public bool PreviousLaneEnabled { get; init; }
             public int HistoryEntryCount { get; init; }
+            public IReadOnlyList<int> HistoryStateBytes { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HistoryStateByteOffsets { get; init; } = Array.Empty<int>();
             public int PayloadLength { get; init; }
             public int DecodedByteLength { get; init; }
             public int TrailingByteCount { get; init; }
@@ -629,6 +639,33 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
         public override bool CapturesKeyboardInput => IsVisible && IsKeyboardOwnerWindow();
+
+        internal static ScrollBarControlRuntimeState BuildScrollBarControlRuntimeState(
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            int visibleCount,
+            int totalCount,
+            bool isDragging)
+        {
+            return CreateScrollBarControlRuntimeState(
+                controlId,
+                upButtonId,
+                downButtonId,
+                position,
+                height,
+                wheelRange,
+                offset,
+                maxOffset,
+                visibleCount,
+                totalCount,
+                isDragging);
+        }
 
         public int GetOneADaySelectorIndex()
         {
@@ -2845,6 +2882,63 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static ScrollBarControlRuntimeState CreateScrollBarControlRuntimeState(
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            int visibleCount,
+            int totalCount,
+            bool isDragging)
+        {
+            int clampedHeight = Math.Max(0, height);
+            int clampedTotal = Math.Max(0, totalCount);
+            int clampedVisible = Math.Clamp(visibleCount, 0, Math.Max(visibleCount, clampedTotal));
+            if (clampedTotal > 0)
+            {
+                clampedVisible = Math.Clamp(clampedVisible, 1, clampedTotal);
+            }
+
+            int clampedMaxOffset = Math.Max(0, maxOffset);
+            int clampedOffset = Math.Clamp(offset, 0, clampedMaxOffset);
+            int thumbHeight = clampedHeight;
+            if (clampedMaxOffset > 0 && clampedTotal > 0)
+            {
+                thumbHeight = Math.Clamp(
+                    (clampedHeight * Math.Max(1, clampedVisible)) / Math.Max(clampedVisible, clampedTotal),
+                    Math.Min(16, clampedHeight),
+                    clampedHeight);
+            }
+
+            int trackHeight = Math.Max(0, clampedHeight - thumbHeight);
+            int thumbY = clampedMaxOffset == 0
+                ? 0
+                : (trackHeight * clampedOffset) / clampedMaxOffset;
+
+            return new ScrollBarControlRuntimeState
+            {
+                ControlId = controlId,
+                UpButtonId = upButtonId,
+                DownButtonId = downButtonId,
+                Position = position,
+                Height = height,
+                WheelRange = wheelRange,
+                Offset = clampedOffset,
+                MaxOffset = clampedMaxOffset,
+                VisibleCount = clampedVisible,
+                TotalCount = clampedTotal,
+                PageSize = Math.Max(1, clampedVisible),
+                TrackHeight = trackHeight,
+                ThumbY = thumbY,
+                ThumbHeight = thumbHeight,
+                IsDragging = isDragging
+            };
+        }
+
         private void StepOneADayPlate(OneADayOwnerState state, int delta)
         {
             if (state == null)
@@ -3517,10 +3611,20 @@ namespace HaCreator.MapSimulator.UI
                 SessionByte = _oneADayRewardSessionObject.SessionByte,
                 SessionByteOffset = _oneADayRewardSessionPacketOwned ? _oneADayLastPacketRewardSessionByteOffset : -1,
                 IsPending = _oneADayRewardSessionObject.IsPending,
+                RemainingSeconds = Math.Max(0, _oneADayRemainingSeconds),
+                CountdownDeadlineTick = _oneADayRewardSessionObject.CountdownDeadlineTick,
                 SelectorIndex = _oneADaySelectorIndex,
                 ShortcutHelpActive = _oneADayShortcutHelpActive,
                 PreviousLaneEnabled = HasOneADayPreviousLane(state),
                 HistoryEntryCount = Math.Max(0, state?.HistoryEntries?.Count ?? 0),
+                HistoryStateBytes = (state?.HistoryEntries ?? Array.Empty<OneADayOwnerState.HistoryEntryState>())
+                    .Where(entry => entry?.HasPacketStateByte == true)
+                    .Select(entry => entry.PacketStateByte & 0xFF)
+                    .ToArray(),
+                HistoryStateByteOffsets = (state?.HistoryEntries ?? Array.Empty<OneADayOwnerState.HistoryEntryState>())
+                    .Where(entry => entry?.HasPacketStateByte == true)
+                    .Select(entry => entry.PacketStateByteOffset)
+                    .ToArray(),
                 PayloadLength = Math.Max(0, state?.PacketPayloadLength ?? 0),
                 DecodedByteLength = Math.Max(0, state?.PacketDecodedByteLength ?? 0),
                 TrailingByteCount = Math.Max(0, state?.PacketTrailingByteCount ?? 0),

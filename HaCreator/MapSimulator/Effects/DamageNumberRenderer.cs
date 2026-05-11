@@ -209,6 +209,7 @@ namespace HaCreator.MapSimulator.Effects
             PreparedDamageNumberCompositionInsertCommand InsertCommand);
         internal readonly record struct PreparedDamageNumberCompositionTrace(
             CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            CanvasLayerRecoveredCanvasSettings NativeTemporaryCanvasSettings,
             int RecoveredNativeAccumulatedCanvasWidth,
             PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
             PreparedDamageNumberCompositionNativeOperation[] NativeOperations,
@@ -830,6 +831,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
+                new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
                 0,
                 Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                 BuildRecoveredCompositionNativeOperations(
@@ -850,14 +852,20 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet smallDigitSet,
             PreparedSpriteDrawInfo? criticalBanner)
         {
+            CanvasLayerRecoveredCanvasSettings managedCanvasSettings = new(canvasWidth, canvasHeight);
+            CanvasLayerRecoveredCanvasSettings nativeTemporaryCanvasSettings = new(
+                Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
+                canvasHeight);
+
             if (digits == null || digits.Count == 0)
             {
                 return new PreparedDamageNumberCompositionTrace(
-                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    managedCanvasSettings,
+                    nativeTemporaryCanvasSettings,
                     Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                     BuildRecoveredCompositionNativeOperations(
-                        canvasWidth,
+                        nativeTemporaryCanvasSettings.Width,
                         canvasHeight,
                         Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
                     criticalBanner.HasValue,
@@ -885,10 +893,14 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return new PreparedDamageNumberCompositionTrace(
-                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                managedCanvasSettings,
+                nativeTemporaryCanvasSettings,
                 Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
                 insertCommands,
-                BuildRecoveredCompositionNativeOperations(canvasWidth, canvasHeight, insertCommands),
+                BuildRecoveredCompositionNativeOperations(
+                    nativeTemporaryCanvasSettings.Width,
+                    canvasHeight,
+                    insertCommands),
                 criticalBanner.HasValue,
                 BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
                 criticalBanner);
@@ -904,6 +916,7 @@ namespace HaCreator.MapSimulator.Effects
             if (!specialSprite.HasValue)
             {
                 return new PreparedDamageNumberCompositionTrace(
+                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     canvasWidth,
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
@@ -934,6 +947,7 @@ namespace HaCreator.MapSimulator.Effects
                 AnimationCanvasLayerBlendMode.AlphaBlend);
 
             return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 canvasWidth,
                 new[] { insertCommand },
@@ -1207,6 +1221,7 @@ namespace HaCreator.MapSimulator.Effects
                 visual.DamageStringPoolId,
                 visual.DamageString,
                 compositionTrace.CanvasSettings,
+                compositionTrace.NativeTemporaryCanvasSettings,
                 ResolveRecoveredCompositeSurfaceSettings(),
                 BuildRecoveredEffectHpOwnerSelectionTrace(visual),
                 preparedSources,

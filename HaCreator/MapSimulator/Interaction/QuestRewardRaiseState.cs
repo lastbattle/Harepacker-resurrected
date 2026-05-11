@@ -60,6 +60,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (ClientWindowKind == QuestRewardRaiseClientWindowKind.RaiseWnd)
+            {
+                return PlacedPieces.Count < ResolveRaiseWndRemainingDropCapacity();
+            }
+
             int enabledItemId = EnumerateEnabledDropItemIds(Prompt).ElementAt(enabledDropItemIndex);
             return !PlacedPieces.Any(piece => piece.ItemId == enabledItemId);
         }
@@ -88,6 +93,17 @@ namespace HaCreator.MapSimulator.Interaction
         internal static int CountEnabledDropItems(QuestRewardChoicePrompt prompt)
         {
             return EnumerateEnabledDropItemIds(prompt).Count();
+        }
+
+        internal int ResolveClientMaxDropCount()
+        {
+            int enabledDropCount = CountEnabledDropItems(Prompt);
+            if (ClientWindowKind == QuestRewardRaiseClientWindowKind.RaiseWnd)
+            {
+                return ResolveRaiseWndRemainingDropCapacity();
+            }
+
+            return Math.Max(1, Math.Max(MaxDropCount, enabledDropCount));
         }
 
         internal bool TryBeginClientPutItemRequest(int currentTick, out string blockedReason)
@@ -147,6 +163,19 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal const int ClientLevelUpAnimationFadeMs = 480;
+
+        private int ResolveRaiseWndRemainingDropCapacity()
+        {
+            int totalExpCapacity = Math.Max(0, IncrementExpUnit) * Math.Max(0, Grade);
+            if (totalExpCapacity <= 0 || IncrementExpUnit <= 0)
+            {
+                return Math.Max(1, MaxDropCount);
+            }
+
+            int remainingExp = Math.Max(0, totalExpCapacity - Math.Max(0, QrData));
+            int remainingDrops = (remainingExp + IncrementExpUnit - 1) / IncrementExpUnit;
+            return Math.Max(1, Math.Max(remainingDrops, PlacedPieces.Count));
+        }
 
         private static IEnumerable<int> EnumerateEnabledDropItemIds(QuestRewardChoicePrompt prompt)
         {

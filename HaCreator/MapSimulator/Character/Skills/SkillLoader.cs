@@ -9723,8 +9723,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
-            return ClientSummonedUolTableOwnerFieldNames.Contains(normalizedName, StringComparer.Ordinal);
+            foreach (string ownerFieldName in EnumerateNormalizedClientSummonedUolTableOwnerFieldNames(name))
+            {
+                if (ClientSummonedUolTableOwnerFieldNames.Contains(ownerFieldName, StringComparer.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsClientSummonedUolTableTupleOwnerIndexName(string name)
@@ -9763,40 +9770,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(name, out string normalizedName))
+            foreach (string normalizedName in EnumerateClientSummonedUolTableEncodedOwnerFieldNamePrefixes(name))
             {
-                return false;
-            }
-
-            foreach (string ownerFieldName in ClientSummonedUolTableOwnerFieldNames)
-            {
-                if (!normalizedName.StartsWith(ownerFieldName, StringComparison.Ordinal))
+                foreach (string ownerFieldName in ClientSummonedUolTableOwnerFieldNames)
                 {
-                    continue;
-                }
-
-                foreach (int linkedSkillId in ParseLinkedSkillIds(name))
-                {
-                    if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                    if (!normalizedName.StartsWith(ownerFieldName, StringComparison.Ordinal))
                     {
-                        skillId = linkedSkillId;
-                        return true;
+                        continue;
                     }
-                }
 
-                foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(name, contextSkillId: 0))
-                {
-                    if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
-                    {
-                        skillId = fallbackSkillId;
-                        return true;
-                    }
-                }
-
-                string decodedName = NormalizeClientSummonedUolEncodedPathSyntax(name);
-                if (!string.Equals(decodedName, name, StringComparison.Ordinal))
-                {
-                    foreach (int linkedSkillId in ParseLinkedSkillIds(decodedName))
+                    foreach (int linkedSkillId in ParseLinkedSkillIds(name))
                     {
                         if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
                         {
@@ -9805,7 +9788,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
 
-                    foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(decodedName, contextSkillId: 0))
+                    foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(name, contextSkillId: 0))
                     {
                         if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
                         {
@@ -9813,12 +9796,66 @@ namespace HaCreator.MapSimulator.Character.Skills
                             return true;
                         }
                     }
-                }
 
-                return false;
+                    string decodedName = NormalizeClientSummonedUolEncodedPathSyntax(name);
+                    if (!string.Equals(decodedName, name, StringComparison.Ordinal))
+                    {
+                        foreach (int linkedSkillId in ParseLinkedSkillIds(decodedName))
+                        {
+                            if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                            {
+                                skillId = linkedSkillId;
+                                return true;
+                            }
+                        }
+
+                        foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(decodedName, contextSkillId: 0))
+                        {
+                            if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                            {
+                                skillId = fallbackSkillId;
+                                return true;
+                            }
+                        }
+                    }
+
+                    return false;
+                }
             }
 
             return false;
+        }
+
+        private static IEnumerable<string> EnumerateNormalizedClientSummonedUolTableOwnerFieldNames(string name)
+        {
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            if (!string.IsNullOrWhiteSpace(normalizedName))
+            {
+                yield return normalizedName;
+            }
+
+            string leafName = NormalizeClientSummonedUolLeafFieldName(name);
+            string normalizedLeafName = NormalizeClientSummonedUolHeuristicPathSegment(leafName);
+            if (!string.IsNullOrWhiteSpace(normalizedLeafName)
+                && !string.Equals(normalizedLeafName, normalizedName, StringComparison.Ordinal))
+            {
+                yield return normalizedLeafName;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolTableEncodedOwnerFieldNamePrefixes(string name)
+        {
+            if (TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(name, out string normalizedName))
+            {
+                yield return normalizedName;
+            }
+
+            string leafName = NormalizeClientSummonedUolLeafFieldName(name);
+            if (!string.Equals(leafName, name, StringComparison.Ordinal)
+                && TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(leafName, out string normalizedLeafName))
+            {
+                yield return normalizedLeafName;
+            }
         }
 
         private static bool TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(
@@ -9833,7 +9870,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string decodedName = NormalizeClientSummonedUolFieldNameSyntax(name);
             int prefixLength = 0;
-            while (prefixLength < decodedName.Length && char.IsLetterOrDigit(decodedName[prefixLength]))
+            while (prefixLength < decodedName.Length
+                   && (char.IsLetterOrDigit(decodedName[prefixLength]) || decodedName[prefixLength] == '_'))
             {
                 prefixLength++;
             }
@@ -9854,9 +9892,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (TryReadClientSummonedUolTableEntryValueNameFromFieldNameCore(name))
+            {
+                return true;
+            }
+
+            string leafName = NormalizeClientSummonedUolLeafFieldName(name);
+            return !string.Equals(leafName, name, StringComparison.Ordinal)
+                   && TryReadClientSummonedUolTableEntryValueNameFromFieldNameCore(leafName);
+        }
+
+        private static bool TryReadClientSummonedUolTableEntryValueNameFromFieldNameCore(string name)
+        {
             string decodedName = NormalizeClientSummonedUolFieldNameSyntax(name);
             int prefixLength = 0;
-            while (prefixLength < decodedName.Length && char.IsLetterOrDigit(decodedName[prefixLength]))
+            while (prefixLength < decodedName.Length
+                   && (char.IsLetterOrDigit(decodedName[prefixLength]) || decodedName[prefixLength] == '_'))
             {
                 prefixLength++;
             }
@@ -10593,8 +10644,98 @@ namespace HaCreator.MapSimulator.Character.Skills
                 case WzDoubleProperty doubleProperty when TryFormatClientSummonedUolNumericSkillValue(doubleProperty.Value, out string doubleValue):
                     return doubleValue;
                 default:
-                    return null;
+                    return TryReadClientSummonedUolWrappedBstrValue(
+                        child,
+                        depthRemaining: ClientSummonedUolTableEntryTraversalDepth);
             }
+        }
+
+        private static string TryReadClientSummonedUolWrappedBstrValue(WzImageProperty node, int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining <= 0)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                if (!IsClientSummonedUolWrappedBstrFieldName(child.Name))
+                {
+                    continue;
+                }
+
+                string value = child switch
+                {
+                    WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value) => stringProperty.Value,
+                    WzUOLProperty uolProperty when !string.IsNullOrWhiteSpace(uolProperty.Value) => uolProperty.Value,
+                    WzUOLProperty uolProperty => uolProperty.GetString(),
+                    _ => TryReadClientSummonedUolWrappedBstrValue(child, depthRemaining - 1)
+                };
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsClientSummonedUolWrappedBstrFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string leafName = NormalizeClientSummonedUolLeafFieldName(name);
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(leafName);
+            return leafName.Equals("m_Data", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Data", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Data_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("data_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("_bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Ztl_bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("ZtlBstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("ZtlBstrT", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("m_wstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mWstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("m_str", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mStr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("bstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("bstrValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("bstrData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("bstrPayload", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("wstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("wstrValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("wstrData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("wstrPayload", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientString", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientStringValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientStringData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientStringPayload", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("stringValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("rawString", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("mdata", StringComparison.Ordinal)
+                   || normalizedName.Equals("datat", StringComparison.Ordinal)
+                   || normalizedName.Equals("bstrt", StringComparison.Ordinal)
+                   || normalizedName.Equals("ztlbstrt", StringComparison.Ordinal)
+                   || normalizedName.Equals("mwstr", StringComparison.Ordinal)
+                   || normalizedName.Equals("mstr", StringComparison.Ordinal)
+                   || normalizedName.Equals("bstrvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("bstrdata", StringComparison.Ordinal)
+                   || normalizedName.Equals("wstrvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("wstrdata", StringComparison.Ordinal)
+                   || normalizedName.Equals("clientstring", StringComparison.Ordinal)
+                   || normalizedName.Equals("clientstringvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("stringvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("rawstring", StringComparison.Ordinal);
         }
 
         private static bool TryFormatClientSummonedUolNumericSkillValue(double value, out string formattedValue)

@@ -1778,6 +1778,74 @@ namespace HaCreator.MapSimulator.Animation
                 initialElapsedMs);
         }
 
+        internal void AddMobOwnedAttackEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddMobOwnedAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackHit,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddMobOwnedAttachedAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackHit,
+                initialElapsedMs);
+        }
+
         internal void AddPacketOwnedMobBullet(
             List<IDXObject> frames,
             string sourceUol,
@@ -3598,6 +3666,12 @@ namespace HaCreator.MapSimulator.Animation
         /// </summary>
         public void Clear()
         {
+            for (int i = 0; i < _oneTimeAnimations.Count; i++)
+            {
+                CaptureReleasedOneTimeAnimationState(
+                    _oneTimeAnimations[i],
+                    OneTimeAnimationRecoveredNativeFinalReleaseReason.Cleared);
+            }
             _oneTimeAnimations.Clear();
             for (int i = 0; i < _oneTimeCanvasLayers.Count; i++)
             {
@@ -5068,7 +5142,9 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedMobSkillEffect = 28,
         PacketOwnedMobSkillIcon = 29,
         PacketOwnedMobSkillBomb = 30,
-        PacketOwnedMobSkillHit = 31
+        PacketOwnedMobSkillHit = 31,
+        MobOwnedAttackEffect = 32,
+        MobOwnedAttackHit = 33
     }
 
     internal enum AnimationFallingOwner
@@ -5532,6 +5608,24 @@ namespace HaCreator.MapSimulator.Animation
         AnimationOneTimePlaybackMode PlaybackMode,
         bool AnimateCalled);
 
+    /// <summary>
+    /// Recovered CAnimationDisplayer::Effect_BasicFloat helper constants used by Cool/Guard/Miss-style float layers.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredBasicFloatTrace(
+        int CanvasWidth,
+        int CanvasHeight,
+        int HoldInsertDurationMs,
+        int HoldStartAlphaValue,
+        int HoldEndAlphaValue,
+        int FadeInsertDurationMs,
+        int FadeStartAlphaValue,
+        int FadeEndAlphaValue,
+        int MoveDelayMs,
+        int RiseDistancePx,
+        bool CentersCanvasByWidth,
+        bool AnchorsCanvasBottom,
+        bool RegistersOneTimeAnimation);
+
     internal enum OneTimeAnimationRecoveredNativeFinalReleaseReason
     {
         None = 0,
@@ -5857,6 +5951,7 @@ namespace HaCreator.MapSimulator.Animation
         int FormatStringPoolId,
         string FormattedText,
         CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredCanvasSettings NativeTemporaryCanvasSettings,
         CanvasLayerRecoveredCompositeSurfaceSettings CompositeSurfaceSettings,
         CanvasLayerRecoveredEffectHpOwnerSelectionTrace OwnerSelectionTrace,
         CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
@@ -6838,6 +6933,7 @@ namespace HaCreator.MapSimulator.Animation
         internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
         internal OneTimeAnimationRecoveredLayerSurfaceState RecoveredLayerSurfaceState { get; private set; }
         internal OneTimeAnimationRecoveredNativeAnimateVariantState RecoveredNativeAnimateVariantState { get; private set; }
+        internal OneTimeAnimationRecoveredBasicFloatTrace? RecoveredBasicFloatTrace { get; private set; }
         internal int CurrentFrameIndex => _currentFrame;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
@@ -6923,6 +7019,7 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeAnimateVariantState = BuildRecoveredNativeAnimateVariantState(
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
+            RecoveredBasicFloatTrace = BuildRecoveredBasicFloatTrace(playbackMode, frames, recoveredRegistrationTrace);
 
             if (initialElapsedMs > 0)
             {
@@ -7101,6 +7198,54 @@ namespace HaCreator.MapSimulator.Animation
                 0f,
                 1f);
             return -BasicFloatRiseDistancePx * moveProgress;
+        }
+
+        internal static Point ResolveBasicFloatNativeLayerPosition(
+            int centerLeft,
+            int centerTop,
+            int canvasWidth,
+            int canvasHeight)
+        {
+            return new Point(
+                centerLeft - (Math.Max(0, canvasWidth) / 2),
+                centerTop - Math.Max(0, canvasHeight));
+        }
+
+        internal static Point ResolveBasicFloatNativeMoveTarget(
+            int centerLeft,
+            int centerTop,
+            int canvasWidth,
+            int canvasHeight)
+        {
+            Point origin = ResolveBasicFloatNativeLayerPosition(centerLeft, centerTop, canvasWidth, canvasHeight);
+            return new Point(origin.X, origin.Y - BasicFloatRiseDistancePx);
+        }
+
+        private static OneTimeAnimationRecoveredBasicFloatTrace? BuildRecoveredBasicFloatTrace(
+            AnimationOneTimePlaybackMode playbackMode,
+            IReadOnlyList<IDXObject> frames,
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (playbackMode != AnimationOneTimePlaybackMode.BasicFloat || registrationTrace == null)
+            {
+                return null;
+            }
+
+            IDXObject firstFrame = frames != null && frames.Count > 0 ? frames[0] : null;
+            return new OneTimeAnimationRecoveredBasicFloatTrace(
+                CanvasWidth: Math.Max(0, firstFrame?.Width ?? 0),
+                CanvasHeight: Math.Max(0, firstFrame?.Height ?? 0),
+                HoldInsertDurationMs: BasicFloatHoldDurationMs,
+                HoldStartAlphaValue: 255,
+                HoldEndAlphaValue: 255,
+                FadeInsertDurationMs: BasicFloatFadeDurationMs,
+                FadeStartAlphaValue: 255,
+                FadeEndAlphaValue: 0,
+                MoveDelayMs: BasicFloatMoveDurationMs,
+                RiseDistancePx: BasicFloatRiseDistancePx,
+                CentersCanvasByWidth: true,
+                AnchorsCanvasBottom: true,
+                RegistersOneTimeAnimation: registrationTrace.Value.RegistersOneTimeAnimation);
         }
 
         private static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(

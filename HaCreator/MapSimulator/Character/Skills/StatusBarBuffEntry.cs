@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewMainLayerReleaseReferenceCountAfter { get; set; }
         public int TemporaryStatViewShadowLayerReleaseReferenceCountBefore { get; set; }
         public int TemporaryStatViewShadowLayerReleaseReferenceCountAfter { get; set; }
+        public IReadOnlyList<string> TemporaryStatViewReleaseMutationTrace { get; set; } = Array.Empty<string>();
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
@@ -78,6 +79,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SetLeftThresholdValue { get; set; }
         public bool SetLeftUsedVehicleThreshold { get; set; }
         public bool SetLeftTriggeredLowAnimation { get; set; }
+        public IReadOnlyList<string> SetLeftMutationTrace { get; set; } = Array.Empty<string>();
         public int ShadowIndex { get; set; }
         public int ShadowIndexUpdateSequence { get; set; }
         public int MainLayerAnimationSequence { get; set; }

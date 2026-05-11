@@ -42,6 +42,11 @@ namespace HaCreator.MapSimulator.Entities
             return mobData?.DamagedByMob == true || mobData?.Escort > 0;
         }
 
+        public static bool ShouldUseDamagedByMobGreyBlink(MobData mobData)
+        {
+            return mobData?.DamagedByMob == true && mobData.Escort != 1;
+        }
+
         public static int NormalizeRemoveAfterSecondsToMilliseconds(int removeAfterSeconds)
         {
             return removeAfterSeconds > 0

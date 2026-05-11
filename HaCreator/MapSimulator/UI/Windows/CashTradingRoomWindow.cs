@@ -73,6 +73,12 @@ namespace HaCreator.MapSimulator.UI
             public int WheelRange { get; init; }
             public int Offset { get; init; }
             public int MaxOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int PageSize { get; init; }
+            public int TrackHeight { get; init; }
+            public int ThumbY { get; init; }
+            public int ThumbHeight { get; init; }
             public bool IsDragging { get; init; }
             public int Revision { get; init; }
         }
@@ -434,6 +440,12 @@ namespace HaCreator.MapSimulator.UI
                     WheelRange = ChatWheelRange,
                     Offset = 0,
                     MaxOffset = 0,
+                    VisibleCount = 3,
+                    TotalCount = 3,
+                    PageSize = MaxVisibleChatLines,
+                    TrackHeight = 0,
+                    ThumbY = 0,
+                    ThumbHeight = ChatScrollHeight,
                     IsDragging = false,
                     Revision = 0
                 },
@@ -1114,6 +1126,12 @@ namespace HaCreator.MapSimulator.UI
                     WheelRange = _scrollBarRuntime.WheelRange,
                     Offset = _scrollBarRuntime.Offset,
                     MaxOffset = _scrollBarRuntime.MaxOffset,
+                    VisibleCount = Math.Min(MaxVisibleChatLines, _chatEntries.Count),
+                    TotalCount = _chatEntries.Count,
+                    PageSize = MaxVisibleChatLines,
+                    TrackHeight = Math.Max(0, ChatScrollHeight - GetChatThumbBounds(GetWindowBounds()).Height),
+                    ThumbY = GetChatThumbBounds(GetWindowBounds()).Y - GetChatScrollBounds(GetWindowBounds()).Y,
+                    ThumbHeight = GetChatThumbBounds(GetWindowBounds()).Height,
                     IsDragging = _scrollBarRuntime.IsDragging,
                     Revision = _scrollBarRuntime.Revision
                 },

@@ -7536,10 +7536,38 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            // Local non-melee cast visuals now stay on the direct owner path in
-            // `HandlePlayerSkillCast` while explicit caller-owned requests
-            // (`OnClientSkillEffectRequested`) remain on the request seam.
-            return false;
+            // `CUser::ShowSkillEffect` owns the same caller-shaped payload surface
+            // regardless of whether the local caller reached it through an explicit
+            // request helper or a normal non-melee active cast.
+            return true;
+        }
+
+        internal static bool TryBuildLocalSkillCastClientSkillEffectRequestForTesting(
+            SkillCastInfo castInfo,
+            out SkillUseEffectRequest request)
+        {
+            request = null;
+            if (!ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(castInfo))
+            {
+                return false;
+            }
+
+            request = new SkillUseEffectRequest
+            {
+                EffectSkillId = castInfo.SkillId,
+                SourceSkillId = castInfo.SkillId,
+                SkillLevel = castInfo.Level > 0 ? castInfo.Level : null,
+                RequestTime = castInfo.CastTime,
+                BranchNames = castInfo.RequestedBranchNames,
+                EffectBranchLastIndex = castInfo.EffectBranchLastIndex,
+                WorldOrigin = new Vector2(castInfo.CasterX, castInfo.CasterY),
+                OriginOffset = castInfo.OriginOffset,
+                FollowOwnerPosition = castInfo.FollowOwnerPosition,
+                FollowOwnerFacing = castInfo.FollowOwnerFacing,
+                FacingRightOverride = castInfo.FacingRightOverride,
+                DelayRateOverride = castInfo.DelayRateOverride
+            };
+            return true;
         }
 
         internal static bool HasClientSkillEffectRequestShapingForTesting(
@@ -9791,37 +9819,19 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var indexedPoints = new List<(int Index, Vector2 Point)>(childCount);
-            var seenIndices = new HashSet<int>();
-            for (int i = 0; i < childCount; i++)
+            var points = new List<Vector2>(childCount);
+            for (int index = 0; index < childCount; index++)
             {
-                WzImageProperty childProperty = children[i];
-                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childProperty?.Name, out int index)
-                    || !seenIndices.Add(index))
+                WzImageProperty childProperty = resolvedGenerationPointProperty[index.ToString(CultureInfo.InvariantCulture)];
+                if (ResolveAnimationDisplayerLinkedRealProperty(childProperty) is not WzVectorProperty point)
                 {
-                    continue;
+                    break;
                 }
 
-                WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
-                if (resolvedChild is WzVectorProperty point)
-                {
-                    indexedPoints.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
-                }
+                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
             }
 
-            if (indexedPoints.Count <= 0)
-            {
-                return null;
-            }
-
-            indexedPoints.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-            var points = new Vector2[indexedPoints.Count];
-            for (int i = 0; i < indexedPoints.Count; i++)
-            {
-                points[i] = indexedPoints[i].Point;
-            }
-
-            return points.Length > 0
+            return points.Count > 0
                 ? points
                 : null;
         }

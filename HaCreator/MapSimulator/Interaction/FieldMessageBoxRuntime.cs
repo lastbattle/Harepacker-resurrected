@@ -1176,6 +1176,33 @@ namespace HaCreator.MapSimulator.Interaction
             return NormalizeChalkboardDialogLines(text).Count > 0;
         }
 
+        internal static bool CanAcceptChalkboardDialogCharacter(string text, char character)
+        {
+            if (char.IsControl(character))
+            {
+                return false;
+            }
+
+            string currentText = text ?? string.Empty;
+            int lineStart = Math.Max(
+                currentText.LastIndexOf('\n'),
+                currentText.LastIndexOf('\r')) + 1;
+            int currentLineLength = Math.Max(0, currentText.Length - lineStart);
+            return currentLineLength < CuiHopeLineMaxLength
+                && NormalizeChalkboardDialogLines(currentText).Count <= CuiHopeLineCount;
+        }
+
+        internal static bool CanReplaceLastChalkboardDialogCharacter(string text, char character)
+        {
+            if (string.IsNullOrEmpty(text) || char.IsControl(character))
+            {
+                return false;
+            }
+
+            string replacement = text[..^1] + character;
+            return TryNormalizeChalkboardDialogText(replacement, out _, out _);
+        }
+
         internal static IReadOnlyList<string> NormalizeChalkboardDialogLinesForTest(string text)
         {
             return NormalizeChalkboardDialogLinesForDialog(text);

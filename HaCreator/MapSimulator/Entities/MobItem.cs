@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Entities
         private bool _escortFollowActive;
         private bool _baseUsePlatformBounds;
         private int _damagedByMobBlinkStartTick = int.MinValue;
+        private int _damagedByMobBlinkExpireTick = int.MinValue;
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
@@ -399,7 +400,7 @@ namespace HaCreator.MapSimulator.Entities
                 attackerTargetType,
                 attackerExternalTargetSource);
 
-            if (!originatedFromPlayer && _mobInstance?.MobInfo?.MobData?.DamagedByMob == true)
+            if (!originatedFromPlayer && SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
             {
                 NotifyDamagedByMobEncounterHit(currentTick);
             }
@@ -419,14 +420,25 @@ namespace HaCreator.MapSimulator.Entities
         internal void NotifyDamagedByMobEncounterHit(int currentTick)
         {
             _damagedByMobBlinkStartTick = currentTick;
+            _damagedByMobBlinkExpireTick = ResolveDamagedByMobBlinkExpireTick(
+                currentTick,
+                ResolveCurrentHitActionDurationMs());
         }
 
         internal bool IsDamagedByMobEncounterBlinkActiveForTesting(int tickCount)
         {
-            return IsDamagedByMobBlinkVisible(_damagedByMobBlinkStartTick, tickCount);
+            return IsDamagedByMobBlinkVisible(_damagedByMobBlinkStartTick, _damagedByMobBlinkExpireTick, tickCount);
         }
 
         internal static bool IsDamagedByMobBlinkVisible(int startTick, int tickCount)
+        {
+            return IsDamagedByMobBlinkVisible(
+                startTick,
+                ResolveDamagedByMobBlinkExpireTick(startTick, DamagedByMobBlinkDurationMs),
+                tickCount);
+        }
+
+        internal static bool IsDamagedByMobBlinkVisible(int startTick, int expireTick, int tickCount)
         {
             if (startTick == int.MinValue)
             {
@@ -434,7 +446,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             int elapsed = unchecked(tickCount - startTick);
-            if (elapsed < 0 || elapsed >= DamagedByMobBlinkDurationMs)
+            if (elapsed < 0 || unchecked(tickCount - expireTick) >= 0)
             {
                 return false;
             }
@@ -448,6 +460,44 @@ namespace HaCreator.MapSimulator.Entities
             return IsDamagedByMobBlinkVisible(startTick, tickCount)
                 ? DamagedByMobBlinkTint
                 : Color.White;
+        }
+
+        internal static int ResolveDamagedByMobBlinkExpireTick(int startTick, int hitActionDurationMs)
+        {
+            if (startTick == int.MinValue)
+            {
+                return int.MinValue;
+            }
+
+            int duration = hitActionDurationMs > 0
+                ? hitActionDurationMs
+                : DamagedByMobBlinkDurationMs;
+            return unchecked(startTick + duration);
+        }
+
+        private int ResolveCurrentHitActionDurationMs()
+        {
+            if (_animationSet == null)
+            {
+                return DamagedByMobBlinkDurationMs;
+            }
+
+            string hitAction = AnimationKeys.ResolveMobHitAction(_animationSet);
+            List<IDXObject> frames = _animationSet.GetFrames(hitAction);
+            if (frames == null || frames.Count == 0)
+            {
+                return DamagedByMobBlinkDurationMs;
+            }
+
+            long duration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                duration += Math.Max(0, frames[i]?.Delay ?? 0);
+            }
+
+            return duration > 0
+                ? (int)Math.Min(duration, int.MaxValue)
+                : DamagedByMobBlinkDurationMs;
         }
 
         /// <summary>
@@ -699,6 +749,11 @@ namespace HaCreator.MapSimulator.Entities
         public List<IDXObject> GetAttackEffectFrames(string attackAction)
         {
             return _animationSet?.GetAttackEffect(attackAction);
+        }
+
+        public string GetAttackEffectSourceUol(string attackAction)
+        {
+            return _animationSet?.GetAttackEffectSourceUol(attackAction);
         }
 
         public List<IDXObject> GetAttackWarningFrames(string attackAction)
@@ -2499,11 +2554,14 @@ namespace HaCreator.MapSimulator.Entities
 
         private Color GetStatusTint(int tickCount)
         {
-            if (_mobInstance?.MobInfo?.MobData?.DamagedByMob == true)
+            if (SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
             {
-                Color damagedByMobTint = ResolveDamagedByMobBlinkTint(
+                Color damagedByMobTint = IsDamagedByMobBlinkVisible(
                     _damagedByMobBlinkStartTick,
-                    tickCount);
+                    _damagedByMobBlinkExpireTick,
+                    tickCount)
+                    ? DamagedByMobBlinkTint
+                    : Color.White;
                 if (damagedByMobTint != Color.White)
                 {
                     return damagedByMobTint;

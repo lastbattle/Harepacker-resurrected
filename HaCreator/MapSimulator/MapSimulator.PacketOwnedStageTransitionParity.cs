@@ -1147,6 +1147,21 @@ namespace HaCreator.MapSimulator
         {
             public const int DefaultDurationMs = 4000;
 
+            public bool HasSamePlaybackProfile(PacketOwnedNamedObjectMovingState other)
+            {
+                return other != null &&
+                    DurationMs == other.DurationMs &&
+                    StartX == other.StartX &&
+                    StartY == other.StartY &&
+                    TargetX == other.TargetX &&
+                    TargetY == other.TargetY &&
+                    RotationDurationMs == other.RotationDurationMs &&
+                    Math.Abs(TargetRotationDegrees - other.TargetRotationDegrees) <= float.Epsilon &&
+                    UsesEllipticalMove == other.UsesEllipticalMove &&
+                    EllipticalClockwise == other.EllipticalClockwise &&
+                    CenterStart == other.CenterStart;
+            }
+
             public void Apply(BaseDXDrawableItem item, int currentTick)
             {
                 if (item == null)

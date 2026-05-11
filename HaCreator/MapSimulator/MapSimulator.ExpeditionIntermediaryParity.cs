@@ -138,10 +138,12 @@ namespace HaCreator.MapSimulator
             return _expeditionIntermediaryOfficialSessionBridge.HasConnectedSession;
         }
 
-        private bool TrySendExpeditionOutboundRequest(
+        private bool TryBuildValidatedExpeditionOutboundPacket(
             ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
             out string status)
         {
+            packet = default;
             status = null;
 
             string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetExpeditionPartyBossChangeRestrictionMessage(
@@ -154,9 +156,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!ExpeditionIntermediaryPacketCodec.TryEncodeOutboundRequest(request, out ExpeditionIntermediaryEncodedOutboundPacket packet, out string encodeError))
+            if (!ExpeditionIntermediaryPacketCodec.TryEncodeOutboundRequest(request, out packet, out string encodeError))
             {
                 status = encodeError ?? $"Expedition request '{request.Kind}' could not be encoded.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TrySendExpeditionOutboundRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out string status)
+        {
+            if (!TryBuildValidatedExpeditionOutboundPacket(request, out ExpeditionIntermediaryEncodedOutboundPacket packet, out status))
+            {
                 return false;
             }
 
@@ -170,23 +184,54 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryDispatchExpeditionOutboundRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            string source,
+            out string status)
+        {
+            if (!TryBuildValidatedExpeditionOutboundPacket(request, out ExpeditionIntermediaryEncodedOutboundPacket packet, out status))
+            {
+                return false;
+            }
+
+            if (_expeditionIntermediaryOfficialSessionBridge.HasConnectedSession)
+            {
+                if (!_expeditionIntermediaryOfficialSessionBridge.TrySendRawPacket(packet.RawPacket, out string sendStatus))
+                {
+                    status = sendStatus;
+                    return false;
+                }
+
+                status = $"{packet.Detail} {sendStatus}";
+                return true;
+            }
+
+            if (!_expeditionIntermediaryOfficialSessionBridge.TryRecordSynthesizedOutboundPacket(packet.RawPacket, source, out string recordStatus))
+            {
+                status = recordStatus;
+                return false;
+            }
+
+            status = $"{packet.Detail} {recordStatus}";
+            return true;
+        }
+
         private string ExecuteSocialSearchActionWithParityBridge(string actionKey)
         {
             ExpeditionIntermediaryOutboundRequest outboundRequest = default;
-            bool shouldMirrorExpeditionRequest = CanAutoSendExpeditionOutboundRequest()
-                && _socialListRuntime.TryBuildExpeditionSearchOutboundRequest(actionKey, out outboundRequest, out _);
+            bool shouldMirrorExpeditionRequest = _socialListRuntime.TryBuildExpeditionSearchOutboundRequest(actionKey, out outboundRequest, out _);
             string result = _socialListRuntime.ExecuteSearchAction(actionKey);
             if (!shouldMirrorExpeditionRequest)
             {
                 return result;
             }
 
-            if (TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus))
+            if (TryDispatchExpeditionOutboundRequest(outboundRequest, $"social search action {actionKey}", out string sendStatus))
             {
                 return string.IsNullOrWhiteSpace(result) ? sendStatus : $"{result} {sendStatus}";
             }
 
-            return string.IsNullOrWhiteSpace(result) ? sendStatus : $"{result} Live expedition send failed: {sendStatus}";
+            return string.IsNullOrWhiteSpace(result) ? sendStatus : $"{result} Expedition outbound synthesis failed: {sendStatus}";
         }
 
         private void EnsureExpeditionIntermediaryOfficialSessionBridgeState(bool shouldRun)

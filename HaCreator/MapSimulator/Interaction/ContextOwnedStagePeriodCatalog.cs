@@ -118,9 +118,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             IReadOnlyList<ContextOwnedStageUnitCacheMutation> keywordMutations =
-                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.Keywords, keywordCache);
+                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.KeywordSequence, keywordCache);
             IReadOnlyList<ContextOwnedStageUnitCacheMutation> questMutations =
-                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.EnabledQuestIds, questCache);
+                ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.EnabledQuestIdSequence, questCache);
             ContextOwnedStagePeriodModeCacheMutation stagePeriodMutation =
                 ApplyStagePeriodModeCacheWithTrace(entry.StageTheme, entry.Mode, stagePeriodCache);
             return new ContextOwnedStageCacheMutationTrace(
@@ -308,6 +308,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ParseStringSet(keywordBranches),
                     ParseIntSet(questBranches),
                     ParseIntSet(affectedMapBranches),
+                    ParseStringList(keywordBranches),
+                    ParseIntList(questBranches),
                     themeProperty,
                     periodNode);
             }
@@ -1072,7 +1074,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static HashSet<string> ParseStringSet(params WzImageProperty[] properties)
         {
-            HashSet<string> values = new(StringComparer.OrdinalIgnoreCase);
+            return new HashSet<string>(ParseStringList(properties), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static List<string> ParseStringList(params WzImageProperty[] properties)
+        {
+            List<string> values = new();
             if (properties == null)
             {
                 return values;
@@ -1086,7 +1093,7 @@ namespace HaCreator.MapSimulator.Interaction
             return values;
         }
 
-        private static void AppendStringValues(WzImageProperty property, HashSet<string> values)
+        private static void AppendStringValues(WzImageProperty property, ICollection<string> values)
         {
             if (property == null)
             {
@@ -1096,7 +1103,7 @@ namespace HaCreator.MapSimulator.Interaction
             CollectStringValues(property, values);
         }
 
-        private static bool CollectStringValues(WzImageProperty property, HashSet<string> values)
+        private static bool CollectStringValues(WzImageProperty property, ICollection<string> values)
         {
             if (property == null || values == null)
             {
@@ -1134,7 +1141,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static HashSet<int> ParseIntSet(params WzImageProperty[] properties)
         {
-            HashSet<int> values = new();
+            return new HashSet<int>(ParseIntList(properties));
+        }
+
+        private static List<int> ParseIntList(params WzImageProperty[] properties)
+        {
+            List<int> values = new();
             if (properties == null)
             {
                 return values;
@@ -1148,7 +1160,7 @@ namespace HaCreator.MapSimulator.Interaction
             return values;
         }
 
-        private static void AppendIntValues(WzImageProperty property, HashSet<int> values)
+        private static void AppendIntValues(WzImageProperty property, ICollection<int> values)
         {
             if (property == null)
             {
@@ -1158,7 +1170,7 @@ namespace HaCreator.MapSimulator.Interaction
             CollectIntValues(property, values);
         }
 
-        private static bool CollectIntValues(WzImageProperty property, HashSet<int> values)
+        private static bool CollectIntValues(WzImageProperty property, ICollection<int> values)
         {
             if (property == null || values == null)
             {
@@ -1282,18 +1294,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 foreach (WzImageProperty themeProperty in themeProperties)
                 {
-                    HashSet<string> themeWideKeywords = ParseThemeWideKeywordAugmentations(themeProperty);
+                    IReadOnlyList<string> themeWideKeywords = ParseThemeWideKeywordAugmentations(themeProperty);
                     foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
                     {
-                        period.Keywords.UnionWith(themeWideKeywords);
+                        period.AddKeywords(themeWideKeywords);
                     }
 
-                    Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
+                    Dictionary<byte, IReadOnlyList<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
                     foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
                     {
-                        if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
+                        if (periodKeywords.TryGetValue(period.Mode, out IReadOnlyList<string> extraKeywords))
                         {
-                            period.Keywords.UnionWith(extraKeywords);
+                            period.AddKeywords(extraKeywords);
                         }
                     }
                 }
@@ -1355,9 +1367,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static HashSet<string> ParseThemeWideKeywordAugmentations(WzImageProperty themeProperty)
+        private static IReadOnlyList<string> ParseThemeWideKeywordAugmentations(WzImageProperty themeProperty)
         {
-            HashSet<string> values = new(StringComparer.OrdinalIgnoreCase);
+            List<string> values = new();
             if (themeProperty == null)
             {
                 return values;
@@ -1389,12 +1401,12 @@ namespace HaCreator.MapSimulator.Interaction
             return values;
         }
 
-        private static Dictionary<byte, HashSet<string>> BuildPeriodKeywordAugmentations(WzImageProperty themeProperty)
+        private static Dictionary<byte, IReadOnlyList<string>> BuildPeriodKeywordAugmentations(WzImageProperty themeProperty)
         {
-            Dictionary<byte, HashSet<string>> periodKeywords = new();
+            Dictionary<byte, IReadOnlyList<string>> periodKeywords = new();
             foreach ((byte mode, WzImageProperty periodProperty) in EnumeratePeriodNodes(themeProperty))
             {
-                HashSet<string> extraKeywords = ParseStringSet(
+                List<string> extraKeywords = ParseStringList(
                     GetChildProperty(periodProperty, "stageKeyword"),
                     GetChildProperty(periodProperty, "keyword"),
                     GetChildProperty(periodProperty, "aKeyword"));
@@ -1792,6 +1804,8 @@ namespace HaCreator.MapSimulator.Interaction
             HashSet<string> keywords,
             HashSet<int> enabledQuestIds,
             HashSet<int> affectedMapIds,
+            IReadOnlyList<string> keywordSequence = null,
+            IReadOnlyList<int> enabledQuestIdSequence = null,
             WzImageProperty sourceThemeObject = null,
             WzImageProperty sourcePeriodObject = null)
         {
@@ -1804,6 +1818,10 @@ namespace HaCreator.MapSimulator.Interaction
             Keywords = keywords ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             EnabledQuestIds = enabledQuestIds ?? new HashSet<int>();
             AffectedMapIds = affectedMapIds ?? new HashSet<int>();
+            KeywordSequence = new List<string>(
+                keywordSequence ?? Keywords.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToList());
+            EnabledQuestIdSequence = new List<int>(
+                enabledQuestIdSequence ?? EnabledQuestIds.OrderBy(static value => value).ToList());
             SourceThemeObject = sourceThemeObject;
             SourcePeriodObject = sourcePeriodObject;
         }
@@ -1815,8 +1833,30 @@ namespace HaCreator.MapSimulator.Interaction
         internal HashSet<string> Keywords { get; }
         internal HashSet<int> EnabledQuestIds { get; }
         internal HashSet<int> AffectedMapIds { get; }
+        internal List<string> KeywordSequence { get; }
+        internal List<int> EnabledQuestIdSequence { get; }
         internal WzImageProperty SourceThemeObject { get; }
         internal WzImageProperty SourcePeriodObject { get; }
+
+        internal void AddKeywords(IEnumerable<string> keywords)
+        {
+            if (keywords == null)
+            {
+                return;
+            }
+
+            foreach (string keyword in keywords)
+            {
+                if (string.IsNullOrWhiteSpace(keyword))
+                {
+                    continue;
+                }
+
+                string normalized = keyword.Trim();
+                Keywords.Add(normalized);
+                KeywordSequence.Add(normalized);
+            }
+        }
 
         internal uint? ResolveActiveBackColorArgb()
         {

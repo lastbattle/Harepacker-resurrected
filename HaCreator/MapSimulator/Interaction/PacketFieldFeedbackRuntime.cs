@@ -48,7 +48,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string> GetLastOutgoingWhisperTarget { get; init; }
         internal Action ClearWhisperSentState { get; init; }
         internal Action<int, int> TriggerTremble { get; init; }
-        internal Action ClearFieldFade { get; init; }
+        internal Action<int> ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
         internal Func<string, bool> PlayFieldSound { get; init; }
         internal Func<byte, int, int, bool> PlaySummonEffectSound { get; init; }
@@ -1673,7 +1673,7 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             int fadeKey = reader.ReadInt32();
-            callbacks?.ClearFieldFade?.Invoke();
+            callbacks?.ClearFieldFade?.Invoke(fadeKey);
             _statusMessage = $"Applied packet-owned forced fade teardown for key {fadeKey}.";
             message = _statusMessage;
             return true;
@@ -1909,8 +1909,6 @@ namespace HaCreator.MapSimulator.Interaction
                 if (IsDbcsLeadByte(normalized[index], isDbcsLeadByte)
                     && index + 1 < normalized.Length)
                 {
-                    normalized[index] = 0x20;
-                    normalized[index + 1] = 0x20;
                     index += 2;
                     continue;
                 }

@@ -17,7 +17,13 @@ namespace HaCreator.MapSimulator.UI
         private const int ContentLeft = 13;
         private const int ContentTop = 22;
         private const int ClientOkButtonId = 1000;
+        private const int ClientCloseButtonId = 1001;
         private const int ClientCancelButtonId = 1002;
+        private const int ClientAreaGroupComboBoxId = 1003;
+        private const int ClientBirthYearComboBoxId = 1006;
+        private const int ClientBirthMonthComboBoxId = 1007;
+        private const int ClientComboSelectionChangedNotify = 600;
+        private const int ClientButtonClickNotify = 100;
         private const int ClientComboBoxMaxShownItems = 10;
         private const int ClientComboBoxTextOffsetY = -2;
         private const int CheckboxSize = 11;
@@ -78,6 +84,21 @@ namespace HaCreator.MapSimulator.UI
             None = 0,
             CollapseCombo = 1,
             CloseOwner = 2,
+        }
+
+        internal enum ClientOwnerButtonAction
+        {
+            None = 0,
+            Save = 1,
+            CloseOwner = 2,
+        }
+
+        internal enum ClientOwnerChildNotifyAction
+        {
+            None = 0,
+            RebuildAreaDetailCombo = 1,
+            RebuildBirthdayDayCombo = 2,
+            RouteButtonClick = 3,
         }
 
         internal AccountMoreInfoWindow(IDXObject frame, string windowName)
@@ -729,12 +750,59 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleOkButtonReleased(UIObject button)
         {
-            _saveRequested?.Invoke();
+            HandleClientOwnerButtonReleased(ClientOkButtonId);
         }
 
         private void HandleCancelButtonReleased(UIObject button)
         {
-            _cancelRequested?.Invoke();
+            HandleClientOwnerButtonReleased(ClientCancelButtonId);
+        }
+
+        private void HandleClientOwnerButtonReleased(int buttonId)
+        {
+            switch (ResolveClientOwnerButtonActionForTesting(buttonId))
+            {
+                case ClientOwnerButtonAction.Save:
+                    _saveRequested?.Invoke();
+                    break;
+
+                case ClientOwnerButtonAction.CloseOwner:
+                    _cancelRequested?.Invoke();
+                    break;
+            }
+        }
+
+        internal static ClientOwnerButtonAction ResolveClientOwnerButtonActionForTesting(int buttonId)
+        {
+            if (buttonId == ClientOkButtonId)
+            {
+                return ClientOwnerButtonAction.Save;
+            }
+
+            return buttonId > ClientOkButtonId && buttonId <= ClientCancelButtonId
+                ? ClientOwnerButtonAction.CloseOwner
+                : ClientOwnerButtonAction.None;
+        }
+
+        internal static ClientOwnerChildNotifyAction ResolveClientOwnerChildNotifyActionForTesting(
+            int controlId,
+            int notifyCode)
+        {
+            if (notifyCode == ClientComboSelectionChangedNotify)
+            {
+                if (controlId == ClientAreaGroupComboBoxId)
+                {
+                    return ClientOwnerChildNotifyAction.RebuildAreaDetailCombo;
+                }
+
+                return controlId >= ClientBirthYearComboBoxId && controlId <= ClientBirthMonthComboBoxId
+                    ? ClientOwnerChildNotifyAction.RebuildBirthdayDayCombo
+                    : ClientOwnerChildNotifyAction.None;
+            }
+
+            return notifyCode == ClientButtonClickNotify
+                ? ClientOwnerChildNotifyAction.RouteButtonClick
+                : ClientOwnerChildNotifyAction.None;
         }
     }
 }

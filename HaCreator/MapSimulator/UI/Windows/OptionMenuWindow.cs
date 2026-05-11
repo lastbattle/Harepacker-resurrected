@@ -488,18 +488,12 @@ namespace HaCreator.MapSimulator.UI
 
         public void ApplyCommittedClientOptionValues(IReadOnlyDictionary<uint, int> clientOptions)
         {
-            if (clientOptions == null)
-            {
-                return;
-            }
-
             for (int i = 0; i < ClientGameOptionRowDefinitions.Length; i++)
             {
                 int configId = ClientGameOptionRowDefinitions[i].ConfigId;
-                if (clientOptions.TryGetValue((uint)configId, out int rawValue))
-                {
-                    _committedClientOptionValues[configId] = rawValue != 0;
-                }
+                _committedClientOptionValues[configId] = clientOptions != null
+                    && clientOptions.TryGetValue((uint)configId, out int rawValue)
+                    && rawValue != 0;
             }
         }
 

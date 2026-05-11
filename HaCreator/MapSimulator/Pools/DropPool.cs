@@ -1749,6 +1749,11 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            if (packetCount != drops.Count)
+            {
+                return;
+            }
+
             List<DropItem> packetDrops = new(packetCount);
             for (int i = 0; i < drops.Count; i++)
             {

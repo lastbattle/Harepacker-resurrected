@@ -261,6 +261,27 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetMapEffectName(MapInfo mapInfo)
+        {
+            if (!string.IsNullOrWhiteSpace(mapInfo?.effect))
+            {
+                return mapInfo.effect.Trim();
+            }
+
+            string effectName = GetInfoString(mapInfo, "effect");
+            return string.IsNullOrWhiteSpace(effectName)
+                ? null
+                : effectName.Trim();
+        }
+
+        public static string GetMapEffectEntryMessage(MapInfo mapInfo)
+        {
+            string effectName = GetMapEffectName(mapInfo);
+            return !string.IsNullOrWhiteSpace(effectName)
+                ? $"Map effect metadata is active: {effectName}."
+                : null;
+        }
+
         public static string GetFlyingMapEntryMessage(MapInfo mapInfo)
         {
             return IsFlyingMap(mapInfo)
@@ -857,6 +878,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetMapEffectEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetConsumeItemCooldownEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetZakumJumpQuestMoveCheckEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetAllMoveCheckEntryMessage(mapInfo));
@@ -1293,6 +1315,19 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        private static string GetInfoString(MapInfo mapInfo, string propertyName)
+        {
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                if (TryReadInfoString(property, out string value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
         private static bool? ResolveInfoBool(MapInfo mapInfo, string propertyName, bool? typedValue)
         {
             if (typedValue.HasValue)
@@ -1356,6 +1391,25 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 value = 0;
+                return false;
+            }
+        }
+
+        private static bool TryReadInfoString(WzImageProperty property, out string value)
+        {
+            value = null;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetString();
+                return !string.IsNullOrWhiteSpace(value);
+            }
+            catch
+            {
                 return false;
             }
         }

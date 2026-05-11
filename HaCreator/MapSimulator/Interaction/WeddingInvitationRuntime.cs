@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<string> _observedSocialMessages = new();
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
+        private int _rawClientDialogType = DefaultClientDialogType;
         private bool _useClientDialogSurface;
         private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
         private bool _isOpen;
@@ -113,7 +114,8 @@ namespace HaCreator.MapSimulator.Interaction
             _groomName = NormalizeName(groomName, string.IsNullOrWhiteSpace(_localCharacterName) ? DefaultGroomName : _localCharacterName);
             _brideName = NormalizeName(brideName, DefaultBrideName);
             _style = style;
-            _clientDialogType = NormalizeClientDialogType(clientDialogType);
+            _rawClientDialogType = clientDialogType ?? DefaultClientDialogType;
+            _clientDialogType = NormalizeClientDialogType(_rawClientDialogType);
             _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(_style);
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(NormalizeClientDialogType(_clientDialogType));
@@ -128,7 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             SetObservedSocialMessages(_groomName, _brideName);
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ button states normal/pressed/mouseOver share origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, disabled uses origin=({DisabledAcceptButtonWzOriginX},{DisabledAcceptButtonWzOriginY}) size={DisabledAcceptButtonWidth}x{DisabledAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}; recovered client surface has no dedicated dismiss shortcut beyond the modal close path.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; raw constructor nType={_rawClientDialogType} selects CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ button states normal/pressed/mouseOver share origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, disabled uses origin=({DisabledAcceptButtonWzOriginX},{DisabledAcceptButtonWzOriginY}) size={DisabledAcceptButtonWidth}x{DisabledAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}; recovered client surface has no dedicated dismiss shortcut beyond the modal close path.";
             return _statusMessage;
         }
 
@@ -138,7 +140,7 @@ namespace HaCreator.MapSimulator.Interaction
             string sourceDescription,
             out string message)
         {
-            if (!TryDecodeMarriageResultOpenPayload(payload, out string groomName, out string brideName, out int clientDialogType, out message))
+            if (!TryDecodeMarriageResultOpenPayloadDetailed(payload, out string groomName, out string brideName, out int rawClientDialogType, out int clientDialogType, out message))
             {
                 return false;
             }
@@ -146,13 +148,13 @@ namespace HaCreator.MapSimulator.Interaction
             string resolvedSourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
                 ? "marriage-result packet handoff"
                 : sourceDescription.Trim();
-            message = OpenInvitation(groomName, brideName, style, clientDialogType, resolvedSourceDescription);
+            message = OpenInvitation(groomName, brideName, style, rawClientDialogType, resolvedSourceDescription);
             _lastOpenUsedMarriageResultPacket = true;
             _lastMarriageResultPacketPayload = (byte[])payload.Clone();
             _useClientDialogSurface = true;
             _style = ResolvePacketOpenStyle(clientDialogType);
             _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(_style);
-            _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Packet-owned presentation records CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(clientDialogType):X} => {_dialogUolText} ({ResolveClientDialogAssetPath(clientDialogType)}) and uses the WZ-backed {_style} invitation canvas when that client dialog canvas is not present in the mounted data. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
+            _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Packet-owned presentation preserves raw constructor nType={rawClientDialogType}; only nType 2 selects Cathedral, while every other value selects CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(clientDialogType):X} => {_dialogUolText} ({ResolveClientDialogAssetPath(clientDialogType)}) and uses the WZ-backed {_style} invitation canvas when that client dialog canvas is not present in the mounted data. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
             message = _statusMessage;
             return true;
         }
@@ -198,6 +200,7 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = DefaultBrideName;
             _style = WeddingInvitationStyle.Neat;
             _clientDialogType = null;
+            _rawClientDialogType = DefaultClientDialogType;
             _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(WeddingInvitationStyle.Neat);
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
@@ -247,6 +250,7 @@ namespace HaCreator.MapSimulator.Interaction
                 BrideName = _brideName,
                 Style = _style,
                 ClientDialogType = resolvedClientDialogType,
+                RawClientDialogType = _rawClientDialogType,
                 SourceDescription = _sourceDescription,
                 LastOpenUsedMarriageResultPacket = _lastOpenUsedMarriageResultPacket,
                 LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone()),
@@ -263,7 +267,7 @@ namespace HaCreator.MapSimulator.Interaction
             string packetState = observation.LastOpenUsedMarriageResultPacket
                 ? $" packet=[{FormatPayload(observation.LastMarriageResultPacketPayload)}];"
                 : string.Empty;
-            message = $"Captured {ClientOwnerTypeName} close observation: {observation.CloseAction} for {observation.GroomName} and {observation.BrideName}; source={observation.SourceDescription}; dialogType={observation.ClientDialogType};{packetState} modalReturnIgnored={observation.ModalReturnIgnored}; downstream=not-invitation-owned.";
+            message = $"Captured {ClientOwnerTypeName} close observation: {observation.CloseAction} for {observation.GroomName} and {observation.BrideName}; source={observation.SourceDescription}; rawDialogType={observation.RawClientDialogType}; selectedDialogType={observation.ClientDialogType};{packetState} modalReturnIgnored={observation.ModalReturnIgnored}; downstream=not-invitation-owned.";
             return true;
         }
 
@@ -288,6 +292,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
                 ClientPresentationMode = ClientPresentationMode,
                 ClientDialogType = resolvedClientDialogType,
+                RawClientDialogType = _rawClientDialogType,
                 BackgroundUolStringPoolId = ResolveBackgroundUolStringPoolId(_style),
                 DialogUolStringPoolId = ResolveDialogTitleStringPoolId(resolvedClientDialogType),
                 AcceptButtonControlId = AcceptButtonControlId,
@@ -369,7 +374,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $" packet=[{FormatPayload(snapshot.LastMarriageResultPacketPayload)}];"
                 : string.Empty;
             string surfaceState = snapshot.UseClientDialogInvitationSurface
-                ? $" dialogSurface={snapshot.ClientDialogInvitationAssetPath};"
+                ? $" rawDialogType={snapshot.RawClientDialogType}; selectedDialogType={snapshot.ClientDialogType}; dialogSurface={snapshot.ClientDialogInvitationAssetPath};"
                 : string.Empty;
             string downstreamState = snapshot.OwnsDownstreamHandoff
                 ? " downstream=invitation-owned;"
@@ -459,8 +464,27 @@ namespace HaCreator.MapSimulator.Interaction
             out int clientDialogType,
             out string message)
         {
+            bool decoded = TryDecodeMarriageResultOpenPayloadDetailed(
+                payload,
+                out groomName,
+                out brideName,
+                out _,
+                out clientDialogType,
+                out message);
+            return decoded;
+        }
+
+        internal static bool TryDecodeMarriageResultOpenPayloadDetailed(
+            byte[] payload,
+            out string groomName,
+            out string brideName,
+            out int rawClientDialogType,
+            out int clientDialogType,
+            out string message)
+        {
             groomName = DefaultGroomName;
             brideName = DefaultBrideName;
+            rawClientDialogType = DefaultClientDialogType;
             clientDialogType = DefaultClientDialogType;
 
             if (payload == null || payload.Length == 0)
@@ -482,8 +506,9 @@ namespace HaCreator.MapSimulator.Interaction
 
                 groomName = ReadMapleString(reader);
                 brideName = ReadMapleString(reader);
-                clientDialogType = NormalizeClientDialogType(reader.ReadUInt16());
-                message = $"Decoded {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} for {groomName} and {brideName}.";
+                rawClientDialogType = reader.ReadUInt16();
+                clientDialogType = NormalizeClientDialogType(rawClientDialogType);
+                message = $"Decoded {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} for {groomName} and {brideName} with raw constructor nType {rawClientDialogType}.";
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
@@ -560,6 +585,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool LastOpenUsedMarriageResultPacket { get; init; }
         public WeddingInvitationCloseAction LastCloseAction { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
+        public int RawClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
         public int BackgroundUolStringPoolId { get; init; }
         public int DialogUolStringPoolId { get; init; }
@@ -629,6 +655,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool OwnsDownstreamHandoff { get; init; }
         public bool HasDismissShortcut { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
+        public int RawClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;

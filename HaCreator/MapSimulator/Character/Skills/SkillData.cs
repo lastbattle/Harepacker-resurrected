@@ -2407,6 +2407,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedAlphaVectorObjectId { get; init; }
         public int SimulatedSourceCanvasObjectId { get; init; }
         public int SimulatedInsertCanvasSequence { get; init; }
+        public int SimulatedInsertCanvasResultObjectId { get; init; }
+        public int SimulatedInsertCanvasResultReleaseCount { get; init; }
         public int SimulatedAnimateMode { get; init; }
         public int SimulatedAnimateSequence { get; init; }
         public int SimulatedRegisterRepeatAnimationSequence { get; init; }

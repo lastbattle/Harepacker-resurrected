@@ -1406,12 +1406,73 @@ namespace HaCreator.MapSimulator
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerState(AdminShopDialogUI cashShopWindow)
         {
             IReadOnlyList<string> lines = BuildCashShopTabOwnerLines(cashShopWindow);
+            return BuildCashShopTabWrapperOwnerStateForTests(lines);
+        }
+
+        internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerStateForTests(
+            IReadOnlyList<string> lines = null,
+            int currentCategory = 1,
+            int currentSortType = 0,
+            int lastKeyDownTick = 0)
+        {
+            IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
             {
                 OwnerName = "CCSWnd_Tab",
-                Status = lines.Count > 0 ? lines[0] : string.Empty,
-                Lines = lines
+                Status = stateLines.Count > 0 ? stateLines[0] : "CCSWnd_Tab wrapper state is modeled from the parent CCashShop stage.",
+                NativeCreateFunction = "CCSWnd_Tab::OnCreate@0x4ccc10",
+                NativeDrawFunction = "CCSWnd_Tab::ChangeCategory@0x4c8e40",
+                SourceSurface = "UI/CashShop.img/CSTab/Tab",
+                SelectorRuntime = new CashShopStageChildWindow.SelectorControlRuntimeState
+                {
+                    ControlId = 1000,
+                    InitArg = 0,
+                    Position = new Microsoft.Xna.Framework.Point(8, 59),
+                    StartX = 0,
+                    StartY = 20,
+                    StartWidth = 0,
+                    StartHeight = 1,
+                    ActiveIndex = Math.Clamp(currentCategory, 0, 10),
+                    VisibleCount = 1,
+                    TotalCount = 10,
+                    NormalColor = currentCategory == 10 ? -12346660 : 0,
+                    SelectedColor = -1,
+                    OutlineColor = -1,
+                    FocusLabel = currentCategory == 10 ? "Search Result" : $"Category {currentCategory.ToString(CultureInfo.InvariantCulture)}",
+                    Labels = new[] { "slot0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
+                },
+                SortComboControl = new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtComboBox",
+                    ControlId = 1001,
+                    Position = new Microsoft.Xna.Framework.Point(646, 76),
+                    Width = 18,
+                    Height = 17,
+                    SourceStringPoolId = 0x12FA
+                },
+                CanvasSlots = BuildCashShopTabCanvasSlotsForTests(),
+                LastKeyDownTick = lastKeyDownTick,
+                CurrentCategory = currentCategory,
+                CurrentSortType = currentSortType,
+                HasDedicatedWzSurface = true,
+                Lines = stateLines
             };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.CashShopWrapperOwnerState.CanvasSlotState> BuildCashShopTabCanvasSlotsForTests()
+        {
+            return Enumerable.Range(0, 10)
+                .Select(slot => new CashShopStageChildWindow.CashShopWrapperOwnerState.CanvasSlotState
+                {
+                    SlotIndex = slot,
+                    WzPath = slot == 0
+                        ? string.Empty
+                        : $"UI/CashShop.img/CSTab/Tab/{slot.ToString(CultureInfo.InvariantCulture)}",
+                    Width = slot == 0 ? 0 : 508,
+                    Height = slot == 0 ? 0 : 78,
+                    IsBackedByWz = slot != 0
+                })
+                .ToArray();
         }
 
         private CashShopStageChildWindow.LockerOwnerState BuildCashShopLockerOwnerState(AdminShopDialogUI cashShopWindow)
@@ -1421,6 +1482,7 @@ namespace HaCreator.MapSimulator
             int scrollBarDownButtonId = ResolveCashLockerScrollBarDownButtonId(_playerManager?.Player?.Build?.Job ?? 0);
             int usedSlotCount = snapshot.UsedSlotCount;
             int slotLimit = snapshot.SlotLimit;
+            int sharedCharacterCount = snapshot.SharedCharacterNames?.Count ?? 0;
             if (stageWindow != null)
             {
                 if (stageWindow.CashLockerItemCount > 0)
@@ -1450,7 +1512,19 @@ namespace HaCreator.MapSimulator
                 ScrollBarY = 29,
                 ScrollBarHeight = 67,
                 SharedCharacterNames = snapshot.SharedCharacterNames,
-                ButtonControls = BuildCashShopLockerButtonControlStates()
+                ButtonControls = BuildCashShopLockerButtonControlStates(),
+                ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                    CashShopLockerScrollBarControlId,
+                    1,
+                    scrollBarDownButtonId,
+                    new Microsoft.Xna.Framework.Point(229, 29),
+                    67,
+                    208,
+                    0,
+                    Math.Max(0, sharedCharacterCount - 3),
+                    Math.Min(3, sharedCharacterCount),
+                    sharedCharacterCount,
+                    isDragging: false)
             };
         }
 
@@ -1541,12 +1615,25 @@ namespace HaCreator.MapSimulator
                 selectedEntryTitle = packetFocus?.FocusTitle ?? string.Empty;
             }
 
+            int equipCount = snapshot.EquipCount;
+            int useCount = snapshot.UseCount;
+            int setupCount = snapshot.SetupCount;
+            int etcCount = snapshot.EtcCount;
+            string activeTabName = packetFocus?.ActiveTabName ?? string.Empty;
+            int activeTabCount = activeTabName switch
+            {
+                "Use" => useCount,
+                "Setup" => setupCount,
+                "Etc" => etcCount,
+                _ => equipCount
+            };
+
             return new CashShopStageChildWindow.InventoryOwnerState
             {
-                EquipCount = snapshot.EquipCount,
-                UseCount = snapshot.UseCount,
-                SetupCount = snapshot.SetupCount,
-                EtcCount = snapshot.EtcCount,
+                EquipCount = equipCount,
+                UseCount = useCount,
+                SetupCount = setupCount,
+                EtcCount = etcCount,
                 CashCount = snapshot.CashCount,
                 FirstPosition = packetFocus?.FirstPosition ?? 1,
                 ScrollOffset = packetFocus?.ScrollOffset ?? 0,
@@ -1565,11 +1652,23 @@ namespace HaCreator.MapSimulator
                 ScrollBarX = 160,
                 ScrollBarY = 54,
                 ScrollBarHeight = 102,
-                ActiveTabName = packetFocus?.ActiveTabName ?? string.Empty,
+                ActiveTabName = activeTabName,
                 SelectedEntryTitle = selectedEntryTitle,
                 PacketFocusSignature = packetFocus?.FocusSignature ?? string.Empty,
                 PacketFocusMessage = packetFocus?.FocusMessage ?? string.Empty,
-                ButtonControls = BuildCashShopInventoryButtonControlStates()
+                ButtonControls = BuildCashShopInventoryButtonControlStates(),
+                ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                    CashShopInventoryScrollBarControlId,
+                    1,
+                    0,
+                    new Microsoft.Xna.Framework.Point(160, 54),
+                    102,
+                    140,
+                    packetFocus?.ScrollOffset ?? 0,
+                    Math.Max(0, activeTabCount - 4),
+                    Math.Min(4, activeTabCount),
+                    activeTabCount,
+                    isDragging: false)
             };
         }
 
@@ -1835,7 +1934,36 @@ namespace HaCreator.MapSimulator
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     ButtonControls = BuildCashShopListButtonControlStates(),
                     VisibleEntries = packetEntries,
-                    RecentPackets = recentPackets
+                    RecentPackets = recentPackets,
+                    ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                        1001,
+                        1,
+                        0,
+                        new Microsoft.Xna.Framework.Point(381, 44),
+                        339,
+                        412,
+                        stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                            && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                ? stageWindow.CashStageCatalogSnapshotScrollOffset
+                                : 0,
+                        Math.Max(0, Math.Max(
+                            packetEntries.Count,
+                            string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
+                                ? stageWindow.WishlistCount
+                                : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                                    && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                        ? stageWindow.CashStageCatalogSnapshotTotalCount
+                                        : 0) - 5),
+                        Math.Min(5, packetEntries.Count),
+                        Math.Max(
+                            packetEntries.Count,
+                            string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
+                                ? stageWindow.WishlistCount
+                                : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                                    && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                        ? stageWindow.CashStageCatalogSnapshotTotalCount
+                                        : 0),
+                        isDragging: false)
                 };
             }
 
@@ -1851,7 +1979,19 @@ namespace HaCreator.MapSimulator
                     PlateFocusIndex = -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     ButtonControls = BuildCashShopListButtonControlStates(),
-                    RecentPackets = recentPackets
+                    RecentPackets = recentPackets,
+                    ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                        1001,
+                        1,
+                        0,
+                        new Microsoft.Xna.Framework.Point(381, 44),
+                        339,
+                        412,
+                        0,
+                        0,
+                        0,
+                        0,
+                        isDragging: false)
                 };
             }
 
@@ -1884,7 +2024,19 @@ namespace HaCreator.MapSimulator
                 HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                 ButtonControls = BuildCashShopListButtonControlStates(),
                 VisibleEntries = entries,
-                RecentPackets = recentPackets
+                RecentPackets = recentPackets,
+                ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                    1001,
+                    1,
+                    0,
+                    new Microsoft.Xna.Framework.Point(381, 44),
+                    339,
+                    412,
+                    snapshot.ScrollOffset,
+                    Math.Max(0, snapshot.TotalCount - 5),
+                    Math.Min(5, snapshot.TotalCount),
+                    snapshot.TotalCount,
+                    isDragging: false)
             };
         }
 
@@ -2107,11 +2259,31 @@ namespace HaCreator.MapSimulator
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopBestWrapperOwnerState()
         {
             IReadOnlyList<string> lines = BuildCashShopBestOwnerLines();
+            int pendingCommoditySerialNumber =
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
+                    ? stageWindow.PendingCommoditySerialNumber
+                    : 0;
+            return BuildCashShopBestWrapperOwnerStateForTests(lines, pendingCommoditySerialNumber);
+        }
+
+        internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopBestWrapperOwnerStateForTests(
+            IReadOnlyList<string> lines = null,
+            int pendingCommoditySerialNumber = 0)
+        {
+            IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
             {
                 OwnerName = "CCSWnd_Best",
-                Status = lines.Count > 0 ? lines[0] : string.Empty,
-                Lines = lines
+                Status = stateLines.Count > 0 ? stateLines[0] : "CCSWnd_Best wrapper state is modeled from the parent CCashShop best list.",
+                NativeCreateFunction = "CCSWnd_Best::OnCreate@0x4c6820",
+                NativeDrawFunction = "CCSWnd_Best::ChangeCategory@0x4c6680",
+                SourceSurface = "CCashShop.m_aBest / no UI/CashShop.img CSBest branch in v95",
+                BestSlotCount = 5,
+                BestRowHeight = 80,
+                BestEventBadgePosition = new Microsoft.Xna.Framework.Point(0, 0),
+                PendingCommoditySerialNumber = Math.Max(0, pendingCommoditySerialNumber),
+                HasDedicatedWzSurface = false,
+                Lines = stateLines
             };
         }
 
@@ -2132,11 +2304,84 @@ namespace HaCreator.MapSimulator
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerState()
         {
             IReadOnlyList<string> lines = BuildCashShopItemSearchOwnerLines();
+            return BuildCashShopItemSearchWrapperOwnerStateForTests(lines);
+        }
+
+        internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerStateForTests(
+            IReadOnlyList<string> lines = null)
+        {
+            IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
             {
                 OwnerName = "CCSWnd_ItemSearch",
-                Status = lines.Count > 0 ? lines[0] : string.Empty,
-                Lines = lines
+                Status = stateLines.Count > 0 ? stateLines[0] : "CCSWnd_ItemSearch wrapper state is modeled from the parent CCashShop search result list.",
+                NativeCreateFunction = "CCSWnd_ItemSearch::OnCreate@0x4c8980",
+                NativeDrawFunction = "CCashShop::SetSearchResult@0x493c00",
+                SourceSurface = "UI/CashShop.img/CSItemSearch",
+                SearchButtonControl = new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtSearch",
+                    ControlId = 1000,
+                    Position = new Microsoft.Xna.Framework.Point(507, 272),
+                    Width = 89,
+                    Height = 22,
+                    SourceStringPoolId = 0x12FA
+                },
+                ButtonControls = BuildCashShopItemSearchButtonControlsForTests(),
+                PriceRanges = BuildCashShopItemSearchPriceRangesForTests(),
+                HasDedicatedWzSurface = true,
+                Lines = stateLines
+            };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState> BuildCashShopItemSearchButtonControlsForTests()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtSearch",
+                    ControlId = 1000,
+                    Position = new Microsoft.Xna.Framework.Point(507, 272),
+                    Width = 89,
+                    Height = 22,
+                    SourceStringPoolId = 0x12FA
+                },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtAllItem",
+                    ControlId = 1001,
+                    Position = new Microsoft.Xna.Framework.Point(446, 238),
+                    Width = 61,
+                    Height = 17
+                },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtBuy",
+                    ControlId = 1002,
+                    Position = new Microsoft.Xna.Framework.Point(508, 238),
+                    Width = 45,
+                    Height = 17
+                },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtCancel",
+                    ControlId = 1003,
+                    Position = new Microsoft.Xna.Framework.Point(560, 238),
+                    Width = 45,
+                    Height = 17
+                }
+            };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.CashShopWrapperOwnerState.PriceRangeState> BuildCashShopItemSearchPriceRangesForTests()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.PriceRangeState { Index = 0, LowPrice = 0, HighPrice = 1000 },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.PriceRangeState { Index = 1, LowPrice = 1000, HighPrice = 3000 },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.PriceRangeState { Index = 2, LowPrice = 3000, HighPrice = 5000 },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.PriceRangeState { Index = 3, LowPrice = 5000, HighPrice = 50000 }
             };
         }
 

@@ -44,13 +44,18 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                ReadOnlySpan<byte> rowPayload = payload.AsSpan(offset, RowSize);
                 rows.Add(new AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot
                 {
                     SerialNumber = BitConverter.ToInt32(payload, offset),
                     ItemId = BitConverter.ToInt32(payload, offset + sizeof(int)),
                     Price = BitConverter.ToInt32(payload, offset + (sizeof(int) * 2)),
                     SaleState = payload[offset + (sizeof(int) * 3)],
-                    MaxPerSlot = BitConverter.ToUInt16(payload, offset + (sizeof(int) * 3) + sizeof(byte))
+                    MaxPerSlot = BitConverter.ToUInt16(payload, offset + (sizeof(int) * 3) + sizeof(byte)),
+                    PacketRowIndex = i + 1,
+                    PacketRowOffset = offset,
+                    PacketRawByteLength = RowSize,
+                    PacketPayloadRawHex = Convert.ToHexString(rowPayload)
                 });
                 offset += RowSize;
             }

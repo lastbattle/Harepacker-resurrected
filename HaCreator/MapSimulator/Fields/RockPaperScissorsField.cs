@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int NpcChoiceX = 203;
         private const int NpcChoiceY = 103;
         private const int ChoiceSwitchCadenceMs = 120;
+        private const double ChoiceSwitchSlowdownFactor = 1.2d;
         private const int RoundLimitMs = 30000;
         private const int ResultFadeDelayMs = 1000;
         private const int ResultExpireDelayMs = 3000;
@@ -207,7 +208,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
                 _lastSwitchTick = currentTick;
-                _switchCadenceMs *= 2;
+                _switchCadenceMs = CalculateNextSwitchCadence(_switchCadenceMs);
                 if (_switchCadenceMs >= 720 && _currentNpcDisplayIndex == (int)_npcChoice)
                 {
                     _switchCadenceMs = 0;
@@ -1327,6 +1328,11 @@ namespace HaCreator.MapSimulator.Fields
             return tipWidth + nextPosition < 0
                 ? TipViewportWidth
                 : nextPosition;
+        }
+
+        internal static int CalculateNextSwitchCadence(int currentCadenceMs)
+        {
+            return (int)(currentCadenceMs * ChoiceSwitchSlowdownFactor);
         }
 
         internal static string FormatTipStringPoolText(int stringPoolId, string fallbackFormat, params object[] args)

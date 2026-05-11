@@ -1814,6 +1814,12 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool HasUnmetCompletionGenderConversationDemand(int? requiredGender, CharacterBuild build)
+        {
+            return HasAuthoredCompletionGenderDemand(requiredGender) &&
+                   (build == null || HasUnmetCompletionGenderDemand(requiredGender, build.Gender));
+        }
+
         internal static bool HasUnmetCompletionMarriageDemand(
             bool requiresMarriage,
             bool requiresNoMarriage,
@@ -1836,6 +1842,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return requiresNoMarriage && isMarried;
+        }
+
+        internal static bool HasUnmetMarriageConversationDemand(
+            bool requiresMarriage,
+            bool requiresNoMarriage,
+            CharacterBuild build)
+        {
+            return HasAuthoredCompletionMarriageDemand(requiresMarriage, requiresNoMarriage) &&
+                   (build == null ||
+                    HasUnmetCompletionMarriageDemand(
+                        requiresMarriage,
+                        requiresNoMarriage,
+                        build.HasAuthoritativeProfileMarriage,
+                        build.IsProfileMarried));
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -5863,21 +5883,17 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
                 HasUnresolvedCompletionPvpGradeConversationDemand(definition.EndPvpGradeRequirement);
             bool hasUnmetGenderRequirement = state == QuestStateType.Started &&
-                build != null &&
-                HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender);
-            bool hasUnmetMarriageRequirement = build != null &&
-                (state == QuestStateType.Not_Started
-                    ? HasUnmetCompletionMarriageDemand(
-                        definition.StartRequiresMarriage,
-                        definition.StartRequiresNoMarriage,
-                        build.HasAuthoritativeProfileMarriage,
-                        build.IsProfileMarried)
-                    : state == QuestStateType.Started &&
-                      HasUnmetCompletionMarriageDemand(
-                          definition.EndRequiresMarriage,
-                          definition.EndRequiresNoMarriage,
-                          build.HasAuthoritativeProfileMarriage,
-                          build.IsProfileMarried));
+                HasUnmetCompletionGenderConversationDemand(definition.EndGenderRequirement, build);
+            bool hasUnmetMarriageRequirement = state == QuestStateType.Not_Started
+                ? HasUnmetMarriageConversationDemand(
+                    definition.StartRequiresMarriage,
+                    definition.StartRequiresNoMarriage,
+                    build)
+                : state == QuestStateType.Started &&
+                  HasUnmetMarriageConversationDemand(
+                      definition.EndRequiresMarriage,
+                      definition.EndRequiresNoMarriage,
+                      build);
             bool hasUnmetUserInteractRequirement = state == QuestStateType.Started &&
                 HasUnmetCompletionUserInteractDemand(
                     definition.EndUserInteractDemand,
@@ -10181,8 +10197,8 @@ namespace HaCreator.MapSimulator.Interaction
                 EndMonsterBookMinCardTypes = ParseInt(endCheck?["mbmin"]),
                 EndMonsterBookMaxCardTypes = ParseInt(endCheck?["mbmax"]),
                 EndMonsterBookCardRequirements = ParseMonsterBookCardRequirements(endCheck?["mbcard"]),
-                EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
-                EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
+                EndTimeKeepFieldSet = ParseCompletionTimeKeepFieldSet(endCheck),
+                EndTimeKeepFieldSetKeepTime = ParseCompletionTimeKeepFieldSetKeepTime(endCheck),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
                 EndGenderRequirement = ParseFirstInt(endCheck, "gender", "sex", "genderType"),
                 EndRequiresMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["marriaged"])
@@ -10326,6 +10342,40 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static int? ParseCompletionTimeKeepFieldSetKeepTime(WzImageProperty owner)
+        {
+            return ParseFirstInt(
+                owner,
+                "fieldsetkeeptime",
+                "fieldSetKeepTime",
+                "timeKeepFieldSetKeepTime",
+                "keepTime",
+                "keptTime");
+        }
+
+        private static string ParseCompletionTimeKeepFieldSet(WzImageProperty owner)
+        {
+            if (owner == null)
+            {
+                return string.Empty;
+            }
+
+            string fieldSet = ParseString(owner["fieldset"] ?? owner["fieldSet"]);
+            return !string.IsNullOrWhiteSpace(fieldSet)
+                ? fieldSet
+                : ParseString(owner["timeKeepFieldSet"]);
+        }
+
+        internal static string ParseCompletionTimeKeepFieldSetForTesting(WzImageProperty owner)
+        {
+            return ParseCompletionTimeKeepFieldSet(owner);
+        }
+
+        internal static int? ParseCompletionTimeKeepFieldSetKeepTimeForTesting(WzImageProperty owner)
+        {
+            return ParseCompletionTimeKeepFieldSetKeepTime(owner);
         }
 
         private static IReadOnlyList<QuestRecordTextRequirement> ParseQuestRecordTextRequirements(WzImageProperty property)
