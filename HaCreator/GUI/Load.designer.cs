@@ -40,6 +40,7 @@ namespace HaCreator.GUI
             this.tabControl_maps = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.checkBox_townOnly = new System.Windows.Forms.CheckBox();
+            this.button_resolveMissingMaps = new System.Windows.Forms.Button();
             this.tabPage2 = new System.Windows.Forms.TabPage();
             this.button_clearHistory = new System.Windows.Forms.Button();
             this.button_deleteSelected = new System.Windows.Forms.Button();
@@ -131,6 +132,7 @@ namespace HaCreator.GUI
             // tabPage1
             // 
             this.tabPage1.Controls.Add(this.checkBox_townOnly);
+            this.tabPage1.Controls.Add(this.button_resolveMissingMaps);
             this.tabPage1.Controls.Add(this.mapBrowser);
             this.tabPage1.Controls.Add(this.loadButton);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
@@ -152,6 +154,16 @@ namespace HaCreator.GUI
             this.checkBox_townOnly.Text = "Town only";
             this.checkBox_townOnly.UseVisualStyleBackColor = true;
             this.checkBox_townOnly.CheckedChanged += new System.EventHandler(this.checkBox_townOnly_CheckedChanged);
+            // 
+            // button_resolveMissingMaps
+            // 
+            this.button_resolveMissingMaps.Location = new System.Drawing.Point(628, 482);
+            this.button_resolveMissingMaps.Name = "button_resolveMissingMaps";
+            this.button_resolveMissingMaps.Size = new System.Drawing.Size(124, 23);
+            this.button_resolveMissingMaps.TabIndex = 12;
+            this.button_resolveMissingMaps.Text = "Resolve Missing";
+            this.button_resolveMissingMaps.UseVisualStyleBackColor = true;
+            this.button_resolveMissingMaps.Click += new System.EventHandler(this.button_resolveMissingMaps_Click);
             //
             // tabPage2
             //
@@ -279,6 +291,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.TabPage tabPage1;
         private System.Windows.Forms.TabPage tabPage2;
         private System.Windows.Forms.CheckBox checkBox_townOnly;
+        private System.Windows.Forms.Button button_resolveMissingMaps;
         private System.Windows.Forms.Button button_clearHistory;
         private System.Windows.Forms.Button button_deleteSelected;
         private MapBrowser mapBrowser_history;

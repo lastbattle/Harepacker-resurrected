@@ -20,12 +20,13 @@ namespace HaCreator.MapEditor.Instance
         private string name;
         private MapleBool _hide;
         private MapleBool _reactor;
+        private MapleBool _dynamic;
         private MapleBool _flow;
         private int? _rx, _ry, _cx, _cy;
         private string _tags;
         private List<ObjectInstanceQuest> questInfo;
 
-        public ObjectInstance(ObjectInfo baseInfo, Layer layer, Board board, int x, int y, int z, int zM, MapleBool r, MapleBool hide, MapleBool reactor, MapleBool flow, int? rx, int? ry, int? cx, int? cy, string name, string tags, List<ObjectInstanceQuest> questInfo, bool flip)
+        public ObjectInstance(ObjectInfo baseInfo, Layer layer, Board board, int x, int y, int z, int zM, MapleBool r, MapleBool hide, MapleBool reactor, MapleBool flow, int? rx, int? ry, int? cx, int? cy, string name, string tags, List<ObjectInstanceQuest> questInfo, bool flip, MapleBool dynamicObject = default)
             : base(board, layer, zM, x, y, z)
         {
             this.baseInfo = baseInfo;
@@ -34,6 +35,7 @@ namespace HaCreator.MapEditor.Instance
             this.name = name;
             this._hide = hide;
             this._reactor = reactor;
+            this._dynamic = dynamicObject;
             this._flow = flow;
             this._rx = rx;
             this._ry = ry;
@@ -187,6 +189,7 @@ namespace HaCreator.MapEditor.Instance
         public string tags { get { return _tags; } set { _tags = value; } }
         public MapleBool r { get { return _r; } set { _r = value; } }
         public MapleBool hide { get { return _hide; } set { _hide = value; } }
+        public MapleBool Dynamic { get { return _dynamic; } set { _dynamic = value; } }
         public MapleBool flow { get { return _flow; } set { _flow = value; } }
         public MapleBool reactor { get { return _reactor; } set { _reactor = value; } }
         public int? rx { get { return _rx; } set { _rx = value; } }
@@ -201,7 +204,7 @@ namespace HaCreator.MapEditor.Instance
             public bool flip;
             public MapleBool r;
             public string name;
-            public MapleBool hide, reactor, flow;
+            public MapleBool hide, reactor, dynamicObject, flow;
             public int? rx, ry, cx, cy;
             public string tags;
             public ObjectInstanceQuest[] quest;
@@ -226,6 +229,7 @@ namespace HaCreator.MapEditor.Instance
             result.name = name;
             result.hide = _hide;
             result.reactor = _reactor;
+            result.dynamicObject = _dynamic;
             result.flow = _flow;
             result.rx = _rx;
             result.ry = _ry;
@@ -244,6 +248,7 @@ namespace HaCreator.MapEditor.Instance
             name = json.name;
             _hide = json.hide;
             _reactor = json.reactor;
+            _dynamic = json.dynamicObject;
             _flow = json.flow;
             _rx = json.rx;
             _ry = json.ry;

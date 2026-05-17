@@ -465,7 +465,7 @@ namespace HaRepacker.GUI.HotSwap
                 if (expectedPath?.Equals(filePath, StringComparison.OrdinalIgnoreCase) == true)
                 {
                     // Find the child node for this image
-                    foreach (WzNode child in parent.Nodes)
+                    foreach (WzNode child in parent.Nodes.OfType<WzNode>())
                     {
                         if (child.Tag is WzImage img && img.Name?.Equals(fileName, StringComparison.OrdinalIgnoreCase) == true)
                             return child;
@@ -485,7 +485,7 @@ namespace HaRepacker.GUI.HotSwap
             }
 
             // Check children
-            foreach (WzNode child in parent.Nodes)
+            foreach (WzNode child in parent.Nodes.OfType<WzNode>())
             {
                 var result = FindNodeRecursive(child, filePath);
                 if (result != null)
@@ -528,7 +528,7 @@ namespace HaRepacker.GUI.HotSwap
                     return parent;
             }
 
-            foreach (WzNode child in parent.Nodes)
+            foreach (WzNode child in parent.Nodes.OfType<WzNode>())
             {
                 var result = FindDirectoryNodeRecursive(child, directoryPath);
                 if (result != null)

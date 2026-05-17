@@ -118,6 +118,7 @@ namespace HaSharedLibrary.Render.DX
 
         public int Width { get { return texture.Width; } }
         public int Height { get { return texture.Height; } }
+        public Texture2D Texture { get { return texture; } }
 
         public object Tag { get { return _Tag; } set { this._Tag = value; } }
     }

@@ -46,76 +46,140 @@
         </Grid>
 
 
-        <!-- Side panel-->
-        <ScrollViewer Grid.Row="1" Grid.Column="1"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Visible"
-                      x:Name="editorPanel">
-            <StackPanel Orientation="Vertical">
+        <!-- Side panel -->
+        <Grid Grid.Row="1" Grid.Column="1">
+            <TabControl x:Name="toolWindowsTabControl" SelectionChanged="ToolWindowsTabControl_SelectionChanged">
+                <TabItem x:Name="toolboxTabItem" Header="Toolbox">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Visible"
+                                  x:Name="editorPanel">
+                        <StackPanel Orientation="Vertical">
 
-                <Expander Header="Tile"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
-                        <editorItems:TilePanel x:Name="tilePanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Tile"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
+                                    <editorItems:TilePanel x:Name="tilePanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander Header="Object"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="objPanelHost" Visibility="Collapsed">
-                        <editorItems:ObjPanel x:Name="objPanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Object"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="objPanelHost" Visibility="Collapsed">
+                                    <editorItems:ObjPanel x:Name="objPanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander Header="Life"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="lifePanelHost" Visibility="Collapsed">
-                        <editorItems:LifePanel x:Name="lifePanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Life"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="lifePanelHost" Visibility="Collapsed">
+                                    <editorItems:LifePanel x:Name="lifePanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander Header="Portal"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="portalPanelHost" Visibility="Collapsed">
-                        <editorItems:PortalPanel x:Name="portalPanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Portal"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="portalPanelHost" Visibility="Collapsed">
+                                    <editorItems:PortalPanel x:Name="portalPanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander Header="Background"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="bgPanelHost" Visibility="Collapsed">
-                        <editorItems:BackgroundPanel x:Name="bgPanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Background"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="bgPanelHost" Visibility="Collapsed">
+                                    <editorItems:BackgroundPanel x:Name="bgPanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander x:Name="expander_bgBlackBorderPanel"
-                           Header="Background Border"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="bgBlackBorderPanelHost" Visibility="Collapsed">
-                        <editorItems:BlackBorderPanel x:Name="bgBlackBorderPanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander x:Name="expander_bgBlackBorderPanel"
+                                      Header="Background Border"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="bgBlackBorderPanelHost" Visibility="Collapsed">
+                                    <editorItems:BlackBorderPanel x:Name="bgBlackBorderPanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Expander Header="Common"
-                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                    <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">
-                        <editorItems:CommonPanel x:Name="commonPanel"/>
-                    </WindowsFormsHost>
-                </Expander>
+                            <Expander Header="Common"
+                                      Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                                <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">
+                                    <editorItems:CommonPanel x:Name="commonPanel"/>
+                                </WindowsFormsHost>
+                            </Expander>
 
-                <Button x:Name="btnObjectViewer"
-                        Content="Object Viewer"
-                        Click="BtnObjectViewer_Click"
-                        Margin="5"
-                        Padding="10,5"
-                        ToolTip="Open Object Viewer window"/>
+                            <Expander x:Name="expanderAIMapEditor"
+                                      Header="AI Map Editor"
+                                      Expanded="ExpanderAIMapEditor_Expanded"
+                                      ToolTip="Open AI Map Editor for the current map"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
-                <Expander x:Name="expanderAIMapEditor"
-                          Header="AI Map Editor"
-                          Expanded="ExpanderAIMapEditor_Expanded"
-                          ToolTip="Open AI Map Editor for the current map"/>
-            </StackPanel>
-        </ScrollViewer>
+                <TabItem x:Name="objectViewerTabItem" Header="Object Viewer">
+                    <Grid>
+                        <WindowsFormsHost x:Name="objectViewerPanelHostDocked">
+                            <editorItems:ObjectViewerPanel x:Name="objectViewerPanelDocked"/>
+                        </WindowsFormsHost>
+                    </Grid>
+                </TabItem>
+
+                <TabItem x:Name="mapLoadErrorsTabItem" Header="Map Load Errors">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock x:Name="mapLoadErrorsSummaryTextBlock"
+                                   Grid.Row="0"
+                                   Margin="0,0,0,8"
+                                   TextWrapping="Wrap"
+                                   FontWeight="SemiBold"/>
+
+                        <TextBox x:Name="mapLoadErrorsTextBox"
+                                 Grid.Row="1"
+                                 IsReadOnly="True"
+                                 TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 AcceptsReturn="True"
+                                 AcceptsTab="True"
+                                 FontFamily="Consolas"/>
+
+                        <Grid Grid.Row="2" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="mapLoadErrorsLogPathTextBlock"
+                                       Grid.Column="0"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,12,0"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <Button x:Name="mapLoadErrorsClearButton"
+                                    Grid.Column="1"
+                                    Width="88"
+                                    Click="MapLoadErrorsClearButton_Click"
+                                    Content="Clear"/>
+                            <Button x:Name="mapLoadErrorsCopyButton"
+                                    Grid.Column="2"
+                                    Width="88"
+                                    Margin="8,0,0,0"
+                                    Click="MapLoadErrorsCopyButton_Click"
+                                    Content="Copy All"/>
+                            <Button x:Name="mapLoadErrorsOpenLogButton"
+                                    Grid.Column="3"
+                                    Width="88"
+                                    Margin="8,0,0,0"
+                                    Click="MapLoadErrorsOpenLogButton_Click"
+                                    Content="Open Log"/>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
 
         <StatusBar x:Name="statusBar" Grid.Row="2" Grid.ColumnSpan="2">
             <StatusBarItem HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">

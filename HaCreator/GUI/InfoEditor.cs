@@ -71,7 +71,7 @@ namespace HaCreator.GUI
             yBox.Value = board.MapSize.Y;
 
             List<string> sortedBGMs = new List<string>();
-            foreach (KeyValuePair<string, WzBinaryProperty> bgm in Program.InfoManager.BGMs)
+            foreach (KeyValuePair<string, WzInformationManager.BgmEntry> bgm in Program.InfoManager.BGMs)
                 sortedBGMs.Add(bgm.Key);
             sortedBGMs.Sort();
             foreach (string bgm in sortedBGMs)
@@ -385,9 +385,10 @@ namespace HaCreator.GUI
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             string bgm = (string)bgmBox.SelectedItem;
-            if (Program.InfoManager.BGMs.ContainsKey(bgm))
+            WzBinaryProperty soundProperty = Program.InfoManager.GetBgm(bgm);
+            if (soundProperty != null)
             {
-                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[bgm];
+                soundPlayer1.SoundProperty = soundProperty;
             } else
             {
                 string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", bgm, this.info.id);

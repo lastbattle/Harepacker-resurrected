@@ -219,6 +219,15 @@ Each extracted version has a `manifest.json`:
 
 HaRepacker is the WZ/IMG file editor component.
 
+---
+
+## MapSimulator Combat Notes
+
+- Mob combat in `HaCreator/MapSimulator` now follows a two-phase flow similar to the v95 client: the mob AI chooses an attack or skill action, then `MapSimulator` resolves delayed projectiles and ground-hit entries separately.
+- `MobItem.InitializeAI()` consumes both `Mob.wz/info/attack` and `Mob.wz/info/skill` metadata so skill actions (`skill1/skill2/...`) are distinct from normal attacks instead of being folded into the attack list.
+- `PlayerCombat` applies mob hits only when the attack or skill timing window is active, which keeps skill casts and delayed boss attacks from dealing damage continuously during the full animation.
+- Boss ranged attacks can now materialize as moving projectiles and delayed ground rectangles in the simulator, matching the client-side split between action playback and later bullet / area-hit processing.
+
 ### Supported File Types
 
 | Type | Extension | Description |
@@ -289,6 +298,11 @@ See [img-hot-swap.md](./img-hot-swap.md) Part 2 for details.
 | `ContextMenuManager` | HaRepacker/GUI/ContextMenuManager.cs | Context menu handling |
 | `VirtualWzDirectory` | MapleLib/Img/VirtualWzDirectory.cs | Filesystem-backed WzDirectory |
 | `ImgDirectoryWatcherService` | MapleLib/Img/ImgDirectoryWatcherService.cs | File change monitoring |
+
+### MapSimulator Attack Info
+
+`HaCreator/MapSimulator` now treats `Mob.img/attackN/info` as structured attack data instead of only generic attack animations.
+The loader carries `range`, `effectAfter`, `attackAfter`, `areaCount`, `attackCount`, `start`, `areaWarning`, `effect`, and numbered `effect0/effect1/...` nodes into the simulator so boss attacks can place telegraphs and delayed ground effects on footholds with client-style timing.
 
 ---
 

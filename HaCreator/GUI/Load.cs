@@ -4,11 +4,13 @@
 using System;
 using System.Windows.Forms;
 using System.IO;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
 using System.Collections.Generic;
+using System.Linq;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.Serializer;
@@ -393,6 +395,371 @@ namespace HaCreator.GUI
         private void XMLBox_TextChanged(object sender, EventArgs e)
         {
             ApplicationSettings.LastXmlPath = XMLBox.Text;
+        }
+
+        private void button_resolveMissingMaps_Click(object sender, EventArgs e)
+        {
+            WaitWindow waitWindow = new WaitWindow("Resolving missing map strings...");
+            waitWindow.Show();
+            Application.DoEvents();
+
+            try
+            {
+                MissingMapResolutionResult result = ResolveMissingMapStringEntries();
+
+                mapBrowser.ReloadMapsListboxItem(true);
+                mapBrowser.Search.TextChanged(searchBox, EventArgs.Empty);
+                MapBrowser_SelectionChanged();
+
+                ShowScrollableMessage("Resolve Missing Maps", BuildResolutionSummaryMessage(result));
+            }
+            catch (Exception ex)
+            {
+                ShowScrollableMessage("Resolve Missing Maps", $"Failed to resolve missing map strings.\r\n\r\n{ex}");
+            }
+            finally
+            {
+                waitWindow.EndWait();
+            }
+        }
+
+        private MissingMapResolutionResult ResolveMissingMapStringEntries()
+        {
+            WzImage stringMapImage = GetStringMapImage();
+            if (stringMapImage == null)
+            {
+                throw new InvalidOperationException("String.wz/Map.img could not be found.");
+            }
+
+            stringMapImage.ParseImage();
+
+            Dictionary<string, WzSubProperty> stringCategories = stringMapImage.WzProperties
+                .OfType<WzSubProperty>()
+                .ToDictionary(category => category.Name, category => category, System.StringComparer.OrdinalIgnoreCase);
+
+            HashSet<string> existingMapIds = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (WzSubProperty category in stringCategories.Values)
+            {
+                foreach (WzSubProperty mapEntry in category.WzProperties.OfType<WzSubProperty>())
+                {
+                    existingMapIds.Add(WzInfoTools.AddLeadingZeros(mapEntry.Name, 9));
+                }
+            }
+
+            MissingMapResolutionResult result = new MissingMapResolutionResult();
+            foreach (WzImage mapImage in EnumerateAllMapImages())
+            {
+                string mapId = Path.GetFileNameWithoutExtension(mapImage.Name);
+                if (string.IsNullOrEmpty(mapId))
+                {
+                    continue;
+                }
+
+                if (existingMapIds.Contains(mapId))
+                {
+                    result.AlreadyPresentMapIds.Add(mapId);
+                    continue;
+                }
+
+                if (HasPositiveLinkTarget(mapImage))
+                {
+                    continue;
+                }
+
+                string categoryName = GetGeneratedMapCategoryName(mapImage);
+                if (!stringCategories.TryGetValue(categoryName, out WzSubProperty stringCategory))
+                {
+                    stringCategory = new WzSubProperty(categoryName);
+                    stringMapImage.AddProperty(stringCategory);
+                    stringCategories[categoryName] = stringCategory;
+                }
+
+                WzSubProperty mapEntry = new WzSubProperty(mapId);
+                mapEntry.AddProperty(new WzStringProperty("streetName", "NO NAME"));
+                mapEntry.AddProperty(new WzStringProperty("mapName", "NO NAME"));
+                stringCategory.AddProperty(mapEntry);
+
+                Program.InfoManager.MapsNameCache[mapId] = new Tuple<string, string, string>("NO NAME", "NO NAME", categoryName);
+
+                if (mapImage["info"] != null)
+                {
+                    MapInfo info = new MapInfo(mapImage, "NO NAME", "NO NAME", categoryName);
+                    Program.InfoManager.MapsCache[mapId] = new Tuple<WzImage, string, string, string, MapInfo>(
+                        mapImage,
+                        "NO NAME",
+                        "NO NAME",
+                        categoryName,
+                        info);
+                }
+
+                existingMapIds.Add(mapId);
+                result.AddedMapIds.Add(mapId);
+            }
+
+            if (result.AddedMapIds.Count > 0)
+            {
+                stringMapImage.Changed = true;
+
+                if (ShouldConfirmImmediateStringMapSave() &&
+                    MessageBox.Show(
+                        "Saving is immediate for the current data source.\r\n\r\nYes: write String/Map.img now.\r\nNo: keep it modified in memory and save it manually later.",
+                        "Resolve Missing Maps",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    Program.DataSource?.MarkImageUpdated("String", stringMapImage);
+                }
+            }
+
+            result.AlreadyPresentMapIds.Sort(System.StringComparer.OrdinalIgnoreCase);
+            result.AddedMapIds.Sort(System.StringComparer.OrdinalIgnoreCase);
+
+            return result;
+        }
+
+        private IEnumerable<WzImage> EnumerateAllMapImages()
+        {
+            HashSet<string> seenMapIds = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+            if (Program.DataSource != null)
+            {
+                foreach (string subDirectory in Program.DataSource.GetSubdirectories("Map"))
+                {
+                    if (!IsMapImageDirectory(subDirectory))
+                    {
+                        continue;
+                    }
+
+                    foreach (WzImage mapImage in Program.DataSource.GetImagesInDirectory("Map", subDirectory))
+                    {
+                        string mapId = Path.GetFileNameWithoutExtension(mapImage.Name);
+                        if (string.IsNullOrEmpty(mapId) || !seenMapIds.Add(mapId))
+                        {
+                            continue;
+                        }
+
+                        yield return mapImage;
+                    }
+                }
+
+                yield break;
+            }
+
+            foreach (WzDirectory rootDirectory in GetMapRootsFromWzManager())
+            {
+                foreach (WzImage mapImage in EnumerateMapImagesRecursive(rootDirectory))
+                {
+                    string mapId = Path.GetFileNameWithoutExtension(mapImage.Name);
+                    if (!seenMapIds.Add(mapId))
+                    {
+                        continue;
+                    }
+
+                    yield return mapImage;
+                }
+            }
+        }
+
+        private IEnumerable<WzImage> EnumerateMapImagesRecursive(WzDirectory directory)
+        {
+            if (directory == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImage image in directory.WzImages)
+            {
+                string mapId = Path.GetFileNameWithoutExtension(image.Name);
+                if (image.Name.EndsWith(".img", StringComparison.OrdinalIgnoreCase) &&
+                    mapId.Length == 9 &&
+                    mapId.All(char.IsDigit))
+                {
+                    yield return image;
+                }
+            }
+
+            foreach (WzDirectory childDirectory in directory.WzDirectories)
+            {
+                foreach (WzImage image in EnumerateMapImagesRecursive(childDirectory))
+                {
+                    yield return image;
+                }
+            }
+        }
+
+        private static string GetGeneratedMapCategoryName(WzImage mapImage)
+        {
+            WzObject current = mapImage.Parent;
+            while (current != null)
+            {
+                if (current is WzDirectory directory &&
+                    directory.Name.Length == 4 &&
+                    directory.Name.StartsWith("Map", StringComparison.OrdinalIgnoreCase) &&
+                    char.IsDigit(directory.Name[3]))
+                {
+                    return directory.Name;
+                }
+
+                current = current.Parent;
+            }
+
+            return "AutoGenerated";
+        }
+
+        private WzImage GetStringMapImage()
+        {
+            WzImage stringMapImage = Program.DataSource?.GetImage("String", "Map.img");
+            if (stringMapImage == null)
+            {
+                stringMapImage = Program.DataSource?.GetImageByPath("String/Map.img");
+            }
+            if (stringMapImage == null)
+            {
+                stringMapImage = (WzImage)Program.WzManager?.FindWzImageByName("string", "Map.img");
+            }
+
+            return stringMapImage;
+        }
+
+        private IEnumerable<WzDirectory> GetMapRootsFromWzManager()
+        {
+            foreach (WzDirectory rootDirectory in Program.WzManager.GetWzDirectoriesFromBase("map"))
+            {
+                if (rootDirectory == null)
+                {
+                    continue;
+                }
+
+                WzDirectory mapDirectory = rootDirectory["Map"] as WzDirectory;
+                yield return mapDirectory ?? rootDirectory;
+            }
+        }
+
+        private static bool IsMapImageDirectory(string subDirectory)
+        {
+            if (string.IsNullOrEmpty(subDirectory))
+            {
+                return false;
+            }
+
+            string[] segments = subDirectory
+                .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (segments.Length == 1)
+            {
+                return IsMapCategorySegment(segments[0]);
+            }
+
+            if (segments.Length == 2 && segments[0].Equals("Map", StringComparison.OrdinalIgnoreCase))
+            {
+                return IsMapCategorySegment(segments[1]);
+            }
+
+            return false;
+        }
+
+        private static bool IsMapCategorySegment(string segment)
+        {
+            return !string.IsNullOrEmpty(segment) &&
+                   segment.Length == 4 &&
+                   segment.StartsWith("Map", StringComparison.OrdinalIgnoreCase) &&
+                   char.IsDigit(segment[3]);
+        }
+
+        private static bool HasPositiveLinkTarget(WzImage mapImage)
+        {
+            WzImageProperty linkProperty = mapImage.GetFromPath("info/link");
+            if (linkProperty == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return linkProperty.GetInt() > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool ShouldConfirmImmediateStringMapSave()
+        {
+            if (Program.DataSource is ImgFileSystemDataSource)
+            {
+                return true;
+            }
+
+            if (Program.DataSource is HybridDataSource hybridDataSource && hybridDataSource.ImgSource != null)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildResolutionSummaryMessage(MissingMapResolutionResult result)
+        {
+            List<string> lines = new List<string>
+            {
+                $"Added {result.AddedMapIds.Count} new entr{(result.AddedMapIds.Count == 1 ? "y" : "ies")}.",
+                $"Already present in memory: {result.AlreadyPresentMapIds.Count}.",
+            };
+
+            if (result.AddedMapIds.Count > 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("Added:");
+                lines.AddRange(result.AddedMapIds);
+            }
+
+            if (result.AddedMapIds.Count == 0 && result.AlreadyPresentMapIds.Count == 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("No maps were discovered under Map.wz\\Map\\Map*.");
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private void ShowScrollableMessage(string title, string message)
+        {
+            using (Form dialog = new Form())
+            using (TextBox messageBox = new TextBox())
+            using (Button okButton = new Button())
+            {
+                dialog.Text = title;
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.Size = new System.Drawing.Size(720, 520);
+                dialog.MinimumSize = new System.Drawing.Size(500, 320);
+                dialog.FormBorderStyle = FormBorderStyle.SizableToolWindow;
+
+                messageBox.Multiline = true;
+                messageBox.ReadOnly = true;
+                messageBox.ScrollBars = ScrollBars.Both;
+                messageBox.WordWrap = false;
+                messageBox.Dock = DockStyle.Fill;
+                messageBox.Font = new System.Drawing.Font("Consolas", 9F);
+                messageBox.Text = message;
+
+                okButton.Text = "OK";
+                okButton.Dock = DockStyle.Bottom;
+                okButton.Height = 30;
+                okButton.DialogResult = DialogResult.OK;
+
+                dialog.Controls.Add(messageBox);
+                dialog.Controls.Add(okButton);
+                dialog.AcceptButton = okButton;
+
+                dialog.ShowDialog(this);
+            }
+        }
+
+        private sealed class MissingMapResolutionResult
+        {
+            public List<string> AddedMapIds { get; } = new List<string>();
+            public List<string> AlreadyPresentMapIds { get; } = new List<string>();
         }
     }
 }

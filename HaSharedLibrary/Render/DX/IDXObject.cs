@@ -1,4 +1,5 @@
 ﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -45,5 +46,10 @@ namespace HaSharedLibrary.Render.DX
         /// Tag - For storing anything
         /// </summary>
         object Tag { get; set; }
+
+        /// <summary>
+        /// The underlying texture when the object is texture-backed.
+        /// </summary>
+        Texture2D Texture { get; }
     }
 }

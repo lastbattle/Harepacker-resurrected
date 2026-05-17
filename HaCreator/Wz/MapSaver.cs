@@ -241,6 +241,7 @@ namespace HaCreator.Wz
                         obj["r"] = InfoTool.SetOptionalBool(objInst.r);
                         obj["hide"] = InfoTool.SetOptionalBool(objInst.hide);
                         obj["reactor"] = InfoTool.SetOptionalBool(objInst.reactor);
+                        obj["dynamic"] = InfoTool.SetOptionalBool(objInst.Dynamic);
                         obj["flow"] = InfoTool.SetOptionalBool(objInst.flow);
                         obj["rx"] = InfoTool.SetOptionalTranslatedInt(objInst.rx);
                         obj["ry"] = InfoTool.SetOptionalTranslatedInt(objInst.ry);
@@ -357,6 +358,9 @@ namespace HaCreator.Wz
                 portal["hRange"] = InfoTool.SetOptionalInt(portalInst.hRange);
                 portal["vRange"] = InfoTool.SetOptionalInt(portalInst.vRange);
                 portal["delay"] = InfoTool.SetOptionalInt(portalInst.delay);
+                portal["reactorName"] = InfoTool.SetOptionalString(portalInst.reactorName);
+                portal["sessionValueKey"] = InfoTool.SetOptionalString(portalInst.sessionValueKey);
+                portal["sessionValue"] = InfoTool.SetOptionalString(portalInst.sessionValue);
                 portal["hideTooltip"] = InfoTool.SetOptionalBool(portalInst.hideTooltip);
                 portal["onlyOnce"] = InfoTool.SetOptionalBool(portalInst.onlyOnce);
 
@@ -523,6 +527,8 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
+                if (bgInst.Page != 0)
+                    bgProp["page"] = InfoTool.SetInt(bgInst.Page);
                 if (bgInst.screenMode != (int)RenderResolution.Res_All) // 0
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 

@@ -40,6 +40,7 @@ namespace HaCreator
         public static int Npcrx1Offset = 20;
         public static int defaultMobTime = 0;
         public static int defaultReactorTime = 0;
+        public static int AntiMacroScreenshotSaveLocation = 0;
         public static float SnapDistance = 10;
         public static float SignificantDistance = 10;
         public static int ScrollDistance = 90;

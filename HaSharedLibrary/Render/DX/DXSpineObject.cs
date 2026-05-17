@@ -89,10 +89,14 @@ namespace HaSharedLibrary.Render.DX
             //}
 
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
+            float previousAlpha = spineObject.skeleton.A;
+            spineObject.skeleton.A = color.A / 255f;
 
             skeletonMeshRenderer.Begin();
             skeletonMeshRenderer.Draw(spineObject.skeleton);
             skeletonMeshRenderer.End();
+
+            spineObject.skeleton.A = previousAlpha;
         }
 
 
@@ -106,6 +110,7 @@ namespace HaSharedLibrary.Render.DX
 
         public int Width { get { return (int)spineObject.skeleton.Data.Width; } }
         public int Height { get { return (int)spineObject.skeleton.Data.Height; } }
+        public Texture2D Texture { get { return null; } }
         public object Tag { get { return _Tag; } set { this._Tag = value; } }
     }
 }

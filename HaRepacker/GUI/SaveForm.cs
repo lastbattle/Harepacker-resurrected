@@ -37,7 +37,7 @@ namespace HaRepacker.GUI
         {
             InitializeComponent();
 
-            MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
+            WzEncryptionUiShared.Populate(encryptionBox);
 
             this.wzNode = wzNode;
             if (wzNode.Tag is WzImage image) // Data.wz hotfix file

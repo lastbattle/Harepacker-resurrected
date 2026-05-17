@@ -69,7 +69,7 @@
     <Content Include="Resources\Pause.png" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.0" />
+    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.5" />
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
     <PackageReference Include="Extended.Wpf.Toolkit" Version="5.0.0" />
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.4.1" />
@@ -89,6 +89,17 @@
     <EmbeddedResource Remove="GUI\Input\FindInputBox.resx" />
     <EmbeddedResource Remove="GUI\Input\IntegerInput.resx" />
     <EmbeddedResource Remove="GUI\Resources.resx" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Update="FHMapper\DisplayMap.resx">
+      <LogicalName>Footholds.DisplayMap.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="FHMapper\DisplayMap.zh-CHS.resx">
+      <LogicalName>Footholds.DisplayMap.zh-CHS.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="FHMapper\DisplayMap.zh-CHT.resx">
+      <LogicalName>Footholds.DisplayMap.zh-CHT.resources</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\logo.png">

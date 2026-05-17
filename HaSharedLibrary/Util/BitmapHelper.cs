@@ -6,6 +6,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -68,12 +69,141 @@ namespace HaSharedLibrary.Util
                 return null; //todo handle this in a useful way
             }
 
-            using (System.IO.MemoryStream s = new System.IO.MemoryStream())
+            try
             {
-                bitmap.Save(s, System.Drawing.Imaging.ImageFormat.Png);
-                s.Seek(0, System.IO.SeekOrigin.Begin);
-                return Texture2D.FromStream(device, s);
+                return TryCreateTextureFromBitmapPixels(bitmap, device);
             }
+            catch (ArgumentException)
+            {
+                return CreateTextureFromBitmapStream(bitmap, device);
+            }
+        }
+
+        private static Texture2D TryCreateTextureFromBitmapPixels(Bitmap bitmap, GraphicsDevice device)
+        {
+            Bitmap uploadBitmap = bitmap;
+            bool disposeUploadBitmap = false;
+
+            try
+            {
+                if (bitmap.PixelFormat != System.Drawing.Imaging.PixelFormat.Format32bppArgb)
+                {
+                    uploadBitmap = new Bitmap(bitmap.Width, bitmap.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                    disposeUploadBitmap = true;
+                    using (Graphics graphics = Graphics.FromImage(uploadBitmap))
+                    {
+                        graphics.DrawImage(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+                    }
+                }
+
+                Rectangle bounds = new Rectangle(0, 0, uploadBitmap.Width, uploadBitmap.Height);
+                BitmapData bitmapData = uploadBitmap.LockBits(bounds, ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                try
+                {
+                    int pixelCount = uploadBitmap.Width * uploadBitmap.Height;
+                    byte[] bgraBytes = new byte[pixelCount * 4];
+                    Marshal.Copy(bitmapData.Scan0, bgraBytes, 0, bgraBytes.Length);
+
+                    Microsoft.Xna.Framework.Color[] colorData = new Microsoft.Xna.Framework.Color[pixelCount];
+                    for (int i = 0, byteIndex = 0; i < pixelCount; i++, byteIndex += 4)
+                    {
+                        colorData[i] = new Microsoft.Xna.Framework.Color(
+                            bgraBytes[byteIndex + 2],
+                            bgraBytes[byteIndex + 1],
+                            bgraBytes[byteIndex],
+                            bgraBytes[byteIndex + 3]);
+                    }
+
+                    Texture2D texture = new Texture2D(device, uploadBitmap.Width, uploadBitmap.Height, false, SurfaceFormat.Color);
+                    texture.SetData(colorData);
+                    return texture;
+                }
+                finally
+                {
+                    uploadBitmap.UnlockBits(bitmapData);
+                }
+            }
+            finally
+            {
+                if (disposeUploadBitmap)
+                {
+                    uploadBitmap.Dispose();
+                }
+            }
+        }
+
+        private static Texture2D CreateTextureFromBitmapStream(Bitmap bitmap, GraphicsDevice device)
+        {
+            using (MemoryStream stream = new MemoryStream())
+            {
+                bitmap.Save(stream, ImageFormat.Png);
+                stream.Seek(0, SeekOrigin.Begin);
+                return Texture2D.FromStream(device, stream);
+            }
+        }
+
+        /// <summary>
+        /// Converts a bitmap to Texture2D and disposes the bitmap afterwards.
+        /// Use this when the bitmap is only an intermediate decode step.
+        /// </summary>
+        public static Texture2D ToTexture2DAndDispose(this System.Drawing.Bitmap bitmap, GraphicsDevice device)
+        {
+            if (bitmap == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return bitmap.ToTexture2D(device);
+            }
+            finally
+            {
+                bitmap.Dispose();
+            }
+        }
+
+        public static Bitmap ToBitmap(this Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return null;
+            }
+
+            int width = texture.Width;
+            int height = texture.Height;
+            if (width <= 0 || height <= 0)
+            {
+                return null;
+            }
+
+            Microsoft.Xna.Framework.Color[] pixelData = new Microsoft.Xna.Framework.Color[width * height];
+            texture.GetData(pixelData);
+
+            Bitmap bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            Rectangle bounds = new Rectangle(0, 0, width, height);
+            BitmapData bitmapData = bitmap.LockBits(bounds, ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                byte[] bytes = new byte[pixelData.Length * 4];
+                for (int i = 0; i < pixelData.Length; i++)
+                {
+                    int index = i * 4;
+                    Microsoft.Xna.Framework.Color color = pixelData[i];
+                    bytes[index] = color.B;
+                    bytes[index + 1] = color.G;
+                    bytes[index + 2] = color.R;
+                    bytes[index + 3] = color.A;
+                }
+
+                System.Runtime.InteropServices.Marshal.Copy(bytes, 0, bitmapData.Scan0, bytes.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(bitmapData);
+            }
+
+            return bitmap;
         }
 
         /// <summary>

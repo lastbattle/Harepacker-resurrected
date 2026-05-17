@@ -1,6 +1,7 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -18,6 +19,8 @@ namespace HaSharedLibrary.Render.DX
 
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
+        private bool animationStopped = false;
+        private int mapObjectAnimationRepeatMode = 0;
 
         // 1 frame
         /// <summary>
@@ -35,6 +38,10 @@ namespace HaSharedLibrary.Render.DX
         // Visibility culling (calculated once per frame in Update, used in Draw)
         private bool _isVisible = true;
         private int _lastVisibilityCheckFrame = -1;
+        private int _boundsLeft;
+        private int _boundsTop;
+        private int _boundsRight;
+        private int _boundsBottom;
 
         /// <summary>
         /// Whether this object is currently visible (within view frustum).
@@ -74,6 +81,18 @@ namespace HaSharedLibrary.Render.DX
 
         public IDXObject? Frame0 => frame0;
 
+        private byte _layerAlpha = byte.MaxValue;
+        public byte LayerAlpha
+        {
+            get => _layerAlpha;
+            private set => _layerAlpha = value;
+        }
+
+        public bool IsAnimationRunning => !notAnimated && !animationStopped;
+
+        private float _layerRotationDegrees;
+        public float LayerRotationDegrees => _layerRotationDegrees;
+
         private Point _Position;
         /// <summary>
         /// The additional relative position of the image (used primarily for UI overlay) 
@@ -107,6 +126,7 @@ namespace HaSharedLibrary.Render.DX
             }
             this.flip = flip;
             this._Position = Point.Zero; // Use static Point.Zero instead of new
+            InitializeFrameBounds();
         }
 
         /// <summary>
@@ -121,6 +141,76 @@ namespace HaSharedLibrary.Render.DX
             this.flip = flip;
 
            this._Position = new Point(0, 0);
+            InitializeFrameBounds();
+        }
+
+        private void InitializeFrameBounds()
+        {
+            bool hasBounds = false;
+            int minX = 0;
+            int minY = 0;
+            int maxX = 0;
+            int maxY = 0;
+
+            if (notAnimated)
+            {
+                UpdateBoundsWithFrame(frame0, ref hasBounds, ref minX, ref minY, ref maxX, ref maxY);
+            }
+            else if (frames != null)
+            {
+                for (int i = 0; i < frames.Length; i++)
+                {
+                    UpdateBoundsWithFrame(frames[i], ref hasBounds, ref minX, ref minY, ref maxX, ref maxY);
+                }
+            }
+
+            if (!hasBounds)
+            {
+                minX = 0;
+                minY = 0;
+                maxX = 1;
+                maxY = 1;
+            }
+
+            _boundsLeft = minX;
+            _boundsTop = minY;
+            _boundsRight = maxX;
+            _boundsBottom = maxY;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void UpdateBoundsWithFrame(
+            IDXObject frame,
+            ref bool hasBounds,
+            ref int minX,
+            ref int minY,
+            ref int maxX,
+            ref int maxY)
+        {
+            if (frame == null)
+                return;
+
+            int frameWidth = frame.Width > 0 ? frame.Width : 1;
+            int frameHeight = frame.Height > 0 ? frame.Height : 1;
+            int frameLeft = frame.X;
+            int frameTop = frame.Y;
+            int frameRight = frameLeft + frameWidth;
+            int frameBottom = frameTop + frameHeight;
+
+            if (!hasBounds)
+            {
+                hasBounds = true;
+                minX = frameLeft;
+                minY = frameTop;
+                maxX = frameRight;
+                maxY = frameBottom;
+                return;
+            }
+
+            if (frameLeft < minX) minX = frameLeft;
+            if (frameTop < minY) minY = frameTop;
+            if (frameRight > maxX) maxX = frameRight;
+            if (frameBottom > maxY) maxY = frameBottom;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -129,13 +219,116 @@ namespace HaSharedLibrary.Render.DX
             if (notAnimated)
                 return frame0;
 
+            if (animationStopped)
+                return frames[currFrame];
+
             // Animated
             if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
             {
-                currFrame = (currFrame + 1) % frameCount; // Use modulo instead of if check
+                if (mapObjectAnimationRepeatMode == -1 && currFrame >= frameCount - 1)
+                {
+                    animationStopped = true;
+                    _lastFrameDrawn = frames[currFrame];
+                    return frames[currFrame];
+                }
+
+                currFrame = mapObjectAnimationRepeatMode == -1
+                    ? Math.Min(currFrame + 1, frameCount - 1)
+                    : (currFrame + 1) % frameCount;
                 lastFrameSwitchTime = TickCount;
             }
             return frames[currFrame];
+        }
+
+        /// <summary>
+        /// Restarts animated drawable playback from the first frame.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RestartAnimation(int tickCount)
+        {
+            currFrame = 0;
+            lastFrameSwitchTime = tickCount;
+            animationStopped = false;
+            mapObjectAnimationRepeatMode = 0;
+            _lastFrameDrawn = notAnimated ? frame0 : frames?[0];
+        }
+
+        /// <summary>
+        /// Stops animated map-object playback at the current frame.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void StopAnimationAtCurrentFrame(int tickCount)
+        {
+            if (notAnimated)
+            {
+                return;
+            }
+
+            _ = GetCurrentFrame(tickCount);
+            animationStopped = true;
+            _lastFrameDrawn = frames?[currFrame];
+        }
+
+        /// <summary>
+        /// Applies the client map-object animation repeat mode used by CMapLoadable::AnimateObjLayer.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ApplyMapObjectAnimationRepeatMode(int repeatMode, int tickCount)
+        {
+            if (notAnimated)
+            {
+                return;
+            }
+
+            if (repeatMode == -1)
+            {
+                mapObjectAnimationRepeatMode = -1;
+                return;
+            }
+
+            if (repeatMode == -2)
+            {
+                mapObjectAnimationRepeatMode = 0;
+                if (animationStopped)
+                {
+                    currFrame = 0;
+                    lastFrameSwitchTime = tickCount;
+                    animationStopped = false;
+                    _lastFrameDrawn = frames[0];
+                }
+
+                return;
+            }
+
+            mapObjectAnimationRepeatMode = repeatMode;
+            animationStopped = false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetLayerAlpha(byte alpha) => _layerAlpha = alpha;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetLayerRotationDegrees(float rotationDegrees) => _layerRotationDegrees = rotationDegrees;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameIndex(int tickCount)
+        {
+            _ = GetCurrentFrame(tickCount);
+            return notAnimated ? 0 : currFrame;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameElapsed(int tickCount)
+        {
+            _ = GetCurrentFrame(tickCount);
+            return Math.Max(0, tickCount - lastFrameSwitchTime);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int GetCurrentAnimationFrameDelay(int tickCount)
+        {
+            IDXObject? frame = GetCurrentFrame(tickCount);
+            return Math.Max(1, frame?.Delay ?? 1);
         }
 
         /// <summary>
@@ -166,13 +359,47 @@ namespace HaSharedLibrary.Render.DX
             else
                 drawFrame = GetCurrentFrame(TickCount);
 
-            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
+            if (IsFrameWithinView(drawFrame, shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y, renderParameters.RenderWidth, renderParameters.RenderHeight))
             {
-                drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                    shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
-                    flip,
-                    drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
-                    );
+                if (_layerAlpha == 0)
+                {
+                    _lastFrameDrawn = null;
+                    return;
+                }
+
+                if (Math.Abs(_layerRotationDegrees) > float.Epsilon && drawFrame.Texture != null)
+                {
+                    int drawX = drawFrame.X - (shiftCenteredX - _Position.X);
+                    int drawY = drawFrame.Y - (shiftCenteredY - _Position.Y);
+                    Vector2 origin = new(drawFrame.Width / 2f, drawFrame.Height / 2f);
+                    Color color = Color.White * (_layerAlpha / 255f);
+                    sprite.Draw(
+                        drawFrame.Texture,
+                        new Rectangle(drawX + (drawFrame.Width / 2), drawY + (drawFrame.Height / 2), drawFrame.Width, drawFrame.Height),
+                        null,
+                        color,
+                        MathHelper.ToRadians(_layerRotationDegrees),
+                        origin,
+                        flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                        0f);
+                }
+                else if (_layerAlpha == byte.MaxValue)
+                {
+                    drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                        shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
+                        flip,
+                        drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
+                        );
+                }
+                else if (_layerAlpha > 0)
+                {
+                    drawFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                        drawFrame.X - (shiftCenteredX - _Position.X),
+                        drawFrame.Y - (shiftCenteredY - _Position.Y),
+                        Color.White * (_layerAlpha / 255f),
+                        flip,
+                        drawReflectionInfo);
+                }
 
                 this._lastFrameDrawn = drawFrame; // set the last frame drawn
             }
@@ -220,17 +447,17 @@ namespace HaSharedLibrary.Render.DX
 
             _lastVisibilityCheckFrame = frameNumber;
 
-            IDXObject frame = notAnimated ? frame0 : (frames != null && frames.Length > 0 ? frames[0] : null);
-            if (frame == null)
-            {
-                _isVisible = false;
-                return;
-            }
-
             int shiftCenteredX = mapShiftX - centerX;
             int shiftCenteredY = mapShiftY - centerY;
+            int adjustedLeft = _boundsLeft - shiftCenteredX + _Position.X;
+            int adjustedTop = _boundsTop - shiftCenteredY + _Position.Y;
+            int adjustedRight = _boundsRight - shiftCenteredX + _Position.X;
+            int adjustedBottom = _boundsBottom - shiftCenteredY + _Position.Y;
 
-            _isVisible = IsFrameWithinView(frame, shiftCenteredX, shiftCenteredY, viewWidth, viewHeight);
+            _isVisible = adjustedRight >= 0 &&
+                         adjustedBottom >= 0 &&
+                         adjustedLeft <= viewWidth &&
+                         adjustedTop <= viewHeight;
         }
 
         /// <summary>
@@ -238,6 +465,19 @@ namespace HaSharedLibrary.Render.DX
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetVisible(bool visible) => _isVisible = visible;
+
+        /// <summary>
+        /// Gets the world-space bounds that cover all frames for this drawable.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Rectangle GetWorldBounds()
+        {
+            int left = _boundsLeft + _Position.X;
+            int top = _boundsTop + _Position.Y;
+            int width = Math.Max(1, _boundsRight - _boundsLeft);
+            int height = Math.Max(1, _boundsBottom - _boundsTop);
+            return new Rectangle(left, top, width, height);
+        }
 
         /// <summary>
         /// Copies the X and Y position from copySrc
