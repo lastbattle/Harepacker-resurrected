@@ -964,6 +964,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            message = message.WithProxySessionId(e.ProxySessionId);
             _pendingMessages.Enqueue(message);
             RecordDecodedInboundPacketForRecovery(
                 e.RawPacket,
@@ -972,7 +973,7 @@ namespace HaCreator.MapSimulator.Managers
                 e.SessionVersion,
                 e.ProxySessionId);
             ReceivedCount++;
-            LastStatus = $"Queued {DescribeMessage(message)} from live session {e.SourceEndpoint}.";
+            LastStatus = $"Queued {DescribeMessage(message)} from live session {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)

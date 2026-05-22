@@ -2507,6 +2507,22 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.OpaquePreMapTransferSectionFieldByteCounts,
                 false,
                 true);
+
+            if (snapshot.OpaqueInt16ValueTrailingByteCount <= 0)
+            {
+                return;
+            }
+
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                CharacterDataInt16ValueRecordFlag,
+                "CharacterData::Decode.Opaque0x8000TrailingBytes",
+                Math.Max(0, snapshot.OpaqueInt16ValueRecordNativeCount),
+                snapshot.OpaqueInt16ValueRecordByteCount,
+                snapshot.OpaqueInt16ValueTrailingByteCount,
+                snapshot.OpaqueInt16ValueTrailingFieldByteCounts,
+                false,
+                true);
         }
 
         private static void AddCharacterDataRecordOwnershipEntry(
@@ -2655,11 +2671,15 @@ namespace HaCreator.MapSimulator.Interaction
                 countByteCountsByFlag,
                 CharacterDataSkillCooldownFlag,
                 snapshot.SkillCooldownNativeRecordEntries);
-            fieldByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+            Dictionary<string, int> int16ValueFieldByteCounts = BuildCountPrefixedRecordFieldByteCounts(
                 countByteCountsByFlag,
                 CharacterDataInt16ValueRecordFlag,
                 snapshot.Int16ValueNativeRecordEntries ?? snapshot.OpaqueInt16ValueNativeRecordEntries,
                 snapshot.OpaquePreMapTransferSectionFieldByteCounts);
+            AddCharacterDataFieldByteCounts(
+                int16ValueFieldByteCounts,
+                snapshot.OpaqueInt16ValueTrailingFieldByteCounts);
+            fieldByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueFieldByteCounts;
             fieldByteCountsByFlag[CharacterDataQuestRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
                 countByteCountsByFlag,
                 CharacterDataQuestRecordFlag,
@@ -4534,6 +4554,9 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaqueInt16ValueRecordEntries = null,
                     OpaqueInt16ValueNativeRecordEntries = null,
                     OpaqueInt16ValueRecords = null,
+                    OpaqueInt16ValueTrailingByteCount = 0,
+                    OpaqueInt16ValueTrailingBytes = Array.Empty<byte>(),
+                    OpaqueInt16ValueTrailingFieldByteCounts = null,
                     Int16ValueRecordCount = 0,
                     Int16ValueRecordNativeCount = 0,
                     Int16ValueRecordCountByteCount = 0,
@@ -4552,8 +4575,10 @@ namespace HaCreator.MapSimulator.Interaction
                         out int opaqueInt16ValueRecordNativeCount,
                         out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueRecordEntries,
                         out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueNativeRecordEntries,
-                        out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords))
+                        out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords,
+                        out byte[] opaqueInt16ValueTrailingBytes))
                 {
+                    int opaqueInt16ValueTrailingByteCount = opaqueInt16ValueTrailingBytes?.Length ?? 0;
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         OpaqueInt16ValueRecordByteCount = opaqueInt16ValueRecordByteCount,
@@ -4563,7 +4588,15 @@ namespace HaCreator.MapSimulator.Interaction
                         OpaqueInt16ValueRecordNativeCount = opaqueInt16ValueRecordNativeCount,
                         OpaqueInt16ValueRecordEntries = opaqueInt16ValueRecordEntries,
                         OpaqueInt16ValueNativeRecordEntries = opaqueInt16ValueNativeRecordEntries,
-                        OpaqueInt16ValueRecords = opaqueInt16ValueRecords
+                        OpaqueInt16ValueRecords = opaqueInt16ValueRecords,
+                        OpaqueInt16ValueTrailingByteCount = opaqueInt16ValueTrailingByteCount,
+                        OpaqueInt16ValueTrailingBytes = opaqueInt16ValueTrailingBytes ?? Array.Empty<byte>(),
+                        OpaqueInt16ValueTrailingFieldByteCounts = opaqueInt16ValueTrailingByteCount > 0
+                            ? new Dictionary<string, int>(StringComparer.Ordinal)
+                            {
+                                ["RawTrailingBytes"] = opaqueInt16ValueTrailingByteCount
+                            }
+                            : new Dictionary<string, int>(StringComparer.Ordinal)
                     };
                 }
 
@@ -4846,7 +4879,8 @@ namespace HaCreator.MapSimulator.Interaction
             out int nativeRecordCount,
             out IReadOnlyList<PacketCharacterDataInt16ValueRecord> recordEntries,
             out IReadOnlyList<PacketCharacterDataInt16ValueRecord> nativeRecordEntries,
-            out IReadOnlyDictionary<int, int> records)
+            out IReadOnlyDictionary<int, int> records,
+            out byte[] trailingBytes)
         {
             consumedByteCount = 0;
             countByteCount = 0;
@@ -4855,6 +4889,7 @@ namespace HaCreator.MapSimulator.Interaction
             recordEntries = null;
             nativeRecordEntries = null;
             records = null;
+            trailingBytes = Array.Empty<byte>();
             if (opaqueBytes == null || opaqueBytes.Length < sizeof(ushort))
             {
                 return false;
@@ -4872,6 +4907,7 @@ namespace HaCreator.MapSimulator.Interaction
                     out nativeRecordCount,
                     out nativeRecordEntries);
                 consumedByteCount = checked((int)stream.Position);
+                trailingBytes = SliceCharacterDataRawBytes(opaqueBytes, consumedByteCount, opaqueBytes.Length);
                 return consumedByteCount >= sizeof(ushort);
             }
             catch (Exception) when (opaqueBytes.Length > 0)
@@ -4883,6 +4919,7 @@ namespace HaCreator.MapSimulator.Interaction
                 recordEntries = null;
                 nativeRecordEntries = null;
                 records = null;
+                trailingBytes = Array.Empty<byte>();
                 return false;
             }
         }
@@ -6641,6 +6678,9 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueRecordEntries = null,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueNativeRecordEntries = null,
         IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
+        int OpaqueInt16ValueTrailingByteCount = 0,
+        byte[] OpaqueInt16ValueTrailingBytes = null,
+        IReadOnlyDictionary<string, int> OpaqueInt16ValueTrailingFieldByteCounts = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
         IReadOnlyList<PacketCharacterDataMapTransferRecord> RegularMapTransferRecordEntries = null,

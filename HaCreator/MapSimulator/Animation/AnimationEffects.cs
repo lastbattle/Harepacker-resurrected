@@ -1322,8 +1322,10 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Queue<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayerPool = new();
         private readonly Queue<FallingAnimation> _fallingPool = new();
         private readonly List<OneTimeAnimationRecoveredNativeFinalReleaseState> _releasedOneTimeAnimationStates = new();
+        private readonly List<OneTimeAnimationRecoveredMobProjectileFinalReleaseState> _releasedMobProjectileStates = new();
         private readonly List<CanvasLayerRecoveredNativeFinalReleaseState> _releasedOneTimeCanvasLayerStates = new();
         private const int MaxReleasedOneTimeAnimationStates = 64;
+        private const int MaxReleasedMobProjectileStates = 64;
         private const int MaxReleasedOneTimeCanvasLayerStates = 64;
         private int _nextOneTimeCanvasLayerHandleId = 1;
         private int _nextOneTimeTemporaryCanvasHandleId = 1;
@@ -2509,6 +2511,8 @@ namespace HaCreator.MapSimulator.Animation
         internal IReadOnlyList<OneTimeCanvasLayerAnimation> OneTimeCanvasLayers => _oneTimeCanvasLayers;
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeFinalReleaseState> ReleasedOneTimeAnimationStates =>
             _releasedOneTimeAnimationStates;
+        internal IReadOnlyList<OneTimeAnimationRecoveredMobProjectileFinalReleaseState> ReleasedMobProjectileStates =>
+            _releasedMobProjectileStates;
         internal IReadOnlyList<CanvasLayerRecoveredNativeFinalReleaseState> ReleasedOneTimeCanvasLayerStates =>
             _releasedOneTimeCanvasLayerStates;
 
@@ -2529,6 +2533,17 @@ namespace HaCreator.MapSimulator.Animation
                 if (_releasedOneTimeAnimationStates.Count > MaxReleasedOneTimeAnimationStates)
                 {
                     _releasedOneTimeAnimationStates.RemoveAt(0);
+                }
+            }
+
+            OneTimeAnimationRecoveredMobProjectileFinalReleaseState mobProjectileFinalReleaseState =
+                animation.BuildRecoveredMobProjectileFinalReleaseState(reason);
+            if (mobProjectileFinalReleaseState.HadBulletContainerReference)
+            {
+                _releasedMobProjectileStates.Add(mobProjectileFinalReleaseState);
+                if (_releasedMobProjectileStates.Count > MaxReleasedMobProjectileStates)
+                {
+                    _releasedMobProjectileStates.RemoveAt(0);
                 }
             }
         }
@@ -3319,7 +3334,8 @@ namespace HaCreator.MapSimulator.Animation
             Action onSpawn = null,
             int zOrder = 1,
             float? spawnProbability = null,
-            int initialElapsedMs = 0)
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
         {
             return RegisterAreaAnimation(
                 frames,
@@ -3334,7 +3350,8 @@ namespace HaCreator.MapSimulator.Animation
                 spawnProbability,
                 AnimationAreaAnimationOwner.PacketOwnedExplosion,
                 sourceUol,
-                initialElapsedMs);
+                initialElapsedMs,
+                recoveredNumericPropertyCount);
         }
 
         internal int RegisterPacketOwnedReservedAreaAnimation(
@@ -3378,7 +3395,8 @@ namespace HaCreator.MapSimulator.Animation
             float? spawnProbability,
             AnimationAreaAnimationOwner owner,
             string sourceUol,
-            int initialElapsedMs = 0)
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
         {
             if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
             {
@@ -3399,7 +3417,8 @@ namespace HaCreator.MapSimulator.Animation
                 spawnProbability,
                 owner,
                 sourceUol,
-                initialElapsedMs);
+                initialElapsedMs,
+                recoveredNumericPropertyCount);
             _areaAnimations.Add(registration);
             return registration.Id;
         }
@@ -5201,6 +5220,15 @@ namespace HaCreator.MapSimulator.Animation
         bool UsesProvidedCanvas,
         int Value = 0);
 
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileFinalReleaseState(
+        AnimationOneTimeOwner Owner,
+        string SourceUol,
+        int BulletContainerReferenceCountBeforeManagerRelease,
+        int BulletContainerReferenceCountAfterManagerRelease,
+        bool HadBulletContainerReference,
+        bool ManagerReleasedBulletContainerReference,
+        OneTimeAnimationRecoveredNativeFinalReleaseReason Reason);
+
     internal readonly record struct OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
         string SourceUol,
         AnimationOneTimeOwner Owner,
@@ -5310,7 +5338,8 @@ namespace HaCreator.MapSimulator.Animation
         RegisterFollowInfo = 3,
         ReleaseOwnerReference = 4,
         ReleaseManagerReference = 5,
-        RegisterAnimateEffect = 6
+        RegisterAnimateEffect = 6,
+        ReplaceManagerSlot = 7
     }
 
     internal readonly record struct FollowItemEffectRecoveredNativeOperation(
@@ -7807,6 +7836,43 @@ namespace HaCreator.MapSimulator.Animation
                 reason);
         }
 
+        internal OneTimeAnimationRecoveredMobProjectileFinalReleaseState BuildRecoveredMobProjectileFinalReleaseState(
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            return BuildRecoveredMobProjectileFinalReleaseState(
+                RecoveredMobProjectileRegistrationTrace,
+                RecoveredMobProjectileExecutionTrace,
+                reason);
+        }
+
+        internal static OneTimeAnimationRecoveredMobProjectileFinalReleaseState BuildRecoveredMobProjectileFinalReleaseState(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> executionTrace,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            bool hadContainerReference = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer);
+            int beforeManagerRelease = hadContainerReference ? 1 : 0;
+            bool managerReleased = hadContainerReference
+                && reason != OneTimeAnimationRecoveredNativeFinalReleaseReason.None;
+            int afterManagerRelease = managerReleased ? 0 : beforeManagerRelease;
+            return new OneTimeAnimationRecoveredMobProjectileFinalReleaseState(
+                trace.Owner,
+                trace.SourceUol,
+                beforeManagerRelease,
+                afterManagerRelease,
+                hadContainerReference,
+                managerReleased,
+                reason);
+        }
+
         internal static OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
             OneTimeAnimationRecoveredNativeLifetimeState lifetimeState,
             AnimationOneTimeOwner owner,
@@ -7837,6 +7903,26 @@ namespace HaCreator.MapSimulator.Animation
         private static bool HasOperation(
             IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> operations,
             OneTimeAnimationRecoveredNativeOperationKind kind)
+        {
+            if (operations == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < operations.Count; i++)
+            {
+                if (operations[i].Kind == kind)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasOperation(
+            IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> operations,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind)
         {
             if (operations == null)
             {
@@ -8917,6 +9003,62 @@ namespace HaCreator.MapSimulator.Animation
             return operations.ToArray();
         }
 
+        internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectReplacementTrace(
+            FollowItemEffectRecoveredNativeOwnerState previousOwnerState,
+            FollowItemEffectRecoveredNativeOwnerState nextOwnerState)
+        {
+            if (nextOwnerState.ItemId <= 0
+                || nextOwnerState.ClientEquipIndex < 0
+                || nextOwnerState.EffectVariantIndices == null
+                || nextOwnerState.EffectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            FollowItemEffectRecoveredNativeOperationKind registrationKind =
+                ResolveRecoveredNativeItemEffectRegistrationKind(nextOwnerState);
+            var operations = new List<FollowItemEffectRecoveredNativeOperation>(7)
+            {
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.AllocateIItemEffect,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.LoadIndexedEffect,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    registrationKind,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterManagerRetain)
+            };
+
+            if (previousOwnerState.ItemId > 0
+                && previousOwnerState.ItemId != nextOwnerState.ItemId
+                && previousOwnerState.ClientEquipIndex == nextOwnerState.ClientEquipIndex)
+            {
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
+                    previousOwnerState,
+                    previousOwnerState.ItemEffectReferenceCountAfterManagerRelease));
+            }
+
+            operations.Add(BuildRecoveredNativeItemEffectOperation(
+                FollowItemEffectRecoveredNativeOperationKind.ReplaceManagerSlot,
+                nextOwnerState,
+                nextOwnerState.ItemEffectReferenceCountAfterManagerRetain));
+            operations.Add(BuildRecoveredNativeItemEffectOperation(
+                FollowItemEffectRecoveredNativeOperationKind.ReleaseOwnerReference,
+                nextOwnerState,
+                nextOwnerState.ItemEffectReferenceCountAfterOwnerRelease));
+
+            return operations.ToArray();
+        }
+
         private static FollowItemEffectRecoveredNativeOperationKind ResolveRecoveredNativeItemEffectRegistrationKind(
             FollowItemEffectRecoveredNativeOwnerState ownerState)
         {
@@ -9758,6 +9900,7 @@ namespace HaCreator.MapSimulator.Animation
         public int Id { get; private set; }
         public AnimationAreaAnimationOwner Owner { get; private set; } = AnimationAreaAnimationOwner.Generic;
         public string SourceUol { get; private set; }
+        public int RecoveredNumericPropertyCount { get; private set; }
 
         public void Initialize(
             List<IDXObject> frames,
@@ -9799,7 +9942,8 @@ namespace HaCreator.MapSimulator.Animation
             float? spawnProbability,
             AnimationAreaAnimationOwner owner,
             string sourceUol,
-            int initialElapsedMs = 0)
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
         {
             Id = ++_nextId;
             _frames = frames;
@@ -9821,6 +9965,7 @@ namespace HaCreator.MapSimulator.Animation
             _initialSpawnElapsedMs = Math.Max(0, initialElapsedMs);
             Owner = owner;
             SourceUol = sourceUol;
+            RecoveredNumericPropertyCount = Math.Max(0, recoveredNumericPropertyCount);
         }
 
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)

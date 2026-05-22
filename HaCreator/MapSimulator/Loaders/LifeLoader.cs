@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -802,7 +803,7 @@ namespace HaCreator.MapSimulator.Loaders
                             hitFrames,
                             sourceFrameIndex,
                             isAttackFrameOwned,
-                            sourceUol: BuildMobAttackSourceUol(mobInfo.ID, hitNode));
+                            sourceUol: ResolveMobAttackHitSourceUol(mobInfo.ID, hitNode));
                         System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
                     }
                 }
@@ -1151,6 +1152,207 @@ namespace HaCreator.MapSimulator.Loaders
             return string.IsNullOrWhiteSpace(mobId)
                 ? null
                 : $"Mob/{mobId}.img";
+        }
+
+        internal static string ResolveMobAttackHitSourceUolForTests(string mobId, WzImageProperty property)
+        {
+            return ResolveMobAttackHitSourceUol(mobId, property);
+        }
+
+        private static string ResolveMobAttackHitSourceUol(string mobId, WzImageProperty property)
+        {
+            foreach (string value in EnumerateMobAttackHitSourceCandidateValues(property, 4))
+            {
+                string normalizedPath = NormalizeMobAttackHitSourceUol(value);
+                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    return normalizedPath;
+                }
+            }
+
+            return BuildMobAttackSourceUol(mobId, property);
+        }
+
+        private static IEnumerable<string> EnumerateMobAttackHitSourceCandidateValues(WzImageProperty property, int depthRemaining)
+        {
+            if (property == null || depthRemaining < 0)
+            {
+                yield break;
+            }
+
+            foreach (string value in EnumerateMobAttackHitSourceValue(property))
+            {
+                yield return value;
+            }
+
+            if (property.WzProperties == null || depthRemaining == 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                bool likelyClientString =
+                    IsMobAttackHitSourceValueFieldName(child.Name)
+                    || IsMobAttackHitSourceWrapperFieldName(child.Name)
+                    || int.TryParse(child.Name, out _);
+                if (!likelyClientString)
+                {
+                    continue;
+                }
+
+                foreach (string value in EnumerateMobAttackHitSourceCandidateValues(child, depthRemaining - 1))
+                {
+                    yield return value;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateMobAttackHitSourceValue(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                yield break;
+            }
+
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            switch (resolvedProperty)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    yield return stringProperty.Value;
+                    yield break;
+                case WzUOLProperty uolProperty:
+                    if (!string.IsNullOrWhiteSpace(uolProperty.Value))
+                    {
+                        yield return uolProperty.Value;
+                    }
+
+                    string linkedString = uolProperty.GetString();
+                    if (!string.IsNullOrWhiteSpace(linkedString))
+                    {
+                        yield return linkedString;
+                    }
+
+                    yield break;
+                default:
+                    string stringValue = resolvedProperty?.GetString();
+                    if (!string.IsNullOrWhiteSpace(stringValue))
+                    {
+                        yield return stringValue;
+                    }
+
+                    yield break;
+            }
+        }
+
+        private static bool IsMobAttackHitSourceValueFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeMobAttackHitSourceFieldName(name);
+            return normalizedName == "source"
+                   || normalizedName == "sourceuol"
+                   || normalizedName == "sourceuolpath"
+                   || normalizedName == "sourceuolstr"
+                   || normalizedName == "sourceuolstring"
+                   || normalizedName == "sourcepath"
+                   || normalizedName == "sourcevalue"
+                   || normalizedName == "shit"
+                   || normalizedName == "shituol"
+                   || normalizedName == "shituolpath"
+                   || normalizedName == "hituol"
+                   || normalizedName == "hituolpath"
+                   || normalizedName == "clientstring"
+                   || normalizedName == "clientstringvalue"
+                   || normalizedName == "stringvalue"
+                   || normalizedName == "rawstring"
+                   || normalizedName == "path"
+                   || normalizedName == "value"
+                   || normalizedName == "0";
+        }
+
+        private static bool IsMobAttackHitSourceWrapperFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeMobAttackHitSourceFieldName(name);
+            return normalizedName == "bstr"
+                   || normalizedName == "bstrvalue"
+                   || normalizedName == "bstrdata"
+                   || normalizedName == "wstr"
+                   || normalizedName == "wstrvalue"
+                   || normalizedName == "mwstr"
+                   || normalizedName == "mstr"
+                   || normalizedName == "mdata"
+                   || normalizedName == "data"
+                   || normalizedName == "datat"
+                   || normalizedName == "bstrt"
+                   || normalizedName == "ztlbstrt"
+                   || normalizedName == "clientstringstorage";
+        }
+
+        private static string NormalizeMobAttackHitSourceFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            return new string(name
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToLowerInvariant)
+                .ToArray());
+        }
+
+        private static string NormalizeMobAttackHitSourceUol(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            string normalizedValue = value.Trim().Trim('"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>', ':')
+                .Replace('\\', '/');
+            int mobPrefixIndex = normalizedValue.IndexOf("Mob/", StringComparison.OrdinalIgnoreCase);
+            if (mobPrefixIndex > 0)
+            {
+                normalizedValue = normalizedValue[mobPrefixIndex..];
+            }
+
+            if (!normalizedValue.StartsWith("Mob/", StringComparison.OrdinalIgnoreCase)
+                || normalizedValue.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return null;
+            }
+
+            int tokenEnd = normalizedValue.IndexOfAny(new[] { '"', '\'', '`', ' ', '\t', '\r', '\n', ',', ';', '|', ')' });
+            if (tokenEnd > 0)
+            {
+                normalizedValue = normalizedValue.Substring(0, tokenEnd);
+            }
+
+            string[] parts = normalizedValue
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2
+                && int.TryParse(parts[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                && parts.Length >= 5
+                && string.Equals(parts[^2], "hit", StringComparison.OrdinalIgnoreCase))
+            {
+                parts = parts.Take(parts.Length - 1).ToArray();
+            }
+
+            return string.Join("/", parts);
         }
 
         /// <summary>

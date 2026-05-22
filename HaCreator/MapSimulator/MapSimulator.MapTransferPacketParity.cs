@@ -362,11 +362,11 @@ namespace HaCreator.MapSimulator
                 int[] continentSnapshotFields = snapshot.ContinentMapTransferFields.ToArray();
                 _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularSnapshotFields, continentSnapshotFields);
                 RefreshMapTransferWindow();
-                string snapshotLogoutGiftSuffix = (packet.TrailingPayload?.Length ?? 0) == PacketStageTransitionRuntime.LogoutGiftConfigByteLength
-                    ? " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField"
-                    : string.Empty;
+                string snapshotSetFieldTailSuffix = FormatDirectSnapshotSetFieldTailSuffix(
+                    packet.TrailingPayload,
+                    packet.ServerFileTime);
                 _lastAuthoritativeMapTransferBootstrapSummary =
-                    $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} directly from the decoded CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} stage-transition snapshot{snapshotLogoutGiftSuffix}.";
+                    $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} directly from the decoded CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} stage-transition snapshot{snapshotSetFieldTailSuffix}.";
                 return;
             }
 
@@ -407,6 +407,37 @@ namespace HaCreator.MapSimulator
                 : string.Empty;
             _lastAuthoritativeMapTransferBootstrapSummary =
                 $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownLeadingSuffix}{knownTailSuffix}.";
+        }
+
+        internal static string FormatDirectSnapshotSetFieldTailSuffix(byte[] trailingPayload, long serverFileTime)
+        {
+            bool hasLogoutGiftCache = (trailingPayload?.Length ?? 0) == PacketStageTransitionRuntime.LogoutGiftConfigByteLength;
+            bool hasServerFileTime = serverFileTime > 0 && serverFileTime != long.MaxValue;
+            if (hasServerFileTime)
+            {
+                try
+                {
+                    _ = DateTime.FromFileTimeUtc(serverFileTime);
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    hasServerFileTime = false;
+                }
+            }
+
+            if (hasLogoutGiftCache && hasServerFileTime)
+            {
+                return " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) and trailing SetField server FILETIME that follow CharacterData::Decode in CStage::OnSetField";
+            }
+
+            if (hasLogoutGiftCache)
+            {
+                return " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField";
+            }
+
+            return hasServerFileTime
+                ? " while preserving the trailing SetField server FILETIME that follows CharacterData::Decode in CStage::OnSetField"
+                : string.Empty;
         }
 
         private static string FormatKnownLeadingCharacterDataTailSuffix(ulong matchedSectionFlags, int opaquePreMapTransferByteCount)

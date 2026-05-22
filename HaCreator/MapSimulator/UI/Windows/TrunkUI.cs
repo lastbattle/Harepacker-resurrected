@@ -1123,9 +1123,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void BeginPendingPutItemCountEntry()
         {
-            string askCountPrompt = TrunkDialogClientParityText.ToInlineText(
-                TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt());
-            _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(_pendingPutSlotData)}. Prompt: {askCountPrompt}";
+            TrunkDialogClientParityText.AskItemCountChoreography askItemCount =
+                TrunkDialogClientParityText.BuildAskItemCountChoreography(Math.Max(1, _pendingPutSlotData?.Quantity ?? 0));
+            _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(_pendingPutSlotData)}. {TrunkDialogClientParityText.DescribeAskItemCountChoreography(askItemCount)}";
             BeginMesoEntry(MesoEntryMode.PutItemCount);
         }
 

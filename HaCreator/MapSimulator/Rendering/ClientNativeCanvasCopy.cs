@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace HaCreator.MapSimulator.Rendering
 {
@@ -41,9 +42,61 @@ namespace HaCreator.MapSimulator.Rendering
                 return;
             }
 
-            using Graphics graphics = Graphics.FromImage(destination);
-            ApplySettings(graphics);
-            graphics.DrawImageUnscaled(source, x, y);
+            int sourceX = Math.Max(0, -x);
+            int sourceY = Math.Max(0, -y);
+            int destinationX = Math.Max(0, x);
+            int destinationY = Math.Max(0, y);
+            int copyWidth = Math.Min(source.Width - sourceX, destination.Width - destinationX);
+            int copyHeight = Math.Min(source.Height - sourceY, destination.Height - destinationY);
+            if (copyWidth <= 0 || copyHeight <= 0)
+            {
+                return;
+            }
+
+            using Bitmap normalizedSource = EnsureArgbBitmap(source);
+            Rectangle sourceRect = new(sourceX, sourceY, copyWidth, copyHeight);
+            Rectangle destinationRect = new(destinationX, destinationY, copyWidth, copyHeight);
+            BitmapData sourceData = null;
+            BitmapData destinationData = null;
+
+            try
+            {
+                sourceData = normalizedSource.LockBits(sourceRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                destinationData = destination.LockBits(destinationRect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+
+                int sourceStride = Math.Abs(sourceData.Stride);
+                int destinationStride = Math.Abs(destinationData.Stride);
+                byte[] sourceBytes = new byte[sourceStride * copyHeight];
+                byte[] destinationBytes = new byte[destinationStride * copyHeight];
+                Marshal.Copy(sourceData.Scan0, sourceBytes, 0, sourceBytes.Length);
+                Marshal.Copy(destinationData.Scan0, destinationBytes, 0, destinationBytes.Length);
+
+                for (int row = 0; row < copyHeight; row++)
+                {
+                    int sourceRow = ResolveRowOffset(sourceData.Stride, sourceStride, copyHeight, row);
+                    int destinationRow = ResolveRowOffset(destinationData.Stride, destinationStride, copyHeight, row);
+                    for (int column = 0; column < copyWidth; column++)
+                    {
+                        int sourceIndex = sourceRow + (column * 4);
+                        int destinationIndex = destinationRow + (column * 4);
+                        BlendSourceOverAlpha255(sourceBytes, sourceIndex, destinationBytes, destinationIndex);
+                    }
+                }
+
+                Marshal.Copy(destinationBytes, 0, destinationData.Scan0, destinationBytes.Length);
+            }
+            finally
+            {
+                if (sourceData != null)
+                {
+                    normalizedSource.UnlockBits(sourceData);
+                }
+
+                if (destinationData != null)
+                {
+                    destination.UnlockBits(destinationData);
+                }
+            }
         }
 
         internal static Color[] CopyAlpha255PixelsForTesting(
@@ -147,6 +200,96 @@ namespace HaCreator.MapSimulator.Rendering
             }
 
             return result;
+        }
+
+        private static Bitmap EnsureArgbBitmap(Bitmap source)
+        {
+            if (source.PixelFormat == PixelFormat.Format32bppArgb)
+            {
+                return source.Clone(new Rectangle(0, 0, source.Width, source.Height), PixelFormat.Format32bppArgb);
+            }
+
+            Bitmap normalized = new(source.Width, source.Height, PixelFormat.Format32bppArgb);
+            using Graphics graphics = Graphics.FromImage(normalized);
+            ApplySettings(graphics);
+            graphics.DrawImageUnscaled(source, 0, 0);
+            return normalized;
+        }
+
+        private static int ResolveRowOffset(int stride, int absoluteStride, int height, int row)
+        {
+            return stride >= 0
+                ? row * absoluteStride
+                : (height - row - 1) * absoluteStride;
+        }
+
+        private static void BlendSourceOverAlpha255(byte[] sourceBytes, int sourceIndex, byte[] destinationBytes, int destinationIndex)
+        {
+            int sourceAlpha = sourceBytes[sourceIndex + 3];
+            if (sourceAlpha == 0)
+            {
+                return;
+            }
+
+            if (sourceAlpha == Alpha255)
+            {
+                destinationBytes[destinationIndex] = sourceBytes[sourceIndex];
+                destinationBytes[destinationIndex + 1] = sourceBytes[sourceIndex + 1];
+                destinationBytes[destinationIndex + 2] = sourceBytes[sourceIndex + 2];
+                destinationBytes[destinationIndex + 3] = Alpha255;
+                return;
+            }
+
+            int destinationAlpha = destinationBytes[destinationIndex + 3];
+            int inverseSourceAlpha = Alpha255 - sourceAlpha;
+            int outputAlpha = sourceAlpha + Divide255Round(destinationAlpha * inverseSourceAlpha);
+
+            destinationBytes[destinationIndex] = BlendChannel(
+                destinationBytes[destinationIndex],
+                destinationAlpha,
+                sourceBytes[sourceIndex],
+                sourceAlpha,
+                inverseSourceAlpha,
+                outputAlpha);
+            destinationBytes[destinationIndex + 1] = BlendChannel(
+                destinationBytes[destinationIndex + 1],
+                destinationAlpha,
+                sourceBytes[sourceIndex + 1],
+                sourceAlpha,
+                inverseSourceAlpha,
+                outputAlpha);
+            destinationBytes[destinationIndex + 2] = BlendChannel(
+                destinationBytes[destinationIndex + 2],
+                destinationAlpha,
+                sourceBytes[sourceIndex + 2],
+                sourceAlpha,
+                inverseSourceAlpha,
+                outputAlpha);
+            destinationBytes[destinationIndex + 3] = (byte)Math.Min(Alpha255, outputAlpha);
+        }
+
+        private static byte BlendChannel(
+            int destinationChannel,
+            int destinationAlpha,
+            int sourceChannel,
+            int sourceAlpha,
+            int inverseSourceAlpha,
+            int outputAlpha)
+        {
+            if (outputAlpha <= 0)
+            {
+                return 0;
+            }
+
+            int sourcePremultiplied = Divide255Round(sourceChannel * sourceAlpha);
+            int destinationPremultiplied = Divide255Round(destinationChannel * destinationAlpha);
+            int outputPremultiplied = sourcePremultiplied + Divide255Round(destinationPremultiplied * inverseSourceAlpha);
+            return (byte)Math.Min(Alpha255, Math.Max(0, outputPremultiplied * Alpha255 / outputAlpha));
+        }
+
+        private static int Divide255Round(int value)
+        {
+            return (value + 127) / Alpha255;
         }
     }
 }

@@ -240,6 +240,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Point AnchorOffset { get; }
         public int OwnerIdentity { get; }
         public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
+        public LocalOverlayBalloonNativeLayerSnapshot? NativeLayerSnapshot { get; private set; }
 
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrEmpty(Text) &&
@@ -263,6 +264,11 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _cachedAnalyzedWrapWidth = wrapWidth;
             _cachedAnalyzedLines = lines == null || lines.Length == 0 ? null : lines;
+        }
+
+        public void SetNativeLayerSnapshot(LocalOverlayBalloonNativeLayerSnapshot snapshot)
+        {
+            NativeLayerSnapshot = snapshot;
         }
 
         public bool TryGetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, out Texture2D texture)
@@ -330,6 +336,7 @@ namespace HaCreator.MapSimulator.Interaction
             _cachedBodyHeight = 0;
             _cachedAnalyzedLines = null;
             _cachedAnalyzedWrapWidth = -1;
+            NativeLayerSnapshot = null;
             foreach ((LocalOverlayBalloonVisualCacheKey _, Texture2D texture) in _cachedVisuals)
             {
                 if (texture != null && !texture.IsDisposed)
@@ -343,6 +350,21 @@ namespace HaCreator.MapSimulator.Interaction
     }
 
     internal readonly record struct LocalOverlayBalloonVisualCacheKey(int BodyWidth, int BodyHeight, int VariantId);
+
+    internal readonly record struct LocalOverlayBalloonNativeLayerSnapshot(
+        int OwnerIdentity,
+        LocalOverlayBalloonAnchorMode AnchorMode,
+        Point Anchor,
+        Point LayerPosition,
+        int PacketWidth,
+        int LayerWidth,
+        int LayerHeight,
+        int LifetimeMs,
+        int ExpiresAt,
+        int AnalyzedLineCount,
+        int LineHeight,
+        bool HasOriginVector,
+        string ArrowKind);
 
     internal sealed class LocalOverlayBalloonSkin
     {

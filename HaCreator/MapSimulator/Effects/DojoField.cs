@@ -60,6 +60,8 @@ namespace HaCreator.MapSimulator.Effects
         internal const string TimeOverFieldSoundFallbackDescriptor = "Dojang/timeOver";
         private const int TimerLayerOffsetX = -55;
         private const int TimerLayerY = 16;
+        private const int TimerLayerWidth = 112;
+        private const int TimerLayerHeight = 28;
         private const int ClockOffsetY = 26;
         private static readonly Point ClockOrigin = new(102, 26);
         private const int PlayerOffsetX = -231;
@@ -244,6 +246,17 @@ namespace HaCreator.MapSimulator.Effects
         internal static DojoPresentationTiming ClientPresentationTiming => new(
             ClearPresentationTransferDelayMs,
             TimeOverPresentationTransferDelayMs);
+        internal static DojoTimerLayerGeometry ClientTimerLayerGeometry => new(
+            TimerLayerOffsetX,
+            TimerLayerY,
+            TimerLayerWidth,
+            TimerLayerHeight,
+            TimerMinuteX,
+            TimerSecondX,
+            TimerDigitSpacing,
+            TimerDigitY,
+            TimerColonX,
+            TimerColonY);
         internal DojoHudLayerVisibility ResolveClientHudLayerVisibility()
         {
             bool active = _isActive;
@@ -706,16 +719,10 @@ namespace HaCreator.MapSimulator.Effects
                     _lastDecodedClockPayloadLength = decodedPayloadLength;
                     _lastDecodedClockTrailingPayloadHex = trailingPayloadHex;
 
-                    if (clockType == 1)
+                    if (clockType != 2)
                     {
                         // CField_Dojang::OnClock only creates the timerboard for type 2.
                         return true;
-                    }
-
-                    if (clockType != 2)
-                    {
-                        errorMessage = $"Unsupported Dojo clock packet type: {clockType}";
-                        return false;
                     }
 
                     OnClock(clockType, durationSec, currentTimeMs);
@@ -2470,6 +2477,17 @@ namespace HaCreator.MapSimulator.Effects
         internal readonly record struct DojoPresentationTiming(
             int ClearTransferDelayMs,
             int TimeOverTransferDelayMs);
+        internal readonly record struct DojoTimerLayerGeometry(
+            int LayerOffsetX,
+            int LayerY,
+            int LayerWidth,
+            int LayerHeight,
+            int MinuteX,
+            int SecondX,
+            int DigitSpacing,
+            int DigitY,
+            int ColonX,
+            int ColonY);
         public readonly record struct DojoPacketContract(
             int PacketType,
             string Name,

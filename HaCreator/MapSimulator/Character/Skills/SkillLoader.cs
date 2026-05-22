@@ -22,6 +22,10 @@ namespace HaCreator.MapSimulator.Character.Skills
     public class SkillLoader
     {
         private const int FinalCutSkillId = 4341002;
+        private const int EnergyChargeAdditionalLayerIndex = 15;
+        private const int EnergyChargeAdditionalLayerReplayGateMs = 0x546;
+        private const int EnergyChargeAdditionalLayerAlpha = 255;
+        private const string EnergyChargeAdditionalLayerAnimationMode = "GA_REPEAT";
 
         private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
@@ -2212,6 +2216,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            if (TryConfigureEnergyChargeFullChargeAvatarLayer(skill))
+            {
+                return;
+            }
+
             AssignPersistentAvatarEffectPlane(
                 skill,
                 LoadAvatarEffectAnimation(skillNode, "special"),
@@ -2231,6 +2240,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 LoadAvatarEffectAnimation(skillNode, "finish0"),
                 defaultUnderFace: true);
             skill.AvatarLadderFinishEffect = LoadAvatarEffectAnimation(skillNode, "back_finish");
+        }
+
+        internal static bool TryConfigureEnergyChargeFullChargeAvatarLayerForTesting(SkillData skill)
+        {
+            return TryConfigureEnergyChargeFullChargeAvatarLayer(skill);
+        }
+
+        private static bool TryConfigureEnergyChargeFullChargeAvatarLayer(SkillData skill)
+        {
+            if (skill?.UsesEnergyChargeRuntime != true
+                || string.IsNullOrWhiteSpace(skill.FullChargeEffectName)
+                || skill.AffectedEffect?.Frames == null
+                || skill.AffectedEffect.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            skill.AffectedEffect.Loop = true;
+            skill.AvatarUnderFaceEffect = skill.AffectedEffect;
+            skill.AvatarUnderFaceSecondaryEffect = null;
+            skill.AvatarOverlayEffect = null;
+            skill.AvatarOverlaySecondaryEffect = null;
+            skill.AvatarOverlayFinishEffect = null;
+            skill.AvatarUnderFaceFinishEffect = null;
+            skill.AvatarLadderEffect = null;
+            skill.AvatarLadderFinishEffect = null;
+            skill.UsesEnergyChargeAdditionalLayer = true;
+            skill.EnergyChargeAdditionalLayerIndex = EnergyChargeAdditionalLayerIndex;
+            skill.EnergyChargeAdditionalLayerReplayGateMs = EnergyChargeAdditionalLayerReplayGateMs;
+            skill.EnergyChargeAdditionalLayerAnimationMode = EnergyChargeAdditionalLayerAnimationMode;
+            skill.EnergyChargeAdditionalLayerAlpha = EnergyChargeAdditionalLayerAlpha;
+            skill.EnergyChargeAdditionalLayerSourceEffectName = skill.FullChargeEffectName.Trim();
+            return true;
         }
 
         internal static void AssignPersistentAvatarEffectPlaneForTesting(
@@ -2545,7 +2587,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private MeleeAfterImageFrameSet LoadAfterImageFrameSet(WzImageProperty frameSetNode, MeleeAfterImageAction action)
         {
-            var frameSet = new MeleeAfterImageFrameSet();
+            var frameSet = new MeleeAfterImageFrameSet
+            {
+                ActionName = action?.ActionName,
+                RawActionCode = action?.RawActionCode,
+                Range = action?.Range ?? Rectangle.Empty
+            };
             if (frameSetNode == null)
             {
                 return frameSet;
@@ -7612,12 +7659,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string normalizedFieldName = NormalizeClientSummonedUolFieldNameSyntax(fieldName);
+            string normalizedLeafFieldName = NormalizeClientSummonedUolFieldNameSyntax(
+                NormalizeClientSummonedUolLeafFieldName(fieldName));
+            string normalizedFieldToken = NormalizeClientSummonedUolHeuristicPathSegment(fieldName);
+            string normalizedLeafFieldToken = NormalizeClientSummonedUolHeuristicPathSegment(
+                NormalizeClientSummonedUolLeafFieldName(fieldName));
             foreach (WzImageProperty child in node.WzProperties)
             {
-                if (string.Equals(
-                        NormalizeClientSummonedUolFieldNameSyntax(child?.Name),
-                        normalizedFieldName,
-                        StringComparison.OrdinalIgnoreCase))
+                if (child == null)
+                {
+                    continue;
+                }
+
+                string normalizedChildName = NormalizeClientSummonedUolFieldNameSyntax(child.Name);
+                string normalizedLeafChildName = NormalizeClientSummonedUolFieldNameSyntax(
+                    NormalizeClientSummonedUolLeafFieldName(child.Name));
+                if (string.Equals(normalizedChildName, normalizedFieldName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedLeafChildName, normalizedFieldName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedChildName, normalizedLeafFieldName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedLeafChildName, normalizedLeafFieldName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+
+                string normalizedChildToken = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
+                string normalizedLeafChildToken = NormalizeClientSummonedUolHeuristicPathSegment(
+                    NormalizeClientSummonedUolLeafFieldName(child.Name));
+                if ((!string.IsNullOrWhiteSpace(normalizedFieldToken)
+                     && (string.Equals(normalizedChildToken, normalizedFieldToken, StringComparison.Ordinal)
+                         || string.Equals(normalizedLeafChildToken, normalizedFieldToken, StringComparison.Ordinal)))
+                    || (!string.IsNullOrWhiteSpace(normalizedLeafFieldToken)
+                        && (string.Equals(normalizedChildToken, normalizedLeafFieldToken, StringComparison.Ordinal)
+                            || string.Equals(normalizedLeafChildToken, normalizedLeafFieldToken, StringComparison.Ordinal))))
                 {
                     return child;
                 }
@@ -7875,6 +7948,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("headers", StringComparison.Ordinal)
                    || normalizedName.Equals("column", StringComparison.Ordinal)
                    || normalizedName.Equals("columns", StringComparison.Ordinal)
+                   || normalizedName.Equals("schema", StringComparison.Ordinal)
+                   || normalizedName.Equals("schemas", StringComparison.Ordinal)
+                   || normalizedName.Equals("name", StringComparison.Ordinal)
+                   || normalizedName.Equals("names", StringComparison.Ordinal)
                    || normalizedName.Equals("field", StringComparison.Ordinal)
                    || normalizedName.Equals("fields", StringComparison.Ordinal)
                    || normalizedName.Equals("fieldname", StringComparison.Ordinal)
@@ -7887,6 +7964,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return normalizedName.Equals("value", StringComparison.Ordinal)
                    || normalizedName.Equals("values", StringComparison.Ordinal)
+                   || normalizedName.Equals("data", StringComparison.Ordinal)
+                   || normalizedName.Equals("datas", StringComparison.Ordinal)
+                   || normalizedName.Equals("payload", StringComparison.Ordinal)
+                   || normalizedName.Equals("payloads", StringComparison.Ordinal)
+                   || normalizedName.Equals("item", StringComparison.Ordinal)
+                   || normalizedName.Equals("items", StringComparison.Ordinal)
+                   || normalizedName.Equals("list", StringComparison.Ordinal)
+                   || normalizedName.Equals("lists", StringComparison.Ordinal)
                    || normalizedName.Equals("row", StringComparison.Ordinal)
                    || normalizedName.Equals("rows", StringComparison.Ordinal)
                    || normalizedName.Equals("record", StringComparison.Ordinal)
@@ -7907,7 +7992,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return normalizedName.Equals("rows", StringComparison.Ordinal)
                    || normalizedName.Equals("records", StringComparison.Ordinal)
-                   || normalizedName.Equals("entries", StringComparison.Ordinal);
+                   || normalizedName.Equals("entries", StringComparison.Ordinal)
+                   || normalizedName.Equals("data", StringComparison.Ordinal)
+                   || normalizedName.Equals("payload", StringComparison.Ordinal)
+                   || normalizedName.Equals("items", StringComparison.Ordinal)
+                   || normalizedName.Equals("list", StringComparison.Ordinal);
         }
 
         private static bool TryReadClientSkillAssetUolTableEntryVariantLevel(
@@ -10073,6 +10162,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || leafName.Equals("wstrValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("m_wstr", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("mWstr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("m_str", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mStr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("m_Data", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Data_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("_bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Ztl_bstr_t", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("uolData", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
@@ -10116,6 +10212,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("wstr", StringComparison.Ordinal)
                    || normalizedName.Equals("wstrvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("mwstr", StringComparison.Ordinal)
+                   || normalizedName.Equals("mstr", StringComparison.Ordinal)
+                   || normalizedName.Equals("mdata", StringComparison.Ordinal)
+                   || normalizedName.Equals("datat", StringComparison.Ordinal)
+                   || normalizedName.Equals("bstrt", StringComparison.Ordinal)
+                   || normalizedName.Equals("ztlbstrt", StringComparison.Ordinal)
                    || normalizedName.Equals("assetvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("rowvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("recordvalue", StringComparison.Ordinal)

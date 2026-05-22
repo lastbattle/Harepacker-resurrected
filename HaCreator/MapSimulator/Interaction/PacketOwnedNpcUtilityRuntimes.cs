@@ -1136,6 +1136,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
         private string _lastShipmentPromptText = string.Empty;
+        private bool _requestSent;
         private bool _hasAcceptedGetAllRequestInFlight;
         private bool _hasStoreBankNpcOwnerReference;
         private int _ownerRowRevision;
@@ -1147,6 +1148,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool HasPendingFeeCalculationRequest { get; private set; }
         internal bool GetAllRequestWasAccepted { get; private set; }
         internal bool HasDecodedItems => _decodedItems.Count > 0;
+        internal bool RequestSent => _requestSent;
         internal bool HasAcceptedGetAllRequestInFlight => _hasAcceptedGetAllRequestInFlight;
         internal bool HasStoreBankNpcOwnerReference => _hasStoreBankNpcOwnerReference;
         internal int OwnerRowRevision => _ownerRowRevision;
@@ -1188,9 +1190,10 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = true;
             _hasAcceptedGetAllRequestInFlight = true;
-                    StatusMessage = _pendingGetAllFee > 0
-                ? $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet."
-                : $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet.";
+            _requestSent = true;
+            StatusMessage = _pendingGetAllFee > 0
+                ? $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}; m_bRequestSent remains staged after Yes/return 6 and BtGet stays request-owned until the next store-bank packet."
+                : $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch{BuildPendingGetAllSelectionSuffix()}; m_bRequestSent remains staged after Yes/return 6 and BtGet stays request-owned until the next store-bank packet.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -1274,7 +1277,8 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = false;
             _hasAcceptedGetAllRequestInFlight = false;
-            StatusMessage = "CStoreBankDlg dismissed the staged SendGetAllRequest prompt without sending opcode 69, mode 27.";
+            _requestSent = false;
+            StatusMessage = "CStoreBankDlg dismissed the staged SendGetAllRequest prompt without sending opcode 69, mode 27; the recovered No branch clears m_bRequestSent.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -1317,6 +1321,9 @@ namespace HaCreator.MapSimulator.Interaction
                 HasPendingFeeCalculationRequest
                     ? $"Pending BtGet fee request: owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}, packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} (client-confirmed immediate payload 69 [26]; selected row stays owner-local until the subtype-36 fee result)."
                     : "No BtGet fee request is currently staged.",
+                _requestSent
+                    ? "m_bRequestSent: staged by CStoreBankDlg::SendCalculateFeeRequest / accepted SendGetAllRequest."
+                    : "m_bRequestSent: clear.",
                 _hasAcceptedGetAllRequestInFlight
                     ? "Accepted get-all request is still in flight (opcode 69, mode 27), so BtGet remains disabled until the next packet-owned dialog update."
                     : "No accepted get-all request is currently in flight.",
@@ -1581,17 +1588,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
+            _requestSent = true;
             HasPendingFeeCalculationRequest = true;
             _pendingFeeCalculationOwnerRowIndex = ownerRowIndex + 1;
             _pendingFeeCalculationPacketRowIndex = selectedItem.PacketGroupRowIndex;
             _pendingFeeCalculationItemId = selectedItem.ItemId;
             _pendingFeeCalculationItemTitle = ResolveOwnerPrimaryText(selectedItem.ItemName, selectedItem.ClientDisplayName);
-            StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); IDA confirms the immediate outbound body is only 69 [26], with the selected row retained in owner-local state until the subtype-36 fee result.";
+            StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); IDA confirms the immediate outbound body is only 69 [26], then m_bRequestSent is set while the selected row is retained in owner-local state until the subtype-36 fee result.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 StoreBankOutboundOpcode,
                 BuildCalculateFeeRequestPayload(),
-                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with no selected-row body bytes and selection retained in owner state until subtype 36.");
+                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], sets m_bRequestSent, and keeps selection in owner state until subtype 36.");
             message = StatusMessage;
             return true;
         }
@@ -1826,11 +1834,12 @@ namespace HaCreator.MapSimulator.Interaction
                     string selectedItemTitle = HasPendingFeeCalculationRequest ? _pendingFeeCalculationItemTitle : string.Empty;
                     _pendingGetAllPassingDay = BitConverter.ToInt32(payload, 1);
                     _pendingGetAllFee = BitConverter.ToInt32(payload, 5);
-                    ResetTransientRequestState();
+                    ResetTransientRequestState(clearRequestSent: false);
                     _pendingGetAllOwnerRowIndex = selectedOwnerRowIndex;
                     _pendingGetAllPacketRowIndex = selectedPacketRowIndex;
                     _pendingGetAllItemId = selectedItemId;
                     _pendingGetAllItemTitle = selectedItemTitle ?? string.Empty;
+                    _requestSent = true;
                     HasPendingGetAllRequest = true;
                     GetAllRequestWasAccepted = false;
                     IsOpen = true;
@@ -1918,7 +1927,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastShipmentPromptText = string.Empty;
         }
 
-        private void ResetTransientRequestState()
+        private void ResetTransientRequestState(bool clearRequestSent = true)
         {
             _hasAcceptedGetAllRequestInFlight = false;
             HasPendingFeeCalculationRequest = false;
@@ -1926,6 +1935,10 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingFeeCalculationPacketRowIndex = -1;
             _pendingFeeCalculationItemId = 0;
             _pendingFeeCalculationItemTitle = string.Empty;
+            if (clearRequestSent)
+            {
+                _requestSent = false;
+            }
         }
 
         private bool TryParseOpenPayload(byte[] payload, int startOffset)

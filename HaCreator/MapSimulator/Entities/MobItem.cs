@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator.Entities
         private const int DoomBodyHeight = 34;
         internal const int DamagedByMobBlinkDurationMs = 360;
         internal const int DamagedByMobBlinkIntervalMs = 90;
-        private static readonly Color DamagedByMobBlinkTint = new Color(170, 170, 170);
+        private static readonly Color DamagedByMobBlinkTint = new Color(128, 128, 128);
         private const int MaxClientMobSkillActionIndex = 17;
 
         private readonly MobInstance _mobInstance;
@@ -48,6 +48,8 @@ namespace HaCreator.MapSimulator.Entities
         private bool _baseUsePlatformBounds;
         private int _damagedByMobBlinkStartTick = int.MinValue;
         private int _damagedByMobBlinkExpireTick = int.MinValue;
+        private int _damagedByMobLayerStateCounter = -1;
+        private bool _damagedByMobBlinkVisible;
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
@@ -423,6 +425,8 @@ namespace HaCreator.MapSimulator.Entities
             _damagedByMobBlinkExpireTick = ResolveDamagedByMobBlinkExpireTick(
                 currentTick,
                 ResolveCurrentHitActionDurationMs());
+            _damagedByMobLayerStateCounter = -1;
+            _damagedByMobBlinkVisible = true;
         }
 
         internal bool IsDamagedByMobEncounterBlinkActiveForTesting(int tickCount)
@@ -462,6 +466,18 @@ namespace HaCreator.MapSimulator.Entities
                 : Color.White;
         }
 
+        internal static Color ResolveDamagedByMobBlinkTintFromLayerState(bool hasHitExpire, int layerStateCounter)
+        {
+            return hasHitExpire && ShouldApplyDamagedByMobBlinkTint(layerStateCounter)
+                ? DamagedByMobBlinkTint
+                : Color.White;
+        }
+
+        internal static bool ShouldApplyDamagedByMobBlinkTint(int layerStateCounter)
+        {
+            return (layerStateCounter & 3) < 2;
+        }
+
         internal static int ResolveDamagedByMobBlinkExpireTick(int startTick, int hitActionDurationMs)
         {
             if (startTick == int.MinValue)
@@ -498,6 +514,30 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0
                 ? (int)Math.Min(duration, int.MaxValue)
                 : DamagedByMobBlinkDurationMs;
+        }
+
+        private void UpdateDamagedByMobBlinkLayerState(int tickCount)
+        {
+            if (!SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData) ||
+                !HasDamagedByMobHitExpire(tickCount))
+            {
+                _damagedByMobBlinkVisible = false;
+                return;
+            }
+
+            _damagedByMobLayerStateCounter = unchecked(_damagedByMobLayerStateCounter + 1);
+            _damagedByMobBlinkVisible = ShouldApplyDamagedByMobBlinkTint(_damagedByMobLayerStateCounter);
+        }
+
+        private bool HasDamagedByMobHitExpire(int tickCount)
+        {
+            if (_damagedByMobBlinkStartTick == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(tickCount - _damagedByMobBlinkStartTick);
+            return elapsed >= 0 && unchecked(tickCount - _damagedByMobBlinkExpireTick) < 0;
         }
 
         /// <summary>
@@ -1655,7 +1695,9 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechFloatNotice = selectedVariant.FloatNotice;
             _activeActionSpeechNativeWidth = ResolveActionSpeakNativeWidth(
                 selectedVariant.Width,
-                _mobInstance?.Width ?? 0);
+                ResolveMobTemplateActionSpeakWidth(
+                    _mobInstance?.MobInfo?.MobData,
+                    _mobInstance?.Width ?? 0));
             ResolveActionSpeakTiming(
                 ResolveCurrentActionDelayMs(action),
                 IsClientOneShotMobAction(action),
@@ -1835,6 +1877,13 @@ namespace HaCreator.MapSimulator.Entities
             return authoredWidth > 0
                 ? authoredWidth
                 : Math.Max(0, templateWidth);
+        }
+
+        internal static int ResolveMobTemplateActionSpeakWidth(MobData mobData, int visualWidth)
+        {
+            return mobData?.SpeakWidth > 0
+                ? mobData.SpeakWidth
+                : Math.Max(0, visualWidth);
         }
 
         internal static bool AreActionSpeakConditionsSatisfiedForTests(
@@ -2105,6 +2154,8 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (!MovementEnabled || MovementInfo == null)
                 return;
+
+            UpdateDamagedByMobBlinkLayerState(tickCount);
 
             // Get current animation frame info for smooth direction changes
             int currentFrameIndex = _animationController?.CurrentFrameIndex ?? 0;
@@ -2556,10 +2607,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
             {
-                Color damagedByMobTint = IsDamagedByMobBlinkVisible(
-                    _damagedByMobBlinkStartTick,
-                    _damagedByMobBlinkExpireTick,
-                    tickCount)
+                Color damagedByMobTint = HasDamagedByMobHitExpire(tickCount) && _damagedByMobBlinkVisible
                     ? DamagedByMobBlinkTint
                     : Color.White;
                 if (damagedByMobTint != Color.White)

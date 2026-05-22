@@ -1961,6 +1961,8 @@ namespace HaCreator.MapSimulator.Physics
                 MovePathElement retained = snapshot[i];
                 int retainedDurationMs = Math.Max(0, (int)retained.Duration);
                 _pathGatherDurationMs += retainedDurationMs;
+                retained.HasClientKeyPadState = false;
+                retained.ClientKeyPadState = 0;
                 if (i == snapshot.Count - 1)
                 {
                     retained.TimeStamp = unchecked(currentTimeMs - retainedDurationMs);

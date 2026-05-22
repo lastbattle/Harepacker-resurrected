@@ -2200,6 +2200,16 @@ namespace HaCreator.MapSimulator
                 bodyHeight,
                 arrowKind,
                 arrowSprite);
+            message.SetNativeLayerSnapshot(CreatePacketOwnedBalloonNativeLayerSnapshot(
+                message,
+                anchor,
+                bodyBounds,
+                contentWidth,
+                bodyWidth,
+                bodyHeight,
+                lines.Length,
+                lineHeight,
+                arrowKind));
             layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite, arrowBounds, visualTexture);
             return true;
         }
@@ -2243,6 +2253,40 @@ namespace HaCreator.MapSimulator
         internal static int ResolvePacketOwnedBalloonClientBodyYForTests(int anchorY, int bodyHeight, int arrowBelowBodyExtent) =>
             ResolvePacketOwnedBalloonClientBodyY(anchorY, bodyHeight, arrowBelowBodyExtent);
 
+        internal static LocalOverlayBalloonNativeLayerSnapshot ResolvePacketOwnedBalloonNativeLayerSnapshotForTests(
+            Point anchor,
+            int requestedWidth,
+            int bodyHeight,
+            LocalOverlayBalloonAnchorMode anchorMode,
+            int ownerIdentity,
+            int lifetimeMs,
+            int expiresAt,
+            int analyzedLineCount,
+            int lineHeight)
+        {
+            int contentWidth = ResolvePacketOwnedBalloonContentWidth(requestedWidth);
+            int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
+            Rectangle bodyBounds = new(
+                ResolvePacketOwnedBalloonBodyX(anchor, contentWidth, bodyWidth, anchorMode, 0),
+                ResolvePacketOwnedBalloonClientBodyY(anchor.Y, bodyHeight, 0),
+                bodyWidth,
+                bodyHeight);
+
+            return CreatePacketOwnedBalloonNativeLayerSnapshot(
+                ownerIdentity,
+                anchorMode,
+                anchor,
+                bodyBounds,
+                contentWidth,
+                bodyWidth,
+                bodyHeight,
+                lifetimeMs,
+                expiresAt,
+                analyzedLineCount,
+                lineHeight,
+                ResolvePacketOwnedBalloonClientInitArrowKind());
+        }
+
         internal static string ResolvePacketOwnedBalloonClientArrowKindForTests() =>
             ResolvePacketOwnedBalloonClientInitArrowKind().ToString();
 
@@ -2274,12 +2318,68 @@ namespace HaCreator.MapSimulator
 
         private static int ResolvePacketOwnedBalloonClientBodyY(int anchorY, int bodyHeight, int arrowBelowBodyExtent)
         {
-            return anchorY - Math.Max(0, bodyHeight) - Math.Max(0, arrowBelowBodyExtent);
+            return anchorY - Math.Max(0, bodyHeight);
         }
 
         private static PacketOwnedBalloonArrowKind ResolvePacketOwnedBalloonClientInitArrowKind()
         {
             return PacketOwnedBalloonArrowKind.BottomCenter;
+        }
+
+        private static LocalOverlayBalloonNativeLayerSnapshot CreatePacketOwnedBalloonNativeLayerSnapshot(
+            LocalOverlayBalloonMessage message,
+            Point anchor,
+            Rectangle bodyBounds,
+            int packetWidth,
+            int layerWidth,
+            int layerHeight,
+            int analyzedLineCount,
+            int lineHeight,
+            PacketOwnedBalloonArrowKind arrowKind)
+        {
+            return CreatePacketOwnedBalloonNativeLayerSnapshot(
+                message.OwnerIdentity,
+                message.AnchorMode,
+                anchor,
+                bodyBounds,
+                packetWidth,
+                layerWidth,
+                layerHeight,
+                message.LifetimeMs,
+                message.ExpiresAt,
+                analyzedLineCount,
+                lineHeight,
+                arrowKind);
+        }
+
+        private static LocalOverlayBalloonNativeLayerSnapshot CreatePacketOwnedBalloonNativeLayerSnapshot(
+            int ownerIdentity,
+            LocalOverlayBalloonAnchorMode anchorMode,
+            Point anchor,
+            Rectangle bodyBounds,
+            int packetWidth,
+            int layerWidth,
+            int layerHeight,
+            int lifetimeMs,
+            int expiresAt,
+            int analyzedLineCount,
+            int lineHeight,
+            PacketOwnedBalloonArrowKind arrowKind)
+        {
+            return new LocalOverlayBalloonNativeLayerSnapshot(
+                ownerIdentity,
+                anchorMode,
+                anchor,
+                new Point(bodyBounds.X, bodyBounds.Y),
+                packetWidth,
+                layerWidth,
+                layerHeight,
+                lifetimeMs,
+                expiresAt,
+                Math.Max(0, analyzedLineCount),
+                Math.Max(0, lineHeight),
+                anchorMode == LocalOverlayBalloonAnchorMode.Avatar,
+                arrowKind.ToString());
         }
 
         private void ResolvePacketOwnedBalloonOverlap(

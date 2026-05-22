@@ -840,7 +840,9 @@ namespace HaCreator.MapSimulator.Entities
             int lineX = chatTopLeft.X + textBounds.X;
             foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(5))
             {
-                string visibleLine = TruncateMapleTvLine(line, ResolveMapleTvMaxChars(textBounds.Width, 0.36f));
+                string visibleLine = ResolveActorLocalMapleTvMessageLineText(
+                    line,
+                    ResolveMapleTvMaxChars(textBounds.Width, 0.36f));
                 if (!string.IsNullOrWhiteSpace(visibleLine))
                 {
                     ClientTextDrawing.DrawShadowed(
@@ -856,6 +858,23 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             DrawActorLocalMapleTvNames(sprite, snapshot, lineX, chatTopLeft.Y + textBounds.Y);
+        }
+
+        internal static string ResolveActorLocalMapleTvMessageLineText(string line, int maxChars)
+        {
+            string processedLine = line ?? string.Empty;
+            if (!string.IsNullOrEmpty(processedLine)
+                && ClientCurseProcessParity.TryProcessString(
+                    processedLine,
+                    ignoreNewLine: true,
+                    out string filteredLine,
+                    out _,
+                    out _))
+            {
+                processedLine = filteredLine;
+            }
+
+            return TruncateMapleTvLine(processedLine, maxChars);
         }
 
         internal static IReadOnlyList<MapleTvAnimationFrame> ResolveActorLocalMapleTvIdleFrames(
@@ -888,7 +907,7 @@ namespace HaCreator.MapSimulator.Entities
                 return Array.Empty<MapleTvAnimationFrame>();
             }
 
-            int variantKey = ResolveActorLocalMapleTvChatVariantKey(snapshot);
+            int variantKey = ResolveActorLocalMapleTvChatVariantKey(visualAssets, snapshot);
             if (visualAssets.ChatFrames.TryGetValue(variantKey, out IReadOnlyList<MapleTvAnimationFrame> frames)
                 && frames.Count > 0)
             {
@@ -902,7 +921,7 @@ namespace HaCreator.MapSimulator.Entities
             MapleTvVisualAssets visualAssets,
             MapleTvSnapshot snapshot)
         {
-            int variantKey = ResolveActorLocalMapleTvChatVariantKey(snapshot);
+            int variantKey = ResolveActorLocalMapleTvChatVariantKey(visualAssets, snapshot);
             return variantKey switch
             {
                 0 => MapleTvWindow.StarChatTextBounds,
@@ -963,13 +982,15 @@ namespace HaCreator.MapSimulator.Entities
                 (int)Math.Round(Math.Sin(angle) * ClientFloatVectorRadiusPx));
         }
 
-        private static int ResolveActorLocalMapleTvChatVariantKey(MapleTvSnapshot snapshot)
+        private static int ResolveActorLocalMapleTvChatVariantKey(
+            MapleTvVisualAssets visualAssets,
+            MapleTvSnapshot snapshot)
         {
             return MapleTvMediaIndexResolver.ResolveChatVariantKeyForMessageType(
                 snapshot?.MessageType ?? 0,
-                snapshot?.ResolvedMediaIndex ?? 1,
-                1,
-                Array.Empty<int>());
+                snapshot?.ResolvedMediaIndex ?? visualAssets?.DefaultMediaIndex ?? 1,
+                visualAssets?.DefaultMediaIndex ?? 1,
+                visualAssets?.AvailableMediaIndices ?? Array.Empty<int>());
         }
 
         private void DrawActorLocalMapleTvNames(

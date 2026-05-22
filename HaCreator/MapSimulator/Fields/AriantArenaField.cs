@@ -83,6 +83,8 @@ namespace HaCreator.MapSimulator.Fields
         private const string ScoreTextFallbackFormat = "{0} Point";
         private const int ScoreLayerScreenX = 0;
         private const int ScoreLayerScreenY = 30;
+        private const int ScoreLayerCreateX = 0;
+        private const int ScoreLayerCreateY = 0;
         private const int ScoreLayerWidth = 300;
         private const int ScoreLayerHeight = 300;
         private const int ScoreLayerMaxVisibleRows = ((ScoreLayerHeight - 1) - FirstIconY) / RowSpacing + 1;
@@ -95,6 +97,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int ResultOffsetY = 100;
         private const int ResultOffsetX = 0;
         private const int ResultLayerZ = -1073343324;
+        private const int ScoreLayerCreateZ = ResultLayerZ;
+        private const int ScoreLayerFinalZ = -1;
         private const int ResultLayerAlpha = 255;
         private const string ResultLayerOrigin = "Origin_CT";
         private const string ResultLayerAnimation = "GA_STOP";
@@ -339,8 +343,6 @@ namespace HaCreator.MapSimulator.Fields
             EnsureAssetsLoaded();
             _showScoreboard = false;
             _showResult = _resultFrames.Count > 0;
-            ReleaseScoreLayerHandle();
-            _scoreLayerHandleId = 0;
             ReleaseResultLayerHandle();
             _resultLayerHandleId = _showResult ? AllocateSimulatedLayerHandle() : 0;
             if (_resultLayerHandleId > 0)
@@ -378,6 +380,8 @@ namespace HaCreator.MapSimulator.Fields
                     _soundManager?.PlaySound(_resultSoundKey);
                 }
             }
+            ReleaseScoreLayerHandle();
+            _scoreLayerHandleId = 0;
         }
         public void ClearScores()
         {
@@ -700,10 +704,15 @@ namespace HaCreator.MapSimulator.Fields
                     _scoreLayerHandleId,
                     ScoreLayerWidth,
                     ScoreLayerHeight,
-                    ScoreLayerScreenX,
-                    ScoreLayerScreenY,
-                    z: -1));
+                    ScoreLayerCreateX,
+                    ScoreLayerCreateY,
+                    ScoreLayerCreateZ));
                 _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.AttachOriginLt(_scoreLayerHandleId));
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.SetLayerZ(_scoreLayerHandleId, ScoreLayerFinalZ));
+                _scoreLayerOperations.Add(AriantArenaScoreLayerOperation.SetLayerPosition(
+                    _scoreLayerHandleId,
+                    ScoreLayerScreenX,
+                    ScoreLayerScreenY));
             }
         }
         private void ReleaseScoreLayerHandle()
@@ -1517,6 +1526,8 @@ namespace HaCreator.MapSimulator.Fields
     {
         CreateLayer,
         AttachOriginLt,
+        SetLayerZ,
+        SetLayerPosition,
         CreateCanvas,
         InsertRankIcon,
         DrawNameText,
@@ -1612,6 +1623,38 @@ namespace HaCreator.MapSimulator.Fields
                 0,
                 0,
                 0,
+                0,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation SetLayerZ(int layerHandleId, int z)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.SetLayerZ,
+                layerHandleId,
+                0,
+                0,
+                0,
+                0,
+                z,
+                -1,
+                -1,
+                null,
+                0);
+        }
+
+        public static AriantArenaScoreLayerOperation SetLayerPosition(int layerHandleId, int x, int y)
+        {
+            return new AriantArenaScoreLayerOperation(
+                AriantArenaScoreLayerOperationKind.SetLayerPosition,
+                layerHandleId,
+                0,
+                0,
+                x,
+                y,
                 0,
                 -1,
                 -1,

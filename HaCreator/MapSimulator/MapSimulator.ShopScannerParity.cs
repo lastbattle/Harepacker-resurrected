@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator
             }
 
             scannerWindow.SetFont(_fontChat);
+            scannerWindow.CurrentChannelId = Math.Max(1, _simulatorChannelIndex + 1);
             scannerWindow.InitialScannerRequestDispatcher = DispatchShopScannerInitialRequest;
             scannerWindow.ScanItemRequestDispatcher = (opcode, payload) =>
                 DispatchShopScannerOutboundRequest(

@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _clientPartyId;
         private int _playerCharacterId;
         private bool _friendOnlineOnly;
+        private bool _showPartyHpSummary;
         private bool _hasGuildMembership;
         private bool _forceNoGuildMembership;
         private bool _forceNoAllianceMembership;
@@ -391,9 +392,12 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 SocialEntryState entry = tabEntries[firstVisibleIndex + i];
                 SocialListEntrySnapshot snapshotEntry = GetOrCreateSnapshotEntry(i);
+                string secondaryText = _currentTab == SocialListTab.Party && _showPartyHpSummary
+                    ? BuildPartyHpSummary(entry, firstVisibleIndex + i)
+                    : entry.SecondaryText;
                 snapshotEntry.Name = entry.Name;
                 snapshotEntry.PrimaryText = entry.PrimaryText;
-                snapshotEntry.SecondaryText = entry.SecondaryText;
+                snapshotEntry.SecondaryText = secondaryText;
                 snapshotEntry.LocationSummary = entry.LocationSummary;
                 snapshotEntry.Channel = entry.Channel;
                 snapshotEntry.IsOnline = entry.IsOnline;
@@ -667,6 +671,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "Party.Whisper" => WhisperSelected("party"),
                 "Party.Chat" => SendPartyChat(),
                 "Party.ChangeBoss" => ChangePartyLeader(),
+                "Party.HP" => TogglePartyHpSummary(),
                 "Party.Search" => null,
                 "Guild.Board" => "Guild BBS has its own backlog item and is not wired from the member list yet.",
                 "Guild.Invite" => AddGuildMember(),
@@ -1069,7 +1074,7 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListTab.Party:
                         destination.Add("Party tab owns leader, member, and location summaries.");
                         destination.Add(BuildOwnershipSummary(SocialListTab.Party));
-                        destination.Add($"{visibleEntryCount} visible party entries.");
+                        destination.Add($"{visibleEntryCount} visible party entries; HP display {(_showPartyHpSummary ? "on" : "off")}.");
                         return;
                     case SocialListTab.Guild:
                         destination.Add($"Guild: {_guildName}");
@@ -1092,7 +1097,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             destination.Add(selectedEntry.IsLocalPlayer ? $"{selectedEntry.Name} (You)" : selectedEntry.Name);
-            destination.Add($"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim());
+            string selectedSecondaryText = _currentTab == SocialListTab.Party && _showPartyHpSummary
+                ? BuildPartyHpSummary(selectedEntry, GetSelectedIndex(SocialListTab.Party, GetFilteredEntries(SocialListTab.Party).Count))
+                : selectedEntry.SecondaryText;
+            destination.Add($"{selectedEntry.PrimaryText}  {selectedSecondaryText}".Trim());
             string thirdLine = $"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim();
             if (_currentTab == SocialListTab.Friend && TryGetFriendGroupLabel(selectedEntry.Name, out string friendGroupLabel))
             {
@@ -1132,6 +1140,7 @@ namespace HaCreator.MapSimulator.Interaction
                     destination.Add("Party.Create");
                     destination.Add("Party.Invite");
                     destination.Add("Party.Chat");
+                    destination.Add("Party.HP");
                     if (selectedEntry != null)
                     {
                         destination.Add("Party.Whisper");
@@ -1622,6 +1631,36 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return NotifySocialListTextObserved($"{selectedEntry.Name} now owns the simulated party leader marker.");
+        }
+
+        private string TogglePartyHpSummary()
+        {
+            _showPartyHpSummary = !_showPartyHpSummary;
+            string state = _showPartyHpSummary ? "enabled" : "disabled";
+            return NotifySocialListTextObserved($"Party HP display {state} from the WZ-backed BtHP toggle.");
+        }
+
+        private static string BuildPartyHpSummary(SocialEntryState entry, int entryIndex)
+        {
+            if (entry == null)
+            {
+                return "HP --/--";
+            }
+
+            int seed = entry.MemberId.GetValueOrDefault(0);
+            if (seed <= 0)
+            {
+                seed = StringComparer.OrdinalIgnoreCase.GetHashCode(entry.Name ?? string.Empty) & 0x7FFFFFFF;
+            }
+
+            int maxHp = Math.Max(500, 900 + ((seed + (entryIndex * 137)) % 2200));
+            int percent = entry.IsLocalPlayer
+                ? 100
+                : entry.IsOnline
+                    ? 42 + ((seed + (entryIndex * 17)) % 58)
+                    : 0;
+            int currentHp = Math.Clamp((maxHp * percent) / 100, 0, maxHp);
+            return $"HP {currentHp}/{maxHp}";
         }
 
         private string AddGuildMember()

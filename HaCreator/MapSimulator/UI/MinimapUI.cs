@@ -1434,7 +1434,7 @@ namespace HaCreator.MapSimulator.UI
                 renderParameters,
                 tickCount);
 
-            return GetMarkerScreenBounds(arrow, drawPoint);
+            return GetClientDirectionArrowHoverBounds(arrow, drawPoint);
         }
 
         private Point WorldToMinimap(int worldX, int worldY)
@@ -1866,6 +1866,40 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        internal static Rectangle ResolveClientDirectionArrowHoverBoundsForTesting(
+            int windowX,
+            int windowY,
+            int markerOffsetX,
+            int markerOffsetY,
+            DirectionArrow direction,
+            int paneWidth,
+            int paneHeight,
+            int arrowWidth,
+            int arrowHeight,
+            int frameX,
+            int frameY,
+            bool expandsLikeClient)
+        {
+            Point drawPoint = ResolveClientDirectionArrowDrawPointForTesting(
+                direction,
+                paneWidth,
+                paneHeight,
+                arrowWidth,
+                arrowHeight);
+
+            return ResolveClientDirectionArrowHoverBoundsForTesting(
+                windowX,
+                windowY,
+                markerOffsetX,
+                markerOffsetY,
+                arrowWidth,
+                arrowHeight,
+                frameX,
+                frameY,
+                expandsLikeClient,
+                drawPoint);
+        }
+
         private bool TrySetHoveredMarkerTooltip(MouseState mouseState)
         {
             if (_bIsCollapsedState || !ContainsPoint(mouseState.X, mouseState.Y))
@@ -1945,6 +1979,53 @@ namespace HaCreator.MapSimulator.UI
             return ResolveClientUpdateRectHoverBoundsForTesting(
                 rect,
                 ShouldApplyClientExpandedHoverInflation());
+        }
+
+        private Rectangle GetClientDirectionArrowHoverBounds(BaseDXDrawableItem arrow, Point drawPoint)
+        {
+            if (arrow == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            IDXObject frame = arrow.LastFrameDrawn ?? arrow.Frame0;
+            if (frame == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            return ResolveClientDirectionArrowHoverBoundsForTesting(
+                Position.X,
+                Position.Y,
+                arrow.Position.X,
+                arrow.Position.Y,
+                frame.Width,
+                frame.Height,
+                frame.X,
+                frame.Y,
+                ShouldApplyClientExpandedHoverInflation(),
+                drawPoint);
+        }
+
+        private static Rectangle ResolveClientDirectionArrowHoverBoundsForTesting(
+            int windowX,
+            int windowY,
+            int markerOffsetX,
+            int markerOffsetY,
+            int arrowWidth,
+            int arrowHeight,
+            int frameX,
+            int frameY,
+            bool expandsLikeClient,
+            Point drawPoint)
+        {
+            Rectangle bounds = new Rectangle(
+                windowX + markerOffsetX + drawPoint.X + frameX,
+                windowY + markerOffsetY + drawPoint.Y + frameY,
+                Math.Max(0, arrowWidth),
+                Math.Max(0, arrowHeight));
+
+            return ResolveClientUpdateRectHoverBoundsForTesting(bounds, expandsLikeClient);
         }
 
         private Rectangle GetClientMarkerHoverBounds(BaseDXDrawableItem marker, Point minimapPoint)

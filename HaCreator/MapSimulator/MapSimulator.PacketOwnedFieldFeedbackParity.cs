@@ -206,12 +206,24 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedFieldFeedbackPacket(PacketFieldFeedbackPacketKind kind, byte[] payload, out string message)
         {
             _packetFieldFeedbackRuntime.Initialize(GraphicsDevice);
-            return _packetFieldFeedbackRuntime.TryApplyPacket(
+            bool applied = _packetFieldFeedbackRuntime.TryApplyPacket(
                 kind,
                 payload,
                 currTickCount,
                 BuildPacketFieldFeedbackCallbacks(),
                 out message);
+            if (applied && kind is PacketFieldFeedbackPacketKind.TransferFieldReqIgnored or PacketFieldFeedbackPacketKind.TransferChannelReqIgnored)
+            {
+                string cancelMessage = _familyChartRuntime.CancelPendingPrivilegeTransfer();
+                if (!cancelMessage.StartsWith("No packet-owned family transfer", StringComparison.Ordinal))
+                {
+                    message = string.IsNullOrWhiteSpace(message)
+                        ? cancelMessage
+                        : $"{message} {cancelMessage}";
+                }
+            }
+
+            return applied;
         }
 
         private PacketFieldFeedbackCallbacks BuildPacketFieldFeedbackCallbacks()
@@ -370,11 +382,15 @@ namespace HaCreator.MapSimulator
 
         private void ClearPacketOwnedFieldFadeInAnimation(int fadeKey)
         {
-            ClearPacketOwnedLocalOverlayState("fade");
+            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(fadeKey);
             ShowUtilityFeedbackMessage(
                 string.Format(
                     CultureInfo.InvariantCulture,
-                    "Removed packet-owned field fade-in animations for key {0}.",
+                    removedCount > 0
+                        ? "Removed {0} packet-owned field fade-in animation entr{1} for key {2}."
+                        : "No packet-owned field fade-in animations matched key {2}.",
+                    removedCount,
+                    removedCount == 1 ? "y" : "ies",
                     fadeKey));
         }
 

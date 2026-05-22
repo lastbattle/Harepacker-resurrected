@@ -358,7 +358,7 @@ namespace HaCreator.MapSimulator
 
             ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
 
-            if ((activeRaise.PlacedPieces?.Count ?? 0) >= activeRaise.MaxDropCount)
+            if ((activeRaise.PlacedPieces?.Count ?? 0) >= activeRaise.ResolveClientMaxDropCount())
             {
                 _chat?.AddSystemMessage("The raise window has no free piece slots.", currTickCount);
                 return;

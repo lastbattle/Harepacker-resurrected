@@ -742,6 +742,17 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                if (projectile.SourceMob.AI.IsDead)
+                {
+                    _activeMobProjectiles.RemoveAt(i);
+                    continue;
+                }
+
+                if (!ShouldProcessAttackOwner(projectile.SourceMob))
+                {
+                    continue;
+                }
+
                 if (!HasClientTickReached(currentTime, projectile.LaunchTime))
                 {
                     continue;
@@ -852,6 +863,17 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                if (groundAttack.SourceMob.AI.IsDead)
+                {
+                    _activeMobGroundAttacks.RemoveAt(i);
+                    continue;
+                }
+
+                if (!ShouldProcessAttackOwner(groundAttack.SourceMob))
+                {
+                    continue;
+                }
+
                 if (!groundAttack.Triggered && HasClientTickReached(currentTime, groundAttack.TriggerTime))
                 {
                     groundAttack.Triggered = true;
@@ -934,6 +956,17 @@ namespace HaCreator.MapSimulator.Combat
                 if (directAttack.SourceMob?.AI == null)
                 {
                     _activeMobDirectAttacks.RemoveAt(i);
+                    continue;
+                }
+
+                if (directAttack.SourceMob.AI.IsDead)
+                {
+                    _activeMobDirectAttacks.RemoveAt(i);
+                    continue;
+                }
+
+                if (!ShouldProcessAttackOwner(directAttack.SourceMob))
+                {
                     continue;
                 }
 
@@ -3659,6 +3692,22 @@ namespace HaCreator.MapSimulator.Combat
         internal static bool ShouldSweepProjectileImpactCollateralTargets(bool targetedSummoned, bool targetedMob)
         {
             return !targetedSummoned && !targetedMob;
+        }
+
+        private static bool ShouldProcessAttackOwner(MobItem sourceMob)
+        {
+            return ShouldProcessAttackOwner(
+                sourceMob?.AI?.IsDead == true,
+                sourceMob?.AI?.IsStunned == true,
+                sourceMob?.AI?.IsFrozen == true);
+        }
+
+        internal static bool ShouldProcessAttackOwner(bool isDead, bool isStunned, bool isFrozen)
+        {
+            // CMob::ProcessAttack gates bullet updates and delayed ATTACKENTRY
+            // processing while m_stat.bDisable is set. Stun and freeze are the
+            // simulator's explicit client-disable states on the mob status seam.
+            return !isDead && !isStunned && !isFrozen;
         }
 
         internal static PlayerManager ResolveProjectileLockedImpactPlayerManager(

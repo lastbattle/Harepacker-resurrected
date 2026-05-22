@@ -1480,6 +1480,9 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListClientGuildResultKind.GuildQuestNotEnoughMembers:
                     case SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected:
                     {
+                        string directNotice = kind == SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
+                            ? SocialListGuildResultClientText.GetGuildQuestRegistrantDisconnectedNotice()
+                            : SocialListGuildResultClientText.GetGuildQuestNotEnoughMembersNotice();
                         packet = new SocialListClientGuildResultPacket(
                             kind,
                             0,
@@ -1495,6 +1498,7 @@ namespace HaCreator.MapSimulator.Interaction
                             default,
                             null,
                             RawSubtype: rawSubtype);
+                        packet = packet with { DirectNotice = directNotice };
                         return true;
                     }
 

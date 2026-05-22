@@ -1177,7 +1177,7 @@ namespace HaCreator.MapSimulator.Interaction
             string pendingTransfer = _pendingTransferCompletion == null
                 ? "none"
                 : $"{_pendingTransferCompletion.TargetName} ({_pendingTransferCompletion.TargetLocation})";
-            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending privilege request {pendingPrivilege}, pending management request {pendingManagement}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending privilege request {pendingPrivilege}, pending management request {pendingManagement}, pending transfer {pendingTransfer}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
         internal string ResetToSeedFamily()

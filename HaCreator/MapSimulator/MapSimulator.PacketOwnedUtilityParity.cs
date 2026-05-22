@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRadioUiFrameDelayMs = 150;
         private const int PacketOwnedRadioUiFadeDurationMs = 100;
         private const int PacketOwnedRadioUpdatePollIntervalMs = 2000;
+        private const int PacketOwnedRadioBgmFadeDurationMs = 500;
         private const int PacketOwnedEventSoundPathTemplateStringPoolId = 0x0A23;
         private const int PacketOwnedMinigameSoundPathPrefixStringPoolId = 0x08C4;
         private const int PacketOwnedClassCompetitionAuthRefreshIntervalMs = 180000;
@@ -134,6 +135,11 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedTutorBalloonClientLayerHeightPadding = 92;
         private const int PacketOwnedTutorBalloonClientArrowTopOffset = 35;
         private const int PacketOwnedTutorBalloonClientVerticalAnchorOffset = 90;
+        private const int PacketOwnedTutorFontSlotCount = 12;
+        private const int PacketOwnedTutorFontPointSize = 12;
+        private const int PacketOwnedTutorFontClassStringPoolId = 0x05AF;
+        private const int PacketOwnedTutorFontFaceStringPoolId = 0x1A25;
+        private const int PacketOwnedTutorFontAlternateFaceStringPoolId = 0x05B0;
         private const int PacketOwnedLevelUpEffectStringPoolId = 0x092C;
         private const int PacketOwnedLevelUpSoundStringPoolId = 0x1A4C;
         private const int PacketOwnedLevelUpApCapNoticeStringPoolId = 0x1540;
@@ -271,6 +277,37 @@ namespace HaCreator.MapSimulator
             bool CompletionRequiresAilQuickStatusDone = false,
             bool StatusPollBeforeLastUpdateAdvance = false);
 
+        internal enum PacketOwnedRadioMuteOperationKind
+        {
+            RequirePlaying,
+            SkipUnchangedMuteState,
+            SetMuteFlag,
+            SetMmsVolume,
+            SetBgmVolume,
+            SetUiMute
+        }
+
+        internal readonly record struct PacketOwnedRadioMuteOperation(
+            PacketOwnedRadioMuteOperationKind Kind,
+            bool? MuteValue = null,
+            float? MmsVolume = null,
+            int? BgmVolumePercent = null,
+            int? FadeDurationMs = null);
+
+        internal readonly record struct PacketOwnedRadioMutePlan(
+            bool EnteredMute,
+            bool RequestedMute,
+            bool PreviousMute,
+            bool Playing,
+            float TargetMmsVolume,
+            int TargetBgmVolumePercent,
+            int BgmFadeDurationMs,
+            bool MuteFlagSetBeforeMmsVolume,
+            bool BgmVolumeBeforeMmsVolume,
+            bool MmsVolumeBeforeMuteFlagClear,
+            bool UiMuteAfterAudioMix,
+            IReadOnlyList<PacketOwnedRadioMuteOperation> Operations);
+
         internal sealed class PacketOwnedRadioClientPlaybackHandle
         {
             private PacketOwnedRadioClientPlaybackHandle(PacketOwnedRadioMmsPlayPlan playPlan, int rawBufferLength)
@@ -378,11 +415,13 @@ namespace HaCreator.MapSimulator
             FormatTutorialLayerPath,
             LoadTutorialLayer,
             AssignMessageLayerWithAddRefRelease,
+            ReleaseCreatedMessageLayer,
             RelMoveMessageLayerToOrigin,
             QueryMessageLayerWidth,
             QueryMessageLayerHeight,
             MoveMessageLayerByHalfWidthAndSummonHeight,
             AnimateMessageLayerRepeat,
+            QueryLocalUserJobForSayGate,
             SetSummonedSayAttackAction,
             SuppressSummonedSayAttackActionForAranJob,
             SkipEmptyTextMessageLayer,
@@ -396,7 +435,16 @@ namespace HaCreator.MapSimulator
             GetMessageLayerCanvas,
             DrawTutorialBalloonFrame,
             DrawTutorialBalloonArrow,
-            DrawAnalyzedTextRuns
+            DrawAnalyzedTextRuns,
+            ReleaseTutorialBalloonCanvas,
+            ReleaseTextMessageCanvas,
+            ReleaseTextAnalyzer,
+            ReleaseSummonedProperty,
+            ConstructSummonedFixedSkillLevelOne,
+            InitializeMessageLayerNull,
+            AllocateTutorFontArray,
+            CreateTutorFontSlot,
+            InitializeTextAnalyzerArray
         }
 
         internal readonly record struct PacketOwnedTutorNativeOperation(
@@ -410,7 +458,21 @@ namespace HaCreator.MapSimulator
             int SummonHeight = 0,
             int OffsetX = 0,
             int OffsetY = 0,
-            string Source = null);
+            int LayerZ = 0,
+            string Source = null,
+            int FontSlotIndex = -1,
+            int FontSlotCount = 0,
+            int FontPointSize = 0,
+            int FontColorArgb = 0,
+            bool UsesAlternateFontFace = false);
+
+        internal readonly record struct PacketOwnedTutorFontSlot(
+            int Index,
+            int PointSize,
+            int ColorArgb,
+            bool UsesAlternateFontFace,
+            int FontClassStringPoolId,
+            int FontFaceStringPoolId);
 
         internal readonly record struct PacketOwnedTutorMessageLayerState(
             TutorMessageKind MessageKind,
@@ -429,7 +491,10 @@ namespace HaCreator.MapSimulator
             string Source,
             bool Repeats,
             bool SayPlaybackRequested,
-            bool EmptyTextSkipped);
+            bool EmptyTextSkipped,
+            int TextAnalyzerWidth = 0,
+            int ComputedTextHeight = 0,
+            int TutorFontSlotCount = 0);
 
         internal sealed class ClassCompetitionRemotePagePayload
         {
@@ -633,6 +698,7 @@ namespace HaCreator.MapSimulator
         private PacketOwnedRadioMmsPlayPlan _lastPacketOwnedRadioMmsPlayPlan;
         private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
         private PacketOwnedRadioStopPlan _lastPacketOwnedRadioStopPlan;
+        private PacketOwnedRadioMutePlan _lastPacketOwnedRadioMutePlan;
         private PacketOwnedRadioClientPlaybackHandle _packetOwnedRadioClientHandle;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
@@ -12235,6 +12301,11 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioLastPollTick = ResolvePacketOwnedRadioInitialUpdateTick(
                     startTick,
                     _lastPacketOwnedRadioAvailableDurationMs);
+                _lastPacketOwnedRadioMutePlan = ResolvePacketOwnedRadioMutePlan(
+                    isPlaying: true,
+                    requestedMute: false,
+                    previousMute: true,
+                    lastBgmVolumePercent: ResolvePacketOwnedRadioDefaultBgmVolumePercent(UtilityAudioDefaultVolume));
                 _packetOwnedRadioMuted = false;
                 _appliedPacketOwnedRadioVolume = 0f;
                 _utilityAudioMixLastTick = startTick;
@@ -12602,6 +12673,116 @@ namespace HaCreator.MapSimulator
             return currentHandleStatus != PacketOwnedRadioClientHandleStatus.None
                 && currentHandleStatus != PacketOwnedRadioClientHandleStatus.Unloaded
                 && ailQuickStatusValue == 1;
+        }
+
+        internal static PacketOwnedRadioMutePlan ResolvePacketOwnedRadioMutePlan(
+            bool isPlaying,
+            bool requestedMute,
+            bool previousMute,
+            int lastBgmVolumePercent)
+        {
+            int normalizedLastBgmVolume = Math.Clamp(lastBgmVolumePercent, 0, 100);
+            List<PacketOwnedRadioMuteOperation> operations = new();
+            if (!isPlaying)
+            {
+                operations.Add(new PacketOwnedRadioMuteOperation(PacketOwnedRadioMuteOperationKind.RequirePlaying));
+                return new PacketOwnedRadioMutePlan(
+                    EnteredMute: false,
+                    RequestedMute: requestedMute,
+                    PreviousMute: previousMute,
+                    Playing: false,
+                    TargetMmsVolume: previousMute ? 0f : normalizedLastBgmVolume / 100f,
+                    TargetBgmVolumePercent: previousMute ? normalizedLastBgmVolume : 0,
+                    BgmFadeDurationMs: PacketOwnedRadioBgmFadeDurationMs,
+                    MuteFlagSetBeforeMmsVolume: false,
+                    BgmVolumeBeforeMmsVolume: false,
+                    MmsVolumeBeforeMuteFlagClear: false,
+                    UiMuteAfterAudioMix: false,
+                    Operations: operations);
+            }
+
+            if (requestedMute == previousMute)
+            {
+                operations.Add(new PacketOwnedRadioMuteOperation(
+                    PacketOwnedRadioMuteOperationKind.SkipUnchangedMuteState,
+                    MuteValue: requestedMute));
+                return new PacketOwnedRadioMutePlan(
+                    EnteredMute: false,
+                    RequestedMute: requestedMute,
+                    PreviousMute: previousMute,
+                    Playing: true,
+                    TargetMmsVolume: requestedMute ? 0f : normalizedLastBgmVolume / 100f,
+                    TargetBgmVolumePercent: requestedMute ? normalizedLastBgmVolume : 0,
+                    BgmFadeDurationMs: PacketOwnedRadioBgmFadeDurationMs,
+                    MuteFlagSetBeforeMmsVolume: false,
+                    BgmVolumeBeforeMmsVolume: false,
+                    MmsVolumeBeforeMuteFlagClear: false,
+                    UiMuteAfterAudioMix: false,
+                    Operations: operations);
+            }
+
+            if (requestedMute)
+            {
+                operations.Add(new PacketOwnedRadioMuteOperation(
+                    PacketOwnedRadioMuteOperationKind.SetMuteFlag,
+                    MuteValue: true));
+                operations.Add(new PacketOwnedRadioMuteOperation(
+                    PacketOwnedRadioMuteOperationKind.SetMmsVolume,
+                    MmsVolume: 0f));
+                operations.Add(new PacketOwnedRadioMuteOperation(
+                    PacketOwnedRadioMuteOperationKind.SetBgmVolume,
+                    BgmVolumePercent: normalizedLastBgmVolume,
+                    FadeDurationMs: PacketOwnedRadioBgmFadeDurationMs));
+                operations.Add(new PacketOwnedRadioMuteOperation(
+                    PacketOwnedRadioMuteOperationKind.SetUiMute,
+                    MuteValue: true));
+                return new PacketOwnedRadioMutePlan(
+                    EnteredMute: true,
+                    RequestedMute: true,
+                    PreviousMute: previousMute,
+                    Playing: true,
+                    TargetMmsVolume: 0f,
+                    TargetBgmVolumePercent: normalizedLastBgmVolume,
+                    BgmFadeDurationMs: PacketOwnedRadioBgmFadeDurationMs,
+                    MuteFlagSetBeforeMmsVolume: true,
+                    BgmVolumeBeforeMmsVolume: false,
+                    MmsVolumeBeforeMuteFlagClear: false,
+                    UiMuteAfterAudioMix: true,
+                    Operations: operations);
+            }
+
+            float targetMmsVolume = normalizedLastBgmVolume / 100f;
+            operations.Add(new PacketOwnedRadioMuteOperation(
+                PacketOwnedRadioMuteOperationKind.SetBgmVolume,
+                BgmVolumePercent: 0,
+                FadeDurationMs: PacketOwnedRadioBgmFadeDurationMs));
+            operations.Add(new PacketOwnedRadioMuteOperation(
+                PacketOwnedRadioMuteOperationKind.SetMmsVolume,
+                MmsVolume: targetMmsVolume));
+            operations.Add(new PacketOwnedRadioMuteOperation(
+                PacketOwnedRadioMuteOperationKind.SetMuteFlag,
+                MuteValue: false));
+            operations.Add(new PacketOwnedRadioMuteOperation(
+                PacketOwnedRadioMuteOperationKind.SetUiMute,
+                MuteValue: false));
+            return new PacketOwnedRadioMutePlan(
+                EnteredMute: true,
+                RequestedMute: false,
+                PreviousMute: previousMute,
+                Playing: true,
+                TargetMmsVolume: targetMmsVolume,
+                TargetBgmVolumePercent: 0,
+                BgmFadeDurationMs: PacketOwnedRadioBgmFadeDurationMs,
+                MuteFlagSetBeforeMmsVolume: false,
+                BgmVolumeBeforeMmsVolume: true,
+                MmsVolumeBeforeMuteFlagClear: true,
+                UiMuteAfterAudioMix: true,
+                Operations: operations);
+        }
+
+        internal static int ResolvePacketOwnedRadioDefaultBgmVolumePercent(float defaultVolume)
+        {
+            return (int)Math.Round(Math.Clamp(defaultVolume, 0f, 1f) * 100f);
         }
 
         internal static PacketOwnedRadioStopPlan ResolvePacketOwnedRadioStopPlan(
@@ -13048,6 +13229,11 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.HideWindow(MapSimulatorWindowNames.Radio);
             }
 
+            _lastPacketOwnedRadioMutePlan = ResolvePacketOwnedRadioMutePlan(
+                isPlaying: wasPlaying,
+                requestedMute: true,
+                previousMute: false,
+                lastBgmVolumePercent: ResolvePacketOwnedRadioDefaultBgmVolumePercent(UtilityAudioDefaultVolume));
             _packetOwnedRadioMuted = true;
             ApplyUtilityAudioSettings();
 
@@ -13433,6 +13619,7 @@ namespace HaCreator.MapSimulator
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, ailLoadFailureAfterRaw={_lastPacketOwnedRadioMmsPlayPlan.AilQuickLoadMemFailureAfterRawBuffer}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 $"last CRadioManager::Stop entered={_lastPacketOwnedRadioStopPlan.EnteredStop}, mmsStopBeforeShowUi={_lastPacketOwnedRadioStopPlan.MmsStopBeforeShowUi}, showUiBeforeMute={_lastPacketOwnedRadioStopPlan.ShowUiBeforeMute}, muteBeforeTrackRelease={_lastPacketOwnedRadioStopPlan.MuteBeforeTrackPropertyRelease}, trackReleaseBeforePlayingClear={_lastPacketOwnedRadioStopPlan.TrackPropertyReleaseBeforePlayingClear}, playingClearBeforeCompletionChat={_lastPacketOwnedRadioStopPlan.PlayingClearBeforeCompletionChat}, completionChatBeforeTrackNameRelease={_lastPacketOwnedRadioStopPlan.CompletionChatBeforeTrackNameRelease}, releasedTrack={_lastPacketOwnedRadioStopPlan.ReleasedTrackProperty}, clearedPlaying={_lastPacketOwnedRadioStopPlan.ClearedPlaying}, emittedCompletionChat={_lastPacketOwnedRadioStopPlan.EmittedCompletionChat}, releasedTrackName={_lastPacketOwnedRadioStopPlan.ReleasedTrackName}; " +
+                $"last CRadioManager::Mute entered={_lastPacketOwnedRadioMutePlan.EnteredMute}, requestedMute={_lastPacketOwnedRadioMutePlan.RequestedMute}, priorMute={_lastPacketOwnedRadioMutePlan.PreviousMute}, targetMms={_lastPacketOwnedRadioMutePlan.TargetMmsVolume:0.###}, targetBgm={_lastPacketOwnedRadioMutePlan.TargetBgmVolumePercent}, fade={_lastPacketOwnedRadioMutePlan.BgmFadeDurationMs}, muteFlagBeforeMms={_lastPacketOwnedRadioMutePlan.MuteFlagSetBeforeMmsVolume}, bgmBeforeMms={_lastPacketOwnedRadioMutePlan.BgmVolumeBeforeMmsVolume}, mmsBeforeMuteClear={_lastPacketOwnedRadioMutePlan.MmsVolumeBeforeMuteFlagClear}, uiMuteAfterAudio={_lastPacketOwnedRadioMutePlan.UiMuteAfterAudioMix}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
@@ -16738,6 +16925,65 @@ namespace HaCreator.MapSimulator
             return new Vector2(anchor.X - frameOriginX, anchor.Y - frameOriginY);
         }
 
+        private static readonly PacketOwnedTutorFontSlot[] PacketOwnedTutorFontSlots =
+        {
+            new(0, PacketOwnedTutorFontPointSize, unchecked((int)0xFF000000), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(1, PacketOwnedTutorFontPointSize, unchecked((int)0xFF000000), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId),
+            new(2, PacketOwnedTutorFontPointSize, unchecked((int)0xFFFF0000), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(3, PacketOwnedTutorFontPointSize, unchecked((int)0xFFFF0000), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId),
+            new(4, PacketOwnedTutorFontPointSize, unchecked((int)0xFF00FF00), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(5, PacketOwnedTutorFontPointSize, unchecked((int)0xFF00FF00), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId),
+            new(6, PacketOwnedTutorFontPointSize, unchecked((int)0xFF0000FF), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(7, PacketOwnedTutorFontPointSize, unchecked((int)0xFF0000FF), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId),
+            new(8, PacketOwnedTutorFontPointSize, unchecked((int)0xFFFFFFFF), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(9, PacketOwnedTutorFontPointSize, unchecked((int)0xFFFFFFFF), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId),
+            new(10, PacketOwnedTutorFontPointSize, unchecked((int)0xFF512B0C), false, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontFaceStringPoolId),
+            new(11, PacketOwnedTutorFontPointSize, unchecked((int)0xFF512B0C), true, PacketOwnedTutorFontClassStringPoolId, PacketOwnedTutorFontAlternateFaceStringPoolId)
+        };
+
+        internal static IReadOnlyList<PacketOwnedTutorFontSlot> SnapshotPacketOwnedTutorFontSlots()
+        {
+            return PacketOwnedTutorFontSlots.ToArray();
+        }
+
+        internal static IReadOnlyList<PacketOwnedTutorNativeOperation> BuildPacketOwnedTutorConstructorNativeOperationPlan(
+            int skillId,
+            int ownerCharacterId)
+        {
+            int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(skillId)
+                ? skillId
+                : TutorRuntime.AranTutorSkillId;
+            List<PacketOwnedTutorNativeOperation> operations = new()
+            {
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.ConstructSummonedFixedSkillLevelOne,
+                    SkillId: normalizedSkillId,
+                    SkillLevel: ResolvePacketOwnedTutorSummonSkillLevel(normalizedSkillId)),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.InitializeMessageLayerNull),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.AllocateTutorFontArray,
+                    FontSlotCount: PacketOwnedTutorFontSlotCount),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.InitializeTextAnalyzerArray)
+            };
+
+            IReadOnlyList<PacketOwnedTutorFontSlot> slots = SnapshotPacketOwnedTutorFontSlots();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                PacketOwnedTutorFontSlot slot = slots[i];
+                operations.Add(new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.CreateTutorFontSlot,
+                    FontSlotIndex: slot.Index,
+                    FontSlotCount: PacketOwnedTutorFontSlotCount,
+                    FontPointSize: slot.PointSize,
+                    FontColorArgb: slot.ColorArgb,
+                    UsesAlternateFontFace: slot.UsesAlternateFontFace,
+                    Source: $"StringPool[0x{slot.FontClassStringPoolId:X}]/StringPool[0x{slot.FontFaceStringPoolId:X}]"));
+            }
+
+            return operations;
+        }
+
         internal static IReadOnlyList<PacketOwnedTutorNativeOperation> BuildPacketOwnedTutorIndexedMessageNativeOperationPlan(
             int skillId,
             int messageIndex,
@@ -16796,6 +17042,7 @@ namespace HaCreator.MapSimulator
                     MessageIndex: Math.Max(0, messageIndex),
                     Source: tutorialLayerPath),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AssignMessageLayerWithAddRefRelease),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseCreatedMessageLayer),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.RelMoveMessageLayerToOrigin),
                 new PacketOwnedTutorNativeOperation(
                     PacketOwnedTutorNativeOperationKind.QueryMessageLayerWidth,
@@ -16811,11 +17058,13 @@ namespace HaCreator.MapSimulator
                     OffsetX: offsetX,
                     OffsetY: offsetY),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AnimateMessageLayerRepeat),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.QueryLocalUserJobForSayGate),
                 new PacketOwnedTutorNativeOperation(
                     playSay
                         ? PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction
                         : PacketOwnedTutorNativeOperationKind.SuppressSummonedSayAttackActionForAranJob,
-                    SkillId: normalizedSkillId)
+                    SkillId: normalizedSkillId),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseSummonedProperty)
             };
         }
 
@@ -16876,7 +17125,9 @@ namespace HaCreator.MapSimulator
                 new PacketOwnedTutorNativeOperation(
                     PacketOwnedTutorNativeOperationKind.CreateTextAnalyzerWithRequestedWidth,
                     LayerWidth: normalizedWidth),
-                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AnalyzeTextWithTutorFontArray),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.AnalyzeTextWithTutorFontArray,
+                    FontSlotCount: PacketOwnedTutorFontSlotCount),
                 new PacketOwnedTutorNativeOperation(
                     PacketOwnedTutorNativeOperationKind.StoreComputedTextHeight,
                     LayerHeight: normalizedTextHeight),
@@ -16884,11 +17135,15 @@ namespace HaCreator.MapSimulator
                     PacketOwnedTutorNativeOperationKind.CreateTextMessageLayer,
                     LayerWidth: layerSize.X,
                     LayerHeight: layerSize.Y,
+                    LayerZ: 10,
                     Source: "IWzGr2D::CreateLayer"),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AssignMessageLayerWithAddRefRelease),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseCreatedMessageLayer),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.BindMessageLayerToVectorController),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.BindMessageLayerToActionLayerParent),
-                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.SetMessageLayerZ),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.SetMessageLayerZ,
+                    LayerZ: 10),
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.RelMoveMessageLayerToOrigin),
                 new PacketOwnedTutorNativeOperation(
                     PacketOwnedTutorNativeOperationKind.MoveMessageLayerByHalfWidthAndSummonHeight,
@@ -16911,7 +17166,11 @@ namespace HaCreator.MapSimulator
                 new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.DrawAnalyzedTextRuns),
                 new PacketOwnedTutorNativeOperation(
                     PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction,
-                    SkillId: normalizedSkillId)
+                    SkillId: normalizedSkillId),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseTutorialBalloonCanvas),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseTextMessageCanvas),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseTextAnalyzer),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseSummonedProperty)
             });
 
             return operations;
@@ -17014,7 +17273,13 @@ namespace HaCreator.MapSimulator
                 frame.Source,
                 Repeats: false,
                 SayPlaybackRequested: sayPlaybackRequested,
-                EmptyTextSkipped: emptyTextSkipped);
+                EmptyTextSkipped: emptyTextSkipped,
+                TextAnalyzerWidth: Math.Clamp(
+                    requestedWidth <= 0 ? TutorRuntime.DefaultTextWidth : requestedWidth,
+                    TutorRuntime.MinTextWidth,
+                    TutorRuntime.MaxTextWidth),
+                ComputedTextHeight: Math.Max(0, computedTextHeight),
+                TutorFontSlotCount: PacketOwnedTutorFontSlotCount);
         }
 
         internal static Point ResolvePacketOwnedTutorTextMessageLayerSize(int requestedWidth, int computedTextHeight)
@@ -29773,13 +30038,33 @@ namespace HaCreator.MapSimulator
 
         private bool IsFollowRequestOptionEnabled()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is OptionMenuWindow optionMenuWindow
-                && optionMenuWindow.TryGetCommittedClientOptionValue(FollowRequestClientOptionId, out bool enabled))
+            return ResolvePacketOwnedClientOptionEnabled(
+                _packetOwnedClientOptions.Snapshot,
+                FollowRequestClientOptionId,
+                fallbackWhenNoClientOptMap: true);
+        }
+
+        internal static bool ResolvePacketOwnedClientOptionEnabledForTests(
+            IReadOnlyDictionary<uint, int> clientOptions,
+            int optionId,
+            bool fallbackWhenNoClientOptMap)
+        {
+            return ResolvePacketOwnedClientOptionEnabled(clientOptions, optionId, fallbackWhenNoClientOptMap);
+        }
+
+        private static bool ResolvePacketOwnedClientOptionEnabled(
+            IReadOnlyDictionary<uint, int> clientOptions,
+            int optionId,
+            bool fallbackWhenNoClientOptMap)
+        {
+            if (clientOptions == null || clientOptions.Count == 0)
             {
-                return enabled;
+                return fallbackWhenNoClientOptMap;
             }
 
-            return true;
+            return optionId >= 0
+                && clientOptions.TryGetValue((uint)optionId, out int rawValue)
+                && rawValue != 0;
         }
 
         private static string ResolvePacketGuideMobName(int mobId)

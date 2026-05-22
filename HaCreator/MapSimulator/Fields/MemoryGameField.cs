@@ -78,7 +78,10 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientRecordColumnRightX = 495;
         private const int ClientRecordColumnY = 190;
         private const int ClientRecordColumnWidth = 78;
-        private const int ClientRecordRowHeight = 14;
+        private const int ClientRecordRowHeight = 12;
+        private const int ClientRecordNameY = 172;
+        private const int ClientRecordScoreY = 241;
+        private const int ClientRecordGradeY = 253;
         private const int ClientMasterPanelX = 460;
         private const int ClientMasterPanelY = 63;
         private const int ClientTimerTextX = 295;
@@ -4226,6 +4229,14 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (ClientMiniGameRecordWidget widget in BuildClientRecordWidgets())
             {
+                DrawOutlinedText(
+                    spriteBatch,
+                    font,
+                    TrimClientRecordText(widget.DisplayName, 11),
+                    new Vector2(dialogX + widget.Bounds.X, dialogY + ClientRecordNameY),
+                    Color.Black,
+                    new Color(48, 48, 48));
+
                 foreach (ClientMiniGameRecordWidgetRow row in widget.Rows)
                 {
                     DrawOutlinedText(
@@ -4254,16 +4265,20 @@ namespace HaCreator.MapSimulator.Fields
 
         private ClientMiniGameRecordWidget BuildClientRecordWidget(int slot, int x)
         {
-            string displayName = slot == _localPlayerIndex ? "You" : ResolveParticipantName(slot);
+            string displayName = ResolveClientRecordDisplayName(slot);
             int wins = 0;
             int draws = 0;
             int losses = 0;
+            int score = 0;
+            int grade = 0;
             int rate = 0;
             if (_miniGameRecords.TryGetValue(slot, out MiniGameRecord record))
             {
                 wins = record.Wins;
                 draws = record.Draws;
                 losses = record.Losses;
+                score = record.Score;
+                grade = record.Grade;
                 rate = record.WinRatePercent;
             }
             else if (slot >= 0 && slot < _wins.Length)
@@ -4278,14 +4293,43 @@ namespace HaCreator.MapSimulator.Fields
             return new ClientMiniGameRecordWidget(
                 slot,
                 displayName,
-                new Rectangle(x, ClientRecordColumnY, ClientRecordColumnWidth, ClientRecordRowHeight * 4),
+                new Rectangle(x, ClientRecordNameY, ClientRecordColumnWidth, ClientRecordGradeY - ClientRecordNameY + ClientRecordRowHeight),
                 new[]
                 {
-                    new ClientMiniGameRecordWidgetRow("Win", wins, $"W {wins}", new Point(x, ClientRecordColumnY)),
-                    new ClientMiniGameRecordWidgetRow("Draw", draws, $"D {draws}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
-                    new ClientMiniGameRecordWidgetRow("Lose", losses, $"L {losses}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
-                    new ClientMiniGameRecordWidgetRow("Rate", rate, $"R {rate}%", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 3))
+                    new ClientMiniGameRecordWidgetRow("Win", wins, $"Win {wins}", new Point(x, ClientRecordColumnY)),
+                    new ClientMiniGameRecordWidgetRow("Draw", draws, $"Draw {draws}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
+                    new ClientMiniGameRecordWidgetRow("Lose", losses, $"Lose {losses}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
+                    new ClientMiniGameRecordWidgetRow("Rate", rate, $"Rate {rate}%", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 3)),
+                    new ClientMiniGameRecordWidgetRow("Score", score, $"Score {score}", new Point(x, ClientRecordScoreY)),
+                    new ClientMiniGameRecordWidgetRow("Grade", grade, $"Grade {grade}", new Point(x, ClientRecordGradeY))
                 });
+        }
+
+        private string ResolveClientRecordDisplayName(int slot)
+        {
+            string name = ResolveParticipantName(slot);
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+
+            return slot == _localPlayerIndex ? "You" : "Opponent";
+        }
+
+        private static string TrimClientRecordText(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            if (maxLength <= 0 || trimmed.Length <= maxLength)
+            {
+                return trimmed;
+            }
+
+            return trimmed[..maxLength];
         }
 
 

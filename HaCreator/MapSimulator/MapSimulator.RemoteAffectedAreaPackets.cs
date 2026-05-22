@@ -926,6 +926,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (RemoteAffectedAreaSupportResolver.HasMobOnlyDebuffMessageToken(skill))
+            {
+                return false;
+            }
+
             if (RemoteAffectedAreaSupportResolver.ResolveHostilePlayerAreaStatuses(skill, levelData).Count > 0)
             {
                 return RemoteAffectedAreaSupportResolver.ShouldProjectHostileStatusesToLocalPlayer(skill, levelData);

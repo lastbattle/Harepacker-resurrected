@@ -126,6 +126,8 @@ namespace HaCreator.MapSimulator.UI
             public int BestRowHeight { get; init; }
             public Point BestEventBadgePosition { get; init; }
             public int PendingCommoditySerialNumber { get; init; }
+            public int SearchResultCount { get; init; }
+            public bool AllItemFilterEnabled { get; init; }
             public bool HasDedicatedWzSurface { get; init; }
             public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
         }
@@ -792,6 +794,8 @@ namespace HaCreator.MapSimulator.UI
             _contentBounds = contentBounds;
         }
 
+        public Rectangle GetContentBoundsForTests() => ResolveContentBounds();
+
         public void SetTitlePosition(Point titlePosition)
         {
             _titlePositionOverride = titlePosition;
@@ -977,7 +981,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (state.SearchButtonControl != null)
             {
-                DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+                DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult; rows {state.SearchResultCount.ToString(CultureInfo.InvariantCulture)}; all-item {(state.AllItemFilterEnabled ? "on" : "off")}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
             }
 
             if (state.CanvasSlots.Count > 0)
@@ -1002,7 +1006,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawWrapped(
                     sprite,
-                    $"Best slots {state.BestSlotCount.ToString(CultureInfo.InvariantCulture)} row {state.BestRowHeight.ToString(CultureInfo.InvariantCulture)}px; event badge {state.BestEventBadgePosition.X.ToString(CultureInfo.InvariantCulture)},{state.BestEventBadgePosition.Y.ToString(CultureInfo.InvariantCulture)}; pending SN {state.PendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
+                    $"Best slots {state.BestSlotCount.ToString(CultureInfo.InvariantCulture)} row {state.BestRowHeight.ToString(CultureInfo.InvariantCulture)}px; active category {state.CurrentCategory.ToString(CultureInfo.InvariantCulture)}; event badge {state.BestEventBadgePosition.X.ToString(CultureInfo.InvariantCulture)},{state.BestEventBadgePosition.Y.ToString(CultureInfo.InvariantCulture)}; pending SN {state.PendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
                     Position.X + contentBounds.X + 12,
                     ref lineY,
                     Math.Max(180f, contentBounds.Width - 24f),

@@ -770,8 +770,10 @@ namespace HaCreator.MapSimulator.Fields
             errorMessage = null;
             if (!_isVisible)
             {
-                errorMessage = $"{ClientDialogOwnerName} is not active.";
-                return false;
+                LastDialogOwner = "none";
+                LastPacketSummary = "destroy (13) -> no active unique-modeless owner";
+                CurrentStatusMessage = "RPS subtype 13 had no active owner to destroy.";
+                return true;
             }
 
             LastPacketSummary = "destroy (13) -> CWnd::Destroy(unique-modeless owner)";

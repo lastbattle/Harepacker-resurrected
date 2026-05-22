@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         public string Detail { get; init; } = string.Empty;
         public string CategoryKey { get; init; } = string.Empty;
         public string PriceLabel { get; init; } = string.Empty;
+        public string Query { get; init; } = string.Empty;
 
         public bool HasMetadata =>
             !string.IsNullOrWhiteSpace(Title)
@@ -25,6 +26,7 @@ namespace HaCreator.MapSimulator.UI
             || !string.IsNullOrWhiteSpace(Detail)
             || !string.IsNullOrWhiteSpace(CategoryKey)
             || !string.IsNullOrWhiteSpace(PriceLabel)
+            || !string.IsNullOrWhiteSpace(Query)
             || Price != long.MinValue
             || AlreadyWishlisted.HasValue
             || ResultItemId > 0
@@ -58,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private const byte Version2 = 2;
         private const byte Version3 = 3;
         private const byte Version4 = 4;
+        private const byte Version5 = 5;
         private const int HeaderSize = 4 + 1 + 4 + 4 + 1;
         private const int LegacySessionHeaderSize = sizeof(int) * 2;
         private const int LegacyHeaderSize = sizeof(int) + sizeof(int) + sizeof(ushort);
@@ -74,6 +77,7 @@ namespace HaCreator.MapSimulator.UI
         private const byte RowFlagCategoryKey = 1 << 6;
         private const byte RowFlagPriceLabel = 1 << 7;
         private const byte RowFlag2CommoditySerialNumber = 1 << 0;
+        private const byte RowFlag2Query = 1 << 1;
 
         internal static byte[] EncodeVersion3(
             int serviceSessionId,
@@ -109,6 +113,30 @@ namespace HaCreator.MapSimulator.UI
         {
             return Encode(
                 Version4,
+                serviceSessionId,
+                searchSessionId,
+                query,
+                categoryKey,
+                priceRangeIndex,
+                remoteTotalCount,
+                remotePageIndex,
+                remotePageSize,
+                rows);
+        }
+
+        internal static byte[] EncodeVersion5(
+            int serviceSessionId,
+            int searchSessionId,
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            int remoteTotalCount,
+            int remotePageIndex,
+            int remotePageSize,
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rows)
+        {
+            return Encode(
+                Version5,
                 serviceSessionId,
                 searchSessionId,
                 query,
@@ -191,6 +219,11 @@ namespace HaCreator.MapSimulator.UI
                     rowFlags2 |= RowFlag2CommoditySerialNumber;
                 }
 
+                if (version >= Version5 && !string.IsNullOrWhiteSpace(row.Query))
+                {
+                    rowFlags2 |= RowFlag2Query;
+                }
+
                 if (row.Price != long.MinValue)
                 {
                     rowFlags |= RowFlagPrice;
@@ -242,6 +275,8 @@ namespace HaCreator.MapSimulator.UI
                     writer.WriteInt(row.CommoditySerialNumber);
                 }
 
+                WriteByteString(writer, row.Query, version >= Version5 && (rowFlags2 & RowFlag2Query) != 0);
+
                 if ((rowFlags & RowFlagPrice) != 0)
                 {
                     writer.WriteInt((int)Math.Clamp(row.Price, int.MinValue, int.MaxValue));
@@ -281,7 +316,7 @@ namespace HaCreator.MapSimulator.UI
 
             int offset = Magic.Length;
             byte version = span[offset++];
-            if (version != Version1 && version != Version2 && version != Version3 && version != Version4)
+            if (version != Version1 && version != Version2 && version != Version3 && version != Version4 && version != Version5)
             {
                 return false;
             }
@@ -377,6 +412,7 @@ namespace HaCreator.MapSimulator.UI
                     string detail = string.Empty;
                     string rowCategoryKey = string.Empty;
                     string rowPriceLabel = string.Empty;
+                    string rowQuery = string.Empty;
 
                     if ((rowFlags & RowFlagResultItemId) != 0)
                     {
@@ -398,6 +434,11 @@ namespace HaCreator.MapSimulator.UI
 
                         commoditySerialNumber = BitConverter.ToInt32(payload, offset);
                         offset += sizeof(int);
+                    }
+
+                    if (!TryReadUtf8String(span, ref offset, version >= Version5 && (rowFlags2 & RowFlag2Query) != 0, out rowQuery))
+                    {
+                        return false;
                     }
 
                     if ((rowFlags & RowFlagPrice) != 0)
@@ -441,7 +482,8 @@ namespace HaCreator.MapSimulator.UI
                         Seller = seller ?? string.Empty,
                         Detail = detail ?? string.Empty,
                         CategoryKey = rowCategoryKey ?? string.Empty,
-                        PriceLabel = rowPriceLabel ?? string.Empty
+                        PriceLabel = rowPriceLabel ?? string.Empty,
+                        Query = rowQuery ?? string.Empty
                     });
                 }
             }

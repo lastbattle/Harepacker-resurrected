@@ -220,6 +220,21 @@ namespace HaCreator.MapSimulator
             internal bool UsesNumericWzChildOrder => true;
         }
 
+        internal readonly record struct InitialQuizOwnerDrawLifecycleSnapshot(
+            bool CallsBaseCWndDrawFirst,
+            bool AcquiresOwnerCanvasOnce,
+            bool ClampsRemainingSecondsWhenTimeOver,
+            int TimerGlyphCopyCount,
+            bool TimerGlyphsDrawBeforeAnimation,
+            bool AnimationDrawsBeforeText,
+            int TextDrawCallCount,
+            bool TimeoutTextDrawn,
+            bool ReleasesOwnerCanvasOnceAtDrawEnd)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::Draw";
+            internal string ClientCanvasMethodName => "CWnd::GetCanvas";
+        }
+
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
@@ -1832,6 +1847,40 @@ namespace HaCreator.MapSimulator
                 MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time over")));
 
             return calls;
+        }
+
+        internal static InitialQuizOwnerDrawLifecycleSnapshot BuildInitialQuizOwnerDrawLifecycleSnapshot(
+            InitialQuizOwnerSnapshot snapshot,
+            bool showInput)
+        {
+            if (snapshot == null)
+            {
+                return new InitialQuizOwnerDrawLifecycleSnapshot(
+                    CallsBaseCWndDrawFirst: false,
+                    AcquiresOwnerCanvasOnce: false,
+                    ClampsRemainingSecondsWhenTimeOver: false,
+                    TimerGlyphCopyCount: 0,
+                    TimerGlyphsDrawBeforeAnimation: false,
+                    AnimationDrawsBeforeText: false,
+                    TextDrawCallCount: 0,
+                    TimeoutTextDrawn: false,
+                    ReleasesOwnerCanvasOnceAtDrawEnd: false);
+            }
+
+            int remainingSeconds = Math.Max(0, snapshot.RemainingSeconds);
+            IReadOnlyList<InitialQuizOwnerDrawTextCall> textCalls =
+                ResolveInitialQuizOwnerDrawTextCalls(snapshot, showInput);
+
+            return new InitialQuizOwnerDrawLifecycleSnapshot(
+                CallsBaseCWndDrawFirst: true,
+                AcquiresOwnerCanvasOnce: true,
+                ClampsRemainingSecondsWhenTimeOver: snapshot.RemainingMs <= 0 || snapshot.RemainingSeconds <= 0,
+                TimerGlyphCopyCount: ResolveInitialQuizOwnerTimerGlyphDrawCalls(remainingSeconds).Count,
+                TimerGlyphsDrawBeforeAnimation: true,
+                AnimationDrawsBeforeText: true,
+                TextDrawCallCount: textCalls.Count,
+                TimeoutTextDrawn: textCalls.Any(static call => call.Source == InitialQuizOwnerDrawTextSource.TimeoutNotice),
+                ReleasesOwnerCanvasOnceAtDrawEnd: true);
         }
 
         internal static Color ResolveInitialQuizOwnerDrawTextColor(InitialQuizOwnerDrawTextFont font)

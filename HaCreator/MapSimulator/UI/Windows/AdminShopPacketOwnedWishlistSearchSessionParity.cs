@@ -144,6 +144,11 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool IsRowQueryContextCompatible(string activeQuery, string rowQuery)
+        {
+            return IsOptionalQueryContextCompatible(activeQuery, rowQuery);
+        }
+
         internal static int ResolveRemotePageCount(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
         {
             if (snapshot == null)

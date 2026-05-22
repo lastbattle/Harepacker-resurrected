@@ -1112,7 +1112,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Accepted pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)} through {FormatConfirmationChoreography(confirmSteps, preConfirmStringPoolId)}"
                 : $"Skipped pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)} because the native pre-confirm predicate evaluated false for this row.";
             string askCountSummary = askCountShown
-                ? $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)} is part of the accepted choreography."
+                ? $"AskItemCount path {TrunkDialogClientParityText.DescribeAskItemCountChoreography(TrunkDialogClientParityText.BuildAskItemCountChoreography(availableQuantity))} is part of the accepted choreography."
                 : "No AskItemCount branch (client treat-singly path).";
             string quantitySummary = treatSingly
                 ? $"native treat-singly count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"

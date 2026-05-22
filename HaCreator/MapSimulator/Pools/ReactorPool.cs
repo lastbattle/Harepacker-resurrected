@@ -239,7 +239,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<ReactorItem, int> _onReactorTouched;  // (reactor, playerId)
         private Action<ReactorItem, int> _onReactorHit;      // (reactor, playerId)
         private Action<ReactorItem, IReadOnlyList<string>, bool, int> _onReactorScriptStateChanged;
-        private Action<string> _onReactorLayerSoundRequested;
+        private Action<string, int, int> _onReactorLayerSoundRequested;
         private Func<int, int, ReactorFootholdPlacement?> _reactorFootholdPlacementResolver;
 
         // Factory for creating new reactor items
@@ -261,7 +261,14 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnReactorTouched(Action<ReactorItem, int> callback) => _onReactorTouched = callback;
         public void SetOnReactorHit(Action<ReactorItem, int> callback) => _onReactorHit = callback;
         public void SetOnReactorScriptStateChanged(Action<ReactorItem, IReadOnlyList<string>, bool, int> callback) => _onReactorScriptStateChanged = callback;
-        public void SetOnReactorLayerSoundRequested(Action<string> callback) => _onReactorLayerSoundRequested = callback;
+        public void SetOnReactorLayerSoundRequested(Action<string> callback)
+        {
+            _onReactorLayerSoundRequested = callback == null
+                ? null
+                : (descriptor, _, _) => callback(descriptor);
+        }
+
+        public void SetOnReactorLayerSoundRequested(Action<string, int, int> callback) => _onReactorLayerSoundRequested = callback;
         public void SetReactorFootholdPlacementResolver(Func<int, int, ReactorFootholdPlacement?> callback) => _reactorFootholdPlacementResolver = callback;
 
         public void RefreshReactorLayerPlacements()
@@ -3132,8 +3139,7 @@ namespace HaCreator.MapSimulator.Pools
             (Func<PacketEnterAuthoredReactorCandidate, bool> Selector, PacketEnterAuthoredReactorSelectionReason Reason)[] identityFilters =
             {
                 (static candidate => candidate.HasExactNameMatch, PacketEnterAuthoredReactorSelectionReason.ExactName),
-                (static candidate => candidate.MatchesPacketName, PacketEnterAuthoredReactorSelectionReason.ClientSignal),
-                (static candidate => candidate.ContainsCurrentLocalUserPosition, PacketEnterAuthoredReactorSelectionReason.CurrentLocalUserPosition)
+                (static candidate => candidate.MatchesPacketName, PacketEnterAuthoredReactorSelectionReason.ClientSignal)
             };
 
             foreach ((Func<PacketEnterAuthoredReactorCandidate, bool> selector, PacketEnterAuthoredReactorSelectionReason reason) in identityFilters)
@@ -3169,6 +3175,13 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 return false;
+            }
+
+            scope = PreferTrueCandidates(scope, static candidate => candidate.ContainsCurrentLocalUserPosition);
+            if (TrySelectUniqueCandidate(scope, out index))
+            {
+                selectionReason = PacketEnterAuthoredReactorSelectionReason.CurrentLocalUserPosition;
+                return true;
             }
 
             (Func<PacketEnterAuthoredReactorCandidate, bool> Selector, PacketEnterAuthoredReactorSelectionReason Reason)[] statefulFilters =
@@ -3320,7 +3333,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (!hasSignalScoreTie || highestSignalScore <= 0)
+            if (highestSignalScore <= 0)
             {
                 return false;
             }
@@ -3347,6 +3360,12 @@ namespace HaCreator.MapSimulator.Pools
                     return score == highestSignalScore;
                 })
                 .ToList();
+            if (!hasSignalScoreTie && strongestCandidates.Count == 1)
+            {
+                index = strongestCandidates[0].Index;
+                return index >= 0;
+            }
+
             if (strongestCandidates.Count <= 1)
             {
                 return false;
@@ -4033,7 +4052,7 @@ namespace HaCreator.MapSimulator.Pools
                 1f);
         }
 
-        private static int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string> playHitSound)
+        private static int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string, int, int> playHitSound)
         {
             if (reactor == null || data == null)
             {
@@ -4103,7 +4122,7 @@ namespace HaCreator.MapSimulator.Pools
             string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
             if (!string.IsNullOrWhiteSpace(descriptor))
             {
-                playHitSound?.Invoke(descriptor);
+                InvokeReactorLayerSound(playHitSound, reactor, descriptor);
             }
 
             return duration;
@@ -4586,8 +4605,21 @@ namespace HaCreator.MapSimulator.Pools
             string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
             if (!string.IsNullOrWhiteSpace(descriptor))
             {
-                _onReactorLayerSoundRequested?.Invoke(descriptor);
+                InvokeReactorLayerSound(_onReactorLayerSoundRequested, reactor, descriptor);
             }
+        }
+
+        private static void InvokeReactorLayerSound(Action<string, int, int> callback, ReactorItem reactor, string descriptor)
+        {
+            if (callback == null || string.IsNullOrWhiteSpace(descriptor))
+            {
+                return;
+            }
+
+            callback(
+                descriptor,
+                reactor?.CurrentWorldX ?? reactor?.ReactorInstance?.X ?? 0,
+                reactor?.CurrentWorldY ?? reactor?.ReactorInstance?.Y ?? 0);
         }
 
         private static bool TryResolveNextVisualState(

@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int OpenGateDefaultDurationMs = 30_000;
         private const int OpenGateTeleportDelayMs = 120;
         private const int CrossMapPortalTeleportDelayMs = 0;
-        private const int DefaultOpenGateOpeningDurationMs = 1960;
+        private const int DefaultOpenGateOpeningDurationMs = 1800;
         private const int DefaultOpenGateRemovalDurationMs = 1800;
         private const int DefaultTownPortalOpeningDurationMs = 1800;
         private const int TownPortalRemovalFadeDurationMs = 1000;
@@ -1211,9 +1211,15 @@ namespace HaCreator.MapSimulator.Fields
 
         private static int ResolveRemoteTownPortalOpeningDurationMs(int visualDurationMs)
         {
-            return visualDurationMs > 0
-                ? Math.Max(DefaultTownPortalOpeningDurationMs, visualDurationMs)
-                : DefaultTownPortalOpeningDurationMs;
+            return DefaultTownPortalOpeningDurationMs;
+        }
+
+        private static bool HasRemotePortalOpeningWindowElapsed(
+            int currentTime,
+            int phaseStartedAt,
+            int openingDurationMs)
+        {
+            return unchecked(currentTime - phaseStartedAt) > openingDurationMs;
         }
 
         private bool AdvanceRemoteTownPortalPhases(int currentTime)
@@ -1237,7 +1243,10 @@ namespace HaCreator.MapSimulator.Fields
                 switch (state.Phase)
                 {
                     case RemoteTownPortalVisualPhase.Opening:
-                        if (unchecked(currentTime - state.PhaseStartedAt) >= GetTownPortalOpeningDurationMs())
+                        if (HasRemotePortalOpeningWindowElapsed(
+                                currentTime,
+                                state.PhaseStartedAt,
+                                GetTownPortalOpeningDurationMs()))
                         {
                             _remoteTownPortals[ownerId] = state with
                             {
@@ -1292,7 +1301,10 @@ namespace HaCreator.MapSimulator.Fields
                 switch (state.Phase)
                 {
                     case RemoteOpenGateVisualPhase.Opening:
-                        if (unchecked(currentTime - state.PhaseStartedAt) >= GetOpenGateOpeningDurationMs())
+                        if (HasRemotePortalOpeningWindowElapsed(
+                                currentTime,
+                                state.PhaseStartedAt,
+                                GetOpenGateOpeningDurationMs()))
                         {
                             _remoteOpenGates[key] = state with
                             {
@@ -3112,9 +3124,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private int GetOpenGateOpeningDurationMs()
         {
-            return _openGateOpeningVisuals?.DurationMs > 0
-                ? _openGateOpeningVisuals.DurationMs
-                : DefaultOpenGateOpeningDurationMs;
+            return DefaultOpenGateOpeningDurationMs;
         }
 
         private int GetOpenGateRemovalDurationMs()
@@ -3697,7 +3707,7 @@ namespace HaCreator.MapSimulator.Fields
         internal static RemoteTownPortalVisualPhase AdvanceRemoteTownPortalPhaseForTesting(RemoteTownPortalVisualPhase phase, int phaseStartedAt, int currentTime)
         {
             if (phase == RemoteTownPortalVisualPhase.Opening
-                && unchecked(currentTime - phaseStartedAt) >= DefaultTownPortalOpeningDurationMs)
+                && HasRemotePortalOpeningWindowElapsed(currentTime, phaseStartedAt, DefaultTownPortalOpeningDurationMs))
             {
                 return RemoteTownPortalVisualPhase.Stable;
             }
@@ -3718,7 +3728,7 @@ namespace HaCreator.MapSimulator.Fields
             int currentTime)
         {
             if (phase == RemoteTownPortalVisualPhase.Opening
-                && unchecked(currentTime - phaseStartedAt) >= DefaultTownPortalOpeningDurationMs)
+                && HasRemotePortalOpeningWindowElapsed(currentTime, phaseStartedAt, DefaultTownPortalOpeningDurationMs))
             {
                 return (state == 0 ? RemoteTownPortalOverlayState : state, RemoteTownPortalVisualPhase.Stable);
             }
@@ -4741,7 +4751,7 @@ namespace HaCreator.MapSimulator.Fields
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)
         {
             if (phase == RemoteOpenGateVisualPhase.Opening
-                && unchecked(currentTime - phaseStartedAt) >= DefaultOpenGateOpeningDurationMs)
+                && HasRemotePortalOpeningWindowElapsed(currentTime, phaseStartedAt, DefaultOpenGateOpeningDurationMs))
             {
                 return RemoteOpenGateVisualPhase.Stable;
             }

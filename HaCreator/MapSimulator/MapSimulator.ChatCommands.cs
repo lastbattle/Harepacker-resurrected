@@ -3371,7 +3371,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status]|session [status|verify|recent|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status]|session [status|verify|verifypassive|clearverify|recent|clearrecent|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -3420,15 +3420,33 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "verify", StringComparison.OrdinalIgnoreCase))
                         {
+                            bool verified = _guildBossOfficialSessionBridge.TryVerifyLiveOwnership(out string verifyStatus);
+                            return verified
+                                ? ChatCommandHandler.CommandResult.Ok($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
+                                : ChatCommandHandler.CommandResult.Info($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "verifypassive", StringComparison.OrdinalIgnoreCase))
+                        {
                             bool verified = _guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSession(out string verifyStatus);
                             return verified
                                 ? ChatCommandHandler.CommandResult.Ok($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
                                 : ChatCommandHandler.CommandResult.Info($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
                         }
 
+                        if (string.Equals(args[1], "clearverify", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.ClearLiveOwnershipVerification());
+                        }
+
                         if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(_guildBossOfficialSessionBridge.DescribeRecentPackets());
+                        }
+
+                        if (string.Equals(args[1], "clearrecent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.ClearRecentPackets());
                         }
 
                         if (string.Equals(args[1], "send", StringComparison.OrdinalIgnoreCase))
@@ -3777,7 +3795,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|verify|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|verify|verifypassive|clearverify|recent|clearrecent|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
                 });
             _chat.CommandHandler.RegisterCommand(
@@ -5482,6 +5500,10 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(
                                     $"{field.DescribeStatus()}{Environment.NewLine}{_coconutOfficialSessionBridge.DescribeStatus()}");
                             }
+                            if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_coconutOfficialSessionBridge.DescribeRecentPackets());
+                            }
                             if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (args.Length < 3
@@ -5643,7 +5665,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|recent|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
                     }
 
                 });

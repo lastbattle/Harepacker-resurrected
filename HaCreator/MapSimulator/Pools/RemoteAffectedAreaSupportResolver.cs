@@ -1150,6 +1150,11 @@ namespace HaCreator.MapSimulator.Pools
                 return hasExplicitHostileStatusMetadata;
             }
 
+            if (HasMobOnlyDebuffMessageToken(skill))
+            {
+                return false;
+            }
+
             if (hasExplicitHostileStatusMetadata)
             {
                 return true;
@@ -1161,6 +1166,53 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return IsHostilePlayerAreaSkill(skill, supportSkills: null, levelData);
+        }
+
+        internal static bool HasMobOnlyDebuffMessageToken(SkillData skill)
+        {
+            if (string.IsNullOrWhiteSpace(skill?.DebuffMessageToken))
+            {
+                return false;
+            }
+
+            string debuffToken = skill.DebuffMessageToken;
+            if (!ContainsToken(debuffToken, "incTargetEXP", "incTargetReward", "incTargetMeso", "homing", "mindControl"))
+            {
+                return false;
+            }
+
+            return !ContainsToken(
+                debuffToken,
+                "amplifyDamage",
+                "stun",
+                "freeze",
+                "seal",
+                "slow",
+                "weak",
+                "curse",
+                "reverse",
+                "undead",
+                "polymorph",
+                "dark",
+                "blind",
+                "buffLimit",
+                "restrict",
+                "attackLimit",
+                "incapacitate",
+                "stopPotion",
+                "potionLimit",
+                "recoveryLimit",
+                "fear",
+                "banish",
+                "seduce",
+                "attract",
+                "bomb",
+                "battlefieldFlag",
+                "reduceTargetACC",
+                "reduceTargetPDP",
+                "reduceTargetMDP",
+                "reduceTargetDam",
+                "elementalWeaken");
         }
 
         private static int ResolveHostilePlayerAreaPrimaryStatusPropPercent(SkillLevelData levelData)
@@ -1180,7 +1232,8 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (!string.IsNullOrWhiteSpace(skill?.DebuffMessageToken))
+            if (!string.IsNullOrWhiteSpace(skill?.DebuffMessageToken)
+                && !HasMobOnlyDebuffMessageToken(skill))
             {
                 return true;
             }

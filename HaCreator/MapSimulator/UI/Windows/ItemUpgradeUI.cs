@@ -966,6 +966,84 @@ namespace HaCreator.MapSimulator.UI
             return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
         }
 
+        public ItemUpgradeAttemptResult ApplyPacketOwnedPreparedUpgradeInventoryOperationCounts(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            bool consumableCountObserved,
+            int consumableFinalCount,
+            InventoryType? modifierInventoryType,
+            int? modifierSlotIndex,
+            bool modifierCountObserved,
+            int modifierFinalCount,
+            bool success)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+
+            ItemUpgradeAttemptResult validationResult = TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: success,
+                previewOnly: true);
+            if (!validationResult.Success.HasValue)
+            {
+                return validationResult;
+            }
+
+            if (consumableCountObserved)
+            {
+                if (!TryGetConsumableDefinition(validationResult.ConsumableItemId, out EnhancementConsumableDefinition consumableDefinition))
+                {
+                    _statusMessage = "Packet-owned enhancement result did not identify a consumable item.";
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+
+                EnhancementConsumable consumable = new EnhancementConsumable(consumableDefinition);
+                if (!TryConsumePreparedInventoryItemToPacketCount(
+                        consumable,
+                        consumableInventoryType,
+                        consumableSlotIndex,
+                        consumableFinalCount,
+                        out string consumableFailureReason))
+                {
+                    _statusMessage = consumableFailureReason;
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+            }
+
+            if (validationResult.ModifierItemId != 0 && modifierCountObserved)
+            {
+                if (!TryGetConsumableDefinition(validationResult.ModifierItemId, out EnhancementConsumableDefinition modifierDefinition))
+                {
+                    _statusMessage = "Packet-owned enhancement result did not identify a valid modifier item.";
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+
+                EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+                if (!TryConsumePreparedInventoryItemToPacketCount(
+                        modifier,
+                        modifierInventoryType,
+                        modifierSlotIndex,
+                        modifierFinalCount,
+                        out string modifierFailureReason))
+                {
+                    _statusMessage = modifierFailureReason;
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+            }
+
+            _statusMessage = validationResult.StatusMessage;
+            _lastUpgradeSucceeded = success;
+            _preferredModifierItemId = null;
+            return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+        }
+
         public ItemUpgradeAttemptResult ValidatePacketOwnedPreparedUpgradeAtSlots(
             InventoryType consumableInventoryType,
             int consumableSlotIndex,

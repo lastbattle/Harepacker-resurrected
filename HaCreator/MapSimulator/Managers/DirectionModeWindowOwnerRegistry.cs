@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.AdminShopWishListCategory,
             MapSimulatorWindowNames.AdminShopWishListSearchResult,
             MapSimulatorWindowNames.Mts,
+            MapSimulatorWindowNames.CashShopCharacter,
             MapSimulatorWindowNames.CashShopLocker,
             MapSimulatorWindowNames.CashShopInventory,
             MapSimulatorWindowNames.CashShopList,

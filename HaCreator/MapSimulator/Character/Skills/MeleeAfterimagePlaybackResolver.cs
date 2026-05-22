@@ -503,13 +503,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             ResolveAfterimageActionMetadata(
                 frameSet,
                 out int? rawActionCode,
-                out string actionName);
+                out string actionName,
+                out Rectangle? actionRange);
 
             return ResolveCreateAfterimageLayerReferenceOperations(
                 frameSet,
                 targetLayerObjectId,
                 actionName,
-                rawActionCode);
+                rawActionCode,
+                actionRange);
         }
 
         public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
@@ -517,6 +519,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             int targetLayerObjectId,
             string actionName,
             int? rawActionCode)
+        {
+            return ResolveCreateAfterimageLayerReferenceOperations(
+                frameSet,
+                targetLayerObjectId,
+                actionName,
+                rawActionCode,
+                frameSet?.HasRange == true ? frameSet.Range : null);
+        }
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId,
+            string actionName,
+            int? rawActionCode,
+            Rectangle? actionRange)
         {
             IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
             int removedCanvasCollectionObjectId = ResolveRemovedCanvasCollectionObjectId(
@@ -572,13 +589,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                     RawActionCode: rawActionCode,
                     ActionName: actionName,
                     AfterimageUolRefDelta: 1,
-                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId),
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange),
                 new(
                     AfterimageLayerReferenceOperationKind.GetWeaponAfterImage,
                     targetLayerObjectId,
                     RawActionCode: rawActionCode,
                     ActionName: actionName,
-                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId)
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange)
             });
 
             if (frames != null && frames.Count > 0)
@@ -604,7 +623,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         CanvasRefDelta: 1,
-                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.AddLayerRef,
                         targetLayerObjectId,
@@ -613,7 +633,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         LayerRefDelta: 1,
-                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.LoadCanvas,
                         targetLayerObjectId,
@@ -622,7 +643,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
-                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame),
+                        ActionRange: actionRange));
                     AddLoadCanvasPropertyReadOperations(
                         operations,
                         targetLayerObjectId,
@@ -630,7 +652,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        actionCanvasArrayObjectId);
+                        actionCanvasArrayObjectId,
+                        actionRange);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.InsertCanvas,
                         targetLayerObjectId,
@@ -640,7 +663,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameActionName,
                         InsertCanvasResultVariantRefDelta: 1,
                         AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
-                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame),
+                        ActionRange: actionRange));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ClearInsertCanvasResultVariant,
                         targetLayerObjectId,
@@ -649,7 +673,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         InsertCanvasResultVariantRefDelta: -1,
-                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
                     AddLoadCanvasArgumentVariantCleanupOperations(
                         operations,
                         targetLayerObjectId,
@@ -657,7 +682,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         canvasOrdinal,
                         frameRawActionCode,
                         frameActionName,
-                        actionCanvasArrayObjectId);
+                        actionCanvasArrayObjectId,
+                        actionRange);
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
                         targetLayerObjectId,
@@ -666,7 +692,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         LayerRefDelta: -1,
-                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseCanvasRef,
                         targetLayerObjectId,
@@ -675,7 +702,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         CanvasRefDelta: -1,
-                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                        AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                        ActionRange: actionRange));
                 }
             }
 
@@ -685,7 +713,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RawActionCode: rawActionCode,
                 ActionName: actionName,
                 AfterimageUolRefDelta: -1,
-                AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                ActionRange: actionRange));
             operations.Add(new AfterimageLayerReferenceOperation(
                 AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
                 targetLayerObjectId,
@@ -701,7 +730,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int canvasOrdinal,
             int? rawActionCode,
             string actionName,
-            int actionCanvasArrayObjectId)
+            int actionCanvasArrayObjectId,
+            Rectangle? actionRange)
         {
             if (operations == null)
             {
@@ -718,7 +748,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     rawActionCode,
                     actionName,
                     AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
-                    LoadCanvasArgumentVariantOrdinal: ordinal));
+                    LoadCanvasArgumentVariantOrdinal: ordinal,
+                    ActionRange: actionRange));
             }
         }
 
@@ -729,7 +760,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int canvasOrdinal,
             int? rawActionCode,
             string actionName,
-            int actionCanvasArrayObjectId)
+            int actionCanvasArrayObjectId,
+            Rectangle? actionRange)
         {
             if (operations == null)
             {
@@ -750,7 +782,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CanvasPropertyRefDelta: 1,
                     LoadCanvasPropertyName: propertySpec.Name,
                     LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
-                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
                 operations.Add(new AfterimageLayerReferenceOperation(
                     AfterimageLayerReferenceOperationKind.ClearLoadCanvasPropertyValueVariant,
                     targetLayerObjectId,
@@ -762,7 +795,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     LoadCanvasPropertyValueVariantRefDelta: -1,
                     LoadCanvasPropertyName: propertySpec.Name,
                     LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
-                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
                 operations.Add(new AfterimageLayerReferenceOperation(
                     AfterimageLayerReferenceOperationKind.ReleaseLoadCanvasPropertyRef,
                     targetLayerObjectId,
@@ -774,7 +808,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CanvasPropertyRefDelta: -1,
                     LoadCanvasPropertyName: propertySpec.Name,
                     LoadCanvasPropertyDefaultValue: propertySpec.DefaultValue,
-                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId));
+                    AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
+                    ActionRange: actionRange));
             }
         }
 
@@ -853,10 +888,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static void ResolveAfterimageActionMetadata(
             MeleeAfterImageFrameSet frameSet,
             out int? rawActionCode,
-            out string actionName)
+            out string actionName,
+            out Rectangle? actionRange)
         {
-            rawActionCode = null;
-            actionName = null;
+            rawActionCode = frameSet?.RawActionCode;
+            actionName = frameSet?.ActionName;
+            actionRange = frameSet?.HasRange == true ? frameSet.Range : null;
             IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
             if (frames == null)
             {

@@ -2247,7 +2247,11 @@ namespace HaCreator.MapSimulator.Effects
             {
                 if (!TryResolveParticipantForTemporaryStats(mappedOwnerCharacterId, out WeddingRemoteParticipant mappedParticipant, out _))
                 {
-                    RemovePendingRelationshipRecordAddOperations(packet.RelationshipType, packet.CharacterId, packet.ItemSerial);
+                    if (RemovePendingRelationshipRecordAddOperations(packet.RelationshipType, packet.CharacterId, packet.ItemSerial) > 0)
+                    {
+                        RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, mappedOwnerCharacterId);
+                    }
+
                     QueuePendingRemoteParticipantOperation(
                         mappedOwnerCharacterId,
                         new PendingWeddingRemoteParticipantOperation(
@@ -2264,7 +2268,8 @@ namespace HaCreator.MapSimulator.Effects
                             packet.RelationshipType,
                             default,
                             mappedOwnerCharacterId,
-                            packet.ItemSerial));
+                            packet.ItemSerial,
+                            packet.DispatchKey));
                     return true;
                 }
 
@@ -2294,7 +2299,11 @@ namespace HaCreator.MapSimulator.Effects
                 && packet.CharacterId.Value > 0
                 && !TryResolveParticipantForTemporaryStats(packet.CharacterId.Value, out _, out _))
             {
-                RemovePendingRelationshipRecordAddOperations(packet.RelationshipType, packet.CharacterId, packet.ItemSerial);
+                if (RemovePendingRelationshipRecordAddOperations(packet.RelationshipType, packet.CharacterId, packet.ItemSerial) > 0)
+                {
+                    RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, packet.CharacterId.Value);
+                }
+
                 QueuePendingRemoteParticipantOperation(
                     packet.CharacterId.Value,
                     new PendingWeddingRemoteParticipantOperation(
@@ -2311,7 +2320,8 @@ namespace HaCreator.MapSimulator.Effects
                         packet.RelationshipType,
                         default,
                         packet.CharacterId,
-                        packet.ItemSerial));
+                        packet.ItemSerial,
+                        packet.DispatchKey));
                 return true;
             }
 
@@ -2467,21 +2477,22 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
-        private void RemovePendingRelationshipRecordAddOperations(
+        private int RemovePendingRelationshipRecordAddOperations(
             RemoteRelationshipOverlayType relationshipType,
             int? characterId,
             long? itemSerial)
         {
             if (_pendingRemoteParticipantOperationsByCharacterId.Count == 0)
             {
-                return;
+                return 0;
             }
 
+            int removedCount = 0;
             foreach (int pendingCharacterId in _pendingRemoteParticipantOperationsByCharacterId.Keys.ToArray())
             {
                 List<PendingWeddingRemoteParticipantOperation> operations =
                     _pendingRemoteParticipantOperationsByCharacterId[pendingCharacterId];
-                operations.RemoveAll(operation =>
+                removedCount += operations.RemoveAll(operation =>
                     operation.Type == PendingWeddingRemoteParticipantOperationType.RelationshipRecordAdd
                     && operation.RelationshipType == relationshipType
                     && DoesPendingRelationshipRecordAddMatchRemove(operation, characterId, itemSerial));
@@ -2491,6 +2502,8 @@ namespace HaCreator.MapSimulator.Effects
                     _pendingRemoteParticipantOperationsByCharacterId.Remove(pendingCharacterId);
                 }
             }
+
+            return removedCount;
         }
 
         private static bool DoesPendingRelationshipRecordAddMatchRemove(
@@ -3070,6 +3083,14 @@ namespace HaCreator.MapSimulator.Effects
                 && ownerCharacterId > 0;
         }
 
+        internal bool TryResolveRelationshipRecordOwnerFromDispatchKeyForTesting(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
+            out int ownerCharacterId)
+        {
+            return TryResolveRelationshipRecordOwnerFromDispatchKey(relationshipType, dispatchKey, out ownerCharacterId);
+        }
+
         private Dictionary<RemoteRelationshipRecordDispatchKey, int> GetRelationshipRecordDispatchOwnerTable(
             RemoteRelationshipOverlayType relationshipType)
         {
@@ -3518,11 +3539,19 @@ namespace HaCreator.MapSimulator.Effects
                             operation.RelationshipPairLookupSerial);
                         break;
                     case PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove:
-                        if (ApplyRelationshipRecordRemove(
+                        bool removed = ApplyRelationshipRecordRemove(
                             participant,
                             operation.RelationshipType,
                             operation.RelationshipRemoveCharacterId,
-                            operation.RelationshipRemoveItemSerial))
+                            operation.RelationshipRemoveItemSerial);
+                        bool dispatchKeyStillOwnsParticipant =
+                            operation.RelationshipDispatchKey.HasValue
+                            && TryResolveRelationshipRecordOwnerFromDispatchKey(
+                                operation.RelationshipType,
+                                operation.RelationshipDispatchKey,
+                                out int dispatchOwnerCharacterId)
+                            && dispatchOwnerCharacterId == participant.CharacterId;
+                        if (removed || dispatchKeyStillOwnsParticipant)
                         {
                             RemoveRelationshipRecordDispatchKeysForOwner(operation.RelationshipType, participant.CharacterId);
                         }

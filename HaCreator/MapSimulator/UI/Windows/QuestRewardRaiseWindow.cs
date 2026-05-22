@@ -804,7 +804,7 @@ namespace HaCreator.MapSimulator.UI
         private string BuildPiecePlacementSubtitle()
         {
             int placedCount = _state?.PlacedPieces?.Count ?? 0;
-            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int maxDropCount = ResolveClientMaxDropCount();
             int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
             int grade = Math.Max(0, _state?.Grade ?? _prompt?.OwnerContext?.Grade ?? 0);
             int expUnit = Math.Max(0, _state?.IncrementExpUnit ?? _prompt?.OwnerContext?.IncrementExpUnit ?? 0);
@@ -835,7 +835,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<QuestRewardRaisePlacedPiece> pieces = _state?.PlacedPieces != null
                 ? _state.PlacedPieces
                 : Array.Empty<QuestRewardRaisePlacedPiece>();
-            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int maxDropCount = ResolveClientMaxDropCount();
             int visibleRows = Math.Max(1, listBounds.Height / RowHeight);
             int totalRows = Math.Min(visibleRows, Math.Max(maxDropCount, pieces.Count == 0 ? 1 : pieces.Count));
             for (int i = 0; i < totalRows; i++)
@@ -879,7 +879,7 @@ namespace HaCreator.MapSimulator.UI
         private string BuildPiecePlacementFooter()
         {
             int placedCount = _state?.PlacedPieces?.Count ?? 0;
-            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int maxDropCount = ResolveClientMaxDropCount();
             int qrData = _state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0;
             int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
             if (!string.IsNullOrWhiteSpace(_state?.LastInboundSummary))
@@ -921,6 +921,11 @@ namespace HaCreator.MapSimulator.UI
                 QuestRewardRaisePieceLifecycleState.Confirmed => "confirmed",
                 _ => "unknown"
             };
+        }
+
+        private int ResolveClientMaxDropCount()
+        {
+            return Math.Max(1, _state?.ResolveClientMaxDropCount() ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
         }
 
         private string Truncate(string text, int maxLength)

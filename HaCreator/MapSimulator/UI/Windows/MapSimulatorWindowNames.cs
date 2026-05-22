@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
         public const string AdminShopWishListCategory = "AdminShopWishListCategory";
         public const string AdminShopWishListSearchResult = "AdminShopWishListSearchResult";
         public const string CashAvatarPreview = "CashAvatarPreview";
+        public const string CashShopCharacter = "CashShopCharacter";
         public const string CashShopLocker = "CashShopLocker";
         public const string CashShopInventory = "CashShopInventory";
         public const string CashShopTab = "CashShopTab";

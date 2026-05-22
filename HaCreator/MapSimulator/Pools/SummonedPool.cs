@@ -122,7 +122,8 @@ namespace HaCreator.MapSimulator.Pools
     internal readonly record struct PacketOwnedExpiryCandidateClientState(
         bool IsSuspended = false,
         bool IsOurTeam = false,
-        bool IsSamePhase = true);
+        bool IsSamePhase = true,
+        bool IsEventTeamProtected = false);
 
     internal readonly record struct PacketOwnedExpiryFindHitMobInRectResult(
         int[] TargetIds,
@@ -2233,7 +2234,8 @@ namespace HaCreator.MapSimulator.Pools
                         summonHitbox,
                         mob.AI?.IsDazzled == true,
                         clientState.IsOurTeam,
-                        clientState.IsSamePhase))
+                        clientState.IsSamePhase,
+                        clientState.IsEventTeamProtected))
                 {
                     continue;
                 }
@@ -8508,7 +8510,7 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = 0; i < effectPath.Length; i++)
             {
                 char current = effectPath[i];
-                if ((current == '"' || current == '\'') && (i == 0 || effectPath[i - 1] != '\\'))
+                if ((current == '"' || current == '\'') && !IsPacketMobAttackGeneralEffectEscapedQuote(effectPath, i))
                 {
                     if (!inQuote)
                     {
@@ -8563,6 +8565,22 @@ namespace HaCreator.MapSimulator.Pools
                    || value == '\n'
                    || value == '\t'
                    || value == ' ';
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectEscapedQuote(string value, int quoteIndex)
+        {
+            if (string.IsNullOrEmpty(value) || quoteIndex <= 0 || quoteIndex >= value.Length)
+            {
+                return false;
+            }
+
+            int slashCount = 0;
+            for (int i = quoteIndex - 1; i >= 0 && value[i] == '\\'; i--)
+            {
+                slashCount++;
+            }
+
+            return slashCount % 2 == 1;
         }
 
         private static bool TryResolvePacketMobAttackGeneralEffectSourceSequenceFrameIndex(

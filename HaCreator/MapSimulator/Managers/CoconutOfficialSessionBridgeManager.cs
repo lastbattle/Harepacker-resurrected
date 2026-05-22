@@ -631,10 +631,11 @@ namespace HaCreator.MapSimulator.Managers
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
                 relayPayload,
                 $"official-session:{e.SourceEndpoint}",
-                $"packetraw {Convert.ToHexString(e.RawPacket)}"));
+                $"packetraw {Convert.ToHexString(e.RawPacket)}",
+                e.ProxySessionId));
             ReceivedCount++;
             LastStatus =
-                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Coconut opcode {opcode} from live session {e.SourceEndpoint}.";
+                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Coconut opcode {opcode} from live session {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -647,7 +648,8 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
                 && opcode == 257)
             {
-                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, targetId: 0, delayMs: 0, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
+                TryDecodeOutboundAttackRequest(e.RawPacket, out int targetId, out int delayMs);
+                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, targetId, delayMs, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
                 LastStatus = $"Forwarded live Coconut opcode 257 from {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
             }
         }
@@ -1147,7 +1149,7 @@ namespace HaCreator.MapSimulator.Managers
         private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int targetId, int delayMs, string source, long? proxySessionId)
         {
             int payloadLength = Math.Max(0, (rawPacket?.Length ?? 0) - sizeof(short));
-            string summary = targetId > 0
+            string summary = targetId >= 0
                 ? $"opcode={OutboundAttackRequestOpcode} target={targetId} delay={delayMs}"
                 : $"opcode={OutboundAttackRequestOpcode}";
             return new OutboundPacketTrace(
@@ -1159,6 +1161,20 @@ namespace HaCreator.MapSimulator.Managers
                 summary,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 proxySessionId);
+        }
+
+        private static bool TryDecodeOutboundAttackRequest(byte[] rawPacket, out int targetId, out int delayMs)
+        {
+            targetId = -1;
+            delayMs = 0;
+            if (rawPacket == null || rawPacket.Length < sizeof(short) * 3)
+            {
+                return false;
+            }
+
+            targetId = BitConverter.ToInt16(rawPacket, sizeof(short));
+            delayMs = BitConverter.ToUInt16(rawPacket, sizeof(short) * 2);
+            return true;
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

@@ -141,6 +141,7 @@ namespace HaCreator.MapSimulator
         private readonly StringBuilder _inputText = new StringBuilder(128);
         private readonly List<ChatMessage> _messages = new List<ChatMessage>();
         internal event Action<string, int, int> ClientChatMessageAdded;
+        internal Func<string, int, bool> ClientChatHelperNoticeRequested { get; set; }
         private int _cursorBlinkTimer = 0;
         private int _lastTickCount = 0;
         private int _cursorPosition = 0; // Position within input text
@@ -1407,7 +1408,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (_clientChatHelperHasLastCheckedTime
-                && !HasClientChatHelperElapsedLessThan(tickCount, _clientChatHelperLastCheckedTime, ClientChatHelperRecentResetMs))
+                && HasClientChatHelperElapsedGreaterThan(tickCount, _clientChatHelperLastCheckedTime, ClientChatHelperRecentResetMs))
             {
                 _clientChatHelperRecentMessages.Clear();
                 _clientChatHelperLastCheckedTime = tickCount;
@@ -1483,8 +1484,18 @@ namespace HaCreator.MapSimulator
             return unchecked((uint)(currentTick - previousTick)) < (uint)thresholdMs;
         }
 
+        private static bool HasClientChatHelperElapsedGreaterThan(int currentTick, int previousTick, int thresholdMs)
+        {
+            return unchecked((uint)(currentTick - previousTick)) > (uint)thresholdMs;
+        }
+
         private void ShowClientChatHelperNotice(string notice, int tickCount)
         {
+            if (ClientChatHelperNoticeRequested?.Invoke(notice ?? string.Empty, tickCount) == true)
+            {
+                return;
+            }
+
             AddErrorMessage(notice, tickCount);
         }
 

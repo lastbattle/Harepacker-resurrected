@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Entities
         public const int RecoveredAstarothSpecialAttackFlag = 1;
         public const int RecoveredAstarothSpecialAttackAfterMs = 3300;
         public const char RecoveredNativeOwnerPathSeparator = '/';
+        public const int MobUpdateFunctionAddress = 0x654300;
+        public const int MobUpdateFullChargeEffectCallAddress = 0x654498;
         public const int MobAngerGaugeFullChargeEffectFunctionAddress = 0x6490B0;
         public const int AnimationDisplayerFullChargedAngerGaugeFunctionAddress = 0x457D00;
         private static readonly MobAngerGaugeFullChargeCallerOperationKind[] RecoveredCallerOperations =
@@ -295,12 +297,18 @@ namespace HaCreator.MapSimulator.Entities
             int currentTick)
         {
             return new MobAngerGaugeFullChargeCallerTrace(
+                MobUpdateFunctionAddress,
+                MobUpdateFullChargeEffectCallAddress,
                 MobAngerGaugeFullChargeEffectFunctionAddress,
                 AnimationDisplayerFullChargedAngerGaugeFunctionAddress,
                 MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId,
                 MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId,
                 ResolveOwnerEffectPath(mobTemplateId, loadedEffectPath),
+                intervalMs,
                 HasReplayGateElapsed(currentTick, startTick, intervalMs),
+                UsesDelayedAttackEntryOwner: true,
+                ReadsAttackInfoSpecialAttackFlag: true,
+                UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall: true,
                 UpdatesStartTimeBeforeAnimationDisplayerCall: true,
                 UpdatesStartTimeBeforeStringPoolBuild: true,
                 UsesRecoveredSlashPathSeparator: true,
@@ -361,12 +369,18 @@ namespace HaCreator.MapSimulator.Entities
     }
 
     internal readonly record struct MobAngerGaugeFullChargeCallerTrace(
+        int MobUpdateFunctionAddress,
+        int MobUpdateFullChargeEffectCallAddress,
         int MobFunctionAddress,
         int AnimationDisplayerFunctionAddress,
         int MobTemplatePathStringPoolId,
         int EffectNameStringPoolId,
         string SourceUol,
+        int FullChargeEffectTimeMs,
         bool ReplayGateElapsed,
+        bool UsesDelayedAttackEntryOwner,
+        bool ReadsAttackInfoSpecialAttackFlag,
+        bool UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall,
         bool UpdatesStartTimeBeforeAnimationDisplayerCall,
         bool UpdatesStartTimeBeforeStringPoolBuild,
         bool UsesRecoveredSlashPathSeparator,

@@ -282,6 +282,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static int GetDropExpireSeconds(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.dropExpire ?? GetInfoInt(mapInfo, "dropExpire") ?? 0);
+        }
+
+        public static string GetDropExpireEntryMessage(MapInfo mapInfo)
+        {
+            int dropExpireSeconds = GetDropExpireSeconds(mapInfo);
+            return dropExpireSeconds > 0
+                ? $"Field drop expiration metadata is active: local drops expire after {dropExpireSeconds}s."
+                : null;
+        }
+
         public static string GetFlyingMapEntryMessage(MapInfo mapInfo)
         {
             return IsFlyingMap(mapInfo)
@@ -879,6 +892,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetMapEffectEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetDropExpireEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetConsumeItemCooldownEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetZakumJumpQuestMoveCheckEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetAllMoveCheckEntryMessage(mapInfo));

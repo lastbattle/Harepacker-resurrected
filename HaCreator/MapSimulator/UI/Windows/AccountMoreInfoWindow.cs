@@ -26,7 +26,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientButtonClickNotify = 100;
         private const int ClientComboBoxMaxShownItems = 10;
         private const int ClientComboBoxTextOffsetY = -2;
-        private const int CheckboxSize = 11;
+        private const int CheckboxVisualSize = 11;
+        private const int CheckboxControlWidth = 15;
+        private const int CheckboxControlHeight = 70;
         private static readonly Color ClientComboBoxBackColor = new(238, 238, 238);
         private static readonly Color ClientComboBoxFocusedBackColor = new(165, 165, 152);
         private static readonly Color ClientComboBoxBorderColor = new(153, 153, 153);
@@ -363,22 +365,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool selected = i < safeSelections.Count && safeSelections[i];
                 Point relativePosition = positions[i];
-                Rectangle bounds = new(Position.X + relativePosition.X, Position.Y + relativePosition.Y, CheckboxSize, CheckboxSize);
-                bool hovered = bounds.Contains(_currentMouseState.X, _currentMouseState.Y);
+                Rectangle visualBounds = ResolveCheckboxVisualBoundsForTesting(Position, relativePosition);
+                Rectangle controlBounds = ResolveCheckboxControlBoundsForTesting(Position, relativePosition);
+                bool hovered = controlBounds.Contains(_currentMouseState.X, _currentMouseState.Y);
                 Texture2D checkboxTexture = ResolveCheckboxTexture(selected, hovered);
                 if (checkboxTexture != null)
                 {
-                    sprite.Draw(checkboxTexture, new Vector2(bounds.X, bounds.Y), Color.White);
+                    sprite.Draw(checkboxTexture, new Vector2(visualBounds.X, visualBounds.Y), Color.White);
                 }
                 else
                 {
                     Texture2D fallbackPixel = GetFallbackPixelTexture(sprite.GraphicsDevice);
-                    sprite.Draw(fallbackPixel, bounds, new Color(232, 235, 241, 214));
+                    sprite.Draw(fallbackPixel, visualBounds, new Color(232, 235, 241, 214));
                     if (selected)
                     {
                         sprite.Draw(
                             fallbackPixel,
-                            new Rectangle(bounds.X + 2, bounds.Y + 2, Math.Max(1, bounds.Width - 4), Math.Max(1, bounds.Height - 4)),
+                            new Rectangle(visualBounds.X + 2, visualBounds.Y + 2, Math.Max(1, visualBounds.Width - 4), Math.Max(1, visualBounds.Height - 4)),
                             new Color(92, 192, 112));
                     }
                 }
@@ -390,7 +393,7 @@ namespace HaCreator.MapSimulator.UI
                     DrawWindowText(
                         sprite,
                         label,
-                        new Vector2(bounds.Right + 3, bounds.Y - 1),
+                        new Vector2(visualBounds.Right + 3, visualBounds.Y - 1),
                         selected ? new Color(160, 255, 190) : new Color(210, 210, 210),
                         SmallTextScale,
                         66f);
@@ -534,7 +537,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < PlayStyleCheckboxPositions.Length; i++)
             {
-                if (Translate(PlayStyleCheckboxPositions[i]).Contains(mouseX, mouseY))
+                if (ResolveCheckboxControlBoundsForTesting(Position, PlayStyleCheckboxPositions[i]).Contains(mouseX, mouseY))
                 {
                     _playStyleToggled?.Invoke(i);
                     return;
@@ -543,7 +546,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < ActivityCheckboxPositions.Length; i++)
             {
-                if (Translate(ActivityCheckboxPositions[i]).Contains(mouseX, mouseY))
+                if (ResolveCheckboxControlBoundsForTesting(Position, ActivityCheckboxPositions[i]).Contains(mouseX, mouseY))
                 {
                     _activityToggled?.Invoke(i);
                     return;
@@ -719,7 +722,25 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle Translate(Point relativePoint)
         {
-            return new Rectangle(Position.X + relativePoint.X, Position.Y + relativePoint.Y, CheckboxSize, CheckboxSize);
+            return ResolveCheckboxVisualBoundsForTesting(Position, relativePoint);
+        }
+
+        internal static Rectangle ResolveCheckboxVisualBoundsForTesting(Point windowPosition, Point relativePoint)
+        {
+            return new Rectangle(
+                windowPosition.X + relativePoint.X,
+                windowPosition.Y + relativePoint.Y,
+                CheckboxVisualSize,
+                CheckboxVisualSize);
+        }
+
+        internal static Rectangle ResolveCheckboxControlBoundsForTesting(Point windowPosition, Point relativePoint)
+        {
+            return new Rectangle(
+                windowPosition.X + relativePoint.X,
+                windowPosition.Y + relativePoint.Y,
+                CheckboxControlWidth,
+                CheckboxControlHeight);
         }
 
         private static bool IsMouseButtonPressed(ButtonState current, ButtonState previous)

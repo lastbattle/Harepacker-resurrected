@@ -3999,8 +3999,45 @@ namespace HaCreator.MapSimulator.Managers
                 case "liveclientpayload":
                 case "liveclientpayloadhex":
                 case "from":
+                case "fromvalue":
+                case "frombyte":
+                case "frombytes":
+                case "fromraw":
+                case "fromrawpacket":
+                case "frompacket":
+                case "frompackethex":
+                case "frompayload":
+                case "frompayloadhex":
                 case "before":
+                case "beforevalue":
+                case "beforebyte":
+                case "beforebytes":
+                case "beforeraw":
+                case "beforerawpacket":
+                case "beforepacket":
+                case "beforepackethex":
+                case "beforepayload":
+                case "beforepayloadhex":
                 case "left":
+                case "leftvalue":
+                case "leftbyte":
+                case "leftbytes":
+                case "leftraw":
+                case "leftrawpacket":
+                case "leftpacket":
+                case "leftpackethex":
+                case "leftpayload":
+                case "leftpayloadhex":
+                case "source":
+                case "sourcevalue":
+                case "sourcebyte":
+                case "sourcebytes":
+                case "sourceraw":
+                case "sourcerawpacket":
+                case "sourcepacket":
+                case "sourcepackethex":
+                case "sourcepayload":
+                case "sourcepayloadhex":
                     normalizedName = "observed";
                     return true;
                 case "rebuilt":
@@ -4013,6 +4050,11 @@ namespace HaCreator.MapSimulator.Managers
                 case "expectedbyte":
                 case "expectedbytes":
                 case "expectedraw":
+                case "expectedrawpacket":
+                case "expectedpacket":
+                case "expectedpackethex":
+                case "expectedpayload":
+                case "expectedpayloadhex":
                 case "replay":
                 case "replayvalue":
                 case "replaybyte":
@@ -4114,23 +4156,85 @@ namespace HaCreator.MapSimulator.Managers
                 case "sutpayload":
                 case "sutpayloadhex":
                 case "to":
+                case "tovalue":
+                case "tobyte":
+                case "tobytes":
+                case "toraw":
+                case "torawpacket":
+                case "topacket":
+                case "topackethex":
+                case "topayload":
+                case "topayloadhex":
                 case "after":
+                case "aftervalue":
+                case "afterbyte":
+                case "afterbytes":
+                case "afterraw":
+                case "afterrawpacket":
+                case "afterpacket":
+                case "afterpackethex":
+                case "afterpayload":
+                case "afterpayloadhex":
                 case "new":
                 case "newvalue":
                 case "newbyte":
                 case "newbytes":
                 case "newraw":
+                case "newrawpacket":
+                case "newpacket":
+                case "newpackethex":
+                case "newpayload":
+                case "newpayloadhex":
                 case "current":
                 case "currentvalue":
                 case "currentbyte":
                 case "currentbytes":
                 case "currentraw":
+                case "currentrawpacket":
+                case "currentpacket":
+                case "currentpackethex":
+                case "currentpayload":
+                case "currentpayloadhex":
                 case "rhs":
                 case "rhsvalue":
                 case "rhsbyte":
                 case "rhsbytes":
                 case "rhsraw":
+                case "rhsrawpacket":
+                case "rhspacket":
+                case "rhspackethex":
+                case "rhspayload":
+                case "rhspayloadhex":
                 case "right":
+                case "rightvalue":
+                case "rightbyte":
+                case "rightbytes":
+                case "rightraw":
+                case "rightrawpacket":
+                case "rightpacket":
+                case "rightpackethex":
+                case "rightpayload":
+                case "rightpayloadhex":
+                case "target":
+                case "targetvalue":
+                case "targetbyte":
+                case "targetbytes":
+                case "targetraw":
+                case "targetrawpacket":
+                case "targetpacket":
+                case "targetpackethex":
+                case "targetpayload":
+                case "targetpayloadhex":
+                case "destination":
+                case "destinationvalue":
+                case "destinationbyte":
+                case "destinationbytes":
+                case "destinationraw":
+                case "destinationrawpacket":
+                case "destinationpacket":
+                case "destinationpackethex":
+                case "destinationpayload":
+                case "destinationpayloadhex":
                     normalizedName = "rebuilt";
                     return true;
                 default:

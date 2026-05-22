@@ -19813,6 +19813,7 @@ namespace HaCreator.MapSimulator
             _imeCompositionMonitor.Attach(Window.Handle);
             _chat.MessageSubmitted = HandleChatMessageSubmitted;
             _chat.ClientChatMessageAdded += HandleClientChatMessageAdded;
+            _chat.ClientChatHelperNoticeRequested = HandleClientChatHelperNoticeRequested;
             _chat.ImeCandidateSelectedRequested = TrySelectStatusBarChatImeCandidate;
             _fieldMessageBoxRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _specialFieldRuntime.SetCookieHousePointProvider(ResolveCookieHouseContextPoint);
@@ -30986,10 +30987,24 @@ namespace HaCreator.MapSimulator
 
         #region Portal and Reactor Pool Utilities
 
-        private void PlayClientOwnedReactorLayerSound(string descriptor)
+        private void PlayClientOwnedReactorLayerSound(string descriptor, int sourceX, int sourceY)
         {
             if (string.IsNullOrWhiteSpace(descriptor))
             {
+                return;
+            }
+
+            Vector2? listenerPosition = _playerManager?.Player?.Position;
+            if (listenerPosition.HasValue)
+            {
+                TryPlayPacketOwnedWzSoundAt(
+                    descriptor,
+                    "Reactor.img",
+                    startVolumeScale: 1f,
+                    listenerPosition: listenerPosition,
+                    sourcePosition: new Vector2(sourceX, sourceY),
+                    resolvedDescriptor: out _,
+                    error: out _);
                 return;
             }
 
@@ -33806,6 +33821,7 @@ namespace HaCreator.MapSimulator
             if (killedMobId > 0
                 && _monsterBookManager.TryResolveRewardItemIds(killedMobId, out IReadOnlyList<int> rewardItemIds))
             {
+                int recentPacketDropAgeMs = ResolvePacketDropEnterAgeMs(currentTick, _dropPool?.LastPacketEnterAppliedTime ?? int.MinValue);
                 int rewardIdentitySeed = mob?.PoolId > 0
                     ? mob.PoolId
                     : killedMobId;
@@ -33813,17 +33829,23 @@ namespace HaCreator.MapSimulator
                     rewardIdentitySeed,
                     rewardItemIds,
                     maxRewardCount: 2);
-                for (int i = 0; i < rewardItemIdsToSpawn.Count; i++)
+                if (!ShouldSuppressSimulatorOwnedAuthoredRewardListDropFallback(
+                        recentPacketDropAgeMs,
+                        _dropPool?.ActiveDrops,
+                        rewardItemIdsToSpawn))
                 {
-                    int rewardItemId = rewardItemIdsToSpawn[i];
-                    int rewardQuantity = MobStatusRewardParity.ResolveDropItemQuantity(mob, rewardItemId, 1, supportDropRatePercent);
-                    _dropPool.SpawnItemDrop(
-                        mobX - 18f - (18f * i),
-                        mobY,
-                        rewardItemId.ToString(CultureInfo.InvariantCulture),
-                        rewardQuantity,
-                        currentTick,
-                        isRare: true);
+                    for (int i = 0; i < rewardItemIdsToSpawn.Count; i++)
+                    {
+                        int rewardItemId = rewardItemIdsToSpawn[i];
+                        int rewardQuantity = MobStatusRewardParity.ResolveDropItemQuantity(mob, rewardItemId, 1, supportDropRatePercent);
+                        _dropPool.SpawnItemDrop(
+                            mobX - 18f - (18f * i),
+                            mobY,
+                            rewardItemId.ToString(CultureInfo.InvariantCulture),
+                            rewardQuantity,
+                            currentTick,
+                            isRare: true);
+                    }
                 }
             }
 
@@ -33894,9 +33916,36 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<DropItem> activeDrops,
             int cardItemId)
         {
+            return HasActivePacketOwnedItemDrop(activeDrops, cardItemId);
+        }
+
+        internal static bool HasActivePacketOwnedAuthoredRewardListDrop(
+            IReadOnlyList<DropItem> activeDrops,
+            IReadOnlyList<int> rewardItemIds)
+        {
+            if (rewardItemIds == null || rewardItemIds.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < rewardItemIds.Count; i++)
+            {
+                if (HasActivePacketOwnedItemDrop(activeDrops, rewardItemIds[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasActivePacketOwnedItemDrop(
+            IReadOnlyList<DropItem> activeDrops,
+            int itemId)
+        {
             if (activeDrops == null
                 || activeDrops.Count <= 0
-                || cardItemId <= 0)
+                || itemId <= 0)
             {
                 return false;
             }
@@ -33907,7 +33956,7 @@ namespace HaCreator.MapSimulator
                 if (drop == null
                     || !drop.IsPacketControlled
                     || drop.Type != DropType.Item
-                    || !IsSameMonsterCardItemId(drop.ItemId, cardItemId)
+                    || !IsSameDropItemId(drop.ItemId, itemId)
                     || drop.State == DropState.Expired
                     || drop.State == DropState.Removed)
                 {
@@ -33922,7 +33971,12 @@ namespace HaCreator.MapSimulator
 
         private static bool IsSameMonsterCardItemId(string dropItemId, int cardItemId)
         {
-            if (cardItemId <= 0 || string.IsNullOrWhiteSpace(dropItemId))
+            return IsSameDropItemId(dropItemId, cardItemId);
+        }
+
+        private static bool IsSameDropItemId(string dropItemId, int itemId)
+        {
+            if (itemId <= 0 || string.IsNullOrWhiteSpace(dropItemId))
             {
                 return false;
             }
@@ -33930,11 +33984,11 @@ namespace HaCreator.MapSimulator
             string normalizedDropItemId = dropItemId.Trim();
             if (int.TryParse(normalizedDropItemId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedItemId))
             {
-                return parsedItemId == cardItemId;
+                return parsedItemId == itemId;
             }
 
-            return string.Equals(normalizedDropItemId, cardItemId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-                || string.Equals(normalizedDropItemId, cardItemId.ToString("D8", CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            return string.Equals(normalizedDropItemId, itemId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                || string.Equals(normalizedDropItemId, itemId.ToString("D8", CultureInfo.InvariantCulture), StringComparison.Ordinal);
         }
 
         internal readonly struct CharacterInfoSocialRoomPresenceSnapshot
@@ -34088,6 +34142,15 @@ namespace HaCreator.MapSimulator
             int cardItemId)
         {
             return HasActivePacketOwnedMonsterCardDrop(activeDrops, cardItemId)
+                || ShouldSuppressSimulatorOwnedMonsterCardDropFallback(recentPacketDropAgeMs);
+        }
+
+        internal static bool ShouldSuppressSimulatorOwnedAuthoredRewardListDropFallback(
+            int recentPacketDropAgeMs,
+            IReadOnlyList<DropItem> activeDrops,
+            IReadOnlyList<int> rewardItemIds)
+        {
+            return HasActivePacketOwnedAuthoredRewardListDrop(activeDrops, rewardItemIds)
                 || ShouldSuppressSimulatorOwnedMonsterCardDropFallback(recentPacketDropAgeMs);
         }
 
@@ -34483,12 +34546,14 @@ namespace HaCreator.MapSimulator
 
             return EvaluatePassiveTransferFieldHorizontalOnKeyDown(
                 input,
-                _passiveTransferRequestPending);
+                _passiveTransferRequestPending,
+                _localFollowRuntime.HasAttachedDriver);
         }
 
         internal static PassiveTransferFieldHorizontalOnKeyDownDecision EvaluatePassiveTransferFieldHorizontalOnKeyDown(
             PlayerInput input,
-            bool hasPendingRequest)
+            bool hasPendingRequest,
+            bool hasAttachedDriver = false)
         {
             if (input == null)
             {
@@ -34498,11 +34563,23 @@ namespace HaCreator.MapSimulator
                     rightKeyPressed: false);
             }
 
+            bool leftKeyPressed = input.IsPressed(InputAction.MoveLeft);
+            bool rightKeyPressed = input.IsPressed(InputAction.MoveRight);
+            PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner inputOwner =
+                ResolvePassiveTransferFieldHorizontalInputOwner(input);
+            bool deferToFollowReleaseOwner =
+                PassiveTransferFieldReadinessEvaluator.ShouldDeferHorizontalQueuedClearToFollowRelease(
+                    isLocalUser: true,
+                    horizontalKeyPressed: leftKeyPressed || rightKeyPressed,
+                    hasAttachedDriver: hasAttachedDriver,
+                    inputOwner: inputOwner);
+
             return PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
                 hasPendingRequest,
-                input.IsPressed(InputAction.MoveLeft),
-                input.IsPressed(InputAction.MoveRight),
-                ResolvePassiveTransferFieldHorizontalInputOwner(input));
+                leftKeyPressed,
+                rightKeyPressed,
+                inputOwner,
+                deferToFollowReleaseOwner);
         }
 
         private static PassiveTransferFieldReadinessEvaluator.HorizontalInputOwner ResolvePassiveTransferFieldHorizontalInputOwner(
@@ -36326,6 +36403,8 @@ namespace HaCreator.MapSimulator
             // Initialize drop pool for item/meso drops
             _dropPool = new DropPool();
             _dropPool.Initialize();
+            _dropPool.SetLocalDropLifetimeSeconds(
+                FieldInteractionRestrictionEvaluator.GetDropExpireSeconds(_mapBoard?.MapInfo));
             _lastMobPickupTimes.Clear();
             ApplyMesoAnimationsToDropPool();
             _dropPool.SetPickupAvailabilityEvaluator(EvaluatePickupAvailability);
@@ -37613,6 +37692,8 @@ namespace HaCreator.MapSimulator
                 ResolvePacketOwnedExpiryCandidateClientState);
             if (_playerManager?.Skills != null)
             {
+                _playerManager.Skills.SetSummonBodyContactEventTeamGuard(
+                    mobTemplateId => _specialFieldRuntime?.SpecialEffects?.CakePie?.IsClientLocalTeamProtectedMob(mobTemplateId) == true);
                 _playerManager.OnRepeatSkillModeEndEffectRequestReady = DispatchRepeatSkillModeEndEffectRequest;
                 _playerManager.OnClientSkillEffectPacketRequestReady = DispatchClientSkillEffectPacketRequest;
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
@@ -38290,6 +38371,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnClientGeneralEffectRequested = HandleAnimationDisplayerClientGeneralEffectRequested;
             _playerManager.Skills.OnClientDoActiveSummonMonsterPacketPayloadReady = HandleClientDoActiveSummonMonsterPacketPayloadReady;
             _playerManager.Skills.OnClientBoundJumpSkillUsePacketPayloadReady = HandleClientBoundJumpSkillUsePacketPayloadReady;
+            _playerManager.Skills.OnClientBoundJumpPassengerCheckRequested = HandleClientBoundJumpPassengerCheckRequested;
             _playerManager.Skills.OnClientDoActiveTownPortalPacketPayloadReady = HandleClientDoActiveTownPortalPacketPayloadReady;
             _playerManager.Skills.OnSwallowAbsorbRequested = HandleAnimationDisplayerSwallowAbsorbRequested;
             _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
@@ -40181,6 +40263,37 @@ namespace HaCreator.MapSimulator
             _localUtilityPacketOutbox.TryQueueOutboundPacket(
                 SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
                 encodedPayload,
+                out _);
+        }
+
+        private void HandleClientBoundJumpPassengerCheckRequested(int skillId, int currentTime)
+        {
+            if (_localFollowRuntime == null)
+            {
+                return;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            int passengerId = _localFollowRuntime.AttachedPassengerId;
+            if (player?.Build == null || passengerId <= 0)
+            {
+                return;
+            }
+
+            TryResolvePacketOwnedRemoteCharacterSnapshot(passengerId, out LocalFollowUserSnapshot passenger);
+            _localFollowRuntime.ClearAttachedPassenger(
+                passenger.Exists
+                    ? passenger
+                    : LocalFollowUserSnapshot.Missing(passengerId, ResolvePacketOwnedRemoteCharacterName(passengerId)),
+                transferField: false,
+                transferPosition: null);
+            _remoteUserPool?.TryApplyFollowCharacter(
+                passengerId,
+                driverId: 0,
+                transferField: false,
+                transferPosition: null,
+                localCharacterId: player.Build.Id,
+                localCharacterPosition: new Vector2(player.X, player.Y),
                 out _);
         }
 
@@ -44431,6 +44544,7 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewMainLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewMainLayerReleaseReferenceCountAfter;
             renderData.TemporaryStatViewShadowLayerReleaseReferenceCountBefore = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountBefore;
             renderData.TemporaryStatViewShadowLayerReleaseReferenceCountAfter = buffEntry.TemporaryStatViewShadowLayerReleaseReferenceCountAfter;
+            renderData.TemporaryStatViewAllocationMutationTrace = buffEntry.TemporaryStatViewAllocationMutationTrace ?? Array.Empty<string>();
             renderData.TemporaryStatViewReleaseMutationTrace = buffEntry.TemporaryStatViewReleaseMutationTrace ?? Array.Empty<string>();
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
@@ -45715,6 +45829,13 @@ namespace HaCreator.MapSimulator
                 while (_monsterCarnivalOfficialSessionBridge.TryDequeueObservedOutboundRequest(
                     out MonsterCarnivalOfficialSessionBridgeManager.ObservedOutboundRequest observedRequest))
                 {
+                    if (!_monsterCarnivalOfficialSessionBridge.IsCurrentInitializedProxySessionEvidence(
+                            observedRequest.ProxySessionId,
+                            observedRequest.SessionVersion))
+                    {
+                        continue;
+                    }
+
                     carnivalField.MarkPendingOfficialClientRequest(observedRequest.Tab, observedRequest.EntryIndex, observedRequest.Source);
                 }
             }
@@ -45726,6 +45847,19 @@ namespace HaCreator.MapSimulator
 
             while (_monsterCarnivalPacketInbox.TryDequeue(out MonsterCarnivalPacketInboxMessage message))
             {
+                if (message.ProxySessionId.HasValue
+                    && !_monsterCarnivalOfficialSessionBridge.IsCurrentInitializedProxySessionEvidence(
+                        message.ProxySessionId,
+                        message.SessionVersion))
+                {
+                    _monsterCarnivalPacketInbox.RecordDispatchResult(
+                        message.Source,
+                        message.PacketType,
+                        success: false,
+                        message: $"stale proxy session {message.ProxySessionId.Value}/v{message.SessionVersion?.ToString() ?? "unknown"}");
+                    continue;
+                }
+
                 bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _monsterCarnivalPacketInbox.RecordDispatchResult(
                     message.Source,
@@ -46570,6 +46704,22 @@ namespace HaCreator.MapSimulator
             {
                 TryTriggerSpecialistPetSocialFeedback(message, tickCount);
             }
+        }
+
+        private bool HandleClientChatHelperNoticeRequested(string message, int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return true;
+            }
+
+            ShowLoginUtilityDialog(
+                "Notice",
+                message,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.DismissOnly,
+                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+            return true;
         }
 
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)

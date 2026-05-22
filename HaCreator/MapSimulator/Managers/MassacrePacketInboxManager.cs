@@ -34,7 +34,8 @@ namespace HaCreator.MapSimulator.Managers
             bool clearResult = false,
             bool hasScoreOverride = false,
             bool hasRankOverride = false,
-            char rank = 'D')
+            char rank = 'D',
+            long? proxySessionId = null)
         {
             Kind = kind;
             Source = string.IsNullOrWhiteSpace(source) ? "massacre-inbox" : source;
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.Managers
             HasScoreOverride = hasScoreOverride;
             HasRankOverride = hasRankOverride;
             Rank = rank;
+            ProxySessionId = proxySessionId;
         }
 
         public MassacrePacketInboxMessageKind Kind { get; }
@@ -64,6 +66,34 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasScoreOverride { get; }
         public bool HasRankOverride { get; }
         public char Rank { get; }
+        public long? ProxySessionId { get; }
+        public string SourceWithProxySession => ProxySessionId.HasValue
+            ? $"{Source} proxySession={ProxySessionId.Value}"
+            : Source;
+
+        public MassacrePacketInboxMessage WithProxySessionId(long? proxySessionId)
+        {
+            if (!proxySessionId.HasValue || ProxySessionId == proxySessionId)
+            {
+                return this;
+            }
+
+            return new MassacrePacketInboxMessage(
+                Kind,
+                Source,
+                RawText,
+                Value1,
+                Value2,
+                Value3,
+                Value4,
+                PacketType,
+                Payload,
+                ClearResult,
+                HasScoreOverride,
+                HasRankOverride,
+                Rank,
+                proxySessionId);
+        }
     }
 
     /// <summary>
@@ -81,16 +111,21 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(MassacrePacketInboxMessage message)
         {
-            EnqueueMessage(message, message?.Source);
+            EnqueueMessage(message, message?.SourceWithProxySession);
         }
 
         public void EnqueueProxy(MassacrePacketInboxMessage message)
         {
-            EnqueueMessage(message, message?.Source);
+            EnqueueMessage(message, message?.SourceWithProxySession);
         }
 
         public void RecordDispatchResult(string source, MassacrePacketInboxMessage message, bool success, string result)
         {
+            if (message != null && string.Equals(source, message.Source, StringComparison.Ordinal))
+            {
+                source = message.SourceWithProxySession;
+            }
+
             string summary = string.IsNullOrWhiteSpace(result)
                 ? DescribeMessage(message)
                 : $"{DescribeMessage(message)}: {result}";
@@ -291,7 +326,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _pendingMessages.Enqueue(message);
-            string source = string.IsNullOrWhiteSpace(sourceLabel) ? message.Source : sourceLabel;
+            string source = string.IsNullOrWhiteSpace(sourceLabel) ? message.SourceWithProxySession : sourceLabel;
             LastStatus = $"Queued {DescribeMessage(message)} from {source}.";
         }
 

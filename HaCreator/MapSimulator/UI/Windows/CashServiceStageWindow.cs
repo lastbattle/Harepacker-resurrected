@@ -263,6 +263,11 @@ namespace HaCreator.MapSimulator.UI
         private string _navigationState = "Default category.";
         private string _noticeState = "No packet-authored notice.";
         private int _pendingCommoditySerialNumber;
+        private int _cashShopCurrentCategory = 1;
+        private int _cashShopCurrentSortType;
+        private int _cashShopLastKeyDownTick = int.MinValue;
+        private bool _cashShopItemSearchAllItemFilter;
+        private int _cashShopSearchResultCount;
         private int _lastOpenTick = int.MinValue;
         private int _wishlistCount;
         private int _chargeParam;
@@ -358,6 +363,11 @@ namespace HaCreator.MapSimulator.UI
         public string NavigationState => _navigationState;
         public string NoticeState => _noticeState;
         public int PendingCommoditySerialNumber => _pendingCommoditySerialNumber;
+        public int CashShopCurrentCategory => _cashShopCurrentCategory;
+        public int CashShopCurrentSortType => _cashShopCurrentSortType;
+        public int CashShopLastKeyDownTick => _cashShopLastKeyDownTick;
+        public bool CashShopItemSearchAllItemFilter => _cashShopItemSearchAllItemFilter;
+        public int CashShopSearchResultCount => _cashShopSearchResultCount;
         public int WishlistCount => _wishlistCount;
         public long NexonCashBalance => _nexonCash;
         public long MaplePointBalance => _maplePoint;
@@ -533,6 +543,11 @@ namespace HaCreator.MapSimulator.UI
             _cashInventoryPacketEntries.Clear();
             _cashLockerPacketEntries.Clear();
             _cashGiftPacketEntries.Clear();
+            _cashShopCurrentCategory = 1;
+            _cashShopCurrentSortType = 0;
+            _cashShopLastKeyDownTick = tickCount;
+            _cashShopItemSearchAllItemFilter = false;
+            _cashShopSearchResultCount = 0;
             _cashStageCatalogSnapshotEntries.Clear();
             _cashStageCatalogSnapshotPaneLabel = "Stage catalog";
             _cashStageCatalogSnapshotBrowseModeLabel = "All";
@@ -657,6 +672,116 @@ namespace HaCreator.MapSimulator.UI
             PrepareCommodityMigration(commoditySerialNumber, Environment.TickCount);
             _statusMessage = $"CCashShop::Init resumed the staged catalog at commodity SN {_pendingCommoditySerialNumber}.";
             return true;
+        }
+
+        public string ApplyCashShopWrapperCategoryChange(int category, int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_Tab category changes are only valid inside the Cash Shop stage.";
+            }
+
+            _cashShopCurrentCategory = Math.Clamp(category, 1, 10);
+            _cashShopLastKeyDownTick = tickCount;
+            _navigationState = $"Category {_cashShopCurrentCategory.ToString(CultureInfo.InvariantCulture)} / page 0 / subcategory 0 owned by CCashShop::OnChangedCategory.";
+            if (_cashShopCurrentCategory == 10)
+            {
+                _searchState = $"CCashShop::SetSearchResult selected search-result category 10 with {_cashShopSearchResultCount.ToString(CultureInfo.InvariantCulture)} modeled row(s).";
+            }
+
+            return $"CCashShop::OnChangedCategory updated CCSWnd_Tab and CCSWnd_Best for category {_cashShopCurrentCategory.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        public string MoveCashShopWrapperCategory(int delta, int tickCount)
+        {
+            int currentCategory = Math.Clamp(_cashShopCurrentCategory, 1, 10);
+            int nextCategory = currentCategory + Math.Sign(delta);
+            if (nextCategory < 1)
+            {
+                nextCategory = 10;
+            }
+            else if (nextCategory > 10)
+            {
+                nextCategory = 1;
+            }
+
+            return ApplyCashShopWrapperCategoryChange(nextCategory, tickCount);
+        }
+
+        public string ApplyCashShopWrapperSortType(int sortType, int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_Tab sort changes are only valid inside the Cash Shop stage.";
+            }
+
+            _cashShopCurrentSortType = Math.Clamp(sortType, 0, 2);
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState = _cashShopCurrentSortType switch
+            {
+                0 => "CCashShop::OnChangedSortType sorted modeled commodities by priority.",
+                1 => "CCashShop::OnChangedSortType sorted modeled commodities by ascending price.",
+                _ => "CCashShop::OnChangedSortType sorted modeled commodities by descending serial number."
+            };
+            return $"CCashShop::OnChangedSortType selected sort lane {_cashShopCurrentSortType.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        public string MoveCashShopWrapperSortType(int delta, int tickCount)
+        {
+            int currentSortType = Math.Clamp(_cashShopCurrentSortType, 0, 2);
+            int nextSortType = currentSortType + Math.Sign(delta);
+            if (nextSortType < 0)
+            {
+                nextSortType = 2;
+            }
+            else if (nextSortType > 2)
+            {
+                nextSortType = 0;
+            }
+
+            return ApplyCashShopWrapperSortType(nextSortType, tickCount);
+        }
+
+        public string ToggleCashShopItemSearchAllItemFilter(int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_ItemSearch filter changes are only valid inside the Cash Shop stage.";
+            }
+
+            _cashShopItemSearchAllItemFilter = !_cashShopItemSearchAllItemFilter;
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState = _cashShopItemSearchAllItemFilter
+                ? "CCSWnd_ItemSearch all-item filter is active for the modeled search-result wrapper."
+                : "CCSWnd_ItemSearch all-item filter is cleared for the modeled search-result wrapper.";
+            return _searchState;
+        }
+
+        public string ApplyCashShopItemSearchResult(int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_ItemSearch search results are only valid inside the Cash Shop stage.";
+            }
+
+            _cashShopSearchResultCount = Math.Max(_cashShopSearchResultCount, _cashStageCatalogSnapshotEntries.Count);
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState = $"CCashShop::SetSearchResult copied {_cashShopSearchResultCount.ToString(CultureInfo.InvariantCulture)} modeled row(s) into m_lCommSearchResult.";
+            ApplyCashShopWrapperCategoryChange(10, tickCount);
+            return $"{_searchState} CCSWnd_Tab moved to category 10.";
+        }
+
+        public string ClearCashShopItemSearchResult(int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_ItemSearch search results are only valid inside the Cash Shop stage.";
+            }
+
+            _cashShopSearchResultCount = 0;
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState = "CCSWnd_ItemSearch result popup closed and m_lCommSearchResult is modeled as empty.";
+            return _searchState;
         }
 
         public void SetStatusMessage(string statusMessage)
@@ -999,7 +1124,7 @@ namespace HaCreator.MapSimulator.UI
                     _navigationState,
                     "CCSWnd_Tab is modeled as the client wrapper that owns m_pSelector, m_pCBSort, ten canvas slots, and m_tLastKeyDown.",
                     "WZ v95 supplies ui/CashShop.img/CSTab/Tab/1..9 as the visible 508x78 category strip; the extra client canvas slot remains null/unbacked here.",
-                    "Category/sort button paths are staged through CCashShop::OnChangedCategory and CCashShop::OnChangedSortType placeholders."
+                    $"Category {_cashShopCurrentCategory.ToString(CultureInfo.InvariantCulture)} and sort {_cashShopCurrentSortType.ToString(CultureInfo.InvariantCulture)} now route through CCashShop::OnChangedCategory and CCashShop::OnChangedSortType."
                 };
             }
 
@@ -1086,10 +1211,15 @@ namespace HaCreator.MapSimulator.UI
                 _pendingCommoditySerialNumber > 0
                     ? $"GoToCommoditySN {_pendingCommoditySerialNumber} is waiting on the best-items owner."
                     : "No commodity serial is waiting on best-items.",
-                "CCSWnd_Best is registered as its own vtable-backed wrapper; v95 CashShop.img has no distinct CSBest surface yet.",
+                $"CCSWnd_Best is registered as its own vtable-backed wrapper; active category {ResolveBestOwnerCategoryForCurrentState().ToString(CultureInfo.InvariantCulture)} uses m_aBest indexing because v95 CashShop.img has no distinct CSBest surface.",
                 wishlistLine,
                 _cashPurchaseRecordSummary
             };
+        }
+
+        private int ResolveBestOwnerCategoryForCurrentState()
+        {
+            return _cashShopCurrentCategory is 9 or 10 ? 1 : Math.Clamp(_cashShopCurrentCategory, 1, 8);
         }
 
         private IReadOnlyList<string> BuildStatusPane()
@@ -1159,7 +1289,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _searchState,
                 "CCSWnd_ItemSearch is modeled as the dedicated search wrapper backed by ui/CashShop.img/CSItemSearch PopUp/PopUp1.",
-                "Loaded controls include BtSearch, BtAllItem, BtBuy, BtCancel, the combo-box button, scroll assets, and four WZ price ranges."
+                $"Loaded controls include BtSearch, BtAllItem, BtBuy, BtCancel, the combo-box button, scroll assets, and four WZ price ranges; all-item filter {(_cashShopItemSearchAllItemFilter ? "on" : "off")}."
             };
         }
 

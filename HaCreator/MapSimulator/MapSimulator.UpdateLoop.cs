@@ -455,6 +455,7 @@ namespace HaCreator.MapSimulator
                 bool memoryGameMouseConsumed = false;
                 bool rockPaperScissorsMouseConsumed = false;
                 bool monsterCarnivalSubDialogMouseConsumed = false;
+                bool monsterCarnivalUiWindowListMouseConsumed = false;
                 bool tournamentMatchTableMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
                 {
@@ -503,6 +504,28 @@ namespace HaCreator.MapSimulator
                     }
                 }
 
+                if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
+                    !npcOverlayResult.Consumed &&
+                    !tournamentMatchTableMouseConsumed &&
+                    !monsterCarnivalSubDialogMouseConsumed &&
+                    newMouseState.LeftButton == ButtonState.Released &&
+                    _oldMouseState.LeftButton == ButtonState.Pressed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.Minigames.MonsterCarnival.HandleSeason2UiWindowListMouseClick(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        currTickCount,
+                        isDoubleClick: false,
+                        out string monsterCarnivalUiWindowListMouseMessage))
+                {
+                    monsterCarnivalUiWindowListMouseConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(monsterCarnivalUiWindowListMouseMessage))
+                    {
+                        _chat.AddMessage(monsterCarnivalUiWindowListMouseMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
 
                 if (!initialQuizMouseConsumed &&
                     !speedQuizMouseConsumed &&
@@ -510,6 +533,7 @@ namespace HaCreator.MapSimulator
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
+                    !monsterCarnivalUiWindowListMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
@@ -533,6 +557,7 @@ namespace HaCreator.MapSimulator
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
+                    !monsterCarnivalUiWindowListMouseConsumed &&
                     !cakePieMouseConsumed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
                     _specialFieldRuntime.Minigames.RockPaperScissors.HandleMouse(
@@ -557,6 +582,7 @@ namespace HaCreator.MapSimulator
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
+                    !monsterCarnivalUiWindowListMouseConsumed &&
                     !cakePieMouseConsumed &&
                     !rockPaperScissorsMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
@@ -584,6 +610,7 @@ namespace HaCreator.MapSimulator
                     !memoryGameMouseConsumed &&
                     !rockPaperScissorsMouseConsumed &&
                     !monsterCarnivalSubDialogMouseConsumed &&
+                    !monsterCarnivalUiWindowListMouseConsumed &&
                     !tournamentMatchTableMouseConsumed)
                 {
                     // Avoid leaking the overlay-dismissal click into world interactions while

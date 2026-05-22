@@ -79,7 +79,7 @@ namespace HaCreator.MapSimulator.Managers
             EnqueueMessage(
                 message,
                 MapSimulatorNetworkIngressMode.Proxy,
-                message?.Source);
+                message?.SourceWithProxySession);
         }
 
         public void EnqueueProxy(int packetType, byte[] payload, string source)

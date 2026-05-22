@@ -141,6 +141,12 @@ namespace HaCreator.MapSimulator.Character
             public int LastAnimationElapsedMs { get; set; }
             public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
             public double LastCharacterPositionY { get; set; }
+            public int BodyLastAnimationElapsedMs { get; set; }
+            public int BodyLastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double BodyLastCharacterPositionY { get; set; }
+            public int TamingMobLastAnimationElapsedMs { get; set; }
+            public int TamingMobLastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double TamingMobLastCharacterPositionY { get; set; }
             public int ActionSpeedDegree { get; init; }
             public int WalkSpeed { get; init; }
             public bool HeldActionFrameDelay { get; init; }
@@ -201,7 +207,11 @@ namespace HaCreator.MapSimulator.Character
             int TamingMobFrameIndex,
             int TamingMobFrameRemainingMs,
             int LastAnimationElapsedMs,
-            int LastClockUpdateTimeMs);
+            int LastClockUpdateTimeMs,
+            int BodyLastAnimationElapsedMs,
+            int BodyLastClockUpdateTimeMs,
+            int TamingMobLastAnimationElapsedMs,
+            int TamingMobLastClockUpdateTimeMs);
 
         internal readonly record struct SkillAvatarTransformResolutionForTesting(
             IReadOnlyList<string> StandActionNames,
@@ -289,6 +299,7 @@ namespace HaCreator.MapSimulator.Character
             public SkillAvatarEffectPlane FinishPlane { get; init; }
             public SkillAvatarEffectPlane FinishSecondaryPlane { get; init; }
             public string ClientLayerOwnerName { get; init; }
+            public bool? FacingRightOverride { get; init; }
             public bool IsFinishing { get; set; }
 
             public bool HasFinishAnimation =>
@@ -587,16 +598,18 @@ namespace HaCreator.MapSimulator.Character
 
         private readonly struct AvatarEffectRenderable
         {
-            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane, int? positionCode)
+            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane, int? positionCode, bool? facingRightOverride)
             {
                 Frame = frame;
                 Plane = plane;
                 PositionCode = positionCode;
+                FacingRightOverride = facingRightOverride;
             }
 
             public SkillFrame Frame { get; }
             public SkillAvatarEffectPlane Plane { get; }
             public int? PositionCode { get; }
+            public bool? FacingRightOverride { get; }
         }
 
         internal readonly record struct PersistentSkillAvatarEffectRenderSelection(
@@ -2639,7 +2652,11 @@ namespace HaCreator.MapSimulator.Character
                 state.TamingMobFrameIndex,
                 state.TamingMobFrameRemainingMs,
                 state.LastAnimationElapsedMs,
-                state.LastClockUpdateTimeMs);
+                state.LastClockUpdateTimeMs,
+                state.BodyLastAnimationElapsedMs,
+                state.BodyLastClockUpdateTimeMs,
+                state.TamingMobLastAnimationElapsedMs,
+                state.TamingMobLastClockUpdateTimeMs);
         }
 
         internal string GetMountedTamingMobOneTimeActionNameForTesting()
@@ -2715,11 +2732,14 @@ namespace HaCreator.MapSimulator.Character
                     Assembler.HeldActionFrameDelay,
                     allowLoop: false,
                     out AvatarActionLayerCoordinator.PreparedFrameClock restoredTamingMobClock,
-                    out _,
-                    out _,
-                    out _))
+                    out int restoredTamingMobLastAnimationElapsedMs,
+                    out int restoredTamingMobLastClockUpdateTimeMs,
+                    out double restoredTamingMobLastCharacterPositionY))
             {
                 restoredTamingMobClock = tamingMobClock;
+                restoredTamingMobLastAnimationElapsedMs = 0;
+                restoredTamingMobLastClockUpdateTimeMs = _animationStartTime;
+                restoredTamingMobLastCharacterPositionY = Physics?.Y ?? 0d;
             }
 
             string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
@@ -2746,6 +2766,12 @@ namespace HaCreator.MapSimulator.Character
                 LastAnimationElapsedMs = restoredLastAnimationElapsedMs,
                 LastClockUpdateTimeMs = restoredLastClockUpdateTimeMs,
                 LastCharacterPositionY = restoredLastCharacterPositionY,
+                BodyLastAnimationElapsedMs = restoredLastAnimationElapsedMs,
+                BodyLastClockUpdateTimeMs = restoredLastClockUpdateTimeMs,
+                BodyLastCharacterPositionY = restoredLastCharacterPositionY,
+                TamingMobLastAnimationElapsedMs = restoredTamingMobLastAnimationElapsedMs,
+                TamingMobLastClockUpdateTimeMs = restoredTamingMobLastClockUpdateTimeMs,
+                TamingMobLastCharacterPositionY = restoredTamingMobLastCharacterPositionY,
                 ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay
@@ -2758,9 +2784,9 @@ namespace HaCreator.MapSimulator.Character
                 _mountedActionLayerState.HeldActionFrameDelay,
                 allowLoop: false,
                 restoredBodyClock,
-                _mountedActionLayerState.LastAnimationElapsedMs,
-                _mountedActionLayerState.LastClockUpdateTimeMs,
-                _mountedActionLayerState.LastCharacterPositionY);
+                _mountedActionLayerState.BodyLastAnimationElapsedMs,
+                _mountedActionLayerState.BodyLastClockUpdateTimeMs,
+                _mountedActionLayerState.BodyLastCharacterPositionY);
             StoreActionLayerOwnerCounter(
                 MountedTamingMobOneTimeActionOwnerName,
                 _mountedActionLayerState.CurrentTamingMobActionName,
@@ -2769,9 +2795,9 @@ namespace HaCreator.MapSimulator.Character
                 _mountedActionLayerState.HeldActionFrameDelay,
                 allowLoop: false,
                 restoredTamingMobClock,
-                _mountedActionLayerState.LastAnimationElapsedMs,
-                _mountedActionLayerState.LastClockUpdateTimeMs,
-                _mountedActionLayerState.LastCharacterPositionY);
+                _mountedActionLayerState.TamingMobLastAnimationElapsedMs,
+                _mountedActionLayerState.TamingMobLastClockUpdateTimeMs,
+                _mountedActionLayerState.TamingMobLastCharacterPositionY);
             _mountedTamingMobOneTimeActionName = CurrentActionName;
         }
 
@@ -3075,6 +3101,16 @@ namespace HaCreator.MapSimulator.Character
             return ResolveActionLayerTickElapsedMs(currentTime, lastUpdateTime);
         }
 
+        internal static (int BodyElapsedMs, int TamingMobElapsedMs) ResolveMountedActionLayerOwnerElapsedMsForTesting(
+            int currentTime,
+            int bodyLastUpdateTime,
+            int tamingMobLastUpdateTime)
+        {
+            return (
+                ResolveActionLayerTickElapsedMs(currentTime, bodyLastUpdateTime),
+                ResolveActionLayerTickElapsedMs(currentTime, tamingMobLastUpdateTime));
+        }
+
         internal static int ResolveClientOwnedAvatarEffectTickElapsedMsForTesting(int currentTime, int startTime)
         {
             return ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, startTime);
@@ -3124,7 +3160,7 @@ namespace HaCreator.MapSimulator.Character
                        effectState.SkillId,
                        animation,
                        plane,
-                       FacingRight,
+                       effectState.FacingRightOverride ?? FacingRight,
                        out animationStartTime,
                         effectState.ClientLayerOwnerName);
         }
@@ -3142,7 +3178,7 @@ namespace HaCreator.MapSimulator.Character
                 effectState.SkillId,
                 animation,
                 plane,
-                FacingRight,
+                effectState.FacingRightOverride ?? FacingRight,
                 effectState.AnimationStartTime,
                 effectState.ClientLayerOwnerName);
         }
@@ -3426,6 +3462,9 @@ namespace HaCreator.MapSimulator.Character
             {
                 mountedActionLayerState.BodyFrameIndex = bodyOwner.FrameIndex;
                 mountedActionLayerState.BodyFrameRemainingMs = bodyOwner.FrameRemainingMs;
+                mountedActionLayerState.BodyLastAnimationElapsedMs = bodyOwner.LastAnimationElapsedMs;
+                mountedActionLayerState.BodyLastClockUpdateTimeMs = bodyOwner.LastClockUpdateTimeMs;
+                mountedActionLayerState.BodyLastCharacterPositionY = bodyOwner.LastCharacterPositionY;
             }
 
             if (_actionLayerOwnerCounters.TryGetValue(mountedActionLayerState.CurrentTamingMobOwnerName ?? string.Empty, out ActionLayerOwnerCounterState tamingMobOwner)
@@ -3433,6 +3472,9 @@ namespace HaCreator.MapSimulator.Character
             {
                 mountedActionLayerState.TamingMobFrameIndex = tamingMobOwner.FrameIndex;
                 mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobOwner.FrameRemainingMs;
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs = tamingMobOwner.LastAnimationElapsedMs;
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs = tamingMobOwner.LastClockUpdateTimeMs;
+                mountedActionLayerState.TamingMobLastCharacterPositionY = tamingMobOwner.LastCharacterPositionY;
             }
         }
 
@@ -3450,50 +3492,28 @@ namespace HaCreator.MapSimulator.Character
 
             int animationElapsedMs = GetRenderAnimationTime(currentTime);
             SyncMountedActionLayerStateClockFromOwnerCounters(mountedActionLayerState);
-            int elapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
+            int bodyElapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
                 animationElapsedMs,
-                mountedActionLayerState.LastAnimationElapsedMs);
-            if (elapsedSinceLastUpdateMs <= 0)
+                mountedActionLayerState.BodyLastAnimationElapsedMs);
+            int tamingMobElapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
+                animationElapsedMs,
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs);
+            if (bodyElapsedSinceLastUpdateMs <= 0 && tamingMobElapsedSinceLastUpdateMs <= 0)
             {
+                mountedActionLayerState.BodyLastClockUpdateTimeMs = currentTime;
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs = currentTime;
                 mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
-                StoreActionLayerOwnerCounter(
-                    mountedActionLayerState.CurrentBodyOwnerName,
-                    mountedActionLayerState.CurrentBodyActionName,
-                    mountedActionLayerState.ActionSpeedDegree,
-                    mountedActionLayerState.WalkSpeed,
-                    mountedActionLayerState.HeldActionFrameDelay,
-                    allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
-                    new AvatarActionLayerCoordinator.PreparedFrameClock(
-                        mountedActionLayerState.BodyFrameIndex,
-                        mountedActionLayerState.BodyFrameRemainingMs),
-                    mountedActionLayerState.LastAnimationElapsedMs,
-                    mountedActionLayerState.LastClockUpdateTimeMs,
-                    mountedActionLayerState.LastCharacterPositionY);
-                StoreActionLayerOwnerCounter(
-                    mountedActionLayerState.CurrentTamingMobOwnerName,
-                    mountedActionLayerState.CurrentTamingMobActionName,
-                    mountedActionLayerState.ActionSpeedDegree,
-                    mountedActionLayerState.WalkSpeed,
-                    mountedActionLayerState.HeldActionFrameDelay,
-                    allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
-                    new AvatarActionLayerCoordinator.PreparedFrameClock(
-                        mountedActionLayerState.TamingMobFrameIndex,
-                        mountedActionLayerState.TamingMobFrameRemainingMs),
-                    mountedActionLayerState.LastAnimationElapsedMs,
-                    mountedActionLayerState.LastClockUpdateTimeMs,
-                    mountedActionLayerState.LastCharacterPositionY);
+                StoreMountedActionLayerOwnerCounters(mountedActionLayerState);
                 return;
             }
 
-            int bodyElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
-            int tamingMobElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
             bool stalledBodyClock = TryStallPositionGatedMountedActionLayerClock(
                 mountedActionLayerState,
                 advanceBodyClock: true);
             bool stalledTamingMobClock = TryStallPositionGatedMountedActionLayerClock(
                 mountedActionLayerState,
                 advanceBodyClock: false);
-            if (!stalledBodyClock)
+            if (!stalledBodyClock && bodyElapsedSinceLastUpdateMs > 0)
             {
                 if (!mountedActionLayerState.CharacterOneTimeActionFrameHeld)
                 {
@@ -3504,7 +3524,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (!stalledTamingMobClock)
+            if (!stalledTamingMobClock && tamingMobElapsedSinceLastUpdateMs > 0)
             {
                 AdvanceMountedActionLayerClockOwner(
                     mountedActionLayerState,
@@ -3512,9 +3532,26 @@ namespace HaCreator.MapSimulator.Character
                     ref tamingMobElapsedSinceLastUpdateMs);
             }
 
+            double currentY = Physics?.Y ?? mountedActionLayerState.LastCharacterPositionY;
+            mountedActionLayerState.BodyLastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.BodyLastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.BodyLastCharacterPositionY = currentY;
+            mountedActionLayerState.TamingMobLastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.TamingMobLastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.TamingMobLastCharacterPositionY = currentY;
             mountedActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
-            mountedActionLayerState.LastCharacterPositionY = Physics?.Y ?? mountedActionLayerState.LastCharacterPositionY;
+            mountedActionLayerState.LastCharacterPositionY = currentY;
+            StoreMountedActionLayerOwnerCounters(mountedActionLayerState);
+        }
+
+        private void StoreMountedActionLayerOwnerCounters(MountedActionLayerState mountedActionLayerState)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return;
+            }
+
             StoreActionLayerOwnerCounter(
                 mountedActionLayerState.CurrentBodyOwnerName,
                 mountedActionLayerState.CurrentBodyActionName,
@@ -3525,9 +3562,9 @@ namespace HaCreator.MapSimulator.Character
                 new AvatarActionLayerCoordinator.PreparedFrameClock(
                     mountedActionLayerState.BodyFrameIndex,
                     mountedActionLayerState.BodyFrameRemainingMs),
-                mountedActionLayerState.LastAnimationElapsedMs,
-                mountedActionLayerState.LastClockUpdateTimeMs,
-                mountedActionLayerState.LastCharacterPositionY);
+                mountedActionLayerState.BodyLastAnimationElapsedMs,
+                mountedActionLayerState.BodyLastClockUpdateTimeMs,
+                mountedActionLayerState.BodyLastCharacterPositionY);
             StoreActionLayerOwnerCounter(
                 mountedActionLayerState.CurrentTamingMobOwnerName,
                 mountedActionLayerState.CurrentTamingMobActionName,
@@ -3538,9 +3575,9 @@ namespace HaCreator.MapSimulator.Character
                 new AvatarActionLayerCoordinator.PreparedFrameClock(
                     mountedActionLayerState.TamingMobFrameIndex,
                     mountedActionLayerState.TamingMobFrameRemainingMs),
-                mountedActionLayerState.LastAnimationElapsedMs,
-                mountedActionLayerState.LastClockUpdateTimeMs,
-                mountedActionLayerState.LastCharacterPositionY);
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs,
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs,
+                mountedActionLayerState.TamingMobLastCharacterPositionY);
         }
 
         private bool TryStallPositionGatedMountedActionLayerClock(
@@ -3555,9 +3592,12 @@ namespace HaCreator.MapSimulator.Character
             string actionName = advanceBodyClock
                 ? mountedActionLayerState.CurrentBodyActionName
                 : mountedActionLayerState.CurrentTamingMobActionName;
+            double lastCharacterPositionY = advanceBodyClock
+                ? mountedActionLayerState.BodyLastCharacterPositionY
+                : mountedActionLayerState.TamingMobLastCharacterPositionY;
             if (!AvatarActionLayerCoordinator.ShouldStallPositionGatedFrameUpdate(
                     actionName,
-                    mountedActionLayerState.LastCharacterPositionY,
+                    lastCharacterPositionY,
                     Physics.Y))
             {
                 return false;
@@ -4819,7 +4859,8 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation finishAnimation = null,
             SkillAnimation finishSecondaryAnimation = null,
             bool isClientMovementOwner = false,
-            string explicitClientLayerOwnerName = null)
+            string explicitClientLayerOwnerName = null,
+            bool? facingRightOverride = null)
         {
             bool hasPrimaryAnimation = animation?.Frames != null && animation.Frames.Count > 0;
             bool hasSecondaryAnimation = secondaryAnimation?.Frames != null && secondaryAnimation.Frames.Count > 0;
@@ -4843,7 +4884,8 @@ namespace HaCreator.MapSimulator.Character
                 FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation, isClientMovementOwner),
                 ClientLayerOwnerName = ResolveTransientSkillAvatarEffectClientLayerOwnerName(
                     isClientMovementOwner,
-                    explicitClientLayerOwnerName)
+                    explicitClientLayerOwnerName),
+                FacingRightOverride = facingRightOverride
             };
             if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffectState, out int restoredStartTime))
             {
@@ -8680,8 +8722,15 @@ namespace HaCreator.MapSimulator.Character
             int sourceLayerObjectId,
             int sourceCanvasObjectId,
             int underFaceParentObjectId,
-            int lastUnderFaceParentObjectId)
+            int lastUnderFaceParentObjectId,
+            int insertCanvasResultObjectId = 0)
         {
+            int resolvedInsertCanvasResultObjectId = insertCanvasResultObjectId != 0
+                ? insertCanvasResultObjectId
+                : ResolveMirrorImageInsertCanvasResultObjectId(
+                    preparedLayerObjectId,
+                    sourceLayerObjectId,
+                    sourceCanvasObjectId);
             const int insertCanvasMissingArgumentVariantCount = 5;
             var operations = new List<MirrorImageLayerNativeOperation>(21);
             int sequence = 0;
@@ -8729,15 +8778,15 @@ namespace HaCreator.MapSimulator.Character
                 ++sequence,
                 sourceLayer,
                 preparedLayerObjectId,
-                RelatedObjectId: sourceCanvasObjectId,
-                ReferenceDelta: preparedLayerObjectId != 0 && sourceCanvasObjectId != 0 ? 1 : 0));
+                RelatedObjectId: resolvedInsertCanvasResultObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 && resolvedInsertCanvasResultObjectId != 0 ? 1 : 0));
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.ClearInsertCanvasResultVariant,
                 ++sequence,
                 sourceLayer,
                 preparedLayerObjectId,
-                RelatedObjectId: sourceCanvasObjectId,
-                ReferenceDelta: preparedLayerObjectId != 0 && sourceCanvasObjectId != 0 ? -1 : 0));
+                RelatedObjectId: resolvedInsertCanvasResultObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 && resolvedInsertCanvasResultObjectId != 0 ? -1 : 0));
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasLocal,
                 ++sequence,
@@ -8793,6 +8842,31 @@ namespace HaCreator.MapSimulator.Character
             return operations;
         }
 
+        internal static int ResolveMirrorImageInsertCanvasResultObjectId(
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId)
+        {
+            if (preparedLayerObjectId == 0 || sourceCanvasObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int objectId = 17;
+                objectId = (objectId * 31) + preparedLayerObjectId;
+                objectId = (objectId * 31) + sourceLayerObjectId;
+                objectId = (objectId * 31) + sourceCanvasObjectId;
+                objectId = (objectId * 31) + 0x4331002;
+                if (objectId == 0)
+                {
+                    return 1;
+                }
+
+                return objectId == int.MinValue ? int.MaxValue : Math.Abs(objectId);
+            }
+        }
         internal static int ComputeMirrorImageLiveInsertNativeOperationSignature(
             IReadOnlyList<MirrorImageLayerNativeOperation> operations)
         {
@@ -10690,7 +10764,10 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 ResolveAvatarEffectAnchorPosition(assembledFrame, screenX, screenY, effect.PositionCode, out int anchorX, out int anchorY);
-                bool shouldFlip = FacingRight ^ effect.Frame.Flip;
+                bool shouldFlip = ResolveAvatarEffectRenderableFlip(
+                    FacingRight,
+                    effect.Frame.Flip,
+                    effect.FacingRightOverride);
                 int drawX = shouldFlip
                     ? anchorX - (effect.Frame.Texture.Width - effect.Frame.Origin.X)
                     : anchorX - effect.Frame.Origin.X;
@@ -10777,8 +10854,18 @@ namespace HaCreator.MapSimulator.Character
                     ? effectState.FinishSecondaryPlane
                     : effectState.SecondaryPlane;
 
-                AddAvatarEffectRenderable(renderables, primaryAnimation, primaryPlane, elapsedTime);
-                AddAvatarEffectRenderable(renderables, secondaryAnimation, secondaryPlane, elapsedTime);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    primaryAnimation,
+                    primaryPlane,
+                    elapsedTime,
+                    effectState.FacingRightOverride);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    secondaryAnimation,
+                    secondaryPlane,
+                    elapsedTime,
+                    effectState.FacingRightOverride);
             }
 
             return renderables;
@@ -12936,7 +13023,8 @@ namespace HaCreator.MapSimulator.Character
             List<AvatarEffectRenderable> renderables,
             SkillAnimation animation,
             SkillAvatarEffectPlane plane,
-            int elapsedTime)
+            int elapsedTime,
+            bool? facingRightOverride = null)
         {
             if (renderables == null || animation == null)
             {
@@ -12949,7 +13037,23 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            renderables.Add(new AvatarEffectRenderable(frame, plane, animation.PositionCode));
+            renderables.Add(new AvatarEffectRenderable(frame, plane, animation.PositionCode, facingRightOverride));
+        }
+
+        private static bool ResolveAvatarEffectRenderableFlip(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return (facingRightOverride ?? ownerFacingRight) ^ frameFlip;
+        }
+
+        internal static bool ResolveAvatarEffectRenderableFlipForTesting(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return ResolveAvatarEffectRenderableFlip(ownerFacingRight, frameFlip, facingRightOverride);
         }
 
         private void ResolveAvatarEffectAnchorPosition(

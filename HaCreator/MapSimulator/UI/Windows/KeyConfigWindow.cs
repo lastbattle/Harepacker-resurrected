@@ -140,7 +140,8 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 quantityPosition,
                 Rectangle unavailableOverlayBounds,
                 Point nativeAnchorOffset,
-                bool usesItemNumberImages)
+                bool usesItemNumberImages,
+                Rectangle nativeCanvasCopyBounds)
             {
                 Kind = kind;
                 IconBounds = iconBounds;
@@ -148,6 +149,7 @@ namespace HaCreator.MapSimulator.UI
                 UnavailableOverlayBounds = unavailableOverlayBounds;
                 NativeAnchorOffset = nativeAnchorOffset;
                 UsesItemNumberImages = usesItemNumberImages;
+                NativeCanvasCopyBounds = nativeCanvasCopyBounds;
             }
 
             public ClientFuncKeyMappedCompositionKind Kind { get; }
@@ -156,6 +158,7 @@ namespace HaCreator.MapSimulator.UI
             public Rectangle UnavailableOverlayBounds { get; }
             public Point NativeAnchorOffset { get; }
             public bool UsesItemNumberImages { get; }
+            public Rectangle NativeCanvasCopyBounds { get; }
             public bool HasUnavailableOverlay => UnavailableOverlayBounds != Rectangle.Empty;
         }
 
@@ -1383,6 +1386,11 @@ namespace HaCreator.MapSimulator.UI
             };
             bool usesItemNumberImages = drawLayer == ShortcutVisualState.ClientDrawLayer.ItemStack
                 && hasQuantityText;
+            Rectangle nativeCanvasCopyBounds = ResolveClientFuncKeyMappedNativeCanvasCopyBounds(
+                cellBounds,
+                Math.Max(1, drawWidth),
+                Math.Max(1, drawHeight),
+                drawLayer);
 
             // IDA: CUIKeyConfig::DrawFuncKeyMapped draws item slots from (x, y + 32),
             // stack numbers from y + 20, and skill/macro canvases bottom-aligned to x/y.
@@ -1392,7 +1400,27 @@ namespace HaCreator.MapSimulator.UI
                 quantityPosition,
                 unavailableOverlayBounds,
                 new Point(0, ClientFuncKeyMappedCellSize),
-                usesItemNumberImages);
+                usesItemNumberImages,
+                nativeCanvasCopyBounds);
+        }
+
+        internal static Rectangle ResolveClientFuncKeyMappedNativeCanvasCopyBounds(
+            Rectangle cellBounds,
+            int drawWidth,
+            int drawHeight,
+            ShortcutVisualState.ClientDrawLayer drawLayer)
+        {
+            if (drawLayer is not ShortcutVisualState.ClientDrawLayer.Skill
+                and not ShortcutVisualState.ClientDrawLayer.Macro)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                cellBounds.X - Math.Max(1, drawWidth),
+                cellBounds.Y - Math.Max(1, drawHeight) + ClientFuncKeyMappedCellSize,
+                Math.Max(1, drawWidth),
+                Math.Max(1, drawHeight));
         }
 
         internal static bool ShouldTintClientFuncKeyMappedIcon(ShortcutVisualState.ClientDrawLayer drawLayer, bool unavailable)

@@ -2032,6 +2032,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryStartSeason2BtOkSendRoute(MonsterCarnivalEntry selectedEntry, int tickCount)
         {
+            return TryStartSeason2RequestSendRoute(
+                selectedEntry,
+                tickCount,
+                "UIWindow2/MonsterCarnival/sub/BtOK",
+                recordBtOkPendingRoute: true);
+        }
+
+        private bool TryStartSeason2RequestSendRoute(
+            MonsterCarnivalEntry selectedEntry,
+            int tickCount,
+            string sourceRoute,
+            bool recordBtOkPendingRoute)
+        {
             if (selectedEntry == null)
             {
                 return false;
@@ -2045,14 +2058,20 @@ namespace HaCreator.MapSimulator.Fields
             MarkPendingOfficialClientRequestCore(selectedEntry.Tab, selectedEntry.Index, recordObservedSendRoute: false);
             string payloadHex = CaptureSeason2RequestSendPayload(selectedEntry.Tab, selectedEntry.Index);
             _season2SubDialogBtOkSendRouteCount++;
-            _season2SubDialogBtOkPendingSendRouteCount++;
+            if (recordBtOkPendingRoute)
+            {
+                _season2SubDialogBtOkPendingSendRouteCount++;
+            }
             _season2SubDialogLastSendTick = tickCount;
             _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.SentPendingResult;
+            string normalizedSource = string.IsNullOrWhiteSpace(sourceRoute)
+                ? "CUIMonsterCarnival::RequestSend"
+                : sourceRoute.Trim();
             _season2SubDialogLastSendRoute =
-                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost},payload={payloadHex}";
+                $"{_definition.ClientOwnerLabel}::{normalizedSource} -> COutPacket(262) tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost},payload={payloadHex}";
             _season2SubDialogBtOkSendLifecycleSummary =
-                $"CUIMonsterCarnival::RequestSend built COutPacket(262), encoded tab={(int)selectedEntry.Tab}, index={selectedEntry.Index} as payload={payloadHex}, set request-pending, and awaits CField_MonsterCarnival::OnRequestResult.";
-            RecordSeason2SubDialogSendRouteEvent($"btok-send(opcode=262,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},payload={payloadHex})");
+                $"CUIMonsterCarnival::RequestSend built COutPacket(262) from {normalizedSource}, encoded tab={(int)selectedEntry.Tab}, index={selectedEntry.Index} as payload={payloadHex}, set request-pending, and awaits CField_MonsterCarnival::OnRequestResult.";
+            RecordSeason2SubDialogSendRouteEvent($"request-send(opcode=262,source={normalizedSource},tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},payload={payloadHex})");
             return true;
         }
 
@@ -2172,6 +2191,60 @@ namespace HaCreator.MapSimulator.Fields
                 $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub body click ({mousePosition.X},{mousePosition.Y})";
             RecordSeason2SubDialogRouteEvent($"body-click(count={_season2SubDialogBodyClickRouteCount})");
             message = "Season 2 Monster Carnival sub dialog consumed the click inside its UIWindow2 owner surface.";
+            return true;
+        }
+
+        public bool HandleSeason2UiWindowListMouseClick(
+            Point mousePosition,
+            int viewportWidth,
+            int tickCount,
+            bool isDoubleClick,
+            out string message)
+        {
+            message = null;
+            if (_definition?.IsSeason2Mode != true || !_isVisible)
+            {
+                return false;
+            }
+
+            IReadOnlyList<MonsterCarnivalEntry> entries = _definition.GetEntries(_activeTab) ?? Array.Empty<MonsterCarnivalEntry>();
+            Rectangle listBounds = ResolveSeason2UiWindowListBounds(viewportWidth, entries.Count);
+            if (!listBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            if (!TryResolveSeason2UiWindowListRowIndex(mousePosition, viewportWidth, entries.Count, out int rowIndex)
+                || rowIndex >= entries.Count)
+            {
+                _season2UiWindowListNoSelectionRouteCount++;
+                _season2SubDialogLastButtonRoute =
+                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList no-selection click ({mousePosition.X},{mousePosition.Y})";
+                RecordSeason2SubDialogRouteEvent($"list-no-selection(count={_season2UiWindowListNoSelectionRouteCount})");
+                message = "Season 2 Monster Carnival UIWindow2 list consumed a no-selection click.";
+                return true;
+            }
+
+            MonsterCarnivalEntry entry = entries[rowIndex];
+            _selectedEntryIndex = entry.Index;
+            _lastRequestTab = (int)entry.Tab;
+            _lastRequestIndex = entry.Index;
+            _season2UiWindowListSelectionRouteCount++;
+            _season2SubDialogLastButtonRoute =
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList selected tab={(int)entry.Tab},index={entry.Index},id={entry.Id},doubleClick={isDoubleClick}";
+            RecordSeason2SubDialogRouteEvent($"list-select(tab={(int)entry.Tab},index={entry.Index},id={entry.Id},double={isDoubleClick})");
+
+            if (isDoubleClick)
+            {
+                _season2UiWindowListDoubleClickSendRouteCount++;
+                TryStartSeason2RequestSendRoute(
+                    entry,
+                    tickCount,
+                    "UIWindow2/MonsterCarnival/summonList double-click",
+                    recordBtOkPendingRoute: true);
+            }
+
+            message = DescribeStatus();
             return true;
         }
 
@@ -3679,6 +3752,32 @@ namespace HaCreator.MapSimulator.Fields
                 headerBounds.Y + DefaultHudMetrics.BackgroundHeight + 10,
                 Season2SubDialogWidth,
                 Season2SubDialogHeight);
+        }
+
+        internal static Rectangle ResolveSeason2UiWindowListBounds(int viewportWidth, int entryCount)
+        {
+            Rectangle headerBounds = ResolveHeaderBounds(viewportWidth, DefaultHudMetrics);
+            return ResolveClientListBounds(headerBounds, entryCount);
+        }
+
+        internal static bool TryResolveSeason2UiWindowListRowIndex(Point mousePosition, int viewportWidth, int entryCount, out int rowIndex)
+        {
+            rowIndex = -1;
+            Rectangle listBounds = ResolveSeason2UiWindowListBounds(viewportWidth, entryCount);
+            if (!listBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            int visibleRows = ResolveClientVisibleTabRowCount(entryCount);
+            int candidate = (mousePosition.Y - listBounds.Y) / ClientTabWindowRowHeight;
+            if (candidate < 0 || candidate >= visibleRows)
+            {
+                return false;
+            }
+
+            rowIndex = candidate;
+            return true;
         }
 
         internal static Rectangle ResolveSeason2SubDialogOkButtonBounds(Rectangle dialogBounds)
@@ -5395,7 +5494,8 @@ namespace HaCreator.MapSimulator.Fields
             string payloadText = string.IsNullOrWhiteSpace(_season2SubDialogLastCOutPacket262PayloadHex)
                 ? "none"
                 : _season2SubDialogLastCOutPacket262PayloadHex;
-            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},blockedPending={_season2SubDialogBtOkBlockedPendingRouteCount},blockedNoCp={_season2SubDialogBtOkBlockedNoCpRouteCount},blockedCooldown={_season2SubDialogBtOkBlockedCooldownRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},packet262Payloads={_season2SubDialogCOutPacket262PayloadCount},lastPacket262={payloadText},sendLifecycle={lifecycleText},sendLifecycleSummary={lifecycleSummary},sendTrail={sendTrail}";
+            string listText = $"listSelectRoutes={_season2UiWindowListSelectionRouteCount},listDoubleClickSendRoutes={_season2UiWindowListDoubleClickSendRouteCount},listNoSelectionRoutes={_season2UiWindowListNoSelectionRouteCount}";
+            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},blockedPending={_season2SubDialogBtOkBlockedPendingRouteCount},blockedNoCp={_season2SubDialogBtOkBlockedNoCpRouteCount},blockedCooldown={_season2SubDialogBtOkBlockedCooldownRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},{listText},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},packet262Payloads={_season2SubDialogCOutPacket262PayloadCount},lastPacket262={payloadText},sendLifecycle={lifecycleText},sendLifecycleSummary={lifecycleSummary},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
                 ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},{sendText},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"

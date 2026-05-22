@@ -43,7 +43,8 @@ namespace HaCreator.MapSimulator
                 mob?.PacketOwnedExpiryClientSuspended == true,
                 mobPhase,
                 hasOwnerPhase ? ownerPhase : null,
-                hasPhaseContext);
+                hasPhaseContext,
+                _specialFieldRuntime?.SpecialEffects?.CakePie?.IsClientLocalTeamProtectedMob(mob?.MobId ?? 0) == true);
         }
 
         internal static PacketOwnedExpiryCandidateClientState ResolvePacketOwnedExpiryCandidateClientStateForParity(
@@ -53,9 +54,10 @@ namespace HaCreator.MapSimulator
             bool isSuspended,
             int? mobPhase,
             int? ownerPhase,
-            bool hasPhaseContext)
+            bool hasPhaseContext,
+            bool isEventTeamProtected = false)
         {
-            return SummonedPool.ResolvePacketOwnedExpiryCandidateClientStateForParity(
+            PacketOwnedExpiryCandidateClientState state = SummonedPool.ResolvePacketOwnedExpiryCandidateClientStateForParity(
                 mobTeam,
                 ownerTeam,
                 hasTeamContext,
@@ -63,6 +65,7 @@ namespace HaCreator.MapSimulator
                 mobPhase,
                 ownerPhase,
                 hasPhaseContext);
+            return state with { IsEventTeamProtected = isEventTeamProtected };
         }
 
         private bool TryResolvePacketOwnedExpiryOwnerPhase(int ownerCharacterId, out int ownerPhase)

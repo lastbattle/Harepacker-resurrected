@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
     {
         private static readonly string[] CashShopChildOwnerWindowNames =
         {
+            MapSimulatorWindowNames.CashShopCharacter,
             MapSimulatorWindowNames.CashShopLocker,
             MapSimulatorWindowNames.CashShopInventory,
             MapSimulatorWindowNames.CashShopTab,
@@ -259,6 +260,25 @@ namespace HaCreator.MapSimulator
 
             IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopCharacter) is CashShopStageChildWindow characterWindow
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashShopStageWindow)
+            {
+                characterWindow.SetFont(_fontChat);
+                characterWindow.SetContentProvider(cashShopStageWindow.DescribeCharacterOwnerState);
+                characterWindow.SetExternalAction(
+                    "BtBuyAvatar",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => ShowCashPurchaseConfirmDialog(cashShopWindow)));
+                characterWindow.SetExternalAction(
+                    "BtDefaultAvatar",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Char::OnDefaultAvatar restored the stage-owned preview avatar."));
+                characterWindow.SetExternalAction(
+                    "BtTakeoffAvatar",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Char::OnTakeOffAvatar staged the take-off preview lane; full avatar diff decode remains packet-owned."));
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopLocker) is CashShopStageChildWindow lockerWindow)
             {
                 lockerWindow.SetFont(_fontChat);
@@ -287,19 +307,19 @@ namespace HaCreator.MapSimulator
                 tabWindow.SetExternalAction(
                     "SortPrevious",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_Tab sort-combo focus moved to the previous modeled sort lane; native CCashShop::OnChangedSortType packet dispatch is still pending."));
+                        () => ApplyCashShopWrapperSortDelta(-1)));
                 tabWindow.SetExternalAction(
                     "SortNext",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_Tab sort-combo focus moved to the next modeled sort lane; native CCashShop::OnChangedSortType packet dispatch is still pending."));
+                        () => ApplyCashShopWrapperSortDelta(1)));
                 tabWindow.SetExternalAction(
                     "CategoryPrevious",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_Tab selector focus moved to the previous modeled category; native CCashShop::OnChangedCategory packet dispatch is still pending."));
+                        () => ApplyCashShopWrapperCategoryDelta(-1)));
                 tabWindow.SetExternalAction(
                     "CategoryNext",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_Tab selector focus moved to the next modeled category; native CCashShop::OnChangedCategory packet dispatch is still pending."));
+                        () => ApplyCashShopWrapperCategoryDelta(1)));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopList) is CashShopStageChildWindow listWindow)
@@ -406,11 +426,11 @@ namespace HaCreator.MapSimulator
                 itemSearchWindow.SetExternalAction(
                     "BtSearch",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_ItemSearch search button stayed on the modeled SearchItemName/result wrapper; native request packet dispatch is still pending."));
+                        ApplyCashShopItemSearchResult));
                 itemSearchWindow.SetExternalAction(
                     "BtAllItem",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_ItemSearch all-item filter toggled in the wrapper model; native search-result refresh remains pending."));
+                        ToggleCashShopItemSearchAllItemFilter));
                 itemSearchWindow.SetExternalAction(
                     "BtBuy",
                     () => ExecuteCashServiceClientCancelIngress(
@@ -418,7 +438,7 @@ namespace HaCreator.MapSimulator
                 itemSearchWindow.SetExternalAction(
                     "BtCancel",
                     () => ExecuteCashServiceClientCancelIngress(
-                        () => "CCSWnd_ItemSearch closed its modeled result popup and returned focus to the cash-service stage."));
+                        ClearCashShopItemSearchResult));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
@@ -1403,10 +1423,65 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private string ApplyCashShopWrapperCategoryDelta(int delta)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_Tab is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.MoveCashShopWrapperCategory(delta, Environment.TickCount);
+        }
+
+        private string ApplyCashShopWrapperSortDelta(int delta)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_Tab is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.MoveCashShopWrapperSortType(delta, Environment.TickCount);
+        }
+
+        private string ToggleCashShopItemSearchAllItemFilter()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_ItemSearch is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.ToggleCashShopItemSearchAllItemFilter(Environment.TickCount);
+        }
+
+        private string ApplyCashShopItemSearchResult()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_ItemSearch is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.ApplyCashShopItemSearchResult(Environment.TickCount);
+        }
+
+        private string ClearCashShopItemSearchResult()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_ItemSearch is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.ClearCashShopItemSearchResult(Environment.TickCount);
+        }
+
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerState(AdminShopDialogUI cashShopWindow)
         {
             IReadOnlyList<string> lines = BuildCashShopTabOwnerLines(cashShopWindow);
-            return BuildCashShopTabWrapperOwnerStateForTests(lines);
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            return BuildCashShopTabWrapperOwnerStateForTests(
+                lines,
+                stageWindow?.CashShopCurrentCategory ?? 1,
+                stageWindow?.CashShopCurrentSortType ?? 0,
+                stageWindow?.CashShopLastKeyDownTick ?? 0);
         }
 
         internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerStateForTests(
@@ -2259,18 +2334,19 @@ namespace HaCreator.MapSimulator
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopBestWrapperOwnerState()
         {
             IReadOnlyList<string> lines = BuildCashShopBestOwnerLines();
-            int pendingCommoditySerialNumber =
-                uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
-                    ? stageWindow.PendingCommoditySerialNumber
-                    : 0;
-            return BuildCashShopBestWrapperOwnerStateForTests(lines, pendingCommoditySerialNumber);
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            int pendingCommoditySerialNumber = stageWindow?.PendingCommoditySerialNumber ?? 0;
+            int currentCategory = stageWindow?.CashShopCurrentCategory ?? 1;
+            return BuildCashShopBestWrapperOwnerStateForTests(lines, pendingCommoditySerialNumber, currentCategory);
         }
 
         internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopBestWrapperOwnerStateForTests(
             IReadOnlyList<string> lines = null,
-            int pendingCommoditySerialNumber = 0)
+            int pendingCommoditySerialNumber = 0,
+            int currentCategory = 1)
         {
             IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
+            int bestCategory = currentCategory is 9 or 10 ? 1 : Math.Clamp(currentCategory, 1, 8);
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
             {
                 OwnerName = "CCSWnd_Best",
@@ -2282,6 +2358,7 @@ namespace HaCreator.MapSimulator
                 BestRowHeight = 80,
                 BestEventBadgePosition = new Microsoft.Xna.Framework.Point(0, 0),
                 PendingCommoditySerialNumber = Math.Max(0, pendingCommoditySerialNumber),
+                CurrentCategory = bestCategory,
                 HasDedicatedWzSurface = false,
                 Lines = stateLines
             };
@@ -2304,11 +2381,17 @@ namespace HaCreator.MapSimulator
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerState()
         {
             IReadOnlyList<string> lines = BuildCashShopItemSearchOwnerLines();
-            return BuildCashShopItemSearchWrapperOwnerStateForTests(lines);
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            return BuildCashShopItemSearchWrapperOwnerStateForTests(
+                lines,
+                stageWindow?.CashShopSearchResultCount ?? 0,
+                stageWindow?.CashShopItemSearchAllItemFilter == true);
         }
 
         internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerStateForTests(
-            IReadOnlyList<string> lines = null)
+            IReadOnlyList<string> lines = null,
+            int searchResultCount = 0,
+            bool allItemFilterEnabled = false)
         {
             IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
@@ -2329,6 +2412,8 @@ namespace HaCreator.MapSimulator
                 },
                 ButtonControls = BuildCashShopItemSearchButtonControlsForTests(),
                 PriceRanges = BuildCashShopItemSearchPriceRangesForTests(),
+                SearchResultCount = Math.Max(0, searchResultCount),
+                AllItemFilterEnabled = allItemFilterEnabled,
                 HasDedicatedWzSurface = true,
                 Lines = stateLines
             };

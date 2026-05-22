@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.Effects
         public const string ItemInfoOwnerName = "CUICakePieEventItemInfo";
         public const int CakeItemId = 4032658;
         public const int PieItemId = 4032659;
+        public const int CakeMobTemplateId = 9400751;
+        public const int PieMobTemplateId = 9400752;
         public const int ItemInfoCloseButtonId = 1000;
         public const int ItemInfoCloseButtonX = 212;
         public const int ItemInfoCloseButtonY = 14;
@@ -130,6 +132,11 @@ namespace HaCreator.MapSimulator.Effects
         public IReadOnlyList<int> ItemInfoRefreshItemIds => ItemInfoItemIds;
         public IReadOnlyCollection<CakePieEventItemInfo> EventItemInfos => _eventItemInfo.Values;
 
+        public bool IsClientLocalTeamProtectedMob(int mobTemplateId)
+        {
+            return IsClientLocalTeamProtectedMob(mobTemplateId, ResolveClientLocalTeam());
+        }
+
         public int RemainingSeconds
         {
             get
@@ -202,6 +209,12 @@ namespace HaCreator.MapSimulator.Effects
         public bool ClearEventItemInfo(int fieldId, int itemId)
         {
             return _eventItemInfo.Remove((fieldId, itemId));
+        }
+
+        internal static bool IsClientLocalTeamProtectedMob(int mobTemplateId, int localTeam)
+        {
+            return (mobTemplateId == CakeMobTemplateId && localTeam == 1)
+                   || (mobTemplateId == PieMobTemplateId && localTeam == 2);
         }
 
         public void OpenItemInfo()
@@ -570,6 +583,14 @@ namespace HaCreator.MapSimulator.Effects
                 2 => winnerTeam == 1 ? "Cake team has taken over." : "Pie team has taken over.",
                 _ => string.Empty
             };
+        }
+
+        private int ResolveClientLocalTeam()
+        {
+            CakePieEventItemInfo info = _eventItemInfo.Values
+                .FirstOrDefault(entry => (_currentFieldId <= 0 || entry.FieldId == _currentFieldId) && (entry.WinnerTeam == 1 || entry.WinnerTeam == 2))
+                ?? _eventItemInfo.Values.FirstOrDefault(entry => entry.WinnerTeam == 1 || entry.WinnerTeam == 2);
+            return info?.WinnerTeam ?? 0;
         }
 
         private Texture2D ResolveTimerBadgeTexture()

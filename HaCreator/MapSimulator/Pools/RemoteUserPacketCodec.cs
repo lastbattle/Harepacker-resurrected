@@ -3807,9 +3807,17 @@ namespace HaCreator.MapSimulator.Pools
                 ("start", "npc") => "startnpc",
                 ("end", "npc") => "endnpc",
                 ("arrow", "up") => "arrowup",
+                ("arrow", "n") => "arrowup",
                 ("arrow", "down") => "arrowdown",
+                ("arrow", "s") => "arrowdown",
                 ("arrow", "right") => "arrowright",
+                ("arrow", "e") => "arrowright",
                 ("arrow", "left") => "arrowleft",
+                ("arrow", "w") => "arrowleft",
+                ("arrow", "nw") => "arrowupleft",
+                ("arrow", "ne") => "arrowupright",
+                ("arrow", "sw") => "arrowdownleft",
+                ("arrow", "se") => "arrowdownright",
                 _ => null
             };
 
@@ -4017,13 +4025,33 @@ namespace HaCreator.MapSimulator.Pools
                 "endnpc" => "endnpc",
                 "portal" => "portal",
                 "arrowup" => "arrowup",
+                "arrownorth" => "arrowup",
+                "arrown" => "arrowup",
                 "arrowdown" => "arrowdown",
+                "arrowsouth" => "arrowdown",
+                "arrows" => "arrowdown",
                 "arrowright" => "arrowright",
+                "arroweast" => "arrowright",
+                "arrowe" => "arrowright",
                 "arrowleft" => "arrowleft",
+                "arrowwest" => "arrowleft",
+                "arroww" => "arrowleft",
                 "arrowupright" => "arrowupright",
+                "arrownortheast" => "arrowupright",
+                "arrownorthright" => "arrowupright",
+                "arrowne" => "arrowupright",
                 "arrowupleft" => "arrowupleft",
+                "arrownorthwest" => "arrowupleft",
+                "arrownorthleft" => "arrowupleft",
+                "arrownw" => "arrowupleft",
                 "arrowdownright" => "arrowdownright",
+                "arrowsoutheast" => "arrowdownright",
+                "arrowsouthright" => "arrowdownright",
+                "arrowse" => "arrowdownright",
                 "arrowdownleft" => "arrowdownleft",
+                "arrowsouthwest" => "arrowdownleft",
+                "arrowsouthleft" => "arrowdownleft",
+                "arrowsw" => "arrowdownleft",
                 "northwest" => "nw",
                 "north" => "n",
                 "northeast" => "ne",
@@ -5324,6 +5352,21 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
                     elementValueConsensusChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueKnownSkillFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int uniqueKnownSkillChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueKnownSkillChargeElement,
                     out chargeSkillId))
             {
                 return true;

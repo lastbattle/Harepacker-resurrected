@@ -1264,6 +1264,17 @@ namespace HaCreator.MapSimulator.AI
             return TryStartSkill(skillIndex, currentTick, requireSelectionGates: true);
         }
 
+        public bool TryUseSkill(int skillId, int level, int currentTick)
+        {
+            int skillIndex = FindSkillIndex(skillId, level);
+            if (skillIndex < 0)
+            {
+                return false;
+            }
+
+            return TryStartSkill(skillIndex, currentTick, requireSelectionGates: true);
+        }
+
         /// <summary>
         /// Check if mob should deal damage this frame (based on attack timing)
         /// </summary>
@@ -2168,6 +2179,39 @@ namespace HaCreator.MapSimulator.AI
             }
 
             return _skillForbidUntil == 0 || HasClientTickReached(currentTick, _skillForbidUntil);
+        }
+
+        private int FindSkillIndex(int skillId, int level)
+        {
+            if (skillId <= 0)
+            {
+                return -1;
+            }
+
+            int fallbackIndex = -1;
+            int normalizedLevel = Math.Max(0, level);
+            for (int i = 0; i < _skills.Count; i++)
+            {
+                MobSkillEntry skill = _skills[i];
+                if (skill?.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (normalizedLevel <= 0)
+                {
+                    return i;
+                }
+
+                if (skill.Level == normalizedLevel)
+                {
+                    return i;
+                }
+
+                fallbackIndex = fallbackIndex < 0 ? i : fallbackIndex;
+            }
+
+            return fallbackIndex;
         }
 
         private void TransitionToActionState(MobAIState newState, int currentTick)

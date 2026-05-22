@@ -14,6 +14,67 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class CashAvatarPreviewWindow : UIWindowBase
     {
+        public sealed class ButtonControlRuntimeState
+        {
+            public string ActionKey { get; init; } = string.Empty;
+            public int NativeButtonId { get; init; }
+            public int TooltipStringPoolId { get; init; }
+            public string WzPath { get; init; } = string.Empty;
+            public Point Position { get; init; }
+            public int Width { get; init; }
+            public int Height { get; init; }
+            public bool HasWzCanvas { get; init; }
+            public bool IsEnabled { get; init; }
+        }
+
+        public sealed class UserPreviewRuntimeSnapshot
+        {
+            public Point LayerPosition { get; init; }
+            public System.Drawing.Size LayerSize { get; init; }
+            public Point AvatarAnchor { get; init; }
+            public int BackgroundIndex { get; init; }
+            public int BackgroundCanvasCount { get; init; }
+            public int WearInfoCapacity { get; init; }
+            public int ActiveWearInfoCount { get; init; }
+            public int PreviewWearMutationCount { get; init; }
+            public int PreviewedPetItemId { get; init; }
+            public bool HasPreviewBuild { get; init; }
+            public bool HasPreviewAssembler { get; init; }
+            public bool HasWeaponSticker { get; init; }
+            public bool HasMonsterRiding { get; init; }
+            public string MutationState { get; init; } = string.Empty;
+        }
+
+        public sealed class PhysicalSpaceRuntimeSnapshot
+        {
+            public int FieldStringPoolId { get; init; }
+            public int FootholdStringPoolId { get; init; }
+            public int LadderRopeStringPoolId { get; init; }
+            public string OriginMode { get; init; } = string.Empty;
+            public int BackgroundLayerZ { get; init; }
+            public bool IsLoaded { get; init; }
+            public string State { get; init; } = string.Empty;
+        }
+
+        public sealed class AvatarLookRuntimeSnapshot
+        {
+            public bool HasInitialAvatarLook { get; init; }
+            public int InitialVisibleEquipCount { get; init; }
+            public int InitialPetItemId { get; init; }
+            public int WeaponStickerItemId { get; init; }
+            public string ResetState { get; init; } = string.Empty;
+        }
+
+        public sealed class PreviewRuntimeSnapshot
+        {
+            public UserPreviewRuntimeSnapshot UserPreview { get; init; }
+            public PhysicalSpaceRuntimeSnapshot PhysicalSpace { get; init; }
+            public AvatarLookRuntimeSnapshot AvatarLook { get; init; }
+            public IReadOnlyList<ButtonControlRuntimeState> ButtonControls { get; init; } = Array.Empty<ButtonControlRuntimeState>();
+            public string StatusMessage { get; init; } = string.Empty;
+            public string OwnerState { get; init; } = string.Empty;
+        }
+
         private const int ClientWearInfoCapacity = 60;
         private const int FrameWidth = 248;
         private const int FrameHeight = 266;
@@ -25,6 +86,22 @@ namespace HaCreator.MapSimulator.UI
         private const int DefaultButtonX = 101;
         private const int TakeoffButtonX = 187;
         private const int ButtonY = 237;
+        private const int PreviewHeight = 165;
+        private const int PreviewBackgroundCanvasCount = 3;
+        private const int PreviewBackgroundLayerZ = unchecked((int)0xC0000000);
+        private const int CashShopFieldStringPoolId = 0xC69;
+        private const int CashShopFootholdStringPoolId = 0x5FB;
+        private const int CashShopLadderRopeStringPoolId = 0x5FC;
+        private const int BuyAvatarButtonId = 1000;
+        private const int DefaultAvatarButtonId = 1001;
+        private const int TakeoffAvatarButtonId = 1002;
+        private const int BuyAvatarTooltipStringPoolId = 0x522;
+        private const int DefaultAvatarTooltipStringPoolId = 0x523;
+        private const int TakeoffAvatarTooltipStringPoolId = 0xB8C;
+        private const int BuyAvatarButtonWidth = 83;
+        private const int DefaultAvatarButtonWidth = 84;
+        private const int TakeoffAvatarButtonWidth = 55;
+        private const int AvatarButtonHeight = 19;
 
         private readonly IDXObject _windowBackgroundLayer;
         private readonly Point _windowBackgroundOffset;
@@ -134,6 +211,59 @@ namespace HaCreator.MapSimulator.UI
         public void SetShopRequestHandler(Func<string> shopRequestHandler)
         {
             _shopRequestHandler = shopRequestHandler;
+        }
+
+        public PreviewRuntimeSnapshot GetRuntimeSnapshotForTests()
+        {
+            RefreshSelectionState(force: true);
+            SyncPreviewBuild();
+            UpdateButtonStates();
+            return BuildRuntimeSnapshot();
+        }
+
+        internal static PreviewRuntimeSnapshot BuildInitialRuntimeSnapshotForTests()
+        {
+            return new PreviewRuntimeSnapshot
+            {
+                UserPreview = new UserPreviewRuntimeSnapshot
+                {
+                    LayerPosition = new Point(PreviewX, PreviewY),
+                    LayerSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
+                    AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
+                    BackgroundIndex = 0,
+                    BackgroundCanvasCount = PreviewBackgroundCanvasCount,
+                    WearInfoCapacity = ClientWearInfoCapacity,
+                    ActiveWearInfoCount = 0,
+                    PreviewWearMutationCount = 0,
+                    PreviewedPetItemId = 0,
+                    HasPreviewBuild = false,
+                    HasPreviewAssembler = false,
+                    HasWeaponSticker = false,
+                    HasMonsterRiding = false,
+                    MutationState = "AvatarLook snapshot idle."
+                },
+                PhysicalSpace = new PhysicalSpaceRuntimeSnapshot
+                {
+                    FieldStringPoolId = CashShopFieldStringPoolId,
+                    FootholdStringPoolId = CashShopFootholdStringPoolId,
+                    LadderRopeStringPoolId = CashShopLadderRopeStringPoolId,
+                    OriginMode = "Origin_LT",
+                    BackgroundLayerZ = PreviewBackgroundLayerZ,
+                    IsLoaded = false,
+                    State = "CWvsPhysicalSpace2D seam idle."
+                },
+                AvatarLook = new AvatarLookRuntimeSnapshot
+                {
+                    HasInitialAvatarLook = false,
+                    InitialVisibleEquipCount = 0,
+                    InitialPetItemId = 0,
+                    WeaponStickerItemId = 0,
+                    ResetState = "AvatarLook snapshot idle."
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(null, null, null),
+                StatusMessage = "CCSWnd_Char preview idle.",
+                OwnerState = "CUserPreview / physical-space seam idle."
+            };
         }
 
         public override void SetFont(SpriteFont font)
@@ -762,6 +892,128 @@ namespace HaCreator.MapSimulator.UI
             _buyAvatarButton?.SetEnabled(hasCharacter && hasSelection);
             _defaultAvatarButton?.SetEnabled(hasCharacter);
             _takeoffAvatarButton?.SetEnabled(hasCharacter && hasTakeoffMutation);
+        }
+
+        private PreviewRuntimeSnapshot BuildRuntimeSnapshot()
+        {
+            int activeWearEntries = CountActivePreviewWearInfoEntries();
+            int initialPetId = _initialAvatarLook?.PetIds?.Count > 0 ? _initialAvatarLook.PetIds[0] : 0;
+            return new PreviewRuntimeSnapshot
+            {
+                UserPreview = new UserPreviewRuntimeSnapshot
+                {
+                    LayerPosition = new Point(PreviewX, PreviewY),
+                    LayerSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
+                    AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
+                    BackgroundIndex = ResolvePreviewIndex(),
+                    BackgroundCanvasCount = Math.Max(PreviewBackgroundCanvasCount, _previewBackgrounds?.Length ?? 0),
+                    WearInfoCapacity = ClientWearInfoCapacity,
+                    ActiveWearInfoCount = activeWearEntries,
+                    PreviewWearMutationCount = _previewWearMutationCount,
+                    PreviewedPetItemId = _previewPetItemId,
+                    HasPreviewBuild = _previewBuild != null,
+                    HasPreviewAssembler = _previewAssembler != null,
+                    HasWeaponSticker = _previewBuild?.WeaponSticker != null,
+                    HasMonsterRiding = _previewBuild?.HasMonsterRiding == true,
+                    MutationState = _previewMutationState ?? string.Empty
+                },
+                PhysicalSpace = new PhysicalSpaceRuntimeSnapshot
+                {
+                    FieldStringPoolId = CashShopFieldStringPoolId,
+                    FootholdStringPoolId = CashShopFootholdStringPoolId,
+                    LadderRopeStringPoolId = CashShopLadderRopeStringPoolId,
+                    OriginMode = "Origin_LT",
+                    BackgroundLayerZ = PreviewBackgroundLayerZ,
+                    IsLoaded = _previewBuild != null,
+                    State = _previewPhysicalSpaceState ?? string.Empty
+                },
+                AvatarLook = new AvatarLookRuntimeSnapshot
+                {
+                    HasInitialAvatarLook = _initialAvatarLook != null,
+                    InitialVisibleEquipCount = _initialAvatarLook?.VisibleEquipmentByBodyPart?.Count ?? 0,
+                    InitialPetItemId = initialPetId,
+                    WeaponStickerItemId = _initialAvatarLook?.WeaponStickerItemId ?? 0,
+                    ResetState = _previewResetState ?? string.Empty
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(_buyAvatarButton, _defaultAvatarButton, _takeoffAvatarButton),
+                StatusMessage = _statusMessage ?? string.Empty,
+                OwnerState = _previewOwnerState ?? string.Empty
+            };
+        }
+
+        private int CountActivePreviewWearInfoEntries()
+        {
+            int activeWearEntries = 0;
+            for (int i = 0; i < _previewWearItemIds.Length; i++)
+            {
+                if (_previewWearItemIds[i] > 0)
+                {
+                    activeWearEntries++;
+                }
+            }
+
+            return activeWearEntries;
+        }
+
+        private static IReadOnlyList<ButtonControlRuntimeState> BuildButtonControlRuntimeStates(
+            UIObject buyAvatarButton,
+            UIObject defaultAvatarButton,
+            UIObject takeoffAvatarButton)
+        {
+            return new[]
+            {
+                BuildButtonControlRuntimeState(
+                    "BtBuyAvatar",
+                    BuyAvatarButtonId,
+                    BuyAvatarTooltipStringPoolId,
+                    "UI/CashShop.img/CSChar/BtBuyAvatar",
+                    new Point(BuyButtonX, ButtonY),
+                    BuyAvatarButtonWidth,
+                    AvatarButtonHeight,
+                    buyAvatarButton),
+                BuildButtonControlRuntimeState(
+                    "BtDefaultAvatar",
+                    DefaultAvatarButtonId,
+                    DefaultAvatarTooltipStringPoolId,
+                    "UI/CashShop.img/CSChar/BtDefaultAvatar",
+                    new Point(DefaultButtonX, ButtonY),
+                    DefaultAvatarButtonWidth,
+                    AvatarButtonHeight,
+                    defaultAvatarButton),
+                BuildButtonControlRuntimeState(
+                    "BtTakeoffAvatar",
+                    TakeoffAvatarButtonId,
+                    TakeoffAvatarTooltipStringPoolId,
+                    "UI/CashShop.img/CSChar/BtTakeoffAvatar",
+                    new Point(TakeoffButtonX, ButtonY),
+                    TakeoffAvatarButtonWidth,
+                    AvatarButtonHeight,
+                    takeoffAvatarButton)
+            };
+        }
+
+        private static ButtonControlRuntimeState BuildButtonControlRuntimeState(
+            string actionKey,
+            int nativeButtonId,
+            int tooltipStringPoolId,
+            string wzPath,
+            Point position,
+            int fallbackWidth,
+            int fallbackHeight,
+            UIObject button)
+        {
+            return new ButtonControlRuntimeState
+            {
+                ActionKey = actionKey,
+                NativeButtonId = nativeButtonId,
+                TooltipStringPoolId = tooltipStringPoolId,
+                WzPath = wzPath,
+                Position = position,
+                Width = Math.Max(1, button?.CanvasSnapshotWidth ?? fallbackWidth),
+                Height = Math.Max(1, button?.CanvasSnapshotHeight ?? fallbackHeight),
+                HasWzCanvas = button != null || fallbackWidth > 0,
+                IsEnabled = button?.IsEnabled ?? false
+            };
         }
 
         private void RestorePreviewAvatarSnapshot()

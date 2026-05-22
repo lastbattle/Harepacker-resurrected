@@ -586,6 +586,11 @@ namespace HaCreator.MapSimulator.Managers
             return _observedOutboundRequests.TryDequeue(out request);
         }
 
+        public bool IsCurrentInitializedProxySessionEvidence(long? proxySessionId, short? sessionVersion)
+        {
+            return IsCurrentInitializedProxySession(proxySessionId, sessionVersion);
+        }
+
         public bool TrySendRequest(MonsterCarnivalTab tab, int entryIndex, out string status)
         {
             if (entryIndex < 0)
@@ -873,7 +878,12 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = _roleSessionProxy.LastStatus;
         }
 
-        public static bool TryDecodeInboundCarnivalPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
+        public static bool TryDecodeInboundCarnivalPacket(
+            byte[] rawPacket,
+            string source,
+            out MonsterCarnivalPacketInboxMessage message,
+            long? proxySessionId = null,
+            short? sessionVersion = null)
         {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort))
@@ -898,7 +908,9 @@ namespace HaCreator.MapSimulator.Managers
                     SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(relayedPacketType, relayedPayload),
                     source,
                     $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                    relayedPacketType);
+                    relayedPacketType,
+                    proxySessionId,
+                    sessionVersion);
                 return true;
             }
 
@@ -912,7 +924,9 @@ namespace HaCreator.MapSimulator.Managers
                 SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload),
                 source,
                 $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                opcode);
+                opcode,
+                proxySessionId,
+                sessionVersion);
             return true;
         }
 
@@ -979,12 +993,14 @@ namespace HaCreator.MapSimulator.Managers
                     SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(mappedPacketType, payload),
                     source,
                     $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                    mappedPacketType);
+                    mappedPacketType,
+                    proxySessionId,
+                    sessionVersion);
                 RecordRecentPacket(opcode, rawPacket, mappedPacketType, "mapped", proxySessionId, sessionVersion);
                 return true;
             }
 
-            bool decoded = TryDecodeInboundCarnivalPacket(rawPacket, source, out message);
+            bool decoded = TryDecodeInboundCarnivalPacket(rawPacket, source, out message, proxySessionId, sessionVersion);
             if (decoded)
             {
                 RecordRecentPacket(opcode, rawPacket, message.OwnerPacketType, "direct", proxySessionId, sessionVersion);

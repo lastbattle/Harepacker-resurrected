@@ -5982,6 +5982,22 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<string> unresolvedSideChannelDemandKeys = null,
             bool hasUnmetActionRepeatRequirement = false)
         {
+            if (state == QuestStateType.Not_Started)
+            {
+                IReadOnlyList<NpcInteractionPage> startPriorityPages = SelectStartDemandPriorityIssueConversationPages(
+                    hasUnmetJobRequirement,
+                    hasUnmetLevelRequirement,
+                    hasUnmetFameRequirement,
+                    hasUnmetAvailabilityRequirement,
+                    hasUnmetActionRepeatRequirement,
+                    stopPages,
+                    unresolvedSideChannelDemandKeys);
+                if (startPriorityPages.Count > 0)
+                {
+                    return startPriorityPages;
+                }
+            }
+
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
                 TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> npcPages, "npc", "npcid", "npcno"))
@@ -6412,6 +6428,109 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryGetFirstNumericStopPages(stopPages, out IReadOnlyList<NpcInteractionPage> numericPages))
             {
                 return numericPages;
+            }
+
+            return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> SelectStartDemandPriorityIssueConversationPages(
+            bool hasUnmetJobRequirement,
+            bool hasUnmetLevelRequirement,
+            bool hasUnmetFameRequirement,
+            bool hasUnmetAvailabilityRequirement,
+            bool hasUnmetActionRepeatRequirement,
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            IReadOnlyList<string> unresolvedSideChannelDemandKeys)
+        {
+            if (TryGetSideChannelDemandStopPages(
+                    stopPages,
+                    unresolvedSideChannelDemandKeys,
+                    out IReadOnlyList<NpcInteractionPage> sideChannelPages))
+            {
+                return sideChannelPages;
+            }
+
+            if (hasUnmetAvailabilityRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> timePages,
+                    "day",
+                    "date",
+                    "time",
+                    "weekday",
+                    "dayofweek"))
+            {
+                return timePages;
+            }
+
+            if (hasUnmetActionRepeatRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> repeatPages,
+                    "interval",
+                    "repeat",
+                    "repeatInterval",
+                    "cooldown",
+                    "coolTime",
+                    "time",
+                    "day",
+                    "date"))
+            {
+                return repeatPages;
+            }
+
+            if (hasUnmetLevelRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> levelPages,
+                    "lv",
+                    "level",
+                    "lvmin",
+                    "minlv",
+                    "minlevel",
+                    "levelmin",
+                    "lvmax",
+                    "maxlv",
+                    "maxlevel",
+                    "levelmax"))
+            {
+                return levelPages;
+            }
+
+            if (hasUnmetFameRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> famePages,
+                    "pop",
+                    "fame",
+                    "popmin",
+                    "minpop",
+                    "minfame",
+                    "famemin",
+                    "popmax",
+                    "maxpop",
+                    "maxfame",
+                    "famemax"))
+            {
+                return famePages;
+            }
+
+            if (hasUnmetJobRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> jobPages,
+                    "job",
+                    "jobid",
+                    "jobno",
+                    "subjob",
+                    "subjobid",
+                    "subjobflag",
+                    "subjobflags",
+                    "jobex",
+                    "jobexflag",
+                    "jobexflags"))
+            {
+                return jobPages;
             }
 
             return Array.Empty<NpcInteractionPage>();
@@ -10189,6 +10308,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndFameRequirement = ParsePositiveInt(endCheck?["pop"]),
                 EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
                 EndPartyQuestRankS = ParseInt(endCheck?["partyQuest_S"]),
+                EndUserInteractDemand = ParseCompletionUserInteractDemand(endCheck),
                 EndMinLevel = ParseInt(endCheck?["lvmin"]),
                 EndLevelRequirement = ParseInt(endCheck?["level"]),
                 EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
@@ -10353,6 +10473,16 @@ namespace HaCreator.MapSimulator.Interaction
                 "timeKeepFieldSetKeepTime",
                 "keepTime",
                 "keptTime");
+        }
+
+        private static int? ParseCompletionUserInteractDemand(WzImageProperty owner)
+        {
+            return ParseFirstInt(owner, "userInteract", "userInteraction");
+        }
+
+        internal static int? ParseCompletionUserInteractDemandForTesting(WzImageProperty owner)
+        {
+            return ParseCompletionUserInteractDemand(owner);
         }
 
         private static string ParseCompletionTimeKeepFieldSet(WzImageProperty owner)

@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Managers
             RegisterOneShotCompletion,
             RegisterLoopHandle,
             ReleaseLocalStateReference,
+            ReleaseOneShotCompletion,
             ReleaseLoopHandle,
             DisposeManager
         }
@@ -326,12 +327,13 @@ namespace HaCreator.MapSimulator.Managers
                 return handle != 0;
             }
 
-            if (!TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason))
+            if (!TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason, out OneShotSound oneShot))
             {
                 return false;
             }
 
-            AdmitClientSoundState(key, plan.StartVolumeScale, loop: false, loopHandle: 0);
+            uint stateId = AdmitClientSoundState(key, plan.StartVolumeScale, loop: false, loopHandle: 0);
+            oneShot.ClientSoundStateId = stateId;
             return true;
         }
 
@@ -385,7 +387,18 @@ namespace HaCreator.MapSimulator.Managers
 
         internal bool TryPlaySound(string name, float volumeScale, bool suppressWhileActive, out string reason)
         {
+            return TryPlaySound(name, volumeScale, suppressWhileActive, out reason, out _);
+        }
+
+        private bool TryPlaySound(
+            string name,
+            float volumeScale,
+            bool suppressWhileActive,
+            out string reason,
+            out OneShotSound oneShot)
+        {
             reason = null;
+            oneShot = null;
             if (_disposed)
             {
                 reason = "disposed";
@@ -423,7 +436,7 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 float resolvedVolume = ResolveClientVolumeScale(volumeScale, _volume);
-                var oneShot = new OneShotSound(soundSource, name, resolvedVolume, OnSoundCompleted);
+                oneShot = new OneShotSound(soundSource, name, resolvedVolume, OnSoundCompleted);
 
                 lock (_lock)
                 {
@@ -589,6 +602,11 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _activeSoundCounts.AddOrUpdate(sound.SoundName, 0, (_, c) => Math.Max(0, c - 1));
             }
+
+            if (sound?.ClientSoundStateId > 0)
+            {
+                ReleaseClientOneShotSoundState(sound.ClientSoundStateId);
+            }
         }
 
         /// <summary>
@@ -629,6 +647,11 @@ namespace HaCreator.MapSimulator.Managers
                 foreach (var sound in _activeSounds)
                 {
                     sound.Stop();
+                    if (sound.ClientSoundStateId > 0)
+                    {
+                        ReleaseClientOneShotSoundState(sound.ClientSoundStateId);
+                    }
+
                     if (sound.SoundName != null)
                     {
                         _activeSoundCounts.AddOrUpdate(sound.SoundName, 0, (_, _) => 0);
@@ -702,6 +725,13 @@ namespace HaCreator.MapSimulator.Managers
                 foreach (var sound in _activeSounds)
                 {
                     sound.Stop();
+                    if (sound.ClientSoundStateId > 0)
+                    {
+                        ReleaseClientOneShotSoundState(
+                            sound.ClientSoundStateId,
+                            ClientSoundStateMutationKind.DisposeManager);
+                    }
+
                     sound.Dispose();
                 }
                 _activeSounds.Clear();
@@ -1010,6 +1040,40 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        internal static ClientSoundStateSnapshot BuildClientSoundStateAdmissionSnapshot(
+            uint stateId,
+            string key,
+            bool loop,
+            uint loopHandle,
+            float startVolumeScale,
+            float masterVolume)
+        {
+            float clampedStartVolumeScale = ResolveClientStartVolumeScale(startVolumeScale);
+            return new ClientSoundStateSnapshot(
+                stateId,
+                key,
+                loop,
+                clampedStartVolumeScale,
+                ResolveClientVolumeScale(clampedStartVolumeScale, masterVolume),
+                loopHandle,
+                localReferenceReleased: true,
+                active: true);
+        }
+
+        internal static ClientSoundStateMutation BuildClientSoundStateReleaseMutation(
+            ClientSoundStateMutationKind kind,
+            ClientSoundStateSnapshot state)
+        {
+            return new ClientSoundStateMutation(
+                kind,
+                state.StateId,
+                state.Key,
+                state.LoopHandle,
+                state.StartVolumeScale,
+                state.ResolvedVolumeScale,
+                state.Loop);
+        }
+
         internal static string BuildRegisteredClientSoundKey(string registeredName, WzBinaryProperty sound)
         {
             string path = sound?.FullPath?.Replace('\\', '/');
@@ -1114,17 +1178,13 @@ namespace HaCreator.MapSimulator.Managers
         private uint AdmitClientSoundState(string key, float startVolumeScale, bool loop, uint loopHandle)
         {
             uint stateId = AllocateClientSoundStateId();
-            float clampedStartVolumeScale = ResolveClientStartVolumeScale(startVolumeScale);
-            float resolvedVolumeScale = ResolveClientVolumeScale(clampedStartVolumeScale, _volume);
-            ClientSoundStateSnapshot snapshot = new ClientSoundStateSnapshot(
+            ClientSoundStateSnapshot snapshot = BuildClientSoundStateAdmissionSnapshot(
                 stateId,
                 key,
                 loop,
-                clampedStartVolumeScale,
-                resolvedVolumeScale,
                 loopHandle,
-                localReferenceReleased: true,
-                active: loop);
+                startVolumeScale,
+                _volume);
 
             _clientSoundStates[stateId] = snapshot;
             if (loop && loopHandle != 0)
@@ -1137,7 +1197,7 @@ namespace HaCreator.MapSimulator.Managers
                 key,
                 loop,
                 loopHandle,
-                clampedStartVolumeScale,
+                snapshot.StartVolumeScale,
                 _volume);
             lock (_lock)
             {
@@ -1174,14 +1234,38 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_lock)
             {
-                _clientSoundStateMutations.Add(new ClientSoundStateMutation(
-                    mutationKind,
-                    state.StateId,
-                    state.Key,
-                    handle,
-                    state.StartVolumeScale,
-                    state.ResolvedVolumeScale,
-                    state.Loop));
+                _clientSoundStateMutations.Add(BuildClientSoundStateReleaseMutation(mutationKind, state));
+            }
+        }
+
+        private void ReleaseClientOneShotSoundState(
+            uint stateId,
+            ClientSoundStateMutationKind mutationKind = ClientSoundStateMutationKind.ReleaseOneShotCompletion)
+        {
+            if (!_clientSoundStates.TryGetValue(stateId, out ClientSoundStateSnapshot state) || state.Loop)
+            {
+                return;
+            }
+
+            if (!state.Active)
+            {
+                return;
+            }
+
+            ClientSoundStateSnapshot releasedState = new ClientSoundStateSnapshot(
+                state.StateId,
+                state.Key,
+                state.Loop,
+                state.StartVolumeScale,
+                state.ResolvedVolumeScale,
+                state.LoopHandle,
+                state.LocalReferenceReleased,
+                active: false);
+            _clientSoundStates[stateId] = releasedState;
+
+            lock (_lock)
+            {
+                _clientSoundStateMutations.Add(BuildClientSoundStateReleaseMutation(mutationKind, state));
             }
         }
 
@@ -1197,6 +1281,7 @@ namespace HaCreator.MapSimulator.Managers
 
             public string SoundName { get; }
             public bool IsCompleted => _completed || _disposed;
+            public uint ClientSoundStateId { get; set; }
 
             public OneShotSound(SoundEffect sound, string soundName, float volume, Action<OneShotSound> onCompleted)
             {

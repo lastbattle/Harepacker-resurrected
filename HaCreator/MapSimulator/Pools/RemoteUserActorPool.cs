@@ -722,6 +722,7 @@ namespace HaCreator.MapSimulator.Pools
             public int RegistrationKey { get; init; }
             public SkillAnimation OverlayAnimation { get; init; }
             public SkillAnimation UnderFaceAnimation { get; init; }
+            public bool? FacingRightOverride { get; init; }
             public int AnimationStartTime { get; init; }
         }
 
@@ -1341,6 +1342,7 @@ namespace HaCreator.MapSimulator.Pools
             public int RegistrationKey { get; init; }
             public SkillAnimation OverlayAnimation { get; init; }
             public SkillAnimation UnderFaceAnimation { get; init; }
+            public bool? FacingRightOverride { get; init; }
         }
 
         internal readonly record struct PortableChairPairParticipant(
@@ -2551,7 +2553,8 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation overlayAnimation,
             SkillAnimation underFaceAnimation,
             int currentTime,
-            out string message)
+            out string message,
+            bool? facingRightOverride = null)
         {
             message = null;
             if (registrationKey <= 0 || (overlayAnimation == null && underFaceAnimation == null))
@@ -2566,7 +2569,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime);
+            ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime, facingRightOverride);
             return true;
         }
 
@@ -2615,7 +2618,8 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation overlayAnimation,
             SkillAnimation underFaceAnimation,
             int currentTime,
-            out string message)
+            out string message,
+            bool? facingRightOverride = null)
         {
             message = null;
             if (characterId <= 0)
@@ -2632,7 +2636,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
             {
-                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime);
+                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime, facingRightOverride);
                 return true;
             }
 
@@ -2647,7 +2651,8 @@ namespace HaCreator.MapSimulator.Pools
             {
                 RegistrationKey = registrationKey,
                 OverlayAnimation = overlayAnimation,
-                UnderFaceAnimation = underFaceAnimation
+                UnderFaceAnimation = underFaceAnimation,
+                FacingRightOverride = facingRightOverride
             });
             message = $"Queued transient skill-use avatar effect for remote character {characterId}.";
             return true;
@@ -2674,7 +2679,8 @@ namespace HaCreator.MapSimulator.Pools
             int registrationKey,
             SkillAnimation overlayAnimation,
             SkillAnimation underFaceAnimation,
-            int currentTime)
+            int currentTime,
+            bool? facingRightOverride = null)
         {
             actor.TransientSkillUseAvatarEffects.RemoveAll(effect => effect?.RegistrationKey == registrationKey);
             actor.TransientSkillUseAvatarEffects.Add(new RemoteTransientSkillUseAvatarEffectState
@@ -2682,6 +2688,7 @@ namespace HaCreator.MapSimulator.Pools
                 RegistrationKey = registrationKey,
                 OverlayAnimation = overlayAnimation,
                 UnderFaceAnimation = underFaceAnimation,
+                FacingRightOverride = facingRightOverride,
                 AnimationStartTime = currentTime
             });
         }
@@ -2709,7 +2716,8 @@ namespace HaCreator.MapSimulator.Pools
                     pendingEffect.RegistrationKey,
                     pendingEffect.OverlayAnimation,
                     pendingEffect.UnderFaceAnimation,
-                    currentTime);
+                    currentTime,
+                    pendingEffect.FacingRightOverride);
             }
 
             _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(actor.CharacterId);
@@ -10412,7 +10420,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
-            actor.ActiveEffectItemEffect = new RemoteActiveEffectItemEffectState
+            ReplaceRemoteActiveEffectItemEffectStateForParity(actor, new RemoteActiveEffectItemEffectState
             {
                 ItemId = itemId,
                 Effect = effect,
@@ -10424,7 +10432,7 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight,
                 FollowOwner = followOwner
-            };
+            });
             UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
             return true;
         }
@@ -10476,6 +10484,19 @@ namespace HaCreator.MapSimulator.Pools
                 state,
                 actor.HiddenLikeClient,
                 actor.HasMorphTemplate));
+        }
+
+        private static void ReplaceRemoteActiveEffectItemEffectStateForParity(
+            RemoteUserActor actor,
+            RemoteActiveEffectItemEffectState replacement)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.ActiveEffectItemEffect?.MarkTerminated();
+            actor.ActiveEffectItemEffect = replacement;
         }
 
         private void ClearRemoteActiveEffectMotionBlurState(RemoteUserActor actor, int currentTime = int.MinValue)
@@ -13985,6 +14006,13 @@ namespace HaCreator.MapSimulator.Pools
             UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
         }
 
+        internal static void ReplaceRemoteActiveEffectItemEffectStateForTesting(
+            RemoteUserActor actor,
+            RemoteActiveEffectItemEffectState replacement)
+        {
+            ReplaceRemoteActiveEffectItemEffectStateForParity(actor, replacement);
+        }
+
         internal static int ResolveRemoteQuestDeliveryCounterSkillIdForTesting(int itemId)
         {
             return ResolveRemoteQuestDeliveryCounterSkillId(itemId);
@@ -14165,6 +14193,12 @@ namespace HaCreator.MapSimulator.Pools
                 return decodedRidingVehicleId.Value;
             }
 
+            if (IsPortableChairRidingVehicleRenderOwner(activeMountedRenderOwner)
+                && string.IsNullOrWhiteSpace(actionName))
+            {
+                return activeMountedRenderOwner.ItemId;
+            }
+
             return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
                 equippedMountPart,
                 actionName,
@@ -14262,6 +14296,12 @@ namespace HaCreator.MapSimulator.Pools
                    || family == 193
                    || itemId / 1000 == 1983
                    || family == 199;
+        }
+
+        private static bool IsPortableChairRidingVehicleRenderOwner(CharacterPart mountPart)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                   && mountPart.ItemId / 1000 == 1983;
         }
 
         private static bool SupportsRemoteRidingVehicleTemporaryStatAction(int itemId, string actionName)
@@ -16452,7 +16492,8 @@ namespace HaCreator.MapSimulator.Pools
                     frame,
                     screenX,
                     screenY,
-                    elapsedTime);
+                    elapsedTime,
+                    facingRightOverride: state.FacingRightOverride);
             }
         }
 
@@ -16538,7 +16579,8 @@ namespace HaCreator.MapSimulator.Pools
             int screenX,
             int screenY,
             int elapsedTime,
-            float alphaMultiplier = 1f)
+            float alphaMultiplier = 1f,
+            bool? facingRightOverride = null)
         {
             if (animation == null)
             {
@@ -16553,20 +16595,39 @@ namespace HaCreator.MapSimulator.Pools
 
             ClientOwnedAvatarEffectParity.TryResolveFaceOwnedAvatarEffectAnchor(
                 ownerFrame,
-                actor.FacingRight,
+                facingRightOverride ?? actor.FacingRight,
                 screenX,
                 screenY,
                 animation.PositionCode,
                 out int anchorX,
                 out int anchorY);
 
-            bool shouldFlip = actor.FacingRight ^ effectFrame.Flip;
+            bool shouldFlip = ResolveRemoteAvatarEffectRenderableFlip(
+                actor.FacingRight,
+                effectFrame.Flip,
+                facingRightOverride);
             int drawX = shouldFlip
                 ? anchorX - (effectFrame.Texture.Width - effectFrame.Origin.X)
                 : anchorX - effectFrame.Origin.X;
             int drawY = anchorY - effectFrame.Origin.Y;
             Color tint = Color.White * MathHelper.Clamp(alphaMultiplier, 0f, 1f);
             effectFrame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, tint, shouldFlip, null);
+        }
+
+        private static bool ResolveRemoteAvatarEffectRenderableFlip(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return (facingRightOverride ?? ownerFacingRight) ^ frameFlip;
+        }
+
+        internal static bool ResolveRemoteAvatarEffectRenderableFlipForTesting(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return ResolveRemoteAvatarEffectRenderableFlip(ownerFacingRight, frameFlip, facingRightOverride);
         }
 
         private static void DrawRemotePacketOwnedEmotionEffect(
@@ -16733,9 +16794,7 @@ namespace HaCreator.MapSimulator.Pools
             byte clampedBaseAlpha = sourceAlpha < motionBlurTint.A
                 ? sourceAlpha
                 : motionBlurTint.A;
-            return sourceTint == Color.White
-                ? new Color(motionBlurTint.R, motionBlurTint.G, motionBlurTint.B, clampedBaseAlpha)
-                : new Color(sourceTint.R, sourceTint.G, sourceTint.B, clampedBaseAlpha);
+            return new Color(motionBlurTint.R, motionBlurTint.G, motionBlurTint.B, clampedBaseAlpha);
         }
 
         private static void DrawRemoteActorFrame(

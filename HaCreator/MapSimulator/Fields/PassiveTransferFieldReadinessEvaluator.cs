@@ -369,8 +369,20 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPendingRequest,
             bool leftKeyPressed,
             bool rightKeyPressed,
-            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey,
+            bool deferKeyboardFollowReleaseClear = false)
         {
+            bool horizontalKeyPressed = leftKeyPressed || rightKeyPressed;
+            if (deferKeyboardFollowReleaseClear
+                && horizontalKeyPressed
+                && inputOwner == HorizontalInputOwner.OnKey)
+            {
+                return new PassiveTransferFieldHorizontalOnKeyDownDecision(
+                    ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
+                    ShouldClearQueuedRetry: false,
+                    ClearOwner: QueuedRetryLifecycleClearOwner.FollowCharacterReleaseInput);
+            }
+
             QueuedRetryLifecycleClearOwner clearOwner =
                 ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
                     leftKeyPressed,
@@ -384,6 +396,18 @@ namespace HaCreator.MapSimulator.Fields
                     leftKeyPressed,
                     rightKeyPressed),
                 ClearOwner: clearOwner);
+        }
+
+        public static bool ShouldDeferHorizontalQueuedClearToFollowRelease(
+            bool isLocalUser,
+            bool horizontalKeyPressed,
+            bool hasAttachedDriver,
+            HorizontalInputOwner inputOwner = HorizontalInputOwner.OnKey)
+        {
+            return isLocalUser
+                   && horizontalKeyPressed
+                   && hasAttachedDriver
+                   && inputOwner == HorizontalInputOwner.OnKey;
         }
 
         public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(

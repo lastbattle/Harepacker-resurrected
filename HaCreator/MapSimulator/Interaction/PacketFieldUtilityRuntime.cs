@@ -226,17 +226,18 @@ namespace HaCreator.MapSimulator.Interaction
                         writer.Write(footholds[footholdIndex]);
                     }
 
-                    if ((entry?.State ?? 0) == 2 && entry?.MovingState != null)
+                    if ((entry?.State ?? 0) == 2)
                     {
-                        writer.Write(entry.MovingState.Speed);
-                        writer.Write(entry.MovingState.X1);
-                        writer.Write(entry.MovingState.X2);
-                        writer.Write(entry.MovingState.Y1);
-                        writer.Write(entry.MovingState.Y2);
-                        writer.Write(entry.MovingState.CurrentX);
-                        writer.Write(entry.MovingState.CurrentY);
-                        writer.Write(entry.MovingState.ReverseVertical ? (byte)1 : (byte)0);
-                        writer.Write(entry.MovingState.ReverseHorizontal ? (byte)1 : (byte)0);
+                        PacketFieldUtilityMovingFootholdState movingState = entry?.MovingState;
+                        writer.Write(movingState?.Speed ?? 0);
+                        writer.Write(movingState?.X1 ?? 0);
+                        writer.Write(movingState?.X2 ?? 0);
+                        writer.Write(movingState?.Y1 ?? 0);
+                        writer.Write(movingState?.Y2 ?? 0);
+                        writer.Write(movingState?.CurrentX ?? 0);
+                        writer.Write(movingState?.CurrentY ?? 0);
+                        writer.Write(movingState?.ReverseVertical == true ? (byte)1 : (byte)0);
+                        writer.Write(movingState?.ReverseHorizontal == true ? (byte)1 : (byte)0);
                     }
                 }
             }

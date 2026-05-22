@@ -16,9 +16,27 @@ namespace HaCreator.MapSimulator.Interaction
             int? NoticeStyleFlag = null,
             string AcceptedReturnLabel = null);
 
+        internal readonly record struct AskItemCountChoreography(
+            int StringPoolId,
+            string OwnerCall,
+            string Text,
+            int DialogType,
+            int ModalStyle,
+            int DefaultValue,
+            int MinValue,
+            int MaxValue,
+            int MaxDigits,
+            int AcceptedReturnValue);
+
         internal const int YesNoAcceptedReturnValue = 6;
+        internal const int AskItemCountAcceptedReturnValue = 1;
         internal const int DefaultNoticeStyleFlag = 0;
         internal const int SharableOnceBlockedNoticeStyleFlag = 1;
+        internal const int SharableOnceConfirmNoticeStyleFlag = 1;
+        internal const int AskItemCountDialogType = 2;
+        internal const int AskItemCountModalStyle = 0;
+        internal const int AskItemCountMinValue = 1;
+        internal const int AskItemCountMaxDigits = 10;
 
         internal const int SendGetPreConfirmStringPoolId = 0x1246;
         internal const int SendPutPreConfirmStringPoolId = 0x1245;
@@ -205,18 +223,21 @@ namespace HaCreator.MapSimulator.Interaction
                     "CUtilDlg::YesNo",
                     ResolveSendPutPreConfirm(sharableOnce),
                     YesNoAcceptedReturnValue,
-                    DefaultNoticeStyleFlag));
+                    sharableOnce
+                        ? SharableOnceConfirmNoticeStyleFlag
+                        : DefaultNoticeStyleFlag));
             }
 
             if (includeAskCount && !treatSingly && availableQuantity > 1)
             {
+                AskItemCountChoreography askItemCount = BuildAskItemCountChoreography(availableQuantity);
                 steps.Add(new ConfirmationStep(
-                    SendPutAskItemCountStringPoolId,
-                    "CTrunkDlg::AskItemCount",
-                    ResolveSendPutAskItemCountPrompt(),
+                    askItemCount.StringPoolId,
+                    askItemCount.OwnerCall,
+                    askItemCount.Text,
+                    askItemCount.AcceptedReturnValue,
                     null,
-                    null,
-                    "1..nQuantity"));
+                    $"{askItemCount.MinValue.ToString(CultureInfo.InvariantCulture)}..nQuantity"));
             }
 
             int costStringPoolId = mesoCost <= 0
@@ -246,8 +267,26 @@ namespace HaCreator.MapSimulator.Interaction
                     "CUtilDlg::YesNo",
                     ResolveSendPutPreConfirm(sharableOnce),
                     YesNoAcceptedReturnValue,
-                    DefaultNoticeStyleFlag)
+                    sharableOnce
+                        ? SharableOnceConfirmNoticeStyleFlag
+                        : DefaultNoticeStyleFlag)
             };
+        }
+
+        internal static AskItemCountChoreography BuildAskItemCountChoreography(int availableQuantity)
+        {
+            int maxValue = Math.Max(AskItemCountMinValue, availableQuantity);
+            return new AskItemCountChoreography(
+                SendPutAskItemCountStringPoolId,
+                "CTrunkDlg::AskItemCount",
+                ResolveSendPutAskItemCountPrompt(),
+                AskItemCountDialogType,
+                AskItemCountModalStyle,
+                maxValue,
+                AskItemCountMinValue,
+                maxValue,
+                AskItemCountMaxDigits,
+                AskItemCountAcceptedReturnValue);
         }
 
         internal static string ToInlineText(string text)
@@ -277,6 +316,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return string.Join(" -> ", parts);
+        }
+
+        internal static string DescribeAskItemCountChoreography(AskItemCountChoreography choreography)
+        {
+            return $"{choreography.OwnerCall} StringPool 0x{choreography.StringPoolId.ToString("X", CultureInfo.InvariantCulture)} " +
+                $"SetUtilDlgEx(type={choreography.DialogType.ToString(CultureInfo.InvariantCulture)}, style={choreography.ModalStyle.ToString(CultureInfo.InvariantCulture)}, bStyle=1, nStyle=0) " +
+                $"SetUtilDlgEx_INPUT_NO(default={choreography.DefaultValue.ToString(CultureInfo.InvariantCulture)}, min={choreography.MinValue.ToString(CultureInfo.InvariantCulture)}, max={choreography.MaxValue.ToString(CultureInfo.InvariantCulture)}, maxDigits={choreography.MaxDigits.ToString(CultureInfo.InvariantCulture)}) " +
+                $"accept={choreography.AcceptedReturnValue.ToString(CultureInfo.InvariantCulture)} \"{ToInlineText(choreography.Text)}\"";
         }
 
         internal static string FormatStepAcceptance(ConfirmationStep step)

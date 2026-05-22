@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,161,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1018,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,161,191,193,214,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,161,193,234,236,237,238,239,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1018,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,161,191,193,214,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -664,6 +664,10 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
                 || packetType == LocalUtilityPacketInboxManager.EngagementRequestPacketType
                 || packetType == LocalUtilityPacketInboxManager.TeleportClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.MesoGiveSucceededPacketType
+                || packetType == LocalUtilityPacketInboxManager.MesoGiveFailedPacketType
+                || packetType == LocalUtilityPacketInboxManager.RandomMesobagSucceededPacketType
+                || packetType == LocalUtilityPacketInboxManager.RandomMesobagFailedPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.HireTutorClientPacketType
@@ -711,6 +715,10 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.AccountMoreInfoPacketType => "AccountMoreInfo(133)",
                 LocalUtilityPacketInboxManager.EngagementRequestPacketType => "CEngageDlg/SendEngagementRequest(161)",
                 LocalUtilityPacketInboxManager.TeleportClientPacketType => "OnTeleport(234)",
+                LocalUtilityPacketInboxManager.MesoGiveSucceededPacketType => "OnMesoGive_Succeeded(236)",
+                LocalUtilityPacketInboxManager.MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
+                LocalUtilityPacketInboxManager.RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
+                LocalUtilityPacketInboxManager.RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
                 LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",

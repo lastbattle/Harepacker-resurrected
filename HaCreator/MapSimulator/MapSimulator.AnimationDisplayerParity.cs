@@ -22,6 +22,22 @@ using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator
 {
+    internal readonly record struct AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace(
+        string OwnerSetName,
+        string SpriteName,
+        string CanvasPath,
+        int Width,
+        int Height,
+        Point Origin);
+
+    internal readonly record struct AnimationDisplayerCombatFeedbackCriticalOwnerTrace(
+        string LargeCriticalOwnerSetName,
+        string SmallCriticalOwnerSetName,
+        string CriticalEffectCanvasPath,
+        int CriticalEffectWidth,
+        int CriticalEffectHeight,
+        Point CriticalEffectOrigin);
+
     internal readonly record struct AnimationDisplayerCombatFeedbackSpecialTextOwnerTrace(
         string RedOwnerBaseUol,
         string BlueOwnerBaseUol,
@@ -41,6 +57,10 @@ namespace HaCreator.MapSimulator
         bool RedHasShot,
         bool BlueHasShot,
         bool VioletHasShot,
+        AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] RedSpecialTextCanvasTraces,
+        AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] BlueSpecialTextCanvasTraces,
+        AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] VioletSpecialTextCanvasTraces,
+        AnimationDisplayerCombatFeedbackCriticalOwnerTrace CriticalOwnerTrace,
         bool UsesNoRed0ForDamageNumberSpecialTextComposition,
         bool RejectsUnsupportedColorValues);
 
@@ -1205,7 +1225,8 @@ namespace HaCreator.MapSimulator
                 profile.EffectiveDurationMs,
                 currTickCount,
                 zOrder: profile.EffectiveLayerZ,
-                initialElapsedMs: initialElapsedMs);
+                initialElapsedMs: initialElapsedMs,
+                recoveredNumericPropertyCount: CountAnimationDisplayerContiguousNumericChildProperties(property));
             if (registrationId < 0)
             {
                 message = $"Explosion animation-displayer effect from {effectUol} could not be registered.";
@@ -1605,8 +1626,89 @@ namespace HaCreator.MapSimulator
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(redSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(blueSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(violetSpecialTextNames, "shot"),
+                BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Red),
+                BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Blue),
+                BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Violet),
+                BuildAnimationDisplayerCombatFeedbackCriticalOwnerTrace(),
                 UsesNoRed0ForDamageNumberSpecialTextComposition: true,
                 RejectsUnsupportedColorValues: true);
+        }
+
+        internal static AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[]
+            BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType colorType)
+        {
+            string ownerSetName = ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(colorType);
+            string[] authoredNames = ResolveAnimationDisplayerCombatFeedbackAuthoredSpecialTextNames(colorType);
+            if (string.IsNullOrWhiteSpace(ownerSetName) || authoredNames.Length == 0)
+            {
+                return Array.Empty<AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace>();
+            }
+
+            var traces = new AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[authoredNames.Length];
+            for (int i = 0; i < authoredNames.Length; i++)
+            {
+                string spriteName = authoredNames[i];
+                traces[i] = new AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace(
+                    ownerSetName,
+                    spriteName,
+                    $"effect/BasicEff.img/{ownerSetName}/{spriteName}",
+                    ResolveAnimationDisplayerCombatFeedbackSpecialTextWidth(spriteName),
+                    ResolveAnimationDisplayerCombatFeedbackSpecialTextHeight(spriteName),
+                    ResolveAnimationDisplayerCombatFeedbackSpecialTextOrigin(spriteName));
+            }
+
+            return traces;
+        }
+
+        internal static AnimationDisplayerCombatFeedbackCriticalOwnerTrace
+            BuildAnimationDisplayerCombatFeedbackCriticalOwnerTrace()
+        {
+            return new AnimationDisplayerCombatFeedbackCriticalOwnerTrace(
+                LargeCriticalOwnerSetName: "NoCri1",
+                SmallCriticalOwnerSetName: "NoCri0",
+                CriticalEffectCanvasPath: "effect/BasicEff.img/NoCri1/effect",
+                CriticalEffectWidth: 62,
+                CriticalEffectHeight: 57,
+                CriticalEffectOrigin: new Point(41, 70));
+        }
+
+        private static int ResolveAnimationDisplayerCombatFeedbackSpecialTextWidth(string spriteName)
+        {
+            return DamageNumberRenderer.ResolveSpecialTextName(spriteName) switch
+            {
+                "Miss" => 98,
+                "guard" => 107,
+                "shot" => 137,
+                "counter" => 130,
+                "resist" => 99,
+                _ => 0
+            };
+        }
+
+        private static int ResolveAnimationDisplayerCombatFeedbackSpecialTextHeight(string spriteName)
+        {
+            return DamageNumberRenderer.ResolveSpecialTextName(spriteName) switch
+            {
+                "Miss" => 38,
+                "guard" => 38,
+                "shot" => 65,
+                "counter" => 36,
+                "resist" => 36,
+                _ => 0
+            };
+        }
+
+        private static Point ResolveAnimationDisplayerCombatFeedbackSpecialTextOrigin(string spriteName)
+        {
+            return DamageNumberRenderer.ResolveSpecialTextName(spriteName) switch
+            {
+                "Miss" => new Point(49, 37),
+                "guard" => new Point(54, 38),
+                "shot" => new Point(54, 38),
+                "counter" => new Point(66, 32),
+                "resist" => new Point(49, 32),
+                _ => Point.Zero
+            };
         }
 
         internal static int ResolveAnimationDisplayerCombatFeedbackAuthoredCanvasChildCount(DamageColorType colorType)
@@ -2907,6 +3009,39 @@ namespace HaCreator.MapSimulator
         {
             WzImageProperty value = property?[name];
             return value == null ? null : value.GetInt();
+        }
+
+        internal static int CountAnimationDisplayerContiguousNumericChildProperties(WzImageProperty property)
+        {
+            WzImageProperty rootProperty = WzInfoTools.GetRealProperty(property);
+            if (rootProperty is not WzSubProperty rootSubProperty)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            while (TryGetAnimationDisplayerNumericChildProperty(rootSubProperty, count, out _))
+            {
+                count++;
+            }
+
+            return count;
+        }
+
+        private static bool TryGetAnimationDisplayerNumericChildProperty(
+            WzSubProperty rootProperty,
+            int index,
+            out WzImageProperty childProperty)
+        {
+            childProperty = null;
+            if (rootProperty == null || index < 0)
+            {
+                return false;
+            }
+
+            string childName = index.ToString(CultureInfo.InvariantCulture);
+            childProperty = WzInfoTools.GetRealProperty(rootProperty[childName]);
+            return childProperty != null;
         }
 
         private int TryRegisterAnimationDisplayerAreaAnimation(
@@ -7997,6 +8132,10 @@ namespace HaCreator.MapSimulator
                 skillId,
                 branchName,
                 variantIndex);
+            string clientLayerOwnerName = BuildAnimationDisplayerSkillUseAvatarEffectLayerOwnerName(
+                skillId,
+                branchName,
+                variantIndex);
             PlayerCharacter localPlayer = _playerManager?.Player;
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
             if (localPlayer != null
@@ -8006,7 +8145,9 @@ namespace HaCreator.MapSimulator
                     registrationKey,
                     overlayAnimation,
                     underFaceAnimation,
-                    currentTime);
+                    currentTime,
+                    explicitClientLayerOwnerName: clientLayerOwnerName,
+                    facingRightOverride: branchRequest.FacingRightOverride);
             }
 
             return _remoteUserPool?.TryApplyTransientSkillUseAvatarEffect(
@@ -8015,7 +8156,8 @@ namespace HaCreator.MapSimulator
                 overlayAnimation,
                 underFaceAnimation,
                 currentTime,
-                out _) == true;
+                out _,
+                facingRightOverride: branchRequest.FacingRightOverride) == true;
         }
 
         private bool TryRegisterPacketOwnedRemoteSkillBookResultAvatarEffect(
@@ -8382,6 +8524,14 @@ namespace HaCreator.MapSimulator
 
             hash = Math.Abs(hash);
             return hash == 0 ? Math.Max(1, skillId) : hash;
+        }
+
+        private static string BuildAnimationDisplayerSkillUseAvatarEffectLayerOwnerName(
+            int skillId,
+            string branchName,
+            int variantIndex)
+        {
+            return $"skillUse:{Math.Max(0, skillId)}:{branchName ?? string.Empty}:{Math.Max(0, variantIndex)}";
         }
 
         private bool TryGetAnimationDisplayerSkillUseFrameVariants(string effectUol, out List<List<IDXObject>> variants)

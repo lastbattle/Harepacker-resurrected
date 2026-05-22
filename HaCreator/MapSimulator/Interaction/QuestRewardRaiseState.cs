@@ -174,7 +174,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int remainingExp = Math.Max(0, totalExpCapacity - Math.Max(0, QrData));
             int remainingDrops = (remainingExp + IncrementExpUnit - 1) / IncrementExpUnit;
-            return Math.Max(1, Math.Max(remainingDrops, PlacedPieces.Count));
+            return Math.Max(0, Math.Max(remainingDrops, PlacedPieces.Count));
         }
 
         private static IEnumerable<int> EnumerateEnabledDropItemIds(QuestRewardChoicePrompt prompt)

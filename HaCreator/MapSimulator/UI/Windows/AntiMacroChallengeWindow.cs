@@ -364,6 +364,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _nativeEditHost.UpdateBounds(GetNativeInputBounds());
                 _nativeEditHost.SynchronizeState();
+                SynchronizeNativeEditHostVisualState();
             }
             else
             {
@@ -480,7 +481,12 @@ namespace HaCreator.MapSimulator.UI
             DrawChallengeTexture(sprite, challengeBounds);
             DrawCountdown(sprite, bounds, tickCount);
             DrawAttemptMessage(sprite, bounds);
-            if (!UsingNativeEditHost)
+            if (UsingNativeEditHost)
+            {
+                SynchronizeNativeEditHostVisualState();
+                _editControl.Draw(sprite, bounds, drawChrome: false);
+            }
+            else
             {
                 _editControl.Draw(sprite, bounds, drawChrome: true);
                 _editControl.DrawImeCandidateWindow(sprite, bounds);
@@ -883,6 +889,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void OnNativeEditHostTextChanged(string text)
         {
+            SynchronizeNativeEditHostVisualState();
             _submitButton?.SetEnabled(CanSubmitAnswer());
         }
 
@@ -896,6 +903,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void OnNativeEditHostFocusChanged(bool hasFocus)
         {
+            SynchronizeNativeEditHostVisualState();
             if (!hasFocus)
             {
                 _softKeyboardActive = false;
@@ -906,6 +914,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _submitButton?.SetEnabled(CanSubmitAnswer());
+        }
+
+        private void SynchronizeNativeEditHostVisualState()
+        {
+            if (!UsingNativeEditHost)
+            {
+                return;
+            }
+
+            NativeAntiMacroEditHost.ClientEditSelectionSnapshot snapshot = _nativeEditHost.GetSelectionSnapshot();
+            _editControl.SynchronizeExternalState(
+                snapshot.Text,
+                snapshot.SelectionStart,
+                snapshot.SelectionEnd,
+                snapshot.HasFocus);
         }
 
         private void OnNativeEditHostClientForwardedFunctionKeyStateChanged(int functionKeyIndex, bool keyDown)

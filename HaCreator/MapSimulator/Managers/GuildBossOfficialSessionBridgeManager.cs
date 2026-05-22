@@ -1315,6 +1315,22 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        public string ClearRecentPackets()
+        {
+            lock (_sync)
+            {
+                _recentInboundPackets.Clear();
+                _recentOutboundPackets.Clear();
+                _hasObservedLiveInboundGuildBossPacket = false;
+                _hasObservedLiveOutboundOpcode259 = false;
+                _liveInboundGuildBossPacketEvidence = null;
+                _liveOutboundOpcode259Evidence = null;
+            }
+
+            LastStatus = $"Cleared Guild Boss opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound and opcode {OutboundPulleyRequestOpcode} outbound trace history.";
+            return LastStatus;
+        }
+
         private void RefreshOutboundVerificationEvidence()
         {
             OutboundPacketTrace? latestLiveTrace = null;

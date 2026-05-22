@@ -3758,6 +3758,7 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopCharacter);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopLocker);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopInventory);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopTab);
@@ -5008,6 +5009,16 @@ namespace HaCreator.MapSimulator.Loaders
 
             switch (windowName)
             {
+                case MapSimulatorWindowNames.CashShopCharacter:
+                    window.SetContentBounds(new Rectangle(0, 0, 256, 316));
+                    AttachCanvasLayer(window, cashShopImage?["CSChar"] as WzSubProperty, "Base", device, new Point(0, 0));
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSChar"] as WzSubProperty), "BtBuyAvatar", clickSound, overSound, device, 17, 237, "CCSWnd_Char staged the buy-avatar button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSChar"] as WzSubProperty), "BtDefaultAvatar", clickSound, overSound, device, 101, 237, "CCSWnd_Char restored the default-avatar preview owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSChar"] as WzSubProperty), "BtTakeoffAvatar", clickSound, overSound, device, 187, 237, "CCSWnd_Char staged the take-off-avatar button owner.");
+                    window.SetFallbackLines(
+                        "CCSWnd_Char is registered as the dedicated Cash Shop character owner from CCashShop::Init.",
+                        "CCSWnd_Char::OnCreate creates BtBuyAvatar#1000 at 17,237, BtDefaultAvatar#1001 at 101,237, and BtTakeoffAvatar#1002 at 187,237 from UI/CashShop.img/CSChar.");
+                    break;
                 case MapSimulatorWindowNames.CashShopLocker:
                     window.SetContentBounds(new Rectangle(0, 318, 256, 104));
                     RegisterCashShopStageChildButton(window, (cashShopImage?["CSLocker"] as WzSubProperty), "BtRebate", clickSound, overSound, device, 170, 24, "CCSWnd_Locker previewed the rebate button owner.");
@@ -5048,10 +5059,10 @@ namespace HaCreator.MapSimulator.Loaders
                         "The dedicated owner now exists apart from the coarse parent shop surface.");
                     break;
                 case MapSimulatorWindowNames.CashShopBest:
-                    window.SetContentBounds(new Rectangle(275, 95, 412, 80));
+                    window.SetContentBounds(new Rectangle(690, 157, 90, 358));
                     window.SetFallbackLines(
                         "CCSWnd_Best is registered as its own wrapper beside CCSWnd_List so GoToCommoditySN no longer lives only on the parent cash stage.",
-                        "The current v95 CashShop.img has no CSBest branch; this owner intentionally stays state/chrome-light until a targeted draw decompile identifies a distinct WZ surface.");
+                        "CCashShop::Init creates this owner at 690,157 with a 90x358 frame; the current v95 CashShop.img has no CSBest branch, so it stays state/chrome-light until a targeted draw decompile identifies a distinct WZ surface.");
                     break;
                 case MapSimulatorWindowNames.CashShopStatus:
                     window.SetContentBounds(new Rectangle(254, 530, 545, 56));
@@ -5214,6 +5225,7 @@ namespace HaCreator.MapSimulator.Loaders
         {
             return windowName switch
             {
+                MapSimulatorWindowNames.CashShopCharacter => "CCSWnd_Char",
                 MapSimulatorWindowNames.CashShopLocker => "CCSWnd_Locker",
                 MapSimulatorWindowNames.CashShopInventory => "CCSWnd_Inventory",
                 MapSimulatorWindowNames.CashShopTab => "CCSWnd_Tab",
@@ -6667,6 +6679,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ("Party.Whisper", "BtWhisper"),
                 ("Party.Chat", "BtChat"),
                 ("Party.ChangeBoss", "BtChangeBoss"),
+                ("Party.HP", "BtHP"),
                 ("Party.Search", "BtSearch"));
             RegisterSocialListActionButtons(window, SocialListTab.Guild, mainProperty?["Guild"] as WzSubProperty, clickSound, overSound, device,
                 ("Guild.Board", "BtBoard"),

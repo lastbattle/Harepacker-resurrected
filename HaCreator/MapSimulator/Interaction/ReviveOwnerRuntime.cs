@@ -125,6 +125,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ClientOpenedElapsedMs { get; init; }
         public bool ClientCloseClearsReviveDialogSlot { get; init; }
         public bool ClientCloseDestroysSingleton { get; init; }
+        public bool ClientCreateClearsReviveDialogSlot { get; init; }
+        public bool ClientWaitTimerStartsOnCreate { get; init; }
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
         public string PrimaryTitle { get; init; } = string.Empty;
@@ -150,6 +152,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string NativeWindowOrigin = "Origin_CC";
         internal const bool NativeCloseClearsReviveDialogSlot = true;
         internal const bool NativeCloseDestroysSingleton = true;
+        internal const bool NativeCreateClearsReviveDialogSlot = true;
+        internal const bool NativeWaitTimerStartsOnCreate = true;
         internal const string ClientPremiumSafetyCharmBackgroundUolSymbol = "aUi_138";
         internal const string ClientYesButtonUolSymbol = "aUi_139";
         internal const string ClientNoButtonUolSymbol = "aUi_140";
@@ -401,6 +405,9 @@ namespace HaCreator.MapSimulator.Interaction
             // Client evidence:
             // - CUserLocal::OnSetDead calls CWvsContext::UI_OpenRevive.
             // - CWvsContext::Update creates CUIRevive only after tCur - m_tReviveDialog > 0x898.
+            // - The same CWvsContext::Update branch clears m_tReviveDialog immediately
+            //   after TSingleton<CUIRevive>::CreateInstance; CUIRevive then starts
+            //   m_tWaitRevive from its constructor time.
             return unchecked(currentTick - armedAtTick) > NativeDialogCreateDelayMs;
         }
 
@@ -469,6 +476,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOpenedElapsedMs = openedElapsedMs,
                 ClientCloseClearsReviveDialogSlot = NativeCloseClearsReviveDialogSlot,
                 ClientCloseDestroysSingleton = NativeCloseDestroysSingleton,
+                ClientCreateClearsReviveDialogSlot = NativeCreateClearsReviveDialogSlot,
+                ClientWaitTimerStartsOnCreate = NativeWaitTimerStartsOnCreate,
                 Title = "Revive",
                 Subtitle = subtitle,
                 PrimaryTitle = ResolvePrimaryTitle(Variant),

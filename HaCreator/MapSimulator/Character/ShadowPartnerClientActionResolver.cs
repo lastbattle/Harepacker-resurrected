@@ -52,7 +52,14 @@ namespace HaCreator.MapSimulator.Character
             AddRefUnderFaceOverlay,
             PutUnderFaceOverlay,
             ReleaseUnderFaceOverlayVariant,
+            GetHelperLayerOrigin,
+            PutEmptyHelperLayerOrigin,
+            RestoreHelperLayerOrigin,
+            ReleaseHelperLayerOrigin,
+            ReadHelperLayerCurrentTime,
             MoveHelperLayerByClientOffset,
+            ClearRelMoveTimeVariant,
+            ClearRelMoveTypeVariant,
             PutHelperLayerFlipFromUnderFace,
             AddRefActionFrameCanvas,
             InsertActionFrameCanvas,
@@ -2636,6 +2643,279 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(13, "stabO1", 0, 90, move: new Point(31, 0)),
                     CreateIndexedPiece(14, "stabO1", 0, 60, move: new Point(33, 0))
                 },
+                ["swingDb1"] = CreateIndexedPieces(
+                    ("swingO2", 0, -300),
+                    ("swingO2", 2, 420)),
+                ["swingDb2"] = CreateIndexedPieces(
+                    ("stabO1", 0, -300),
+                    ("stabO1", 1, 420)),
+                ["shootDb1"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot1", 1, -450),
+                    CreateIndexedPiece(1, "swingP2", 1, 450, move: new Point(-2, 0))
+                },
+                ["slayerDoubleJump"] = CreateIndexedPieces(
+                    ("jump", 0, 720)),
+                ["jShot"] = CreateIndexedPieces(
+                    ("swingT2", 2, -60),
+                    ("swingT2", 2, -60),
+                    ("swingPF", 2, -60),
+                    ("swingPF", 2, -60),
+                    ("swingPF", 2, -60),
+                    ("swingPF", 2, 60),
+                    ("swingPF", 2, 60),
+                    ("swingPF", 2, 60),
+                    ("swingOF", 1, 90),
+                    ("swingOF", 2, 90),
+                    ("swingOF", 1, 90),
+                    ("swingPF", 1, 90)),
+                ["demonSlasher"] = CreateIndexedPieces(
+                    ("stand1", 0, -150),
+                    ("swingO2", 0, -150),
+                    ("swingO2", 0, -150),
+                    ("swingO2", 1, 90),
+                    ("swingO2", 2, 90)),
+                ["spiritJump"] = new[]
+                {
+                    CreateIndexedPiece(0, "jump", 0, 0),
+                    CreateIndexedPiece(1, "swingOF", 2, 60, move: new Point(-31, -88), rotationDegrees: 180),
+                    CreateIndexedPiece(2, "swingOF", 1, 60, move: new Point(-43, -39), rotationDegrees: 90),
+                    CreateIndexedPiece(3, "swingPF", 2, 60, move: new Point(18, 9)),
+                    CreateIndexedPiece(4, "swingOF", 3, 60, move: new Point(37, -18))
+                },
+                ["speedDualShot"] = CreateIndexedPieces(
+                    ("shoot1", 1, 90),
+                    ("shoot1", 1, 90),
+                    ("shoot1", 1, 180),
+                    ("swingT2", 1, 90),
+                    ("swingT2", 1, 90),
+                    ("swingT2", 1, 180)),
+                ["bluntSmash"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 1, -30),
+                    CreateIndexedPiece(1, "swingO3", 0, -90, move: new Point(20, 0)),
+                    CreateIndexedPiece(2, "swingO3", 0, -90, move: new Point(21, 0)),
+                    CreateIndexedPiece(3, "swingO3", 0, -90, move: new Point(21, 0)),
+                    CreateIndexedPiece(4, "swingO3", 0, -90, move: new Point(21, 0)),
+                    CreateIndexedPiece(5, "swingO3", 0, -90, move: new Point(21, 0)),
+                    CreateIndexedPiece(6, "swingO3", 0, -90, move: new Point(21, 0)),
+                    CreateIndexedPiece(7, "swingOF", 3, 90, move: new Point(18, 0)),
+                    CreateIndexedPiece(8, "swingOF", 3, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(9, "swingOF", 3, 90, move: new Point(15, 0)),
+                    CreateIndexedPiece(10, "swingOF", 3, 90, move: new Point(15, 0)),
+                    CreateIndexedPiece(11, "alert", 1, 60)
+                },
+                ["crossPiercing"] = CreateIndexedPieces(
+                    ("stabO1", 0, 120),
+                    ("stabO1", 0, 120),
+                    ("alert", 0, 120),
+                    ("stabO1", 1, 120),
+                    ("stabO1", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 0, 120)),
+                ["strikeDual"] = CreateIndexedPieces(
+                    ("shoot2", 0, 90),
+                    ("swingT2", 1, 90),
+                    ("stabO1", 1, 90),
+                    ("alert", 0, 90),
+                    ("shoot1", 1, 90),
+                    ("shoot2", 0, 90),
+                    ("stabO1", 0, 90)),
+                ["fastest"] = new[]
+                {
+                    CreateIndexedPiece(0, "rope", 0, 90),
+                    CreateIndexedPiece(1, "rope", 0, 90, move: new Point(0, -197)),
+                    CreateIndexedPiece(2, "swingPF", 2, 90, move: new Point(18, -157)),
+                    CreateIndexedPiece(3, "swingPF", 2, 90, move: new Point(18, -142)),
+                    CreateIndexedPiece(4, "swingPF", 2, 90, move: new Point(18, -33)),
+                    CreateIndexedPiece(5, "swingOF", 3, 270, move: new Point(43, -37))
+                },
+                ["elfTornado"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, -30),
+                    CreateIndexedPiece(1, "swingPF", 3, 90, move: new Point(36, 0)),
+                    CreateIndexedPiece(2, "swingPF", 3, 90, flip: true, move: new Point(-36, 0)),
+                    CreateIndexedPiece(3, "swingPF", 3, 90, move: new Point(36, 0)),
+                    CreateIndexedPiece(4, "swingPF", 3, 90, flip: true, move: new Point(-36, 0)),
+                    CreateIndexedPiece(5, "swingPF", 3, 90, move: new Point(36, 0)),
+                    CreateIndexedPiece(6, "swingPF", 2, 90, flip: true, move: new Point(-36, 0)),
+                    CreateIndexedPiece(7, "swingPF", 3, 90, move: new Point(36, 0)),
+                    CreateIndexedPiece(8, "swingTF", 2, 90, move: new Point(8, 0))
+                },
+                ["deathDraw"] = CreateIndexedPieces(
+                    ("alert", 0, 90),
+                    ("swingO2", 2, 90),
+                    ("swingOF", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO3", 0, 90),
+                    ("swingO1", 2, 90),
+                    ("swingO3", 2, 90),
+                    ("swingO3", 2, 90),
+                    ("swingO3", 2, 90)),
+                ["elfrush"] = CreateIndexedPieces(
+                    ("alert", 0, 270),
+                    ("swingO1", 2, 330)),
+                ["elfrush2"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO1", 1, -90),
+                    CreateIndexedPiece(1, "swingP2", 0, -90, move: new Point(-12, -125), rotationDegrees: 180),
+                    CreateIndexedPiece(2, "swingP2", 0, 120, move: new Point(-11, -125), rotationDegrees: 180),
+                    CreateIndexedPiece(3, "swingP2", 0, 120, move: new Point(-10, -125), rotationDegrees: 180),
+                    CreateIndexedPiece(4, "swingP1", 1, 90, move: new Point(53, -85), rotationDegrees: 270),
+                    CreateIndexedPiece(5, "alert", 0, 90)
+                },
+                ["elfrush_final"] = CreateIndexedPieces(
+                    ("swingTF", 2, -90),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120)),
+                ["elfrush_final2"] = CreateIndexedPieces(
+                    ("swingTF", 2, -90),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 2, 120)),
+                ["demolitionElf"] = CreateIndexedPieces(
+                    ("alert", 0, -90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90),
+                    ("alert", 0, 90)),
+                ["windEffect"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingT1", 0, -90),
+                    CreateIndexedPiece(1, "swingTF", 0, -90, move: new Point(-5, 0)),
+                    CreateIndexedPiece(2, "swingTF", 1, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "swingTF", 2, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(4, "swingT1", 1, -90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(5, "swingT1", 2, 360, move: new Point(-1, 0))
+                },
+                ["multiSniping"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingT1", 2, -90),
+                    CreateIndexedPiece(1, "swingTF", 0, -90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(2, "swingTF", 1, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(4, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(5, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(6, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(7, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(8, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(9, "swingT1", 0, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(10, "shoot1", 1, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(11, "shoot1", 1, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(12, "swingT2", 1, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(13, "swingT2", 1, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(14, "shoot2", 0, 90, move: new Point(-4, 0))
+                },
+                ["healingAttack"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 90),
+                    CreateIndexedPiece(1, "stabO1", 0, 90, move: new Point(15, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(3, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(4, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(5, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(6, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(7, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(8, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(9, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(10, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(11, "stabO1", 0, 90, move: new Point(16, 0)),
+                    CreateIndexedPiece(12, "stabO1", 1, 90, move: new Point(-36, 0)),
+                    CreateIndexedPiece(13, "stabO1", 1, 90, move: new Point(-39, 0)),
+                    CreateIndexedPiece(14, "stabO1", 1, 90, move: new Point(-40, 0)),
+                    CreateIndexedPiece(15, "stabO1", 1, 90, move: new Point(-40, 0)),
+                    CreateIndexedPiece(16, "stabO1", 1, 90, move: new Point(-40, 0)),
+                    CreateIndexedPiece(17, "stabO1", 1, 90, move: new Point(-38, 0)),
+                    CreateIndexedPiece(18, "alert", 0, 90)
+                },
+                ["dealingRush"] = CreateIndexedPieces(
+                    ("swingPF", 2, 90),
+                    ("swingPF", 2, 90),
+                    ("swingPF", 2, 90),
+                    ("swingPF", 2, 90),
+                    ("swingPF", 2, 90),
+                    ("swingPF", 2, 90),
+                    ("swingO1", 2, 90),
+                    ("swingO1", 2, 90),
+                    ("swingO1", 2, 90),
+                    ("swingO1", 2, 90)),
+                ["devilCry"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, 90),
+                    CreateIndexedPiece(1, "alert", 1, 90),
+                    CreateIndexedPiece(2, "alert", 0, 90),
+                    CreateIndexedPiece(3, "alert", 0, 90),
+                    CreateIndexedPiece(4, "alert", 0, 90),
+                    CreateIndexedPiece(5, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(6, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(7, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(8, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(9, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(10, "swingO2", 0, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(11, "swingO2", 1, 90, move: new Point(7, 0)),
+                    CreateIndexedPiece(12, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(13, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(14, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(15, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(16, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(17, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(18, "swingOF", 3, 90, move: new Point(39, 0)),
+                    CreateIndexedPiece(19, "swingOF", 3, 90, move: new Point(39, 0))
+                },
+                ["powerEndure"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 1, 90),
+                    CreateIndexedPiece(1, "alert", 0, 90),
+                    CreateIndexedPiece(2, "alert", 0, 90),
+                    CreateIndexedPiece(3, "alert", 0, 90),
+                    CreateIndexedPiece(4, "alert", 0, 90),
+                    CreateIndexedPiece(5, "alert", 0, 90),
+                    CreateIndexedPiece(6, "alert", 0, 90),
+                    CreateIndexedPiece(7, "alert", 0, 90),
+                    CreateIndexedPiece(8, "alert", 0, 90),
+                    CreateIndexedPiece(9, "alert", 0, 90),
+                    CreateIndexedPiece(10, "alert", 0, 90),
+                    CreateIndexedPiece(11, "alert", 0, 90),
+                    CreateIndexedPiece(12, "alert", 0, 90),
+                    CreateIndexedPiece(13, "alert", 0, 90),
+                    CreateIndexedPiece(14, "alert", 0, 90),
+                    CreateIndexedPiece(15, "alert", 1, 90)
+                },
+                ["maxForce0"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO3", 0, -90),
+                    CreateIndexedPiece(1, "swingO3", 1, 90, move: new Point(8, 0)),
+                    CreateIndexedPiece(2, "swingO3", 2, 90, move: new Point(7, 0))
+                },
+                ["maxForce1"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabO1", 0, -90),
+                    CreateIndexedPiece(1, "stabO1", 1, 90, move: new Point(-27, 0)),
+                    CreateIndexedPiece(2, "stabO1", 1, 90, move: new Point(-30, 0))
+                },
+                ["maxForce2"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabOF", 0, -90),
+                    CreateIndexedPiece(1, "swingOF", 1, 90, move: new Point(-69, -67), rotationDegrees: 90),
+                    CreateIndexedPiece(2, "swingO2", 2, 90, flip: true, move: new Point(7, -130), rotationDegrees: 180),
+                    CreateIndexedPiece(3, "swingO1", 2, 90, flip: true, move: new Point(-34, -51), rotationDegrees: 90),
+                    CreateIndexedPiece(4, "swingOF", 2, 90, move: new Point(39, -19)),
+                    CreateIndexedPiece(5, "stabOF", 0, 90, move: new Point(14, 0))
+                },
                 ["maxForce3"] = new[]
                 {
                     CreateIndexedPiece(0, "swingO2", 2, -90),
@@ -2648,6 +2928,42 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(7, "stabOF", 2, 90, move: new Point(-2, 0)),
                     CreateIndexedPiece(8, "stabOF", 2, 90, move: new Point(-2, 0)),
                     CreateIndexedPiece(9, "stabOF", 2, 90, move: new Point(-2, 0))
+                },
+                ["demonTrace"] = CreateIndexedPieces(
+                    ("swingOF", 3, -90),
+                    ("swingOF", 3, 360)),
+                ["dualVulcanPrep"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingT1", 2, 60),
+                    CreateIndexedPiece(1, "swingT1", 2, 60),
+                    CreateIndexedPiece(2, "swingT1", 2, 60),
+                    CreateIndexedPiece(3, "swingT1", 2, 60),
+                    CreateIndexedPiece(4, "swingT1", 2, 60),
+                    CreateIndexedPiece(5, "swingT1", 2, 60),
+                    CreateIndexedPiece(6, "swingT1", 2, 60),
+                    CreateIndexedPiece(7, "swingT1", 2, 90),
+                    CreateIndexedPiece(8, "swingT1", 2, 90),
+                    CreateIndexedPiece(9, "swingT1", 2, 90),
+                    CreateIndexedPiece(10, "shoot1", 1, 90),
+                    CreateIndexedPiece(11, "alert", 0, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(12, "swingP2", 1, 210, move: new Point(-1, 0))
+                },
+                ["dualVulcanLoop"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot1", 1, 90),
+                    CreateIndexedPiece(1, "shoot2", 0, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(2, "stabO1", 1, 90, move: new Point(-3, 0)),
+                    CreateIndexedPiece(3, "shoot2", 0, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(4, "shoot1", 1, 90),
+                    CreateIndexedPiece(5, "alert", 0, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(6, "swingP2", 1, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(7, "alert", 0, 90, move: new Point(-2, 0))
+                },
+                ["dualVulcanEnd"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, -90),
+                    CreateIndexedPiece(1, "alert", 0, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 90, move: new Point(-1, 0))
                 },
                 ["demonGravity"] = CreateIndexedPieces(
                     ("alert", 1, 450),
@@ -2676,6 +2992,35 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(18, "swingT1", 0, 90, move: new Point(38, 5)),
                     CreateIndexedPiece(19, "swingT1", 0, 90, move: new Point(38, 4)),
                     CreateIndexedPiece(20, "alert", 0, 90, move: new Point(8, 0))
+                },
+                ["blessOfGaia"] = CreateIndexedPieces(
+                    ("alert", 1, 60),
+                    ("alert", 0, 600),
+                    ("alert", 2, 600)),
+                ["movebind"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -90),
+                    CreateIndexedPiece(1, "alert", 2, -90),
+                    CreateIndexedPiece(2, "alert", 0, -90),
+                    CreateIndexedPiece(3, "alert", 0, -90),
+                    CreateIndexedPiece(4, "alert", 0, -90),
+                    CreateIndexedPiece(5, "swingO2", 0, -90),
+                    CreateIndexedPiece(6, "swingO2", 0, -90),
+                    CreateIndexedPiece(7, "swingO2", 0, -90),
+                    CreateIndexedPiece(8, "swingO2", 0, -90),
+                    CreateIndexedPiece(9, "swingO2", 0, -90),
+                    CreateIndexedPiece(10, "swingO2", 0, -90),
+                    CreateIndexedPiece(11, "swingO2", 0, -90),
+                    CreateIndexedPiece(12, "swingO2", 0, -90),
+                    CreateIndexedPiece(13, "swingO2", 1, -90),
+                    CreateIndexedPiece(14, "swingOF", 3, 90),
+                    CreateIndexedPiece(15, "swingOF", 3, 90),
+                    CreateIndexedPiece(16, "swingOF", 3, 90),
+                    CreateIndexedPiece(17, "swingOF", 3, 90),
+                    CreateIndexedPiece(18, "swingOF", 3, 90),
+                    CreateIndexedPiece(19, "swingOF", 3, 90),
+                    CreateIndexedPiece(20, "swingOF", 3, 90),
+                    CreateIndexedPiece(21, "swingOF", 3, 90)
                 },
                 ["darkThrust"] = new[]
                 {
@@ -3990,7 +4335,7 @@ namespace HaCreator.MapSimulator.Character
             int parentUnderFaceLayerObjectId)
         {
             bool usesOneTimeLayer = registeredAnimationObjectId > 0;
-            var operations = new List<ShadowPartnerLayerNativeOperation>(usesOneTimeLayer ? 25 : 23);
+            var operations = new List<ShadowPartnerLayerNativeOperation>(usesOneTimeLayer ? 26 : 28);
             int sequence = 0;
             operations.Add(new ShadowPartnerLayerNativeOperation(
                 ShadowPartnerLayerNativeOperationKind.AddRefParentUnderFaceLayer,
@@ -4043,6 +4388,12 @@ namespace HaCreator.MapSimulator.Character
                     parentUnderFaceLayerObjectId,
                     layerObjectId,
                     ReferenceDelta: -1));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.PutHelperLayerColor,
+                    ++sequence,
+                    layerObjectId,
+                    parentUnderFaceLayerObjectId,
+                    ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.MoveHelperLayerByClientOffset,
                     ++sequence,
@@ -4149,16 +4500,46 @@ namespace HaCreator.MapSimulator.Character
                     RelatedObjectId: -2,
                     ReferenceDelta: -1));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
-                    ShadowPartnerLayerNativeOperationKind.CopyUnderFaceOrigin,
+                    ShadowPartnerLayerNativeOperationKind.GetHelperLayerOrigin,
                     ++sequence,
                     layerObjectId,
-                    parentUnderFaceLayerObjectId,
+                    RelatedObjectId: 0,
+                    ReferenceDelta: 1));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.PutEmptyHelperLayerOrigin,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 0,
+                    ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.RestoreHelperLayerOrigin,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 0,
+                    ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ReadHelperLayerCurrentTime,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 200,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.MoveHelperLayerByClientOffset,
                     ++sequence,
                     layerObjectId,
                     parentUnderFaceLayerObjectId,
+                    ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ClearRelMoveTimeVariant,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 200,
+                    ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ClearRelMoveTypeVariant,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 0,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.PutHelperLayerFlipFromUnderFace,
@@ -4228,6 +4609,16 @@ namespace HaCreator.MapSimulator.Character
                 layerObjectId,
                 parentUnderFaceLayerObjectId,
                 ReferenceDelta: -1));
+            if (!usesOneTimeLayer)
+            {
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ReleaseHelperLayerOrigin,
+                    ++sequence,
+                    layerObjectId,
+                    RelatedObjectId: 0,
+                    ReferenceDelta: -1));
+            }
+
             operations.Add(new ShadowPartnerLayerNativeOperation(
                 ShadowPartnerLayerNativeOperationKind.ReleaseParentUnderFaceLayer,
                 ++sequence,

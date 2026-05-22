@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectSideLaneLifecycleSnapshot> _packetStageTransitionNamedObjectSideLaneLifecycle = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectLayerLifecycleSnapshot> _packetStageTransitionNamedObjectLayerLifecycle = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectAlphaPlaybackState> _packetStageTransitionNamedObjectAlphaStates = new();
+        private readonly Dictionary<string, int> _packetStageTransitionNamedObjectSelectedStateByName = new(StringComparer.OrdinalIgnoreCase);
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
         private byte _packetStageTransitionBackEffectStartAlpha = byte.MaxValue;
@@ -68,11 +69,11 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 BuildPacketOwnedStageTransitionCallbacks(),
                 out message);
-            if (applied && ShouldConsumeSharedExclusiveRequestStateFromStageTransitionPacketType(packetType))
+            if (applied && packetType == 141)
             {
                 message = CompletePendingFamilyPrivilegeTransferFromStageTransition(
                     message,
-                    teleportLocalPlayer: packetType == 141);
+                    teleportLocalPlayer: true);
             }
 
             return applied;
@@ -863,6 +864,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionAuthoredStateBranchItems.Clear();
             _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
             _packetStageTransitionNamedObjectLayerLifecycle.Clear();
+            _packetStageTransitionNamedObjectSelectedStateByName.Clear();
             ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 
@@ -872,6 +874,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjectMovingStates.Clear();
             _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
             _packetStageTransitionNamedObjectLayerLifecycle.Clear();
+            _packetStageTransitionNamedObjectSelectedStateByName.Clear();
             foreach (BaseDXDrawableItem mapObject in _packetStageTransitionNamedObjectAlphaStates.Keys.ToArray())
             {
                 mapObject?.SetLayerAlpha(byte.MaxValue);

@@ -749,9 +749,27 @@ namespace HaCreator.MapSimulator
             if (packet.Reason == PacketDropLeaveReason.PetPickup)
             {
                 int petOwnerCharacterId = ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedActorId);
-                return petOwnerCharacterId > 0
-                    ? petOwnerCharacterId
-                    : 0;
+                if (petOwnerCharacterId > 0)
+                {
+                    return petOwnerCharacterId;
+                }
+
+                int normalizedPetOwnerId = partyActorOwnerResolver?.Invoke(resolvedActorId) ?? 0;
+                if (normalizedPetOwnerId > 0)
+                {
+                    return normalizedPetOwnerId;
+                }
+
+                if (packet.ActorId != resolvedActorId)
+                {
+                    normalizedPetOwnerId = partyActorOwnerResolver?.Invoke(packet.ActorId) ?? 0;
+                    if (normalizedPetOwnerId > 0)
+                    {
+                        return normalizedPetOwnerId;
+                    }
+                }
+
+                return 0;
             }
 
             if (packet.Reason != PacketDropLeaveReason.OtherPickup)
@@ -2352,15 +2370,26 @@ namespace HaCreator.MapSimulator
 
         private Vector2? ResolveRemoteDropPacketTargetPosition(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)
         {
+            if (reason == PacketDropLeaveReason.PetPickup)
+            {
+                int resolvedPetActorId = ResolveRemoteDropPacketPetActorId(packet);
+                int resolvedPetOwnerCharacterId = ResolveRemotePetPickupObservedOwnerCharacterId(
+                    ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedPetActorId),
+                    packet.ActorId,
+                    resolvedPetActorId,
+                    ResolveDropPartyActorOwnerId);
+
+                return ResolveDropPickupActorPosition(
+                    DropPickupActorKind.Pet,
+                    resolvedPetActorId,
+                    resolvedPetOwnerCharacterId > 0 ? resolvedPetOwnerCharacterId : packet.ActorId);
+            }
+
             return reason switch
             {
                 PacketDropLeaveReason.OtherPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Other, packet.ActorId, packet.ActorId),
                 PacketDropLeaveReason.PlayerPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Player, packet.ActorId, 0),
                 PacketDropLeaveReason.MobPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Mob, packet.ActorId, 0),
-                PacketDropLeaveReason.PetPickup => ResolveDropPickupActorPosition(
-                    DropPickupActorKind.Pet,
-                    ResolveRemoteDropPacketPetActorId(packet),
-                    packet.ActorId),
                 _ => null
             };
         }

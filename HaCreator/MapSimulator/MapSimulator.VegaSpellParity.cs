@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator
             public bool PacketOwnedEquipItemTokenObserved { get; set; }
             public int PacketOwnedEquipItemToken { get; set; }
             public bool PacketOwnedEquipSnapshotObserved { get; set; }
+            public bool PacketOwnedEquipSnapshotFromInventoryOperation { get; set; }
             public VegaPacketOwnedEquipSnapshot PacketOwnedEquipSnapshot { get; set; }
             public bool PacketOwnedScrollCountObserved { get; set; }
             public int PacketOwnedScrollFinalCount { get; set; }
@@ -970,8 +971,11 @@ namespace HaCreator.MapSimulator
             _pendingVegaCastState.PacketOwnedUpgradeState = decodeState.OutcomeUpgradeState;
             if (decodeState.HasEquipSnapshot)
             {
-                _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
-                _pendingVegaCastState.PacketOwnedEquipSnapshot = decodeState.EquipSnapshot;
+                if (!_pendingVegaCastState.PacketOwnedEquipSnapshotFromInventoryOperation)
+                {
+                    _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
+                    _pendingVegaCastState.PacketOwnedEquipSnapshot = decodeState.EquipSnapshot;
+                }
             }
         }
 
@@ -1002,6 +1006,7 @@ namespace HaCreator.MapSimulator
 
             VegaPacketOwnedEquipSnapshot snapshot = operationState.EquipSnapshot;
             _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
+            _pendingVegaCastState.PacketOwnedEquipSnapshotFromInventoryOperation = true;
             _pendingVegaCastState.PacketOwnedEquipSnapshot = snapshot;
             if (operationState.ScrollCountObserved)
             {
@@ -2117,8 +2122,23 @@ namespace HaCreator.MapSimulator
                 success,
                 _pendingVegaCastState.PacketOwnedOutcomeSuccessObserved,
                 _pendingVegaCastState.PacketOwnedOutcomeSuccess);
-            result = _pendingVegaCastState.PacketOwnedEquipSnapshotObserved
-                ? itemUpgradeWindow.ConsumePacketOwnedPreparedUpgradeItemsAtPacketCounts(
+            if (_pendingVegaCastState.PacketOwnedEquipSnapshotObserved &&
+                _pendingVegaCastState.PacketOwnedEquipSnapshotFromInventoryOperation)
+            {
+                result = itemUpgradeWindow.ApplyPacketOwnedPreparedUpgradeInventoryOperationCounts(
+                    _pendingVegaCastState.ScrollInventoryType,
+                    _pendingVegaCastState.ScrollSlotIndex,
+                    _pendingVegaCastState.PacketOwnedScrollCountObserved,
+                    _pendingVegaCastState.PacketOwnedScrollFinalCount,
+                    _pendingVegaCastState.ModifierInventoryType,
+                    _pendingVegaCastState.ModifierSlotIndex,
+                    _pendingVegaCastState.PacketOwnedModifierCountObserved,
+                    _pendingVegaCastState.PacketOwnedModifierFinalCount,
+                    mutationSuccess);
+            }
+            else if (_pendingVegaCastState.PacketOwnedEquipSnapshotObserved)
+            {
+                result = itemUpgradeWindow.ConsumePacketOwnedPreparedUpgradeItemsAtPacketCounts(
                     _pendingVegaCastState.ScrollInventoryType,
                     _pendingVegaCastState.ScrollSlotIndex,
                     _pendingVegaCastState.PacketOwnedScrollCountObserved
@@ -2129,13 +2149,17 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.PacketOwnedModifierCountObserved
                         ? _pendingVegaCastState.PacketOwnedModifierFinalCount
                         : null,
-                    mutationSuccess)
-                : itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
+                    mutationSuccess);
+            }
+            else
+            {
+                result = itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
                     _pendingVegaCastState.ScrollInventoryType,
                     _pendingVegaCastState.ScrollSlotIndex,
                     _pendingVegaCastState.ModifierInventoryType,
                     _pendingVegaCastState.ModifierSlotIndex,
                     forcedSuccess: mutationSuccess);
+            }
             if (!result.Success.HasValue)
             {
                 message = VegaOwnerStringPoolText.GetUnexpectedResultNotice();

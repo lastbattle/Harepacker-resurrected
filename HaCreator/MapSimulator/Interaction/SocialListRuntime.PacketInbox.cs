@@ -324,9 +324,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildClientGuildQuestDirectNoticeSummary(SocialListClientGuildResultPacket packet)
         {
-            string notice = packet.Kind == SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
-                ? SocialListGuildResultClientText.GetGuildQuestRegistrantDisconnectedNotice()
-                : SocialListGuildResultClientText.GetGuildQuestNotEnoughMembersNotice();
+            string notice = !string.IsNullOrWhiteSpace(packet.DirectNotice)
+                ? packet.DirectNotice.Trim()
+                : packet.Kind == SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
+                    ? SocialListGuildResultClientText.GetGuildQuestRegistrantDisconnectedNotice()
+                    : SocialListGuildResultClientText.GetGuildQuestNotEnoughMembersNotice();
             return $"Client OnGuildResult({(byte)packet.Kind}) reported guild-quest notice: {notice}";
         }
 

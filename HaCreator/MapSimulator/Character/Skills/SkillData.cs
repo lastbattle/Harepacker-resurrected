@@ -384,7 +384,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         int LoadCanvasPropertyDefaultValue = 0,
         int AfterimageActionCanvasArrayObjectId = 0,
         AfterimageLoadCanvasArguments? LoadCanvasArguments = null,
-        AfterimageRelMoveArguments? RelMoveArguments = null);
+        AfterimageRelMoveArguments? RelMoveArguments = null,
+        Rectangle? ActionRange = null);
 
     public readonly record struct AfterimageLoadCanvasArguments(
         int DelayMs,
@@ -511,7 +512,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     public class MeleeAfterImageFrameSet
     {
+        public string ActionName { get; set; }
+        public int? RawActionCode { get; set; }
+        public Rectangle Range { get; set; } = Rectangle.Empty;
         public List<SkillFrame> Frames { get; set; } = new();
+
+        public bool HasRange => Range.Width > 0 && Range.Height > 0;
     }
 
     public class MeleeAfterImageAction
@@ -1261,6 +1267,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasChargingSkillMetadata { get; set; }
         public string FullChargeEffectName { get; set; }
         public string EnergyChargeThresholdFormula { get; set; }
+        public bool UsesEnergyChargeAdditionalLayer { get; set; }
+        public int EnergyChargeAdditionalLayerIndex { get; set; }
+        public int EnergyChargeAdditionalLayerReplayGateMs { get; set; }
+        public string EnergyChargeAdditionalLayerAnimationMode { get; set; }
+        public int EnergyChargeAdditionalLayerAlpha { get; set; }
+        public string EnergyChargeAdditionalLayerSourceEffectName { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -2335,8 +2347,12 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         RetainEffectOrBallUol,
         RetainTargetVector,
+        RetainConstructorTargetVector,
         AllocateBulletOwner,
         ConstructBulletOwner,
+        RetainConstructorEffectOrBallUol,
+        ReleaseConstructorTargetVector,
+        ReleaseConstructorEffectOrBallUol,
         RetainBulletLocalReference,
         RetainBulletContainerReference,
         InsertIntoBulletContainer,

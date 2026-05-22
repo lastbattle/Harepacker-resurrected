@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MovePacketType = 287;
         private const int MinAttackMoveAction = 13;
         private const int MaxAttackMoveAction = 21;
+        private const int MinSkillMoveAction = 22;
+        private const int MaxSkillMoveAction = 38;
         private const int MaxOverrideEntryCount = 128;
 
         internal sealed class DecodedMoveAttackPacket
@@ -27,6 +29,9 @@ namespace HaCreator.MapSimulator.Interaction
             public bool FacingLeft { get; init; }
             public int MoveAction { get; init; }
             public int AttackId { get; init; }
+            public bool IsSkillMoveAction { get; init; }
+            public int SkillId { get; init; }
+            public int SkillLevel { get; init; }
             public List<Point> MultiTargetForBall { get; init; }
             public List<int> RandTimeForAreaAttack { get; init; }
             public IReadOnlyList<MobPacketMovePathElement> MovePathElements { get; init; }
@@ -119,6 +124,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 int moveAction = moveActionByte >> 1;
+                bool isSkillMoveAction = IsMobSkillMoveAction(moveAction);
                 decodedPacket = new DecodedMoveAttackPacket
                 {
                     PacketType = packetType,
@@ -133,6 +139,9 @@ namespace HaCreator.MapSimulator.Interaction
                     FacingLeft = (moveActionByte & 1) == 0,
                     MoveAction = moveAction,
                     AttackId = TryResolveAttackId(moveAction, out int attackId) ? attackId : 0,
+                    IsSkillMoveAction = isSkillMoveAction,
+                    SkillId = isSkillMoveAction ? ResolveSkillIdFromSkillInfoRaw(targetInfoRaw) : 0,
+                    SkillLevel = isSkillMoveAction ? ResolveSkillLevelFromSkillInfoRaw(targetInfoRaw) : 0,
                     MultiTargetForBall = multiTargetForBall,
                     RandTimeForAreaAttack = randTimeForAreaAttack,
                     MovePathElements = TryDecodeMovePathElements(reader, moveActionByte, out var movePathElements, out DecodedMovePathTailInfo? movePathTailInfo)
@@ -159,6 +168,21 @@ namespace HaCreator.MapSimulator.Interaction
 
             attackId = 0;
             return false;
+        }
+
+        internal static bool IsMobSkillMoveAction(int moveAction)
+        {
+            return moveAction >= MinSkillMoveAction && moveAction <= MaxSkillMoveAction;
+        }
+
+        internal static int ResolveSkillIdFromSkillInfoRaw(int skillInfoRaw)
+        {
+            return skillInfoRaw & 0xFF;
+        }
+
+        internal static int ResolveSkillLevelFromSkillInfoRaw(int skillInfoRaw)
+        {
+            return (skillInfoRaw >> 8) & 0xFF;
         }
 
         internal static bool TryDecodeLockedTargetInfoRaw(int targetInfoRaw, out DecodedLockedTargetInfo lockedTargetInfo)

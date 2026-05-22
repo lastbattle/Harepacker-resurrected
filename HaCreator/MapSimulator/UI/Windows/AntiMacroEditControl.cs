@@ -229,6 +229,11 @@ namespace HaCreator.MapSimulator.UI
 
         public void SynchronizeExternalState(string text, bool hasFocus)
         {
+            SynchronizeExternalState(text, selectionStart: -1, selectionEnd: -1, hasFocus: hasFocus);
+        }
+
+        public void SynchronizeExternalState(string text, int selectionStart, int selectionEnd, bool hasFocus)
+        {
             string sanitized = text ?? string.Empty;
             sanitized = NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
                 sanitized,
@@ -238,11 +243,25 @@ namespace HaCreator.MapSimulator.UI
                 _maxLength,
                 _clientEncoding);
 
+            ResolveExternalSelectionState(
+                sanitized.Length,
+                selectionStart,
+                selectionEnd,
+                out int caretIndex,
+                out int selectionAnchorIndex);
+            bool visualStateChanged = !string.Equals(_inputText, sanitized, StringComparison.Ordinal)
+                || _caretIndex != caretIndex
+                || _selectionAnchorIndex != selectionAnchorIndex
+                || HasFocus != hasFocus;
             _inputText = sanitized;
-            _caretIndex = _inputText.Length;
-            _caretBlinkTick = Environment.TickCount;
+            _caretIndex = caretIndex;
+            _selectionAnchorIndex = selectionAnchorIndex;
+            if (visualStateChanged)
+            {
+                _caretBlinkTick = Environment.TickCount;
+            }
+
             _mouseSelecting = false;
-            ClearSelection();
             ClearCompositionText();
             HasFocus = hasFocus;
         }
@@ -1375,6 +1394,30 @@ namespace HaCreator.MapSimulator.UI
             // The recovered `CCtrlEdit::OnKey` reads Shift only for Shift+Insert
             // paste and Shift+Delete cut; navigation calls `MoveCaret` directly.
             return false;
+        }
+
+        internal static void ResolveExternalSelectionState(
+            int textLength,
+            int selectionStart,
+            int selectionEnd,
+            out int caretIndex,
+            out int selectionAnchorIndex)
+        {
+            int resolvedTextLength = Math.Max(0, textLength);
+            int start = Math.Clamp(selectionStart, 0, resolvedTextLength);
+            int end = Math.Clamp(selectionEnd, 0, resolvedTextLength);
+
+            if (selectionStart < 0 || selectionEnd < 0 || start == end)
+            {
+                caretIndex = selectionStart < 0 || selectionEnd < 0
+                    ? resolvedTextLength
+                    : end;
+                selectionAnchorIndex = -1;
+                return;
+            }
+
+            selectionAnchorIndex = Math.Min(start, end);
+            caretIndex = Math.Max(start, end);
         }
 
         private static bool IsClientWhitespace(char character)

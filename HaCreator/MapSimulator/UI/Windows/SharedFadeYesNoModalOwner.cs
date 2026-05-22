@@ -154,8 +154,8 @@ namespace HaCreator.MapSimulator.UI
         internal const int NativeInviteLifetimeMilliseconds = 180000;
         internal const int NativeQuestClearLifetimeMilliseconds = 30000;
         internal const int NativeIndefiniteLifetimeMilliseconds = int.MaxValue;
-        internal const int FadeInMilliseconds = 120;
-        internal const int FadeOutMilliseconds = 120;
+        internal const int FadeInMilliseconds = 1000;
+        internal const int FadeOutMilliseconds = 1000;
         internal const int InviteAnchorX = 389;
         internal const int AlarmAnchorX = 440;
         internal const int ExpeditionInviteAnchorX = 349;
@@ -475,14 +475,14 @@ namespace HaCreator.MapSimulator.UI
             return type switch
             {
                 SharedFadeYesNoModalType.MessengerInvite => CenteredInvitePayload(type, "CreateMSMInvite", 0x30B, 780, sendsAcceptPacket: true, sendsCancelPacket: false),
-                SharedFadeYesNoModalType.FriendRegister => CenteredInvitePayload(type, "CreateFriendReg", 0x30B, 781, usesLevelJobLine: true, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.TradeInvite => CenteredInvitePayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.CashTradeInvite => AlarmPayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.FriendRegister => CenteredInvitePayload(type, "CreateFriendReg", 0x30B, 781, usesLevelJobLine: true, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.TradeInvite => CenteredInvitePayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.CashTradeInvite => AlarmPayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.NewMemo => AlarmPayload(type, "CreateNewMemo", 0x30B, 783, sendsAcceptPacket: true, sendsCancelPacket: false),
-                SharedFadeYesNoModalType.PartyInvite => CenteredInvitePayload(type, "CreatePartyInvite", 0x30B, 784, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.AllianceInvite => CenteredInvitePayload(type, "CreateAllianceInvite", 0x30B, 785, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.PartyInvite => CenteredInvitePayload(type, "CreatePartyInvite", 0x30B, 784, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.AllianceInvite => CenteredInvitePayload(type, "CreateAllianceInvite", 0x30B, 785, sendsAcceptPacket: true, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.QuestClear => AlarmPayload(type, "CreateQuestClear", 0x30B, 786, sendsAcceptPacket: true, sendsCancelPacket: false),
-                SharedFadeYesNoModalType.GuildInvite => CenteredInvitePayload(type, "CreateGuildInvite", 0x30B, 787, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.GuildInvite => CenteredInvitePayload(type, "CreateGuildInvite", 0x30B, 787, sendsAcceptPacket: true, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.UserAlarm => AlarmPayload(type, "CreateUserAlarm", 0x30B, -1, sendsAcceptPacket: false, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.ParcelAlarm => AlarmPayload(type, "CreateParcelAlarm", 0x30B, -1, sendsAcceptPacket: true, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoPayloadProfile(
@@ -500,10 +500,10 @@ namespace HaCreator.MapSimulator.UI
                     UsesRequesterNameLine: false,
                     SendsAcceptPacket: true,
                     SendsCancelPacket: false),
-                SharedFadeYesNoModalType.FamilyInvite => CenteredInvitePayload(type, "CreateFamilyInvite", 0x30B, 788, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.PartyApply => ApplyPayload(type, "CreatePartyApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.ExpeditionInvite => CenteredInvitePayload(type, "CreateExpedtionInvite", 0x30B, 789, sendsAcceptPacket: true, sendsCancelPacket: true),
-                SharedFadeYesNoModalType.ExpeditionApply => ApplyPayload(type, "CreateExpedtionApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.FamilyInvite => CenteredInvitePayload(type, "CreateFamilyInvite", 0x30B, 788, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.PartyApply => ApplyPayload(type, "CreatePartyApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.ExpeditionInvite => CenteredInvitePayload(type, "CreateExpedtionInvite", 0x30B, 789, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.ExpeditionApply => ApplyPayload(type, "CreateExpedtionApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: false),
                 SharedFadeYesNoModalType.FollowRequest => ApplyPayload(type, "CreateFollowRequest", 0x1597, 779, 5529, sendsAcceptPacket: true, sendsCancelPacket: true),
                 SharedFadeYesNoModalType.NewYearCardArrived => new SharedFadeYesNoPayloadProfile(
                     type,

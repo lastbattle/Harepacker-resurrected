@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewMainLayerReleaseReferenceCountAfter { get; set; }
         public int TemporaryStatViewShadowLayerReleaseReferenceCountBefore { get; set; }
         public int TemporaryStatViewShadowLayerReleaseReferenceCountAfter { get; set; }
+        public IReadOnlyList<string> TemporaryStatViewAllocationMutationTrace { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatViewReleaseMutationTrace { get; set; } = Array.Empty<string>();
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }

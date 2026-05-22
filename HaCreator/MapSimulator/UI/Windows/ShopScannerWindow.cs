@@ -246,6 +246,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<int, IReadOnlyList<byte>, string> InitialScannerRequestDispatcher { get; set; }
         public Func<int, IReadOnlyList<byte>, string> ScanItemRequestDispatcher { get; set; }
         public Func<int, IReadOnlyList<byte>, string> ShopLinkRequestDispatcher { get; set; }
+        public int CurrentChannelId { get; set; } = -1;
 
         private enum ScannerAddOnMode
         {
@@ -285,6 +286,8 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<int> PreviousPageItemIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> CurrentPageItemIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> NextPageItemIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<bool> CurrentPageShopLinkEnabledStates { get; init; } = Array.Empty<bool>();
+            public int CurrentChannelId { get; init; }
             public int DescendingCheckBoxX { get; init; }
             public int DescendingCheckBoxY { get; init; }
             public int DescendingCheckBoxWidth { get; init; }
@@ -440,6 +443,8 @@ namespace HaCreator.MapSimulator.UI
                 PreviousPageItemIds = GetChildPageItemIds(_searchResultPageIndex - 1),
                 CurrentPageItemIds = GetChildPageItemIds(_searchResultPageIndex),
                 NextPageItemIds = GetChildPageItemIds(_searchResultPageIndex + 1),
+                CurrentPageShopLinkEnabledStates = GetCurrentPageShopLinkEnabledStates(),
+                CurrentChannelId = CurrentChannelId,
                 DescendingCheckBoxX = SearchResultChildCheckBoxX,
                 DescendingCheckBoxY = SearchResultChildCheckBoxY,
                 DescendingCheckBoxWidth = SearchResultChildCheckBoxWidth,
@@ -1067,6 +1072,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (!IsShopLinkButtonEnabled(selected.ChannelId, CurrentChannelId, selected.IsNpcShop))
+            {
+                message = $"CUIShopScanResult link button is disabled for channel {selected.ChannelId.ToString(CultureInfo.InvariantCulture)} while the client context is on channel {CurrentChannelId.ToString(CultureInfo.InvariantCulture)}.";
+                _statusMessage = message;
+                return false;
+            }
+
             byte[] payload = BuildShopLinkRequestPayload(selected.MiniRoomSn, selected.FieldId);
             string dispatchSummary = ShopLinkRequestDispatcher?.Invoke(ShopLinkRequestOpcode, Array.AsReadOnly(payload));
             _lastRequestedScanItemId = selected.ItemId;
@@ -1130,6 +1142,21 @@ namespace HaCreator.MapSimulator.UI
                 .Skip(pageIndex * pageSize)
                 .Take(pageSize)
                 .Select(result => result.ItemId)
+                .ToList();
+        }
+
+        private IReadOnlyList<bool> GetCurrentPageShopLinkEnabledStates()
+        {
+            if (_results.Count == 0)
+            {
+                return Array.Empty<bool>();
+            }
+
+            int pageSize = GetCurrentChildPageSize();
+            return _results
+                .Skip(_searchResultPageIndex * pageSize)
+                .Take(pageSize)
+                .Select(result => result.IsPacketFedShopRow && IsShopLinkButtonEnabled(result.ChannelId, CurrentChannelId, result.IsNpcShop))
                 .ToList();
         }
 
@@ -1260,6 +1287,13 @@ namespace HaCreator.MapSimulator.UI
         {
             return !exclusiveRequestPending
                 && unchecked(currentTick - lastRequestTick) >= ScanRequestThrottleMilliseconds;
+        }
+
+        internal static bool IsShopLinkButtonEnabled(int rowChannelId, int currentChannelId, bool isNpcShop)
+        {
+            return !isNpcShop
+                && currentChannelId >= 0
+                && rowChannelId == currentChannelId;
         }
 
         internal static byte[] BuildShopLinkRequestPayload(int miniRoomSn, int fieldId)

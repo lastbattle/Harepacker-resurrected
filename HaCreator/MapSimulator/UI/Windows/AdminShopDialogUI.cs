@@ -5619,7 +5619,7 @@ namespace HaCreator.MapSimulator.UI
                         : packetRow.ItemId;
                 }
 
-                if (!IsPacketOwnedWishlistRowCompatibleWithRequestContext(packetRow, categoryKey, priceRangeIndex))
+                if (!IsPacketOwnedWishlistRowCompatibleWithRequestContext(packetRow, trimmedQuery, categoryKey, priceRangeIndex))
                 {
                     contextRejectedRowCount++;
                     continue;
@@ -5759,12 +5759,18 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsPacketOwnedWishlistRowCompatibleWithRequestContext(
             AdminShopPacketOwnedWishlistSearchResultRow packetRow,
+            string requestedQuery,
             string requestedCategoryKey,
             int requestedPriceRangeIndex)
         {
             if (packetRow == null)
             {
                 return true;
+            }
+
+            if (!AdminShopPacketOwnedWishlistSearchSessionParity.IsRowQueryContextCompatible(requestedQuery, packetRow.Query))
+            {
+                return false;
             }
 
             if (!IsWishlistCategoryKeyWithinRequestedCategory(packetRow.CategoryKey, requestedCategoryKey))

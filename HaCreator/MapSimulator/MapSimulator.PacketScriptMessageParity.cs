@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator
 
         private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber, byte packetSlotHint)
         {
+            _ = packetSlotHint;
             IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
             if (petSerialNumber <= 0)
             {
@@ -130,16 +131,6 @@ namespace HaCreator.MapSimulator
                 if (inventoryCandidate != null)
                 {
                     return inventoryCandidate;
-                }
-
-                PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate slotHintCandidate =
-                    PacketScriptPetSelectionSnapshotResolver.ResolveLiveInventoryCandidateBySlotHint(
-                        liveCashSlots,
-                        petSerialNumber,
-                        packetSlotHint);
-                if (slotHintCandidate != null)
-                {
-                    return slotHintCandidate;
                 }
             }
 

@@ -706,6 +706,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         #region Constants
         private const int DEFAULT_DROP_LIFETIME = 120000;       // 2 minutes
+        private const int MIN_DROP_LIFETIME = DropItem.EXPIRE_FADE_DURATION;
         private const int OWNER_PRIORITY_DURATION = 15000;      // 15 seconds owner priority
         private const float DROP_SPREAD = 30f;                  // Horizontal spread of multiple drops
         private const float DROP_INITIAL_VELOCITY_Y = -200f;    // Initial upward velocity (tuned for snappy feel)
@@ -790,6 +791,7 @@ namespace HaCreator.MapSimulator.Pools
         private Func<DropItem, int, bool> _onPacketRemoveFadeRequested;
         private Action<int, int> _onPacketPartyPickupLinkedActors;
         private Func<DateTime> _packetExpireTimeUtcResolver = () => DateTime.UtcNow;
+        private int _localDropLifetimeMs = DEFAULT_DROP_LIFETIME;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -826,6 +828,12 @@ namespace HaCreator.MapSimulator.Pools
         public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
         public void SetPacketItemVisualResolver(Func<string, IReadOnlyList<IDXObject>> resolver) => _packetItemVisualResolver = resolver;
         public void SetPacketExpireTimeUtcResolver(Func<DateTime> resolver) => _packetExpireTimeUtcResolver = resolver ?? (() => DateTime.UtcNow);
+        public void SetLocalDropLifetimeSeconds(int dropExpireSeconds)
+        {
+            _localDropLifetimeMs = dropExpireSeconds > 0
+                ? (int)Math.Min(int.MaxValue, Math.Max((long)MIN_DROP_LIFETIME, dropExpireSeconds * 1000L))
+                : DEFAULT_DROP_LIFETIME;
+        }
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
@@ -1063,7 +1071,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.LastStateChangeTime = currentTime;
             drop.OwnerId = ownerId;
             drop.OwnerExpireTime = ownerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
-            drop.ExpireTime = currentTime + DEFAULT_DROP_LIFETIME;
+            drop.ExpireTime = currentTime + _localDropLifetimeMs;
             drop.OwnershipType = ownerId > 0 ? DropOwnershipType.Character : DropOwnershipType.None;
             drop.SourceId = 0;
             drop.IsReal = true;

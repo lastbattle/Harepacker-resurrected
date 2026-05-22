@@ -128,7 +128,8 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.Mode,
                 keywordMutations,
                 questMutations,
-                stagePeriodMutation);
+                stagePeriodMutation,
+                ContextOwnedStageActiveBackMutationTrace.FromPeriod(entry));
         }
 
         internal static void ResetCacheData(
@@ -1905,14 +1906,47 @@ namespace HaCreator.MapSimulator.Interaction
         byte Mode,
         IReadOnlyList<ContextOwnedStageUnitCacheMutation> KeywordMutations,
         IReadOnlyList<ContextOwnedStageUnitCacheMutation> QuestMutations,
-        ContextOwnedStagePeriodModeCacheMutation StagePeriodMutation)
+        ContextOwnedStagePeriodModeCacheMutation StagePeriodMutation,
+        ContextOwnedStageActiveBackMutationTrace ActiveBackMutation)
     {
         internal static ContextOwnedStageCacheMutationTrace Empty { get; } = new(
             string.Empty,
             0,
             Array.Empty<ContextOwnedStageUnitCacheMutation>(),
             Array.Empty<ContextOwnedStageUnitCacheMutation>(),
-            ContextOwnedStagePeriodModeCacheMutation.Empty);
+            ContextOwnedStagePeriodModeCacheMutation.Empty,
+            ContextOwnedStageActiveBackMutationTrace.Empty);
+    }
+
+    internal readonly record struct ContextOwnedStageActiveBackMutationTrace(
+        bool ClearedCurrentStageBackImagePointer,
+        bool ClearedBackColor,
+        bool AssignedCurrentStageBackImagePointer,
+        uint? AppliedBackColorArgb,
+        int ActiveStageBackImageCount)
+    {
+        internal static ContextOwnedStageActiveBackMutationTrace Empty { get; } = new(
+            ClearedCurrentStageBackImagePointer: false,
+            ClearedBackColor: false,
+            AssignedCurrentStageBackImagePointer: false,
+            AppliedBackColorArgb: null,
+            ActiveStageBackImageCount: 0);
+
+        internal static ContextOwnedStageActiveBackMutationTrace FromPeriod(ContextOwnedStagePeriodCatalogEntry entry)
+        {
+            if (entry == null)
+            {
+                return Empty;
+            }
+
+            bool assignActiveBack = entry.Mode > 0;
+            return new ContextOwnedStageActiveBackMutationTrace(
+                ClearedCurrentStageBackImagePointer: true,
+                ClearedBackColor: true,
+                AssignedCurrentStageBackImagePointer: assignActiveBack,
+                AppliedBackColorArgb: assignActiveBack ? entry.BackColorArgb : null,
+                ActiveStageBackImageCount: assignActiveBack ? entry.BackImages.Count : 0);
+        }
     }
 
     internal readonly record struct ContextOwnedStageUnitCacheMutation(

@@ -64,6 +64,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (decodedPacket.IsSkillMoveAction)
+            {
+                return TryApplyMobSkillMovePacket(packetType, decodedPacket, currentTime, out message);
+            }
+
             if (decodedPacket.AttackId <= 0)
             {
                 message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: move action {decodedPacket.MoveAction} was not an attack branch.";
@@ -156,6 +161,65 @@ namespace HaCreator.MapSimulator
                 : "no area target mask";
             string facingSummary = sourceFacesRight ? "facing right" : "facing left";
             message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, {randDelaySummary}, {areaMaskSummary}, and {facingSummary}.";
+            return true;
+        }
+
+        private bool TryApplyMobSkillMovePacket(
+            int packetType,
+            MobMoveAttackPacketCodec.DecodedMoveAttackPacket decodedPacket,
+            int currentTime,
+            out string message)
+        {
+            if (decodedPacket == null)
+            {
+                message = "Mob skill move packet was not decoded.";
+                return false;
+            }
+
+            if (decodedPacket.SkillId <= 0 || decodedPacket.SkillLevel <= 0)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: skill move action {decodedPacket.MoveAction} did not carry a valid skill id/level.";
+                return false;
+            }
+
+            var liveMob = _mobPool?.GetMob(decodedPacket.MobId);
+            if (liveMob?.AI == null)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: mob was not active in the current pool.";
+                return false;
+            }
+
+            liveMob.MovementInfo?.ApplyPacketMoveInterrupt(
+                decodedPacket.NotForceLandingWhenDiscard,
+                currentTime,
+                decodedPacket.MoveAction,
+                decodedPacket.FacingLeft);
+            if (decodedPacket.MovePathElements?.Count > 0)
+            {
+                liveMob.MovementInfo?.QueuePacketMovePathElements(decodedPacket.MovePathElements, currentTime);
+            }
+            if (decodedPacket.MovePathTailInfo is MobMoveAttackPacketCodec.DecodedMovePathTailInfo movePathTailInfo)
+            {
+                liveMob.MovementInfo?.ApplyPacketMovePathTailInfo(
+                    movePathTailInfo.PassiveKeyPadStateCount,
+                    movePathTailInfo.PathBounds,
+                    currentTime,
+                    movePathTailInfo.PassiveKeyPadStates);
+            }
+
+            if (decodedPacket.NotChangeAction)
+            {
+                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed the local action transition.";
+                return true;
+            }
+
+            if (!liveMob.AI.TryUseSkill(decodedPacket.SkillId, decodedPacket.SkillLevel, currentTime))
+            {
+                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because the existing local skill gates rejected it.";
+                return false;
+            }
+
+            message = $"Started packet mob-skill action for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} through the local skill gates.";
             return true;
         }
 
