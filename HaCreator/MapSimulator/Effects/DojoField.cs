@@ -270,6 +270,28 @@ namespace HaCreator.MapSimulator.Effects
                 active && !isEnergyFull,
                 active && isEnergyFull);
         }
+        internal DojoClientUpdateLayerState ResolveClientUpdateLayerState()
+        {
+            int playerFillWidth = _hasPlayerState
+                ? ResolveClientGaugeFillWidth(_playerHp, _playerMaxHp)
+                : 0;
+            int monsterFillWidth = _bossHpPercent.HasValue
+                ? ResolveClientGaugeFillWidthFromPercent(_bossHpPercent.Value)
+                : 0;
+            int energyEmptyHeight = EnergyGaugeHeight - (EnergyGaugeHeight * Math.Clamp(_energy, 0, EnergyMax) / EnergyMax);
+            bool isEnergyFull = IsEnergyFullPresentationActive;
+            return new DojoClientUpdateLayerState(
+                PlayerGaugeAlpha: _hasPlayerState ? 255 : 0,
+                PlayerGaugeWidth: playerFillWidth,
+                PlayerGaugeLayerX: PlayerGaugeLayerRightEdgeOffsetX - playerFillWidth,
+                MonsterGaugeAlpha: _bossHpPercent.HasValue ? 255 : 0,
+                MonsterGaugeWidth: monsterFillWidth,
+                EnergyEmptyAlpha: isEnergyFull ? 0 : 255,
+                EnergyGaugeAlpha: isEnergyFull ? 0 : 255,
+                EnergyGaugeHeight: Math.Clamp(energyEmptyHeight, 0, EnergyGaugeHeight),
+                EnergyFullAlpha: isEnergyFull ? 255 : 0,
+                EnergyFullAnimationRepeats: isEnergyFull);
+        }
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
         public bool HasAuthoredExitPortal => _hasExitPortal;
@@ -2318,7 +2340,7 @@ namespace HaCreator.MapSimulator.Effects
         }
         internal static Rectangle ResolvePlayerGaugeFillBounds(Rectangle playerBounds, float progress)
         {
-            int fillWidth = Math.Clamp((int)MathF.Round(BarGaugeWidth * Math.Clamp(progress, 0f, 1f)), 0, BarGaugeWidth);
+            int fillWidth = ResolveClientGaugeFillWidthFromPercent(progress);
             if (fillWidth <= 0)
             {
                 return Rectangle.Empty;
@@ -2334,7 +2356,7 @@ namespace HaCreator.MapSimulator.Effects
         }
         internal static Rectangle ResolveMonsterGaugeFillBounds(Rectangle monsterBounds, float progress)
         {
-            int fillWidth = Math.Clamp((int)MathF.Round(BarGaugeWidth * Math.Clamp(progress, 0f, 1f)), 0, BarGaugeWidth);
+            int fillWidth = ResolveClientGaugeFillWidthFromPercent(progress);
             if (fillWidth <= 0)
             {
                 return Rectangle.Empty;
@@ -2346,6 +2368,30 @@ namespace HaCreator.MapSimulator.Effects
                 MonsterGaugeLayerOffsetY - BarGaugeOriginY,
                 fillWidth,
                 BarGaugeHeight);
+        }
+        internal static int ResolveClientGaugeFillWidth(int current, int maximum)
+        {
+            if (current <= 0 || maximum <= 0)
+            {
+                return 0;
+            }
+
+            long clampedCurrent = Math.Min(current, maximum);
+            return Math.Clamp((int)(BarGaugeWidth * clampedCurrent / maximum), 0, BarGaugeWidth);
+        }
+        internal static int ResolveClientGaugeFillWidthFromPercent(float progress)
+        {
+            if (float.IsNaN(progress) || progress <= 0f)
+            {
+                return 0;
+            }
+
+            if (progress >= 1f)
+            {
+                return BarGaugeWidth;
+            }
+
+            return Math.Clamp((int)(BarGaugeWidth * progress), 0, BarGaugeWidth);
         }
         internal static Rectangle ResolveEnergyGaugeEmptyBounds(Rectangle energyGaugeBounds, int energy)
         {
@@ -2474,6 +2520,17 @@ namespace HaCreator.MapSimulator.Effects
             bool EnergyEmptyVisible,
             bool EnergyGaugeVisible,
             bool EnergyFullVisible);
+        internal readonly record struct DojoClientUpdateLayerState(
+            int PlayerGaugeAlpha,
+            int PlayerGaugeWidth,
+            int PlayerGaugeLayerX,
+            int MonsterGaugeAlpha,
+            int MonsterGaugeWidth,
+            int EnergyEmptyAlpha,
+            int EnergyGaugeAlpha,
+            int EnergyGaugeHeight,
+            int EnergyFullAlpha,
+            bool EnergyFullAnimationRepeats);
         internal readonly record struct DojoPresentationTiming(
             int ClearTransferDelayMs,
             int TimeOverTransferDelayMs);

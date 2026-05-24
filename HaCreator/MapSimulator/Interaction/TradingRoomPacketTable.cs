@@ -26,8 +26,13 @@ namespace HaCreator.MapSimulator.Interaction
                 [15] = "CTradingRoomDlg::OnPutItem",
                 [16] = "CTradingRoomDlg::OnPutMoney",
                 [17] = "CTradingRoomDlg::OnTrade (handoff)",
-                [20] = "CTradingRoomDlg::OnTrade CRC follow-up",
                 [21] = "CTradingRoomDlg::OnExceedLimit"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> TradingRoomOnTradeFollowUpSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
             };
 
         private static readonly IReadOnlyDictionary<byte, string> TradingRoomOutboundSubtypeHandlers =
@@ -76,7 +81,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool IsRecoveredInboundSubtype(byte subtype)
         {
+            return TradingRoomInboundSubtypeHandlers.ContainsKey(subtype)
+                || TradingRoomOnTradeFollowUpSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredDirectOnPacketSubtype(byte subtype)
+        {
             return TradingRoomInboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredOnTradeFollowUpSubtype(byte subtype)
+        {
+            return TradingRoomOnTradeFollowUpSubtypeHandlers.ContainsKey(subtype);
         }
 
         internal static bool IsRecoveredOutboundSubtype(byte subtype)
@@ -126,10 +142,13 @@ namespace HaCreator.MapSimulator.Interaction
             string inboundSubtypes = string.Join(
                 ", ",
                 TradingRoomInboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            string followUpSubtypes = string.Join(
+                ", ",
+                TradingRoomOnTradeFollowUpSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
             string outboundSubtypes = string.Join(
                 ", ",
                 TradingRoomOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
-            return $"Recovered TradingRoom packet table: inbound opcode {inboundSet} to CTradingRoomDlg::OnPacket ({inboundSubtypes}); outbound opcode {outboundSet} ({outboundSubtypes}).";
+            return $"Recovered TradingRoom packet table: inbound opcode {inboundSet} to CTradingRoomDlg::OnPacket ({inboundSubtypes}); OnTrade follow-up ({followUpSubtypes}); outbound opcode {outboundSet} ({outboundSubtypes}).";
         }
 
         internal static bool TryResolveRecoveredButtonHandler(string buttonName, out int controlId, out string handler)
@@ -256,6 +275,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (TradingRoomInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string handlerName))
             {
                 branchSummary = $"{handlerName} (subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)})";
+                return true;
+            }
+
+            if (TradingRoomOnTradeFollowUpSubtypeHandlers.TryGetValue(inboundSubtype, out handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)}, not a direct CTradingRoomDlg::OnPacket switch arm)";
                 return true;
             }
 

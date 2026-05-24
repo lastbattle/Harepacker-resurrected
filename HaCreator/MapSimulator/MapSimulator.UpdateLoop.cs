@@ -512,18 +512,27 @@ namespace HaCreator.MapSimulator
                     !monsterCarnivalSubDialogMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
-                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
-                    _specialFieldRuntime.Minigames.MonsterCarnival.HandleSeason2UiWindowListMouseClick(
-                        new Point(newMouseState.X, newMouseState.Y),
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true)
+                {
+                    Point monsterCarnivalListClickPoint = new(newMouseState.X, newMouseState.Y);
+                    bool isMonsterCarnivalListDoubleClick = IsMonsterCarnivalListDoubleClick(
+                        monsterCarnivalListClickPoint,
+                        currTickCount);
+
+                    if (_specialFieldRuntime.Minigames.MonsterCarnival.HandleSeason2UiWindowListMouseClick(
+                        monsterCarnivalListClickPoint,
                         _renderParams.RenderWidth,
                         currTickCount,
-                        isDoubleClick: false,
+                        isMonsterCarnivalListDoubleClick,
                         out string monsterCarnivalUiWindowListMouseMessage))
-                {
-                    monsterCarnivalUiWindowListMouseConsumed = true;
-                    if (!string.IsNullOrWhiteSpace(monsterCarnivalUiWindowListMouseMessage))
                     {
-                        _chat.AddMessage(monsterCarnivalUiWindowListMouseMessage, new Color(255, 228, 151), currTickCount);
+                        monsterCarnivalUiWindowListMouseConsumed = true;
+                        _lastMonsterCarnivalListClickPoint = monsterCarnivalListClickPoint;
+                        _lastMonsterCarnivalListClickTime = currTickCount;
+                        if (!string.IsNullOrWhiteSpace(monsterCarnivalUiWindowListMouseMessage))
+                        {
+                            _chat.AddMessage(monsterCarnivalUiWindowListMouseMessage, new Color(255, 228, 151), currTickCount);
+                        }
                     }
                 }
 
@@ -1368,7 +1377,35 @@ namespace HaCreator.MapSimulator
             base.Update(gameTime);
 
         }
+        internal static bool IsMonsterCarnivalListDoubleClick(
+            Point currentClickPoint,
+            int currentTickCount,
+            Point? previousClickPoint,
+            int previousClickTickCount)
+        {
+            if (!previousClickPoint.HasValue || previousClickTickCount == int.MinValue)
+            {
+                return false;
+            }
 
+            if (unchecked(currentTickCount - previousClickTickCount) > DOUBLE_CLICK_TIME_MS)
+            {
+                return false;
+            }
+
+            Point previous = previousClickPoint.Value;
+            return Math.Abs(currentClickPoint.X - previous.X) <= 3
+                && Math.Abs(currentClickPoint.Y - previous.Y) <= 3;
+        }
+
+        private bool IsMonsterCarnivalListDoubleClick(Point currentClickPoint, int currentTickCount)
+        {
+            return IsMonsterCarnivalListDoubleClick(
+                currentClickPoint,
+                currentTickCount,
+                _lastMonsterCarnivalListClickPoint,
+                _lastMonsterCarnivalListClickTime);
+        }
 
 
 

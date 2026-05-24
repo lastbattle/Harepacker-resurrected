@@ -2142,6 +2142,12 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(6, "fly", 1, 150, move: new Point(52, -6), rotationDegrees: 90),
                     CreateIndexedPiece(7, "fly", 1, 10000, move: new Point(52, -5), rotationDegrees: 90)
                 },
+                ["swingT2Giant"] = CreateIndexedPieces(
+                    ("alert", 0, -120),
+                    ("stabO2", 0, -120),
+                    ("stabO2", 0, 240),
+                    ("stabO2", 1, 180),
+                    ("stabO2", 1, 240)),
                 ["iceAttack1"] = CreateIndexedPieces(
                     ("alert", 0, -210),
                     ("alert", 1, 180),

@@ -1025,7 +1025,84 @@ namespace HaCreator.MapSimulator.Animation
             IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleIdsByLayerCode,
             IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleRefCountsByLayerCode,
             IReadOnlyDictionary<int, int> SimulatedRepeatAnimationStateIdsByLayerCode,
+            IReadOnlyList<SecondaryMotionBlurUpdateOperation> SimulatedUpdateOperations,
             IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations);
+
+        internal enum SecondaryMotionBlurUpdateOperationKind
+        {
+            AddRefSourceLayer,
+            GetSourceCanvasSlot0,
+            CreateBlurLayer,
+            PutOverlay,
+            CopyOrigin,
+            PutZOffsetMinus10,
+            PutFlip,
+            SetInitialAlpha,
+            FadeAlphaToZero,
+            StopAnimation,
+            InsertSourceCanvas,
+            RegisterRepeatAnimation,
+            ReleaseBlurLayerLocal,
+            ReleaseSourceLayerLocal
+        }
+
+        internal readonly record struct SecondaryMotionBlurUpdateOperation(
+            SecondaryMotionBlurUpdateOperationKind Kind,
+            int LayerCode,
+            int SimulatedSourceLayerHandleId,
+            int SimulatedSnapshotLayerHandleId,
+            int SimulatedRepeatAnimationStateId,
+            int SourceCanvasSlot,
+            byte Alpha,
+            int FadeEndTime,
+            int ZOffset,
+            int OperationIndex = -1,
+            int ClientLayerCopyIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurUpdateOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurUpdateOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurUpdateOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurUpdateOperation>();
+                foreach (SecondaryMotionBlurUpdateOperation operation in operations)
+                {
+                    ordered.Add(operation with
+                    {
+                        OperationIndex = ordered.Count,
+                        ClientLayerCopyIndex = SecondaryMotionBlurLayerReferenceOperation.ResolveClientLayerCopyIndex(operation.LayerCode)
+                    });
+                }
+
+                return ordered;
+            }
+
+            public static SecondaryMotionBlurUpdateOperation Create(
+                SecondaryMotionBlurUpdateOperationKind kind,
+                int layerCode,
+                int sourceLayerHandleId,
+                int snapshotLayerHandleId,
+                int repeatAnimationStateId,
+                byte alpha = 0,
+                int fadeEndTime = 0,
+                int sourceCanvasSlot = 0,
+                int zOffset = 0)
+            {
+                return new SecondaryMotionBlurUpdateOperation(
+                    kind,
+                    layerCode,
+                    Math.Max(0, sourceLayerHandleId),
+                    Math.Max(0, snapshotLayerHandleId),
+                    Math.Max(0, repeatAnimationStateId),
+                    Math.Max(0, sourceCanvasSlot),
+                    alpha,
+                    fadeEndTime,
+                    zOffset);
+            }
+        }
 
         internal enum SecondaryMotionBlurLayerReferenceOperationKind
         {
@@ -1172,7 +1249,7 @@ namespace HaCreator.MapSimulator.Animation
                 return ordered;
             }
 
-            private static int ResolveClientLayerCopyIndex(int layerCode)
+            internal static int ResolveClientLayerCopyIndex(int layerCode)
             {
                 if (layerCode < 0)
                 {
@@ -2168,6 +2245,27 @@ namespace HaCreator.MapSimulator.Animation
                 initialElapsedMs);
         }
 
+        internal void AddPacketOwnedTransientAreaVisual(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTransientAreaVisual,
+                zOrder,
+                initialElapsedMs);
+        }
+
         internal bool AddFullChargedAngerGauge(
             List<IDXObject> frames,
             string sourceUol,
@@ -3150,8 +3248,41 @@ namespace HaCreator.MapSimulator.Animation
 
             FollowAnimation anim = new FollowAnimation();
             anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options, _random);
+            anim.ApplyRecoveredNativeItemEffectReplacement(
+                ResolveRecoveredNativePreviousFollowItemEffectOwner(anim.RecoveredNativeItemEffectOwnerState));
             _followAnimations.Add(anim);
             return anim.Id;
+        }
+
+        private FollowItemEffectRecoveredNativeOwnerState ResolveRecoveredNativePreviousFollowItemEffectOwner(
+            FollowItemEffectRecoveredNativeOwnerState nextOwnerState)
+        {
+            if (nextOwnerState.ItemId <= 0 || nextOwnerState.ClientEquipIndex < 0)
+            {
+                return default;
+            }
+
+            for (int i = _followAnimations.Count - 1; i >= 0; i--)
+            {
+                FollowItemEffectRecoveredNativeOwnerState previousOwnerState =
+                    _followAnimations[i].RecoveredNativeItemEffectOwnerState;
+                if (previousOwnerState.ItemId <= 0
+                    || previousOwnerState.IsReleased
+                    || previousOwnerState.ClientEquipIndex != nextOwnerState.ClientEquipIndex)
+                {
+                    continue;
+                }
+
+                if (previousOwnerState.ItemId == nextOwnerState.ItemId)
+                {
+                    return default;
+                }
+
+                _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
+                return _followAnimations[i].RecoveredNativeItemEffectOwnerState;
+            }
+
+            return default;
         }
 
         /// <summary>
@@ -3379,6 +3510,34 @@ namespace HaCreator.MapSimulator.Animation
                 zOrder,
                 spawnProbability,
                 AnimationAreaAnimationOwner.PacketOwnedReservedArea,
+                sourceUol);
+        }
+
+        internal int RegisterPacketOwnedTransientAreaAnimation(
+            List<IDXObject> frames,
+            string sourceUol,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null,
+            int zOrder = 1,
+            float? spawnProbability = null)
+        {
+            return RegisterAreaAnimation(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.PacketOwnedTransientArea,
                 sourceUol);
         }
 
@@ -4844,6 +5003,13 @@ namespace HaCreator.MapSimulator.Animation
                 frames,
                 snapshotLayerHandleIds);
             IReadOnlyDictionary<int, int> repeatAnimationStateIds = ResolveTaggedRepeatAnimationStateIds(frames);
+            IReadOnlyList<AnimationEffects.SecondaryMotionBlurUpdateOperation> updateOperations =
+                CaptureSnapshotUpdateOperations(
+                    startTime,
+                    frames,
+                    layerHandleIds,
+                    snapshotLayerHandleIds,
+                    repeatAnimationStateIds);
             IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> layerReferenceOperations =
                 (_state ?? new AnimationEffects.SecondaryMotionBlurAnimationState()).CaptureSnapshotLayerReferences(
                     layerHandleIds,
@@ -4862,7 +5028,218 @@ namespace HaCreator.MapSimulator.Animation
                 snapshotLayerHandleIds,
                 snapshotLayerHandleRefCounts,
                 repeatAnimationStateIds,
+                updateOperations,
                 layerReferenceOperations);
+        }
+
+        private IReadOnlyList<AnimationEffects.SecondaryMotionBlurUpdateOperation> CaptureSnapshotUpdateOperations(
+            int startTime,
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> layerHandleIds,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds,
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds)
+        {
+            var operations = new List<AnimationEffects.SecondaryMotionBlurUpdateOperation>();
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                foreach ((int layerCode, int sourceLayerHandleId) in EnumerateSnapshotUpdateLayerHandles(layerHandleIds))
+                {
+                    AddSnapshotUpdateOperations(
+                        operations,
+                        layerCode,
+                        sourceLayerHandleId,
+                        snapshotLayerHandleIds,
+                        repeatAnimationStateIds,
+                        baseAlpha: _alpha,
+                        startTime);
+                }
+
+                return AnimationEffects.SecondaryMotionBlurUpdateOperation.NormalizeTraceOrder(operations);
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedLayerHandleId <= 0)
+                {
+                    continue;
+                }
+
+                AddSnapshotUpdateOperations(
+                    operations,
+                    tag.SourceLayerCode,
+                    tag.SimulatedLayerHandleId,
+                    snapshotLayerHandleIds,
+                    repeatAnimationStateIds,
+                    AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(frames[i], _alpha),
+                    startTime);
+            }
+
+            return AnimationEffects.SecondaryMotionBlurUpdateOperation.NormalizeTraceOrder(operations);
+        }
+
+        private void AddSnapshotUpdateOperations(
+            List<AnimationEffects.SecondaryMotionBlurUpdateOperation> operations,
+            int layerCode,
+            int sourceLayerHandleId,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds,
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds,
+            byte baseAlpha,
+            int startTime)
+        {
+            if (operations == null || layerCode < 0 || sourceLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            int snapshotLayerHandleId = snapshotLayerHandleIds != null
+                && snapshotLayerHandleIds.TryGetValue(layerCode, out int resolvedSnapshotLayerHandleId)
+                ? resolvedSnapshotLayerHandleId
+                : 0;
+            int repeatAnimationStateId = repeatAnimationStateIds != null
+                && repeatAnimationStateIds.TryGetValue(layerCode, out int resolvedRepeatAnimationStateId)
+                ? resolvedRepeatAnimationStateId
+                : 0;
+            int fadeEndTime = startTime + ResolveSnapshotRetentionMsForTrace();
+
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.AddRefSourceLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.GetSourceCanvasSlot0,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                sourceCanvasSlot: 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.CreateBlurLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutOverlay,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.CopyOrigin,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutZOffsetMinus10,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                zOffset: -10));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutFlip,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.SetInitialAlpha,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                alpha: baseAlpha));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.FadeAlphaToZero,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                alpha: 0,
+                fadeEndTime: fadeEndTime));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.StopAnimation,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.InsertSourceCanvas,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                sourceCanvasSlot: 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RegisterRepeatAnimation,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseBlurLayerLocal,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseSourceLayerLocal,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+        }
+
+        private int ResolveSnapshotRetentionMsForTrace()
+        {
+            if (_snapshotRetentionMs > 0)
+            {
+                return _snapshotRetentionMs;
+            }
+
+            return ResolveFramesDuration(_fallbackFrames);
+        }
+
+        private static IEnumerable<KeyValuePair<int, int>> EnumerateSnapshotUpdateLayerHandles(
+            IReadOnlyDictionary<int, int> layerHandleIds)
+        {
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
+            {
+                yield break;
+            }
+
+            var emitted = new HashSet<int>();
+            int[] clientLayerCopyOrder =
+            {
+                (int)AvatarRenderLayer.Face,
+                (int)AvatarRenderLayer.OverFace,
+                (int)AvatarRenderLayer.UnderFace,
+                (int)AvatarRenderLayer.OverCharacter,
+                (int)AvatarRenderLayer.UnderCharacter
+            };
+
+            for (int i = 0; i < clientLayerCopyOrder.Length; i++)
+            {
+                int layerCode = clientLayerCopyOrder[i];
+                if (layerHandleIds.TryGetValue(layerCode, out int handleId))
+                {
+                    emitted.Add(layerCode);
+                    yield return new KeyValuePair<int, int>(layerCode, handleId);
+                }
+            }
+
+            foreach ((int layerCode, int handleId) in layerHandleIds.OrderBy(static entry => entry.Key))
+            {
+                if (emitted.Add(layerCode))
+                {
+                    yield return new KeyValuePair<int, int>(layerCode, handleId);
+                }
+            }
         }
 
         private static IReadOnlyDictionary<int, int> ResolveSnapshotLayerHandleIds(
@@ -5163,7 +5540,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedMobSkillBomb = 30,
         PacketOwnedMobSkillHit = 31,
         MobOwnedAttackEffect = 32,
-        MobOwnedAttackHit = 33
+        MobOwnedAttackHit = 33,
+        PacketOwnedTransientAreaVisual = 34
     }
 
     internal enum AnimationFallingOwner
@@ -5176,7 +5554,8 @@ namespace HaCreator.MapSimulator.Animation
     {
         Generic = 0,
         PacketOwnedExplosion = 1,
-        PacketOwnedReservedArea = 2
+        PacketOwnedReservedArea = 2,
+        PacketOwnedTransientArea = 3
     }
 
     internal enum AnimationOneTimePlaybackMode
@@ -5974,6 +6353,20 @@ namespace HaCreator.MapSimulator.Animation
         int NextReductionOffset);
 
     /// <summary>
+    /// Recovered text-formatting state owned by CAnimationDisplayer::Effect_HP.
+    /// Numeric damage passes through StringPool id 0x1A15 before digit composition;
+    /// special-result sprites reuse the same owner trace but bypass numeric formatting.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpTextFormatTrace(
+        int StringPoolId,
+        string CompositeFormat,
+        bool UsedResolvedStringPoolText,
+        int MaxPlaceholderCount,
+        int RawDamageValue,
+        string FormattedText,
+        bool IsSpecialText);
+
+    /// <summary>
     /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredOwnerTrace(
@@ -5995,7 +6388,8 @@ namespace HaCreator.MapSimulator.Animation
         int OverlaySourceWidth,
         int OverlaySourceHeight,
         int OverlayLayerPositionOffsetY,
-        CanvasLayerRecoveredEffectHpSourceCleanupStep[] SourceCleanupSteps);
+        CanvasLayerRecoveredEffectHpSourceCleanupStep[] SourceCleanupSteps,
+        CanvasLayerRecoveredEffectHpTextFormatTrace TextFormatTrace);
 
     internal enum CanvasLayerRecoveredEffectHpSourceCleanupKind
     {
@@ -8810,6 +9204,19 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeItemEffectPerVariantTrace = BuildRecoveredNativeItemEffectPerVariantTrace(RecoveredNativeItemEffectOwnerState);
         }
 
+        internal void ApplyRecoveredNativeItemEffectReplacement(
+            FollowItemEffectRecoveredNativeOwnerState previousOwnerState)
+        {
+            FollowItemEffectRecoveredNativeOperation[] replacementTrace =
+                BuildRecoveredNativeItemEffectReplacementTrace(
+                    previousOwnerState,
+                    RecoveredNativeItemEffectOwnerState);
+            if (replacementTrace.Length > 0)
+            {
+                RecoveredNativeItemEffectTrace = replacementTrace;
+            }
+        }
+
         internal static FollowItemEffectRecoveredNativeOwnerState BuildRecoveredNativeItemEffectOwnerState(
             int itemId,
             int clientEquipIndex,
@@ -10026,6 +10433,17 @@ namespace HaCreator.MapSimulator.Animation
                             x,
                             y,
                             fallbackFlip: false,
+                            scheduledUpdateTime,
+                            _zOrder);
+                    }
+                    else if (Owner == AnimationAreaAnimationOwner.PacketOwnedTransientArea
+                             && !string.IsNullOrWhiteSpace(SourceUol))
+                    {
+                        effects.AddPacketOwnedTransientAreaVisual(
+                            _frames,
+                            SourceUol,
+                            x,
+                            y,
                             scheduledUpdateTime,
                             _zOrder);
                     }

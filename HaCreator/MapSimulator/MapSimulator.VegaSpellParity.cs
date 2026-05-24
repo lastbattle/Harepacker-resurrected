@@ -2386,8 +2386,10 @@ namespace HaCreator.MapSimulator
                             _ = reader.ReadInt32();
                             break;
                         default:
-                            rejectReason = $"Inventory-operation payload used unsupported Vega operation mode {operationMode}.";
-                            return false;
+                            // CWvsContext::OnInventoryOperation falls through unknown modes after
+                            // consuming the shared mode/type/position header, so keep scanning for
+                            // the Vega-owned equip add entry instead of rejecting the packet.
+                            break;
                     }
                 }
 

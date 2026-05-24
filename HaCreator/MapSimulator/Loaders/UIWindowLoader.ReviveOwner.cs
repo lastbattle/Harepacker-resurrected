@@ -52,6 +52,11 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D progressBar = LoadCanvasTexture(utilDialogProperty, "bar", device);
             Texture2D inactiveDot = LoadCanvasTexture(utilDialogProperty, "dot0", device);
             Texture2D activeDot = LoadCanvasTexture(utilDialogProperty, "dot1", device);
+            ReviveOwnerNativeAssetCoverage nativeAssetCoverage = ResolveReviveOwnerNativeAssetCoverage(
+                uiWindowImage,
+                uiWindow2Image,
+                basicImage,
+                utilDialogProperty);
             Texture2D defaultBranchBackground = LoadReviveOwnerBranchBackground(
                 uiWindowImage,
                 uiWindow2Image,
@@ -104,13 +109,82 @@ namespace HaCreator.MapSimulator.Loaders
                 defaultBranchBackground,
                 premiumSafetyCharmBackground,
                 upgradeTombBackground,
-                soulStoneBackground)
+                soulStoneBackground,
+                nativeAssetCoverage)
             {
                 Position = position
             };
 
             window.InitializeButtons(premiumButton, declineButton, defaultButton, closeButton);
             return window;
+        }
+
+        internal static ReviveOwnerNativeAssetCoverage ResolveReviveOwnerNativeAssetCoverage(
+            WzImage uiWindowImage,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzSubProperty utilDialogProperty)
+        {
+            return new ReviveOwnerNativeAssetCoverage(
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientPremiumSafetyCharmBackgroundUolSymbol),
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientDefaultBackgroundUolSymbol),
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientUpgradeTombBackgroundUolSymbol),
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientSoulStoneBackgroundUolSymbol),
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientYesButtonUolSymbol),
+                HasReviveOwnerCanvas(
+                    uiWindowImage,
+                    uiWindow2Image,
+                    basicImage,
+                    utilDialogProperty,
+                    ReviveOwnerRuntime.ClientNoButtonUolSymbol),
+                HasReviveOwnerCanvas(utilDialogProperty, "notice"),
+                HasReviveOwnerCanvas(utilDialogProperty, "line"),
+                HasReviveOwnerCanvas(utilDialogProperty, "bar"),
+                HasReviveOwnerCanvas(utilDialogProperty, "dot0"),
+                HasReviveOwnerCanvas(utilDialogProperty, "dot1"));
+        }
+
+        private static bool HasReviveOwnerCanvas(
+            WzImage uiWindowImage,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzSubProperty utilDialogProperty,
+            string propertyName)
+        {
+            return HasReviveOwnerCanvas(utilDialogProperty, propertyName)
+                || HasReviveOwnerCanvas(uiWindow2Image, propertyName)
+                || HasReviveOwnerCanvas(basicImage, propertyName)
+                || HasReviveOwnerCanvas(uiWindowImage, propertyName);
+        }
+
+        private static bool HasReviveOwnerCanvas(WzObject owner, string propertyName)
+        {
+            return TryResolveReviveOwnerCanvasProperty(owner, propertyName, out _);
         }
 
         private static Texture2D LoadReviveOwnerBranchBackground(

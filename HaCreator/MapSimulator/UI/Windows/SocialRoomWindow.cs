@@ -1438,7 +1438,7 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawText(sprite, "Packet Owner", new Vector2(panel.X + 10, panel.Y + 8), HeaderColor, 0.62f);
             float textY = panel.Y + 28;
-            DrawWrapped(sprite, "CTradingRoomDlg::OnPacket owns 15 put-item, 16 put-money, 17 trade, and 21 exceed-limit while subtype 20 stays on the OnTrade CRC branch.", panel.X + 10, ref textY, panel.Width - 20, MutedColor, 0.42f);
+            DrawWrapped(sprite, "CTradingRoomDlg::OnPacket owns direct subtypes 15 put-item, 16 put-money, 17 trade, and 21 exceed-limit; subtype 20 stays on the OnTrade CRC follow-up branch.", panel.X + 10, ref textY, panel.Width - 20, MutedColor, 0.42f);
             textY += 4f;
             DrawWrapped(sprite, _runtime.StatusMessage, panel.X + 10, ref textY, panel.Width - 20, AccentColor, 0.44f);
         }

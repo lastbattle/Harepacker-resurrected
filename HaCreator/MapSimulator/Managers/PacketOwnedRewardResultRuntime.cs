@@ -19,15 +19,19 @@ namespace HaCreator.MapSimulator.Managers
         public int Rank { get; init; }
         public string BackgroundKey { get; init; } = "Back1";
         public string DialogResourcePath { get; init; } = string.Empty;
+        public int NativeDialogAllocationSize { get; init; }
+        public bool UsesClientModalDialog { get; init; }
         public int DialogCreateFlag { get; init; }
         public int DialogCreateX { get; init; }
         public int DialogCreateY { get; init; }
         public int DialogCreateMulti { get; init; }
         public string OkButtonResourcePath { get; init; } = string.Empty;
+        public int OkButtonNativeAllocationSize { get; init; }
         public int OkButtonControlId { get; init; }
         public bool OkButtonAcceptsFocus { get; init; }
         public string DescriptionText { get; init; } = string.Empty;
         public string AmountText { get; init; } = string.Empty;
+        public bool AmountTextUsesCommaFormatting { get; init; }
         public string ChatLineText { get; init; } = string.Empty;
         public int ChatMessageType { get; init; }
         public int ChatChannelId { get; init; } = -1;
@@ -41,6 +45,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int RandomMesoBagStatusBarChatType = 12;
         public const int RandomMesoBagStatusBarChannelId = -1;
         public const int RandomMesoBagSoundVolume = 100;
+        public const int RandomMesoBagNativeDialogAllocationSize = 0xA4;
+        public const int RandomMesoBagOkButtonNativeAllocationSize = 0xADC;
         public const int RandomMesoBagCreateDlgFlag = 1;
         public const int RandomMesoBagCreateDlgX = 0;
         public const int RandomMesoBagCreateDlgY = 0;
@@ -273,15 +279,19 @@ namespace HaCreator.MapSimulator.Managers
                 Rank = normalizedRank,
                 BackgroundKey = ResolveRandomMesoBagBackgroundKey(normalizedRank, dialogResourcePath),
                 DialogResourcePath = dialogResourcePath,
+                NativeDialogAllocationSize = RandomMesoBagNativeDialogAllocationSize,
+                UsesClientModalDialog = true,
                 DialogCreateFlag = RandomMesoBagCreateDlgFlag,
                 DialogCreateX = RandomMesoBagCreateDlgX,
                 DialogCreateY = RandomMesoBagCreateDlgY,
                 DialogCreateMulti = RandomMesoBagCreateDlgMulti,
                 OkButtonResourcePath = GetRandomMesoBagOkButtonResourcePath(),
+                OkButtonNativeAllocationSize = RandomMesoBagOkButtonNativeAllocationSize,
                 OkButtonControlId = RandomMesoBagOkButtonControlId,
                 OkButtonAcceptsFocus = RandomMesoBagOkButtonAcceptsFocus,
                 DescriptionText = ResolveRandomMesoBagDescription(normalizedRank),
                 AmountText = FormatRandomMesoBagDialogAmountText(mesoAmount),
+                AmountTextUsesCommaFormatting = true,
                 ChatLineText = FormatRandomMesoBagChatLineText(mesoAmount),
                 ChatMessageType = RandomMesoBagStatusBarChatType,
                 ChatChannelId = RandomMesoBagStatusBarChannelId,

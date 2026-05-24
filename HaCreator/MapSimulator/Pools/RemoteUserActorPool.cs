@@ -723,7 +723,8 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation OverlayAnimation { get; init; }
             public SkillAnimation UnderFaceAnimation { get; init; }
             public bool? FacingRightOverride { get; init; }
-            public int AnimationStartTime { get; init; }
+            public int AnimationStartTime { get; set; }
+            public string ClientLayerOwnerName { get; init; }
         }
 
         public sealed class RemoteTransientItemEffectState
@@ -1343,6 +1344,7 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation OverlayAnimation { get; init; }
             public SkillAnimation UnderFaceAnimation { get; init; }
             public bool? FacingRightOverride { get; init; }
+            public string ClientLayerOwnerName { get; init; }
         }
 
         internal readonly record struct PortableChairPairParticipant(
@@ -2554,7 +2556,8 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation underFaceAnimation,
             int currentTime,
             out string message,
-            bool? facingRightOverride = null)
+            bool? facingRightOverride = null,
+            string clientLayerOwnerName = null)
         {
             message = null;
             if (registrationKey <= 0 || (overlayAnimation == null && underFaceAnimation == null))
@@ -2569,7 +2572,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime, facingRightOverride);
+            ApplyTransientSkillUseAvatarEffect(
+                actor,
+                registrationKey,
+                overlayAnimation,
+                underFaceAnimation,
+                currentTime,
+                facingRightOverride,
+                clientLayerOwnerName);
             return true;
         }
 
@@ -2619,7 +2629,8 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation underFaceAnimation,
             int currentTime,
             out string message,
-            bool? facingRightOverride = null)
+            bool? facingRightOverride = null,
+            string clientLayerOwnerName = null)
         {
             message = null;
             if (characterId <= 0)
@@ -2636,7 +2647,14 @@ namespace HaCreator.MapSimulator.Pools
 
             if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
             {
-                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime, facingRightOverride);
+                ApplyTransientSkillUseAvatarEffect(
+                    actor,
+                    registrationKey,
+                    overlayAnimation,
+                    underFaceAnimation,
+                    currentTime,
+                    facingRightOverride,
+                    clientLayerOwnerName);
                 return true;
             }
 
@@ -2652,7 +2670,8 @@ namespace HaCreator.MapSimulator.Pools
                 RegistrationKey = registrationKey,
                 OverlayAnimation = overlayAnimation,
                 UnderFaceAnimation = underFaceAnimation,
-                FacingRightOverride = facingRightOverride
+                FacingRightOverride = facingRightOverride,
+                ClientLayerOwnerName = clientLayerOwnerName
             });
             message = $"Queued transient skill-use avatar effect for remote character {characterId}.";
             return true;
@@ -2674,23 +2693,36 @@ namespace HaCreator.MapSimulator.Pools
                 out message);
         }
 
-        private static void ApplyTransientSkillUseAvatarEffect(
+        private void ApplyTransientSkillUseAvatarEffect(
             RemoteUserActor actor,
             int registrationKey,
             SkillAnimation overlayAnimation,
             SkillAnimation underFaceAnimation,
             int currentTime,
-            bool? facingRightOverride = null)
+            bool? facingRightOverride = null,
+            string clientLayerOwnerName = null)
         {
             actor.TransientSkillUseAvatarEffects.RemoveAll(effect => effect?.RegistrationKey == registrationKey);
-            actor.TransientSkillUseAvatarEffects.Add(new RemoteTransientSkillUseAvatarEffectState
+            var state = new RemoteTransientSkillUseAvatarEffectState
             {
                 RegistrationKey = registrationKey,
                 OverlayAnimation = overlayAnimation,
                 UnderFaceAnimation = underFaceAnimation,
                 FacingRightOverride = facingRightOverride,
-                AnimationStartTime = currentTime
-            });
+                AnimationStartTime = currentTime,
+                ClientLayerOwnerName = clientLayerOwnerName
+            };
+            if (TryRestoreRemoteTransientSkillUseAvatarEffectOwnerCounter(
+                    actor,
+                    state,
+                    currentTime,
+                    out int restoredAnimationStartTime))
+            {
+                state.AnimationStartTime = restoredAnimationStartTime;
+            }
+
+            actor.TransientSkillUseAvatarEffects.Add(state);
+            StoreRemoteTransientSkillUseAvatarEffectOwnerCounter(actor, state, currentTime);
         }
 
         private void ApplyPendingTransientSkillUseAvatarEffects(RemoteUserActor actor, int currentTime)
@@ -2717,10 +2749,91 @@ namespace HaCreator.MapSimulator.Pools
                     pendingEffect.OverlayAnimation,
                     pendingEffect.UnderFaceAnimation,
                     currentTime,
-                    pendingEffect.FacingRightOverride);
+                    pendingEffect.FacingRightOverride,
+                    pendingEffect.ClientLayerOwnerName);
             }
 
             _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(actor.CharacterId);
+        }
+
+        private bool TryRestoreRemoteTransientSkillUseAvatarEffectOwnerCounter(
+            RemoteUserActor actor,
+            RemoteTransientSkillUseAvatarEffectState state,
+            int currentTime,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            if (actor == null
+                || state == null
+                || string.IsNullOrWhiteSpace(state.ClientLayerOwnerName)
+                || !TryResolveRemoteTransientSkillUseAvatarEffectOwnerCounterContext(
+                    actor,
+                    state,
+                    out string actionName,
+                    out bool facingRight))
+            {
+                return false;
+            }
+
+            if (!TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    state.ClientLayerOwnerName,
+                    state.RegistrationKey,
+                    actionName,
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            animationStartTime = currentTime - Math.Max(0, animationElapsedMs);
+            return true;
+        }
+
+        private void StoreRemoteTransientSkillUseAvatarEffectOwnerCounter(
+            RemoteUserActor actor,
+            RemoteTransientSkillUseAvatarEffectState state,
+            int currentTime)
+        {
+            if (actor == null
+                || state == null
+                || string.IsNullOrWhiteSpace(state.ClientLayerOwnerName)
+                || !TryResolveRemoteTransientSkillUseAvatarEffectOwnerCounterContext(
+                    actor,
+                    state,
+                    out string actionName,
+                    out bool facingRight))
+            {
+                return;
+            }
+
+            StoreRemoteAuxiliaryLayerOwnerCounter(
+                actor.CharacterId,
+                state.ClientLayerOwnerName,
+                state.RegistrationKey,
+                actionName,
+                facingRight,
+                Math.Max(0, currentTime - state.AnimationStartTime),
+                currentTime);
+        }
+
+        private static bool TryResolveRemoteTransientSkillUseAvatarEffectOwnerCounterContext(
+            RemoteUserActor actor,
+            RemoteTransientSkillUseAvatarEffectState state,
+            out string actionName,
+            out bool facingRight)
+        {
+            actionName = null;
+            facingRight = state?.FacingRightOverride ?? actor?.FacingRight ?? true;
+            if (state == null
+                || (state.OverlayAnimation?.Frames?.Count ?? 0) <= 0
+                   && (state.UnderFaceAnimation?.Frames?.Count ?? 0) <= 0)
+            {
+                return false;
+            }
+
+            actionName = $"skillUse:{Math.Max(0, state.RegistrationKey)}";
+            return true;
         }
 
         public bool TryApplyMoveAction(int characterId, byte moveAction, out string message)
@@ -3518,6 +3631,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, currentTime, 10, 0);
+                RefreshRemoteVisibleLayerAdmissionsAfterAvatarStateChangeForParity(actor);
             }
 
             if (packet.Speed.HasValue && actor.Build != null)
@@ -10486,6 +10600,21 @@ namespace HaCreator.MapSimulator.Pools
                 actor.HasMorphTemplate));
         }
 
+        private static void RefreshRemoteVisibleLayerAdmissionsAfterAvatarStateChangeForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            ReleaseRemoteDragonCompanionIfOwnerUnavailableForParity(actor);
+            ReleaseRemoteDragonHudOverlayIfOwnerUnavailableForParity(actor);
+            UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
+            UpdateCarryItemEffectLayerAdmissionForParity(actor);
+            UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
+            UpdateRelationshipOverlayLayerAdmissionsForParity(actor);
+        }
+
         private static void ReplaceRemoteActiveEffectItemEffectStateForParity(
             RemoteUserActor actor,
             RemoteActiveEffectItemEffectState replacement)
@@ -14006,6 +14135,11 @@ namespace HaCreator.MapSimulator.Pools
             UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
         }
 
+        internal static void RefreshRemoteVisibleLayerAdmissionsAfterAvatarStateChangeForTesting(RemoteUserActor actor)
+        {
+            RefreshRemoteVisibleLayerAdmissionsAfterAvatarStateChangeForParity(actor);
+        }
+
         internal static void ReplaceRemoteActiveEffectItemEffectStateForTesting(
             RemoteUserActor actor,
             RemoteActiveEffectItemEffectState replacement)
@@ -17090,7 +17224,7 @@ namespace HaCreator.MapSimulator.Pools
             frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, frameTint, flip, null);
         }
 
-        private static void UpdateTransientSkillUseAvatarEffects(RemoteUserActor actor, int currentTime)
+        private void UpdateTransientSkillUseAvatarEffects(RemoteUserActor actor, int currentTime)
         {
             if (actor?.TransientSkillUseAvatarEffects == null || actor.TransientSkillUseAvatarEffects.Count == 0)
             {
@@ -17103,7 +17237,14 @@ namespace HaCreator.MapSimulator.Pools
                 if (state == null || IsTransientSkillUseAvatarEffectExpired(state, currentTime))
                 {
                     actor.TransientSkillUseAvatarEffects.RemoveAt(i);
+                    if (state != null)
+                    {
+                        StoreRemoteTransientSkillUseAvatarEffectOwnerCounter(actor, state, currentTime);
+                    }
+                    continue;
                 }
+
+                StoreRemoteTransientSkillUseAvatarEffectOwnerCounter(actor, state, currentTime);
             }
         }
 

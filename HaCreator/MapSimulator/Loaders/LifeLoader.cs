@@ -1257,7 +1257,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            string normalizedName = NormalizeMobAttackHitSourceFieldName(name);
+            string normalizedName = NormalizeMobAttackHitSourceFieldName(
+                NormalizeMobAttackHitSourceLeafFieldName(name));
             return normalizedName == "source"
                    || normalizedName == "sourceuol"
                    || normalizedName == "sourceuolpath"
@@ -1286,7 +1287,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            string normalizedName = NormalizeMobAttackHitSourceFieldName(name);
+            string normalizedName = NormalizeMobAttackHitSourceFieldName(
+                NormalizeMobAttackHitSourceLeafFieldName(name));
             return normalizedName == "bstr"
                    || normalizedName == "bstrvalue"
                    || normalizedName == "bstrdata"
@@ -1300,6 +1302,40 @@ namespace HaCreator.MapSimulator.Loaders
                    || normalizedName == "bstrt"
                    || normalizedName == "ztlbstrt"
                    || normalizedName == "clientstringstorage";
+        }
+
+        private static string NormalizeMobAttackHitSourceLeafFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            string normalizedName = name.Trim();
+            int suffixStart = -1;
+            for (int i = normalizedName.Length - 1; i >= 0; i--)
+            {
+                char current = normalizedName[i];
+                if (current == '.'
+                    || current == '/'
+                    || current == '\\'
+                    || current == '['
+                    || current == ']'
+                    || current == '('
+                    || current == ')'
+                    || current == '{'
+                    || current == '}'
+                    || current == '<'
+                    || current == '>')
+                {
+                    suffixStart = i + 1;
+                    break;
+                }
+            }
+
+            return suffixStart > 0 && suffixStart < normalizedName.Length
+                ? normalizedName.Substring(suffixStart).Trim()
+                : normalizedName;
         }
 
         private static string NormalizeMobAttackHitSourceFieldName(string name)

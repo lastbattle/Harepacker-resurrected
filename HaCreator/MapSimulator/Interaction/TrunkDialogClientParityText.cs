@@ -14,7 +14,19 @@ namespace HaCreator.MapSimulator.Interaction
             string Text,
             int? AcceptedReturnValue = null,
             int? NoticeStyleFlag = null,
-            string AcceptedReturnLabel = null);
+            string AcceptedReturnLabel = null)
+        {
+            internal string DescribeNativeCallArguments()
+            {
+                if (string.Equals(OwnerCall, "CUtilDlg::YesNo", StringComparison.Ordinal))
+                {
+                    int style = NoticeStyleFlag.GetValueOrDefault(DefaultNoticeStyleFlag);
+                    return $"CUtilDlg::YesNo(text, 0, 0, {style.ToString(CultureInfo.InvariantCulture)}, 0)";
+                }
+
+                return OwnerCall;
+            }
+        }
 
         internal readonly record struct AskItemCountChoreography(
             int StringPoolId,
@@ -312,7 +324,7 @@ namespace HaCreator.MapSimulator.Interaction
             List<string> parts = new(steps.Count);
             foreach (ConfirmationStep step in steps)
             {
-                parts.Add($"{step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}{FormatStepAcceptance(step)} \"{ToInlineText(step.Text)}\"");
+                parts.Add($"{step.DescribeNativeCallArguments()} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}{FormatStepAcceptance(step)} \"{ToInlineText(step.Text)}\"");
             }
 
             return string.Join(" -> ", parts);

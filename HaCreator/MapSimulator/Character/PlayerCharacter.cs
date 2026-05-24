@@ -269,6 +269,7 @@ namespace HaCreator.MapSimulator.Character
             public bool HideOnLadderOrRope { get; init; }
             public bool HideOnRotateAction { get; init; }
             public string ClientLayerOwnerName { get; init; }
+            public int ClientLayerReplayGateMs { get; init; }
             public int AnimationStartTime { get; set; }
             public bool IsFinishing { get; set; }
             public SkillAvatarEffectMode Mode { get; set; }
@@ -454,8 +455,12 @@ namespace HaCreator.MapSimulator.Character
             ReleaseSourceCanvasLocal,
             ClearSourceCanvasIndexZeroVariant,
             ClearInsertCanvasMissingArgumentVariant,
+            GetUnderFaceParentForRecheck,
+            GetHelperLayerParentForRecheck,
             RecheckUnderFaceParent,
+            GetUnderFaceParentForReparent,
             ReparentHelperLayer,
+            ReleaseHelperParentLocal,
             ReleaseSourceLayer
         }
 
@@ -471,7 +476,8 @@ namespace HaCreator.MapSimulator.Character
         {
             SourceLayer,
             SourceCanvasLocal,
-            InsertCanvasResult
+            InsertCanvasResult,
+            HelperParentLocal
         }
 
         public readonly record struct MirrorImageLayerNativeReferenceBalance(
@@ -2964,7 +2970,9 @@ namespace HaCreator.MapSimulator.Character
             int skillId,
             string actionName,
             bool facingRight,
-            out int animationElapsedMs)
+            out int animationElapsedMs,
+            int replayGateMs = 0,
+            int currentTime = int.MinValue)
         {
             animationElapsedMs = 0;
             if (string.IsNullOrWhiteSpace(ownerName)
@@ -2974,8 +2982,24 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(ownerCounter, replayGateMs, currentTime))
+            {
+                return false;
+            }
+
             animationElapsedMs = Math.Max(0, ownerCounter.AnimationElapsedMs);
             return true;
+        }
+
+        private static bool ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(
+            AuxiliaryLayerOwnerCounterState ownerCounter,
+            int replayGateMs,
+            int currentTime)
+        {
+            return replayGateMs > 0
+                   && currentTime != int.MinValue
+                   && ownerCounter?.LastUpdateTimeMs != int.MinValue
+                   && ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, ownerCounter.LastUpdateTimeMs) >= replayGateMs;
         }
 
         private void StoreAuxiliaryLayerOwnerCounter(
@@ -3011,7 +3035,8 @@ namespace HaCreator.MapSimulator.Character
             SkillAvatarEffectPlane plane,
             bool facingRight,
             out int animationStartTime,
-            string explicitOwnerName = null)
+            string explicitOwnerName = null,
+            int replayGateMs = 0)
         {
             animationStartTime = currentTime;
             if (skillId <= 0
@@ -3031,7 +3056,9 @@ namespace HaCreator.MapSimulator.Character
                     skillId,
                     actionName,
                     facingRight,
-                    out int animationElapsedMs))
+                    out int animationElapsedMs,
+                    replayGateMs,
+                    currentTime))
             {
                 return false;
             }
@@ -3121,6 +3148,17 @@ namespace HaCreator.MapSimulator.Character
             int elapsedMs)
         {
             return ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(currentTime, elapsedMs);
+        }
+
+        internal static bool ShouldRestartAuxiliaryLayerOwnerCounterForReplayGateForTesting(
+            int replayGateMs,
+            int currentTime,
+            int lastUpdateTimeMs)
+        {
+            return ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(
+                new AuxiliaryLayerOwnerCounterState { LastUpdateTimeMs = lastUpdateTimeMs },
+                replayGateMs,
+                currentTime);
         }
 
         private static bool TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(
@@ -3275,7 +3313,8 @@ namespace HaCreator.MapSimulator.Character
                        plane,
                        FacingRight,
                        out animationStartTime,
-                        effectState.ClientLayerOwnerName);
+                        effectState.ClientLayerOwnerName,
+                       effectState.ClientLayerReplayGateMs);
         }
 
         private void StorePersistentAuxiliaryAvatarEffectOwnerCounter(SkillAvatarEffectState effectState, int currentTime)
@@ -5121,7 +5160,10 @@ namespace HaCreator.MapSimulator.Character
                 LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect,
                 HideOnLadderOrRope = skill.HideAvatarEffectOnLadderOrRope,
                 HideOnRotateAction = skill.HideAvatarEffectOnRotateAction,
-                ClientLayerOwnerName = skill.ClientAvatarEffectLayerOwnerName
+                ClientLayerOwnerName = skill.ClientAvatarEffectLayerOwnerName,
+                ClientLayerReplayGateMs = skill.UsesEnergyChargeAdditionalLayer
+                    ? Math.Max(0, skill.EnergyChargeAdditionalLayerReplayGateMs)
+                    : 0
             };
 
             return effectState.HasLoopAnimation || effectState.HasFinishAnimation;
@@ -8813,16 +8855,37 @@ namespace HaCreator.MapSimulator.Character
             }
 
             operations.Add(new MirrorImageLayerNativeOperation(
-                MirrorImageLayerNativeOperationKind.RecheckUnderFaceParent,
+                MirrorImageLayerNativeOperationKind.GetUnderFaceParentForRecheck,
                 ++sequence,
                 sourceLayer,
                 underFaceParentObjectId,
                 RelatedObjectId: preparedLayerObjectId,
                 ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.GetHelperLayerParentForRecheck,
+                ++sequence,
+                sourceLayer,
+                lastUnderFaceParentObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: lastUnderFaceParentObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.RecheckUnderFaceParent,
+                ++sequence,
+                sourceLayer,
+                underFaceParentObjectId,
+                RelatedObjectId: lastUnderFaceParentObjectId,
+                ReferenceDelta: 0));
 
             if (underFaceParentObjectId != 0
                 && (lastUnderFaceParentObjectId == 0 || underFaceParentObjectId != lastUnderFaceParentObjectId))
             {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.GetUnderFaceParentForReparent,
+                    ++sequence,
+                    sourceLayer,
+                    underFaceParentObjectId,
+                    RelatedObjectId: preparedLayerObjectId,
+                    ReferenceDelta: 0));
                 operations.Add(new MirrorImageLayerNativeOperation(
                     MirrorImageLayerNativeOperationKind.ReparentHelperLayer,
                     ++sequence,
@@ -8832,6 +8895,13 @@ namespace HaCreator.MapSimulator.Character
                     ReferenceDelta: 0));
             }
 
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ReleaseHelperParentLocal,
+                ++sequence,
+                sourceLayer,
+                lastUnderFaceParentObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: lastUnderFaceParentObjectId != 0 ? -1 : 0));
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.ReleaseSourceLayer,
                 ++sequence,
@@ -8927,6 +8997,14 @@ namespace HaCreator.MapSimulator.Character
                             balances,
                             MirrorImageLayerNativeReferenceKind.InsertCanvasResult,
                             operation.RelatedObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.GetHelperLayerParentForRecheck:
+                    case MirrorImageLayerNativeOperationKind.ReleaseHelperParentLocal:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.HelperParentLocal,
+                            operation.ObjectId,
                             operation.ReferenceDelta);
                         break;
                 }

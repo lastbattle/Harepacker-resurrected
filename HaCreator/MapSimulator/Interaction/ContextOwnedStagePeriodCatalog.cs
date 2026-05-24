@@ -1636,7 +1636,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            foreach (TKey key in enabledKeys ?? Enumerable.Empty<TKey>())
+            foreach (TKey key in EnumerateClientStageUnitEnableOrder(enabledKeys))
             {
                 TKey normalizedKey = ResolveExistingEquivalentKey(cache, key);
                 if (!cache.TryGetValue(normalizedKey, out ContextOwnedStageUnitEnableState state) || state == null)
@@ -1653,6 +1653,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return mutations;
+        }
+
+        private static IEnumerable<TKey> EnumerateClientStageUnitEnableOrder<TKey>(IEnumerable<TKey> enabledKeys)
+        {
+            // CStageSystem::BuildCacheData walks StagePeriodInfo arrays with ZArray::GetPrev.
+            return (enabledKeys ?? Enumerable.Empty<TKey>()).Reverse();
         }
 
         private static HashSet<TKey> CaptureEnabledValues<TKey>(IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)

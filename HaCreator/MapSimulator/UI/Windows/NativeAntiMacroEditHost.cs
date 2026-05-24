@@ -742,7 +742,7 @@ namespace HaCreator.MapSimulator.UI
             if (msg == WmImeComposition && ShouldHandleClientOwnedImeResultComposition(ExtractLowInt32(lParam)))
             {
                 bool appliedResultText = TryApplyClientOwnedImeResultComposition();
-                if (!appliedResultText)
+                if (ShouldClearClientOwnedImeResultCompositionStateAfterResult(appliedResultText))
                 {
                     ClearClientOwnedImeResultCompositionState();
                 }
@@ -1416,6 +1416,14 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldSuppressDesktopEditImeResultFallback(int compositionLParam)
         {
             return ShouldHandleClientOwnedImeResultComposition(compositionLParam);
+        }
+
+        internal static bool ShouldClearClientOwnedImeResultCompositionStateAfterResult(bool appliedResultText)
+        {
+            // `CCtrlEdit::OnIMEResult` clears composition extensions and destroys
+            // `m_pIMECandWnd` before optional insertion, so cleanup applies to
+            // both committed-text and empty-result callbacks.
+            return true;
         }
 
         internal static bool ShouldHandleClientOwnedEditCommand(uint msg)

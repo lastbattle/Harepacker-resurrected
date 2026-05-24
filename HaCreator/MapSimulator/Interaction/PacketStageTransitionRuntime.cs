@@ -5908,10 +5908,7 @@ namespace HaCreator.MapSimulator.Interaction
                     recordByteLength,
                     bytes,
                     recordByteLength,
-                    new Dictionary<string, int>(StringComparer.Ordinal)
-                    {
-                        [nameof(PacketCharacterDataFixedClientRecord.RawBytes)] = recordByteLength
-                    },
+                    BuildFixedClientRecordFieldByteCounts(recordByteLength),
                     i,
                     true,
                     checked((int)(recordStart - sectionStart)),
@@ -5919,6 +5916,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return records;
+        }
+
+        private static IReadOnlyDictionary<string, int> BuildFixedClientRecordFieldByteCounts(int recordByteLength)
+        {
+            Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+            int nativeWordCount = Math.DivRem(recordByteLength, sizeof(int), out int trailingByteCount);
+            for (int i = 0; i < nativeWordCount; i++)
+            {
+                fieldByteCounts[$"RawInt32_{i.ToString(CultureInfo.InvariantCulture)}"] = sizeof(int);
+            }
+
+            if (trailingByteCount > 0)
+            {
+                fieldByteCounts["RawTrailingBytes"] = trailingByteCount;
+            }
+
+            return fieldByteCounts;
         }
 
         private static IReadOnlyList<byte[]> ExtractFixedClientRecordBytes(

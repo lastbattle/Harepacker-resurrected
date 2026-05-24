@@ -475,6 +475,7 @@ namespace HaCreator.MapSimulator.Interaction
             [0x01DF] = "Your opponent denied your request.",
             [0x01E5] = "Time left : %d sec.",
             [0x01E6] = "It's [ %s ]'s turn.",
+            [0x061A] = "UI/UIWindow2.img/Minigame/MemoryGame/card/back%d",
             [0x0645] = "Draw",
             [0x0646] = "Win",
             [0x0647] = "Loose",

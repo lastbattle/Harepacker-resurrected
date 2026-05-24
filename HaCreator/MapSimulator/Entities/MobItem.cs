@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _damagedByMobBlinkExpireTick = int.MinValue;
         private int _damagedByMobLayerStateCounter = -1;
         private bool _damagedByMobBlinkVisible;
+        private string _selectedClientHitAction;
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
@@ -402,7 +403,14 @@ namespace HaCreator.MapSimulator.Entities
                 attackerTargetType,
                 attackerExternalTargetSource);
 
-            if (!originatedFromPlayer && SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
+            if (!died && AI.State == MobAIState.Hit)
+            {
+                _selectedClientHitAction = SelectClientHitAction();
+            }
+
+            if (!died &&
+                !originatedFromPlayer &&
+                SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
             {
                 NotifyDamagedByMobEncounterHit(currentTick);
             }
@@ -424,7 +432,7 @@ namespace HaCreator.MapSimulator.Entities
             _damagedByMobBlinkStartTick = currentTick;
             _damagedByMobBlinkExpireTick = ResolveDamagedByMobBlinkExpireTick(
                 currentTick,
-                ResolveCurrentHitActionDurationMs());
+                ResolveCurrentHitActionDurationMs(_selectedClientHitAction));
             _damagedByMobLayerStateCounter = -1;
             _damagedByMobBlinkVisible = true;
         }
@@ -491,15 +499,20 @@ namespace HaCreator.MapSimulator.Entities
             return unchecked(startTick + duration);
         }
 
-        private int ResolveCurrentHitActionDurationMs()
+        private int ResolveCurrentHitActionDurationMs(string hitAction = null)
         {
-            if (_animationSet == null)
+            return ResolveHitActionDurationMs(_animationSet, hitAction);
+        }
+
+        internal static int ResolveHitActionDurationMs(AnimationSetBase animationSet, string hitAction = null)
+        {
+            if (animationSet == null)
             {
                 return DamagedByMobBlinkDurationMs;
             }
 
-            string hitAction = AnimationKeys.ResolveMobHitAction(_animationSet);
-            List<IDXObject> frames = _animationSet.GetFrames(hitAction);
+            hitAction ??= AnimationKeys.ResolveMobHitAction(animationSet);
+            List<IDXObject> frames = animationSet.GetFrames(hitAction);
             if (frames == null || frames.Count == 0)
             {
                 return DamagedByMobBlinkDurationMs;
@@ -514,6 +527,78 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0
                 ? (int)Math.Min(duration, int.MaxValue)
                 : DamagedByMobBlinkDurationMs;
+        }
+
+        private string SelectClientHitAction()
+        {
+            int hitActionCount = CountClientHitActions(_animationSet);
+            if (hitActionCount <= 0)
+            {
+                return AnimationKeys.ResolveMobHitAction(_animationSet);
+            }
+
+            int selectedIndex = _actionSpeakRandom.Next(hitActionCount);
+            return ResolveClientHitAction(_animationSet, selectedIndex);
+        }
+
+        internal static int CountClientHitActions(AnimationSetBase animationSet)
+        {
+            if (animationSet == null)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            if (animationSet.HasAnimation(AnimationKeys.Hit1))
+            {
+                count++;
+            }
+
+            if (animationSet.HasAnimation(AnimationKeys.Hit2))
+            {
+                count++;
+            }
+
+            if (animationSet.HasAnimation(AnimationKeys.Hit))
+            {
+                count++;
+            }
+
+            return count;
+        }
+
+        internal static string ResolveClientHitAction(AnimationSetBase animationSet, int zeroBasedHitActionIndex)
+        {
+            if (animationSet == null)
+            {
+                return AnimationKeys.Hit1;
+            }
+
+            string[] candidates =
+            {
+                AnimationKeys.Hit1,
+                AnimationKeys.Hit2,
+                AnimationKeys.Hit
+            };
+
+            int ordinal = 0;
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                string candidate = candidates[i];
+                if (!animationSet.HasAnimation(candidate))
+                {
+                    continue;
+                }
+
+                if (ordinal == Math.Max(0, zeroBasedHitActionIndex))
+                {
+                    return candidate;
+                }
+
+                ordinal++;
+            }
+
+            return AnimationKeys.ResolveMobHitAction(animationSet);
         }
 
         private void UpdateDamagedByMobBlinkLayerState(int tickCount)
@@ -1668,10 +1753,9 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            if (!AreActionSpeakConditionsSatisfied(metadata.ConditionGroups, conditionContext))
-            {
-                return;
-            }
+            bool maskSpeechForFailedTemplateConditions =
+                HasActionSpeakConditions(metadata.ConditionGroups) &&
+                !AreActionSpeakConditionsSatisfied(metadata.ConditionGroups, conditionContext);
 
             MobAnimationSet.ActionSpeakVariant selectedVariant = SelectTriggeredActionSpeakVariant(
                 metadata,
@@ -1690,7 +1774,9 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            _activeActionSpeechText = SanitizeActionSpeakMessage(message);
+            _activeActionSpeechText = maskSpeechForFailedTemplateConditions
+                ? MaskActionSpeakMessage(message)
+                : SanitizeActionSpeakMessage(message);
             _activeActionSpeechChatBalloon = selectedVariant.ChatBalloon;
             _activeActionSpeechFloatNotice = selectedVariant.FloatNotice;
             _activeActionSpeechNativeWidth = ResolveActionSpeakNativeWidth(
@@ -1822,11 +1908,6 @@ namespace HaCreator.MapSimulator.Entities
                 return null;
             }
 
-            if (!AreActionSpeakConditionsSatisfied(metadata.ConditionGroups, conditionContext))
-            {
-                return null;
-            }
-
             if (metadata.Variants != null && metadata.Variants.Count > 0)
             {
                 foreach (MobAnimationSet.ActionSpeakVariant variant in EnumerateActionSpeakVariantsByClientHpPhase(metadata.Variants, maxHp))
@@ -1891,6 +1972,23 @@ namespace HaCreator.MapSimulator.Entities
             MobAnimationSet.ActionSpeakConditionContext conditionContext)
         {
             return AreActionSpeakConditionsSatisfied(conditionGroups, conditionContext);
+        }
+
+        internal static bool HasActionSpeakConditionsForTests(
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups)
+        {
+            return HasActionSpeakConditions(conditionGroups);
+        }
+
+        internal static string MaskActionSpeakMessageForTests(string message)
+        {
+            return MaskActionSpeakMessage(message);
+        }
+
+        private static bool HasActionSpeakConditions(
+            IReadOnlyList<MobAnimationSet.ActionSpeakConditionGroup> conditionGroups)
+        {
+            return conditionGroups != null && conditionGroups.Any(group => group?.HasConditions == true);
         }
 
         private static bool AreActionSpeakConditionsSatisfied(
@@ -2065,6 +2163,36 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return message.Replace("\r\n", "\n").Trim();
+        }
+
+        private static string MaskActionSpeakMessage(string message)
+        {
+            string sanitized = SanitizeActionSpeakMessage(message);
+            if (string.IsNullOrWhiteSpace(sanitized))
+            {
+                return null;
+            }
+
+            const char maskCharacter = 'b';
+            const string ignoreSymbols = " .,!?\n\r";
+            var masked = new System.Text.StringBuilder(sanitized.Length);
+            for (int index = 0; index < sanitized.Length; index++)
+            {
+                char current = sanitized[index];
+                if (ignoreSymbols.IndexOf(current) >= 0)
+                {
+                    masked.Append(current);
+                    continue;
+                }
+
+                masked.Append(maskCharacter);
+                if (index + 1 < sanitized.Length && ignoreSymbols.IndexOf(sanitized[index + 1]) < 0)
+                {
+                    index++;
+                }
+            }
+
+            return masked.ToString();
         }
 
         public bool TryGetRecentAttackFrameIndex(string attackAction, int currentTime, int retentionWindowMs, out int frameIndex)

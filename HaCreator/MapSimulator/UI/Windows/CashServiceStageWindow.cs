@@ -1289,7 +1289,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _searchState,
                 "CCSWnd_ItemSearch is modeled as the dedicated search wrapper backed by ui/CashShop.img/CSItemSearch PopUp/PopUp1.",
-                $"Loaded controls include BtSearch, BtAllItem, BtBuy, BtCancel, the combo-box button, scroll assets, and four WZ price ranges; all-item filter {(_cashShopItemSearchAllItemFilter ? "on" : "off")}."
+                $"CCSWnd_ItemSearch::OnButtonClicked opens CItemSearchDlg with WZ price ranges, price combo 2000 at 3,103, edit 1000 at 103,27, OK/Cancel buttons 1/2, filters on-sale cash commodities, and forwards results through CCashShop::SetSearchResult; all-item filter {(_cashShopItemSearchAllItemFilter ? "on" : "off")}."
             };
         }
 

@@ -499,6 +499,14 @@ namespace HaCreator.MapSimulator
                 return detail;
             }
 
+            string ownerOpenDetail = TryOpenGuildManagementOwnerFromClientResult(packet);
+            if (!string.IsNullOrWhiteSpace(ownerOpenDetail))
+            {
+                detail = string.IsNullOrWhiteSpace(detail)
+                    ? ownerOpenDetail
+                    : $"{detail} {ownerOpenDetail}";
+            }
+
             bool shouldResolvePendingFromNotice = ShouldResolveGuildSkillPendingFromClientGuildResult(packet);
             if (shouldResolvePendingFromNotice)
             {
@@ -554,6 +562,27 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(detail)
                 ? skillRecordDetail
                 : $"{detail} {skillRecordDetail}";
+        }
+
+        private string TryOpenGuildManagementOwnerFromClientResult(SocialListClientGuildResultPacket packet)
+        {
+            switch (packet.Kind)
+            {
+                case SocialListClientGuildResultKind.GuildMarkInput:
+                    return OpenGuildMarkWindow();
+
+                case SocialListClientGuildResultKind.CreateGuildAgreement:
+                    if (packet.OpensGuildNpcConversation
+                        || string.IsNullOrWhiteSpace(packet.GuildName))
+                    {
+                        return null;
+                    }
+
+                    return OpenGuildCreateAgreementWindow(packet.GuildDialogMasterName, packet.GuildName);
+
+                default:
+                    return null;
+            }
         }
 
         private static bool TryGetClientGuildResultNoticeText(SocialListClientGuildResultPacket packet, out string noticeText)

@@ -18,6 +18,8 @@ namespace HaCreator.MapSimulator.Effects
         public int StartedAt => TryGetLatestEntry(out FadeEntry entry) ? entry.StartedAt : 0;
         public int FadeOutStartsAt => TryGetLatestEntry(out FadeEntry entry) ? entry.GetFadeOutStartsAt() : int.MinValue;
         public int ExpiresAt => TryGetLatestEntry(out FadeEntry entry) ? entry.ExpiresAt : int.MinValue;
+        public PacketFieldFadeNativeLayerSnapshot? LatestNativeLayerSnapshot =>
+            TryGetLatestEntry(out FadeEntry entry) ? entry.NativeLayerSnapshot : null;
 
         public bool Start(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int layerZ, int currentTickCount)
         {
@@ -35,7 +37,14 @@ namespace HaCreator.MapSimulator.Effects
                 resolvedFadeOutMs,
                 Math.Clamp(startingAlpha, 0, byte.MaxValue),
                 layerZ,
-                currentTickCount));
+                currentTickCount,
+                CreateNativeLayerSnapshot(
+                    resolvedFadeInMs,
+                    resolvedHoldMs,
+                    resolvedFadeOutMs,
+                    Math.Clamp(startingAlpha, 0, byte.MaxValue),
+                    layerZ,
+                    currentTickCount)));
             return true;
         }
 
@@ -214,6 +223,28 @@ namespace HaCreator.MapSimulator.Effects
             return MathHelper.Lerp(forcedStartAlpha, 0f, fadeProgress);
         }
 
+        private static PacketFieldFadeNativeLayerSnapshot CreateNativeLayerSnapshot(
+            int fadeInMs,
+            int holdMs,
+            int fadeOutMs,
+            int startingAlpha,
+            int layerZ,
+            int startedAt)
+        {
+            return new PacketFieldFadeNativeLayerSnapshot(
+                CanvasWidth: 1024,
+                CanvasHeight: 768,
+                LayerPosition: new Point(-512, -468),
+                LayerZ: layerZ,
+                StartingAlpha: startingAlpha,
+                TargetAlpha: byte.MaxValue,
+                FadeInMs: fadeInMs,
+                HoldMs: holdMs,
+                FadeOutMs: fadeOutMs,
+                StartedAt: startedAt,
+                UsesCenterOrigin: true);
+        }
+
         private readonly record struct FadeEntry(
             int FadeInMs,
             int HoldMs,
@@ -221,6 +252,7 @@ namespace HaCreator.MapSimulator.Effects
             int StartingAlpha,
             int LayerZ,
             int StartedAt,
+            PacketFieldFadeNativeLayerSnapshot NativeLayerSnapshot,
             int ForcedFadeOutStartsAt = int.MinValue,
             int ForcedFadeOutMs = -1,
             float ForcedStartAlpha = 1f,
@@ -254,4 +286,17 @@ namespace HaCreator.MapSimulator.Effects
                 };
         }
     }
+
+    internal readonly record struct PacketFieldFadeNativeLayerSnapshot(
+        int CanvasWidth,
+        int CanvasHeight,
+        Point LayerPosition,
+        int LayerZ,
+        int StartingAlpha,
+        int TargetAlpha,
+        int FadeInMs,
+        int HoldMs,
+        int FadeOutMs,
+        int StartedAt,
+        bool UsesCenterOrigin);
 }

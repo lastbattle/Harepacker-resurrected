@@ -13,9 +13,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ClientClaimChatLogCharacterBudget = 1600;
 
         internal static ClientClaimChatLogResult BuildChatLogOfTwoCharacters(
-            IReadOnlyList<string> storedChatLines,
+            IList<string> storedChatLines,
             string targetCharacterName,
-            string sendCharacterName)
+            string sendCharacterName,
+            bool mutateIncludedSenderLines = false)
         {
             if (storedChatLines == null || storedChatLines.Count == 0)
             {
@@ -56,6 +57,10 @@ namespace HaCreator.MapSimulator.Interaction
                         out _))
                 {
                     outputLine = processedLine;
+                    if (mutateIncludedSenderLines)
+                    {
+                        storedChatLines[i] = processedLine;
+                    }
                 }
 
                 chatLog = outputLine + "\n" + chatLog;

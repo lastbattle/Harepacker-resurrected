@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? $"inbound opcode {AutoDetectedInboundTradingRoomOpcode} was auto-detected from modeled CTradingRoomDlg::OnPacket payloads"
                 : "inbound opcode is not mapped yet; auto-detection shape-checks modeled CTradingRoomDlg::OnPacket payloads";
             return
-                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model subtypes 15 put-item, 16 put-money, 17 trade handoff, 20 CRC follow-up, and 21 exceed-limit; {inbound}. {TradingRoomPacketTable.DescribeRecoveredPacketTable()}";
+                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model direct switch subtypes 15 put-item, 16 put-money, 17 trade handoff, and 21 exceed-limit; subtype 20 remains the OnTrade CRC follow-up branch; {inbound}. {TradingRoomPacketTable.DescribeRecoveredPacketTable()}";
         }
 
         public string ClearRecentOutboundPackets()
@@ -743,7 +743,9 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                detail = $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnPacket subtype table.";
+                detail = TradingRoomPacketTable.IsRecoveredOnTradeFollowUpSubtype(payload[0])
+                    ? $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnTrade follow-up subtype table."
+                    : $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnPacket subtype table.";
                 return true;
             }
 
@@ -754,7 +756,9 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                detail = $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnPacket subtype table.";
+                detail = TradingRoomPacketTable.IsRecoveredOnTradeFollowUpSubtype(payload[0])
+                    ? $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnTrade follow-up subtype table."
+                    : $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnPacket subtype table.";
                 return true;
             }
 

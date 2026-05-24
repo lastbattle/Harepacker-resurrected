@@ -100,6 +100,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 outgoingDamageResolver).Damage;
         }
 
+        public static int ResolvePhysicalDamageSummoned(
+            int baseDamage,
+            Func<int, MobDamageType, int> outgoingDamageResolver)
+        {
+            int resolvedDamage = outgoingDamageResolver?.Invoke(baseDamage, MobDamageType.Physical) ?? baseDamage;
+            return Math.Max(1, resolvedDamage);
+        }
+
+        public static int ResolveMagicalDamageSummoned(
+            int baseDamage,
+            Func<int, MobDamageType, int> outgoingDamageResolver)
+        {
+            int resolvedDamage = outgoingDamageResolver?.Invoke(baseDamage, MobDamageType.Magical) ?? baseDamage;
+            return Math.Max(1, resolvedDamage);
+        }
+
         public static BodyContactDamageResult ResolveBodyContactClientDamageResult(
             int physicalDamage,
             int currentAttackDamage,
@@ -113,8 +129,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 magicalDamage,
                 currentAttackIsMagic);
             MobDamageType damageType = ResolveBodyContactDamageType(currentAttackIsMagic);
-            int resolvedDamage = outgoingDamageResolver?.Invoke(baseDamage, damageType) ?? baseDamage;
-            return new BodyContactDamageResult(baseDamage, damageType, Math.Max(1, resolvedDamage));
+            int resolvedDamage = currentAttackIsMagic
+                ? ResolveMagicalDamageSummoned(baseDamage, outgoingDamageResolver)
+                : ResolvePhysicalDamageSummoned(baseDamage, outgoingDamageResolver);
+            return new BodyContactDamageResult(baseDamage, damageType, resolvedDamage);
         }
 
         public static int ResolveBodyContactRelativeMotionX(

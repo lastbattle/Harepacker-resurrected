@@ -24373,10 +24373,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientShuffledTargetHitAnimation(skill.SkillId))
             {
+                // `CreateDefault` falls through to the weapon/cash default branch when
+                // the selected WZ hit UOL is empty, rather than reusing the generic
+                // skill fallback animation.
                 return ResolveClientShuffledTargetHitAnimation(
-                           targetHitEffects,
-                           shuffledHitBranchOrdinal)
-                       ?? fallbackAnimation;
+                    targetHitEffects,
+                    shuffledHitBranchOrdinal);
             }
 
             if (UsesClientFinalDamageLineSubHitAnimation(skill.SkillId))
@@ -24442,9 +24444,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (UsesClientDefaultRandomTargetHitAnimation(skill, skillLevel, characterLevel))
             {
                 return ResolveClientDefaultRandomTargetHitAnimation(
-                           targetHitEffects,
-                           defaultRandomHitBranchOrdinal)
-                       ?? fallbackAnimation;
+                    targetHitEffects,
+                    defaultRandomHitBranchOrdinal);
             }
 
             return fallbackAnimation;

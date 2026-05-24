@@ -93,7 +93,6 @@ namespace HaCreator.MapSimulator.Fields
             TransferResponseLifecycle = 2,
             FieldInterfaceTeardown = 3,
             HorizontalOnKeyDown = 4,
-            FreshHandleUpKeyDownPortalHandled = 5,
             ChairGetUp = 6,
             FollowCharacterFailure = 7,
             SameMapTeleport = 8,
@@ -428,9 +427,9 @@ namespace HaCreator.MapSimulator.Fields
         public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(
             bool handledPortalInteraction)
         {
-            return handledPortalInteraction
-                ? QueuedRetryLifecycleClearOwner.FreshHandleUpKeyDownPortalHandled
-                : QueuedRetryLifecycleClearOwner.None;
+            // Native HandleUpKeyDown does not directly clear m_bTryPassiveTransferField.
+            // Portal admission and same-map completion clear through their own lifecycle owners.
+            return QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldStopSkillMacroForHorizontalQueuedCancel(bool shouldCancelQueuedRetry)

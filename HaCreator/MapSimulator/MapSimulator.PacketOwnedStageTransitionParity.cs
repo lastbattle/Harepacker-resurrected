@@ -627,7 +627,7 @@ namespace HaCreator.MapSimulator
                 if (child == null ||
                     !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId) ||
                     questId <= 0 ||
-                    !TryReadPacketOwnedNamedObjectIntProperty(questProperty, child.Name, out int rawState))
+                    !TryReadPacketOwnedNamedObjectQuestState(child, out int rawState))
                 {
                     continue;
                 }
@@ -639,6 +639,41 @@ namespace HaCreator.MapSimulator
             }
 
             return questInfo.Count == 0 ? Array.Empty<ObjectInstanceQuest>() : questInfo.ToArray();
+        }
+
+        internal static bool TryReadPacketOwnedNamedObjectQuestState(WzImageProperty questChild, out int rawState)
+        {
+            rawState = 0;
+            if (questChild == null)
+            {
+                return false;
+            }
+
+            switch (questChild)
+            {
+                case WzIntProperty intProperty:
+                    rawState = intProperty.Value;
+                    return true;
+
+                case WzShortProperty shortProperty:
+                    rawState = shortProperty.Value;
+                    return true;
+
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    rawState = (int)longProperty.Value;
+                    return true;
+
+                case WzStringProperty stringProperty:
+                    return int.TryParse(
+                        stringProperty.Value?.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out rawState);
+            }
+
+            return TryReadPacketOwnedNamedObjectIntProperty(questChild, "state", out rawState) ||
+                TryReadPacketOwnedNamedObjectIntProperty(questChild, "value", out rawState) ||
+                TryReadPacketOwnedNamedObjectIntProperty(questChild, "0", out rawState);
         }
 
         private static string ResolvePacketOwnedNamedObjectStateSfx(ObjectInfo objectInfo)

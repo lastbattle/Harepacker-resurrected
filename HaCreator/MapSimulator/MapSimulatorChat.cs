@@ -224,16 +224,26 @@ namespace HaCreator.MapSimulator
             string targetCharacterName,
             string sendCharacterName)
         {
-            string[] storedChatLines = new string[_messages.Count];
+            List<string> storedChatLines = new List<string>(_messages.Count);
             for (int i = 0; i < _messages.Count; i++)
             {
-                storedChatLines[i] = _messages[i].Text;
+                storedChatLines.Add(_messages[i].Text);
             }
 
-            return ClientClaimChatLogParity.BuildChatLogOfTwoCharacters(
+            ClientClaimChatLogResult result = ClientClaimChatLogParity.BuildChatLogOfTwoCharacters(
                 storedChatLines,
                 targetCharacterName,
-                sendCharacterName);
+                sendCharacterName,
+                mutateIncludedSenderLines: true);
+
+            for (int i = 0; i < storedChatLines.Count; i++)
+            {
+                ChatMessage message = _messages[i];
+                message.Text = storedChatLines[i];
+                _messages[i] = message;
+            }
+
+            return result;
         }
 
         private enum ChatSubmitDisposition

@@ -15,7 +15,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "newyearcard",
                 "Inspect or drive CUINewYearCardDlg and CUINewYearCardSenderDlg parity",
-                "/newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]",
+                "/newyearcard [status|sender|read [from to memo...]|readrecord <serial>|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|scroll <delta>|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]",
                 HandleNewYearCardCommand);
         }
 
@@ -45,6 +45,21 @@ namespace HaCreator.MapSimulator
 
                     ShowNewYearCardReadWindow();
                     return ChatCommandHandler.CommandResult.Ok(_newYearCardRuntime.DescribeStatus());
+
+                case "readrecord":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int recordSerialNumber))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard readrecord <serial>");
+                    }
+
+                    if (!_newYearCardRuntime.TryConfigureReadViewFromLocalRecord(recordSerialNumber, out string readRecordMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(readRecordMessage);
+                    }
+
+                    ShowNewYearCardReadWindow();
+                    return ChatCommandHandler.CommandResult.Ok(readRecordMessage);
 
                 case "draft":
                     if (args.Length < 5
@@ -79,6 +94,15 @@ namespace HaCreator.MapSimulator
                     string query = args.Length >= 2 ? string.Join(' ', args.Skip(1)) : string.Empty;
                     ShowNewYearCardSenderWindow();
                     return ChatCommandHandler.CommandResult.Ok(_newYearCardRuntime.Search(query));
+
+                case "scroll":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int scrollDelta))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard scroll <delta>");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(_newYearCardRuntime.ScrollSearchResults(scrollDelta));
 
                 case "select":
                     if (args.Length < 2
@@ -128,7 +152,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok("Closed New Year Card sender/read dialog owners.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|readrecord <serial>|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|scroll <delta>|select <1-based index>|send [confirmempty]|readrequest <serial>|result <hex>|hide]");
             }
         }
 

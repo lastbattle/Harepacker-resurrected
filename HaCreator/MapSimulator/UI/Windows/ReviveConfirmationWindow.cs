@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _premiumSafetyCharmBackground;
         private readonly Texture2D _upgradeTombBackground;
         private readonly Texture2D _soulStoneBackground;
+        private readonly ReviveOwnerNativeAssetCoverage _nativeAssetCoverage;
         private UIObject _premiumButton;
         private UIObject _declineButton;
         private UIObject _defaultButton;
@@ -59,7 +60,8 @@ namespace HaCreator.MapSimulator.UI
             Texture2D defaultBranchBackground = null,
             Texture2D premiumSafetyCharmBackground = null,
             Texture2D upgradeTombBackground = null,
-            Texture2D soulStoneBackground = null)
+            Texture2D soulStoneBackground = null,
+            ReviveOwnerNativeAssetCoverage nativeAssetCoverage = default)
             : base(frame)
         {
             _shellTop = shellTop;
@@ -74,11 +76,14 @@ namespace HaCreator.MapSimulator.UI
             _premiumSafetyCharmBackground = premiumSafetyCharmBackground;
             _upgradeTombBackground = upgradeTombBackground;
             _soulStoneBackground = soulStoneBackground;
+            _nativeAssetCoverage = nativeAssetCoverage;
             SupportsDragging = false;
         }
 
         public override string WindowName => MapSimulatorWindowNames.Revive;
         public override bool CapturesKeyboardInput => IsVisible;
+
+        internal ReviveOwnerNativeAssetCoverage NativeAssetCoverage => _nativeAssetCoverage;
 
         internal void SetSnapshotProvider(Func<ReviveOwnerSnapshot> snapshotProvider)
         {

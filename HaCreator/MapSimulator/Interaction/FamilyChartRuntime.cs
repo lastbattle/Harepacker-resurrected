@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<FamilyEntitlementType, int> _entitlementUseCounts = new();
         private readonly Dictionary<FamilyEntitlementType, FamilyPrivilegeMetadata> _packetPrivilegeMetadata = new();
         private readonly Dictionary<int, int> _packetChartStatistics = new();
+        private readonly List<FamilyResultNoticeSnapshot> _lastResultNotices = new();
         private string _familyName = string.Empty;
         private string _familyPrecept = string.Empty;
         private string _locationSummary = "Maple Island";
@@ -79,6 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int TrackedMembersCount => _trackedMembersCount;
         internal Action<string, int> SocialChatObserved { get; set; }
+        internal IReadOnlyList<FamilyResultNoticeSnapshot> LastResultNotices => _lastResultNotices;
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
@@ -1798,40 +1800,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyResultPacket(FamilyResultPacket packet, out string message)
         {
-            message = packet.Type switch
-            {
-                1 => FormatFamilyResultMessage(
-                    0x121B,
-                    "Family result {0} completed.",
-                    GetSelectedMember()?.Name ?? "member"),
-                64 => ResolveFamilyResultNotice(0x1206, packet.Type),
-                65 => ResolveFamilyResultNotice(0x1205, packet.Type),
-                66 => ResolveFamilyResultNotice(0x1207, packet.Type),
-                67 => ResolveFamilyResultNotice(0x1208, packet.Type),
-                69 => ResolveFamilyResultNotice(0x120A, packet.Type),
-                70 => ResolveFamilyResultNotice(0x120B, packet.Type),
-                71 => ResolveFamilyResultNotice(0x120C, packet.Type),
-                72 => ResolveFamilyResultNotice(0x120D, packet.Type),
-                73 => ResolveFamilyResultNotice(0x120F, packet.Type),
-                74 => ResolveFamilyResultNotice(0x1210, packet.Type),
-                75 => ResolveFamilyResultNotice(0x1212, packet.Type),
-                76 => ResolveFamilyResultNotice(0x1213, packet.Type),
-                77 => ResolveFamilyResultNotice(0x120E, packet.Type),
-                78 => ResolveFamilyResultNotice(0x13AD, packet.Type),
-                79 => ResolveFamilyResultNotice(0x13AC, packet.Type),
-                80 => FormatFamilyResultMessage(0x1484, "Family result {0}: {1}", packet.Type, packet.Value),
-                81 => FormatFamilyResultMessage(0x1485, "Family result {0}: {1}", packet.Type, packet.Value),
-                82 => string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0} {1}",
-                    ResolveFamilyResultNotice(0x155A, packet.Type),
-                    ResolveFamilyResultNotice(0x13AD, packet.Type)),
-                _ => null
-            };
+            _lastResultNotices.Clear();
+            AddFamilyResultNotices(packet);
+            message = _lastResultNotices.Count == 0
+                ? null
+                : string.Join(" ", _lastResultNotices.Select(notice => notice.Text));
 
-            if (IsClientFamilyResultChatLogNotice(packet.Type) && !string.IsNullOrWhiteSpace(message))
+            foreach (FamilyResultNoticeSnapshot notice in _lastResultNotices)
             {
-                NotifySocialChatObserved(message);
+                if (notice.Presentation == FamilyResultNoticePresentation.ChatLog)
+                {
+                    NotifySocialChatObserved(notice.Text);
+                }
             }
 
             if (_pendingPrivilegeRequest != null
@@ -1861,11 +1841,83 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool IsClientFamilyResultChatLogNotice(int resultType)
+        private void AddFamilyResultNotices(FamilyResultPacket packet)
         {
-            // CWvsContext::OnFamilyResult sends result 0x4B/0x4C through
-            // CHATLOG_ADD(type=0xC); neighboring result types use CUtilDlg::Notice.
-            return resultType is 0x4B or 0x4C;
+            switch (packet.Type)
+            {
+                case 1:
+                    AddFamilyResultNotice(
+                        FormatFamilyResultMessage(
+                            0x121B,
+                            "Family result {0} completed.",
+                            GetSelectedMember()?.Name ?? "member"),
+                        FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 64:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1206, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 65:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1205, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 66:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1207, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 67:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1208, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 69:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120A, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 70:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120B, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 71:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120C, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 72:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120D, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 73:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120F, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 74:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1210, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 75:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1212, packet.Type), FamilyResultNoticePresentation.ChatLog);
+                    break;
+                case 76:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x1213, packet.Type), FamilyResultNoticePresentation.ChatLog);
+                    break;
+                case 77:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x120E, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 78:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x13AD, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 79:
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x13AC, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 80:
+                    AddFamilyResultNotice(FormatFamilyResultMessage(0x1484, "Family result {0}: {1}", packet.Type, packet.Value), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 81:
+                    AddFamilyResultNotice(FormatFamilyResultMessage(0x1485, "Family result {0}: {1}", packet.Type, packet.Value), FamilyResultNoticePresentation.Dialog);
+                    break;
+                case 82:
+                    // CWvsContext::OnFamilyResult shows StringPool 0x155A, then falls through to 0x13AD.
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x155A, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    AddFamilyResultNotice(ResolveFamilyResultNotice(0x13AD, packet.Type), FamilyResultNoticePresentation.Dialog);
+                    break;
+            }
+        }
+
+        private void AddFamilyResultNotice(string text, FamilyResultNoticePresentation presentation)
+        {
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                _lastResultNotices.Add(new FamilyResultNoticeSnapshot(text, presentation));
+            }
         }
 
         private bool TryResolvePendingManagementRequest(FamilyResultPacket packet, out string message)
@@ -3088,6 +3140,16 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsOnline { get; set; }
         public Vector2 SimulatedPosition { get; set; }
         public bool IsLocalPlayer { get; set; }
+    }
+
+    internal readonly record struct FamilyResultNoticeSnapshot(
+        string Text,
+        FamilyResultNoticePresentation Presentation);
+
+    internal enum FamilyResultNoticePresentation
+    {
+        Dialog,
+        ChatLog
     }
 
     internal sealed class FamilyChartTextResources

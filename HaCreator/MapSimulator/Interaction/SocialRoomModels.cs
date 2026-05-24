@@ -356,6 +356,13 @@ namespace HaCreator.MapSimulator.Interaction
         private const int OmokSoundTimerStringPoolId = 0x648;
         private const int OmokSoundBlackStoneStringPoolId = 0x64B;
         private const int OmokSoundWhiteStoneStringPoolId = 0x64C;
+        private const int OmokTournamentRoundEffectPathStringPoolId = 0x9E8;
+        private const int OmokTournamentRoundTitleStringPoolId = 0x9E9;
+        private const int OmokTournamentFinalTitleStringPoolId = 0x9EA;
+        private const int OmokTournamentSemiFinalTitleStringPoolId = 0x9EB;
+        private const int OmokTournamentRoundEffectTextStringPoolId = 0x1A15;
+        private const int OmokTournamentRoundEffectHoldMs = 6000;
+        private const int OmokTournamentRoundEffectFadeMs = 500;
         private const int MiniRoomSubtype6EnvelopeMaxDepth = 3;
         private const int MiniRoomSubtype6OffsetEnvelopeMaxPrefixBytes = 16;
         private const byte MiniRoomBaseInvitePacketSubType = 2;
@@ -531,6 +538,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _miniRoomOmokRetreatRequestSentTurn;
         private bool _miniRoomOmokRetreatRequestSentMatch;
         private bool _miniRoomOmokTimeOverRequestSent;
+        private bool _miniRoomOmokTournamentActive;
+        private bool _miniRoomOmokTournamentRoundEffectVisible;
         private string _miniRoomOmokLastOutboundPacketHex = string.Empty;
         private DateTime? _miniRoomOmokLastTimedStateUtc;
         private string _miniRoomOmokPendingPromptText = string.Empty;
@@ -575,6 +584,13 @@ namespace HaCreator.MapSimulator.Interaction
         private int _personalShopTotalReceivedNet;
         private int _miniRoomOmokLastClientSoundStringPoolId = -1;
         private int _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
+        private int _miniRoomOmokTournamentRound;
+        private int _miniRoomOmokTournamentMatchState;
+        private int _miniRoomOmokTournamentNextOperationMs;
+        private int _miniRoomOmokTournamentRoundEffectKey;
+        private int _miniRoomOmokTournamentRoundEffectElapsedMs;
+        private int _miniRoomOmokTournamentRoundEffectFadeMs;
+        private string _miniRoomOmokTournamentTitle = string.Empty;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
         private Action _miniRoomModeHandler;
@@ -715,6 +731,15 @@ namespace HaCreator.MapSimulator.Interaction
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
         public string MiniRoomOmokLastOutboundPacketHex => _miniRoomOmokLastOutboundPacketHex;
         public IReadOnlyDictionary<int, MiniGameRecord> MiniRoomOmokRecords => _miniRoomOmokRecords;
+        public bool MiniRoomOmokTournamentActive => _miniRoomOmokTournamentActive;
+        public int MiniRoomOmokTournamentRound => _miniRoomOmokTournamentRound;
+        public int MiniRoomOmokTournamentMatchState => _miniRoomOmokTournamentMatchState;
+        public int MiniRoomOmokTournamentNextOperationMs => _miniRoomOmokTournamentNextOperationMs;
+        public bool MiniRoomOmokTournamentRoundEffectVisible => _miniRoomOmokTournamentRoundEffectVisible;
+        public int MiniRoomOmokTournamentRoundEffectKey => _miniRoomOmokTournamentRoundEffectKey;
+        public int MiniRoomOmokTournamentRoundEffectElapsedMs => _miniRoomOmokTournamentRoundEffectElapsedMs;
+        public int MiniRoomOmokTournamentRoundEffectFadeMs => _miniRoomOmokTournamentRoundEffectFadeMs;
+        public string MiniRoomOmokTournamentTitle => _miniRoomOmokTournamentTitle;
         public bool IsMiniRoomOmokLocalTurn => IsMiniRoomOmokActive && _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
         public bool MiniRoomOmokReadyButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex != 0;
         public bool MiniRoomOmokBanButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0;
@@ -816,6 +841,15 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokDialogEffectTimeLeftMs = _miniRoomOmokDialogEffectTimeLeftMs,
                 MiniRoomOmokDialogStatus = _miniRoomOmokDialogStatus,
                 MiniRoomOmokPendingPromptText = _miniRoomOmokPendingPromptText,
+                MiniRoomOmokTournamentActive = _miniRoomOmokTournamentActive,
+                MiniRoomOmokTournamentRound = _miniRoomOmokTournamentRound,
+                MiniRoomOmokTournamentMatchState = _miniRoomOmokTournamentMatchState,
+                MiniRoomOmokTournamentNextOperationMs = _miniRoomOmokTournamentNextOperationMs,
+                MiniRoomOmokTournamentRoundEffectVisible = _miniRoomOmokTournamentRoundEffectVisible,
+                MiniRoomOmokTournamentRoundEffectKey = _miniRoomOmokTournamentRoundEffectKey,
+                MiniRoomOmokTournamentRoundEffectElapsedMs = _miniRoomOmokTournamentRoundEffectElapsedMs,
+                MiniRoomOmokTournamentRoundEffectFadeMs = _miniRoomOmokTournamentRoundEffectFadeMs,
+                MiniRoomOmokTournamentTitle = _miniRoomOmokTournamentTitle,
                 MiniRoomOmokLastClientSoundStringPoolId = _miniRoomOmokLastClientSoundStringPoolId,
                 MiniRoomOmokLastClientSoundPath = _miniRoomOmokLastClientSoundPath,
                 MiniRoomOmokLastOutboundPacketSummary = _miniRoomOmokLastOutboundPacketSummary,
@@ -1003,6 +1037,15 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, source?.MiniRoomOmokDialogEffectTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokDialogEffectTimeLeftMs);
                 _miniRoomOmokDialogStatus = source?.MiniRoomOmokDialogStatus ?? _defaultSnapshot.MiniRoomOmokDialogStatus ?? string.Empty;
                 _miniRoomOmokPendingPromptText = source?.MiniRoomOmokPendingPromptText ?? _defaultSnapshot.MiniRoomOmokPendingPromptText ?? string.Empty;
+                _miniRoomOmokTournamentActive = source?.MiniRoomOmokTournamentActive ?? _defaultSnapshot.MiniRoomOmokTournamentActive;
+                _miniRoomOmokTournamentRound = Math.Max(0, source?.MiniRoomOmokTournamentRound ?? _defaultSnapshot.MiniRoomOmokTournamentRound);
+                _miniRoomOmokTournamentMatchState = Math.Clamp(source?.MiniRoomOmokTournamentMatchState ?? _defaultSnapshot.MiniRoomOmokTournamentMatchState, 0, 3);
+                _miniRoomOmokTournamentNextOperationMs = Math.Max(0, source?.MiniRoomOmokTournamentNextOperationMs ?? _defaultSnapshot.MiniRoomOmokTournamentNextOperationMs);
+                _miniRoomOmokTournamentRoundEffectVisible = source?.MiniRoomOmokTournamentRoundEffectVisible ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectVisible;
+                _miniRoomOmokTournamentRoundEffectKey = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectKey ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectKey);
+                _miniRoomOmokTournamentRoundEffectElapsedMs = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectElapsedMs ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectElapsedMs);
+                _miniRoomOmokTournamentRoundEffectFadeMs = Math.Max(0, source?.MiniRoomOmokTournamentRoundEffectFadeMs ?? _defaultSnapshot.MiniRoomOmokTournamentRoundEffectFadeMs);
+                _miniRoomOmokTournamentTitle = source?.MiniRoomOmokTournamentTitle ?? _defaultSnapshot.MiniRoomOmokTournamentTitle ?? string.Empty;
                 _miniRoomOmokLastClientSoundStringPoolId = source?.MiniRoomOmokLastClientSoundStringPoolId ?? _defaultSnapshot.MiniRoomOmokLastClientSoundStringPoolId;
                 _miniRoomOmokLastClientSoundPath = source?.MiniRoomOmokLastClientSoundPath ?? _defaultSnapshot.MiniRoomOmokLastClientSoundPath ?? string.Empty;
                 _miniRoomOmokLastOutboundPacketSummary = source?.MiniRoomOmokLastOutboundPacketSummary ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketSummary ?? string.Empty;
@@ -1265,11 +1308,13 @@ namespace HaCreator.MapSimulator.Interaction
                         IsSelected = index == selectedIndex
                     })
                     .ToList();
+            bool hasPendingBlacklistMutation = HasPendingEntrustedBlacklistMutation();
             bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
                 ? HasValidEntrustedVisitListSelection()
-                : _blockedVisitors.Count < 20;
+                : _blockedVisitors.Count < 20 && !hasPendingBlacklistMutation;
             bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist
-                && HasValidEntrustedBlacklistSelection();
+                && HasValidEntrustedBlacklistSelection()
+                && !hasPendingBlacklistMutation;
 
             return new EntrustedShopChildDialogSnapshot
             {
@@ -1410,6 +1455,7 @@ namespace HaCreator.MapSimulator.Interaction
             int previousTimeFloor = _miniRoomOmokTimeFloor;
             _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, _miniRoomOmokStoneAnimationTimeLeftMs - elapsedMilliseconds);
             _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, _miniRoomOmokDialogEffectTimeLeftMs - elapsedMilliseconds);
+            stateChanged |= UpdateOmokTournamentRoundEffect(elapsedMilliseconds);
             if (_miniRoomOmokDialogEffectTimeLeftMs == 0 && !_miniRoomOmokInProgress && _miniRoomOmokWinnerIndex < 0)
             {
                 _miniRoomOmokDialogStatus = string.Empty;
@@ -6993,7 +7039,11 @@ namespace HaCreator.MapSimulator.Interaction
                 int bundleQuantity = Math.Max(1, (int)row.Number);
                 int bundleSetCount = Math.Max(0, (int)row.Set);
                 int bundlePrice = Math.Max(0, row.Price);
-                string detail = $"Packet row {packetSlotIndex} | CPersonalShopDlg::OnRefresh full item-array refresh | nNumber {bundleQuantity} | nSet {bundleSetCount}";
+                string packetItemDetail = BuildTradingRoomPacketItemDetail(
+                    "Merchant full refresh",
+                    packetSlotIndex,
+                    row.Item);
+                string detail = $"Packet row {packetSlotIndex} | CPersonalShopDlg::OnRefresh full item-array refresh | nNumber {bundleQuantity} | nSet {bundleSetCount} | {packetItemDetail}";
                 _items.Add(new SocialRoomItemEntry(
                     OwnerName,
                     itemName,
@@ -7744,6 +7794,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entrustedBlacklistPromptRequest = null;
+            if (HasPendingEntrustedBlacklistMutation())
+            {
+                message = $"CBlackListDlg::AddBlackList is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending blacklist {_entrustedBlacklistPendingMutationName} request.";
+                return false;
+            }
+
             if (_blockedVisitors.Count >= 20)
             {
                 message = "Blacklist add is disabled because the client-side 20-name limit has been reached.";
@@ -7821,6 +7877,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (!HasValidEntrustedBlacklistSelection())
             {
                 message = "Delete stays disabled until the selected blacklist cell is valid.";
+                return false;
+            }
+
+            if (HasPendingEntrustedBlacklistMutation())
+            {
+                message = $"CBlackListDlg::DeleteBlackList is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending blacklist {_entrustedBlacklistPendingMutationName} request.";
                 return false;
             }
 
@@ -7934,26 +7996,23 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedBlacklistPendingMutationName = resolvedName;
             _entrustedBlacklistPendingMutationAdd = add;
             _entrustedBlacklistPendingMutationRawPacketHex = rawHex;
-            if (add)
-            {
-                ApplyEntrustedBlacklistAddLocalPreview(
-                    resolvedName,
-                    $"{summary} CBlackListDlg::AddBlackList inserted {resolvedName} into the child list immediately; waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to rebuild the blacklist owner.");
-            }
-            else
-            {
-                ApplyEntrustedBlacklistDeleteLocalPreview(
-                    resolvedName,
-                    $"{summary} CBlackListDlg::DeleteBlackList removed {resolvedName} from the child list immediately; waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to rebuild the blacklist owner.");
-            }
-
+            _entrustedChildDialogStatus =
+                $"{summary} CBlackListDlg::{(add ? "AddBlackList" : "DeleteBlackList")} sent the request and left the displayed child list unchanged until authoritative server subtype {EntrustedShopBlackListResultPacketType} rebuilds the blacklist owner.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
             message = StatusMessage;
             return true;
         }
 
+        private bool HasPendingEntrustedBlacklistMutation()
+        {
+            return _entrustedBlacklistPendingMutationAdd.HasValue
+                && !string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName);
+        }
+
         private string BuildEntrustedBlacklistPendingCompletionSummary(IEnumerable<string> authoritativeNames)
         {
-            if (!_entrustedBlacklistPendingMutationAdd.HasValue || string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName))
+            if (!HasPendingEntrustedBlacklistMutation())
             {
                 return string.Empty;
             }
@@ -10665,6 +10724,118 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokDialogStatus = string.Empty;
             ClearOmokDialogRequests(clearMatchRetreatRequest: true);
             ResetOmokTurnClock();
+        }
+
+        public void ConfigureMiniRoomOmokTournamentState(int round, int matchState, int nextOperationMs)
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return;
+            }
+
+            _miniRoomOmokTournamentActive = true;
+            _miniRoomOmokTournamentRound = Math.Max(0, round);
+            _miniRoomOmokTournamentMatchState = Math.Clamp(matchState, 0, 3);
+            _miniRoomOmokTournamentNextOperationMs = Math.Max(0, nextOperationMs);
+            _miniRoomOmokTournamentTitle = ResolveOmokTournamentTitle(_miniRoomOmokTournamentRound);
+            if (_miniRoomOmokTournamentMatchState == 0)
+            {
+                _miniRoomOmokTournamentRoundEffectVisible = false;
+                _miniRoomOmokTournamentRoundEffectElapsedMs = 0;
+            }
+
+            SetOmokDialogStatus(
+                $"COmokDlg tournament state round={_miniRoomOmokTournamentRound}, matchState={_miniRoomOmokTournamentMatchState}, next={_miniRoomOmokTournamentNextOperationMs}ms.",
+                1500);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private bool UpdateOmokTournamentRoundEffect(int elapsedMilliseconds)
+        {
+            if (!_miniRoomOmokTournamentActive || _miniRoomOmokTournamentMatchState == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            if (_miniRoomOmokTournamentRoundEffectVisible)
+            {
+                _miniRoomOmokTournamentRoundEffectElapsedMs += elapsedMilliseconds;
+                changed = true;
+            }
+
+            _miniRoomOmokTournamentNextOperationMs = Math.Max(0, _miniRoomOmokTournamentNextOperationMs - elapsedMilliseconds);
+            if (_miniRoomOmokTournamentNextOperationMs > 0)
+            {
+                return changed;
+            }
+
+            switch (_miniRoomOmokTournamentMatchState)
+            {
+                case 1:
+                    AnimateOmokTournamentRoundEffect(0);
+                    return true;
+                case 2:
+                    AnimateOmokTournamentRoundEffect(1);
+                    return true;
+                case 3:
+                    _miniRoomOmokTournamentMatchState = 0;
+                    _miniRoomOmokTournamentActive = false;
+                    _miniRoomOmokTournamentRoundEffectVisible = false;
+                    SetOmokDialogStatus("COmokDlg::Update tournament matchState 3 reached its close operation (Update argument 8).", 1500);
+                    SyncMiniRoomOmokPresentation();
+                    return true;
+                default:
+                    _miniRoomOmokTournamentMatchState = 0;
+                    return true;
+            }
+        }
+
+        private void AnimateOmokTournamentRoundEffect(int animateState)
+        {
+            if (animateState == 0)
+            {
+                _miniRoomOmokTournamentMatchState = 2;
+                _miniRoomOmokTournamentNextOperationMs = OmokTournamentRoundEffectHoldMs;
+                _miniRoomOmokTournamentRoundEffectVisible = true;
+                _miniRoomOmokTournamentRoundEffectKey = Math.Max(0, _miniRoomOmokTournamentRound);
+                _miniRoomOmokTournamentRoundEffectElapsedMs = 0;
+                _miniRoomOmokTournamentRoundEffectFadeMs = OmokTournamentRoundEffectFadeMs;
+                _miniRoomOmokTournamentTitle = FormatOmokString(
+                    OmokTournamentRoundEffectTextStringPoolId,
+                    "Round {0}",
+                    Math.Max(0, _miniRoomOmokTournamentRound));
+                SetOmokDialogStatus(
+                    $"COmokDlg::AnimateRoundEffect(0) loaded {ResolveOmokString(OmokTournamentRoundEffectPathStringPoolId, "Effect/BasicEff.img/NoRed0")} for tournament round {_miniRoomOmokTournamentRound}.",
+                    OmokTournamentRoundEffectHoldMs);
+                SyncMiniRoomOmokPresentation();
+                return;
+            }
+
+            if (animateState == 1)
+            {
+                _miniRoomOmokTournamentMatchState = 0;
+                _miniRoomOmokTournamentNextOperationMs = 0;
+                _miniRoomOmokTournamentRoundEffectVisible = false;
+                _miniRoomOmokTournamentRoundEffectFadeMs = OmokTournamentRoundEffectFadeMs;
+                _miniRoomOmokTournamentTitle = ResolveOmokTournamentTitle(_miniRoomOmokTournamentRound);
+                SetOmokDialogStatus(
+                    $"COmokDlg::AnimateRoundEffect(1) released the round layer and restored title '{_miniRoomOmokTournamentTitle}'.",
+                    1500);
+                SyncMiniRoomOmokPresentation();
+            }
+        }
+
+        private static string ResolveOmokTournamentTitle(int round)
+        {
+            return round switch
+            {
+                2 => ResolveOmokString(OmokTournamentSemiFinalTitleStringPoolId, "Semi-finals"),
+                4 => ResolveOmokString(OmokTournamentFinalTitleStringPoolId, "Finals"),
+                8 or 16 or 32 => FormatOmokString(OmokTournamentRoundTitleStringPoolId, "Round of {0}", round),
+                _ => round > 0 ? string.Format(CultureInfo.InvariantCulture, "Round {0}", round) : string.Empty
+            };
         }
 
         private static bool IsValidOmokCoordinate(int x, int y)

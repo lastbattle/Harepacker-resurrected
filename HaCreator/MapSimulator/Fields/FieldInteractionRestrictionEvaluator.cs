@@ -574,6 +574,13 @@ namespace HaCreator.MapSimulator.Fields
             return mapInfo?.hideMinimap == true || IsInfoFlagSet(mapInfo, "hideMinimap");
         }
 
+        public static bool ShouldCreateStartupMinimap(bool isLoginMap, bool isCashShopMap, MapInfo mapInfo)
+        {
+            return !isLoginMap
+                   && !isCashShopMap
+                   && !ShouldHideMinimap(mapInfo);
+        }
+
         public static string GetMinimapHiddenMessage(MapInfo mapInfo)
         {
             return ShouldHideMinimap(mapInfo)

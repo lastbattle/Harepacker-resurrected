@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.UI
             public int SelectedColor { get; init; }
             public int OutlineColor { get; init; }
             public string FocusLabel { get; init; } = string.Empty;
+            public bool HasNumberFont { get; init; }
+            public int Revision { get; init; }
             public IReadOnlyList<string> Labels { get; init; } = Array.Empty<string>();
         }
 
@@ -65,7 +67,16 @@ namespace HaCreator.MapSimulator.UI
             public int SelectedStringPoolId { get; init; }
             public int ActiveIndex { get; init; }
             public string ActiveTabName { get; init; } = string.Empty;
+            public int Revision { get; init; }
             public IReadOnlyList<string> TabNames { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class CashChildRuntimeSnapshot
+        {
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public TabControlRuntimeState TabRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+            public string StatusMessage { get; init; } = string.Empty;
         }
 
         public sealed class NumberCanvasRuntimeState
@@ -259,6 +270,11 @@ namespace HaCreator.MapSimulator.UI
             public string PriceLabel { get; init; } = string.Empty;
             public string StateLabel { get; init; } = string.Empty;
             public bool IsSelected { get; init; }
+            public int PacketRowIndex { get; init; }
+            public string PacketSource { get; init; } = string.Empty;
+            public string PacketFieldSummary { get; init; } = string.Empty;
+            public int PacketRawByteLength { get; init; }
+            public string PacketPayloadRawHex { get; init; } = string.Empty;
         }
 
         public sealed class ListOwnerState
@@ -697,6 +713,66 @@ namespace HaCreator.MapSimulator.UI
                 RewardSessionRevision = _oneADayRewardSessionObject.Revision
             };
         }
+
+        public CashChildRuntimeSnapshot GetLockerRuntimeSnapshotForTests()
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            if (state != null)
+            {
+                _lockerScrollOffset = Math.Clamp(state.ScrollOffset, 0, Math.Max(0, (state.SharedCharacterNames?.Count ?? 0) - 3));
+                UpdateLockerRuntimeObjects(state);
+            }
+
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = BuildSelectorControlRuntimeSnapshot(_lockerSelectorObject, controlId: 1000, initArg: 4),
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_lockerScrollBarObject, visibleCount: _lockerSelectorObject.VisibleCount, totalCount: _lockerSelectorObject.TotalCount),
+                StatusMessage = _lockerActionState ?? string.Empty
+            };
+        }
+
+        public CashChildRuntimeSnapshot GetInventoryRuntimeSnapshotForTests(bool forceRefresh = false)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state != null)
+            {
+                SyncInventoryOwnerState(state, forceRefresh);
+                UpdateInventoryRuntimeObjects(state);
+            }
+
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = BuildSelectorControlRuntimeSnapshot(_inventorySelectorObject, controlId: 1002, initArg: 4),
+                TabRuntime = BuildInventoryTabControlRuntimeSnapshot(),
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_inventoryScrollBarObject, visibleCount: _inventorySelectorObject.VisibleCount, totalCount: _inventorySelectorObject.TotalCount),
+                StatusMessage = _inventoryActionState ?? string.Empty
+            };
+        }
+
+        public CashChildRuntimeSnapshot GetListRuntimeSnapshotForTests()
+        {
+            ListOwnerState state = _listStateProvider?.Invoke();
+            UpdateListRuntimeObjects(state);
+
+            int visibleCount = Math.Min(5, Math.Max(0, state?.TotalCount ?? 0));
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = new SelectorControlRuntimeState
+                {
+                    ControlId = state?.SelectorControlId ?? 1000,
+                    InitArg = state?.SelectorInitArg ?? 4,
+                    Position = new Point(state?.SelectorX ?? 412, state?.SelectorY ?? 406),
+                    ActiveIndex = _listPlateObject.ActiveIndex,
+                    VisibleOffset = _listPlateObject.ScrollOffset,
+                    VisibleCount = visibleCount,
+                    TotalCount = _listPlateObject.TotalCount,
+                    FocusLabel = _listPlateObject.PaneLabel ?? string.Empty,
+                    Revision = _listPlateObject.Revision
+                },
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_listScrollBarObject, visibleCount: visibleCount, totalCount: _listPlateObject.TotalCount),
+                StatusMessage = _listActionState ?? string.Empty
+            };
+        }
         public string CurrentOwnerStatusMessage => _statusMessage;
 
         public override void SetFont(SpriteFont font)
@@ -982,6 +1058,12 @@ namespace HaCreator.MapSimulator.UI
             if (state.SearchButtonControl != null)
             {
                 DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult; rows {state.SearchResultCount.ToString(CultureInfo.InvariantCulture)}; all-item {(state.AllItemFilterEnabled ? "on" : "off")}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.ButtonControls.Count > 0)
+            {
+                string buttonLine = string.Join(", ", state.ButtonControls.Select(FormatWrapperButton));
+                DrawWrapped(sprite, $"Buttons {buttonLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
             }
 
             if (state.CanvasSlots.Count > 0)
@@ -2886,6 +2968,66 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static SelectorControlRuntimeState BuildSelectorControlRuntimeSnapshot(
+            SelectorRuntimeState runtime,
+            int controlId,
+            int initArg)
+        {
+            return new SelectorControlRuntimeState
+            {
+                ControlId = controlId,
+                InitArg = initArg,
+                ActiveIndex = runtime?.ActiveIndex ?? -1,
+                VisibleOffset = runtime?.VisibleOffset ?? 0,
+                VisibleCount = runtime?.VisibleCount ?? 0,
+                TotalCount = runtime?.TotalCount ?? 0,
+                FocusLabel = runtime?.FocusLabel ?? string.Empty,
+                HasNumberFont = runtime?.HasNumberFont ?? false,
+                Revision = runtime?.Revision ?? 0
+            };
+        }
+
+        private TabControlRuntimeState BuildInventoryTabControlRuntimeSnapshot()
+        {
+            string[] tabNames = { "Equip", "Use", "Setup", "Etc" };
+            int activeIndex = Array.FindIndex(tabNames, tabName => string.Equals(tabName, _inventoryTabObject.ActiveTabName, StringComparison.OrdinalIgnoreCase));
+            return new TabControlRuntimeState
+            {
+                ControlId = _inventoryTabObject.ControlId,
+                ItemCount = _inventoryTabObject.ItemCount,
+                Position = _inventoryTabObject.Position,
+                Width = _inventoryTabObject.Width,
+                RuntimeWidth = _inventoryTabObject.RuntimeWidth,
+                CanvasItemCount = _inventoryTabObject.CanvasItemCount,
+                SameWidth = _inventoryTabObject.SameWidth,
+                NormalStringPoolId = _inventoryTabObject.NormalStringPoolId,
+                SelectedStringPoolId = _inventoryTabObject.SelectedStringPoolId,
+                ActiveIndex = Math.Max(0, activeIndex),
+                ActiveTabName = _inventoryTabObject.ActiveTabName ?? string.Empty,
+                Revision = _inventoryTabObject.Revision,
+                TabNames = tabNames
+            };
+        }
+
+        private static ScrollBarControlRuntimeState BuildScrollBarControlRuntimeSnapshot(
+            ScrollBarRuntimeState runtime,
+            int visibleCount,
+            int totalCount)
+        {
+            return CreateScrollBarControlRuntimeState(
+                runtime?.ControlId ?? 0,
+                runtime?.UpButtonId ?? 0,
+                runtime?.DownButtonId ?? 0,
+                runtime?.Position ?? Point.Zero,
+                runtime?.Height ?? 0,
+                runtime?.WheelRange ?? 0,
+                runtime?.Offset ?? 0,
+                runtime?.MaxOffset ?? 0,
+                visibleCount,
+                totalCount,
+                runtime?.IsDragging ?? false);
+        }
+
         private static ScrollBarControlRuntimeState CreateScrollBarControlRuntimeState(
             int controlId,
             int upButtonId,
@@ -3577,6 +3719,7 @@ namespace HaCreator.MapSimulator.UI
                 SelectedColor = _oneADaySelectorObject.SelectedColor,
                 OutlineColor = _oneADaySelectorObject.OutlineColor,
                 FocusLabel = ResolveOneADaySelectorFocusLabel(),
+                Revision = _oneADaySelectorObject.Revision,
                 Labels = (_oneADaySelectorRuntime ?? Array.Empty<OneADayOwnerState.SelectorEntryState>())
                     .Select(entry => entry.Label ?? string.Empty)
                     .ToArray()

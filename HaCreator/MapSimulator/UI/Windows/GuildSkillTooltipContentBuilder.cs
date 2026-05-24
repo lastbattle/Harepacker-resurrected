@@ -84,6 +84,11 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(entry.BuyCharacterName))
+            {
+                lines.Add($"Buyer: {entry.BuyCharacterName.Trim()}");
+            }
+
             string stateLabel = GuildSkillRuntime.ResolveStateLabel(
                 entry.InGuild,
                 entry.CanManageSkills,

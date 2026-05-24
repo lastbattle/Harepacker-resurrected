@@ -559,16 +559,16 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                // Only touch-type reactors
-                if (!CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
+                if (!ShouldIncludeClientTouchOwnershipPollResult(data, SupportsActivationType(data, ReactorActivationType.Touch)))
                 {
                     continue;
                 }
 
-                // Get reactor hitbox
                 Rectangle reactorRect = reactor.GetCurrentBounds(resolvedTick);
+                int objectId = ResolveLocalTouchObjectId(data);
+                bool wasTouching = objectId != 0 && _reactorsOnLocalUser.ContainsKey(objectId);
 
-                if (DoesClientTouchBoundsContainPosition(reactorRect, playerX, playerY))
+                if (ResolveClientTouchOwnershipPollContainment(reactorRect, playerX, playerY, wasTouching))
                 {
                     results.Add((reactor, i));
                 }

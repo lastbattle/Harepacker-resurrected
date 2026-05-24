@@ -2023,6 +2023,9 @@ namespace HaCreator.MapSimulator.Loaders
                 device);
             UIObject cancelButton = LoadButton(noticeProperty?["Loading"] as WzSubProperty, "BtCancel", btClickSound, btOverSound, device)
                                     ?? LoadButton(noticeProperty?["LoadingSG"] as WzSubProperty, "BtCancel", btClickSound, btOverSound, device);
+            UIObject questionYesButton = LoadButton(noticeProperty, "BtYes1", btClickSound, btOverSound, device);
+            UIObject questionNoButton = LoadButton(noticeProperty, "BtNo1", btClickSound, btOverSound, device);
+            UIObject nexonButton = LoadButton(noticeProperty, "BtNexon", btClickSound, btOverSound, device);
             Dictionary<ConnectionNoticeWindowVariant, IDXObject> framesByVariant = new()
             {
                 [ConnectionNoticeWindowVariant.Notice] = noticeFrame,
@@ -2047,9 +2050,9 @@ namespace HaCreator.MapSimulator.Loaders
                 animationFramesByVariant,
                 noticeTextTextures,
                 cancelButton,
-                null,
-                null,
-                null,
+                questionYesButton,
+                questionNoButton,
+                nexonButton,
                 screenWidth,
                 screenHeight)
             {
@@ -5078,6 +5081,7 @@ namespace HaCreator.MapSimulator.Loaders
                     window.SetContentBounds(new Rectangle(421, 173, 265, 274));
                     AttachCanvasLayer(window, cashShopImage?["CSItemSearch"]?["PopUp"] as WzSubProperty, "backgrnd", device, new Point(421, 173));
                     AttachCanvasLayer(window, cashShopImage?["CSItemSearch"]?["PopUp"]?["Box"] as WzSubProperty, "0", device, new Point(446, 210));
+                    AttachCanvasLayer(window, cashShopImage?["CSItemSearch"]?["PopUp1"] as WzSubProperty, "backgrnd", device, new Point(421, 173));
                     RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtSearch", clickSound, overSound, device, 507, 272, "CCSWnd_ItemSearch staged the search button owner on the WZ-backed popup.");
                     RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtAllItem", clickSound, overSound, device, 446, 238, "CCSWnd_ItemSearch toggled the all-item search filter.");
                     RegisterCashShopStageChildButton(window, cashShopImage?["CSItemSearch"] as WzSubProperty, "BtBuy", clickSound, overSound, device, 508, 238, "CCSWnd_ItemSearch staged buy from the focused search result.");

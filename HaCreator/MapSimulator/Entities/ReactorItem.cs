@@ -583,6 +583,10 @@ namespace HaCreator.MapSimulator.Entities
             {
                 _transientFrames = transientFrames;
             }
+            else
+            {
+                _transientFrames = CreateSourceMetadataFrames(_transientFrameDelays, _transientSourceBounds);
+            }
 
             _transientFrameIndex = 0;
             _transientStartTick = tickCount;
@@ -1755,6 +1759,13 @@ namespace HaCreator.MapSimulator.Entities
             return ResolveLoadedFrameIndexForLoadLayerClock(frameIndex, loadedFrameCount);
         }
 
+        internal bool HasTransientDrawableFrameForTesting(int tickCount)
+        {
+            return _transientFrameDelays != null
+                && _transientFrameDelays.Length > 0
+                && GetStateFrame(tickCount) != null;
+        }
+
         private static int ResolveLoadedFrameIndexForLoadLayerClock(int frameIndex, int loadedFrameCount)
         {
             if (loadedFrameCount <= 0)
@@ -1763,6 +1774,76 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return Math.Clamp(frameIndex, 0, loadedFrameCount - 1);
+        }
+
+        private static IDXObject[] CreateSourceMetadataFrames(
+            IReadOnlyList<int> frameDelays,
+            IReadOnlyList<Rectangle> sourceBounds)
+        {
+            if (sourceBounds == null || sourceBounds.Count == 0)
+            {
+                return Array.Empty<IDXObject>();
+            }
+
+            IDXObject[] frames = new IDXObject[sourceBounds.Count];
+            for (int i = 0; i < sourceBounds.Count; i++)
+            {
+                Rectangle bounds = sourceBounds[i];
+                int delay = frameDelays != null && i < frameDelays.Count
+                    ? frameDelays[i]
+                    : ClientLoadLayerFallbackDelayMs;
+                frames[i] = new SourceMetadataFrame(
+                    bounds.X,
+                    bounds.Y,
+                    bounds.Width,
+                    bounds.Height,
+                    delay);
+            }
+
+            return frames;
+        }
+
+        private sealed class SourceMetadataFrame : IDXObject
+        {
+            public SourceMetadataFrame(int x, int y, int width, int height, int delay)
+            {
+                X = x;
+                Y = y;
+                Width = Math.Max(1, width);
+                Height = Math.Max(1, height);
+                Delay = Math.Max(1, delay);
+            }
+
+            public int Delay { get; }
+            public int X { get; }
+            public int Y { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public object Tag { get; set; }
+            public Texture2D Texture => null;
+
+            public void DrawObject(
+                SpriteBatch sprite,
+                SkeletonMeshRenderer meshRenderer,
+                GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+            }
+
+            public void DrawBackground(
+                SpriteBatch sprite,
+                SkeletonMeshRenderer meshRenderer,
+                GameTime gameTime,
+                int x,
+                int y,
+                Color color,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+            }
         }
 
         internal static bool ResolveLoadLayerFrameTimingForTesting(

@@ -71,7 +71,9 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 MemberId = existingEntry.MemberId ?? localEntry.MemberId,
                 IsLocalPlayer = true,
-                ClientGuildGrade = existingEntry.ClientGuildGrade ?? localEntry.ClientGuildGrade
+                ClientGuildGrade = existingEntry.ClientGuildGrade ?? localEntry.ClientGuildGrade,
+                PartyCurrentHp = existingEntry.PartyCurrentHp ?? localEntry.PartyCurrentHp,
+                PartyMaxHp = existingEntry.PartyMaxHp ?? localEntry.PartyMaxHp
             };
         }
 

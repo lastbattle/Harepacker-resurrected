@@ -380,7 +380,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<AdminShopPacketOwnedWishlistSearchResultRow> rows = new(itemCount);
-            if (version == Version2 || version == Version3 || version == Version4)
+            if (version == Version2 || version == Version3 || version == Version4 || version == Version5)
             {
                 for (int i = 0; i < itemCount; i++)
                 {
@@ -393,7 +393,7 @@ namespace HaCreator.MapSimulator.UI
                     offset += sizeof(int);
                     byte rowFlags = span[offset++];
                     byte rowFlags2 = 0;
-                    if (version == Version3 || version == Version4)
+                    if (version == Version3 || version == Version4 || version == Version5)
                     {
                         if (span.Length - offset < sizeof(byte))
                         {

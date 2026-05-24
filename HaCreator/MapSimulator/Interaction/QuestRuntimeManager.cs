@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly string[] CompletionSideChannelDemandKeys =
         {
             "premium",
+            "fieldEnter",
             "worldmin",
             "worldmax",
             "dressChanged",
@@ -10629,13 +10630,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var days = new List<DayOfWeek>();
+            int? scalarMask = ParseInt(property);
+            if (scalarMask.HasValue)
+            {
+                AddAllowedDaysFromClientMask(days, scalarMask.Value);
+            }
+
             AddParsedAllowedDays(days, property.GetString());
 
             if (property.WzProperties != null)
             {
                 for (int i = 0; i < property.WzProperties.Count; i++)
                 {
-                    AddParsedAllowedDays(days, property.WzProperties[i]?.GetString());
+                    WzImageProperty child = property.WzProperties[i];
+                    int? childMask = ParseInt(child);
+                    if (childMask.HasValue)
+                    {
+                        AddAllowedDaysFromClientMask(days, childMask.Value);
+                    }
+
+                    AddParsedAllowedDays(days, child?.GetString());
                 }
             }
 
@@ -13881,6 +13895,18 @@ namespace HaCreator.MapSimulator.Interaction
                     "pcroom",
                     "premiumpcroom",
                     "premiumfield");
+            }
+
+            if (normalizedDemandKey == "fieldenter")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "field",
+                    "map",
+                    "fieldenter",
+                    "enterfield");
             }
 
             if (normalizedDemandKey == "completevipgrademin" ||

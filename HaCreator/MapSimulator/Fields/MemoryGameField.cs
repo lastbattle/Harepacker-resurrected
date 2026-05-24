@@ -138,6 +138,10 @@ namespace HaCreator.MapSimulator.Fields
         private const int MemoryGameBookLeavePromptStringPoolId = 0x1E0;
         private const int MemoryGameCancelLeavePromptStringPoolId = 0x1E1;
         private const int MemoryGameCloseRoomPromptStringPoolId = 0x1E4;
+        private const int MemoryGameCardBackStringPoolId = 0x61A;
+        private const int MemoryGameRecordDrawStringPoolId = 0x645;
+        private const int MemoryGameRecordWinStringPoolId = 0x646;
+        private const int MemoryGameRecordLoseStringPoolId = 0x647;
         private const int MemoryGameWinStringPoolId = 0x1D4;
         private const int MemoryGameDrawStringPoolId = 0x1D5;
         private const int MemoryGameLoseStringPoolId = 0x1D6;
@@ -502,6 +506,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientEndButtonVisible => _clientEndButtonVisible;
         public Point FirstCardOffset => _firstCardOffset;
         public int ClientCardBackIndex => Math.Clamp(_gameKind, 0, CardBackTextureCount - 1);
+        public string ClientCardBackResourcePath => ResolveClientCardBackResourcePath();
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
         public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
@@ -4296,13 +4301,30 @@ namespace HaCreator.MapSimulator.Fields
                 new Rectangle(x, ClientRecordNameY, ClientRecordColumnWidth, ClientRecordGradeY - ClientRecordNameY + ClientRecordRowHeight),
                 new[]
                 {
-                    new ClientMiniGameRecordWidgetRow("Win", wins, $"Win {wins}", new Point(x, ClientRecordColumnY)),
-                    new ClientMiniGameRecordWidgetRow("Draw", draws, $"Draw {draws}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
-                    new ClientMiniGameRecordWidgetRow("Lose", losses, $"Lose {losses}", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
+                    new ClientMiniGameRecordWidgetRow("Win", wins, FormatClientRecordValue(MemoryGameRecordWinStringPoolId, "Win", wins), new Point(x, ClientRecordColumnY)),
+                    new ClientMiniGameRecordWidgetRow("Draw", draws, FormatClientRecordValue(MemoryGameRecordDrawStringPoolId, "Draw", draws), new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
+                    new ClientMiniGameRecordWidgetRow("Lose", losses, FormatClientRecordValue(MemoryGameRecordLoseStringPoolId, "Loose", losses), new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
                     new ClientMiniGameRecordWidgetRow("Rate", rate, $"Rate {rate}%", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 3)),
                     new ClientMiniGameRecordWidgetRow("Score", score, $"Score {score}", new Point(x, ClientRecordScoreY)),
                     new ClientMiniGameRecordWidgetRow("Grade", grade, $"Grade {grade}", new Point(x, ClientRecordGradeY))
                 });
+        }
+
+        private static string FormatClientRecordValue(int stringPoolId, string fallbackLabel, int value)
+        {
+            string label = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackLabel, appendFallbackSuffix: false);
+            return $"{label} {value}";
+        }
+
+        private string ResolveClientCardBackResourcePath()
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                MemoryGameCardBackStringPoolId,
+                "UI/UIWindow2.img/Minigame/MemoryGame/card/back{0}",
+                maxPlaceholderCount: 1,
+                out _);
+
+            return string.Format(CultureInfo.InvariantCulture, format, ClientCardBackIndex);
         }
 
         private string ResolveClientRecordDisplayName(int slot)

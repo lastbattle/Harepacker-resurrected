@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly IReadOnlyDictionary<byte, string> MapleTvSendResultHandlers =
             new Dictionary<byte, string>
             {
+                [0] = "CMapleTVMan::OnSendMessageResult no-feedback branch",
                 [1] = "CMapleTVMan::OnSendMessageResult sent (StringPool 0xF9E)",
                 [2] = "CMapleTVMan::OnSendMessageResult wrong-user-name (StringPool 0xFA0)",
                 [3] = "CMapleTVMan::OnSendMessageResult queue-too-long (StringPool 0xF9F)"
@@ -311,7 +312,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<byte> GetRecoveredMapleTvSendResultCodes()
         {
-            return new byte[] { 1, 2, 3 };
+            return MapleTvSendResultHandlers.Keys.OrderBy(key => key).ToArray();
         }
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMapleTvSendResultHandlers()
@@ -485,12 +486,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
-                return "MapleTV owner evidence: WZ UI/UIWindow.img/MapleTV; IDA CMapleTVMan::OnPacket 0x60fe10 -> 405/406/407.";
+                return "MapleTV owner evidence: WZ UI/UIWindow.img/MapleTV exposes backgrnd/backgrnd2 210x264, backgrnd3/backgrnd4 210x274, BtOk/BtCancel, and BtTo assets; IDA CMapleTVMan::OnPacket 0x60fe10 -> 405/406/407.";
             }
 
             if (string.Equals(ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
             {
-                return "Messenger owner evidence: WZ UI/UIWindow.img/Messenger and UI/UIWindow2.img/Messenger; IDA CUIMessenger::OnPacket 0x7f5e40 -> subtypes 0-8, with subtype 3 handled before the singleton gate.";
+                return "Messenger owner evidence: WZ UI/UIWindow.img/Messenger exposes classic 295x364/295x240 backgrounds, NameBar, chatBalloon, and BtEnter assets, while UI/UIWindow2.img/Messenger exposes Max/Min/Min2 variants, Name, chatBalloon, BtEnter, BtClame, BtMax, and BtMin assets; IDA CUIMessenger::OnPacket 0x7f5e40 -> subtypes 0-8, with subtype 3 handled before the singleton gate.";
             }
 
             if (string.Equals(ownerName, "Merchant", StringComparison.OrdinalIgnoreCase))
@@ -822,7 +823,8 @@ namespace HaCreator.MapSimulator.Interaction
                             bool showFeedback = payload[0] != 0;
                             if (!showFeedback)
                             {
-                                branchSummary = "CMapleTVMan::OnSendMessageResult without feedback";
+                                resultCode = 0;
+                                branchSummary = MapleTvSendResultHandlers[0];
                                 return true;
                             }
 

@@ -117,7 +117,8 @@ namespace HaCreator.MapSimulator.Pools
         bool IsSamePhase = true,
         bool IsDazzled = false,
         int WishTemplateId = 0,
-        int PoisonStatusId = 0);
+        int PoisonStatusId = 0,
+        bool IsEventTeamProtected = false);
 
     internal readonly record struct PacketOwnedExpiryCandidateClientState(
         bool IsSuspended = false,
@@ -4015,6 +4016,7 @@ namespace HaCreator.MapSimulator.Pools
                     IsEscortMob: IsPacketOwnedExpiryEscortMob(mob),
                     IsOurTeam: clientState.IsOurTeam,
                     IsSamePhase: clientState.IsSamePhase,
+                    IsEventTeamProtected: clientState.IsEventTeamProtected,
                     IsDazzled: mob.AI?.IsDazzled == true));
             }
 
@@ -4792,6 +4794,7 @@ namespace HaCreator.MapSimulator.Pools
                    && (!candidate.IsDamagedByMob || includeEscortMob)
                    && (!candidate.IsEscortMob || includeEscortMob)
                    && !candidate.IsOurTeam
+                   && !candidate.IsEventTeamProtected
                    && candidate.IsSamePhase
                    && (includeDazzledMob || !candidate.IsDazzled);
         }

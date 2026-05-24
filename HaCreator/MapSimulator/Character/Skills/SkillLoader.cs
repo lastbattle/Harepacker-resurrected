@@ -181,7 +181,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonowner",
             "summonedowner",
             "summonskillid",
-            "ownerskillid"
+            "ownerskillid",
+            "first",
+            "item1",
+            "keyfield",
+            "keyvalue",
+            "pairkey",
+            "mapkey",
+            "dictionarykey",
+            "stdpairfirst"
         };
         private static readonly string[] ClientSkillAssetCharacterLevelFieldNames =
         {
@@ -7983,8 +7991,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("rowdata", StringComparison.Ordinal)
                    || normalizedName.Equals("recordvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("recordvalues", StringComparison.Ordinal)
+                   || normalizedName.Equals("recorddata", StringComparison.Ordinal)
                    || normalizedName.Equals("fieldvalue", StringComparison.Ordinal)
-                   || normalizedName.Equals("fieldvalues", StringComparison.Ordinal);
+                   || normalizedName.Equals("fieldvalues", StringComparison.Ordinal)
+                   || normalizedName.Equals("targetvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("pathvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("uoldata", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourcevalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("hitvalue", StringComparison.Ordinal);
         }
 
         private static bool IsClientSummonedUolRowSetFieldName(string name)
@@ -10172,14 +10186,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || leafName.Equals("uolData", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("hitValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("rowValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("recordValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("recordData", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("fieldValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("extractedValue", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("extractedPath", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("extractedUol", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("extractedUolPath", StringComparison.OrdinalIgnoreCase)
                    || leafName.Equals("value", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("val", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("second", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("Item2", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("pairValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("mapValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("dictionaryValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("stdPairSecond", StringComparison.OrdinalIgnoreCase)
                    || normalizedName.Equals("uolpath", StringComparison.Ordinal)
                    || normalizedName.Equals("uolstring", StringComparison.Ordinal)
                    || normalizedName.Equals("summonuol", StringComparison.Ordinal)
@@ -10218,13 +10241,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("bstrt", StringComparison.Ordinal)
                    || normalizedName.Equals("ztlbstrt", StringComparison.Ordinal)
                    || normalizedName.Equals("assetvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("hitvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("rowvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("recordvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("recorddata", StringComparison.Ordinal)
                    || normalizedName.Equals("fieldvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("extractedvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("extractedpath", StringComparison.Ordinal)
                    || normalizedName.Equals("extracteduol", StringComparison.Ordinal)
                    || normalizedName.Equals("extracteduolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("val", StringComparison.Ordinal)
+                   || normalizedName.Equals("second", StringComparison.Ordinal)
+                   || normalizedName.Equals("item2", StringComparison.Ordinal)
+                   || normalizedName.Equals("pairvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("mapvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("dictionaryvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("stdpairsecond", StringComparison.Ordinal)
                    || ClientSummonedUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)
                    || ClientTileUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)
                    || ClientBallUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)

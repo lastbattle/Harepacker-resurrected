@@ -668,6 +668,8 @@ namespace HaCreator.MapSimulator
         private const int DOUBLE_CLICK_TIME_MS = 500; // Time window for double-click
         private PortalItem _lastClickedPortal = null; // Track which visible portal was clicked
         private PortalInstance _lastClickedHiddenPortal = null; // Track which hidden portal was clicked
+        private Point? _lastMonsterCarnivalListClickPoint;
+        private int _lastMonsterCarnivalListClickTime = int.MinValue;
 
 
         // Portal fade effect constants (from IDA Pro analysis of CStage::FadeIn/FadeOut)
@@ -772,6 +774,10 @@ namespace HaCreator.MapSimulator
         private int _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
         private bool _hasPortalOwnedMovePathFlushAdmission;
         private readonly List<MovePathElement> _portalOwnedMovePathPostFlushCarry = new();
+        private CMovePathClientPacketCodec.ClientFlushTail? _lastSimulatorPortalOwnedMovePathFlushTail;
+        private byte[] _lastCapturedPortalOwnedMovePathKeyPadMemoryStates;
+        private string _lastCapturedPortalOwnedMovePathKeyPadMemorySource;
+        private bool _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -913,6 +919,10 @@ namespace HaCreator.MapSimulator
         private float _activeConnectionNoticeProgress;
         private int _activeConnectionNoticeExpiresAt = int.MinValue;
         private bool _activeConnectionNoticeTracksDirectionModeOwner;
+        private LoginUtilityDialogButtonLayout _activeConnectionNoticeButtonLayout = LoginUtilityDialogButtonLayout.Ok;
+        private string _activeConnectionNoticePrimaryLabel;
+        private string _activeConnectionNoticeSecondaryLabel;
+        private LoginUtilityDialogAction _activeConnectionNoticeAction = LoginUtilityDialogAction.None;
 
 
         // Seamless map transition support (state managed by _gameState)
@@ -1889,7 +1899,9 @@ namespace HaCreator.MapSimulator
 
             activeBuild = GetActiveMapTransferCharacterBuild();
             IReadOnlyList<int> snapshotFieldList = _mapTransferRuntime.SnapshotFieldList(activeBuild, destinationBook);
-            targetSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
+            targetSlotIndex = ResolveMapTransferRegisterTargetSlotIndex(
+                selectedEntry,
+                _mapTransferEditDestination);
 
             if (targetSlotIndex < 0 && !HasMapTransferEmptySlot(snapshotFieldList))
             {
@@ -1938,6 +1950,16 @@ namespace HaCreator.MapSimulator
             return mapId > 0 &&
                    mapId / 100_000_000 != 0 &&
                    (mapId / 1_000_000) % 100 != 9;
+        }
+
+        internal static int ResolveMapTransferRegisterTargetSlotIndex(
+            MapTransferUI.DestinationEntry selectedEntry,
+            MapTransferUI.DestinationEntry editDestination)
+        {
+            _ = selectedEntry;
+            return editDestination?.IsSavedSlot == true
+                ? editDestination.SavedSlotIndex
+                : -1;
         }
 
         private bool TryResolveMapTransferRegisterTarget(
@@ -9655,6 +9677,10 @@ namespace HaCreator.MapSimulator
             {
                 connectionNoticeWindow.CancelRequested -= HandleConnectionNoticeCancelRequested;
                 connectionNoticeWindow.CancelRequested += HandleConnectionNoticeCancelRequested;
+                connectionNoticeWindow.PrimaryRequested -= HandleConnectionNoticePrimaryRequested;
+                connectionNoticeWindow.PrimaryRequested += HandleConnectionNoticePrimaryRequested;
+                connectionNoticeWindow.SecondaryRequested -= HandleConnectionNoticeSecondaryRequested;
+                connectionNoticeWindow.SecondaryRequested += HandleConnectionNoticeSecondaryRequested;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is not LoginUtilityDialogWindow utilityDialogWindow)
             {
@@ -10899,6 +10925,22 @@ namespace HaCreator.MapSimulator
             EnsureLoginWorldSelectorMetadata(new[] { worldId });
             if (!_loginWorldMetadataByWorld.TryGetValue(worldId, out LoginWorldSelectorMetadata metadata))
             {
+                return;
+            }
+
+            if (metadata.HasAuthoritativePopulationData)
+            {
+                _loginWorldMetadataByWorld[worldId] = new LoginWorldSelectorMetadata(
+                    worldId,
+                    metadata.Channels,
+                    metadata.RequiresAdultAccount,
+                    metadata.HasAuthoritativePopulationData,
+                    metadata.RecommendMessage,
+                    metadata.RecommendOrder,
+                    metadata.WorldState,
+                    metadata.BlocksCharacterCreation,
+                    metadata.WorldName,
+                    populationLevel);
                 return;
             }
 
@@ -13572,7 +13614,18 @@ namespace HaCreator.MapSimulator
                     _loginPacketExtraCharInfoResultProfile);
             }
 
-            ApplyResolvedLoginCharacterRoster(entries, slotCount, buyCharacterCount, selectedCharacterId: build.Id);
+            _loginBackendSessionManager.TryUpsertCharacter(
+                packetEntry,
+                _loginPacketSelectWorldTargetWorldId ?? _loginBackendSessionManager.ActiveWorldId,
+                out _);
+            SyncLoginPacketRosterProfilesFromBackend();
+            ApplyResolvedLoginCharacterRoster(
+                entries,
+                slotCount,
+                buyCharacterCount,
+                selectedCharacterId: build.Id,
+                syncBackendSession: false,
+                persistBackendSession: true);
             _loginRuntime.ForceStep(
                 LoginStep.CharacterSelect,
                 $"CreateNewCharacterResult accepted {build.Name} and returned to character selection.");
@@ -13638,7 +13691,14 @@ namespace HaCreator.MapSimulator
             int buyCharacterCount = Math.Max(0, _loginCharacterRoster.BuyCharacterCount);
             int selectedIndex = entries.Count == 0 ? -1 : Math.Min(removedIndex, entries.Count - 1);
 
-            ApplyResolvedLoginCharacterRoster(entries, slotCount, buyCharacterCount, selectedIndex: selectedIndex);
+            SyncLoginPacketRosterProfilesFromBackend();
+            ApplyResolvedLoginCharacterRoster(
+                entries,
+                slotCount,
+                buyCharacterCount,
+                selectedIndex: selectedIndex,
+                syncBackendSession: false,
+                persistBackendSession: true);
             _loginRuntime.ForceStep(
                 LoginStep.CharacterSelect,
                 $"DeleteCharacterResult accepted character {characterId} and refreshed character selection.");
@@ -13799,7 +13859,9 @@ namespace HaCreator.MapSimulator
             int slotCount,
             int buyCharacterCount,
             int? selectedCharacterId = null,
-            int? selectedIndex = null)
+            int? selectedIndex = null,
+            bool syncBackendSession = true,
+            bool persistBackendSession = false)
         {
             List<LoginCharacterRosterEntry> resolvedEntries = entries?
                 .Where(entry => entry != null)
@@ -13816,8 +13878,19 @@ namespace HaCreator.MapSimulator
                 LoginCharacterRosterManager.MaxCharacterSlotCount);
 
             _loginCharacterRoster.SetEntries(resolvedEntries, normalizedSlotCount, normalizedBuyCharacterCount);
-            SyncPacketOwnedLoginRosterProfiles(resolvedEntries, normalizedSlotCount, normalizedBuyCharacterCount);
-            PersistLoginCharacterRosterToAccountStore(resolvedEntries, normalizedSlotCount, normalizedBuyCharacterCount);
+            if (syncBackendSession)
+            {
+                SyncPacketOwnedLoginRosterProfiles(resolvedEntries, normalizedSlotCount, normalizedBuyCharacterCount);
+            }
+
+            if (persistBackendSession)
+            {
+                PersistLoginBackendSessionRostersToAccountStore();
+            }
+            else
+            {
+                PersistLoginCharacterRosterToAccountStore(resolvedEntries, normalizedSlotCount, normalizedBuyCharacterCount);
+            }
 
             if (selectedCharacterId.HasValue && selectedCharacterId.Value > 0)
             {
@@ -13829,6 +13902,23 @@ namespace HaCreator.MapSimulator
             }
 
             FinalizeLoginCharacterRosterInitialization();
+        }
+
+        private void SyncLoginPacketRosterProfilesFromBackend()
+        {
+            if (_loginBackendSessionManager.SelectWorldRosterProfile != null)
+            {
+                _loginPacketSelectWorldResultProfile = _loginBackendSessionManager.SelectWorldRosterProfile;
+            }
+
+            if (_loginBackendSessionManager.ViewAllCharRosterProfile != null)
+            {
+                _loginPacketViewAllCharEntries.Clear();
+                _loginPacketViewAllCharEntries.AddRange(_loginBackendSessionManager.SnapshotAggregatedViewAllEntries());
+                _loginPacketViewAllCharRosterProfile = _loginBackendSessionManager.ViewAllCharRosterProfile;
+                _loginPacketViewAllCharExpectedCharacterCount = _loginBackendSessionManager.ViewAllExpectedCharacterCount;
+                _loginPacketViewAllCharRemainingServerCount = _loginBackendSessionManager.ViewAllRemainingServerCount;
+            }
         }
 
         private void SyncPacketOwnedLoginRosterProfiles(
@@ -16206,6 +16296,9 @@ namespace HaCreator.MapSimulator
             ConnectionNoticeWindowVariant variant = ConnectionNoticeWindowVariant.Notice;
             string title = "Connection Notice";
             int? noticeTextIndex = null;
+            LoginUtilityDialogButtonLayout buttonLayout = LoginUtilityDialogButtonLayout.Ok;
+            string primaryLabel = null;
+            string secondaryLabel = null;
 
 
             if (_activeConnectionNoticeExpiresAt != int.MinValue)
@@ -16217,6 +16310,9 @@ namespace HaCreator.MapSimulator
                 progress = _activeConnectionNoticeProgress;
                 variant = _activeConnectionNoticeVariant;
                 noticeTextIndex = _activeConnectionNoticeTextIndex;
+                buttonLayout = _activeConnectionNoticeButtonLayout;
+                primaryLabel = _activeConnectionNoticePrimaryLabel;
+                secondaryLabel = _activeConnectionNoticeSecondaryLabel;
             }
             else if (_selectorRequestKind != SelectorRequestKind.None)
             {
@@ -16265,7 +16361,16 @@ namespace HaCreator.MapSimulator
             }
 
 
-            noticeWindow.Configure(title, body, showProgress, progress, variant, noticeTextIndex);
+            noticeWindow.Configure(
+                title,
+                body,
+                showProgress,
+                progress,
+                variant,
+                noticeTextIndex,
+                buttonLayout,
+                primaryLabel,
+                secondaryLabel);
             if (_activeConnectionNoticeTracksDirectionModeOwner)
             {
                 ShowWindow(
@@ -16745,6 +16850,10 @@ namespace HaCreator.MapSimulator
             _activeConnectionNoticeShowProgress = _activeConnectionNoticeVariant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
             _activeConnectionNoticeProgress = _activeConnectionNoticeShowProgress ? 1f : 0f;
             _activeConnectionNoticeExpiresAt = currTickCount + Math.Max(0, prompt.DurationMs);
+            _activeConnectionNoticeButtonLayout = prompt.ButtonLayout ?? LoginUtilityDialogButtonLayout.Ok;
+            _activeConnectionNoticePrimaryLabel = prompt.PrimaryLabel;
+            _activeConnectionNoticeSecondaryLabel = prompt.SecondaryLabel;
+            _activeConnectionNoticeAction = ResolveLoginPacketDialogAction(prompt);
             _activeConnectionNoticeTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
                 prompt.TrackDirectionModeOwner,
                 prompt.HasExplicitTrackDirectionModeOwner,
@@ -16763,6 +16872,10 @@ namespace HaCreator.MapSimulator
             _activeConnectionNoticeProgress = 0f;
             _activeConnectionNoticeExpiresAt = int.MinValue;
             _activeConnectionNoticeTracksDirectionModeOwner = false;
+            _activeConnectionNoticeButtonLayout = LoginUtilityDialogButtonLayout.Ok;
+            _activeConnectionNoticePrimaryLabel = null;
+            _activeConnectionNoticeSecondaryLabel = null;
+            _activeConnectionNoticeAction = LoginUtilityDialogAction.None;
         }
 
 
@@ -18008,6 +18121,11 @@ namespace HaCreator.MapSimulator
                 LoginPacketType.CheckSpwResult => LoginUtilityDialogAction.VerifySpw,
                 _ => LoginUtilityDialogAction.DismissOnly,
             };
+        }
+
+        private static LoginUtilityDialogAction ResolveLoginPacketDialogAction(LoginPacketDialogPromptConfiguration prompt)
+        {
+            return prompt?.Action ?? LoginUtilityDialogAction.DismissOnly;
         }
 
 
@@ -19764,7 +19882,8 @@ namespace HaCreator.MapSimulator
             _itemMakerProgressionStore = new ItemMakerProgressionStore();
             _monsterBookManager = new MonsterBookManager();
 
-            _loginCharacterAccountStore = new LoginCharacterAccountStore();
+            _loginCharacterAccountStore = new LoginCharacterAccountStore(
+                billingAuthorityClient: HttpLoginAccountBillingAuthorityClient.CreateFromEnvironment());
             _socialRoomPersistenceStore = new SocialRoomPersistenceStore();
 
 
@@ -22530,14 +22649,24 @@ namespace HaCreator.MapSimulator
 
 
 
-        private void ApplyMobSkillVisualEffect(MobItem mobItem, MobSkillEntry skill, int currentTick)
+        private bool ApplyMobSkillVisualEffect(
+            MobItem mobItem,
+            MobSkillEntry skill,
+            int currentTick,
+            bool includeTileArea = true)
         {
+            if (skill == null)
+            {
+                return false;
+            }
+
             MobSkillEffectData effectData = _playerManager?.LoadMobSkillEffect(skill.SkillId, skill.Level);
             if (effectData == null)
             {
-                return;
+                return false;
             }
 
+            bool appliedAny = false;
 
             if (effectData.HasEffect)
             {
@@ -22551,6 +22680,7 @@ namespace HaCreator.MapSimulator
                     effectPosition.Y,
                     flip,
                     currentTick);
+                appliedAny = true;
 
 
                 if (effectData.EffectPosition == MobSkillEffectPosition.Screen)
@@ -22570,37 +22700,43 @@ namespace HaCreator.MapSimulator
                     iconPosition.X,
                     iconPosition.Y,
                     currentTick);
+                appliedAny = true;
             }
 
-            ApplyDirectMobSkillTileArea(mobItem, skill, effectData, currentTick);
+            if (includeTileArea)
+            {
+                appliedAny |= ApplyDirectMobSkillTileArea(mobItem, skill, effectData, currentTick);
+            }
+
+            return appliedAny;
         }
 
-        private void ApplyDirectMobSkillTileArea(MobItem mobItem, MobSkillEntry skill, MobSkillEffectData effectData, int currentTick)
+        private bool ApplyDirectMobSkillTileArea(MobItem mobItem, MobSkillEntry skill, MobSkillEffectData effectData, int currentTick)
         {
             if (_affectedAreaPool == null
                 || mobItem?.AI == null
                 || skill == null
                 || effectData?.HasTileAnimation != true)
             {
-                return;
+                return false;
             }
 
             MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skill.SkillId, skill.Level);
             if (runtimeData == null || runtimeData.DurationMs <= 0)
             {
-                return;
+                return false;
             }
 
             Rectangle area = CreateMobSkillArea(mobItem, runtimeData);
             if (area.Width <= 0 || area.Height <= 0)
             {
-                return;
+                return false;
             }
 
             int objectId = ResolveDirectMobSkillAffectedAreaObjectId(mobItem, skill, currentTick);
             if (objectId <= 0)
             {
-                return;
+                return false;
             }
 
             _affectedAreaPool.Upsert(
@@ -22617,6 +22753,7 @@ namespace HaCreator.MapSimulator
                     sourceKind: AffectedAreaSourceKind.MobSkill,
                     durationOverrideMs: runtimeData.DurationMs),
                 currentTick);
+            return true;
         }
 
         internal static int ResolveDirectMobSkillAffectedAreaObjectIdForTesting(
@@ -35310,6 +35447,7 @@ namespace HaCreator.MapSimulator
             {
                 _lastPortalOwnedMovePathFlushAdmissionTick = currentTime;
                 _hasPortalOwnedMovePathFlushAdmission = true;
+                RecordLastSimulatorPortalOwnedMovePathFlushTail(payload, includeClientRandomCounts);
                 _portalOwnedMovePathPostFlushCarry.Clear();
                 IReadOnlyList<MovePathElement> carryPath =
                     CMovePathClientPacketCodec.CapturePortalOwnedPostFlushCarryHint(cadenceShapedPath);
@@ -35326,6 +35464,101 @@ namespace HaCreator.MapSimulator
 
             encoded = true;
             return payload ?? Array.Empty<byte>();
+        }
+
+        private void RecordLastSimulatorPortalOwnedMovePathFlushTail(
+            byte[] payload,
+            bool includeClientRandomCounts)
+        {
+            if (!CMovePathClientPacketCodec.TryDecodeWithClientFlushTail(
+                    payload ?? Array.Empty<byte>(),
+                    out _,
+                    out CMovePathClientPacketCodec.ClientFlushTail flushTail,
+                    out _,
+                    includeClientRandomCounts))
+            {
+                _lastSimulatorPortalOwnedMovePathFlushTail = null;
+                return;
+            }
+
+            _lastSimulatorPortalOwnedMovePathFlushTail = flushTail;
+        }
+
+        internal bool TryRecordPortalOwnedMovePathKeyPadMemoryCapture(
+            IReadOnlyList<byte> bytes,
+            bool packedNibbles,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (!CMovePathClientPacketCodec.TryDecodeClientFlushTailPassiveKeyPadStates(
+                    bytes,
+                    packedNibbles,
+                    out byte[] states,
+                    out string error))
+            {
+                message = error ?? "Captured portal-owned keypad memory states could not be decoded.";
+                return false;
+            }
+
+            _lastCapturedPortalOwnedMovePathKeyPadMemoryStates = states;
+            _lastCapturedPortalOwnedMovePathKeyPadMemorySource =
+                string.IsNullOrWhiteSpace(source) ? "manual portal m_aKeyPadState capture" : source.Trim();
+            _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession =
+                IsPortalOwnedMovePathOfficialSessionCaptureSource(_lastCapturedPortalOwnedMovePathKeyPadMemorySource);
+            message = DescribePortalOwnedMovePathKeyPadMemoryParityStatus();
+            return true;
+        }
+
+        internal string DescribePortalOwnedMovePathKeyPadMemoryParityStatus()
+        {
+            bool hasSimulatorTail = _lastSimulatorPortalOwnedMovePathFlushTail.HasValue;
+            bool hasCapture = _lastCapturedPortalOwnedMovePathKeyPadMemoryStates != null;
+            string simulatorText = hasSimulatorTail
+                ? $"sim keypad={FormatPortalOwnedMovePathKeyPadStates(_lastSimulatorPortalOwnedMovePathFlushTail.Value.PassiveKeyPadStates)}"
+                : "sim tail unavailable";
+            string captureText = hasCapture
+                ? $"capture keypad={FormatPortalOwnedMovePathKeyPadStates(_lastCapturedPortalOwnedMovePathKeyPadMemoryStates)} from {_lastCapturedPortalOwnedMovePathKeyPadMemorySource}"
+                : "capture unavailable";
+
+            if (!hasCapture || !hasSimulatorTail)
+            {
+                return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}.";
+            }
+
+            bool match = CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                _lastSimulatorPortalOwnedMovePathFlushTail.Value.PassiveKeyPadStates,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryStates);
+            string proofText = _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession
+                ? match
+                    ? "Official-session m_aKeyPadState memory byte proof matched the simulator portal flush tail."
+                    : "Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator portal flush tail."
+                : match
+                    ? "Manual m_aKeyPadState memory capture matched; official-session byte proof still pending."
+                    : "Manual m_aKeyPadState memory capture differs; official-session byte proof still pending.";
+            return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}; keypad {(match ? "match" : "mismatch")}. {proofText}";
+        }
+
+        internal static bool IsPortalOwnedMovePathOfficialSessionCaptureSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            string normalized = source.Trim();
+            return normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Contains(" official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string FormatPortalOwnedMovePathKeyPadStates(IReadOnlyList<byte> states)
+        {
+            if (states == null || states.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(",", states.Select(state => (state & 0x0F).ToString("X1", System.Globalization.CultureInfo.InvariantCulture)));
         }
 
         private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
@@ -40664,6 +40897,70 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+
+            SyncLoginTitleWindow();
+            RefreshWorldChannelSelectorWindows();
+            SyncLoginEntryDialogs();
+        }
+
+        private void HandleConnectionNoticePrimaryRequested()
+        {
+            if (_activeConnectionNoticeExpiresAt == int.MinValue)
+            {
+                return;
+            }
+
+            LoginUtilityDialogAction action = _activeConnectionNoticeAction;
+            ClearActiveConnectionNotice();
+
+            switch (action)
+            {
+                case LoginUtilityDialogAction.WebsiteHandoffDecision:
+                    ShowConnectionNoticePrompt(new LoginPacketDialogPromptConfiguration
+                    {
+                        Owner = LoginPacketDialogOwner.ConnectionNotice,
+                        Title = "Connection Notice",
+                        Body = $"The login flow requested a website handoff. Press the Nexon button to open {_loginWebsiteHandoffUrl} for {_loginWebsiteHandoffSource} while staying inside the Login.img/Notice owner.",
+                        NoticeVariant = ConnectionNoticeWindowVariant.NoticeCog,
+                        ButtonLayout = LoginUtilityDialogButtonLayout.Nexon,
+                        Action = LoginUtilityDialogAction.WebsiteHandoff,
+                        DurationMs = 30000,
+                    });
+                    break;
+                case LoginUtilityDialogAction.WebsiteHandoff:
+                    TryOpenLoginWebsiteHandoff(out string websiteHandoffStatus);
+                    _loginTitleStatusMessage = websiteHandoffStatus;
+                    ShowConnectionNoticePrompt(new LoginPacketDialogPromptConfiguration
+                    {
+                        Owner = LoginPacketDialogOwner.ConnectionNotice,
+                        Title = "Connection Notice",
+                        Body = websiteHandoffStatus,
+                        NoticeVariant = ConnectionNoticeWindowVariant.NoticeCog,
+                        DurationMs = 2200,
+                    });
+                    break;
+                default:
+                    _loginTitleStatusMessage = "Dismissed the active connection notice.";
+                    break;
+            }
+
+            SyncLoginTitleWindow();
+            RefreshWorldChannelSelectorWindows();
+            SyncLoginEntryDialogs();
+        }
+
+        private void HandleConnectionNoticeSecondaryRequested()
+        {
+            if (_activeConnectionNoticeExpiresAt == int.MinValue)
+            {
+                return;
+            }
+
+            LoginUtilityDialogAction action = _activeConnectionNoticeAction;
+            ClearActiveConnectionNotice();
+            _loginTitleStatusMessage = action == LoginUtilityDialogAction.WebsiteHandoffDecision
+                ? "Declined the simulator website handoff prompt."
+                : "Dismissed the active connection notice.";
 
             SyncLoginTitleWindow();
             RefreshWorldChannelSelectorWindows();

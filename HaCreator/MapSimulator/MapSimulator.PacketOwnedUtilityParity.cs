@@ -53,6 +53,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRadioCreateLayerLeftMargin = 40;
         private const string PacketOwnedRadioUiCanvasPathOn = "UI/UIWindow.img/Radio/On";
         private const string PacketOwnedRadioUiCanvasPathOff = "UI/UIWindow.img/Radio/Off/0";
+        private const int PacketOwnedRadioUiCanvasWidth = 54;
+        private const int PacketOwnedRadioUiCanvasHeight = 32;
+        private const int PacketOwnedRadioUiOnFrameCount = 5;
         private const int PacketOwnedRadioUiFrameDelayMs = 150;
         private const int PacketOwnedRadioUiFadeDurationMs = 100;
         private const int PacketOwnedRadioUpdatePollIntervalMs = 2000;
@@ -253,6 +256,18 @@ namespace HaCreator.MapSimulator
             bool SoundReleasedBeforeTrackProperty,
             PacketOwnedRadioClientHandleStatus HandleStatus);
 
+        internal readonly record struct PacketOwnedRadioPlayPlan(
+            bool EnteredPlay,
+            bool TrackPropertyLoaded,
+            bool MmsPlaySucceeded,
+            bool SetPlayingBeforeBgmVolumeCapture,
+            bool CapturedBgmVolumeBeforeTrackName,
+            bool LoadedTrackNameFromProperty,
+            bool TrackNameLoadedBeforeMute,
+            bool MuteBeforeShowUi,
+            bool ShowUiBeforeStartChat,
+            bool StartChatUsesTrackName);
+
         internal readonly record struct PacketOwnedRadioStopPlan(
             bool EnteredStop,
             bool MmsStopBeforeShowUi,
@@ -307,6 +322,28 @@ namespace HaCreator.MapSimulator
             bool MmsVolumeBeforeMuteFlagClear,
             bool UiMuteAfterAudioMix,
             IReadOnlyList<PacketOwnedRadioMuteOperation> Operations);
+
+        internal readonly record struct PacketOwnedRadioCreateLayerPlan(
+            bool BLeft,
+            int NMargin,
+            string Origin,
+            int BaseX,
+            int WidthOffset,
+            int MarginOffset,
+            int Y,
+            bool CreatesOffResidentLayer,
+            bool CreatesOnAnimationLayer,
+            bool OffLayerParentedBeforeOnLayer,
+            bool OffLayerStopped,
+            bool AlphaOriginReset,
+            int OffCanvasWidth,
+            int OffCanvasHeight,
+            int OffCanvasOriginX,
+            int OffCanvasOriginY,
+            int OnFrameCount,
+            int OnFrameDelayMs,
+            int FadeDurationMs,
+            IReadOnlyList<string> NativeOperationTrace);
 
         internal sealed class PacketOwnedRadioClientPlaybackHandle
         {
@@ -696,6 +733,7 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
         private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
         private PacketOwnedRadioMmsPlayPlan _lastPacketOwnedRadioMmsPlayPlan;
+        private PacketOwnedRadioPlayPlan _lastPacketOwnedRadioPlayPlan;
         private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
         private PacketOwnedRadioStopPlan _lastPacketOwnedRadioStopPlan;
         private PacketOwnedRadioMutePlan _lastPacketOwnedRadioMutePlan;
@@ -12293,6 +12331,10 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioClientPlaybackPositionMs = _lastPacketOwnedRadioClientPlaybackSeedMs;
                 _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
                 _lastPacketOwnedRadioMmsStopPlan = default;
+                _lastPacketOwnedRadioPlayPlan = ResolvePacketOwnedRadioPlayPlan(
+                    trackPropertyLoaded: true,
+                    mmsPlaySucceeded: mmsPlayPlan.Started,
+                    hasTrackName: !string.IsNullOrWhiteSpace(trackResolution.DisplayName));
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
                 _lastPacketOwnedRadioExpectedStopTick = mmsPlayPlan.LastUpdateTick != int.MinValue
@@ -12823,6 +12865,40 @@ namespace HaCreator.MapSimulator
                 ReleasedTrackName: hasTrackName);
         }
 
+        internal static PacketOwnedRadioPlayPlan ResolvePacketOwnedRadioPlayPlan(
+            bool trackPropertyLoaded,
+            bool mmsPlaySucceeded,
+            bool hasTrackName)
+        {
+            bool enteredPlay = trackPropertyLoaded && mmsPlaySucceeded;
+            if (!enteredPlay)
+            {
+                return new PacketOwnedRadioPlayPlan(
+                    EnteredPlay: false,
+                    TrackPropertyLoaded: trackPropertyLoaded,
+                    MmsPlaySucceeded: mmsPlaySucceeded,
+                    SetPlayingBeforeBgmVolumeCapture: false,
+                    CapturedBgmVolumeBeforeTrackName: false,
+                    LoadedTrackNameFromProperty: false,
+                    TrackNameLoadedBeforeMute: false,
+                    MuteBeforeShowUi: false,
+                    ShowUiBeforeStartChat: false,
+                    StartChatUsesTrackName: false);
+            }
+
+            return new PacketOwnedRadioPlayPlan(
+                EnteredPlay: true,
+                TrackPropertyLoaded: true,
+                MmsPlaySucceeded: true,
+                SetPlayingBeforeBgmVolumeCapture: true,
+                CapturedBgmVolumeBeforeTrackName: true,
+                LoadedTrackNameFromProperty: hasTrackName,
+                TrackNameLoadedBeforeMute: hasTrackName,
+                MuteBeforeShowUi: true,
+                ShowUiBeforeStartChat: true,
+                StartChatUsesTrackName: hasTrackName);
+        }
+
         internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
             bool trackPropertyLoaded,
             bool soundObjectLoaded,
@@ -13255,6 +13331,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioClientMmsPlaySucceeded = false;
             _lastPacketOwnedRadioClientMmsPlayFailureReason = completed ? "completed" : "stopped";
             _lastPacketOwnedRadioMmsPlayPlan = default;
+            _lastPacketOwnedRadioPlayPlan = default;
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -13571,7 +13648,7 @@ namespace HaCreator.MapSimulator
             bool explicitContextValue = _packetOwnedLocalUtilityContext.RadioCreateLayerLeftContextValue;
             bool minimapExpanded = miniMapUi?.IsExpandedOptionActive == true;
             bool bLeft = ShouldUsePacketOwnedRadioLeftInset();
-            int nMargin = bLeft ? PacketOwnedRadioCreateLayerLeftMargin : 0;
+            PacketOwnedRadioCreateLayerPlan plan = ResolvePacketOwnedRadioCreateLayerPlan(bLeft);
             string liveSource = hasExplicitContextValue
                 ? $"packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}]={(explicitContextValue ? 1 : 0)}"
                 : $"minimap expanded fallback={(minimapExpanded ? 1 : 0)}";
@@ -13579,13 +13656,18 @@ namespace HaCreator.MapSimulator
             {
                 EnsurePacketOwnedRadioCreateLayerSessionState();
                 bLeft = _packetOwnedRadioSessionCreateLayerLeft;
-                nMargin = bLeft ? PacketOwnedRadioCreateLayerLeftMargin : 0;
+                plan = ResolvePacketOwnedRadioCreateLayerPlan(bLeft);
                 return
                     $"CreateLayer: bLeft={(_packetOwnedRadioSessionCreateLayerLeft ? 1 : 0)} via {_packetOwnedRadioSessionCreateLayerSource}, " +
-                    $"nMargin={nMargin}, Origin_RT => x=-3-width-{nMargin}, y=+3 (live fallback now {liveSource}).";
+                    $"nMargin={plan.NMargin}, {plan.Origin} => x={plan.BaseX}-width-{plan.NMargin}, y={plan.Y:+#;-#;0}, " +
+                    $"Off/0 resident {plan.OffCanvasWidth}x{plan.OffCanvasHeight}, On/{plan.OnFrameCount} delay={plan.OnFrameDelayMs} ms, fade={plan.FadeDurationMs} ms " +
+                    $"(live fallback now {liveSource}).";
             }
 
-            return $"CreateLayer: bLeft={(bLeft ? 1 : 0)} via {liveSource}, nMargin={nMargin}, Origin_RT => x=-3-width-{nMargin}, y=+3";
+            return
+                $"CreateLayer: bLeft={(bLeft ? 1 : 0)} via {liveSource}, nMargin={plan.NMargin}, " +
+                $"{plan.Origin} => x={plan.BaseX}-width-{plan.NMargin}, y={plan.Y:+#;-#;0}, " +
+                $"Off/0 resident {plan.OffCanvasWidth}x{plan.OffCanvasHeight}, On/{plan.OnFrameCount} delay={plan.OnFrameDelayMs} ms, fade={plan.FadeDurationMs} ms";
         }
 
         private string DescribePacketOwnedRadioCreateLayerLifecycleState()
@@ -13617,6 +13699,7 @@ namespace HaCreator.MapSimulator
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, ailLoadFailureAfterRaw={_lastPacketOwnedRadioMmsPlayPlan.AilQuickLoadMemFailureAfterRawBuffer}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
+                $"last CRadioManager::Play entered={_lastPacketOwnedRadioPlayPlan.EnteredPlay}, trackProp={_lastPacketOwnedRadioPlayPlan.TrackPropertyLoaded}, mmsPlay={_lastPacketOwnedRadioPlayPlan.MmsPlaySucceeded}, playingBeforeBgm={_lastPacketOwnedRadioPlayPlan.SetPlayingBeforeBgmVolumeCapture}, bgmBeforeTrackName={_lastPacketOwnedRadioPlayPlan.CapturedBgmVolumeBeforeTrackName}, trackNameLoaded={_lastPacketOwnedRadioPlayPlan.LoadedTrackNameFromProperty}, trackNameBeforeMute={_lastPacketOwnedRadioPlayPlan.TrackNameLoadedBeforeMute}, muteBeforeShowUi={_lastPacketOwnedRadioPlayPlan.MuteBeforeShowUi}, showUiBeforeStartChat={_lastPacketOwnedRadioPlayPlan.ShowUiBeforeStartChat}, startChatUsesTrackName={_lastPacketOwnedRadioPlayPlan.StartChatUsesTrackName}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 $"last CRadioManager::Stop entered={_lastPacketOwnedRadioStopPlan.EnteredStop}, mmsStopBeforeShowUi={_lastPacketOwnedRadioStopPlan.MmsStopBeforeShowUi}, showUiBeforeMute={_lastPacketOwnedRadioStopPlan.ShowUiBeforeMute}, muteBeforeTrackRelease={_lastPacketOwnedRadioStopPlan.MuteBeforeTrackPropertyRelease}, trackReleaseBeforePlayingClear={_lastPacketOwnedRadioStopPlan.TrackPropertyReleaseBeforePlayingClear}, playingClearBeforeCompletionChat={_lastPacketOwnedRadioStopPlan.PlayingClearBeforeCompletionChat}, completionChatBeforeTrackNameRelease={_lastPacketOwnedRadioStopPlan.CompletionChatBeforeTrackNameRelease}, releasedTrack={_lastPacketOwnedRadioStopPlan.ReleasedTrackProperty}, clearedPlaying={_lastPacketOwnedRadioStopPlan.ClearedPlaying}, emittedCompletionChat={_lastPacketOwnedRadioStopPlan.EmittedCompletionChat}, releasedTrackName={_lastPacketOwnedRadioStopPlan.ReleasedTrackName}; " +
                 $"last CRadioManager::Mute entered={_lastPacketOwnedRadioMutePlan.EnteredMute}, requestedMute={_lastPacketOwnedRadioMutePlan.RequestedMute}, priorMute={_lastPacketOwnedRadioMutePlan.PreviousMute}, targetMms={_lastPacketOwnedRadioMutePlan.TargetMmsVolume:0.###}, targetBgm={_lastPacketOwnedRadioMutePlan.TargetBgmVolumePercent}, fade={_lastPacketOwnedRadioMutePlan.BgmFadeDurationMs}, muteFlagBeforeMms={_lastPacketOwnedRadioMutePlan.MuteFlagSetBeforeMmsVolume}, bgmBeforeMms={_lastPacketOwnedRadioMutePlan.BgmVolumeBeforeMmsVolume}, mmsBeforeMuteClear={_lastPacketOwnedRadioMutePlan.MmsVolumeBeforeMuteFlagClear}, uiMuteAfterAudio={_lastPacketOwnedRadioMutePlan.UiMuteAfterAudioMix}; " +
@@ -15627,6 +15710,48 @@ namespace HaCreator.MapSimulator
             return hasExplicitContextValue
                 ? explicitContextValue
                 : minimapExpanded;
+        }
+
+        internal static PacketOwnedRadioCreateLayerPlan ResolvePacketOwnedRadioCreateLayerPlan(bool bLeft)
+        {
+            int nMargin = bLeft ? PacketOwnedRadioCreateLayerLeftMargin : 0;
+            return new PacketOwnedRadioCreateLayerPlan(
+                BLeft: bLeft,
+                NMargin: nMargin,
+                Origin: "Origin_RT",
+                BaseX: -3,
+                WidthOffset: -PacketOwnedRadioUiCanvasWidth,
+                MarginOffset: -nMargin,
+                Y: 3,
+                CreatesOffResidentLayer: true,
+                CreatesOnAnimationLayer: true,
+                OffLayerParentedBeforeOnLayer: true,
+                OffLayerStopped: true,
+                AlphaOriginReset: true,
+                OffCanvasWidth: PacketOwnedRadioUiCanvasWidth,
+                OffCanvasHeight: PacketOwnedRadioUiCanvasHeight,
+                OffCanvasOriginX: 0,
+                OffCanvasOriginY: 0,
+                OnFrameCount: PacketOwnedRadioUiOnFrameCount,
+                OnFrameDelayMs: PacketOwnedRadioUiFrameDelayMs,
+                FadeDurationMs: PacketOwnedRadioUiFadeDurationMs,
+                NativeOperationTrace: BuildPacketOwnedRadioCreateLayerNativeTrace(nMargin));
+        }
+
+        private static IReadOnlyList<string> BuildPacketOwnedRadioCreateLayerNativeTrace(int nMargin)
+        {
+            return new[]
+            {
+                "CUIRadio::CreateLayer.ResolveCWvsContext(3562)",
+                "CUIRadio::CreateLayer.LoadOffCanvas(UI/UIWindow.img/Radio/Off/0)",
+                "CUIRadio::CreateLayer.CreateOffLayer(Origin_RT)",
+                $"CUIRadio::CreateLayer.RelMove(x=-3-width-{nMargin},y=3)",
+                "CUIRadio::CreateLayer.ResetAlphaOrigin(0,0)",
+                "CUIRadio::CreateLayer.StopResidentOffAnimation",
+                "CUIRadio::CreateLayer.LoadOnAnimation(UI/UIWindow.img/Radio/On/0..4)",
+                "CUIRadio::CreateLayer.CreateOnOverlayLayer",
+                "CUIRadio::CreateLayer.CrossFadeOnOff(alphaComplement,100ms)"
+            };
         }
 
         internal static bool ShouldCapturePacketOwnedRadioCreateLayerSessionState(
@@ -18727,7 +18852,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string soundKey = $"PacketOwnedSound:{resolvedDescriptor}";
+            string soundKey = SoundManager.BuildPacketOwnedClientSoundKey(resolvedDescriptor, soundProperty);
             if (!_soundManager.TryPlayClientSoundEffect(
                     soundKey,
                     soundProperty,
@@ -18774,7 +18899,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string soundKey = $"PacketOwnedSound:{resolvedDescriptor}";
+            string soundKey = SoundManager.BuildPacketOwnedClientSoundKey(resolvedDescriptor, soundProperty);
             if (!_soundManager.TryPlayClientSoundEffectAt(
                     soundKey,
                     soundProperty,

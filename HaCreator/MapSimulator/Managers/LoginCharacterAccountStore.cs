@@ -135,9 +135,13 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<string, PersistedAccountState> _accountsByKey = new(StringComparer.Ordinal);
         private readonly Dictionary<string, PersistedExtraCharacterEntitlementState> _extraCharacterEntitlementsByAccountKey = new(StringComparer.Ordinal);
         private readonly string _storageFilePath;
+        private readonly ILoginAccountBillingAuthorityClient _billingAuthorityClient;
 
-        public LoginCharacterAccountStore(string storageFilePath = null)
+        public LoginCharacterAccountStore(
+            string storageFilePath = null,
+            ILoginAccountBillingAuthorityClient billingAuthorityClient = null)
         {
+            _billingAuthorityClient = billingAuthorityClient;
             _storageFilePath = storageFilePath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "HaCreator",
@@ -855,6 +859,15 @@ namespace HaCreator.MapSimulator.Managers
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim();
+            if (TryResolveRemoteExtraCharacterEntitlementForAccount(
+                    normalizedAccountName,
+                    accountId,
+                    out extraCharInfoResult,
+                    out buyCharacterCount))
+            {
+                return true;
+            }
+
             string entitlementKey = ResolveAccountExtraCharacterEntitlementKey(normalizedAccountName, accountId);
             if (!_extraCharacterEntitlementsByAccountKey.TryGetValue(entitlementKey, out PersistedExtraCharacterEntitlementState persistedState) ||
                 persistedState == null)
@@ -869,6 +882,56 @@ namespace HaCreator.MapSimulator.Managers
                 normalizedExtraCharInfoResult,
                 accountId);
             extraCharInfoResult = CreateExtraCharInfoResultFromBuyCharacterCount(accountId, buyCharacterCount);
+            return true;
+        }
+
+        private bool TryResolveRemoteExtraCharacterEntitlementForAccount(
+            string accountName,
+            int accountId,
+            out LoginExtraCharInfoResultProfile extraCharInfoResult,
+            out int buyCharacterCount)
+        {
+            extraCharInfoResult = null;
+            buyCharacterCount = 0;
+            if (_billingAuthorityClient == null ||
+                accountId <= 0 ||
+                !_billingAuthorityClient.TryResolveExtraCharacterEntitlement(
+                    accountName,
+                    accountId,
+                    out LoginAccountBillingEntitlementRecord entitlement) ||
+                entitlement == null)
+            {
+                return false;
+            }
+
+            LoginExtraCharInfoResultProfile remoteProfile = new()
+            {
+                AccountId = accountId,
+                ResultFlag = entitlement.ResultFlag,
+                CanHaveExtraCharacter = entitlement.CanHaveExtraCharacter
+            };
+            LoginExtraCharInfoResultProfile normalizedProfile =
+                NormalizeExtraCharInfoResultProfile(remoteProfile, accountId);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                entitlement.BuyCharacterCount,
+                normalizedProfile,
+                accountId);
+            normalizedProfile = CreateExtraCharInfoResultFromBuyCharacterCount(
+                accountId,
+                normalizedBuyCharacterCount);
+
+            SetAuthoritativeExtraCharacterEntitlementForAccount(
+                accountName,
+                accountId,
+                normalizedBuyCharacterCount,
+                normalizedProfile,
+                fallbackWorldId: 0,
+                source: string.IsNullOrWhiteSpace(entitlement.Source)
+                    ? "remote-account-billing-authority"
+                    : entitlement.Source);
+
+            extraCharInfoResult = normalizedProfile;
+            buyCharacterCount = normalizedBuyCharacterCount;
             return true;
         }
 

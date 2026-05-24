@@ -1126,7 +1126,7 @@ namespace HaCreator.MapSimulator.Managers
                 ResultCode = profile.ResultCode,
                 Entries = entries,
                 LoginOpt = profile.LoginOpt,
-                SlotCount = Math.Max(0, profile.SlotCount),
+                SlotCount = Math.Max(Math.Max(0, profile.SlotCount), entries.Count),
                 BuyCharacterCount = Math.Max(0, profile.BuyCharacterCount)
             };
         }

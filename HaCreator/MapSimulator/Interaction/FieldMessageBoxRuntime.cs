@@ -1178,18 +1178,26 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool CanAcceptChalkboardDialogCharacter(string text, char character)
         {
+            string currentText = NormalizeChalkboardDialogNewlines(text);
+            int rawLineCount = CountRawChalkboardDialogRows(currentText);
+            if (character == '\r' || character == '\n')
+            {
+                return rawLineCount < CuiHopeLineCount;
+            }
+
             if (char.IsControl(character))
             {
                 return false;
             }
 
-            string currentText = text ?? string.Empty;
-            int lineStart = Math.Max(
-                currentText.LastIndexOf('\n'),
-                currentText.LastIndexOf('\r')) + 1;
+            if (rawLineCount > CuiHopeLineCount)
+            {
+                return false;
+            }
+
+            int lineStart = currentText.LastIndexOf('\n') + 1;
             int currentLineLength = Math.Max(0, currentText.Length - lineStart);
-            return currentLineLength < CuiHopeLineMaxLength
-                && NormalizeChalkboardDialogLines(currentText).Count <= CuiHopeLineCount;
+            return currentLineLength < CuiHopeLineMaxLength;
         }
 
         internal static bool CanReplaceLastChalkboardDialogCharacter(string text, char character)
@@ -1201,6 +1209,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             string replacement = text[..^1] + character;
             return TryNormalizeChalkboardDialogText(replacement, out _, out _);
+        }
+
+        internal static bool CanAcceptChalkboardDialogCharacterForTest(string text, char character)
+        {
+            return CanAcceptChalkboardDialogCharacter(text, character);
         }
 
         internal static IReadOnlyList<string> NormalizeChalkboardDialogLinesForTest(string text)
@@ -1249,10 +1262,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            string normalizedNewlines = text.Replace("\\r\\n", "\n", StringComparison.Ordinal)
-                .Replace("\\n", "\n", StringComparison.Ordinal)
-                .Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n');
+            string normalizedNewlines = NormalizeChalkboardDialogNewlines(text);
             string[] splitLines = normalizedNewlines.Split('\n');
             List<string> lines = new(CuiHopeLineCount);
             foreach (string splitLine in splitLines)
@@ -1276,6 +1286,34 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return lines;
+        }
+
+        private static string NormalizeChalkboardDialogNewlines(string text)
+        {
+            return (text ?? string.Empty)
+                .Replace("\\r\\n", "\n", StringComparison.Ordinal)
+                .Replace("\\n", "\n", StringComparison.Ordinal)
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
+        }
+
+        private static int CountRawChalkboardDialogRows(string normalizedText)
+        {
+            if (string.IsNullOrEmpty(normalizedText))
+            {
+                return 1;
+            }
+
+            int count = 1;
+            foreach (char character in normalizedText)
+            {
+                if (character == '\n')
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private static bool TryDecodeCuiHopeLinePayload(PacketReader reader, out string messageText)

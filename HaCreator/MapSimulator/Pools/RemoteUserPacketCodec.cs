@@ -2803,7 +2803,7 @@ namespace HaCreator.MapSimulator.Pools
                                 new RemoteUserRelationshipRecord(
                                     IsActive: true,
                                     ItemId: relationshipItemId,
-                                    ItemSerial: null,
+                                    ItemSerial: pairLookupSerial,
                                     PairItemSerial: null,
                                     CharacterId: recordOwnerCharacterId,
                                     PairCharacterId: null),
@@ -3571,6 +3571,11 @@ namespace HaCreator.MapSimulator.Pools
                         return compositeMarkerName;
                     }
 
+                    if (TryResolveDirectionMarkerAlias(candidate, out string defaultHelperDirectionAlias))
+                    {
+                        return defaultHelperDirectionAlias;
+                    }
+
                     if (candidate.Length == 0
                         || IsNumericHelperMarkerPathSegment(candidate)
                         || !KnownHelperMarkerNames.Contains(candidate))
@@ -3589,6 +3594,12 @@ namespace HaCreator.MapSimulator.Pools
                     && IsKnownDefaultHelperNormalizedMarkerName(compositeMarkerName))
                 {
                     return compositeMarkerName;
+                }
+
+                if (TryResolveDirectionMarkerAlias(candidate, out string defaultHelperDirectionAlias)
+                    && HasHelperMarkerPathSegment(segments, "DefaultHelper"))
+                {
+                    return defaultHelperDirectionAlias;
                 }
 
                 if (candidate.Length == 0
@@ -3827,7 +3838,8 @@ namespace HaCreator.MapSimulator.Pools
         private static bool IsKnownDefaultHelperNormalizedMarkerName(string markerName)
         {
             return KnownHelperMarkerNames.Contains(markerName)
-                || KnownDefaultHelperAncillaryMarkerNames.Contains(markerName);
+                || KnownDefaultHelperAncillaryMarkerNames.Contains(markerName)
+                || KnownMinimapIconDirectionAncillaryMarkerNames.Contains(markerName);
         }
 
         private static bool TryResolveDefaultHelperChildIndexMarkerName(
@@ -4340,7 +4352,8 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (!KnownDefaultHelperAncillaryMarkerNames.Contains(normalizedMarkerName))
+            if (!KnownDefaultHelperAncillaryMarkerNames.Contains(normalizedMarkerName)
+                && !KnownMinimapIconDirectionAncillaryMarkerNames.Contains(normalizedMarkerName))
             {
                 return false;
             }
@@ -5367,6 +5380,21 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
                     uniqueKnownSkillChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueElementValueFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int uniqueElementValueChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueElementValueChargeElement,
                     out chargeSkillId))
             {
                 return true;

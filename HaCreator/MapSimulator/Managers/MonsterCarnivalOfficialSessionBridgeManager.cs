@@ -591,6 +591,13 @@ namespace HaCreator.MapSimulator.Managers
             return IsCurrentInitializedProxySession(proxySessionId, sessionVersion);
         }
 
+        internal static bool CanInjectLiveRequest(bool hasConnectedSession, bool hasPassiveEstablishedSocketPair, bool hasInitializedProxySession)
+        {
+            return hasConnectedSession
+                && !hasPassiveEstablishedSocketPair
+                && hasInitializedProxySession;
+        }
+
         public bool TrySendRequest(MonsterCarnivalTab tab, int entryIndex, out string status)
         {
             if (entryIndex < 0)
@@ -607,9 +614,14 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!_roleSessionProxy.HasConnectedSession)
+            if (!CanInjectLiveRequest(
+                    _roleSessionProxy.HasConnectedSession,
+                    HasPassiveEstablishedSocketPair,
+                    _currentInitializedProxySessionId.HasValue))
             {
-                status = "Monster Carnival official-session bridge has no active Maple session.";
+                status = _roleSessionProxy.HasConnectedSession
+                    ? "Monster Carnival official-session bridge has a connected Maple session, but opcode 262 injection is deferred until the proxied handshake initializes."
+                    : "Monster Carnival official-session bridge has no active Maple session.";
                 LastStatus = status;
                 return false;
             }
@@ -625,7 +637,13 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
-                RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"inject-request tab={(int)tab} index={entryIndex}");
+                RecordRecentPacket(
+                    OutboundRequestOpcode,
+                    rawPacket,
+                    OutboundRequestOpcode,
+                    $"inject-request tab={(int)tab} index={entryIndex}",
+                    _currentInitializedProxySessionId,
+                    _currentInitializedSessionVersion);
                 status = $"Injected Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) into live session.";
                 LastStatus = status;
                 return true;
@@ -641,7 +659,10 @@ namespace HaCreator.MapSimulator.Managers
         public bool TrySendOrQueueRequest(MonsterCarnivalTab tab, int entryIndex, out bool queued, out string status)
         {
             queued = false;
-            if (HasConnectedSession)
+            if (CanInjectLiveRequest(
+                    HasConnectedSession,
+                    HasPassiveEstablishedSocketPair,
+                    _currentInitializedProxySessionId.HasValue))
             {
                 return TrySendRequest(tab, entryIndex, out status);
             }

@@ -34,6 +34,11 @@ namespace HaCreator.MapSimulator.Combat
             Func<bool> GetFacingRight,
             int CurrentTime);
 
+        internal readonly record struct MobImpactEffectScheduling(
+            bool ScheduleAttackEffect,
+            bool ScheduleAttackHit,
+            bool ScheduleExtraEffects);
+
         private sealed class ActiveMobProjectile
         {
             public MobItem SourceMob { get; set; }
@@ -1060,16 +1065,22 @@ namespace HaCreator.MapSimulator.Combat
             AnimationEffects animationEffects,
             MobTargetInfo targetInfo = null)
         {
-            if (ShouldUseSourceAnchoredEffects(mobItem, attack))
-            {
-                return;
-            }
-
+            bool useSourceAnchoredEffects = ShouldUseSourceAnchoredEffects(mobItem, attack);
             bool effectFlip = mobItem?.MovementInfo?.FlipX ?? false;
 
             List<IDXObject> effectFrames = mobItem.GetAttackEffectFrames(attack.AnimationName);
             bool usedEffectAsProjectile = attack.IsRanged && !attack.IsAreaOfEffect && mobItem.GetAttackProjectileFrames(attack.AnimationName) == null;
-            if (effectFrames != null && effectFrames.Count > 0 && (!usedEffectAsProjectile || attack.IsAreaOfEffect))
+            MobAnimationSet.AttackHitEffectEntry hitEntry = mobItem.GetAttackHitEffectEntry(attack.AnimationName);
+            IReadOnlyList<MobAnimationSet.AttackEffectNode> extraEffects = mobItem.GetAttackExtraEffects(attack.AnimationName);
+            MobImpactEffectScheduling scheduling = ResolveImpactEffectScheduling(
+                useSourceAnchoredEffects,
+                effectFrames != null && effectFrames.Count > 0,
+                usedEffectAsProjectile,
+                attack.IsAreaOfEffect,
+                hitEntry?.Frames != null && hitEntry.Frames.Count > 0,
+                extraEffects != null && extraEffects.Count > 0);
+
+            if (scheduling.ScheduleAttackEffect)
             {
                 Vector2 groundedPosition = attack.IsAreaOfEffect ? ResolveGroundPoint(position.X, position.Y) : position;
                 animationEffects?.AddMobOwnedAttackEffect(
@@ -1081,8 +1092,7 @@ namespace HaCreator.MapSimulator.Combat
                     currentTime);
             }
 
-            MobAnimationSet.AttackHitEffectEntry hitEntry = mobItem.GetAttackHitEffectEntry(attack.AnimationName);
-            if (hitEntry?.Frames != null && hitEntry.Frames.Count > 0)
+            if (scheduling.ScheduleAttackHit)
             {
                 MobAnimationSet.AttackInfoMetadata attackInfo = mobItem.GetAttackInfo(attack.AnimationName);
                 int hitEffectTriggerTime = ResolveMobAttackHitEffectTriggerTime(currentTime, attackInfo);
@@ -1128,8 +1138,7 @@ namespace HaCreator.MapSimulator.Combat
                 }
             }
 
-            IReadOnlyList<MobAnimationSet.AttackEffectNode> extraEffects = mobItem.GetAttackExtraEffects(attack.AnimationName);
-            if (extraEffects == null)
+            if (!scheduling.ScheduleExtraEffects)
             {
                 return;
             }
@@ -4332,6 +4341,25 @@ namespace HaCreator.MapSimulator.Combat
             // mob/action layer at tEffectAfter for direct, projectile, and area
             // attacks alike; it is not an impact-time hit effect.
             return true;
+        }
+
+        internal static MobImpactEffectScheduling ResolveImpactEffectScheduling(
+            bool useSourceAnchoredEffects,
+            bool hasImpactEffectFrames,
+            bool usedEffectAsProjectile,
+            bool isAreaAttack,
+            bool hasImpactHitFrames,
+            bool hasExtraEffects)
+        {
+            bool scheduleAttackEffect =
+                !useSourceAnchoredEffects &&
+                hasImpactEffectFrames &&
+                (!usedEffectAsProjectile || isAreaAttack);
+
+            return new MobImpactEffectScheduling(
+                scheduleAttackEffect,
+                hasImpactHitFrames,
+                !useSourceAnchoredEffects && hasExtraEffects);
         }
 
         private Vector2 GetSourceEffectPosition(MobItem mobItem, MobAttackEntry attack, int currentTime, bool faceLeft)

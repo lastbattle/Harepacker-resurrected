@@ -551,4 +551,60 @@ namespace HaCreator.MapSimulator.Interaction
         public int YesButtonOffsetX { get; }
         public bool HasNoButton { get; }
     }
+
+    internal readonly struct ReviveOwnerNativeAssetCoverage
+    {
+        public ReviveOwnerNativeAssetCoverage(
+            bool hasPremiumSafetyCharmBackground,
+            bool hasDefaultBackground,
+            bool hasUpgradeTombBackground,
+            bool hasSoulStoneBackground,
+            bool hasYesButton,
+            bool hasNoButton,
+            bool hasFallbackNotice,
+            bool hasFallbackLine,
+            bool hasFallbackBar,
+            bool hasFallbackInactiveDot,
+            bool hasFallbackActiveDot)
+        {
+            HasPremiumSafetyCharmBackground = hasPremiumSafetyCharmBackground;
+            HasDefaultBackground = hasDefaultBackground;
+            HasUpgradeTombBackground = hasUpgradeTombBackground;
+            HasSoulStoneBackground = hasSoulStoneBackground;
+            HasYesButton = hasYesButton;
+            HasNoButton = hasNoButton;
+            HasFallbackNotice = hasFallbackNotice;
+            HasFallbackLine = hasFallbackLine;
+            HasFallbackBar = hasFallbackBar;
+            HasFallbackInactiveDot = hasFallbackInactiveDot;
+            HasFallbackActiveDot = hasFallbackActiveDot;
+        }
+
+        public bool HasPremiumSafetyCharmBackground { get; }
+        public bool HasDefaultBackground { get; }
+        public bool HasUpgradeTombBackground { get; }
+        public bool HasSoulStoneBackground { get; }
+        public bool HasYesButton { get; }
+        public bool HasNoButton { get; }
+        public bool HasFallbackNotice { get; }
+        public bool HasFallbackLine { get; }
+        public bool HasFallbackBar { get; }
+        public bool HasFallbackInactiveDot { get; }
+        public bool HasFallbackActiveDot { get; }
+
+        public bool HasAllNativeBranchAssets =>
+            HasPremiumSafetyCharmBackground
+            && HasDefaultBackground
+            && HasUpgradeTombBackground
+            && HasSoulStoneBackground
+            && HasYesButton
+            && HasNoButton;
+
+        public bool HasFallbackUtilDlgExShell =>
+            HasFallbackNotice
+            && HasFallbackLine
+            && HasFallbackBar
+            && HasFallbackInactiveDot
+            && HasFallbackActiveDot;
+    }
 }

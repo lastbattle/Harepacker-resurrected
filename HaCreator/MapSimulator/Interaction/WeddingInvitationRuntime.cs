@@ -148,11 +148,11 @@ namespace HaCreator.MapSimulator.Interaction
             string resolvedSourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
                 ? "marriage-result packet handoff"
                 : sourceDescription.Trim();
-            message = OpenInvitation(groomName, brideName, style, rawClientDialogType, resolvedSourceDescription);
+            WeddingInvitationStyle packetStyle = ResolvePacketOpenStyle(clientDialogType);
+            message = OpenInvitation(groomName, brideName, packetStyle, rawClientDialogType, resolvedSourceDescription);
             _lastOpenUsedMarriageResultPacket = true;
             _lastMarriageResultPacketPayload = (byte[])payload.Clone();
             _useClientDialogSurface = true;
-            _style = ResolvePacketOpenStyle(clientDialogType);
             _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(_style);
             _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Packet-owned presentation preserves raw constructor nType={rawClientDialogType}; only nType 2 selects Cathedral, while every other value selects CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(clientDialogType):X} => {_dialogUolText} ({ResolveClientDialogAssetPath(clientDialogType)}) and uses the WZ-backed {_style} invitation canvas when that client dialog canvas is not present in the mounted data. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
             message = _statusMessage;

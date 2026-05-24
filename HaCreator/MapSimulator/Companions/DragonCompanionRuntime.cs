@@ -2274,7 +2274,15 @@ namespace HaCreator.MapSimulator.Companions
             {
                 return comparison.OfficialSessionTailKeyPadMemoryByteProven
                     ? "Official-session m_aKeyPadState memory bytes match the captured flush-tail keypad bytes; waiting for simulator tail to compare."
+                    : string.Equals(comparison.CapturedKeyPadMemoryStates, "[]", StringComparison.Ordinal)
+                        ? "Official-session m_aKeyPadState memory capture is empty, matching the client post-Flush clear state; waiting for simulator tail to compare pre-encode keypad values."
                     : "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.";
+            }
+
+            if (string.Equals(comparison.CapturedKeyPadMemoryStates, "[]", StringComparison.Ordinal)
+                && !string.Equals(comparison.SimulatorKeyPadStates, "[]", StringComparison.Ordinal))
+            {
+                return "Official-session m_aKeyPadState memory capture is empty, matching the client post-Flush clear state; pre-encode value byte proof still needs a before-Flush memory capture.";
             }
 
             if (!comparison.KeyPadMemoryStatesMatch)
@@ -2305,7 +2313,15 @@ namespace HaCreator.MapSimulator.Companions
             {
                 return comparison.OfficialSessionTailKeyPadByFootholdMemoryByteProven
                     ? "Official-session m_aKeyPadStateByFoothold memory bytes match the captured flush-tail keypad bytes; waiting for simulator tail to compare."
+                    : string.Equals(comparison.CapturedKeyPadByFootholdMemoryStates, "[]", StringComparison.Ordinal)
+                        ? "Official-session m_aKeyPadStateByFoothold memory capture is empty, matching the client post-Flush clear state; waiting for simulator tail to compare pre-encode keypad values."
                     : "Official-session m_aKeyPadStateByFoothold memory capture recorded; waiting for simulator tail to compare.";
+            }
+
+            if (string.Equals(comparison.CapturedKeyPadByFootholdMemoryStates, "[]", StringComparison.Ordinal)
+                && !string.Equals(comparison.SimulatorKeyPadStates, "[]", StringComparison.Ordinal))
+            {
+                return "Official-session m_aKeyPadStateByFoothold memory capture is empty, matching the client post-Flush clear state; pre-encode value byte proof still needs a before-Flush memory capture.";
             }
 
             if (!comparison.KeyPadByFootholdMemoryStatesMatch)

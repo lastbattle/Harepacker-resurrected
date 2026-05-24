@@ -243,7 +243,7 @@ namespace HaCreator.MapSimulator
                 GetLastOutgoingWhisperTarget = () => _chat?.LastOutgoingWhisperTarget ?? string.Empty,
                 ClearWhisperSentState = () => _chat?.ClearLastOutgoingWhisperEcho(),
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
-                ClearFieldFade = ClearPacketOwnedFieldFadeInAnimation,
+                ForceFieldFadeOut = ForcePacketOwnedFieldFadeInAnimationsOut,
                 RequestBgm = descriptor => RequestSpecialFieldBgmOverride(ResolvePacketOwnedFieldBgmOverrideName(descriptor)),
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
@@ -380,18 +380,18 @@ namespace HaCreator.MapSimulator
             });
         }
 
-        private void ClearPacketOwnedFieldFadeInAnimation(int fadeKey)
+        private void ForcePacketOwnedFieldFadeInAnimationsOut(int fadeOutMs)
         {
-            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(fadeKey);
+            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutMs, currTickCount);
             ShowUtilityFeedbackMessage(
                 string.Format(
                     CultureInfo.InvariantCulture,
-                    removedCount > 0
-                        ? "Removed {0} packet-owned field fade-in animation entr{1} for key {2}."
-                        : "No packet-owned field fade-in animations matched key {2}.",
-                    removedCount,
-                    removedCount == 1 ? "y" : "ies",
-                    fadeKey));
+                    forcedCount > 0
+                        ? "Forced {0} packet-owned field fade-in animation entr{1} to fade out over {2} ms."
+                        : "No packet-owned field fade-in animations were pending for forced fade-out over {2} ms.",
+                    forcedCount,
+                    forcedCount == 1 ? "y" : "ies",
+                    Math.Max(0, fadeOutMs)));
         }
 
         private bool TryPlayPacketOwnedFieldFeedbackSound(string descriptor)

@@ -732,7 +732,9 @@ namespace HaCreator.MapSimulator.Interaction
                     packetEntry.IsBlocked)
                 {
                     MemberId = packetEntry.MemberId,
-                    IsLocalPlayer = packetEntry.IsLocalPlayer
+                    IsLocalPlayer = packetEntry.IsLocalPlayer,
+                    PartyCurrentHp = packetEntry.PartyCurrentHp,
+                    PartyMaxHp = packetEntry.PartyMaxHp
                 };
 
                 if (nextEntry.IsLocalPlayer)
@@ -773,7 +775,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsLeader,
                 entry.IsBlocked,
                 entry.IsLocalPlayer,
-                entry.MemberId);
+                entry.MemberId,
+                entry.PartyCurrentHp,
+                entry.PartyMaxHp);
         }
 
         private string RemovePacketEntryByMemberId(SocialListTab tab, int? memberId)
@@ -894,7 +898,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsBlocked)
             {
                 MemberId = entry.MemberId,
-                IsLocalPlayer = entry.IsLocalPlayer
+                IsLocalPlayer = entry.IsLocalPlayer,
+                PartyCurrentHp = entry.PartyCurrentHp,
+                PartyMaxHp = entry.PartyMaxHp
             };
 
             _packetOwnedRosterByTab[SocialListTab.Friend] = true;
@@ -993,7 +999,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsBlocked)
             {
                 MemberId = entry.MemberId,
-                IsLocalPlayer = entry.IsLocalPlayer
+                IsLocalPlayer = entry.IsLocalPlayer,
+                PartyCurrentHp = entry.PartyCurrentHp,
+                PartyMaxHp = entry.PartyMaxHp
             };
             _packetOwnedRosterByTab[SocialListTab.Party] = true;
             _lastPendingRequestByTab[SocialListTab.Party] = null;
@@ -1034,7 +1042,9 @@ namespace HaCreator.MapSimulator.Interaction
                 isBlocked: false)
             {
                 MemberId = clientEntry.MemberId > 0 ? clientEntry.MemberId : null,
-                IsLocalPlayer = isLocal
+                IsLocalPlayer = isLocal,
+                PartyCurrentHp = clientEntry.MaxHp.GetValueOrDefault() > 0 ? clientEntry.CurrentHp : null,
+                PartyMaxHp = clientEntry.MaxHp.GetValueOrDefault() > 0 ? clientEntry.MaxHp : null
             };
         }
 

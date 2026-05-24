@@ -3070,6 +3070,33 @@ namespace HaCreator.MapSimulator
                 onSpawn);
         }
 
+        private int TryRegisterAnimationDisplayerPacketOwnedTransientAreaAnimation(
+            string cacheKey,
+            string effectUol,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            Action onSpawn = null)
+        {
+            if (!TryGetAnimationDisplayerFrames(cacheKey, effectUol, out List<IDXObject> frames))
+            {
+                return -1;
+            }
+
+            return _animationEffects.RegisterPacketOwnedTransientAreaAnimation(
+                frames,
+                effectUol,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currTickCount,
+                onSpawn);
+        }
+
         private bool TryRegisterAnimationDisplayerUserState(int ownerCharacterId, Func<Vector2> getPosition)
         {
             if (ownerCharacterId <= 0 || getPosition == null)
@@ -5333,7 +5360,7 @@ namespace HaCreator.MapSimulator
                 int characterId = entry.Key;
                 AnimationDisplayerReservedRemoteUtilityActionOwnerState state = entry.Value;
                 if (state == null
-                    || !HasAnimationDisplayerReservedUpdateTimeReached(currentTime, state.RestoreAtTime))
+                    || !HasAnimationDisplayerReservedUpdateTimePassed(currentTime, state.RestoreAtTime))
                 {
                     continue;
                 }
@@ -8157,7 +8184,8 @@ namespace HaCreator.MapSimulator
                 underFaceAnimation,
                 currentTime,
                 out _,
-                facingRightOverride: branchRequest.FacingRightOverride) == true;
+                facingRightOverride: branchRequest.FacingRightOverride,
+                clientLayerOwnerName: clientLayerOwnerName) == true;
         }
 
         private bool TryRegisterPacketOwnedRemoteSkillBookResultAvatarEffect(
@@ -10246,7 +10274,7 @@ namespace HaCreator.MapSimulator
             switch (ResolveAnimationDisplayerTransientEffectKind(itemId, weatherPath))
             {
                 case AnimationDisplayerTransientEffectKind.NewYear:
-                    int newYearId = TryRegisterAnimationDisplayerAreaAnimation(
+                    int newYearId = TryRegisterAnimationDisplayerPacketOwnedTransientAreaAnimation(
                         cacheKey: "newyear",
                         effectUol: AnimationDisplayerNewYearEffectUol,
                         area,
@@ -10269,7 +10297,7 @@ namespace HaCreator.MapSimulator
                         string effectUol = i < effectUols.Length
                             ? effectUols[i]
                             : BuildAnimationDisplayerFireCrackerEffectUol(i, weatherPath);
-                        int areaAnimationId = TryRegisterAnimationDisplayerAreaAnimation(
+                        int areaAnimationId = TryRegisterAnimationDisplayerPacketOwnedTransientAreaAnimation(
                             cacheKey: $"firecracker:{i}",
                             effectUol,
                             area,

@@ -1248,6 +1248,14 @@ namespace HaCreator.MapSimulator.AI
             return _skills[_currentSkillIndex];
         }
 
+        public MobSkillEntry GetSkillEntry(int skillId, int level)
+        {
+            int skillIndex = FindSkillIndex(skillId, level);
+            return skillIndex >= 0 && skillIndex < _skills.Count
+                ? _skills[skillIndex]
+                : null;
+        }
+
         /// <summary>
         /// Start using a skill (for external control or testing)
         /// </summary>
@@ -1299,13 +1307,8 @@ namespace HaCreator.MapSimulator.AI
 
             MobAttackEntry attack = ResolveCurrentOrPendingAngerGaugeFullChargeAttack(
                 currentTick,
-                out int elapsed);
-            if (attack?.IsSpecialAttack != true)
-            {
-                return false;
-            }
-
-            if (!MobAngerGaugeBurstParity.HasOwnerTriggerDelayElapsed(elapsed, attack))
+                out _);
+            if (!MobAngerGaugeBurstParity.ShouldCallOwnerForDelayedAttackEntry(attack))
             {
                 return false;
             }
@@ -2823,13 +2826,7 @@ namespace HaCreator.MapSimulator.AI
             }
 
             MobAttackEntry attack = GetCurrentAttack();
-            if (attack?.IsSpecialAttack != true)
-            {
-                return;
-            }
-
-            int elapsed = StateElapsed(currentTick);
-            if (!MobAngerGaugeBurstParity.HasOwnerTriggerDelayElapsed(elapsed, attack))
+            if (!MobAngerGaugeBurstParity.ShouldCallOwnerForDelayedAttackEntry(attack))
             {
                 return;
             }

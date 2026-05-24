@@ -46,6 +46,8 @@ namespace HaCreator.MapSimulator.Managers
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
         private short? _currentInitializedSessionVersion;
         private long? _currentInitializedProxySessionId;
+        private long _traceSequence;
+        private long _verificationClearedAfterTraceSequence;
         private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -61,7 +63,8 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             string Summary,
             string RawPacketHex,
-            long? ProxySessionId);
+            long? ProxySessionId,
+            long TraceSequence);
         internal readonly record struct OutboundPacketTrace(
             int Opcode,
             int Sequence,
@@ -70,7 +73,8 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             string Summary,
             string RawPacketHex,
-            long? ProxySessionId);
+            long? ProxySessionId,
+            long TraceSequence);
         private readonly record struct InitializedProxySessionKey(short SessionVersion, long ProxySessionId);
         public enum LiveOwnershipVerificationState
         {
@@ -680,6 +684,7 @@ namespace HaCreator.MapSimulator.Managers
                 _hasObservedLiveOutboundOpcode259 = false;
                 _liveInboundGuildBossPacketEvidence = null;
                 _liveOutboundOpcode259Evidence = null;
+                _verificationClearedAfterTraceSequence = _traceSequence;
                 LastStatus =
                     $"Cleared Guild Boss live ownership verification evidence for the current proxy session; retained {RecentInboundPacketCount} inbound and {RecentOutboundPacketCount} outbound recent trace(s).";
                 return LastStatus;
@@ -925,6 +930,8 @@ namespace HaCreator.MapSimulator.Managers
                 _liveOutboundOpcode259Evidence = null;
                 _currentInitializedSessionVersion = null;
                 _currentInitializedProxySessionId = null;
+                _traceSequence = 0;
+                _verificationClearedAfterTraceSequence = 0;
                 _initializedProxySessions.Clear();
             }
         }
@@ -1214,6 +1221,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
+                trace = trace with { TraceSequence = ++_traceSequence };
                 _recentInboundPackets.Add(trace);
                 while (_recentInboundPackets.Count > MaxRecentInboundPackets)
                 {
@@ -1228,6 +1236,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
+                trace = trace with { TraceSequence = ++_traceSequence };
                 _recentOutboundPackets.Add(trace);
                 while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
                 {
@@ -1325,6 +1334,7 @@ namespace HaCreator.MapSimulator.Managers
                 _hasObservedLiveOutboundOpcode259 = false;
                 _liveInboundGuildBossPacketEvidence = null;
                 _liveOutboundOpcode259Evidence = null;
+                _verificationClearedAfterTraceSequence = _traceSequence;
             }
 
             LastStatus = $"Cleared Guild Boss opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound and opcode {OutboundPulleyRequestOpcode} outbound trace history.";
@@ -1337,7 +1347,8 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentOutboundPackets.Count - 1; i >= 0; i--)
             {
                 OutboundPacketTrace candidate = _recentOutboundPackets[i];
-                if (IsInitializedLiveProxiedSource(candidate))
+                if (candidate.TraceSequence > _verificationClearedAfterTraceSequence
+                    && IsInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1354,7 +1365,8 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentInboundPackets.Count - 1; i >= 0; i--)
             {
                 InboundPacketTrace candidate = _recentInboundPackets[i];
-                if (IsInitializedLiveProxiedSource(candidate))
+                if (candidate.TraceSequence > _verificationClearedAfterTraceSequence
+                    && IsInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1453,7 +1465,8 @@ namespace HaCreator.MapSimulator.Managers
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
                 summary,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
-                proxySessionId);
+                proxySessionId,
+                TraceSequence: 0);
         }
 
         private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source, short? sessionVersion, long? proxySessionId)
@@ -1470,7 +1483,8 @@ namespace HaCreator.MapSimulator.Managers
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-local" : source,
                 summary,
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
-                proxySessionId);
+                proxySessionId,
+                TraceSequence: 0);
         }
 
         private static bool IsLiveProxiedSource(string source, short? sessionVersion, long? proxySessionId)

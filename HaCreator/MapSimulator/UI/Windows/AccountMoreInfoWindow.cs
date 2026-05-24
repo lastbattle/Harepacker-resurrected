@@ -603,13 +603,26 @@ namespace HaCreator.MapSimulator.UI
         {
             if (direction > 0)
             {
+                bool wasExpanded = _comboExpanded;
+                AccountMoreInfoEditableField previousExpandedField = _expandedComboField;
                 _expandedComboField = field;
-                _comboExpanded = !_comboExpanded || _expandedComboField != field;
+                _comboExpanded = ResolveClientComboExpandedStateForTesting(
+                    wasExpanded,
+                    previousExpandedField,
+                    field);
                 return;
             }
 
             _comboExpanded = false;
             _fieldAdjusted?.Invoke(field, direction);
+        }
+
+        internal static bool ResolveClientComboExpandedStateForTesting(
+            bool wasExpanded,
+            AccountMoreInfoEditableField previousExpandedField,
+            AccountMoreInfoEditableField clickedField)
+        {
+            return !wasExpanded || previousExpandedField != clickedField;
         }
 
         private bool IsMouseInsideExpandedCombo(int mouseX, int mouseY)

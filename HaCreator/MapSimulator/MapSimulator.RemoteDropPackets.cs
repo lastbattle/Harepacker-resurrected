@@ -1027,6 +1027,7 @@ namespace HaCreator.MapSimulator
                     actorId,
                     _remoteUserPool,
                     _predictedRemotePetPickupActorPositions,
+                    ResolveObservedRemotePetPickupActorPosition,
                     ResolveExactObservedRemotePetPickupPosition,
                     out int resolvedPetActorId,
                     out position))
@@ -1053,6 +1054,7 @@ namespace HaCreator.MapSimulator
             int actorId,
             RemoteUserActorPool remoteUserPool,
             IReadOnlyDictionary<int, Vector2> predictedPetActorPositions,
+            Func<int, Vector2?> observedActorPositionResolver,
             Func<int, int, Vector2?> observedOwnerSlotPositionResolver,
             out int resolvedPetActorId,
             out Vector2 position)
@@ -1066,6 +1068,12 @@ namespace HaCreator.MapSimulator
 
             int normalizedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(slotIndex);
             resolvedPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
+
+            if (observedActorPositionResolver?.Invoke(actorId) is Vector2 observedActorPosition)
+            {
+                position = observedActorPosition;
+                return true;
+            }
 
             if (observedOwnerSlotPositionResolver?.Invoke(ownerCharacterId, normalizedSlotIndex) is Vector2 observedPosition)
             {

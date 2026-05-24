@@ -1076,14 +1076,48 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static string BuildRegisteredClientSoundKey(string registeredName, WzBinaryProperty sound)
         {
+            return BuildClientSoundKey("RegisteredSound", registeredName, sound);
+        }
+
+        internal static string BuildPacketOwnedClientSoundKey(string resolvedDescriptor, WzBinaryProperty sound)
+        {
+            return BuildClientSoundKey("PacketOwnedSound", resolvedDescriptor, sound);
+        }
+
+        internal static string BuildClientSoundKey(string ownerPrefix, string descriptor, WzBinaryProperty sound)
+        {
+            string normalizedOwnerPrefix = string.IsNullOrWhiteSpace(ownerPrefix)
+                ? "Sound"
+                : ownerPrefix.Trim().TrimEnd(':');
+            return $"{normalizedOwnerPrefix}:{ResolveClientSoundPath(descriptor, sound)}";
+        }
+
+        internal static string ResolveClientSoundPath(string descriptor, WzBinaryProperty sound)
+        {
             string path = sound?.FullPath?.Replace('\\', '/');
+            string normalizedDescriptor = descriptor?.Trim().Replace('\\', '/');
+
             if (string.IsNullOrWhiteSpace(path)
-                || (path.IndexOf('/') < 0 && !string.IsNullOrWhiteSpace(registeredName))
+                || (path.IndexOf('/') < 0 && !string.IsNullOrWhiteSpace(normalizedDescriptor))
                 || (path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) < 0
-                    && !string.IsNullOrWhiteSpace(registeredName)
-                    && registeredName.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0))
+                    && !string.IsNullOrWhiteSpace(normalizedDescriptor)
+                    && normalizedDescriptor.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0)
+                || (path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0
+                    && !string.IsNullOrWhiteSpace(normalizedDescriptor)
+                    && normalizedDescriptor.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase)
+                    && normalizedDescriptor.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0))
             {
-                path = registeredName;
+                path = normalizedDescriptor;
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            while (path.StartsWith("/", StringComparison.Ordinal))
+            {
+                path = path[1..];
             }
 
             if (path.StartsWith("Sound.wz/", StringComparison.OrdinalIgnoreCase))
@@ -1091,13 +1125,29 @@ namespace HaCreator.MapSimulator.Managers
                 path = path["Sound.wz/".Length..];
             }
 
-            if (!path.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase)
-                && path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (path.StartsWith("sound/", StringComparison.Ordinal))
             {
-                path = "Sound/" + path;
+                path = "Sound/" + path["sound/".Length..];
             }
 
-            return $"RegisteredSound:{path}";
+            if (path.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Sound/" + path["Sound/".Length..].Trim('/');
+            }
+
+            if (path.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Sound/" + path.Trim('/');
+            }
+
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2
+                && segments[0].IndexOf(".img", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return $"Sound/{segments[0]}.img/{string.Join("/", segments, 1, segments.Length - 1)}";
+            }
+
+            return path.Trim('/');
         }
 
         internal static ClientSoundPlaybackPlan ResolveClientSoundPlaybackPlan(

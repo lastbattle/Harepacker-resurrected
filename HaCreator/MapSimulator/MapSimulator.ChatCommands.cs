@@ -2438,6 +2438,24 @@ namespace HaCreator.MapSimulator
                                 $"Login session recent packets: {_loginOfficialSessionBridge.DescribeRecentPackets()}");
                         }
 
+                        if (string.Equals(args[1], "vacevidence", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length >= 3 && string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _loginOfficialSessionBridge.ClearSelectCharacterByVacRoundTripEvidence();
+                                return ChatCommandHandler.CommandResult.Ok(
+                                    _loginOfficialSessionBridge.DescribeSelectCharacterByVacRoundTripEvidence());
+                            }
+
+                            if (args.Length > 2 && !string.Equals(args[2], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session vacevidence [status|clear]");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _loginOfficialSessionBridge.DescribeSelectCharacterByVacRoundTripEvidence());
+                        }
+
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
@@ -2540,7 +2558,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|map <opcode> <packet>|unmap <opcode>|clearmap|auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]|auth clear|recent|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|map <opcode> <packet>|unmap <opcode>|clearmap|auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]|auth clear|recent|vacevidence [status|clear]|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
                     }
 
 
@@ -4192,20 +4210,23 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab upsertTab))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>[|<currentHp>|<maxHp>]");
                             }
 
                             string[] fields = string.Join(' ', args.Skip(3)).Split('|', StringSplitOptions.TrimEntries);
-                            if (fields.Length != 9
+                            if ((fields.Length != 9 && fields.Length != 11)
                                 || !int.TryParse(fields[4], out int channel)
                                 || !TryParsePacketOwnedBooleanToken(fields[5], out bool isOnline)
                                 || !TryParsePacketOwnedBooleanToken(fields[6], out bool isLeader)
                                 || !TryParsePacketOwnedBooleanToken(fields[7], out bool isBlocked)
-                                || !TryParsePacketOwnedBooleanToken(fields[8], out bool isLocalPlayer))
+                                || !TryParsePacketOwnedBooleanToken(fields[8], out bool isLocalPlayer)
+                                || (fields.Length == 11 && (!int.TryParse(fields[9], out _) || !int.TryParse(fields[10], out _))))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>[|<currentHp>|<maxHp>]");
                             }
 
+                            int? currentHp = fields.Length == 11 ? int.Parse(fields[9]) : null;
+                            int? maxHp = fields.Length == 11 ? int.Parse(fields[10]) : null;
                             return ChatCommandHandler.CommandResult.Ok(
                                 _socialListRuntime.UpsertPacketEntry(
                                     upsertTab,
@@ -4217,7 +4238,10 @@ namespace HaCreator.MapSimulator
                                     isOnline,
                                     isLeader,
                                     isBlocked,
-                                    isLocalPlayer));
+                                    isLocalPlayer,
+                                    memberId: null,
+                                    partyCurrentHp: currentHp,
+                                    partyMaxHp: maxHp));
                         }
 
                         if (string.Equals(packetAction, "guildauth", StringComparison.OrdinalIgnoreCase))

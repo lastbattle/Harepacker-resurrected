@@ -2481,17 +2481,31 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (TryDecodeCashOwnershipFlagVector(payload, 0, ownedItemIds))
+            if (TryDecodeCashOwnershipFlagVector(payload, 0, ownedItemIds, out int ignoredFlagCount))
             {
-                detail = "matched a direct cash-emoticon ownership flag vector";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    "matched a direct cash-emoticon ownership flag vector",
+                    ignoredFlagCount);
                 return true;
             }
 
             if (payload.Length >= _cashEmoticonCount + 1
                 && payload[0] == _cashEmoticonCount
-                && TryDecodeCashOwnershipFlagVector(payload, 1, ownedItemIds))
+                && TryDecodeCashOwnershipFlagVector(payload, 1, ownedItemIds, out ignoredFlagCount))
             {
-                detail = "matched a count-prefixed cash-emoticon ownership flag vector";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    "matched a count-prefixed cash-emoticon ownership flag vector",
+                    ignoredFlagCount);
+                return true;
+            }
+
+            if (payload.Length > ClientInventoryCashEmoticonItemCount + 1
+                && payload[0] == payload.Length - 1
+                && TryDecodeCashOwnershipFlagVector(payload, 1, ownedItemIds, out ignoredFlagCount))
+            {
+                detail = AppendIgnoredCashEntitlementDetail(
+                    "matched an oversized count-prefixed cash-emoticon ownership flag vector",
+                    ignoredFlagCount);
                 return true;
             }
 
@@ -2504,35 +2518,63 @@ namespace HaCreator.MapSimulator.Interaction
             if (byteCount > 0
                 && byteCount <= _cashEmoticonCount
                 && payload.Length == byteCount + 1
-                && TryDecodeCashOwnershipByteList(payload, 1, byteCount, ownedItemIds))
+                && TryDecodeCashOwnershipByteList(payload, 1, byteCount, ownedItemIds, out int ignoredByteCount))
             {
-                detail = $"matched a count-prefixed byte list with {byteCount} cash emoticon id(s)";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched a count-prefixed byte list with {ownedItemIds.Count} cash emoticon id(s)",
+                    ignoredByteCount);
                 return true;
             }
 
-            if (payload.Length <= _cashEmoticonCount
-                && TryDecodeCashOwnershipByteList(payload, 0, payload.Length, ownedItemIds))
+            if (byteCount > _cashEmoticonCount
+                && payload.Length == byteCount + 1
+                && TryDecodeCashOwnershipByteList(payload, 1, byteCount, ownedItemIds, out ignoredByteCount))
             {
-                detail = $"matched a direct byte list with {payload.Length} cash emoticon id(s)";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched an oversized count-prefixed byte list with {ownedItemIds.Count} cash emoticon id(s)",
+                    ignoredByteCount);
+                return true;
+            }
+
+            if (payload.Length <= ClientInventoryCashEmoticonItemCount + 1
+                && TryDecodeCashOwnershipByteList(payload, 0, payload.Length, ownedItemIds, out ignoredByteCount))
+            {
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched a direct byte list with {ownedItemIds.Count} cash emoticon id(s)",
+                    ignoredByteCount);
                 return true;
             }
 
             if (byteCount > 0
                 && byteCount <= _cashEmoticonCount
                 && payload.Length == 1 + (byteCount * sizeof(int))
-                && TryDecodeCashOwnershipIntList(payload, 1, byteCount, ownedItemIds))
+                && TryDecodeCashOwnershipIntList(payload, 1, byteCount, ownedItemIds, out int ignoredIntCount))
             {
-                detail = $"matched a count-prefixed int list with {byteCount} cash emoticon id(s)";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched a count-prefixed int list with {ownedItemIds.Count} cash emoticon id(s)",
+                    ignoredIntCount);
+                return true;
+            }
+
+            if (byteCount > _cashEmoticonCount
+                && payload.Length == 1 + (byteCount * sizeof(int))
+                && TryDecodeCashOwnershipIntList(payload, 1, byteCount, ownedItemIds, out ignoredIntCount))
+            {
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched an oversized count-prefixed int list with {ownedItemIds.Count} cash emoticon id(s)",
+                    ignoredIntCount);
                 return true;
             }
 
             int intCount = payload.Length / sizeof(int);
             if (intCount > 0
-                && intCount <= _cashEmoticonCount
+                && intCount <= ClientInventoryCashEmoticonItemCount + 1
                 && payload.Length == intCount * sizeof(int)
-                && TryDecodeCashOwnershipIntList(payload, 0, intCount, ownedItemIds))
+                && TryDecodeCashOwnershipIntList(payload, 0, intCount, ownedItemIds, out ignoredIntCount))
             {
-                detail = $"matched a direct int list with {intCount} cash emoticon item id(s)";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched a direct int list with {ownedItemIds.Count} cash emoticon item id(s)",
+                    ignoredIntCount);
                 return true;
             }
 
@@ -2548,26 +2590,32 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (payload.Length == sizeof(byte)
-                && TryDecodeCashOwnershipBitMaskValue(payload[0], ownedItemIds))
+                && TryDecodeCashOwnershipBitMaskValue(payload[0], ownedItemIds, out int ignoredUnsupportedCount))
             {
-                detail = $"matched compact cash-emoticon ownership bitmask byte 0x{payload[0]:X2}";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched compact cash-emoticon ownership bitmask byte 0x{payload[0]:X2}",
+                    ignoredUnsupportedCount);
                 return true;
             }
 
             if (payload.Length == sizeof(byte) + sizeof(byte)
                 && payload[0] == sizeof(byte)
-                && TryDecodeCashOwnershipBitMaskValue(payload[1], ownedItemIds))
+                && TryDecodeCashOwnershipBitMaskValue(payload[1], ownedItemIds, out ignoredUnsupportedCount))
             {
-                detail = $"matched size-prefixed compact cash-emoticon ownership bitmask byte 0x{payload[1]:X2}";
+                detail = AppendIgnoredCashEntitlementDetail(
+                    $"matched size-prefixed compact cash-emoticon ownership bitmask byte 0x{payload[1]:X2}",
+                    ignoredUnsupportedCount);
                 return true;
             }
 
             if (payload.Length == sizeof(short))
             {
                 ushort rawMask = BitConverter.ToUInt16(payload, 0);
-                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds, out ignoredUnsupportedCount))
                 {
-                    detail = $"matched compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}";
+                    detail = AppendIgnoredCashEntitlementDetail(
+                        $"matched compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}",
+                        ignoredUnsupportedCount);
                     return true;
                 }
             }
@@ -2576,9 +2624,11 @@ namespace HaCreator.MapSimulator.Interaction
                 && payload[0] == sizeof(short))
             {
                 ushort rawMask = BitConverter.ToUInt16(payload, 1);
-                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds, out ignoredUnsupportedCount))
                 {
-                    detail = $"matched size-prefixed compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}";
+                    detail = AppendIgnoredCashEntitlementDetail(
+                        $"matched size-prefixed compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}",
+                        ignoredUnsupportedCount);
                     return true;
                 }
             }
@@ -2586,9 +2636,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (payload.Length == sizeof(int))
             {
                 uint rawMask = BitConverter.ToUInt32(payload, 0);
-                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds, out ignoredUnsupportedCount))
                 {
-                    detail = $"matched compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}";
+                    detail = AppendIgnoredCashEntitlementDetail(
+                        $"matched compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}",
+                        ignoredUnsupportedCount);
                     return true;
                 }
             }
@@ -2597,9 +2649,11 @@ namespace HaCreator.MapSimulator.Interaction
                 && payload[0] == sizeof(int))
             {
                 uint rawMask = BitConverter.ToUInt32(payload, 1);
-                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds, out ignoredUnsupportedCount))
                 {
-                    detail = $"matched size-prefixed compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}";
+                    detail = AppendIgnoredCashEntitlementDetail(
+                        $"matched size-prefixed compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}",
+                        ignoredUnsupportedCount);
                     return true;
                 }
             }
@@ -2607,12 +2661,20 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private bool TryDecodeCashOwnershipBitMaskValue(uint rawMask, HashSet<int> ownedItemIds)
+        private bool TryDecodeCashOwnershipBitMaskValue(uint rawMask, HashSet<int> ownedItemIds, out int ignoredUnsupportedCount)
         {
+            ignoredUnsupportedCount = 0;
             uint supportedMask = (1u << Math.Min(_cashEmoticonCount, ClientInventoryCashEmoticonItemCount)) - 1u;
-            if ((rawMask & ~supportedMask) != 0)
+            uint ignoredUnsupportedMask = 1u << ClientInventoryCashEmoticonItemCount;
+            uint unsupportedMask = rawMask & ~(supportedMask | ignoredUnsupportedMask);
+            if (unsupportedMask != 0)
             {
                 return false;
+            }
+
+            if ((rawMask & ignoredUnsupportedMask) != 0)
+            {
+                ignoredUnsupportedCount = 1;
             }
 
             ownedItemIds.Clear();
@@ -2627,14 +2689,16 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryDecodeCashOwnershipFlagVector(byte[] payload, int offset, HashSet<int> ownedItemIds)
+        private bool TryDecodeCashOwnershipFlagVector(byte[] payload, int offset, HashSet<int> ownedItemIds, out int ignoredUnsupportedCount)
         {
+            ignoredUnsupportedCount = 0;
             if (payload == null || offset < 0 || payload.Length - offset < _cashEmoticonCount)
             {
                 return false;
             }
 
-            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
+            int availableCount = payload.Length - offset;
+            for (int slotIndex = 0; slotIndex < availableCount; slotIndex++)
             {
                 if (payload[offset + slotIndex] > 1)
                 {
@@ -2644,7 +2708,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ownedItemIds.Clear();
-            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
+            for (int slotIndex = 0; slotIndex < Math.Min(_cashEmoticonCount, ClientInventoryCashEmoticonItemCount); slotIndex++)
             {
                 if (payload[offset + slotIndex] != 0)
                 {
@@ -2652,17 +2716,33 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            for (int slotIndex = ClientInventoryCashEmoticonItemCount; slotIndex < availableCount; slotIndex++)
+            {
+                if (payload[offset + slotIndex] != 0)
+                {
+                    ignoredUnsupportedCount++;
+                }
+            }
+
             return true;
         }
 
-        private bool TryDecodeCashOwnershipByteList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds)
+        private bool TryDecodeCashOwnershipByteList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds, out int ignoredUnsupportedCount)
         {
+            ignoredUnsupportedCount = 0;
             ownedItemIds.Clear();
             for (int index = 0; index < count; index++)
             {
                 if (!TryResolvePacketCashItemId(payload[offset + index], out int itemId))
                 {
+                    if (IsIgnoredUnsupportedCashEmoticonId(payload[offset + index]))
+                    {
+                        ignoredUnsupportedCount++;
+                        continue;
+                    }
+
                     ownedItemIds.Clear();
+                    ignoredUnsupportedCount = 0;
                     return false;
                 }
 
@@ -2672,15 +2752,23 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryDecodeCashOwnershipIntList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds)
+        private bool TryDecodeCashOwnershipIntList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds, out int ignoredUnsupportedCount)
         {
+            ignoredUnsupportedCount = 0;
             ownedItemIds.Clear();
             for (int index = 0; index < count; index++)
             {
                 int rawValue = BitConverter.ToInt32(payload, offset + (index * sizeof(int)));
                 if (!TryResolvePacketCashItemId(rawValue, out int itemId))
                 {
+                    if (IsIgnoredUnsupportedCashEmoticonId(rawValue))
+                    {
+                        ignoredUnsupportedCount++;
+                        continue;
+                    }
+
                     ownedItemIds.Clear();
+                    ignoredUnsupportedCount = 0;
                     return false;
                 }
 
@@ -2707,6 +2795,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static bool IsIgnoredUnsupportedCashEmoticonId(int rawValue)
+        {
+            return rawValue == ClientCashEmoticonIdStart + ClientInventoryCashEmoticonItemCount
+                || rawValue == CashEmoticonItemIdStart + ClientInventoryCashEmoticonItemCount;
+        }
+
+        private static string AppendIgnoredCashEntitlementDetail(string detail, int ignoredUnsupportedCount)
+        {
+            return ignoredUnsupportedCount <= 0
+                ? detail
+                : $"{detail}; ignored {ignoredUnsupportedCount} non-client eighth cash-emoticon slot(s)";
         }
 
         private string DescribeCashOwnershipComparison()

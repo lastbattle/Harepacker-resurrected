@@ -663,6 +663,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.SetGenderPacketType
                 || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
                 || packetType == LocalUtilityPacketInboxManager.EngagementRequestPacketType
+                || packetType == LocalUtilityPacketInboxManager.PassMateNameClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.TeleportClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.MesoGiveSucceededPacketType
                 || packetType == LocalUtilityPacketInboxManager.MesoGiveFailedPacketType
@@ -714,6 +715,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.SetGenderPacketType => "SetGender(58)",
                 LocalUtilityPacketInboxManager.AccountMoreInfoPacketType => "AccountMoreInfo(133)",
                 LocalUtilityPacketInboxManager.EngagementRequestPacketType => "CEngageDlg/SendEngagementRequest(161)",
+                LocalUtilityPacketInboxManager.PassMateNameClientPacketType => "CUserLocal::OnPassMateName(260)",
                 LocalUtilityPacketInboxManager.TeleportClientPacketType => "OnTeleport(234)",
                 LocalUtilityPacketInboxManager.MesoGiveSucceededPacketType => "OnMesoGive_Succeeded(236)",
                 LocalUtilityPacketInboxManager.MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",

@@ -302,7 +302,7 @@ namespace HaCreator.MapSimulator
         {
             TrunkDialogClientParityText.ConfirmationStep step = steps[stepIndex];
             string footer =
-                $"{footerPrefix} Step {(stepIndex + 1).ToString(CultureInfo.InvariantCulture)}/{steps.Count.ToString(CultureInfo.InvariantCulture)}: {step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}.";
+                $"{footerPrefix} Step {(stepIndex + 1).ToString(CultureInfo.InvariantCulture)}/{steps.Count.ToString(CultureInfo.InvariantCulture)}: {step.DescribeNativeCallArguments()} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}.";
             ConfigureInGameConfirmDialog(
                 "Storage",
                 step.Text,

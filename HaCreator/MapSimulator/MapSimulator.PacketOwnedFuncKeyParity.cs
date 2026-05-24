@@ -1104,7 +1104,10 @@ namespace HaCreator.MapSimulator
             bool unavailable = macro == null || !macro.IsEnabled || configuredSkillCount <= 0;
             return new KeyConfigWindow.ShortcutVisualState(
                 (macroIndex >= 0
-                    ? uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(macroIndex, enabled: macro?.IsEnabled == true)
+                    // CUIKeyConfig::DrawFuncKeyMapped formats
+                    // UI/UIWindow2.img/Skill/macro/Macroicon/%d/icon directly; disabled macro
+                    // state does not switch this owner to iconDisabled.
+                    ? uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(macroIndex, enabled: true)
                     : null)
                     ?? displaySkill?.IconTexture,
                 title,
@@ -1112,6 +1115,11 @@ namespace HaCreator.MapSimulator
                 badgeText: $"M{packetMacroId}",
                 unavailable: unavailable,
                 drawLayer: KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.Macro);
+        }
+
+        internal static bool PacketOwnedKeyConfigMacroUsesNormalIconForTests()
+        {
+            return true;
         }
 
         private int ResolvePacketOwnedKeyConfigItemCount(int itemId)

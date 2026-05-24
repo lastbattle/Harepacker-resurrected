@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color ClientAmountTextColor = Color.Black;
         internal const int ClientDialogOkControlId = PacketOwnedRewardNoticeWindow.ClientDialogOkControlId;
         internal const int ClientDialogCancelControlId = PacketOwnedRewardNoticeWindow.ClientDialogCancelControlId;
+        internal const string ClientAmountFontSlot = "FONT_NO_BLACK";
+        internal const string ClientDescriptionFontSlot = "FONT_NO_WHITE";
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
 
@@ -52,6 +54,8 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible;
         public override bool IsModalDialogOwner => IsVisible;
         internal int LastActivatedClientControlId => _lastActivatedClientControlId;
+        internal static string AmountFontSlot => ClientAmountFontSlot;
+        internal static string DescriptionFontSlot => ClientDescriptionFontSlot;
 
         internal static Point CalculateCenteredPosition(int viewportWidth, int viewportHeight, int frameWidth, int frameHeight)
         {

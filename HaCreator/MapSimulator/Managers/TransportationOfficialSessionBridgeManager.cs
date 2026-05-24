@@ -644,16 +644,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueueRawPacket(byte[] rawPacket, out string status)
         {
-            string armStatus = null;
-            if (HasPassiveEstablishedSocketPair
-                && !IsRunning
-                && !TryArmReconnectProxyForPassiveAttach(out armStatus))
-            {
-                status = armStatus;
-                LastStatus = status;
-                return false;
-            }
-
             if (!TryDecodeOpcode(rawPacket, out int opcode, out _))
             {
                 status = "Transport outbound packet must include a 2-byte opcode.";
@@ -669,6 +659,17 @@ namespace HaCreator.MapSimulator.Managers
             string queueStatus = HasPassiveEstablishedSocketPair
                 ? $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection after Maple reconnects through 127.0.0.1:{ListenPort}."
                 : $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
+
+            string armStatus = null;
+            if (HasPassiveEstablishedSocketPair
+                && !IsRunning
+                && !TryArmReconnectProxyForPassiveAttach(out armStatus))
+            {
+                status = $"{queueStatus} Automatic reconnect-proxy arming failed; retained {PendingPacketCount} queued outbound transport packet(s). {armStatus}";
+                LastStatus = status;
+                return true;
+            }
+
             status = string.IsNullOrWhiteSpace(armStatus)
                 ? queueStatus
                 : $"{armStatus} {queueStatus}";

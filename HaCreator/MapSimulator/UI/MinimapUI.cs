@@ -2482,11 +2482,11 @@ namespace HaCreator.MapSimulator.UI
                 DirectionArrow.NorthWest => 0,
                 DirectionArrow.North => 1,
                 DirectionArrow.NorthEast => 2,
-                DirectionArrow.SouthEast => 3,
-                DirectionArrow.East => 4,
-                DirectionArrow.SouthWest => 5,
-                DirectionArrow.South => 6,
-                DirectionArrow.West => 7,
+                DirectionArrow.East => 3,
+                DirectionArrow.SouthWest => 4,
+                DirectionArrow.South => 5,
+                DirectionArrow.West => 6,
+                DirectionArrow.SouthEast => 7,
                 _ => int.MaxValue
             };
         }

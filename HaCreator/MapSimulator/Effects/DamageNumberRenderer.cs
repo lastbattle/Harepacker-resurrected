@@ -242,6 +242,7 @@ namespace HaCreator.MapSimulator.Effects
             int CanvasWidth,
             int CanvasHeight,
             int DamageStringPoolId,
+            CanvasLayerRecoveredEffectHpTextFormatTrace TextFormatTrace,
             PreparedDigitDrawInfo[] Digits,
             PreparedSpriteDrawInfo? MissSprite,
             PreparedSpriteDrawInfo? CriticalBannerSprite,
@@ -551,11 +552,17 @@ namespace HaCreator.MapSimulator.Effects
 
             if (largeDigitSet == null || smallDigitSet == null)
             {
+                CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace =
+                    BuildRecoveredTextFormatTrace(
+                        dmgNumber.Damage,
+                        dmgNumber.IsMiss,
+                        dmgNumber.SpecialTextName);
                 return new PreparedDamageNumberVisual(
-                    dmgNumber.GetDamageString(),
+                    textFormatTrace.FormattedText,
                     0,
                     DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
                     DamageNumberFormatStringPoolId,
+                    textFormatTrace,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     null,
                     null,
@@ -617,20 +624,50 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string FormatDamageValue(int damage)
         {
+            return BuildRecoveredTextFormatTrace(damage).FormattedText;
+        }
+
+        internal static CanvasLayerRecoveredEffectHpTextFormatTrace BuildRecoveredTextFormatTrace(
+            int damage,
+            bool isSpecialText = false,
+            string specialText = null)
+        {
             string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
                 DamageNumberFormatStringPoolId,
                 "{0}",
                 1,
-                out _);
+                out bool usedResolvedText);
 
+            if (isSpecialText)
+            {
+                return new CanvasLayerRecoveredEffectHpTextFormatTrace(
+                    DamageNumberFormatStringPoolId,
+                    compositeFormat,
+                    usedResolvedText,
+                    MaxPlaceholderCount: 1,
+                    RawDamageValue: damage,
+                    FormattedText: ResolveSpecialTextName(specialText),
+                    IsSpecialText: true);
+            }
+
+            string formattedText;
             try
             {
-                return string.Format(CultureInfo.InvariantCulture, compositeFormat, damage);
+                formattedText = string.Format(CultureInfo.InvariantCulture, compositeFormat, damage);
             }
             catch (FormatException)
             {
-                return damage.ToString(CultureInfo.InvariantCulture);
+                formattedText = damage.ToString(CultureInfo.InvariantCulture);
             }
+
+            return new CanvasLayerRecoveredEffectHpTextFormatTrace(
+                DamageNumberFormatStringPoolId,
+                compositeFormat,
+                usedResolvedText,
+                MaxPlaceholderCount: 1,
+                damage,
+                formattedText,
+                IsSpecialText: false);
         }
 
         internal static (DigitLayoutEntry[] Entries, int LeftOffset, int TotalWidth, int RecoveredNativeAccumulatedCanvasWidth) BuildDigitLayout(
@@ -706,7 +743,9 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet largeDigitSet,
             DamageNumberDigitSet smallDigitSet)
         {
-            string damageString = isMiss ? ResolveSpecialTextName(specialTextName) : FormatDamageValue(damage);
+            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace =
+                BuildRecoveredTextFormatTrace(damage, isMiss, specialTextName);
+            string damageString = textFormatTrace.FormattedText;
             if (!IsSupportedColorType(colorType))
             {
                 return new PreparedDamageNumberVisual(
@@ -714,6 +753,7 @@ namespace HaCreator.MapSimulator.Effects
                     0,
                     ResolveCompositeCanvasHeight(),
                     DamageNumberFormatStringPoolId,
+                    textFormatTrace,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     null,
                     null,
@@ -724,7 +764,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (isMiss)
             {
-                return PrepareSpecialTextVisual(damageString, ResolveSpecialTextDigitSet());
+                return PrepareSpecialTextVisual(damageString, ResolveSpecialTextDigitSet(), textFormatTrace);
             }
 
             (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth, int recoveredNativeAccumulatedCanvasWidth) = BuildDigitLayout(
@@ -773,6 +813,7 @@ namespace HaCreator.MapSimulator.Effects
                 composedWidth,
                 ResolveCompositeCanvasHeight(),
                 DamageNumberFormatStringPoolId,
+                textFormatTrace,
                 digits,
                 null,
                 criticalBanner,
@@ -789,6 +830,17 @@ namespace HaCreator.MapSimulator.Effects
         internal static PreparedDamageNumberVisual PrepareSpecialTextVisual(
             string specialTextName,
             DamageNumberDigitSet authoredSpecialTextDigitSet)
+        {
+            return PrepareSpecialTextVisual(
+                specialTextName,
+                authoredSpecialTextDigitSet,
+                BuildRecoveredTextFormatTrace(0, isSpecialText: true, specialTextName));
+        }
+
+        private static PreparedDamageNumberVisual PrepareSpecialTextVisual(
+            string specialTextName,
+            DamageNumberDigitSet authoredSpecialTextDigitSet,
+            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace)
         {
             string damageString = ResolveSpecialTextName(specialTextName);
             PreparedSpriteDrawInfo? missSprite = null;
@@ -816,6 +868,7 @@ namespace HaCreator.MapSimulator.Effects
                 canvasWidth,
                 canvasHeight,
                 DamageNumberFormatStringPoolId,
+                textFormatTrace,
                 Array.Empty<PreparedDigitDrawInfo>(),
                 missSprite,
                 null,
@@ -1241,7 +1294,8 @@ namespace HaCreator.MapSimulator.Effects
                 overlayLayerPositionOffsetY,
                 BuildRecoveredSourceCleanupSteps(
                     BuildRecoveredEffectHpOwnerSelectionTrace(visual),
-                    preparedSources));
+                    preparedSources),
+                visual.TextFormatTrace);
         }
 
         internal static CanvasLayerRecoveredEffectHpDigitLayoutStep[] BuildRecoveredEffectHpDigitLayoutSteps(

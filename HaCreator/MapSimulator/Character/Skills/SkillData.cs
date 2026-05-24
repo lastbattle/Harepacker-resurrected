@@ -2298,7 +2298,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         AttachOriginVector,
         CopyLayerOverlay,
         CreateAlphaVector,
+        RetainSourceAlphaVectorTemporary,
+        RetainRepeatAlphaVectorTemporary,
         SeedAlphaVector,
+        ReleaseRepeatAlphaVectorTemporary,
+        ReleaseSourceAlphaVectorTemporary,
         ScheduleAlphaFade,
         AnimateStop,
         RetainSourceCanvasTemporary,
@@ -2439,6 +2443,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedOriginVectorLocalReleaseCount { get; init; }
         public int SimulatedAlphaVectorRefCount { get; set; }
         public int SimulatedAlphaVectorLocalReleaseCount { get; init; }
+        public int SimulatedSourceAlphaVectorObjectId { get; init; }
+        public int SimulatedSourceAlphaVectorTemporaryAddRefCount { get; init; }
+        public int SimulatedSourceAlphaVectorTemporaryReleaseCount { get; init; }
+        public int SimulatedRepeatAlphaVectorTemporaryAddRefCount { get; init; }
+        public int SimulatedRepeatAlphaVectorTemporaryReleaseCount { get; init; }
         public int SimulatedSourceCanvasRefCount { get; set; }
         public int SimulatedSourceCanvasTemporaryAddRefCount { get; init; }
         public int SimulatedSourceCanvasTemporaryReleaseCount { get; init; }
@@ -2447,6 +2456,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedReleaseSequence { get; private set; }
         public int SimulatedSourceCanvasTemporaryLiveRefCount =>
             Math.Max(0, SimulatedSourceCanvasTemporaryAddRefCount - SimulatedSourceCanvasTemporaryReleaseCount);
+        public int SimulatedSourceAlphaVectorTemporaryLiveRefCount =>
+            Math.Max(0, SimulatedSourceAlphaVectorTemporaryAddRefCount - SimulatedSourceAlphaVectorTemporaryReleaseCount);
+        public int SimulatedRepeatAlphaVectorTemporaryLiveRefCount =>
+            Math.Max(0, SimulatedRepeatAlphaVectorTemporaryAddRefCount - SimulatedRepeatAlphaVectorTemporaryReleaseCount);
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }

@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -848,7 +849,7 @@ namespace HaCreator.MapSimulator.Interaction
             switch (subtype)
             {
                 case ClientPutItemSuccessSubtype:
-                    message = ApplyClientPutItemSuccess();
+                    message = ApplyClientPutItemSuccess(payload);
                     return true;
 
                 case ClientPutItemDuplicateGiftSubtype:
@@ -881,13 +882,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private string ApplyClientPutItemSuccess()
+        private string ApplyClientPutItemSuccess(IReadOnlyList<byte> payload)
         {
             if (_hasPendingTransferRequest && _pendingTransferSubtype != 0 && _pendingTransferSubtype != SendPutItemRequestSubtype)
             {
                 _statusMessage = $"Wedding wish-list give completion subtype {ClientPutItemSuccessSubtype} arrived while subtype {_pendingTransferSubtype} was pending; left the pending request unchanged.";
                 return _statusMessage;
             }
+
+            string refreshSummary = TryApplyClientGetItemsRefresh(payload, startOffset: 1, out int refreshedRows)
+                ? $" Refreshed gift rows from the packet-owned CWishListGiveDlg::SetGetItems tab mask ({refreshedRows} row(s))."
+                : " Kept existing optimistic gift rows because the packet did not include a decodable SetGetItems refresh body.";
 
             _hasPendingTransferRequest = false;
             ClearPendingTransferState();
@@ -896,7 +901,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClampSelections();
             NormalizeViewportState();
             ArmNoticePrompt(
-                $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype}; dismissing this notice will close the modeless give dialog through the client SetRet success path.",
+                $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype}; dismissing this notice will close the modeless give dialog through the client SetRet success path.{refreshSummary}",
                 closeOwnerOnDismiss: true);
             return _statusMessage;
         }
@@ -918,6 +923,113 @@ namespace HaCreator.MapSimulator.Interaction
                 $"{noticeText} Applied CWishListGiveDlg::OnPacket subtype {subtype} and reopened Put actions after notice acknowledgement.",
                 closeOwnerOnDismiss: false);
             return _statusMessage;
+        }
+
+        private bool TryApplyClientGetItemsRefresh(IReadOnlyList<byte> payload, int startOffset, out int refreshedRows)
+        {
+            refreshedRows = 0;
+            byte[] packetBytes = payload?.ToArray() ?? Array.Empty<byte>();
+            if (packetBytes.Length - startOffset < sizeof(long))
+            {
+                return false;
+            }
+
+            using BinaryReader reader = new(packetBytes);
+            reader.BaseStream.Position = startOffset;
+            long tabMask = reader.ReadInt64();
+            Dictionary<int, List<InventorySlotData>> refreshedByTab = new();
+            for (int tabIndex = 0; tabIndex < TabInventoryTypes.Length; tabIndex++)
+            {
+                if ((tabMask & ResolveClientTabMask(tabIndex)) == 0)
+                {
+                    continue;
+                }
+
+                if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(byte))
+                {
+                    return false;
+                }
+
+                int rowCount = reader.ReadByte();
+                List<InventorySlotData> rows = new(rowCount);
+                for (int row = 0; row < rowCount; row++)
+                {
+                    if (!TryReadClientGetItemRow(reader, TabInventoryTypes[tabIndex], out InventorySlotData item))
+                    {
+                        return false;
+                    }
+
+                    rows.Add(item);
+                }
+
+                refreshedByTab[tabIndex] = rows;
+                refreshedRows += rows.Count;
+            }
+
+            if (refreshedByTab.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, List<InventorySlotData>> refresh in refreshedByTab)
+            {
+                _giftListByTab[refresh.Key] = refresh.Value;
+            }
+
+            return true;
+        }
+
+        private static long ResolveClientTabMask(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                0 => 4,
+                1 => 8,
+                2 => 16,
+                3 => 32,
+                4 => 64,
+                _ => 0
+            };
+        }
+
+        private static bool TryReadClientGetItemRow(BinaryReader reader, InventoryType type, out InventorySlotData item)
+        {
+            item = null;
+            if (reader?.BaseStream == null || reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) + sizeof(short))
+            {
+                return false;
+            }
+
+            long rowStart = reader.BaseStream.Position;
+            byte firstByte = reader.ReadByte();
+            if (firstByte is 1 or 2 or 3)
+            {
+                if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int))
+                {
+                    return false;
+                }
+
+                int officialItemId = reader.ReadInt32();
+                item = CreateFallbackSlot(officialItemId, type);
+                item.Quantity = 1;
+
+                if (reader.BaseStream.Position == reader.BaseStream.Length)
+                {
+                    return true;
+                }
+
+                reader.BaseStream.Position = rowStart;
+            }
+            else
+            {
+                reader.BaseStream.Position = rowStart;
+            }
+
+            int itemId = reader.ReadInt32();
+            int quantity = Math.Max(1, (int)reader.ReadInt16());
+            item = CreateFallbackSlot(itemId, type);
+            item.Quantity = quantity;
+            return item.ItemId > 0;
         }
 
         private string ApplyClientGetItemSuccess()

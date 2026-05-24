@@ -1647,6 +1647,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return "HP --/--";
             }
 
+            if (entry.PartyMaxHp.GetValueOrDefault() > 0)
+            {
+                int packetMaxHp = Math.Max(1, entry.PartyMaxHp!.Value);
+                int packetCurrentHp = Math.Clamp(entry.PartyCurrentHp.GetValueOrDefault(), 0, packetMaxHp);
+                return $"HP {packetCurrentHp}/{packetMaxHp}";
+            }
+
             int seed = entry.MemberId.GetValueOrDefault(0);
             if (seed <= 0)
             {
@@ -2175,6 +2182,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? MemberId { get; init; }
             public bool IsLocalPlayer { get; init; }
             public int? ClientGuildGrade { get; init; }
+            public int? PartyCurrentHp { get; init; }
+            public int? PartyMaxHp { get; init; }
         }
 
         private sealed class PacketWhisperFindPresenceState

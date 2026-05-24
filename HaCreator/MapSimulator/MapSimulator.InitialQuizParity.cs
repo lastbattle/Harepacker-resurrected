@@ -235,6 +235,23 @@ namespace HaCreator.MapSimulator
             internal string ClientCanvasMethodName => "CWnd::GetCanvas";
         }
 
+        internal readonly record struct InitialQuizOwnerUpdateLifecycleSnapshot(
+            bool RemainingSecondsChanged,
+            bool InvalidatesWhenAtOrBelowTwoMinutes,
+            bool HidesEditOnTimeout,
+            bool DisablesEditOnTimeout,
+            bool DisablesOkButtonOnTimeout,
+            bool CapturesOwnerOnTimeout,
+            bool FocusesOwnerOnTimeout,
+            bool SendsEmptyResultOnTimeout,
+            bool DestroysOwnerOnTimeout,
+            bool ClearsContextRemainFlagOnTimeout,
+            bool CallsBaseUpdateAfterChange)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::Update";
+            internal string ClientTimeoutSenderMethodName => "CUIInitialQuiz::SendResult";
+        }
+
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
@@ -483,24 +500,18 @@ namespace HaCreator.MapSimulator
 
             InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
                 snapshot.RemainingSeconds,
-                _initialQuizOwnerResultSent,
-                _initialQuizOwnerTimeoutCloseArmed);
+                _initialQuizOwnerResultSent);
             if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.Wait)
             {
                 _initialQuizOwnerTimeoutCloseArmed = false;
                 return;
             }
 
-            if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.ArmClose)
-            {
-                _initialQuizOwnerTimeoutCloseArmed = true;
-                _initialQuizOwnerPressedOkButton = false;
-                _initialQuizOwnerHoveringOkButton = false;
-                SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
-                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
-                return;
-            }
-
+            _initialQuizOwnerTimeoutCloseArmed = false;
+            _initialQuizOwnerPressedOkButton = false;
+            _initialQuizOwnerHoveringOkButton = false;
+            SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
+            EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
             SubmitInitialQuizOwnerResult(string.Empty, currentTickCount, showFeedback: false, validateAnswer: false);
         }
 
@@ -1890,6 +1901,28 @@ namespace HaCreator.MapSimulator
                 : new Color(255, 255, 255);
         }
 
+        internal static InitialQuizOwnerUpdateLifecycleSnapshot BuildInitialQuizOwnerUpdateLifecycleSnapshot(
+            int previousRemainingSeconds,
+            int currentRemainingSeconds)
+        {
+            int previous = Math.Max(0, previousRemainingSeconds);
+            int current = Math.Max(0, currentRemainingSeconds);
+            bool changed = previous != current;
+            bool timedOut = changed && current <= 0;
+            return new InitialQuizOwnerUpdateLifecycleSnapshot(
+                RemainingSecondsChanged: changed,
+                InvalidatesWhenAtOrBelowTwoMinutes: changed && current <= 120,
+                HidesEditOnTimeout: timedOut,
+                DisablesEditOnTimeout: timedOut,
+                DisablesOkButtonOnTimeout: timedOut,
+                CapturesOwnerOnTimeout: timedOut,
+                FocusesOwnerOnTimeout: timedOut,
+                SendsEmptyResultOnTimeout: timedOut,
+                DestroysOwnerOnTimeout: timedOut,
+                ClearsContextRemainFlagOnTimeout: timedOut,
+                CallsBaseUpdateAfterChange: changed);
+        }
+
         internal static float ResolveInitialQuizOwnerDrawTextScale(InitialQuizOwnerDrawTextSource source)
         {
             return source switch
@@ -2439,17 +2472,14 @@ namespace HaCreator.MapSimulator
 
         internal static InitialQuizOwnerTimeoutBehavior ResolveInitialQuizOwnerTimeoutBehavior(
             int remainingSeconds,
-            bool resultSent,
-            bool timeoutCloseArmed)
+            bool resultSent)
         {
             if (resultSent || remainingSeconds > 0)
             {
                 return InitialQuizOwnerTimeoutBehavior.Wait;
             }
 
-            return timeoutCloseArmed
-                ? InitialQuizOwnerTimeoutBehavior.SubmitAndClose
-                : InitialQuizOwnerTimeoutBehavior.ArmClose;
+            return InitialQuizOwnerTimeoutBehavior.SubmitAndClose;
         }
 
         internal static InitialQuizOwnerButtonVisualState ResolveInitialQuizOwnerButtonVisualState(bool enabled, bool pressed, bool hover, bool keyFocused)
@@ -3057,7 +3087,6 @@ namespace HaCreator.MapSimulator
         internal enum InitialQuizOwnerTimeoutBehavior
         {
             Wait,
-            ArmClose,
             SubmitAndClose
         }
     }

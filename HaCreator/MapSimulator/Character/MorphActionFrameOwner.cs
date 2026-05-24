@@ -65,6 +65,8 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            part.Animations ??= new Dictionary<string, CharacterAnimation>(StringComparer.OrdinalIgnoreCase);
+
             if (part.Animations.TryGetValue(actionName, out animation)
                 && animation?.Frames?.Count > 0)
             {

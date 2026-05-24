@@ -1136,6 +1136,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
         private string _lastShipmentPromptText = string.Empty;
+        private bool _lastShipmentPromptUsedUtilDlgExTextOwner;
         private bool _requestSent;
         private bool _hasAcceptedGetAllRequestInFlight;
         private bool _hasStoreBankNpcOwnerReference;
@@ -1151,6 +1152,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool RequestSent => _requestSent;
         internal bool HasAcceptedGetAllRequestInFlight => _hasAcceptedGetAllRequestInFlight;
         internal bool HasStoreBankNpcOwnerReference => _hasStoreBankNpcOwnerReference;
+        internal bool LastShipmentPromptUsedUtilDlgExTextOwner => _lastShipmentPromptUsedUtilDlgExTextOwner;
+        internal int LastShipmentPromptUtilDlgExType => _lastShipmentPromptUsedUtilDlgExTextOwner ? 0 : -1;
+        internal int LastShipmentPromptUtilDlgExStyle => _lastShipmentPromptUsedUtilDlgExTextOwner ? _lastPromptContextValue : 0;
+        internal int LastShipmentPromptTextX => _lastShipmentPromptUsedUtilDlgExTextOwner ? 0 : -1;
+        internal int LastShipmentPromptTextY => _lastShipmentPromptUsedUtilDlgExTextOwner ? 0 : -1;
         internal int OwnerRowRevision => _ownerRowRevision;
         internal int OwnerSlotCount => _slotCount;
         internal bool IsOwnerGetButtonEnabled =>
@@ -1860,6 +1866,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _lastPromptTokenValue = BitConverter.ToInt32(payload, 5);
                     _lastPromptChannelId = payload[9];
                     _lastShipmentPromptText = BuildShipmentPromptText();
+                    _lastShipmentPromptUsedUtilDlgExTextOwner = true;
                     StatusMessage = _lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999
                         ? $"CStoreBankDlg packet 370 subtype 37 showed the fallback shipment prompt branch without requiring an open StoreBank owner: {_lastShipmentPromptText}"
                         : $"CStoreBankDlg packet 370 subtype 37 showed the channel-routed shipment prompt without requiring an open StoreBank owner: {_lastShipmentPromptText}";
@@ -1925,6 +1932,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPromptTokenValue = 0;
             _lastPromptChannelId = -1;
             _lastShipmentPromptText = string.Empty;
+            _lastShipmentPromptUsedUtilDlgExTextOwner = false;
         }
 
         private void ResetTransientRequestState(bool clearRequestSent = true)
@@ -2168,9 +2176,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!string.IsNullOrWhiteSpace(_lastShipmentPromptText))
             {
+                string ownerSuffix = _lastShipmentPromptUsedUtilDlgExTextOwner
+                    ? $" CUtilDlgEx owner: SetUtilDlgEx(type=0, style={_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}) + SetUtilDlgEx_TEXT(0,0) + DoModal."
+                    : string.Empty;
                 return _lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999
-                    ? $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)})."
-                    : $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}).";
+                    ? $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}).{ownerSuffix}"
+                    : $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}).{ownerSuffix}";
             }
 
             if (_lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999)

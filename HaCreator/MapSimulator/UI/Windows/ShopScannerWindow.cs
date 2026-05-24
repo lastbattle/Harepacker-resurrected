@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ShopResultNextButtonId = 4000;
         internal const int ShopResultPreviousButtonId = 4001;
         internal const int SearchResultPageSize = 10;
+        internal const int SearchResultMaxPageCount = 100;
         internal const int ScanRequestThrottleMilliseconds = 500;
         internal const int ScanConfirmationFormatStringPoolId = 0x0E55;
         internal const int ScanConfirmationAscendingStringPoolId = 0x0E56;
@@ -281,6 +282,9 @@ namespace HaCreator.MapSimulator.UI
             public int SearchResultChildAssetWidth { get; init; }
             public int SearchResultChildAssetHeight { get; init; }
             public int SearchResultChildRowsPerPage { get; init; }
+            public int SearchResultMaxPageCount { get; init; }
+            public int ChildOwnerLeft { get; init; }
+            public int ChildOwnerTop { get; init; }
             public bool ChildPreviousButtonEnabled { get; init; }
             public bool ChildNextButtonEnabled { get; init; }
             public IReadOnlyList<int> PreviousPageItemIds { get; init; } = Array.Empty<int>();
@@ -438,6 +442,9 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultChildAssetWidth = _searchResultChildAssetWidth,
                 SearchResultChildAssetHeight = _searchResultChildAssetHeight,
                 SearchResultChildRowsPerPage = GetCurrentChildPageSize(),
+                SearchResultMaxPageCount = SearchResultMaxPageCount,
+                ChildOwnerLeft = Position.X + (_searchBackgroundTexture?.Width ?? GetWindowBounds().Width),
+                ChildOwnerTop = Position.Y,
                 ChildPreviousButtonEnabled = IsChildPreviousButtonEnabled(),
                 ChildNextButtonEnabled = IsChildNextButtonEnabled(),
                 PreviousPageItemIds = GetChildPageItemIds(_searchResultPageIndex - 1),
@@ -804,6 +811,10 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = index;
             SyncSearchResultPageToSelection();
             _statusMessage = $"Selected {_results[index].Name} ({_results[index].ItemId.ToString(CultureInfo.InvariantCulture)}).";
+            if (_activeAddOnMode == ScannerAddOnMode.Category)
+            {
+                OpenSelectedCategoryResult(index);
+            }
         }
 
         private void MoveSelection(int delta)
@@ -1096,10 +1107,29 @@ namespace HaCreator.MapSimulator.UI
         private void ResetSearchResultPaging()
         {
             _searchResultPageIndex = 0;
-            _searchResultTotalPages = _results.Count == 0
-                ? 0
-                : (int)Math.Ceiling(_results.Count / (double)GetCurrentChildPageSize());
+            _searchResultTotalPages = CalculateSearchResultTotalPages(_results.Count, GetCurrentChildPageSize());
             _scrollOffset = 0;
+        }
+
+        private void OpenSelectedCategoryResult(int categoryIndex)
+        {
+            if (categoryIndex < 0 || categoryIndex >= _results.Count)
+            {
+                return;
+            }
+
+            InventoryType inventoryType = _results[categoryIndex].InventoryType;
+            _results = GetScannerIndex()
+                .Where(entry => entry.InventoryType == inventoryType)
+                .Where(entry => !entry.IsBlockedByScanBlock && !entry.IsScannerItem)
+                .OrderBy(entry => entry.ClientListOrder)
+                .Select(ToScannerResult)
+                .ToList();
+            _selectedIndex = _results.Count > 0 ? 0 : -1;
+            SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
+            ResetSearchResultPaging();
+            _statusMessage = $"CUIShopScannerCategory selected {inventoryType}; CUIShopScannerSearchResult owns {_results.Count.ToString(CultureInfo.InvariantCulture)} item-name row(s).";
+            RefreshRows();
         }
 
         private void SyncSearchResultPageToSelection()
@@ -1294,6 +1324,17 @@ namespace HaCreator.MapSimulator.UI
             return !isNpcShop
                 && currentChannelId >= 0
                 && rowChannelId == currentChannelId;
+        }
+
+        internal static int CalculateSearchResultTotalPages(int resultCount, int pageSize)
+        {
+            if (resultCount <= 0 || pageSize <= 0)
+            {
+                return 0;
+            }
+
+            int totalPages = (int)Math.Ceiling(resultCount / (double)pageSize);
+            return Math.Clamp(totalPages, 0, SearchResultMaxPageCount);
         }
 
         internal static byte[] BuildShopLinkRequestPayload(int miniRoomSn, int fieldId)

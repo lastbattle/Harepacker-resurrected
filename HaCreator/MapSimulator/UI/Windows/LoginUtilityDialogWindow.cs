@@ -817,7 +817,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!SoftKeyboardUI.CanAcceptCharacter(_softKeyboardType, _inputValue.Length - 1, _inputMaxLength, character))
+            if (!CanReplaceLastCharacter(character))
             {
                 errorMessage = "That key is disabled for this field.";
                 return false;
@@ -878,9 +878,33 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanAcceptCharacter(char character)
         {
+            return CanAcceptCharacter(_inputValue ?? string.Empty, character);
+        }
+
+        private bool CanAcceptCharacter(string currentText, char character)
+        {
+            if (UsesFieldMessageBoxChalkboardComposeLayout)
+            {
+                return FieldMessageBoxRuntime.CanAcceptChalkboardDialogCharacter(currentText, character);
+            }
+
             return SoftKeyboardUI.CanAcceptCharacter(
                 _softKeyboardType,
-                _inputValue?.Length ?? 0,
+                currentText?.Length ?? 0,
+                _inputMaxLength,
+                character);
+        }
+
+        private bool CanReplaceLastCharacter(char character)
+        {
+            if (UsesFieldMessageBoxChalkboardComposeLayout)
+            {
+                return FieldMessageBoxRuntime.CanReplaceLastChalkboardDialogCharacter(_inputValue, character);
+            }
+
+            return SoftKeyboardUI.CanAcceptCharacter(
+                _softKeyboardType,
+                Math.Max(0, (_inputValue?.Length ?? 1) - 1),
                 _inputMaxLength,
                 character);
         }
@@ -904,20 +928,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<char> acceptedCharacters = new(text.Length);
-            int textLength = _inputValue?.Length ?? 0;
+            string currentText = _inputValue ?? string.Empty;
             foreach (char character in text)
             {
-                if (!CanAcceptCharacter(character))
+                if (!CanAcceptCharacter(currentText, character))
                 {
                     continue;
                 }
 
-                if (_inputMaxLength > 0 && textLength + acceptedCharacters.Count >= _inputMaxLength)
+                if (!UsesFieldMessageBoxChalkboardComposeLayout
+                    && _inputMaxLength > 0
+                    && currentText.Length + acceptedCharacters.Count >= _inputMaxLength)
                 {
                     break;
                 }
 
                 acceptedCharacters.Add(character);
+                currentText += character;
             }
 
             return acceptedCharacters.Count == 0

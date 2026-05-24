@@ -159,7 +159,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedSearchResultIndex = 0;
             _firstVisibleSearchResultIndex = 0;
 
-            foreach (string candidate in ResolveSearchCandidates(normalizedQuery, contactNames))
+            foreach (string candidate in ResolveSearchCandidates(normalizedQuery, contactNames, GetLocalRecordParticipantNames()))
             {
                 if (_searchResults.Count >= NameListScrollBarRange)
                 {
@@ -199,6 +199,22 @@ namespace HaCreator.MapSimulator.Interaction
                 maxFirstVisibleIndex);
             _lastStatus = $"CNewYearCardReceiverSearchResult name-list scrollbar moved to first row {_firstVisibleSearchResultIndex + 1} of {_searchResults.Count}.";
             return _lastStatus;
+        }
+
+        internal bool TryConfigureReadViewFromLocalRecord(int serialNumber, out string message)
+        {
+            NewYearCardRecordSnapshot record = _localRecords.FirstOrDefault(existing => existing.SerialNumber == serialNumber);
+            if (record.Equals(default(NewYearCardRecordSnapshot)))
+            {
+                message = $"No packet-owned New Year Card record with serial {serialNumber} is available for CUINewYearCardDlg.";
+                _lastStatus = message;
+                return false;
+            }
+
+            ConfigureReadView(record.SenderName, record.ReceiverName, record.Content);
+            message = $"CUINewYearCardDlg opened packet-owned New Year Card record serial {serialNumber} from '{record.SenderName}'.";
+            _lastStatus = message;
+            return true;
         }
 
         internal string ApplyCompletion(NewYearCardCompletionKind kind, string targetName = null, string senderName = null, string memo = null)
@@ -462,32 +478,39 @@ namespace HaCreator.MapSimulator.Interaction
             _localRecords.RemoveAll(record => record.SerialNumber == serialNumber);
         }
 
+        private IEnumerable<string> GetLocalRecordParticipantNames()
+        {
+            foreach (NewYearCardRecordSnapshot record in _localRecords)
+            {
+                if (!record.Equals(default(NewYearCardRecordSnapshot)))
+                {
+                    yield return record.SenderName;
+                    yield return record.ReceiverName;
+                }
+            }
+        }
+
         private static IEnumerable<string> ResolveSearchCandidates(string normalizedQuery, IEnumerable<string> contactNames)
+        {
+            return ResolveSearchCandidates(normalizedQuery, contactNames, null);
+        }
+
+        private static IEnumerable<string> ResolveSearchCandidates(
+            string normalizedQuery,
+            IEnumerable<string> contactNames,
+            IEnumerable<string> packetOwnedNames)
         {
             HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
             bool hasQuery = !string.IsNullOrWhiteSpace(normalizedQuery);
 
-            if (contactNames != null)
+            foreach (string candidate in ResolveCandidateGroup(contactNames, normalizedQuery, hasQuery, emitted))
             {
-                foreach (string contactName in contactNames)
-                {
-                    string candidate = NormalizeName(contactName, string.Empty);
-                    if (candidate.Length == 0)
-                    {
-                        continue;
-                    }
+                yield return candidate;
+            }
 
-                    if (hasQuery
-                        && candidate.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) < 0)
-                    {
-                        continue;
-                    }
-
-                    if (emitted.Add(candidate))
-                    {
-                        yield return candidate;
-                    }
-                }
+            foreach (string candidate in ResolveCandidateGroup(packetOwnedNames, normalizedQuery, hasQuery, emitted))
+            {
+                yield return candidate;
             }
 
             if (emitted.Count != 0)
@@ -502,6 +525,38 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 string candidate = NormalizeName(fallbackName, string.Empty);
                 if (candidate.Length != 0 && emitted.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> ResolveCandidateGroup(
+            IEnumerable<string> candidates,
+            string normalizedQuery,
+            bool hasQuery,
+            HashSet<string> emitted)
+        {
+            if (candidates == null)
+            {
+                yield break;
+            }
+
+            foreach (string candidateName in candidates)
+            {
+                string candidate = NormalizeName(candidateName, string.Empty);
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (hasQuery
+                    && candidate.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                if (emitted.Add(candidate))
                 {
                     yield return candidate;
                 }

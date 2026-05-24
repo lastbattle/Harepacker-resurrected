@@ -431,14 +431,14 @@ namespace HaCreator.MapSimulator.UI
         {
             return type switch
             {
-                SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1"),
+                SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1", usesTallIconCenter: true),
                 SharedFadeYesNoModalType.TradeInvite => InviteProfile("backgrnd", "icon2"),
                 SharedFadeYesNoModalType.CashTradeInvite => AlarmProfile("backgrnd6", "icon9", 160, 44),
                 SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 155, 44, suppressesIcon: true),
                 SharedFadeYesNoModalType.ExpeditionApply => InviteProfile("backgrnd9", "icon0"),
-                SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5"),
+                SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5", usesTallIconCenter: true),
                 SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 155, 44),
-                SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5"),
+                SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5", usesTallIconCenter: true),
                 SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 155, 44),
                 SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 155, 44),
                 SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoVisualProfile(
@@ -452,7 +452,7 @@ namespace HaCreator.MapSimulator.UI
                     37,
                     UsesBlackText: true,
                     SuppressesIcon: true),
-                SharedFadeYesNoModalType.FamilyInvite => InviteProfile("backgrnd", "icon8"),
+                SharedFadeYesNoModalType.FamilyInvite => InviteProfile("backgrnd", "icon8", usesTallIconCenter: true),
                 SharedFadeYesNoModalType.PartyApply => InviteProfile("backgrnd7", "icon5"),
                 SharedFadeYesNoModalType.ExpeditionInvite => new SharedFadeYesNoVisualProfile(
                     "backgrnd8",
@@ -803,7 +803,8 @@ namespace HaCreator.MapSimulator.UI
             string iconName,
             int nativeWidth = 206,
             int nativeHeight = 60,
-            bool suppressesIcon = false)
+            bool suppressesIcon = false,
+            bool usesTallIconCenter = false)
         {
             return new SharedFadeYesNoVisualProfile(
                 frameName,
@@ -813,7 +814,7 @@ namespace HaCreator.MapSimulator.UI
                 InviteAnchorX,
                 InviteBottomOffset,
                 6,
-                TypeUsesTallIconCenter(frameName, iconName) ? 53 : 37,
+                usesTallIconCenter ? 53 : 37,
                 SuppressesIcon: suppressesIcon);
         }
 
@@ -834,14 +835,6 @@ namespace HaCreator.MapSimulator.UI
                 6,
                 37,
                 SuppressesIcon: suppressesIcon);
-        }
-
-        private static bool TypeUsesTallIconCenter(string frameName, string iconName)
-        {
-            return string.Equals(frameName, "backgrnd", StringComparison.Ordinal)
-                && (string.Equals(iconName, "icon1", StringComparison.Ordinal)
-                    || string.Equals(iconName, "icon8", StringComparison.Ordinal)
-                    || string.Equals(iconName, "icon0", StringComparison.Ordinal));
         }
 
         private static string FormatPrimaryPayloadLine(

@@ -409,9 +409,35 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                platform.IsActive = false;
-                platform.IsVisible = false;
+                ResetPacketOwnedUnmentionedFootholdPlatformForPacketParity(platform);
             }
+        }
+
+        internal static void ResetPacketOwnedUnmentionedFootholdPlatformForPacketParity(DynamicPlatform platform)
+        {
+            if (platform == null)
+            {
+                return;
+            }
+
+            platform.IsActive = false;
+            platform.IsVisible = false;
+            platform.DeltaX = 0f;
+            platform.DeltaY = 0f;
+            platform.IsPaused = false;
+            platform.PacketOwnedMovingX1 = null;
+            platform.PacketOwnedMovingX2 = null;
+            platform.PacketOwnedMovingY1 = null;
+            platform.PacketOwnedMovingY2 = null;
+            platform.PacketOwnedReverseVertical = null;
+            platform.PacketOwnedReverseHorizontal = null;
+            if (platform.MovementType == PlatformMovementType.Waypoint)
+            {
+                platform.Waypoints?.Clear();
+                platform.CurrentWaypointIndex = 0;
+            }
+
+            platform.MovementType = PlatformMovementType.Static;
         }
 
         private void ApplyPacketOwnedFootholdEntryToRuntime(PacketFieldUtilityFootholdEntry entry)

@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _mapleTvMessageY;
         private int _mapleTvAdX;
         private int _mapleTvAdY;
+        private int _clientFloatVectorStartedAtTick = int.MinValue;
         private const int MapleTvNativeMessageLineHeight = 16;
         private const int MapleTvNativeSenderNameXDelta = -57;
         private const int MapleTvNativeReceiverNameXDelta = 146;
@@ -381,6 +382,7 @@ namespace HaCreator.MapSimulator.Entities
         public void MarkClientFloatPresentationAvailable(bool available)
         {
             HasClientFloatPresentation = available;
+            _clientFloatVectorStartedAtTick = int.MinValue;
         }
 
         internal void ConfigureMapleTvPresentation(
@@ -598,7 +600,7 @@ namespace HaCreator.MapSimulator.Entities
                 positionOffsetY = (int)(MovementInfo.Y - _npcInstance.Y);
             }
 
-            Point floatOffset = ResolveClientFloatVisualOffset(HasClientFloatPresentation, TickCount);
+            Point floatOffset = ResolveClientFloatVisualOffsetAtTick(TickCount);
             positionOffsetX += floatOffset.X;
             positionOffsetY += floatOffset.Y;
 
@@ -767,7 +769,7 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            Point floatOffset = ResolveClientFloatVisualOffset(HasClientFloatPresentation, tickCount);
+            Point floatOffset = ResolveClientFloatVisualOffsetAtTick(tickCount);
             if (!snapshot.IsShowingMessage)
             {
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = ResolveActorLocalMapleTvIdleFrames(visualAssets, snapshot.QueueExists);
@@ -835,7 +837,9 @@ namespace HaCreator.MapSimulator.Entities
                 chatOriginY);
 
             Rectangle textBounds = ResolveActorLocalMapleTvTextBounds(visualAssets, snapshot);
-            Point chatTopLeft = new(chatOriginX + chatFrame.Offset.X, chatOriginY + chatFrame.Offset.Y);
+            Point chatTopLeft = ResolveActorLocalMapleTvChatFamilyTopLeft(
+                new Point(chatOriginX, chatOriginY),
+                chatFrames);
             int drawY = chatTopLeft.Y + textBounds.Y;
             int lineX = chatTopLeft.X + textBounds.X;
             foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(5))
@@ -933,6 +937,15 @@ namespace HaCreator.MapSimulator.Entities
             };
         }
 
+        internal static Point ResolveActorLocalMapleTvChatFamilyTopLeft(
+            Point chatOrigin,
+            IReadOnlyList<MapleTvAnimationFrame> chatFrames)
+        {
+            return MapleTvWindow.ResolveFamilyTopLeft(
+                chatOrigin,
+                MapleTvWindow.ResolveCompositeBounds(240, 90, chatFrames));
+        }
+
         internal static Point ResolveActorLocalMapleTvSenderNameOffset(Rectangle textBounds)
         {
             return new Point(
@@ -970,16 +983,37 @@ namespace HaCreator.MapSimulator.Entities
 
         internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount)
         {
+            return ResolveClientFloatVisualOffset(hasFloatPresentation, tickCount, 0);
+        }
+
+        internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount, int startedAtTick)
+        {
             if (!hasFloatPresentation || ClientFloatVectorRotateMs <= 0)
             {
                 return Point.Zero;
             }
 
-            int normalizedTick = Math.Abs(tickCount % ClientFloatVectorRotateMs);
+            int elapsedTick = Math.Max(0, tickCount - startedAtTick);
+            int normalizedTick = elapsedTick % ClientFloatVectorRotateMs;
             double angle = normalizedTick / (double)ClientFloatVectorRotateMs * Math.PI * 2.0;
             return new Point(
                 (int)Math.Round(Math.Cos(angle) * ClientFloatVectorRadiusPx),
                 (int)Math.Round(Math.Sin(angle) * ClientFloatVectorRadiusPx));
+        }
+
+        private Point ResolveClientFloatVisualOffsetAtTick(int tickCount)
+        {
+            if (!HasClientFloatPresentation)
+            {
+                return Point.Zero;
+            }
+
+            if (_clientFloatVectorStartedAtTick == int.MinValue)
+            {
+                _clientFloatVectorStartedAtTick = tickCount;
+            }
+
+            return ResolveClientFloatVisualOffset(true, tickCount, _clientFloatVectorStartedAtTick);
         }
 
         private static int ResolveActorLocalMapleTvChatVariantKey(

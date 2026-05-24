@@ -438,6 +438,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!activeRaise.TryBeginClientPutItemRequest(currTickCount, out string blockedReason))
+            {
+                _chat?.AddSystemMessage(blockedReason, currTickCount);
+                return;
+            }
+
             placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingReleaseAck;
             DispatchQuestRewardRaisePieceRequest(
                 activeRaise,
@@ -1367,6 +1373,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            activeRaise.ClearClientPutItemRequestPending();
             if (packet.Success)
             {
                 if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)

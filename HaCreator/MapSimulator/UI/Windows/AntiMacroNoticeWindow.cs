@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
+        public override bool IsModalDialogOwner => ShouldActAsClientModalDialogOwner(IsVisible);
         public Point FrameSize => new(_frameTexture?.Width ?? 260, _frameTexture?.Height ?? 131);
 
         public event Action<int> CloseRequested;
@@ -224,6 +225,13 @@ namespace HaCreator.MapSimulator.UI
             return new Point(
                 windowPosition.X + AvatarOrigin.X - avatarTextureOrigin.X,
                 windowPosition.Y + AvatarOrigin.Y - avatarTextureOrigin.Y);
+        }
+
+        internal static bool ShouldActAsClientModalDialogOwner(bool isVisible)
+        {
+            // `CWvsContext::ShowAntiMacroNotice` runs `CUIAntiMacroNotice` through
+            // `CDialog::DoModal`, so visible notices block lower window owners.
+            return isVisible;
         }
 
         private static int FindClientWrapIndex(string text, float wrapWidth, Func<string, float> measureTextWidth)

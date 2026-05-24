@@ -411,7 +411,8 @@ namespace HaCreator.MapSimulator.Fields
                 ClientBoardLayerOperationKind.EnsureBoardLayerSize,
                 new Point(BoardWidth, BoardHeight)));
 
-            if (boardLayerDirty)
+            bool requiresBoardRedraw = boardLayerDirty || !hasBoardLayerRenderTarget;
+            if (requiresBoardRedraw)
             {
                 operations.Add(new ClientBoardLayerOperation(
                     ClientBoardLayerOperationKind.SetBoardLayerRenderTarget,
@@ -426,7 +427,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             operations.Add(new ClientBoardLayerOperation(
-                hasBoardLayerRenderTarget || boardLayerDirty
+                hasBoardLayerRenderTarget || requiresBoardRedraw
                     ? ClientBoardLayerOperationKind.PresentBoardLayer
                     : ClientBoardLayerOperationKind.DrawDirectBoardContents,
                 boardPosition));

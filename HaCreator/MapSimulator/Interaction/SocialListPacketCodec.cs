@@ -30,7 +30,9 @@ namespace HaCreator.MapSimulator.Interaction
         bool IsOnline,
         bool IsLeader,
         bool IsBlocked,
-        bool IsLocalPlayer);
+        bool IsLocalPlayer,
+        int? PartyCurrentHp = null,
+        int? PartyMaxHp = null);
 
     internal readonly record struct SocialListRosterPacket(
         SocialListRosterPacketKind Kind,
@@ -105,7 +107,9 @@ namespace HaCreator.MapSimulator.Interaction
         int Level,
         int ChannelId,
         int FieldId,
-        bool IsLeader);
+        bool IsLeader,
+        int? CurrentHp = null,
+        int? MaxHp = null);
 
     internal enum SocialListClientPartyResultKind : byte
     {
@@ -1939,6 +1943,34 @@ namespace HaCreator.MapSimulator.Interaction
                     channelId,
                     fieldId,
                     memberId == leaderId));
+            }
+
+            if (reader.RemainingLength >= memberCount * sizeof(int) * 2)
+            {
+                Dictionary<int, (int CurrentHp, int MaxHp)> hpByMemberId = new();
+                for (int i = 0; i < memberCount; i++)
+                {
+                    int memberId = ReadInt32(partyData, idsOffset + (i * sizeof(int)));
+                    int currentHp = reader.ReadInt32();
+                    int maxHp = reader.ReadInt32();
+                    if (memberId > 0 && maxHp > 0)
+                    {
+                        hpByMemberId[memberId] = (currentHp, maxHp);
+                    }
+                }
+
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    SocialListClientPartyEntry entry = entries[i];
+                    if (hpByMemberId.TryGetValue(entry.MemberId, out (int CurrentHp, int MaxHp) hp))
+                    {
+                        entries[i] = entry with
+                        {
+                            CurrentHp = hp.CurrentHp,
+                            MaxHp = hp.MaxHp
+                        };
+                    }
+                }
             }
 
             return entries;

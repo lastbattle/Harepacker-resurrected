@@ -185,7 +185,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool isLeader,
             bool isBlocked,
             bool isLocalPlayer,
-            int? memberId = null)
+            int? memberId = null,
+            int? partyCurrentHp = null,
+            int? partyMaxHp = null)
         {
             string resolvedName = string.IsNullOrWhiteSpace(name) ? "Packet Entry" : name.Trim();
             SocialEntryState entry = new(
@@ -199,7 +201,9 @@ namespace HaCreator.MapSimulator.Interaction
                 isBlocked)
             {
                 IsLocalPlayer = isLocalPlayer,
-                MemberId = memberId > 0 ? memberId : null
+                MemberId = memberId > 0 ? memberId : null,
+                PartyCurrentHp = partyMaxHp.GetValueOrDefault() > 0 ? partyCurrentHp : null,
+                PartyMaxHp = partyMaxHp.GetValueOrDefault() > 0 ? partyMaxHp : null
             };
 
             List<SocialEntryState> entries = _entriesByTab[tab];

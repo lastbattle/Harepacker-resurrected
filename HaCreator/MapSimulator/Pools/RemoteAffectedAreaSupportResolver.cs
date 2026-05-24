@@ -1000,7 +1000,7 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: primaryStatusPropPercent));
             }
 
-            if (ContainsToken(hostileSearchText, "weak") || levelData.Jump < 0)
+            if (ContainsWeaknessToken(hostileSearchText) || levelData.Jump < 0)
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Weakness,
@@ -2273,6 +2273,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool ContainsWeaknessToken(string value)
+        {
+            return ContainsToken(value, "weak")
+                   && !ContainsToken(value, "elementalWeaken");
         }
     }
 }

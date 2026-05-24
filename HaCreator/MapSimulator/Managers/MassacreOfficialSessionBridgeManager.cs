@@ -1176,15 +1176,12 @@ namespace HaCreator.MapSimulator.Managers
                     return TryDecodeSessionValueMessage(relayedPayload, source, sessionValueInfoState, rawPacket, out message);
                 }
 
-                message = new MassacrePacketInboxMessage(
-                    MassacrePacketInboxMessageKind.Packet,
+                return TryDecodeKnownOwnerPacket(
+                    relayedPacketType,
+                    relayedPayload,
                     source,
-                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                    packetType: relayedPacketType,
-                    payload: relayedPayload);
-                return relayedPacketType == DefaultInboundSessionValueOpcode
-                    || relayedPacketType == PacketTypeIncGauge
-                    || relayedPacketType == PacketTypeResult;
+                    rawPacket,
+                    out message);
             }
 
             if (opcode == DefaultInboundSessionValueOpcode)
@@ -1192,19 +1189,45 @@ namespace HaCreator.MapSimulator.Managers
                 return TryDecodeSessionValueMessage(payload, source, sessionValueInfoState, rawPacket, out message);
             }
 
-            if (opcode == PacketTypeIncGauge
-                || opcode == PacketTypeResult)
+            if (TryDecodeKnownOwnerPacket(opcode, payload, source, rawPacket, out message))
             {
-                message = new MassacrePacketInboxMessage(
-                    MassacrePacketInboxMessageKind.Packet,
-                    source,
-                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                    packetType: opcode,
-                    payload: payload);
                 return true;
             }
 
             return false;
+        }
+
+        private static bool TryDecodeKnownOwnerPacket(
+            int packetType,
+            byte[] payload,
+            string source,
+            byte[] rawPacket,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            if (packetType != PacketTypeIncGauge && packetType != PacketTypeResult)
+            {
+                return false;
+            }
+
+            if (packetType == PacketTypeIncGauge
+                && (!TryDecodeMappedInt32Payload(payload, out int incGauge) || incGauge < 0))
+            {
+                return false;
+            }
+
+            if (packetType == PacketTypeResult && !TryDecodeResultPayload(payload))
+            {
+                return false;
+            }
+
+            message = new MassacrePacketInboxMessage(
+                MassacrePacketInboxMessageKind.Packet,
+                source,
+                $"packetclientraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}",
+                packetType: packetType,
+                payload: payload);
+            return true;
         }
 
         private static bool TryDecodeCurrentWrapperRelayPacketChain(
@@ -1335,7 +1358,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (mappedKind == MassacrePacketInboxMessageKind.Result)
             {
-                if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
+                if (!TryDecodeResultPayload(payload))
                 {
                     return false;
                 }
@@ -1356,6 +1379,18 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: opcode,
                 payload: payload);
             return true;
+        }
+
+        private static bool TryDecodeResultPayload(byte[] payload)
+        {
+            if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
+            {
+                return false;
+            }
+
+            byte rankCode = payload[0];
+            int score = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
+            return rankCode <= 4 && score >= 0;
         }
 
         private static bool TryDecodeMappedInfoPayload(byte[] payload, out int hit, out int miss, out int cool, out int skill)

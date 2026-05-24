@@ -6,6 +6,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -291,11 +292,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedDisplayIndex = displaySlotIndex;
-            int currentTick = Environment.TickCount;
-            bool isDoubleClick = displaySlotIndex == _lastActivatedEntryIndex &&
-                                 unchecked(currentTick - _lastActivationTick) <= DoubleClickThresholdMs;
-            _lastActivatedEntryIndex = displaySlotIndex;
-            _lastActivationTick = currentTick;
 
             if (slotKind == LoginCharacterRosterSlotKind.Character)
             {
@@ -304,6 +300,12 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
+                if (!IsPointerInsideCharacterBody(displaySlotIndex))
+                {
+                    return;
+                }
+
+                bool isDoubleClick = IsDoubleClickAndRecord(displaySlotIndex);
                 CharacterSelected?.Invoke(displaySlotIndex);
                 if (isDoubleClick)
                 {
@@ -313,10 +315,52 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (isDoubleClick)
+            if (IsDoubleClickAndRecord(displaySlotIndex))
             {
                 NewCharacterRequested?.Invoke();
             }
+        }
+
+        private bool IsDoubleClickAndRecord(int displaySlotIndex)
+        {
+            int currentTick = Environment.TickCount;
+            bool isDoubleClick = displaySlotIndex == _lastActivatedEntryIndex &&
+                                 unchecked(currentTick - _lastActivationTick) <= DoubleClickThresholdMs;
+            _lastActivatedEntryIndex = displaySlotIndex;
+            _lastActivationTick = currentTick;
+            return isDoubleClick;
+        }
+
+        private bool IsPointerInsideCharacterBody(int displaySlotIndex)
+        {
+            LoginCharacterRosterEntry entry = displaySlotIndex >= 0 && displaySlotIndex < _entries.Count
+                ? _entries[displaySlotIndex]
+                : null;
+            if (entry == null || !_previewAssemblers.TryGetValue(entry, out CharacterAssembler assembler))
+            {
+                return false;
+            }
+
+            int visibleSlotIndex = displaySlotIndex - (_pageIndex * EntriesPerPage);
+            if (visibleSlotIndex < 0 || visibleSlotIndex >= EntriesPerPage)
+            {
+                return false;
+            }
+
+            AssembledFrame previewFrame = assembler.GetFrameAtTime("stand1", Environment.TickCount);
+            if (previewFrame == null || previewFrame.Bounds.IsEmpty)
+            {
+                return true;
+            }
+
+            Point slotAnchor = GetSlotAnchor(visibleSlotIndex);
+            Rectangle bodyBounds = new(
+                Position.X + slotAnchor.X + previewFrame.Bounds.X,
+                Position.Y + slotAnchor.Y - previewFrame.FeetOffset + previewFrame.Bounds.Y,
+                previewFrame.Bounds.Width,
+                previewFrame.Bounds.Height);
+            MouseState mouseState = Mouse.GetState();
+            return bodyBounds.Contains(mouseState.X, mouseState.Y);
         }
 
         private void SelectPreviousPage()

@@ -427,6 +427,86 @@ namespace HaCreator.MapSimulator.Physics
             return states;
         }
 
+        internal static bool TryDecodeClientFlushTailPassiveKeyPadStates(
+            IReadOnlyList<byte> bytes,
+            bool packedNibbles,
+            out byte[] states,
+            out string error)
+        {
+            states = Array.Empty<byte>();
+            error = null;
+            if (bytes == null)
+            {
+                error = "Captured keypad bytes are empty.";
+                return false;
+            }
+
+            if (!packedNibbles)
+            {
+                states = new byte[bytes.Count];
+                for (int i = 0; i < bytes.Count; i++)
+                {
+                    states[i] = (byte)(bytes[i] & 0x0F);
+                }
+
+                return true;
+            }
+
+            if (bytes.Count == 0)
+            {
+                return true;
+            }
+
+            int stateCount = bytes[0];
+            int packedByteCount = (stateCount + 1) / 2;
+            if (bytes.Count - 1 < packedByteCount)
+            {
+                error = $"Packed keypad capture declares {stateCount} state(s), but only {bytes.Count - 1} packed byte(s) were supplied.";
+                return false;
+            }
+
+            if (bytes.Count - 1 > packedByteCount)
+            {
+                error = $"Packed keypad capture has {bytes.Count - 1 - packedByteCount} trailing byte(s).";
+                return false;
+            }
+
+            states = new byte[stateCount];
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte packed = bytes[1 + (i / 2)];
+                states[i] = (byte)(packed & 0x0F);
+                if (i + 1 < stateCount)
+                {
+                    states[i + 1] = (byte)((packed >> 4) & 0x0F);
+                }
+            }
+
+            return true;
+        }
+
+        internal static bool AreClientFlushTailPassiveKeyPadStatesEqual(
+            IReadOnlyList<byte> left,
+            IReadOnlyList<byte> right)
+        {
+            int leftCount = left?.Count ?? 0;
+            int rightCount = right?.Count ?? 0;
+            if (leftCount != rightCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < leftCount; i++)
+            {
+                if ((left[i] & 0x0F) != (right[i] & 0x0F))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(
             IReadOnlyList<MovePathElement> path,
             bool flushAdmitted,

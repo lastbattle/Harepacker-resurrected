@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly List<SkillDisplayData> _skills = new();
         private readonly Dictionary<int, DateTimeOffset> _activeGuildSkillExpirations = new();
+        private readonly Dictionary<int, string> _guildSkillBuyers = new();
         private readonly Dictionary<string, GuildSkillSavedState> _savedGuildStates = new(StringComparer.OrdinalIgnoreCase);
         private int _selectedIndex;
         private int _recommendedSkillId;
@@ -225,6 +226,7 @@ namespace HaCreator.MapSimulator.Interaction
                     RenewalCost = skill.CurrentLevel > 0 ? skill.GetGuildRenewalCost(skill.CurrentLevel) : 0,
                     DurationMinutes = skill.GetGuildDurationMinutes(Math.Max(1, skill.CurrentLevel)),
                     RemainingDurationMinutes = GetRemainingDurationMinutes(skill),
+                    BuyCharacterName = GetGuildSkillBuyer(skill.SkillId),
                     GuildPriceUnit = Math.Max(1, skill.GuildPriceUnit),
                     GuildFundMeso = _guildFundMeso,
                     GuildPoints = _guildPoints,
@@ -496,6 +498,15 @@ namespace HaCreator.MapSimulator.Interaction
                 _activeGuildSkillExpirations[selectedSkill.SkillId] = resolvedExpiration.Value;
             }
 
+            if (resolvedLevel <= 0)
+            {
+                _guildSkillBuyers.Remove(selectedSkill.SkillId);
+            }
+            else
+            {
+                SetGuildSkillBuyer(selectedSkill.SkillId, packet.BuyCharacterName);
+            }
+
             if (resolvedLevel > previousLevel)
             {
                 _availablePoints = Math.Max(0, _availablePoints - (resolvedLevel - previousLevel));
@@ -594,6 +605,15 @@ namespace HaCreator.MapSimulator.Interaction
                 else
                 {
                     _activeGuildSkillExpirations[skill.SkillId] = resolvedExpiration.Value;
+                }
+
+                if (resolvedLevel <= 0)
+                {
+                    _guildSkillBuyers.Remove(skill.SkillId);
+                }
+                else
+                {
+                    SetGuildSkillBuyer(skill.SkillId, record.BuyCharacterName);
                 }
 
                 if (resolvedLevel > previousLevel)
@@ -1351,6 +1371,12 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"Remain {FormatDuration(remainingMinutes)}");
             }
 
+            string buyCharacterName = GetGuildSkillBuyer(selectedSkill.SkillId);
+            if (!string.IsNullOrWhiteSpace(buyCharacterName))
+            {
+                parts.Add($"Buyer {buyCharacterName}");
+            }
+
             if (_pendingRequest != null && !string.IsNullOrWhiteSpace(_pendingRequest.ActionLabel))
             {
                 parts.Add(_pendingRequest.SkillId == selectedSkill.SkillId
@@ -1494,6 +1520,7 @@ namespace HaCreator.MapSimulator.Interaction
             _availablePoints = 0;
             _guildFundMeso = 0;
             _activeGuildSkillExpirations.Clear();
+            _guildSkillBuyers.Clear();
             foreach (SkillDisplayData skill in _skills)
             {
                 skill.CurrentLevel = 0;
@@ -1516,6 +1543,7 @@ namespace HaCreator.MapSimulator.Interaction
             _availablePoints = Math.Max(0, savedState?.AvailablePoints ?? DefaultAvailablePoints);
             _guildFundMeso = Math.Max(0, savedState?.GuildFundMeso ?? DefaultGuildFundMeso);
             _activeGuildSkillExpirations.Clear();
+            _guildSkillBuyers.Clear();
             if (savedState?.ActiveExpirations == null)
             {
                 return;
@@ -1526,6 +1554,19 @@ namespace HaCreator.MapSimulator.Interaction
                 if (entry.Value > DateTimeOffset.UtcNow)
                 {
                     _activeGuildSkillExpirations[entry.Key] = entry.Value;
+                }
+            }
+
+            if (savedState.BuyCharacterNames == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, string> entry in savedState.BuyCharacterNames)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    _guildSkillBuyers[entry.Key] = entry.Value.Trim();
                 }
             }
         }
@@ -1553,13 +1594,46 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            Dictionary<int, string> savedBuyCharacterNames = new();
+            foreach (KeyValuePair<int, string> entry in _guildSkillBuyers)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    savedBuyCharacterNames[entry.Key] = entry.Value.Trim();
+                }
+            }
+
             _savedGuildStates[guildStateKey] = new GuildSkillSavedState(
                 Math.Max(1, _guildLevel),
                 Math.Max(0, _availablePoints),
                 Math.Max(0, _guildPoints),
                 Math.Max(0, _guildFundMeso),
                 savedSkillLevels,
-                savedActiveGuildSkillExpirations);
+                savedActiveGuildSkillExpirations,
+                savedBuyCharacterNames);
+        }
+
+        private string GetGuildSkillBuyer(int skillId)
+        {
+            return _guildSkillBuyers.TryGetValue(skillId, out string buyer)
+                ? buyer
+                : string.Empty;
+        }
+
+        private void SetGuildSkillBuyer(int skillId, string buyCharacterName)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(buyCharacterName))
+            {
+                _guildSkillBuyers.Remove(skillId);
+                return;
+            }
+
+            _guildSkillBuyers[skillId] = buyCharacterName.Trim();
         }
 
         private static int GetSeededLevel(int index, SkillDisplayData skill)
@@ -1730,7 +1804,8 @@ namespace HaCreator.MapSimulator.Interaction
             int guildPoints,
             int guildFundMeso,
             IReadOnlyDictionary<int, int> skillLevels,
-            IReadOnlyDictionary<int, DateTimeOffset> activeExpirations)
+            IReadOnlyDictionary<int, DateTimeOffset> activeExpirations,
+            IReadOnlyDictionary<int, string> buyCharacterNames = null)
         {
             GuildLevel = guildLevel;
             AvailablePoints = availablePoints;
@@ -1738,6 +1813,7 @@ namespace HaCreator.MapSimulator.Interaction
             GuildFundMeso = guildFundMeso;
             SkillLevels = skillLevels ?? new Dictionary<int, int>();
             ActiveExpirations = activeExpirations ?? new Dictionary<int, DateTimeOffset>();
+            BuyCharacterNames = buyCharacterNames ?? new Dictionary<int, string>();
         }
 
         internal int GuildLevel { get; }
@@ -1746,6 +1822,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int GuildFundMeso { get; }
         internal IReadOnlyDictionary<int, int> SkillLevels { get; }
         internal IReadOnlyDictionary<int, DateTimeOffset> ActiveExpirations { get; }
+        internal IReadOnlyDictionary<int, string> BuyCharacterNames { get; }
     }
 
     internal sealed class GuildSkillSnapshot
@@ -1784,6 +1861,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int RenewalCost { get; init; }
         public int DurationMinutes { get; init; }
         public int RemainingDurationMinutes { get; init; }
+        public string BuyCharacterName { get; init; } = string.Empty;
         public int GuildPriceUnit { get; init; } = 1;
         public int GuildFundMeso { get; init; }
         public int GuildPoints { get; init; }

@@ -230,6 +230,11 @@ namespace HaCreator.MapSimulator.Entities
             return triggerDelayMs > 0 && elapsedMs >= triggerDelayMs;
         }
 
+        public static bool ShouldCallOwnerForDelayedAttackEntry(MobAttackEntry currentAttack)
+        {
+            return currentAttack?.IsSpecialAttack == true;
+        }
+
         public static bool TryResolveOwnerRegistrationCadence(
             IReadOnlyList<IDXObject> frames,
             string effectPath,
@@ -307,7 +312,10 @@ namespace HaCreator.MapSimulator.Entities
                 intervalMs,
                 HasReplayGateElapsed(currentTick, startTick, intervalMs),
                 UsesDelayedAttackEntryOwner: true,
+                EnumeratesDelayedAttackEntryList: true,
+                GetsAttackInfoByDelayedAttackIndex: true,
                 ReadsAttackInfoSpecialAttackFlag: true,
+                CallsMobOwnerWithoutDelayedEntryDueTimeCheck: true,
                 UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall: true,
                 UpdatesStartTimeBeforeAnimationDisplayerCall: true,
                 UpdatesStartTimeBeforeStringPoolBuild: true,
@@ -379,7 +387,10 @@ namespace HaCreator.MapSimulator.Entities
         int FullChargeEffectTimeMs,
         bool ReplayGateElapsed,
         bool UsesDelayedAttackEntryOwner,
+        bool EnumeratesDelayedAttackEntryList,
+        bool GetsAttackInfoByDelayedAttackIndex,
         bool ReadsAttackInfoSpecialAttackFlag,
+        bool CallsMobOwnerWithoutDelayedEntryDueTimeCheck,
         bool UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall,
         bool UpdatesStartTimeBeforeAnimationDisplayerCall,
         bool UpdatesStartTimeBeforeStringPoolBuild,

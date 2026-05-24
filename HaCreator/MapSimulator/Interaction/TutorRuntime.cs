@@ -614,17 +614,27 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ApplyTextMessage(string text, int width, int durationMs, int currentTick)
         {
             string normalizedText = text ?? string.Empty;
+            int normalizedWidth = Math.Clamp(width <= 0 ? DefaultTextWidth : width, MinTextWidth, MaxTextWidth);
+            int normalizedDuration = ClampDuration(durationMs);
             if (string.IsNullOrEmpty(normalizedText))
             {
-                ClearMessage(clearSharedState: true);
+                RemoveSharedTutorMessageSnapshot(ActiveSkillId);
+                MessageKind = TutorMessageKind.None;
+                LastIndexedMessage = -1;
+                ActiveMessageText = string.Empty;
+                ActiveMessageWidth = normalizedWidth;
+                ActiveMessageDurationMs = normalizedDuration;
+                ActiveMessageStartedAt = currentTick;
+                ActiveMessageExpiresAt = unchecked(currentTick + normalizedDuration);
+                MessageSequenceId++;
                 StatusMessage = "Tutor text payload was empty.";
                 return;
             }
 
             MessageKind = TutorMessageKind.Text;
             ActiveMessageText = normalizedText;
-            ActiveMessageWidth = Math.Clamp(width <= 0 ? DefaultTextWidth : width, MinTextWidth, MaxTextWidth);
-            ActiveMessageDurationMs = ClampDuration(durationMs);
+            ActiveMessageWidth = normalizedWidth;
+            ActiveMessageDurationMs = normalizedDuration;
             ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
             MessageSequenceId++;

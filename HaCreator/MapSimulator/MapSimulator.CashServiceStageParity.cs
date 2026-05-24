@@ -1972,38 +1972,37 @@ namespace HaCreator.MapSimulator
             {
                 IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> packetSourceEntries =
                     ResolveCashShopListFallbackEntries(stageWindow, out string packetPaneLabel, out string packetBrowseModeLabel);
-                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(packetSourceEntries);
+                bool usingStageCatalogSnapshot = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
+                    && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries);
+                IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> visiblePacketSourceEntries = usingStageCatalogSnapshot
+                    ? BuildCashShopStageCatalogRuntimeEntries(stageWindow)
+                    : packetSourceEntries;
+                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(visiblePacketSourceEntries);
                 return new CashShopStageChildWindow.ListOwnerState
                 {
                     PaneLabel = packetPaneLabel,
                     BrowseModeLabel = packetBrowseModeLabel,
-                    CategoryLabel = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                    CategoryLabel = usingStageCatalogSnapshot
                             ? stageWindow.CashStageCatalogSnapshotCategoryLabel
                             : "CCashShop",
-                    FooterMessage = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                    FooterMessage = usingStageCatalogSnapshot
                             ? stageWindow.CashStageCatalogSnapshotFooterMessage
                             : stageWindow.StatusMessage,
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
-                    SelectedIndex = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                    SelectedIndex = usingStageCatalogSnapshot
                             ? stageWindow.CashStageCatalogSnapshotSelectedIndex
                             : packetEntries.Count > 0 ? 0 : -1,
-                    ScrollOffset = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                    ScrollOffset = usingStageCatalogSnapshot
                             ? stageWindow.CashStageCatalogSnapshotScrollOffset
                             : 0,
                     TotalCount = Math.Max(
                         packetEntries.Count,
                         string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
                             ? stageWindow.WishlistCount
-                            : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                                && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                            : usingStageCatalogSnapshot
                                     ? stageWindow.CashStageCatalogSnapshotTotalCount
                                     : 0),
-                    PlateFocusIndex = stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                        && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                    PlateFocusIndex = usingStageCatalogSnapshot
                             ? Math.Max(0, stageWindow.CashStageCatalogSnapshotSelectedIndex - stageWindow.CashStageCatalogSnapshotScrollOffset)
                             : packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
@@ -2017,16 +2016,14 @@ namespace HaCreator.MapSimulator
                         new Microsoft.Xna.Framework.Point(381, 44),
                         339,
                         412,
-                        stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                            && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                        usingStageCatalogSnapshot
                                 ? stageWindow.CashStageCatalogSnapshotScrollOffset
                                 : 0,
                         Math.Max(0, Math.Max(
                             packetEntries.Count,
                             string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
                                 ? stageWindow.WishlistCount
-                                : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                                    && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                : usingStageCatalogSnapshot
                                         ? stageWindow.CashStageCatalogSnapshotTotalCount
                                         : 0) - 5),
                         Math.Min(5, packetEntries.Count),
@@ -2034,8 +2031,7 @@ namespace HaCreator.MapSimulator
                             packetEntries.Count,
                             string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
                                 ? stageWindow.WishlistCount
-                                : stageWindow.CashStageCatalogSnapshotEntries.Count > 0
-                                    && ReferenceEquals(packetSourceEntries, stageWindow.CashStageCatalogSnapshotEntries)
+                                : usingStageCatalogSnapshot
                                         ? stageWindow.CashStageCatalogSnapshotTotalCount
                                         : 0),
                         isDragging: false)
@@ -2399,7 +2395,7 @@ namespace HaCreator.MapSimulator
                 OwnerName = "CCSWnd_ItemSearch",
                 Status = stateLines.Count > 0 ? stateLines[0] : "CCSWnd_ItemSearch wrapper state is modeled from the parent CCashShop search result list.",
                 NativeCreateFunction = "CCSWnd_ItemSearch::OnCreate@0x4c8980",
-                NativeDrawFunction = "CCashShop::SetSearchResult@0x493c00",
+                NativeDrawFunction = "CCSWnd_ItemSearch::OnButtonClicked@0x4cd640 -> CCashShop::SetSearchResult@0x493c00",
                 SourceSurface = "UI/CashShop.img/CSItemSearch",
                 SearchButtonControl = new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
                 {
@@ -2455,6 +2451,20 @@ namespace HaCreator.MapSimulator
                     Position = new Microsoft.Xna.Framework.Point(560, 238),
                     Width = 45,
                     Height = 17
+                },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "CItemSearchDlg.BtOK",
+                    ControlId = 1,
+                    Position = new Microsoft.Xna.Framework.Point(58, 104),
+                    SourceStringPoolId = 0x512
+                },
+                new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "CItemSearchDlg.BtCancel",
+                    ControlId = 2,
+                    Position = new Microsoft.Xna.Framework.Point(159, 104),
+                    SourceStringPoolId = 0x513
                 }
             };
         }
@@ -3148,11 +3158,44 @@ namespace HaCreator.MapSimulator
                     Seller = entry.Seller,
                     PriceLabel = entry.PriceLabel,
                     StateLabel = entry.StateLabel,
-                    IsSelected = i == 0
+                    IsSelected = i == 0,
+                    PacketRowIndex = entry.PacketRowIndex,
+                    PacketSource = entry.PacketSource,
+                    PacketFieldSummary = entry.PacketFieldSummary,
+                    PacketRawByteLength = entry.PacketRawByteLength,
+                    PacketPayloadRawHex = entry.PacketPayloadRawHex
                 });
             }
 
             return result;
+        }
+
+        internal static IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> BuildCashShopStageCatalogRuntimeEntries(
+            CashServiceStageWindow stageWindow)
+        {
+            return BuildCashShopStageCatalogRuntimeEntries(
+                stageWindow?.CashStageCatalogSnapshotEntries,
+                stageWindow?.CashShopCurrentSortType ?? 0);
+        }
+
+        internal static IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> BuildCashShopStageCatalogRuntimeEntries(
+            IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> sourceEntries,
+            int cashShopSortType)
+        {
+            if (sourceEntries == null || sourceEntries.Count <= 1)
+            {
+                return sourceEntries ?? Array.Empty<CashServiceStageWindow.PacketCatalogEntry>();
+            }
+
+            IEnumerable<CashServiceStageWindow.PacketCatalogEntry> entries = sourceEntries;
+            entries = cashShopSortType switch
+            {
+                1 => entries.OrderBy(entry => Math.Max(0, entry.Price)).ThenBy(entry => Math.Max(0, entry.ListingId)),
+                2 => entries.OrderByDescending(entry => Math.Max(0, entry.ListingId)),
+                _ => entries
+            };
+
+            return entries.ToList();
         }
 
         private IReadOnlyList<string> BuildItcStatusOwnerLines()

@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Combat;
+using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 
@@ -207,9 +208,17 @@ namespace HaCreator.MapSimulator
                     movePathTailInfo.PassiveKeyPadStates);
             }
 
-            if (decodedPacket.NotChangeAction)
+            if (ShouldReplayPacketOwnedMobSkillPresentationOnlyForTests(decodedPacket))
             {
-                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed the local action transition.";
+                bool playedPresentation = TryApplyPacketOwnedMobSkillPresentationOnly(
+                    liveMob,
+                    decodedPacket.SkillId,
+                    decodedPacket.SkillLevel,
+                    currentTime);
+                string presentationSummary = playedPresentation
+                    ? "replayed WZ-authored effect-only presentation"
+                    : "found no WZ-authored effect-only presentation to replay";
+                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed the local action transition; {presentationSummary}.";
                 return true;
             }
 
@@ -221,6 +230,49 @@ namespace HaCreator.MapSimulator
 
             message = $"Started packet mob-skill action for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} through the local skill gates.";
             return true;
+        }
+
+        private bool TryApplyPacketOwnedMobSkillPresentationOnly(MobItem liveMob, int skillId, int skillLevel, int currentTime)
+        {
+            if (liveMob == null || skillId <= 0 || skillLevel <= 0)
+            {
+                return false;
+            }
+
+            MobSkillEntry authoredSkill = liveMob.AI?.GetSkillEntry(skillId, skillLevel);
+            int presentationTime = ResolvePacketOwnedMobSkillPresentationStartTimeForTests(currentTime, authoredSkill);
+
+            return ApplyMobSkillVisualEffect(
+                liveMob,
+                authoredSkill ?? new MobSkillEntry
+                {
+                    SkillId = skillId,
+                    Level = skillLevel
+                },
+                presentationTime,
+                includeTileArea: false);
+        }
+
+        internal static bool ShouldReplayPacketOwnedMobSkillPresentationOnlyForTests(
+            MobMoveAttackPacketCodec.DecodedMoveAttackPacket decodedPacket)
+        {
+            return decodedPacket?.IsSkillMoveAction == true
+                && decodedPacket.NotChangeAction
+                && decodedPacket.SkillId > 0
+                && decodedPacket.SkillLevel > 0;
+        }
+
+        internal static int ResolvePacketOwnedMobSkillPresentationStartTimeForTests(int currentTime, MobSkillEntry skill)
+        {
+            int delay = 0;
+            if (skill != null)
+            {
+                delay = skill.EffectAfter > 0
+                    ? skill.EffectAfter
+                    : Math.Max(0, skill.SkillAfter);
+            }
+
+            return unchecked(currentTime + delay);
         }
 
         internal static void ResolvePacketOwnedMobAttackTargetChannels(

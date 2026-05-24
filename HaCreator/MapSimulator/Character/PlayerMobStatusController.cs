@@ -176,6 +176,15 @@ namespace HaCreator.MapSimulator.Character
                             entry.SourceSkillId,
                             entry.SourceSkillLevel);
                     }
+                    else if (entry.Effect == PlayerMobStatusEffect.Bomb)
+                    {
+                        PeriodicDamageApplied?.Invoke(
+                            entry.Effect,
+                            0,
+                            currentTime,
+                            entry.SourceSkillId,
+                            entry.SourceSkillLevel);
+                    }
 
                     if (entry.RemainingCount > 0)
                     {

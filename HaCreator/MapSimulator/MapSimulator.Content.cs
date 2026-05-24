@@ -8,6 +8,7 @@ using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Wz;
@@ -597,7 +598,10 @@ namespace HaCreator.MapSimulator
             Task t_minimap = Task.Run(() =>
             {
                 Stopwatch taskStopwatch = Stopwatch.StartNew();
-                if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
+                if (FieldInteractionRestrictionEvaluator.ShouldCreateStartupMinimap(
+                    _gameState.IsLoginMap,
+                    _gameState.IsCashShopMap,
+                    _mapBoard.MapInfo))
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
                     miniMapUi?.ReloadMiniMap(_packetOwnedMiniMapOnOffVisible);
@@ -1742,7 +1746,10 @@ namespace HaCreator.MapSimulator
             Task t_minimap = Task.Run(() =>
             {
                 Stopwatch taskStopwatch = Stopwatch.StartNew();
-                if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
+                if (FieldInteractionRestrictionEvaluator.ShouldCreateStartupMinimap(
+                    _gameState.IsLoginMap,
+                    _gameState.IsCashShopMap,
+                    _mapBoard.MapInfo))
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
                     miniMapUi?.ReloadMiniMap(_packetOwnedMiniMapOnOffVisible);

@@ -2209,8 +2209,11 @@ namespace HaCreator.MapSimulator.Effects
                         packet.PairLookupSerial);
                 }
 
+                int pendingOwnerCharacterId = resolvedOwnerCharacterId > 0
+                    ? resolvedOwnerCharacterId
+                    : characterId;
                 QueuePendingRemoteParticipantOperation(
-                    characterId,
+                    pendingOwnerCharacterId,
                     new PendingWeddingRemoteParticipantOperation(
                         PendingWeddingRemoteParticipantOperationType.RelationshipRecordAdd,
                         default,
@@ -2819,6 +2822,16 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
+            if (TryFindPendingWeddingRelationshipRecord(
+                    relationshipType,
+                    excludedOwnerCharacterId,
+                    pairLookupSerial,
+                    out ownerCharacterId,
+                    out relationshipRecord))
+            {
+                return true;
+            }
+
             if (!TryResolveRelationshipRecordOwnerFromDispatchKey(
                     relationshipType,
                     new RemoteRelationshipRecordDispatchKey(
@@ -2836,6 +2849,50 @@ namespace HaCreator.MapSimulator.Effects
 
             relationshipRecord = GetRelationshipRecord(mappedParticipant.AvatarModifiedState.Value, relationshipType);
             return relationshipRecord.IsActive;
+        }
+
+        private bool TryFindPendingWeddingRelationshipRecord(
+            RemoteRelationshipOverlayType relationshipType,
+            int excludedOwnerCharacterId,
+            long pairLookupSerial,
+            out int ownerCharacterId,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            ownerCharacterId = 0;
+            relationshipRecord = default;
+            if (_pendingRemoteParticipantOperationsByCharacterId.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, List<PendingWeddingRemoteParticipantOperation>> pendingEntry in _pendingRemoteParticipantOperationsByCharacterId)
+            {
+                int pendingCharacterId = pendingEntry.Key;
+                if (pendingCharacterId == excludedOwnerCharacterId)
+                {
+                    continue;
+                }
+
+                foreach (PendingWeddingRemoteParticipantOperation operation in pendingEntry.Value)
+                {
+                    if (operation.Type != PendingWeddingRemoteParticipantOperationType.RelationshipRecordAdd
+                        || operation.RelationshipType != relationshipType
+                        || !operation.RelationshipRecord.IsActive
+                        || !DoesWeddingRelationshipRecordContainSerial(operation.RelationshipRecord, pairLookupSerial))
+                    {
+                        continue;
+                    }
+
+                    ownerCharacterId = ResolveWeddingRelationshipRecordPartnerOwnerForLookupSerial(
+                        pendingCharacterId,
+                        operation.RelationshipRecord,
+                        pairLookupSerial);
+                    relationshipRecord = operation.RelationshipRecord;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool DoesWeddingRelationshipRecordContainSerial(

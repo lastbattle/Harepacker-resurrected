@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator
             PacketOwnedLogoutGiftPredictQuitContextByteOffset - (PacketOwnedLogoutGiftPrecursorContextSlotCount * sizeof(int));
         private const int PacketOwnedLogoutGiftPrecursorLastContextByteOffset =
             PacketOwnedLogoutGiftPredictQuitContextByteOffset - sizeof(int);
+        // CWvsContext::CWvsContext at 0x9e90f0 initializes these three slots
+        // contiguously immediately before m_bPredictQuit / m_anLogoutGiftCommoditySN.
         private const string PacketOwnedLogoutGiftPrecursorFirstContextSymbol = "CWvsContext::m_pCommodity.m_pInterface";
         private const string PacketOwnedLogoutGiftPrecursorSecondContextSymbol = "CWvsContext::m_pCashPackage.m_pInterface";
         private const string PacketOwnedLogoutGiftPrecursorThirdContextSymbol = "CWvsContext::m_apStackForTab.a";

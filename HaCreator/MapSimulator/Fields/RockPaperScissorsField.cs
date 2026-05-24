@@ -913,7 +913,6 @@ namespace HaCreator.MapSimulator.Fields
         private void BeginRound(int currentTimeMs)
         {
             _npcChoice = RockPaperScissorsChoice.None;
-            _playerChoice = RockPaperScissorsChoice.None;
             _resultType = RockPaperScissorsResultType.None;
             _requestSent = false;
             _receiveCompensation = false;

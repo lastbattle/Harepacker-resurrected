@@ -128,6 +128,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*entries\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ObjectStaticReduceAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*(?<method>keys|values|entries)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayStaticTransformAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>map|filter|flatMap|flat)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -952,6 +956,49 @@ namespace HaCreator.MapSimulator.Fields
 
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectKeyAliasMap =
                 BuildObjectKeyAliasMap(scriptName, localAliasMap, objectMemberAliasMap);
+            foreach ((string TargetName, string SourceName, string MethodName, IReadOnlyList<string> Arguments) reduceAssignment in EnumerateObjectStaticReduceAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(reduceAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(reduceAssignment.SourceName)
+                    || reduceAssignment.Arguments.Count < 2)
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    reduceAssignment.TargetName);
+
+                if (reduceAssignment.MethodName.Equals("values", StringComparison.OrdinalIgnoreCase)
+                    && IsRecoverableStaticArrayReduceToArray(reduceAssignment.Arguments)
+                    && objectMemberAliasMap.TryGetValue(reduceAssignment.SourceName, out IReadOnlyDictionary<string, string> valuesSourceMemberAliasMap))
+                {
+                    CopyObjectValuesAsArrayMemberAliases(targetMemberAliasMap, valuesSourceMemberAliasMap);
+                    continue;
+                }
+
+                if (reduceAssignment.MethodName.Equals("keys", StringComparison.OrdinalIgnoreCase)
+                    && IsRecoverableStaticArrayReduceToArray(reduceAssignment.Arguments))
+                {
+                    IReadOnlyDictionary<string, string> keysSourceMap;
+                    if (!objectKeyAliasMap.TryGetValue(reduceAssignment.SourceName, out keysSourceMap)
+                        && !objectMemberAliasMap.TryGetValue(reduceAssignment.SourceName, out keysSourceMap))
+                    {
+                        continue;
+                    }
+
+                    CopyObjectKeysAsArrayMemberAliases(targetMemberAliasMap, keysSourceMap);
+                    continue;
+                }
+
+                if (reduceAssignment.MethodName.Equals("entries", StringComparison.OrdinalIgnoreCase)
+                    && IsRecoverableStaticArrayReduceToObject(reduceAssignment.Arguments)
+                    && objectMemberAliasMap.TryGetValue(reduceAssignment.SourceName, out IReadOnlyDictionary<string, string> entriesSourceMemberAliasMap))
+                {
+                    CopyObjectMemberAliases(targetMemberAliasMap, entriesSourceMemberAliasMap);
+                }
+            }
+
             foreach ((string TargetName, string SourceName) keysAssignment in EnumerateObjectKeysAliasAssignments(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(keysAssignment.TargetName)
@@ -970,7 +1017,7 @@ namespace HaCreator.MapSimulator.Fields
                 Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
                     objectMemberAliasMap,
                     keysAssignment.TargetName);
-                CopyObjectKeysAsAliasValues(targetMemberAliasMap, sourceKeyAliasMap);
+                CopyObjectKeysAsArrayMemberAliases(targetMemberAliasMap, sourceKeyAliasMap);
             }
 
             foreach ((string TargetName, string SourceName, bool ProjectKeys) entriesMapAssignment in EnumerateObjectEntriesMapAliasAssignments(scriptName))
@@ -2302,6 +2349,75 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 yield return (targetName, sourceName, projectKeys);
+            }
+        }
+
+        private static IEnumerable<(string TargetName, string SourceName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateObjectStaticReduceAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ObjectStaticReduceAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName) || string.IsNullOrWhiteSpace(methodName))
+                {
+                    continue;
+                }
+
+                int staticOpenIndex = value.IndexOf('(', match.Index);
+                if (staticOpenIndex < 0)
+                {
+                    continue;
+                }
+
+                int staticCloseIndex = FindMatchingCloseParenthesis(value, staticOpenIndex);
+                if (staticCloseIndex <= staticOpenIndex)
+                {
+                    continue;
+                }
+
+                var staticArguments = new List<string>(SplitFunctionArguments(value[(staticOpenIndex + 1)..staticCloseIndex]));
+                if (staticArguments.Count != 1)
+                {
+                    continue;
+                }
+
+                string sourceName = NormalizeFunctionAliasArgument(staticArguments[0]).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(sourceName))
+                {
+                    continue;
+                }
+
+                int reduceMemberIndex = SkipWhitespace(value, staticCloseIndex + 1);
+                const string reduceMember = ".reduce";
+                if (reduceMemberIndex < 0
+                    || reduceMemberIndex + reduceMember.Length > value.Length
+                    || !value.AsSpan(reduceMemberIndex, reduceMember.Length).Equals(reduceMember.AsSpan(), StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int reduceOpenIndex = SkipWhitespace(value, reduceMemberIndex + reduceMember.Length);
+                if (reduceOpenIndex < 0 || reduceOpenIndex >= value.Length || value[reduceOpenIndex] != '(')
+                {
+                    continue;
+                }
+
+                int reduceCloseIndex = FindMatchingCloseParenthesis(value, reduceOpenIndex);
+                if (reduceCloseIndex <= reduceOpenIndex)
+                {
+                    continue;
+                }
+
+                yield return (
+                    targetName,
+                    sourceName,
+                    methodName,
+                    new List<string>(SplitFunctionArguments(value[(reduceOpenIndex + 1)..reduceCloseIndex])));
             }
         }
 
@@ -3969,6 +4085,27 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     targetMemberAliasMap[sourceMemberAlias.Key] = sourceMemberAlias.Key;
                 }
+            }
+        }
+
+        private static void CopyObjectKeysAsArrayMemberAliases(
+            IDictionary<string, string> targetMemberAliasMap,
+            IReadOnlyDictionary<string, string> sourceMemberAliasMap)
+        {
+            if (targetMemberAliasMap == null || sourceMemberAliasMap == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, string> sourceMemberAlias in sourceMemberAliasMap)
+            {
+                if (!IsPotentialFunctionAliasName(sourceMemberAlias.Key))
+                {
+                    continue;
+                }
+
+                string memberKey = GetNextArrayMemberIndex(targetMemberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                targetMemberAliasMap[memberKey] = sourceMemberAlias.Key;
             }
         }
 
