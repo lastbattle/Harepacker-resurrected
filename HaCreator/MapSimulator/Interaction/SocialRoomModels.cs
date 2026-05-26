@@ -1308,13 +1308,11 @@ namespace HaCreator.MapSimulator.Interaction
                         IsSelected = index == selectedIndex
                     })
                     .ToList();
-            bool hasPendingBlacklistMutation = HasPendingEntrustedBlacklistMutation();
             bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
                 ? HasValidEntrustedVisitListSelection()
-                : _blockedVisitors.Count < 20 && !hasPendingBlacklistMutation;
+                : _blockedVisitors.Count < 20;
             bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist
-                && HasValidEntrustedBlacklistSelection()
-                && !hasPendingBlacklistMutation;
+                && HasValidEntrustedBlacklistSelection();
 
             return new EntrustedShopChildDialogSnapshot
             {
@@ -1335,7 +1333,7 @@ namespace HaCreator.MapSimulator.Interaction
                 FooterText = kind == EntrustedShopChildDialogKind.VisitList
                     ? "Save Name copies the selected visitor name to the clipboard."
                     : !string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName)
-                        ? $"Waiting for server blacklist result for {_entrustedBlacklistPendingMutationName}."
+                        ? $"Subtype {EntrustedShopBlackListResultPacketType} remains authoritative for {_entrustedBlacklistPendingMutationName}."
                         : "Delete only enables when the selected blacklist row is valid.",
                 CanPrimaryAction = canPrimaryAction,
                 CanSecondaryAction = canSecondaryAction,

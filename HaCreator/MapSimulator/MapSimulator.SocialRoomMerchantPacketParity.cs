@@ -109,14 +109,14 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void TryForwardPersonalShopTimedOutVisitorRequest()
+        private void TryForwardPersonalShopTimedOutVisitorRequest(int currentTickCount)
         {
             if (!_socialRoomMerchantOfficialSessionBridge.IsRunning
                 || !_socialRoomMerchantOfficialSessionBridge.HasConnectedSession
                 || _socialRoomMerchantOfficialSessionBridge.PreferredKind != SocialRoomKind.PersonalShop
                 || !TryGetSocialRoomRuntime(SocialRoomKind.PersonalShop, out SocialRoomRuntime runtime)
                 || !runtime.TryBuildNextPersonalShopTimedOutVisitorRawPacket(
-                    DateTime.UtcNow,
+                    currentTickCount,
                     out int seatIndex,
                     out byte[] rawPacket,
                     out string buildMessage))

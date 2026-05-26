@@ -512,6 +512,25 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal string ApplyOpenBlockedByUniqueModelessOwner(string blockingOwner)
+        {
+            string owner = string.IsNullOrWhiteSpace(blockingOwner)
+                ? "another unique-modeless owner"
+                : blockingOwner;
+            IsOpen = false;
+            _activePane = "Buy";
+            _buyItems.Clear();
+            _rechargeItems.Clear();
+            _buyCountsByInventoryType.Clear();
+            _recommendedEquipCandidateCount = 0;
+            _lastDecodedOpenItemCount = 0;
+            _npcTemplateId = 0;
+            StatusMessage = $"CShopDlg packet 364 stayed staged because the recovered OnPacket branch throws the unique-modeless disconnect hazard while {owner} is visible.";
+            _lastTemplateNote = "The recovered packet 364 open branch checks CUniqueModeless before constructing CShopDlg, so no packet-authored shop owner is opened while another unique-modeless owner is visible.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         private bool TryParseOpenPayload(byte[] payload, out string status)
         {
             status = string.Empty;

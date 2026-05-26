@@ -951,15 +951,9 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 int rowCount = reader.ReadByte();
-                List<InventorySlotData> rows = new(rowCount);
-                for (int row = 0; row < rowCount; row++)
+                if (!TryReadClientGetItemRows(reader, TabInventoryTypes[tabIndex], rowCount, out List<InventorySlotData> rows))
                 {
-                    if (!TryReadClientGetItemRow(reader, TabInventoryTypes[tabIndex], out InventorySlotData item))
-                    {
-                        return false;
-                    }
-
-                    rows.Add(item);
+                    return false;
                 }
 
                 refreshedByTab[tabIndex] = rows;
@@ -992,44 +986,265 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static bool TryReadClientGetItemRow(BinaryReader reader, InventoryType type, out InventorySlotData item)
+        private static bool TryReadClientGetItemRows(BinaryReader reader, InventoryType type, int rowCount, out List<InventorySlotData> rows)
         {
-            item = null;
-            if (reader?.BaseStream == null || reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) + sizeof(short))
+            rows = new List<InventorySlotData>(Math.Max(0, rowCount));
+            if (rowCount <= 0)
+            {
+                return true;
+            }
+
+            if (reader?.BaseStream == null)
             {
                 return false;
             }
 
-            long rowStart = reader.BaseStream.Position;
-            byte firstByte = reader.ReadByte();
-            if (firstByte is 1 or 2 or 3)
+            long startPosition = reader.BaseStream.Position;
+            byte[] remainingBytes = reader.ReadBytes((int)Math.Max(0, reader.BaseStream.Length - reader.BaseStream.Position));
+            if (!TryDecodeClientGetItemRows(remainingBytes, type, rowCount, rows, out int consumedBytes))
             {
-                if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int))
+                reader.BaseStream.Position = startPosition;
+                rows.Clear();
+                return false;
+            }
+
+            reader.BaseStream.Position = startPosition + consumedBytes;
+            return true;
+        }
+
+        private static bool TryDecodeClientGetItemRows(
+            byte[] payload,
+            InventoryType type,
+            int rowsRemaining,
+            List<InventorySlotData> rows,
+            out int consumedBytes)
+        {
+            consumedBytes = 0;
+            if (rowsRemaining == 0)
+            {
+                return true;
+            }
+
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            int minimumTailBytes = Math.Max(0, rowsRemaining - 1) * 5;
+            for (int rowLength = 5; rowLength <= payload.Length - minimumTailBytes; rowLength++)
+            {
+                byte[] rowPayload = new byte[rowLength];
+                Array.Copy(payload, 0, rowPayload, 0, rowLength);
+                if (!TryDecodeClientGetItemRowPayload(rowPayload, type, out InventorySlotData item))
                 {
-                    return false;
+                    continue;
                 }
 
-                int officialItemId = reader.ReadInt32();
-                item = CreateFallbackSlot(officialItemId, type);
-                item.Quantity = 1;
-
-                if (reader.BaseStream.Position == reader.BaseStream.Length)
+                rows.Add(item);
+                byte[] tailPayload = new byte[payload.Length - rowLength];
+                Array.Copy(payload, rowLength, tailPayload, 0, tailPayload.Length);
+                if (TryDecodeClientGetItemRows(tailPayload, type, rowsRemaining - 1, rows, out int tailConsumedBytes))
                 {
+                    consumedBytes = rowLength + tailConsumedBytes;
                     return true;
                 }
 
-                reader.BaseStream.Position = rowStart;
+                rows.RemoveAt(rows.Count - 1);
             }
-            else
+
+            return false;
+        }
+
+        private static bool TryDecodeClientGetItemRowPayload(byte[] payload, InventoryType type, out InventorySlotData item)
+        {
+            item = null;
+            if (payload == null || payload.Length < 5)
             {
-                reader.BaseStream.Position = rowStart;
+                return false;
+            }
+
+            using BinaryReader reader = new(payload);
+            byte firstByte = reader.ReadByte();
+            if (firstByte is 1 or 2 or 3 && TryReadClientGetItemSlotBody(reader, firstByte, type, out item))
+            {
+                return true;
+            }
+
+            reader.BaseStream.Position = 0;
+            if (payload.Length != sizeof(int) + sizeof(short))
+            {
+                return false;
             }
 
             int itemId = reader.ReadInt32();
             int quantity = Math.Max(1, (int)reader.ReadInt16());
+            if (!IsKnownInventoryItem(itemId))
+            {
+                return false;
+            }
+
             item = CreateFallbackSlot(itemId, type);
             item.Quantity = quantity;
             return item.ItemId > 0;
+        }
+
+        private static bool TryReadClientGetItemSlotBody(BinaryReader reader, byte slotType, InventoryType type, out InventorySlotData item)
+        {
+            item = null;
+            if (reader?.BaseStream == null || reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) + sizeof(byte) + sizeof(long))
+            {
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            if (!IsKnownInventoryItem(itemId))
+            {
+                return false;
+            }
+
+            bool hasCashSerialNumber = reader.ReadByte() != 0;
+            if (hasCashSerialNumber)
+            {
+                if (!TrySkip(reader, sizeof(long)))
+                {
+                    return false;
+                }
+            }
+
+            if (!TrySkip(reader, sizeof(long)))
+            {
+                return false;
+            }
+
+            int quantity = 1;
+            bool decoded = slotType switch
+            {
+                1 => TrySkipClientEquipItemSlotBody(reader, hasCashSerialNumber),
+                2 => TryReadClientBundleItemSlotBody(reader, itemId, out quantity),
+                3 => TrySkipClientPetItemSlotBody(reader),
+                _ => false
+            };
+
+            if (!decoded || reader.BaseStream.Position != reader.BaseStream.Length)
+            {
+                return false;
+            }
+
+            item = CreateFallbackSlot(itemId, type);
+            item.Quantity = Math.Max(1, quantity);
+            return true;
+        }
+
+        private static bool TrySkipClientEquipItemSlotBody(BinaryReader reader, bool hasCashSerialNumber)
+        {
+            if (!TrySkip(reader, sizeof(byte) + sizeof(byte) + (15 * sizeof(short))))
+            {
+                return false;
+            }
+
+            if (!TryReadMapleString(reader, out _))
+            {
+                return false;
+            }
+
+            int fixedTailByteCount =
+                sizeof(short) +
+                sizeof(byte) +
+                sizeof(byte) +
+                sizeof(int) +
+                sizeof(int) +
+                sizeof(int) +
+                sizeof(byte) +
+                sizeof(byte) +
+                (5 * sizeof(short)) +
+                (hasCashSerialNumber ? 0 : sizeof(long)) +
+                sizeof(long) +
+                sizeof(int);
+            return TrySkip(reader, fixedTailByteCount);
+        }
+
+        private static bool TryReadClientBundleItemSlotBody(BinaryReader reader, int itemId, out int quantity)
+        {
+            quantity = 1;
+            if (reader?.BaseStream == null || reader.BaseStream.Length - reader.BaseStream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            quantity = Math.Max(1, (int)reader.ReadInt16());
+            if (!TryReadMapleString(reader, out _))
+            {
+                return false;
+            }
+
+            if (!TrySkip(reader, sizeof(short)))
+            {
+                return false;
+            }
+
+            if (IsRechargeableItem(itemId) && reader.BaseStream.Length - reader.BaseStream.Position == sizeof(long))
+            {
+                return TrySkip(reader, sizeof(long));
+            }
+
+            return true;
+        }
+
+        private static bool TrySkipClientPetItemSlotBody(BinaryReader reader)
+        {
+            const int petNameBufferLength = 13;
+            int fixedByteCount =
+                petNameBufferLength +
+                sizeof(byte) +
+                sizeof(short) +
+                sizeof(byte) +
+                sizeof(long) +
+                sizeof(short) +
+                sizeof(short) +
+                sizeof(int) +
+                sizeof(short);
+            return TrySkip(reader, fixedByteCount);
+        }
+
+        private static bool TryReadMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            if (reader?.BaseStream == null || reader.BaseStream.Length - reader.BaseStream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || reader.BaseStream.Length - reader.BaseStream.Position < length)
+            {
+                return false;
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            value = Encoding.Default.GetString(bytes);
+            return true;
+        }
+
+        private static bool TrySkip(BinaryReader reader, int byteCount)
+        {
+            if (reader?.BaseStream == null || byteCount < 0 || reader.BaseStream.Length - reader.BaseStream.Position < byteCount)
+            {
+                return false;
+            }
+
+            reader.BaseStream.Position += byteCount;
+            return true;
+        }
+
+        private static bool IsKnownInventoryItem(int itemId)
+        {
+            return itemId > 0 && InventoryItemMetadataResolver.ResolveInventoryType(itemId) != InventoryType.NONE;
+        }
+
+        private static bool IsRechargeableItem(int itemId)
+        {
+            int category = itemId / 10000;
+            return category == 207 || category == 233;
         }
 
         private string ApplyClientGetItemSuccess()

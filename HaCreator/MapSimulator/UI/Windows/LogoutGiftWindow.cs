@@ -304,6 +304,25 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixel, new Rectangle(buttonBounds.Right - 1, buttonBounds.Y, 1, buttonBounds.Height), border);
                 DrawCenteredText(sprite, "Select", buttonBounds, new Color(70, 49, 31), 0.27f);
             }
+
+            if (selected)
+            {
+                DrawKeyFocusedOverlay(sprite, buttonBounds);
+            }
+        }
+
+        private void DrawKeyFocusedOverlay(SpriteBatch sprite, Rectangle buttonBounds)
+        {
+            LogoutGiftButtonSkinFrame frame = _buttonSkin?.ResolveKeyFocusedFrame(Environment.TickCount) ?? default;
+            if (!frame.HasTexture)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                frame.Texture,
+                LogoutGiftButtonSkin.ResolveKeyFocusedFrameBounds(buttonBounds, frame),
+                Color.White);
         }
 
         private void DrawHoverTooltip(SpriteBatch sprite)
@@ -802,12 +821,32 @@ namespace HaCreator.MapSimulator.UI
             Texture2D pressed,
             Texture2D disabled,
             Texture2D keyFocused)
+            : this(
+                normal,
+                hovered,
+                pressed,
+                disabled,
+                keyFocused,
+                keyFocused == null
+                    ? Array.Empty<LogoutGiftButtonSkinFrame>()
+                    : new[] { new LogoutGiftButtonSkinFrame(keyFocused, Point.Zero, 0) })
+        {
+        }
+
+        internal LogoutGiftButtonSkin(
+            Texture2D normal,
+            Texture2D hovered,
+            Texture2D pressed,
+            Texture2D disabled,
+            Texture2D keyFocused,
+            IReadOnlyList<LogoutGiftButtonSkinFrame> keyFocusedFrames)
         {
             Normal = normal;
             Hovered = hovered;
             Pressed = pressed;
             Disabled = disabled;
             KeyFocused = keyFocused;
+            KeyFocusedFrames = keyFocusedFrames ?? Array.Empty<LogoutGiftButtonSkinFrame>();
             Size = ResolveFrameSize(this);
         }
 
@@ -816,6 +855,7 @@ namespace HaCreator.MapSimulator.UI
         internal Texture2D Pressed { get; }
         internal Texture2D Disabled { get; }
         internal Texture2D KeyFocused { get; }
+        internal IReadOnlyList<LogoutGiftButtonSkinFrame> KeyFocusedFrames { get; }
         internal Point Size { get; }
 
         internal Texture2D ResolveTexture(bool selected, bool hovered, bool pressed)
@@ -841,6 +881,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Normal ?? Hovered ?? Pressed ?? Disabled ?? keyFocused;
+        }
+
+        internal LogoutGiftButtonSkinFrame ResolveKeyFocusedFrame(int tickCount)
+        {
+            if (KeyFocusedFrames == null || KeyFocusedFrames.Count == 0)
+            {
+                return default;
+            }
+
+            if (KeyFocusedFrames.Count == 1)
+            {
+                return KeyFocusedFrames[0];
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < KeyFocusedFrames.Count; i++)
+            {
+                totalDelay += Math.Max(1, KeyFocusedFrames[i].Delay);
+            }
+
+            if (totalDelay <= 0)
+            {
+                return KeyFocusedFrames[0];
+            }
+
+            int animationTick = Math.Abs(tickCount % totalDelay);
+            int accumulatedDelay = 0;
+            for (int i = 0; i < KeyFocusedFrames.Count; i++)
+            {
+                accumulatedDelay += Math.Max(1, KeyFocusedFrames[i].Delay);
+                if (animationTick < accumulatedDelay)
+                {
+                    return KeyFocusedFrames[i];
+                }
+            }
+
+            return KeyFocusedFrames[^1];
         }
 
         internal static Point ResolveFrameSize(LogoutGiftButtonSkin skin)
@@ -880,6 +957,35 @@ namespace HaCreator.MapSimulator.UI
                 new Point(candidate.Width, candidate.Height),
                 new Point(baseFrame.Width, baseFrame.Height));
         }
+
+        internal static Rectangle ResolveKeyFocusedFrameBounds(Rectangle buttonBounds, LogoutGiftButtonSkinFrame frame)
+        {
+            if (!frame.HasTexture)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                buttonBounds.X - frame.Origin.X,
+                buttonBounds.Y - frame.Origin.Y,
+                frame.Texture.Width,
+                frame.Texture.Height);
+        }
+    }
+
+    internal readonly struct LogoutGiftButtonSkinFrame
+    {
+        internal LogoutGiftButtonSkinFrame(Texture2D texture, Point origin, int delay)
+        {
+            Texture = texture;
+            Origin = origin;
+            Delay = delay;
+        }
+
+        internal Texture2D Texture { get; }
+        internal Point Origin { get; }
+        internal int Delay { get; }
+        internal bool HasTexture => Texture != null;
     }
 
     internal enum ClientCommodityTooltipKind

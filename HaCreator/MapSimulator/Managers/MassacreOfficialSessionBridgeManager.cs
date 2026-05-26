@@ -727,6 +727,12 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (!TryValidateOutboundRawPacket(rawPacket, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
             if (!HasConnectedSession)
             {
                 return TryQueueOutboundRawPacket(rawPacket, out status);
@@ -1101,6 +1107,63 @@ namespace HaCreator.MapSimulator.Managers
             rawPacket = new byte[sizeof(ushort) + payload.Length];
             BinaryPrimitives.WriteUInt16LittleEndian(rawPacket, (ushort)opcode);
             payload.CopyTo(rawPacket, sizeof(ushort));
+            return true;
+        }
+
+        internal static bool TryValidateOutboundRawPacket(byte[] rawPacket, out string error)
+        {
+            error = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Massacre outbound raw packet must include a 2-byte opcode prefix.";
+                return false;
+            }
+
+            int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            byte[] payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
+
+            if (opcode == CurrentWrapperRelayOpcode)
+            {
+                if (!TryDecodeCurrentWrapperRelayPacketChain(payload, out int relayedPacketType, out byte[] relayedPayload))
+                {
+                    error = "Massacre outbound current-wrapper relay payload is malformed.";
+                    return false;
+                }
+
+                return TryValidateKnownOwnerPayload(relayedPacketType, relayedPayload, out error);
+            }
+
+            return TryValidateKnownOwnerPayload(opcode, payload, out error);
+        }
+
+        private static bool TryValidateKnownOwnerPayload(int packetType, byte[] payload, out string error)
+        {
+            error = null;
+            if (packetType == PacketTypeIncGauge)
+            {
+                if (!TryDecodeMappedInt32Payload(payload, out int incGauge) || payload.Length != sizeof(int))
+                {
+                    error = "Massacre outbound packet 173 requires exactly one Decode4 inc-gauge payload.";
+                    return false;
+                }
+
+                if (incGauge < 0)
+                {
+                    error = "Massacre outbound packet 173 inc-gauge payload must be non-negative.";
+                    return false;
+                }
+            }
+            else if (packetType == PacketTypeResult)
+            {
+                if (payload == null || payload.Length != sizeof(byte) + sizeof(int) || !TryDecodeResultPayload(payload))
+                {
+                    error = "Massacre outbound packet 174 requires rank code 0..4 followed by a non-negative Decode4 score.";
+                    return false;
+                }
+            }
+
             return true;
         }
 

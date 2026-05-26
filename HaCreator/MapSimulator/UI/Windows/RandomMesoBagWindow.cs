@@ -25,6 +25,10 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientDialogCancelControlId = PacketOwnedRewardNoticeWindow.ClientDialogCancelControlId;
         internal const string ClientAmountFontSlot = "FONT_NO_BLACK";
         internal const string ClientDescriptionFontSlot = "FONT_NO_WHITE";
+        internal const int ClientAmountDrawOrdinal = 0;
+        internal const int ClientDescriptionDrawOrdinal = 1;
+        internal const bool ClientOkButtonAcceptsFocus = PacketOwnedRewardResultRuntime.RandomMesoBagOkButtonAcceptsFocus;
+        internal const bool ClientOkButtonDrawsBackground = false;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
 
@@ -145,15 +149,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            // CUIRandomMesoBag::Draw writes the amount first, then the receive message.
+            DrawAmountText(
+                sprite,
+                _amountText,
+                ClientAmountTextColor);
             DrawText(
                 sprite,
                 _descriptionText,
                 ResolveMessagePosition(_descriptionText),
                 ClientDescriptionTextColor);
-            DrawAmountText(
-                sprite,
-                _amountText,
-                ClientAmountTextColor);
         }
 
         private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color)

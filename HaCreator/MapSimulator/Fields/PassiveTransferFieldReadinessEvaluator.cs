@@ -561,6 +561,14 @@ namespace HaCreator.MapSimulator.Fields
                    && IsRecognizedQueuedRetryWriterOwner(writerOwner);
         }
 
+        public static bool ShouldRejectAnonymousQueuedRetryOwnership(
+            bool hasPendingRequest,
+            QueuedRetryWriterOwner writerOwner)
+        {
+            return hasPendingRequest
+                   && !IsRecognizedQueuedRetryWriterOwner(writerOwner);
+        }
+
         public static bool IsRecognizedQueuedRetryWriterOwner(QueuedRetryWriterOwner writerOwner)
         {
             return writerOwner != QueuedRetryWriterOwner.None;

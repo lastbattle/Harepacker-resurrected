@@ -225,6 +225,7 @@ namespace HaCreator.MapSimulator.Effects
             int RiseDistancePx);
         internal readonly record struct PreparedDamageNumberLayerRegistration(
             CompositeCanvasPlacement Placement,
+            CompositeCanvasPlacement NativePlacement,
             DamageNumberAnimationTimeline Timeline,
             Point CriticalBannerOffset,
             bool HasCriticalBanner,
@@ -1143,11 +1144,15 @@ namespace HaCreator.MapSimulator.Effects
             int centerX,
             int centerTop)
         {
+            PreparedDamageNumberCompositionTrace compositionTrace = visual?.CompositionTrace ?? CreateEmptyCompositionTrace();
             CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
                 centerX,
                 centerTop,
                 layer?.CanvasWidth ?? visual?.CanvasWidth ?? 0);
-            PreparedDamageNumberCompositionTrace compositionTrace = visual?.CompositionTrace ?? CreateEmptyCompositionTrace();
+            CompositeCanvasPlacement nativePlacement = ResolveCompositeCanvasPlacement(
+                centerX,
+                centerTop,
+                compositionTrace.NativeTemporaryCanvasSettings.Width);
             PreparedSpriteDrawInfo? criticalBanner = visual?.CriticalBannerSprite;
             DamageNumberAnimationTimeline timeline = layer?.Timeline ?? ResolveAnimationTimeline();
             Point criticalBannerOffset = criticalBanner is PreparedSpriteDrawInfo banner
@@ -1171,9 +1176,13 @@ namespace HaCreator.MapSimulator.Effects
                     placement.Height,
                     insertDescriptors,
                     recoveredLayerSettings,
-                    registersOneTimeAnimation: true);
+                    true,
+                    new CanvasLayerRecoveredPositionSettings(
+                        nativePlacement.Left,
+                        nativePlacement.Top));
             return new PreparedDamageNumberLayerRegistration(
                 placement,
+                nativePlacement,
                 timeline,
                 criticalBannerOffset,
                 hasCriticalBanner,

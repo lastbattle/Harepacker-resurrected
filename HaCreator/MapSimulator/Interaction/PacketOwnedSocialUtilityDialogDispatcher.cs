@@ -855,6 +855,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _refreshCount;
         private int _noticeCount;
         private bool _requestInFlight;
+        private int _transferGetCost;
+        private int _transferPutCost;
 
         internal PacketOwnedTrunkDialogRuntime(Func<SimulatorStorageRuntime> storageRuntimeResolver)
         {
@@ -865,6 +867,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal int LastSubtype { get; private set; } = -1;
         internal int LastGetRequestSnapshotNativeItemType { get; private set; } = -1;
         internal int LastGetRequestSnapshotNativeRow { get; private set; } = -1;
+        internal int TransferGetCost => _transferGetCost;
+        internal int TransferPutCost => _transferPutCost;
         internal string StatusMessage { get; private set; } = "CTrunkDlg::OnPacket idle.";
 
         internal bool TryApplyPacket(byte[] payload, out string message)
@@ -937,7 +941,7 @@ namespace HaCreator.MapSimulator.Interaction
             SimulatorStorageRuntime runtime = _storageRuntimeResolver();
             int usedSlots = runtime?.GetUsedSlotCount() ?? 0;
             long meso = runtime?.GetMesoCount() ?? 0;
-            return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
+            return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, costGet={_transferGetCost.ToString(CultureInfo.InvariantCulture)}, costPut={_transferPutCost.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
         }
 
         internal bool TryBuildGetItemOutboundRequest(
@@ -991,7 +995,7 @@ namespace HaCreator.MapSimulator.Interaction
             LastGetRequestSnapshotNativeItemType = itemType;
             LastGetRequestSnapshotNativeRow = trunkRow;
             IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> confirmSteps =
-                TrunkDialogClientParityText.BuildSendGetConfirmationChoreography(slotData, 0);
+                TrunkDialogClientParityText.BuildSendGetConfirmationChoreography(slotData, _transferGetCost);
             bool preConfirmShown = confirmSteps.Any(step => step.StringPoolId == TrunkSendGetConfirmStringPoolId);
             string preConfirmSummary = preConfirmShown
                 ? $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)} through {FormatConfirmationChoreography(confirmSteps, TrunkSendGetConfirmStringPoolId)}"
@@ -1000,6 +1004,7 @@ namespace HaCreator.MapSimulator.Interaction
                 $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). " +
                 $"{preConfirmSummary} " +
                 $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}. " +
+                $"Final cost branch used m_nCost_Get={_transferGetCost.ToString(CultureInfo.InvariantCulture)} before Encode1(4). " +
                 $"Native post-send branch set m_nSnapshotTI={itemType.ToString(CultureInfo.InvariantCulture)} and called SetPutItems(m_nSnapshotTI, m_aSnapShot) before waiting for the packet refresh.";
             message = StatusMessage;
             return true;
@@ -1102,7 +1107,7 @@ namespace HaCreator.MapSimulator.Interaction
             _requestInFlight = true;
             bool sharableOnce = slotData.CashItemSerialNumber.GetValueOrDefault() > 0;
             IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> confirmSteps =
-                TrunkDialogClientParityText.BuildSendPutConfirmationChoreography(slotData, treatSingly, availableQuantity, 0);
+                TrunkDialogClientParityText.BuildSendPutConfirmationChoreography(slotData, treatSingly, availableQuantity, _transferPutCost);
             int preConfirmStringPoolId = sharableOnce
                 ? TrunkSendPutSharableOnceConfirmStringPoolId
                 : TrunkSendPutConfirmStringPoolId;
@@ -1127,7 +1132,8 @@ namespace HaCreator.MapSimulator.Interaction
                 characterDataGuardSummary +
                 $"{preConfirmSummary} " +
                 $"{askCountSummary} " +
-                $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}.";
+                $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}. " +
+                $"Final cost branch used m_nCost_Put={_transferPutCost.ToString(CultureInfo.InvariantCulture)} before the CharacterData::GetItem guard and Encode1(5).";
             message = StatusMessage;
             return true;
         }
@@ -1162,22 +1168,41 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!TryParseSnapshotPayload(payload, out int slotLimit, out long meso, out Dictionary<InventoryType, IReadOnlyList<InventorySlotData>> snapshot, out message))
+            if (!TryParseSnapshotPayload(
+                    payload,
+                    out int slotLimit,
+                    out long meso,
+                    out int transferGetCost,
+                    out int transferPutCost,
+                    out bool hasTransferCosts,
+                    out Dictionary<InventoryType, IReadOnlyList<InventorySlotData>> snapshot,
+                    out message))
             {
                 return false;
             }
 
             runtime.ReplaceContents(slotLimit, meso, snapshot);
+            if (hasTransferCosts)
+            {
+                _transferGetCost = Math.Max(0, transferGetCost);
+                _transferPutCost = Math.Max(0, transferPutCost);
+            }
+            else if (openDialog)
+            {
+                _transferGetCost = 0;
+                _transferPutCost = 0;
+            }
+
             IsOpen = true;
             if (openDialog)
             {
                 _openCount++;
-                StatusMessage = $"CTrunkDlg packet 22 opened the packet-owned trunk dialog with slotLimit={slotLimit.ToString(CultureInfo.InvariantCulture)} and meso={meso.ToString(CultureInfo.InvariantCulture)}.";
+                StatusMessage = $"CTrunkDlg packet 22 opened the packet-owned trunk dialog with slotLimit={slotLimit.ToString(CultureInfo.InvariantCulture)}, meso={meso.ToString(CultureInfo.InvariantCulture)}, m_nCost_Get={_transferGetCost.ToString(CultureInfo.InvariantCulture)}, and m_nCost_Put={_transferPutCost.ToString(CultureInfo.InvariantCulture)}.";
             }
             else
             {
                 _refreshCount++;
-                StatusMessage = $"CTrunkDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} refreshed the packet-owned trunk storage snapshot.";
+                StatusMessage = $"CTrunkDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} refreshed the packet-owned trunk storage snapshot with m_nCost_Get={_transferGetCost.ToString(CultureInfo.InvariantCulture)} and m_nCost_Put={_transferPutCost.ToString(CultureInfo.InvariantCulture)}.";
             }
 
             message = StatusMessage;
@@ -1266,11 +1291,17 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             out int slotLimit,
             out long meso,
+            out int transferGetCost,
+            out int transferPutCost,
+            out bool hasTransferCosts,
             out Dictionary<InventoryType, IReadOnlyList<InventorySlotData>> snapshot,
             out string message)
         {
             slotLimit = 24;
             meso = 0;
+            transferGetCost = 0;
+            transferPutCost = 0;
+            hasTransferCosts = false;
             snapshot = null;
             message = null;
 
@@ -1284,13 +1315,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             slotLimit = reader.ReadInt32();
             meso = reader.ReadInt64();
-            byte[] groupPayload = reader.ReadBytes((int)(stream.Length - stream.Position));
-            if (TryParseSnapshotGroups(groupPayload, rowsCarryNativeToken: true, out snapshot, out message) ||
-                TryParseSnapshotGroups(groupPayload, rowsCarryNativeToken: false, out snapshot, out message))
+            byte[] remainingPayload = reader.ReadBytes((int)(stream.Length - stream.Position));
+            if (TryParseSnapshotGroups(remainingPayload, rowsCarryNativeToken: true, out snapshot, out message) ||
+                TryParseSnapshotGroups(remainingPayload, rowsCarryNativeToken: false, out snapshot, out message))
             {
                 return true;
             }
 
+            if (remainingPayload.Length >= sizeof(int) * 2)
+            {
+                transferGetCost = BitConverter.ToInt32(remainingPayload, 0);
+                transferPutCost = BitConverter.ToInt32(remainingPayload, sizeof(int));
+                byte[] costAwareGroupPayload = remainingPayload[(sizeof(int) * 2)..];
+                if (TryParseSnapshotGroups(costAwareGroupPayload, rowsCarryNativeToken: true, out snapshot, out message) ||
+                    TryParseSnapshotGroups(costAwareGroupPayload, rowsCarryNativeToken: false, out snapshot, out message))
+                {
+                    hasTransferCosts = true;
+                    return true;
+                }
+            }
+
+            transferGetCost = 0;
+            transferPutCost = 0;
+            hasTransferCosts = false;
             snapshot = null;
             return false;
         }

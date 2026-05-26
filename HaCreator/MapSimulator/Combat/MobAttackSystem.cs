@@ -152,6 +152,7 @@ namespace HaCreator.MapSimulator.Combat
         private sealed class ScheduledMobFallingEffect
         {
             public List<IDXObject> Frames { get; set; }
+            public string SourceUol { get; set; }
             public Vector2 StartPosition { get; set; }
             public float EndY { get; set; }
             public float FallSpeed { get; set; }
@@ -307,6 +308,13 @@ namespace HaCreator.MapSimulator.Combat
         public void QueueMobAttackActions(MobItem mobItem, int currentTime, float? playerX, float? playerY)
         {
             if (mobItem?.AI == null || mobItem.AI.IsDead || mobItem.AI.State != MobAIState.Attack)
+            {
+                return;
+            }
+
+            if (!ShouldQueueDoAttackOwner(
+                    mobItem.AI.StatusEffects,
+                    mobItem.PacketOwnedExpiryClientSuspended))
             {
                 return;
             }
@@ -723,8 +731,9 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                animationEffects?.AddFalling(
+                animationEffects?.AddMobOwnedAttackFalling(
                     effect.Frames,
+                    effect.SourceUol,
                     effect.StartPosition.X,
                     effect.StartPosition.Y,
                     effect.EndY,
@@ -1371,6 +1380,7 @@ namespace HaCreator.MapSimulator.Combat
                 _scheduledMobFallingEffects.Add(new ScheduledMobFallingEffect
                 {
                     Frames = frames,
+                    SourceUol = effectNode.SourceUol ?? BuildMobAttackEffectSourceUol(mobItem, attack.AnimationName, effectNode.Name),
                     StartPosition = new Vector2(startX, startY),
                     EndY = endY,
                     FallSpeed = Math.Max(120f, fallSpeed),
@@ -3706,17 +3716,37 @@ namespace HaCreator.MapSimulator.Combat
         private static bool ShouldProcessAttackOwner(MobItem sourceMob)
         {
             return ShouldProcessAttackOwner(
+                sourceMob?.IsNotAttack == true,
                 sourceMob?.AI?.IsDead == true,
                 sourceMob?.AI?.IsStunned == true,
                 sourceMob?.AI?.IsFrozen == true);
         }
 
-        internal static bool ShouldProcessAttackOwner(bool isDead, bool isStunned, bool isFrozen)
+        internal static bool ShouldProcessAttackOwner(bool isNotAttack, bool isDead, bool isStunned, bool isFrozen)
         {
             // CMob::ProcessAttack gates bullet updates and delayed ATTACKENTRY
-            // processing while m_stat.bDisable is set. Stun and freeze are the
-            // simulator's explicit client-disable states on the mob status seam.
-            return !isDead && !isStunned && !isFrozen;
+            // processing for WZ info/notAttack templates and while m_stat.bDisable
+            // is set. Stun and freeze are the simulator's explicit client-disable
+            // states on the mob status seam.
+            return !isNotAttack && !isDead && !isStunned && !isFrozen;
+        }
+
+        internal static bool ShouldQueueDoAttackOwner(MobStatusEffect statusEffects, bool isSuspendedState4)
+        {
+            // CMob::DoAttack returns before resolving AttackInfo when the mob is
+            // doomed or under stun/freeze/web/seal, and also when suspended == 4.
+            if (isSuspendedState4)
+            {
+                return false;
+            }
+
+            const MobStatusEffect blockingStatus =
+                MobStatusEffect.Doom |
+                MobStatusEffect.Stun |
+                MobStatusEffect.Freeze |
+                MobStatusEffect.Web |
+                MobStatusEffect.Seal;
+            return (statusEffects & blockingStatus) == 0;
         }
 
         internal static PlayerManager ResolveProjectileLockedImpactPlayerManager(

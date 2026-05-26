@@ -473,6 +473,8 @@ namespace HaCreator.MapSimulator
             items.Add(mapItem);
             if (objInst.BaseInfo is ObjectInfo objectInfo)
             {
+                WzImageProperty objectProperty = objectInfo?.ParentObject as WzImageProperty;
+                ObjectInstanceQuest[] rootAuthoredQuestInfo = ResolvePacketOwnedNamedObjectQuestInfo(objectProperty);
                 _packetStageTransitionNamedObjectMetadata[mapItem] = new PacketOwnedNamedObjectStateMetadata(
                     objectName,
                     objectInfo.oS,
@@ -490,20 +492,20 @@ namespace HaCreator.MapSimulator
                     objInst.cx,
                     objInst.cy,
                     ResolvePacketOwnedNamedObjectStateSfx(objectInfo),
-                    ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectInfo?.ParentObject as WzImageProperty),
-                    ResolvePacketOwnedNamedObjectAuthoredStateRepeatByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateRepeatByIndex(objectProperty),
                     PacketOwnedNamedObjectMotionProfile.FromMapObject(
                         (byte)objInst.flow,
                         objInst.rx,
                         objInst.ry,
                         objInst.cx,
                         objInst.cy),
-                    ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectInfo?.ParentObject as WzImageProperty),
-                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(objectInfo?.ParentObject as WzImageProperty),
-                    ResolvePacketOwnedNamedObjectAuthoredStateVectorAnimationByIndex(objectInfo?.ParentObject as WzImageProperty),
-                    PacketOwnedNamedObjectAlphaProfile.FromWzProperty(objectInfo?.ParentObject as WzImageProperty),
-                    ResolvePacketOwnedNamedObjectAuthoredStateAlphaByIndex(objectInfo?.ParentObject as WzImageProperty),
-                    ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectProperty),
+                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(objectProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateVectorAnimationByIndex(objectProperty),
+                    PacketOwnedNamedObjectAlphaProfile.FromWzProperty(objectProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateAlphaByIndex(objectProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(objectProperty),
                     ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
                         objInst.Dynamic,
                         objInst.r,
@@ -512,8 +514,8 @@ namespace HaCreator.MapSimulator
                         objInst.ry,
                         objInst.cx,
                         objInst.cy,
-                        objInst.QuestInfo?.Count > 0),
-                    ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectInfo?.ParentObject as WzImageProperty));
+                        objInst.QuestInfo?.Count > 0 || rootAuthoredQuestInfo.Length > 0),
+                    ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectProperty));
             }
         }
 
@@ -595,7 +597,8 @@ namespace HaCreator.MapSimulator
 
         private static QuestGatedMapObjectState? BuildQuestGatedMapObjectState(
             ObjectInstance objInst,
-            ObjectInstanceQuest[] questInfoOverride = null)
+            ObjectInstanceQuest[] questInfoOverride = null,
+            bool mergeQuestInfo = false)
         {
             if (objInst == null)
             {
@@ -603,13 +606,47 @@ namespace HaCreator.MapSimulator
             }
 
             bool hiddenByMap = objInst.hide == true;
-            ObjectInstanceQuest[] questInfo = questInfoOverride ?? objInst.QuestInfo?.ToArray();
+            ObjectInstanceQuest[] questInfo = mergeQuestInfo
+                ? MergePacketOwnedNamedObjectQuestInfo(objInst.QuestInfo, questInfoOverride)
+                : questInfoOverride ?? objInst.QuestInfo?.ToArray();
             bool hasQuestInfo = questInfo != null && questInfo.Length > 0;
             string[] dynamicTags = ParseObjectTags(objInst.tags);
             bool hasDynamicTags = dynamicTags.Length > 0;
             return hiddenByMap || hasQuestInfo || hasDynamicTags
                 ? new QuestGatedMapObjectState(questInfo, dynamicTags, hiddenByMap)
                 : null;
+        }
+
+        internal static ObjectInstanceQuest[] MergePacketOwnedNamedObjectQuestInfo(
+            IEnumerable<ObjectInstanceQuest> mapQuestInfo,
+            IEnumerable<ObjectInstanceQuest> authoredQuestInfo)
+        {
+            Dictionary<int, ObjectInstanceQuest> merged = new();
+            if (authoredQuestInfo != null)
+            {
+                foreach (ObjectInstanceQuest quest in authoredQuestInfo)
+                {
+                    if (quest.questId > 0)
+                    {
+                        merged[quest.questId] = quest;
+                    }
+                }
+            }
+
+            if (mapQuestInfo != null)
+            {
+                foreach (ObjectInstanceQuest quest in mapQuestInfo)
+                {
+                    if (quest.questId > 0)
+                    {
+                        merged[quest.questId] = quest;
+                    }
+                }
+            }
+
+            return merged.Count == 0
+                ? Array.Empty<ObjectInstanceQuest>()
+                : merged.Values.OrderBy(static quest => quest.questId).ToArray();
         }
 
         internal static ObjectInstanceQuest[] ResolvePacketOwnedNamedObjectQuestInfo(WzImageProperty objectProperty)

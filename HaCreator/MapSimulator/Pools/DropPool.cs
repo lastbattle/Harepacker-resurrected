@@ -716,7 +716,6 @@ namespace HaCreator.MapSimulator.Pools
         private const float PET_PICKUP_RANGE = 80f;             // Range at which pet detects drops
         private const float PET_LOOT_RANGE = 300f;              // Max range pet will travel to loot
         private const float PET_CHASE_SPEED = 150f;             // Pet movement speed when chasing drops
-        private const int PET_PICKUP_COOLDOWN = 200;            // Cooldown between pet pickups (ms)
         private const int PICKUP_FAILURE_REPORT_COOLDOWN = 1500;
         internal const int ClientDropPickupRetryDelayMs = 3000;
         internal const int ClientPlayerPickupHalfWidth = 25;
@@ -750,7 +749,6 @@ namespace HaCreator.MapSimulator.Pools
 
         // Pet chasing system
         private readonly Dictionary<int, PetDropTarget> _petTargets = new Dictionary<int, PetDropTarget>();
-        private readonly Dictionary<int, int> _petLastPickupTime = new Dictionary<int, int>();
 
         // Mob pickup tracking
         private readonly HashSet<int> _mobsWithPickupAbility = new HashSet<int>();
@@ -905,7 +903,6 @@ namespace HaCreator.MapSimulator.Pools
 
             // Clear new collections
             _petTargets.Clear();
-            _petLastPickupTime.Clear();
             _mobsWithPickupAbility.Clear();
             _recentPickups.Clear();
             _boobyTrapDrops.Clear();
@@ -1851,19 +1848,6 @@ namespace HaCreator.MapSimulator.Pools
             if (petPickupRange <= 0)
                 petPickupRange = PET_PICKUP_RANGE;
 
-            // Check cooldown
-            if (_petLastPickupTime.TryGetValue(petId, out int lastPickup))
-            {
-                if (currentTime - lastPickup < PET_PICKUP_COOLDOWN)
-                {
-                    return new DropPickupAttemptResult
-                    {
-                        Drop = null,
-                        FailureReason = DropPickupFailureReason.NoDropInRange
-                    };
-                }
-            }
-
             float rangeSq = petPickupRange * petPickupRange;
             DropItem selectedDrop = null;
             DropItem firstFailureDrop = null;
@@ -1938,7 +1922,6 @@ namespace HaCreator.MapSimulator.Pools
                     _petTargets.Remove(petId);
                 }
 
-                _petLastPickupTime[petId] = currentTime;
                 MarkClientDropPickupAttempt(selectedDrop, currentTime);
                 bool pickupSucceeded = CompletePickup(
                     selectedDrop,

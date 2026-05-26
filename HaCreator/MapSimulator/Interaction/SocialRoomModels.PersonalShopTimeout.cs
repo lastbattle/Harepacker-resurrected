@@ -178,11 +178,10 @@ namespace HaCreator.MapSimulator.Interaction
             out byte[] rawPacket,
             out string message)
         {
-            int elapsedMilliseconds = (int)Math.Min(
-                Math.Max(0d, (utcNow - DateTime.UtcNow).TotalMilliseconds),
-                int.MaxValue);
             return TryBuildNextPersonalShopTimedOutVisitorRawPacket(
-                unchecked(Environment.TickCount + elapsedMilliseconds),
+                enterTime => (uint)Math.Min(
+                    Math.Max(0d, (utcNow - enterTime.EnteredAtUtc).TotalMilliseconds),
+                    uint.MaxValue),
                 out seatIndex,
                 out rawPacket,
                 out message);
@@ -190,6 +189,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool TryBuildNextPersonalShopTimedOutVisitorRawPacket(
             int currentTickCount,
+            out int seatIndex,
+            out byte[] rawPacket,
+            out string message)
+        {
+            return TryBuildNextPersonalShopTimedOutVisitorRawPacket(
+                enterTime => unchecked((uint)(currentTickCount - enterTime.EnterTickCount)),
+                out seatIndex,
+                out rawPacket,
+                out message);
+        }
+
+        private bool TryBuildNextPersonalShopTimedOutVisitorRawPacket(
+            Func<PersonalShopVisitorEnterTime, uint> elapsedMillisecondsResolver,
             out int seatIndex,
             out byte[] rawPacket,
             out string message)
@@ -217,7 +229,7 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                uint elapsedMilliseconds = unchecked((uint)(currentTickCount - enterTime.EnterTickCount));
+                uint elapsedMilliseconds = elapsedMillisecondsResolver?.Invoke(enterTime) ?? 0;
                 if (elapsedMilliseconds <= PersonalShopVisitorTimeoutMilliseconds)
                 {
                     continue;

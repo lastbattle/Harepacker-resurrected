@@ -1176,6 +1176,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string debuffToken = skill.DebuffMessageToken;
+            if (HasMobOnlyHasteMesDebuffMessageToken(skill, debuffToken))
+            {
+                return true;
+            }
+
             if (!ContainsToken(debuffToken, "incTargetEXP", "incTargetReward", "incTargetMeso", "homing", "mindControl"))
             {
                 return false;
@@ -1213,6 +1218,48 @@ namespace HaCreator.MapSimulator.Pools
                 "reduceTargetMDP",
                 "reduceTargetDam",
                 "elementalWeaken");
+        }
+
+        private static bool HasMobOnlyHasteMesDebuffMessageToken(SkillData skill, string debuffToken)
+        {
+            if (!ContainsToken(debuffToken, "haste")
+                || !ContainsToken(skill?.MinionAbility, "mes")
+                || ContainsToken(
+                    debuffToken,
+                    "amplifyDamage",
+                    "stun",
+                    "freeze",
+                    "seal",
+                    "slow",
+                    "weak",
+                    "curse",
+                    "reverse",
+                    "undead",
+                    "polymorph",
+                    "dark",
+                    "blind",
+                    "buffLimit",
+                    "restrict",
+                    "attackLimit",
+                    "incapacitate",
+                    "stopPotion",
+                    "potionLimit",
+                    "recoveryLimit",
+                    "fear",
+                    "banish",
+                    "seduce",
+                    "attract",
+                    "bomb",
+                    "battlefieldFlag",
+                    "elementalWeaken")
+                || SupportsAlliedMembers(skill))
+            {
+                return false;
+            }
+
+            return ContainsToken(skill.Name, HostileSummonSupportTokens)
+                   || ContainsToken(skill.Description, HostileSummonSupportTokens)
+                   || ContainsToken(skill.DescriptionHints, HostileSummonSupportTokens);
         }
 
         private static int ResolveHostilePlayerAreaPrimaryStatusPropPercent(SkillLevelData levelData)

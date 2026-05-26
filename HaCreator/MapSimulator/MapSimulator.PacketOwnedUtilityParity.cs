@@ -533,6 +533,19 @@ namespace HaCreator.MapSimulator
             int ComputedTextHeight = 0,
             int TutorFontSlotCount = 0);
 
+        internal readonly record struct PacketOwnedTutorBalloonCanvasDrawOperation(
+            string PartName,
+            string Source,
+            int DestinationX,
+            int DestinationY,
+            int CanvasWidth,
+            int CanvasHeight,
+            int OriginX,
+            int OriginY,
+            int RepeatColumns,
+            int RepeatRows,
+            bool IsArrow = false);
+
         internal sealed class ClassCompetitionRemotePagePayload
         {
             public string AuthKey { get; init; } = string.Empty;
@@ -17432,6 +17445,51 @@ namespace HaCreator.MapSimulator
         internal static int ResolvePacketOwnedTutorTextMessageArrowTop(int computedTextHeight)
         {
             return Math.Max(0, computedTextHeight) + PacketOwnedTutorBalloonClientArrowTopOffset;
+        }
+
+        internal static IReadOnlyList<PacketOwnedTutorBalloonCanvasDrawOperation> BuildPacketOwnedTutorBalloonCanvasDrawPlan(
+            int requestedWidth,
+            int computedTextHeight)
+        {
+            int width = Math.Max(0, requestedWidth);
+            int height = Math.Max(0, computedTextHeight);
+            int rightX = PacketOwnedTutorBalloonClientLeftInset + width;
+            int bottomY = PacketOwnedTutorBalloonClientTopInset + height;
+            string root = "UI/ChatBalloon.img/tutorial";
+
+            return new[]
+            {
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "nw", $"{root}/nw", 0, 0, 19, 21, 19, 21, 1, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "n", $"{root}/n", PacketOwnedTutorBalloonClientLeftInset, 0, 1, 21, 0, 21, width, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "ne", $"{root}/ne", rightX, 0, 19, 21, 0, 21, 1, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "w", $"{root}/w", 0, PacketOwnedTutorBalloonClientTopInset, 19, 1, 19, 0, 1, height),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "c", $"{root}/c", PacketOwnedTutorBalloonClientLeftInset, PacketOwnedTutorBalloonClientTopInset, 1, 1, 0, 0, width, height),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "e", $"{root}/e", rightX, PacketOwnedTutorBalloonClientTopInset, 19, 1, 0, 0, 1, height),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "sw", $"{root}/sw", 0, bottomY, 19, 19, 19, 0, 1, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "s", $"{root}/s", PacketOwnedTutorBalloonClientLeftInset, bottomY, 1, 19, 0, 0, width, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "se", $"{root}/se", rightX, bottomY, 19, 19, 0, 0, 1, 1),
+                new PacketOwnedTutorBalloonCanvasDrawOperation(
+                    "arrow",
+                    $"{root}/arrow",
+                    ResolvePacketOwnedTutorTextMessageArrowLeft(width),
+                    ResolvePacketOwnedTutorTextMessageArrowTop(height),
+                    21,
+                    27,
+                    0,
+                    0,
+                    1,
+                    1,
+                    IsArrow: true)
+            };
         }
 
         private List<IDXObject> ResolvePacketOwnedTutorCueFrames(int cueIndex)

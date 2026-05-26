@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Companions;
@@ -29,6 +30,8 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechNativeScreenCanvasInsertY = 0;
         private const int MobActionSpeechNativeCanvasFactoryStringPoolId = 0x03D0;
         private const int MobActionSpeechNativeCreateCanvasBaseAlpha = 253;
+        private const int MobActionSpeechChatLogStringPoolId = 0x072D;
+        private const int MobActionSpeechChatLogType = 25;
 
         private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
         private bool _mobActionSpeechBalloonSkinsLoaded;
@@ -41,7 +44,55 @@ namespace HaCreator.MapSimulator
 
         private void ConfigureMobActionSpeechConditionContext(MobItem mob)
         {
-            mob?.SetActionSpeakConditionContextProvider(BuildLiveMobActionSpeechConditionContext);
+            if (mob == null)
+            {
+                return;
+            }
+
+            mob.SetActionSpeakConditionContextProvider(BuildLiveMobActionSpeechConditionContext);
+            mob.SetActionSpeakStartedHandler(HandleMobActionSpeechStarted);
+        }
+
+        private void HandleMobActionSpeechStarted(MobItem mob, string speechText, int currentTick)
+        {
+            if (_chat == null || string.IsNullOrWhiteSpace(speechText))
+            {
+                return;
+            }
+
+            string chatLogLine = ResolveMobActionSpeechChatLogLine(mob?.DisplayName, speechText);
+            if (!string.IsNullOrWhiteSpace(chatLogLine))
+            {
+                _chat.AddClientChatMessage(chatLogLine, currentTick, MobActionSpeechChatLogType);
+            }
+        }
+
+        internal static string ResolveMobActionSpeechChatLogLineForTests(string mobName, string speechText)
+        {
+            return ResolveMobActionSpeechChatLogLine(mobName, speechText);
+        }
+
+        private static string ResolveMobActionSpeechChatLogLine(string mobName, string speechText)
+        {
+            string normalizedSpeech = NormalizeMobActionSpeechText(speechText);
+            if (string.IsNullOrWhiteSpace(normalizedSpeech))
+            {
+                return null;
+            }
+
+            string normalizedName = string.IsNullOrWhiteSpace(mobName)
+                ? string.Empty
+                : mobName.Trim();
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                MobActionSpeechChatLogStringPoolId,
+                "{0}: {1}",
+                maxPlaceholderCount: 2,
+                out _);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                string.IsNullOrWhiteSpace(format) ? "{0}: {1}" : format,
+                normalizedName,
+                normalizedSpeech);
         }
 
         private MobAnimationSet.ActionSpeakConditionContext BuildLiveMobActionSpeechConditionContext()
@@ -460,6 +511,9 @@ namespace HaCreator.MapSimulator
             public int CanvasInsertAlpha { get; init; }
             public int CanvasFactoryStringPoolId { get; init; }
             public int CreateCanvasBaseAlpha { get; init; }
+            public int ChatLogStringPoolId { get; init; }
+            public int ChatLogType { get; init; }
+            public bool FormatsStatusBarChatLog { get; init; }
             public bool CentersEachTextLine { get; init; }
             public bool UsesNativeFontTextWidth { get; init; }
             public bool AssignsLayerChat { get; init; }
@@ -539,6 +593,7 @@ namespace HaCreator.MapSimulator
                     "MakeMobBalloon.ResolveMobSkin",
                     "MakeMobBalloon.ReadProperty(screenChat)",
                     "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
+                    "CMob.TrySpeaking.FormatChatLog(StringPool=0x072D,type=25)",
                     "AddRef(pProp)",
                     "AddRef(bsText)",
                     "CreateCanvas(type=1005)",
@@ -566,6 +621,7 @@ namespace HaCreator.MapSimulator
                     "MakeMobBalloon.ResolveMobSkin",
                     "MakeMobBalloon.ReadProperty(screenChat)",
                     "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
+                    "CMob.TrySpeaking.FormatChatLog(StringPool=0x072D,type=25)",
                     "CreateCanvas(type=1004)",
                     "PcCreateObject(Canvas:StringPool=0x03D0)",
                     "CreateCanvas.CopyBase(alpha=253)",
@@ -604,6 +660,9 @@ namespace HaCreator.MapSimulator
                 CanvasInsertAlpha = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertAlpha : 0,
                 CanvasFactoryStringPoolId = MobActionSpeechNativeCanvasFactoryStringPoolId,
                 CreateCanvasBaseAlpha = MobActionSpeechNativeCreateCanvasBaseAlpha,
+                ChatLogStringPoolId = MobActionSpeechChatLogStringPoolId,
+                ChatLogType = MobActionSpeechChatLogType,
+                FormatsStatusBarChatLog = true,
                 CentersEachTextLine = true,
                 UsesNativeFontTextWidth = true,
                 AssignsLayerChat = useScreenLayer,

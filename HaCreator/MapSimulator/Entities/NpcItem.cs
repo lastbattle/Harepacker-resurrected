@@ -981,6 +981,87 @@ namespace HaCreator.MapSimulator.Entities
             return snapshot.QueueExists ? 0 : fieldTickCount;
         }
 
+        internal static IReadOnlyList<NpcMapleTvNativeCanvasOperation> BuildActorLocalMapleTvNativeCanvasPlan(
+            MapleTvVisualAssets visualAssets,
+            MapleTvSnapshot snapshot)
+        {
+            if (visualAssets == null || snapshot == null || !snapshot.IsShowingMessage)
+            {
+                return Array.Empty<NpcMapleTvNativeCanvasOperation>();
+            }
+
+            int variantKey = ResolveActorLocalMapleTvChatVariantKey(visualAssets, snapshot);
+            int messageType = snapshot.MessageType;
+            string chatFamily = messageType switch
+            {
+                1 => "TVchat1",
+                2 => "TVchat2",
+                _ => "TVchat"
+            };
+            int stringPoolId = messageType switch
+            {
+                1 => 0x0F9C,
+                2 => 0x0F9D,
+                _ => 0
+            };
+            Rectangle textBounds = ResolveActorLocalMapleTvTextBounds(visualAssets, snapshot);
+            var operations = new List<NpcMapleTvNativeCanvasOperation>
+            {
+                NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTV", -2),
+                NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTVMSGIntermission", -2)
+            };
+
+            if (stringPoolId != 0)
+            {
+                operations.Add(NpcMapleTvNativeCanvasOperation.LoadLayer(
+                    chatFamily,
+                    stringPoolId,
+                    ResolveNativeMapleTvChatLayerOffsetX(messageType),
+                    MapleTvNativeChatLayerOffsetY));
+                operations.Add(NpcMapleTvNativeCanvasOperation.AnimateRepeat(ResolveNativeMapleTvChatAnimationLayerName(messageType)));
+            }
+
+            operations.AddRange(new[]
+            {
+                NpcMapleTvNativeCanvasOperation.CreateMessageCanvas(),
+                NpcMapleTvNativeCanvasOperation.DrawCanvasText("message1", textBounds.X, textBounds.Y),
+                NpcMapleTvNativeCanvasOperation.DrawCanvasText("message2", textBounds.X, textBounds.Y + MapleTvNativeMessageLineHeight),
+                NpcMapleTvNativeCanvasOperation.DrawCanvasText("message3", textBounds.X, textBounds.Y + MapleTvNativeMessageLineHeight * 2),
+                NpcMapleTvNativeCanvasOperation.DrawCanvasText("message4", textBounds.X, textBounds.Y + MapleTvNativeMessageLineHeight * 3),
+                NpcMapleTvNativeCanvasOperation.DrawCanvasText("message5", textBounds.X, textBounds.Y + MapleTvNativeMessageLineHeight * 4)
+            });
+
+            Point senderOffset = ResolveActorLocalMapleTvSenderNameOffset(textBounds);
+            operations.Add(NpcMapleTvNativeCanvasOperation.DrawCanvasText("sender", senderOffset.X, senderOffset.Y));
+
+            Point receiverOffset = ResolveActorLocalMapleTvReceiverNameOffset(textBounds, snapshot.ReceiverName);
+            operations.Add(NpcMapleTvNativeCanvasOperation.DrawCanvasText("receiver", receiverOffset.X, receiverOffset.Y));
+            operations.Add(NpcMapleTvNativeCanvasOperation.InsertCanvas("m_pLayerMapleTVMSGBasicUI", "pCanvasMSG"));
+            return operations;
+        }
+
+        private static int ResolveNativeMapleTvChatLayerOffsetX(int messageType)
+        {
+            return messageType switch
+            {
+                1 => 113,
+                2 => 119,
+                _ => 0
+            };
+        }
+
+        private const int MapleTvNativeChatLayerOffsetY = 45;
+
+        private static string ResolveNativeMapleTvChatAnimationLayerName(int messageType)
+        {
+            return messageType switch
+            {
+                1 => "m_pLayerMapleTVSoleBGAnimation",
+                2 => "m_pLayerMapleTVLoveBGAnimation",
+                _ => "m_pLayerMapleTVMSGBasicUI"
+            };
+        }
+
         internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount)
         {
             return ResolveClientFloatVisualOffset(hasFloatPresentation, tickCount, 0);
@@ -999,6 +1080,23 @@ namespace HaCreator.MapSimulator.Entities
             return new Point(
                 (int)Math.Round(Math.Cos(angle) * ClientFloatVectorRadiusPx),
                 (int)Math.Round(Math.Sin(angle) * ClientFloatVectorRadiusPx));
+        }
+
+        internal static IReadOnlyList<NpcFloatVectorNativeOperation> BuildClientFloatVectorNativeOperationPlan(
+            bool hasFloatPresentation)
+        {
+            if (!hasFloatPresentation)
+            {
+                return Array.Empty<NpcFloatVectorNativeOperation>();
+            }
+
+            return new[]
+            {
+                NpcFloatVectorNativeOperation.CreateVector(0x03D2, "Shape2D#Vector2D"),
+                NpcFloatVectorNativeOperation.BindToNpcVectorControl(),
+                NpcFloatVectorNativeOperation.Rotate(ClientFloatVectorRotateMs),
+                NpcFloatVectorNativeOperation.RelativeMove(ClientFloatVectorRadiusPx, 0, ClientFloatVectorRotateMs)
+            };
         }
 
         private Point ResolveClientFloatVisualOffsetAtTick(int tickCount)
@@ -1150,6 +1248,164 @@ namespace HaCreator.MapSimulator.Entities
             Func<int, int, ReflectionDrawableBoundary> checkMirrorFieldData)
         {
             _boundaryChecker.UpdateBoundary(CurrentX, CurrentY, mirrorBottomRect, mirrorBottomReflection, checkMirrorFieldData);
+        }
+    }
+
+    internal enum NpcMapleTvNativeCanvasOperationKind
+    {
+        RemoveCanvas,
+        LoadLayer,
+        AnimateRepeat,
+        CreateMessageCanvas,
+        DrawText,
+        InsertCanvas
+    }
+
+    internal sealed class NpcMapleTvNativeCanvasOperation
+    {
+        private NpcMapleTvNativeCanvasOperation(
+            NpcMapleTvNativeCanvasOperationKind kind,
+            string layerName = null,
+            int canvasIndex = 0,
+            string uolFamily = null,
+            int stringPoolId = 0,
+            int offsetX = 0,
+            int offsetY = 0,
+            string textSlot = null,
+            string canvasName = null)
+        {
+            Kind = kind;
+            LayerName = layerName;
+            CanvasIndex = canvasIndex;
+            UolFamily = uolFamily;
+            StringPoolId = stringPoolId;
+            OffsetX = offsetX;
+            OffsetY = offsetY;
+            TextSlot = textSlot;
+            CanvasName = canvasName;
+        }
+
+        internal NpcMapleTvNativeCanvasOperationKind Kind { get; }
+        internal string LayerName { get; }
+        internal int CanvasIndex { get; }
+        internal string UolFamily { get; }
+        internal int StringPoolId { get; }
+        internal int OffsetX { get; }
+        internal int OffsetY { get; }
+        internal string TextSlot { get; }
+        internal string CanvasName { get; }
+
+        internal static NpcMapleTvNativeCanvasOperation RemoveCanvas(string layerName, int canvasIndex)
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.RemoveCanvas,
+                layerName: layerName,
+                canvasIndex: canvasIndex);
+        }
+
+        internal static NpcMapleTvNativeCanvasOperation LoadLayer(string uolFamily, int stringPoolId, int offsetX, int offsetY)
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.LoadLayer,
+                uolFamily: uolFamily,
+                stringPoolId: stringPoolId,
+                offsetX: offsetX,
+                offsetY: offsetY);
+        }
+
+        internal static NpcMapleTvNativeCanvasOperation AnimateRepeat(string layerName)
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.AnimateRepeat,
+                layerName: layerName);
+        }
+
+        internal static NpcMapleTvNativeCanvasOperation CreateMessageCanvas()
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.CreateMessageCanvas,
+                canvasName: "pCanvasMSG");
+        }
+
+        internal static NpcMapleTvNativeCanvasOperation DrawCanvasText(string textSlot, int offsetX, int offsetY)
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.DrawText,
+                offsetX: offsetX,
+                offsetY: offsetY,
+                textSlot: textSlot,
+                canvasName: "pCanvasMSG");
+        }
+
+        internal static NpcMapleTvNativeCanvasOperation InsertCanvas(string layerName, string canvasName)
+        {
+            return new NpcMapleTvNativeCanvasOperation(
+                NpcMapleTvNativeCanvasOperationKind.InsertCanvas,
+                layerName: layerName,
+                canvasName: canvasName);
+        }
+    }
+
+    internal enum NpcFloatVectorNativeOperationKind
+    {
+        CreateVector,
+        BindToNpcVectorControl,
+        Rotate,
+        RelativeMove
+    }
+
+    internal sealed class NpcFloatVectorNativeOperation
+    {
+        private NpcFloatVectorNativeOperation(
+            NpcFloatVectorNativeOperationKind kind,
+            int stringPoolId = 0,
+            string className = null,
+            int x = 0,
+            int y = 0,
+            int durationMs = 0)
+        {
+            Kind = kind;
+            StringPoolId = stringPoolId;
+            ClassName = className;
+            X = x;
+            Y = y;
+            DurationMs = durationMs;
+        }
+
+        internal NpcFloatVectorNativeOperationKind Kind { get; }
+        internal int StringPoolId { get; }
+        internal string ClassName { get; }
+        internal int X { get; }
+        internal int Y { get; }
+        internal int DurationMs { get; }
+
+        internal static NpcFloatVectorNativeOperation CreateVector(int stringPoolId, string className)
+        {
+            return new NpcFloatVectorNativeOperation(
+                NpcFloatVectorNativeOperationKind.CreateVector,
+                stringPoolId: stringPoolId,
+                className: className);
+        }
+
+        internal static NpcFloatVectorNativeOperation BindToNpcVectorControl()
+        {
+            return new NpcFloatVectorNativeOperation(NpcFloatVectorNativeOperationKind.BindToNpcVectorControl);
+        }
+
+        internal static NpcFloatVectorNativeOperation Rotate(int durationMs)
+        {
+            return new NpcFloatVectorNativeOperation(
+                NpcFloatVectorNativeOperationKind.Rotate,
+                durationMs: durationMs);
+        }
+
+        internal static NpcFloatVectorNativeOperation RelativeMove(int x, int y, int durationMs)
+        {
+            return new NpcFloatVectorNativeOperation(
+                NpcFloatVectorNativeOperationKind.RelativeMove,
+                x: x,
+                y: y,
+                durationMs: durationMs);
         }
     }
 }

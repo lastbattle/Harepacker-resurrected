@@ -17,6 +17,13 @@ namespace HaCreator.MapSimulator.Interaction
             // The Coconut board formats score and finish-timestamp time through
             // these StringPool ids before drawing the WZ bitmap glyphs.
             [0x0B02] = "%d",
+            // Recovered from MapleStory.exe v95 `CField_Coconut::Init`.
+            // The Coconut field owner resolves the map-root config contract
+            // through these ids before reading the WZ-authored coconut counts.
+            [0x0B04] = "coconut",
+            [0x0B05] = "countFalling",
+            [0x0B06] = "countBombing",
+            [0x0B07] = "countStopped",
             // Recovered from MapleStory.exe v95 `CField_Coconut::Init` and
             // `CField_Coconut::DrawBoard`. These board canvas/font resource
             // ids sit beside the formatting ids and keep the native board

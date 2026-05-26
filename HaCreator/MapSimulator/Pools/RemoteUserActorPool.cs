@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.Pools
         RemoveCanvas,
         InsertCanvas,
         ReleaseCanvasTemporaryReference,
+        ReleaseRemovedCanvasLayerReference,
         ReleaseLayerReference
     }
 
@@ -129,7 +130,8 @@ namespace HaCreator.MapSimulator.Pools
             bool FollowOwnerPosition = true,
             bool FollowOwnerFacing = true,
             int? DelayRateOverride = null,
-            Point OriginOffset = default);
+            Point OriginOffset = default,
+            bool? FacingRightOverride = null);
         public readonly record struct RemoteUpgradeTombPresentation(
             int CharacterId,
             int ItemId,
@@ -793,6 +795,7 @@ namespace HaCreator.MapSimulator.Pools
             public bool OwnerFacingRight { get; init; }
             public int NextSampleTime { get; set; }
             public bool TerminateRequested { get; private set; }
+            public bool PauseRequested { get; set; }
             public bool IsTerminated { get; private set; }
             public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleIds { get; set; } =
                 new Dictionary<AvatarRenderLayer, int>();
@@ -843,6 +846,7 @@ namespace HaCreator.MapSimulator.Pools
                 SimulatedLayerReferenceOperations =
                     AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                 TerminateRequested = false;
+                PauseRequested = false;
                 IsTerminated = false;
             }
 
@@ -4375,10 +4379,17 @@ namespace HaCreator.MapSimulator.Pools
             temporaryStats = ReconcileChargeSkillIdFromPriorSnapshot(
                 temporaryStats,
                 actor.TemporaryStats);
+            int oldRidingVehicleId = actor.TemporaryStats.KnownState.RidingVehicleId.GetValueOrDefault();
+            int currentTime = Environment.TickCount;
             actor.TemporaryStats = temporaryStats;
             actor.TemporaryStatDelay = delay;
             actor.PendingTemporaryStatTimelineReseed = true;
             SyncTemporaryStatPresentation(actor);
+            TryRegisterRemoteRidingVehicleTemporaryStatSetEffect(
+                actor,
+                oldRidingVehicleId,
+                temporaryStats.KnownState.RidingVehicleId.GetValueOrDefault(),
+                currentTime);
             message = temporaryStats.HasPayload
                 ? $"Remote user {characterId} temporary-stat snapshot applied."
                 : $"Remote user {characterId} temporary-stat snapshot cleared.";
@@ -4435,6 +4446,37 @@ namespace HaCreator.MapSimulator.Pools
                 ? $"Remote user {packet.CharacterId} temporary-stat mask updated."
                 : $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
             return true;
+        }
+
+        private void TryRegisterRemoteRidingVehicleTemporaryStatSetEffect(
+            RemoteUserActor actor,
+            int oldRidingVehicleId,
+            int newRidingVehicleId,
+            int currentTime)
+        {
+            if (actor == null
+                || !SkillManager.TryCreateRideVehicleTemporaryStatSetSkillUseEffectRequest(
+                    oldRidingVehicleId,
+                    newRidingVehicleId,
+                    currentTime,
+                    out SkillUseEffectRequest request))
+            {
+                return;
+            }
+
+            SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                actor.CharacterId,
+                request.EffectSkillId,
+                null,
+                request.FacingRightOverride ?? actor.FacingRight,
+                request.RequestTime,
+                request.BranchNames,
+                request.WorldOrigin,
+                request.FollowOwnerPosition,
+                request.FollowOwnerFacing,
+                request.DelayRateOverride,
+                request.OriginOffset,
+                request.FacingRightOverride));
         }
 
         public bool TrySetPreparedSkill(
@@ -6211,16 +6253,30 @@ namespace HaCreator.MapSimulator.Pools
                 actor.PartyHpGaugeLayerHandleId = NextRemoteReceiveHpGaugeLayerHandleId();
             }
 
+            int removedCanvasHandleId = actor.PartyHpGaugeCanvasHandleId;
+            int removedCanvasLayerRefCount = actor.PartyHpGaugeCanvasLayerRefCount;
             actor.PartyHpGaugeLayerMutations.Add(
                 RemoteReceiveHpGaugeLayerMutation.Create(
                     RemoteReceiveHpGaugeLayerMutationKind.RemoveCanvas,
                     RemoteReceiveHpGaugeActionOwnerName,
                     actor.PartyHpGaugeLayerHandleId,
-                    actor.PartyHpGaugeCanvasHandleId,
-                    canvasLayerRefCount: 0,
+                    removedCanvasHandleId,
+                    removedCanvasLayerRefCount,
                     gaugePos,
                     actor.PartyHpGaugeLayerMutations.Count));
-            actor.PartyHpGaugeCanvasLayerRefCount = 0;
+
+            if (removedCanvasHandleId > 0 && removedCanvasLayerRefCount > 0)
+            {
+                actor.PartyHpGaugeLayerMutations.Add(
+                    RemoteReceiveHpGaugeLayerMutation.Create(
+                        RemoteReceiveHpGaugeLayerMutationKind.ReleaseRemovedCanvasLayerReference,
+                        RemoteReceiveHpGaugeActionOwnerName,
+                        actor.PartyHpGaugeLayerHandleId,
+                        removedCanvasHandleId,
+                        canvasLayerRefCount: 0,
+                        gaugePos,
+                        actor.PartyHpGaugeLayerMutations.Count));
+            }
 
             actor.PartyHpGaugeCanvasHandleId = NextRemoteReceiveHpGaugeCanvasHandleId();
             actor.PartyHpGaugeCanvasLayerRefCount = 1;
@@ -10814,32 +10870,35 @@ namespace HaCreator.MapSimulator.Pools
 
             while (ShouldSampleRemoteActiveEffectMotionBlurForParity(currentTime, state.NextSampleTime))
             {
-                AssembledFrame frame = actor.GetFrameAtTimeForRendering(state.NextSampleTime);
-                if (frame != null
-                    && TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
-                        frame,
-                        state.SimulatedLayerHandleIds,
-                        state.SimulatedLayerHandleRefCounts,
-                        out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots))
+                if (ShouldCreateRemoteActiveEffectMotionBlurSnapshotForParity(state))
                 {
-                    RemoteActiveEffectMotionBlurOwnerSample ownerSample =
-                        ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(actor, state.NextSampleTime);
-                    IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> layerReferenceOperations =
-                        BuildRemoteActiveEffectMotionBlurSnapshotLayerReferenceOperations(
-                            state,
-                            layerSnapshots,
-                            out int simulatedOverlayLayerHandleRefCount);
-                    state.Snapshots.Add(new RemoteActiveEffectMotionBlurSnapshot
+                    AssembledFrame frame = actor.GetFrameAtTimeForRendering(state.NextSampleTime);
+                    if (frame != null
+                        && TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
+                            frame,
+                            state.SimulatedLayerHandleIds,
+                            state.SimulatedLayerHandleRefCounts,
+                            out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots))
                     {
-                        Layers = layerSnapshots,
-                        FeetOffset = frame.FeetOffset,
-                        Position = ownerSample.Position,
-                        FacingRight = ownerSample.FacingRight,
-                        SampleTime = state.NextSampleTime,
-                        SimulatedOverlayLayerHandleId = state.SimulatedOverlayLayerHandleId,
-                        SimulatedLayerReferenceOperations = layerReferenceOperations,
-                        SimulatedOverlayLayerHandleRefCount = simulatedOverlayLayerHandleRefCount
-                    });
+                        RemoteActiveEffectMotionBlurOwnerSample ownerSample =
+                            ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(actor, state.NextSampleTime);
+                        IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> layerReferenceOperations =
+                            BuildRemoteActiveEffectMotionBlurSnapshotLayerReferenceOperations(
+                                state,
+                                layerSnapshots,
+                                out int simulatedOverlayLayerHandleRefCount);
+                        state.Snapshots.Add(new RemoteActiveEffectMotionBlurSnapshot
+                        {
+                            Layers = layerSnapshots,
+                            FeetOffset = frame.FeetOffset,
+                            Position = ownerSample.Position,
+                            FacingRight = ownerSample.FacingRight,
+                            SampleTime = state.NextSampleTime,
+                            SimulatedOverlayLayerHandleId = state.SimulatedOverlayLayerHandleId,
+                            SimulatedLayerReferenceOperations = layerReferenceOperations,
+                            SimulatedOverlayLayerHandleRefCount = simulatedOverlayLayerHandleRefCount
+                        });
+                    }
                 }
 
                 state.NextSampleTime = unchecked(state.NextSampleTime + Math.Max(1, state.Definition.IntervalMs));
@@ -11409,9 +11468,19 @@ namespace HaCreator.MapSimulator.Pools
             return ShouldSampleRemoteActiveEffectMotionBlurForParity(currentTime, nextSampleTime);
         }
 
+        internal static bool ShouldCreateRemoteActiveEffectMotionBlurSnapshotForTesting(RemoteActiveEffectMotionBlurState state)
+        {
+            return ShouldCreateRemoteActiveEffectMotionBlurSnapshotForParity(state);
+        }
+
         private static bool ShouldSampleRemoteActiveEffectMotionBlurForParity(int currentTime, int nextSampleTime)
         {
             return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, nextSampleTime);
+        }
+
+        private static bool ShouldCreateRemoteActiveEffectMotionBlurSnapshotForParity(RemoteActiveEffectMotionBlurState state)
+        {
+            return state?.PauseRequested != true;
         }
 
         internal static IReadOnlyList<AssembledPart> ResolveRemoteActiveEffectMotionBlurLayerParts(
@@ -14256,7 +14325,8 @@ namespace HaCreator.MapSimulator.Pools
                     request.FollowOwnerPosition,
                     request.FollowOwnerFacing,
                     request.DelayRateOverride,
-                    request.OriginOffset));
+                    request.OriginOffset,
+                    request.FacingRightOverride));
             }
         }
 
@@ -18825,6 +18895,36 @@ namespace HaCreator.MapSimulator.Pools
                 return elementValueConsensusChargeSkillId;
             }
 
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueKnownSkillFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int uniqueKnownSkillChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueKnownSkillChargeElement,
+                    out int uniqueKnownSkillChargeSkillId))
+            {
+                return uniqueKnownSkillChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int uniqueElementValueChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    uniqueElementValueChargeElement,
+                    out int uniqueElementValueChargeSkillId))
+            {
+                return uniqueElementValueChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 ? effectivePreferredSkillId
                 : null;
@@ -19068,6 +19168,28 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueKnownSkillFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByUniqueElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
                     out chargeElement))
             {
                 return true;

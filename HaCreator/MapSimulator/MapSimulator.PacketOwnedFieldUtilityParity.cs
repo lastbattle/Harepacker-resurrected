@@ -425,6 +425,8 @@ namespace HaCreator.MapSimulator
             platform.DeltaX = 0f;
             platform.DeltaY = 0f;
             platform.IsPaused = false;
+            platform.PauseDelay = 0;
+            platform.PauseStartTime = 0;
             platform.PacketOwnedMovingX1 = null;
             platform.PacketOwnedMovingX2 = null;
             platform.PacketOwnedMovingY1 = null;
@@ -492,6 +494,9 @@ namespace HaCreator.MapSimulator
             platform.PacketOwnedMovingY2 = movingState.Y2;
             platform.PacketOwnedReverseVertical = movingState.ReverseVertical;
             platform.PacketOwnedReverseHorizontal = movingState.ReverseHorizontal;
+            platform.IsPaused = false;
+            platform.PauseDelay = 0;
+            platform.PauseStartTime = 0;
             platform.MovementType = ResolvePacketOwnedMovingFootholdMovementTypeForPacketParity(
                 movingState.X1,
                 movingState.X2,
@@ -658,6 +663,9 @@ namespace HaCreator.MapSimulator
             platform.PacketOwnedReverseHorizontal = null;
             platform.Waypoints = null;
             platform.CurrentWaypointIndex = 0;
+            platform.IsPaused = false;
+            platform.PauseDelay = 0;
+            platform.PauseStartTime = 0;
             platform.DeltaX = 0f;
             platform.DeltaY = 0f;
         }

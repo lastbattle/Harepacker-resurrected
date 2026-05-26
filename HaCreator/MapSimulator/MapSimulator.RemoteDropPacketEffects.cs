@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System;
 using System.Globalization;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -40,9 +41,11 @@ namespace HaCreator.MapSimulator
             return (int)(normalizedDropId % variantCount);
         }
 
-        internal static string CreateSoundKey()
+        internal static string CreateSoundKey(WzBinaryProperty soundProperty = null)
         {
-            return $"Skill:{SkillId}:{SoundName}";
+            return SoundManager.BuildPacketOwnedClientSoundKey(
+                $"{SoundImageName}/{SoundPropertyPath}",
+                soundProperty);
         }
 
         internal static int ResolveHitVariantIndex(DropItem drop, int variantCount)
@@ -146,9 +149,9 @@ namespace HaCreator.MapSimulator
         internal const string SoundDescriptorFallback = "Sound/Game.img/PickUpItem";
         internal const string SoundName = "PickUpItem";
 
-        internal static string CreateSoundKey(string resolvedDescriptor)
+        internal static string CreateSoundKey(string resolvedDescriptor, WzBinaryProperty soundProperty = null)
         {
-            return $"DropPetPickup:{resolvedDescriptor}";
+            return SoundManager.BuildPacketOwnedClientSoundKey(resolvedDescriptor, soundProperty);
         }
     }
 
@@ -212,30 +215,47 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            float volumeScale = ResolvePacketOwnedDropExplodeVolumeScale(drop);
-
             string soundKey = EnsurePacketOwnedDropExplodeSoundKey();
             if (!string.IsNullOrWhiteSpace(soundKey))
             {
                 if (_packetOwnedDropExplodeSoundBinary != null)
                 {
-                    _soundManager.TryPlayClientSoundEffect(
-                        soundKey,
-                        _packetOwnedDropExplodeSoundBinary,
-                        volumeScale,
-                        loop: false,
-                        suppressWhileActive: false,
-                        out _,
-                        out _);
+                    Vector2? listenerPosition = _playerManager?.Player?.Position;
+                    if (drop != null)
+                    {
+                        _soundManager.TryPlayClientSoundEffectAt(
+                            soundKey,
+                            _packetOwnedDropExplodeSoundBinary,
+                            startVolumeScale: 1f,
+                            loop: false,
+                            suppressWhileActive: false,
+                            listenerX: listenerPosition?.X,
+                            listenerY: listenerPosition?.Y,
+                            sourceX: drop.X,
+                            sourceY: drop.Y,
+                            out _,
+                            out _);
+                    }
+                    else
+                    {
+                        _soundManager.TryPlayClientSoundEffect(
+                            soundKey,
+                            _packetOwnedDropExplodeSoundBinary,
+                            startVolumeScale: 1f,
+                            loop: false,
+                            suppressWhileActive: false,
+                            out _,
+                            out _);
+                    }
                 }
                 else
                 {
-                    _soundManager.PlaySound(soundKey, volumeScale);
+                    _soundManager.PlaySound(soundKey);
                 }
                 return;
             }
 
-            PlayDropItemSE(volumeScale);
+            PlayDropItemSE(drop);
         }
 
         private void PlayPacketOwnedLocalPetPickupSound()
@@ -288,7 +308,7 @@ namespace HaCreator.MapSimulator
                 return PacketOwnedDropPetPickupPresentation.SoundName;
             }
 
-            _packetOwnedLocalPetPickupSoundKey = PacketOwnedDropPetPickupPresentation.CreateSoundKey(resolvedDescriptor);
+            _packetOwnedLocalPetPickupSoundKey = PacketOwnedDropPetPickupPresentation.CreateSoundKey(resolvedDescriptor, soundProperty);
             _packetOwnedLocalPetPickupSoundBinary = soundProperty;
             return _packetOwnedLocalPetPickupSoundKey;
         }
@@ -312,7 +332,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            _packetOwnedDropExplodeSoundKey = PacketOwnedDropExplosionPresentation.CreateSoundKey();
+            _packetOwnedDropExplodeSoundKey = PacketOwnedDropExplosionPresentation.CreateSoundKey(soundBinary);
             _packetOwnedDropExplodeSoundBinary = soundBinary;
             return _packetOwnedDropExplodeSoundKey;
         }
@@ -517,6 +537,18 @@ namespace HaCreator.MapSimulator
                 currentPosition,
                 currentTime,
                 durationMs);
+        }
+
+        internal static string BuildPacketOwnedDropExplosionSoundKeyForTesting(WzBinaryProperty soundProperty = null)
+        {
+            return PacketOwnedDropExplosionPresentation.CreateSoundKey(soundProperty);
+        }
+
+        internal static string BuildPacketOwnedDropPetPickupSoundKeyForTesting(
+            string resolvedDescriptor,
+            WzBinaryProperty soundProperty = null)
+        {
+            return PacketOwnedDropPetPickupPresentation.CreateSoundKey(resolvedDescriptor, soundProperty);
         }
     }
 }

@@ -398,7 +398,7 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((byte)ClientOpenResultSubtype);
             WriteMapleString(writer, groomName);
             WriteMapleString(writer, brideName);
-            writer.Write((ushort)NormalizeClientDialogType(clientDialogType));
+            writer.Write((ushort)Math.Clamp(clientDialogType, 0, ushort.MaxValue));
             writer.Flush();
             return stream.ToArray();
         }

@@ -349,6 +349,22 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static bool ShouldApplyPartyStandAloneMode(
+            MapInfo mapInfo,
+            bool hasParty,
+            bool usesPacketOwnedPartyAdmissionContext = false,
+            bool hasPacketOwnedPartyAdmission = false)
+        {
+            if (GetPartyStandAloneEntryMessage(mapInfo) == null)
+            {
+                return false;
+            }
+
+            return usesPacketOwnedPartyAdmissionContext
+                ? hasPacketOwnedPartyAdmission
+                : hasParty;
+        }
+
         public static string GetTakeOffItemRestrictionMessage(MapInfo mapInfo, int itemId)
         {
             if (itemId <= 0)

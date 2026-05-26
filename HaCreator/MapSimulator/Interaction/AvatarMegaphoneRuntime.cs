@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class AvatarMegaphoneRuntime
     {
         private const int DefaultItemId = 5390000;
+        private const short DefaultInventoryPosition = 1;
         private const int PanelWidth = 225;
         private const int PanelOffscreenPadding = 100;
         private const int ByeOffscreenX = 1124;
@@ -76,6 +77,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _draftSender = "ExplorerGM";
         private readonly string[] _draftMessageFragments = new string[4];
         private int _draftItemId = DefaultItemId;
+        private short _draftInventoryPosition = DefaultInventoryPosition;
         private bool _draftWhisper = SendDialogInitialWhisperChecked;
         private int _draftChannelId = -1;
         private CharacterBuild _localAvatarTemplate;
@@ -102,7 +104,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_activePresentation == null)
             {
                 AvatarMegaphoneItemProfile draftProfile = ResolveItemProfile(_draftItemId);
-                return $"Avatar megaphone idle: item {_draftItemId} ({draftProfile?.ResourcePath ?? "unresolved"}), sender '{_draftSender}', preview={ResolvePreviewSourceLabel()}, whisper={(_draftWhisper ? 1 : 0)}, channel={_draftChannelId}. {_statusMessage}";
+                return $"Avatar megaphone idle: item {_draftItemId} ({draftProfile?.ResourcePath ?? "unresolved"}), cashSlot={_draftInventoryPosition}, sender '{_draftSender}', preview={ResolvePreviewSourceLabel()}, whisper={(_draftWhisper ? 1 : 0)}, channel={_draftChannelId}. {_statusMessage}";
             }
 
             AvatarMegaphoneLayout layout = BuildLayout(currentTick, screenWidth);
@@ -158,6 +160,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             _draftItemId = itemId;
             _statusMessage = $"Avatar megaphone item set to {itemId} ({profile.ResourcePath}, emotion {profile.EmotionId}).";
+            return _statusMessage;
+        }
+
+        internal string SetInventoryPosition(int inventoryPosition)
+        {
+            if (inventoryPosition < short.MinValue || inventoryPosition > short.MaxValue)
+            {
+                return "Avatar megaphone cash inventory position is outside the client short range.";
+            }
+
+            _draftInventoryPosition = (short)inventoryPosition;
+            _statusMessage = $"Avatar megaphone cash inventory position set to {_draftInventoryPosition}.";
             return _statusMessage;
         }
 
@@ -218,7 +232,43 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeSendDialogOwner()
         {
-            return $"CUIAvatarMegaphone sender dialog: StringPool 0x0FAE frame, StringPool 0x0FAF control path, BtOk({SendDialogOkButtonX},{SendDialogOkButtonY}), BtCancel({SendDialogCancelButtonX},{SendDialogCancelButtonY}), MLEdit({SendDialogEditX},{SendDialogEditY},{SendDialogEditWidth}x{SendDialogEditHeight}), fontHeight={SendDialogFontHeight}, rowMax={SendDialogRowMax}, maxLineWidth={SendDialogMaxLineWidth}, CheckWhisper({SendDialogWhisperCheckX},{SendDialogWhisperCheckY},{SendDialogWhisperCheckWidth}x{SendDialogWhisperCheckHeight}), initialChecked=1.";
+            return $"CUIAvatarMegaphone sender dialog: StringPool 0x0FAE frame, StringPool 0x0FAF control path, BtOk({SendDialogOkButtonX},{SendDialogOkButtonY}), BtCancel({SendDialogCancelButtonX},{SendDialogCancelButtonY}), MLEdit({SendDialogEditX},{SendDialogEditY},{SendDialogEditWidth}x{SendDialogEditHeight}), fontHeight={SendDialogFontHeight}, rowMax={SendDialogRowMax}, maxLineWidth={SendDialogMaxLineWidth}, CheckWhisper({SendDialogWhisperCheckX},{SendDialogWhisperCheckY},{SendDialogWhisperCheckWidth}x{SendDialogWhisperCheckHeight}), initialChecked=1, SendConsumeCashItemUseRequest opcode={AvatarMegaphonePacketCodec.ConsumeCashItemUseRequestOpcode}.";
+        }
+
+        internal bool TryBuildConsumeCashItemUseRequest(
+            int clientTick,
+            out AvatarMegaphoneConsumeCashItemUseRequest request,
+            out string message)
+        {
+            request = null;
+            AvatarMegaphoneItemProfile profile = ResolveItemProfile(_draftItemId);
+            if (profile == null)
+            {
+                message = $"Avatar megaphone item {_draftItemId} is not supported by the v95 item/Cash/0539 owner set.";
+                return false;
+            }
+
+            string[] fragments = _draftMessageFragments
+                .Take(SendDialogRowMax)
+                .Select(fragment => fragment ?? string.Empty)
+                .ToArray();
+            if (fragments.Length < SendDialogRowMax)
+            {
+                Array.Resize(ref fragments, SendDialogRowMax);
+                for (int i = 0; i < fragments.Length; i++)
+                {
+                    fragments[i] ??= string.Empty;
+                }
+            }
+
+            request = new AvatarMegaphoneConsumeCashItemUseRequest(
+                clientTick,
+                _draftInventoryPosition,
+                _draftItemId,
+                fragments,
+                _draftWhisper);
+            message = $"CUIAvatarMegaphone shaped SendConsumeCashItemUseRequest for item {_draftItemId}, cashSlot={_draftInventoryPosition}, whisper={(_draftWhisper ? 1 : 0)}, fragments={fragments.Length}.";
+            return true;
         }
 
         internal static string JoinFragmentsForDialogEdit(IEnumerable<string> fragments)
@@ -526,6 +576,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            Texture2D backgroundTexture = ResolveBackgroundTexture(device);
             Texture2D shortNameTagTexture = ResolveNameTagTexture(device, longTag: false);
             Texture2D longNameTagTexture = ResolveNameTagTexture(device, longTag: true);
             IReadOnlyList<AvatarMegaphoneAnimationFrame> itemFrames = ResolveItemFrames(_activePresentation.ItemProfile.ResourcePath, device);
@@ -534,6 +585,11 @@ namespace HaCreator.MapSimulator.Interaction
             bool useLongNameTag = ResolveNameTagStringPoolIdForWidth(senderWidth) == 0x0FB1;
             Texture2D nameTagTexture = useLongNameTag ? longNameTagTexture : shortNameTagTexture;
             int nameTagX = layout.PanelX + ResolveNameTagXForWidth(senderWidth);
+
+            if (backgroundTexture != null)
+            {
+                spriteBatch.Draw(backgroundTexture, new Vector2(layout.PanelX, 0), Color.White);
+            }
 
             DrawPreviewAvatar(spriteBatch, currentTick, layout.PanelX);
 

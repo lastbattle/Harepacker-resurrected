@@ -32,6 +32,13 @@ namespace HaCreator.MapSimulator.UI
             public Point LayerPosition { get; init; }
             public System.Drawing.Size LayerSize { get; init; }
             public Point AvatarAnchor { get; init; }
+            public int LayerZ { get; init; }
+            public string OriginMode { get; init; } = string.Empty;
+            public int ControlTabId { get; init; }
+            public Point ControlTabPosition { get; init; }
+            public System.Drawing.Size ControlTabSize { get; init; }
+            public int UserControlNormalStringPoolId { get; init; }
+            public int UserControlSelectedStringPoolId { get; init; }
             public int BackgroundIndex { get; init; }
             public int BackgroundCanvasCount { get; init; }
             public int WearInfoCapacity { get; init; }
@@ -89,6 +96,13 @@ namespace HaCreator.MapSimulator.UI
         private const int PreviewHeight = 165;
         private const int PreviewBackgroundCanvasCount = 3;
         private const int PreviewBackgroundLayerZ = unchecked((int)0xC0000000);
+        private const int UserPreviewControlTabId = 1004;
+        private const int UserPreviewControlTabX = 3;
+        private const int UserPreviewControlTabY = 141;
+        private const int UserPreviewControlTabWidth = 11;
+        private const int UserPreviewControlTabHeight = 115;
+        private const int UserPreviewControlNormalStringPoolId = 0xC6B;
+        private const int UserPreviewControlSelectedStringPoolId = 0xC6C;
         private const int CashShopFieldStringPoolId = 0xC69;
         private const int CashShopFootholdStringPoolId = 0x5FB;
         private const int CashShopLadderRopeStringPoolId = 0x5FC;
@@ -230,6 +244,13 @@ namespace HaCreator.MapSimulator.UI
                     LayerPosition = new Point(PreviewX, PreviewY),
                     LayerSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
                     AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
+                    LayerZ = PreviewBackgroundLayerZ,
+                    OriginMode = "Origin_LT",
+                    ControlTabId = UserPreviewControlTabId,
+                    ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
+                    ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),
+                    UserControlNormalStringPoolId = UserPreviewControlNormalStringPoolId,
+                    UserControlSelectedStringPoolId = UserPreviewControlSelectedStringPoolId,
                     BackgroundIndex = 0,
                     BackgroundCanvasCount = PreviewBackgroundCanvasCount,
                     WearInfoCapacity = ClientWearInfoCapacity,
@@ -905,6 +926,13 @@ namespace HaCreator.MapSimulator.UI
                     LayerPosition = new Point(PreviewX, PreviewY),
                     LayerSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
                     AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
+                    LayerZ = PreviewBackgroundLayerZ,
+                    OriginMode = "Origin_LT",
+                    ControlTabId = UserPreviewControlTabId,
+                    ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
+                    ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),
+                    UserControlNormalStringPoolId = UserPreviewControlNormalStringPoolId,
+                    UserControlSelectedStringPoolId = UserPreviewControlSelectedStringPoolId,
                     BackgroundIndex = ResolvePreviewIndex(),
                     BackgroundCanvasCount = Math.Max(PreviewBackgroundCanvasCount, _previewBackgrounds?.Length ?? 0),
                     WearInfoCapacity = ClientWearInfoCapacity,

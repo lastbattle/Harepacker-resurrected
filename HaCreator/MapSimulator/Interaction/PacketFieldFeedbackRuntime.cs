@@ -820,7 +820,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string sender = ReadMapleString(reader);
-            string body = NormalizePacketOwnedFieldChatBody(ReadMapleString(reader));
+            string body = NormalizePacketOwnedGroupChatBody(ReadMapleString(reader));
 
             if (ShouldSuppressBlacklistedGroupMessage(family, sender, callbacks))
             {
@@ -871,7 +871,7 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        body = NormalizePacketOwnedFieldChatBody(body);
+                        body = ProcessPacketOwnedFieldChatBody(body);
                         TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         string text = ResolveIncomingWhisperLogText(sender, channelId, body, callbacks);
                         callbacks?.AddClientChatMessage?.Invoke(text, 1, sender);
@@ -986,7 +986,7 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         ReadMapleString(reader);
                         reader.ReadByte();
-                        string text = NormalizePacketOwnedFieldChatBody(ReadMapleString(reader));
+                        string text = ProcessPacketOwnedFieldChatBody(ReadMapleString(reader));
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             callbacks?.ShowBlowWeatherMessage?.Invoke(text);
@@ -1028,7 +1028,6 @@ namespace HaCreator.MapSimulator.Interaction
                         }
 
                         string body = ReadMapleString(reader);
-                        body = NormalizePacketOwnedFieldChatBody(body);
                         callbacks?.AddClientChatMessage?.Invoke(body, 6, null);
                         _statusMessage = "Applied packet-owned couple notice.";
                         message = _statusMessage;
@@ -1039,7 +1038,7 @@ namespace HaCreator.MapSimulator.Interaction
                         string sender = ReadMapleString(reader);
                         reader.ReadByte();
                         string body = ReadMapleString(reader);
-                        body = NormalizePacketOwnedFieldChatBody(body);
+                        body = ProcessPacketOwnedFieldChatBody(body);
                         callbacks?.AddClientChatMessage?.Invoke(
                             FormatFieldFeedbackStringPoolText(
                                 CoupleSharedChatStringPoolId,
@@ -1211,13 +1210,6 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyObstacleReset(int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
         {
             HashSet<string> resetTags = new(StringComparer.OrdinalIgnoreCase);
-            foreach (string tag in _obstacleStates.Keys)
-            {
-                if (!string.IsNullOrWhiteSpace(tag))
-                {
-                    resetTags.Add(tag);
-                }
-            }
 
             IReadOnlyCollection<string> knownObstacleTags = callbacks?.EnumerateFieldObstacleTags?.Invoke();
             if (knownObstacleTags != null)
@@ -1227,6 +1219,16 @@ namespace HaCreator.MapSimulator.Interaction
                     if (!string.IsNullOrWhiteSpace(tag))
                     {
                         resetTags.Add(tag.Trim());
+                    }
+                }
+            }
+            else
+            {
+                foreach (string tag in _obstacleStates.Keys)
+                {
+                    if (!string.IsNullOrWhiteSpace(tag))
+                    {
+                        resetTags.Add(tag);
                     }
                 }
             }
@@ -1686,9 +1688,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            bool isEnabled = stateIndex != 0;
-            _obstacleStates[tag] = isEnabled;
-            ApplyObjectStateIndex(tag, stateIndex, currentTick, callbacks);
+            bool applied = ApplyObjectStateIndex(tag, stateIndex, currentTick, callbacks);
+            if (!applied)
+            {
+                return;
+            }
+
+            if (stateIndex == 0)
+            {
+                _obstacleStates.Remove(tag);
+            }
+            else
+            {
+                _obstacleStates[tag] = true;
+            }
         }
 
         private static bool ApplyObjectStateIndex(string tag, int stateIndex, int currentTick, PacketFieldFeedbackCallbacks callbacks)
@@ -1855,7 +1868,7 @@ namespace HaCreator.MapSimulator.Interaction
             return NormalizeFieldChatText(text, static value => IsDbcsLeadByte(value));
         }
 
-        private static string NormalizePacketOwnedFieldChatBody(string text)
+        private static string ProcessPacketOwnedFieldChatBody(string text)
         {
             string source = text ?? string.Empty;
             if (!ClientCurseProcessParity.TryProcessString(
@@ -1868,7 +1881,12 @@ namespace HaCreator.MapSimulator.Interaction
                 processedText = ClientCurseProcessParity.GetInappropriateContentNotice();
             }
 
-            return NormalizeFieldChatText(processedText);
+            return processedText;
+        }
+
+        private static string NormalizePacketOwnedGroupChatBody(string text)
+        {
+            return NormalizeFieldChatText(ProcessPacketOwnedFieldChatBody(text));
         }
 
         private static string NormalizeFieldChatText(string text, Func<byte, bool> isDbcsLeadByte)
@@ -1909,6 +1927,8 @@ namespace HaCreator.MapSimulator.Interaction
                 if (IsDbcsLeadByte(normalized[index], isDbcsLeadByte)
                     && index + 1 < normalized.Length)
                 {
+                    normalized[index] = 0x20;
+                    normalized[index + 1] = 0x20;
                     index += 2;
                     continue;
                 }

@@ -5,10 +5,46 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class SummonDamageRuntimeRules
     {
+        public enum BodyContactDamageFormulaKind
+        {
+            PDamageSummoned,
+            MDamageSummoned
+        }
+
+        public readonly record struct BodyContactDamageFormulaTrace(
+            BodyContactDamageFormulaKind FormulaKind,
+            int AttackValue,
+            uint DamageRandom,
+            double RolledBaseDamage,
+            int AdditiveDefense,
+            int AttackLevel,
+            int TargetLevel,
+            int PassiveDamageReductionPercent,
+            double DefenseAdjustedDamage,
+            int InvinciblePercent,
+            int SwallowDefensePercent,
+            int PowerOrMagicUpPercent,
+            double FinalUnclampedDamage);
+
+        public readonly record struct BodyContactDamageFormulaInput(
+            BodyContactDamageFormulaKind FormulaKind,
+            int AttackValue,
+            uint DamageRandom,
+            int AdditiveDefense = 0,
+            int AttackLevel = 0,
+            int TargetLevel = 0,
+            int PassiveDamageReductionPercent = 0,
+            int InvinciblePercent = 0,
+            int SwallowDefensePercent = 0,
+            int PowerOrMagicUpPercent = 0);
+
         public readonly record struct BodyContactDamageResult(
             int BaseDamage,
             MobDamageType DamageType,
-            int Damage);
+            int Damage)
+        {
+            public BodyContactDamageFormulaTrace FormulaTrace { get; init; }
+        }
 
         public static int ResolveRemainingHealth(int currentHealth, int maxHealth, int damage)
         {
@@ -132,7 +168,160 @@ namespace HaCreator.MapSimulator.Character.Skills
             int resolvedDamage = currentAttackIsMagic
                 ? ResolveMagicalDamageSummoned(baseDamage, outgoingDamageResolver)
                 : ResolvePhysicalDamageSummoned(baseDamage, outgoingDamageResolver);
-            return new BodyContactDamageResult(baseDamage, damageType, resolvedDamage);
+            BodyContactDamageFormulaKind formulaKind = currentAttackIsMagic
+                ? BodyContactDamageFormulaKind.MDamageSummoned
+                : BodyContactDamageFormulaKind.PDamageSummoned;
+            return new BodyContactDamageResult(baseDamage, damageType, resolvedDamage)
+            {
+                FormulaTrace = BuildDelegatedDamageFormulaTrace(
+                    formulaKind,
+                    baseDamage,
+                    resolvedDamage)
+            };
+        }
+
+        public static int ResolveDamageSummonedFormula(
+            BodyContactDamageFormulaInput input,
+            out BodyContactDamageFormulaTrace trace)
+        {
+            trace = ResolveDamageSummonedFormulaTrace(input);
+            return ClampClientSummonedDamage(trace.FinalUnclampedDamage);
+        }
+
+        public static BodyContactDamageFormulaTrace ResolveDamageSummonedFormulaTrace(
+            BodyContactDamageFormulaInput input)
+        {
+            int attackValue = Math.Clamp(input.AttackValue, 0, 29999);
+            double rolledDamage = ResolveClientMobBaseDamage(attackValue, input.DamageRandom);
+            double defenseAdjustedDamage = ResolveClientAdjustedBaseDefense(
+                rolledDamage,
+                input.AdditiveDefense,
+                input.AttackLevel,
+                input.TargetLevel,
+                input.PassiveDamageReductionPercent);
+
+            double reducedDamage = defenseAdjustedDamage;
+            int invinciblePercent = input.FormulaKind == BodyContactDamageFormulaKind.PDamageSummoned
+                ? Math.Clamp(input.InvinciblePercent, 0, 100)
+                : 0;
+            if (invinciblePercent > 0)
+            {
+                reducedDamage -= invinciblePercent * reducedDamage / 100.0;
+            }
+
+            int swallowDefensePercent = Math.Clamp(input.SwallowDefensePercent, 0, 100);
+            if (swallowDefensePercent > 0)
+            {
+                reducedDamage -= swallowDefensePercent * reducedDamage / 100.0;
+            }
+
+            int powerOrMagicUpPercent = Math.Max(0, input.PowerOrMagicUpPercent);
+            double finalDamage = powerOrMagicUpPercent > 0
+                ? powerOrMagicUpPercent * reducedDamage / 100.0
+                : reducedDamage;
+
+            return new BodyContactDamageFormulaTrace(
+                input.FormulaKind,
+                attackValue,
+                input.DamageRandom,
+                rolledDamage,
+                Math.Max(0, input.AdditiveDefense),
+                Math.Max(0, input.AttackLevel),
+                Math.Max(0, input.TargetLevel),
+                Math.Max(0, input.PassiveDamageReductionPercent),
+                defenseAdjustedDamage,
+                invinciblePercent,
+                swallowDefensePercent,
+                powerOrMagicUpPercent,
+                finalDamage);
+        }
+
+        public static double ResolveClientMobBaseDamage(int attackValue, uint randomValue)
+        {
+            int clampedAttackValue = Math.Clamp(attackValue, 0, 29999);
+            return ResolveClientRandomRange(
+                randomValue,
+                clampedAttackValue,
+                0.85 * clampedAttackValue);
+        }
+
+        public static double ResolveClientAdjustedBaseDefense(
+            double damage,
+            int additiveDefense,
+            int attackLevel,
+            int targetLevel,
+            int passiveDamageReductionPercent)
+        {
+            int defense = Math.Max(0, additiveDefense);
+            double quarterDefense = defense * 0.25;
+            int fixedCanceling = (int)(0.5 + quarterDefense);
+            int sqrtDefense = (int)Math.Sqrt(quarterDefense);
+            int percentCanceling = sqrtDefense
+                                   + Math.Max(0, passiveDamageReductionPercent) * sqrtDefense / 100;
+
+            int resolvedAttackLevel = Math.Max(0, attackLevel);
+            int resolvedTargetLevel = Math.Max(0, targetLevel);
+            if (resolvedTargetLevel < resolvedAttackLevel)
+            {
+                int levelDifference = Math.Abs(resolvedAttackLevel - resolvedTargetLevel);
+                fixedCanceling -= Math.Min(levelDifference * 4, fixedCanceling);
+                percentCanceling -= Math.Min(levelDifference * 2, percentCanceling);
+            }
+
+            double fixedAdjustedDamage = damage - fixedCanceling;
+            double percentAdjustedDamage = damage * (100 - percentCanceling) / 100.0;
+            double result = Math.Min(fixedAdjustedDamage, percentAdjustedDamage);
+            return result <= 1.0 ? 1.0 : result;
+        }
+
+        public static double ResolveClientRandomRange(uint randomValue, double first, double second)
+        {
+            if (first.Equals(second))
+            {
+                return first;
+            }
+
+            double low = Math.Min(first, second);
+            double high = Math.Max(first, second);
+            return low + randomValue % 10000000 * (high - low) / 9999999.0;
+        }
+
+        public static int ClampClientSummonedDamage(double damage)
+        {
+            if (damage <= 1.0)
+            {
+                return 1;
+            }
+
+            if (damage > 999999.0)
+            {
+                return 999999;
+            }
+
+            return (int)damage;
+        }
+
+        private static BodyContactDamageFormulaTrace BuildDelegatedDamageFormulaTrace(
+            BodyContactDamageFormulaKind formulaKind,
+            int baseDamage,
+            int resolvedDamage)
+        {
+            int attackValue = Math.Clamp(baseDamage, 0, 29999);
+            double finalDamage = Math.Max(1, resolvedDamage);
+            return new BodyContactDamageFormulaTrace(
+                formulaKind,
+                attackValue,
+                DamageRandom: 0,
+                RolledBaseDamage: attackValue,
+                AdditiveDefense: 0,
+                AttackLevel: 0,
+                TargetLevel: 0,
+                PassiveDamageReductionPercent: 0,
+                DefenseAdjustedDamage: attackValue,
+                InvinciblePercent: 0,
+                SwallowDefensePercent: 0,
+                PowerOrMagicUpPercent: 0,
+                FinalUnclampedDamage: finalDamage);
         }
 
         public static int ResolveBodyContactRelativeMotionX(

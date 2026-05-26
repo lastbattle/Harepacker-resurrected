@@ -178,7 +178,22 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            if (request.CloseExistingDialog || request.State == null)
+            if (request.State == null)
+            {
+                if (request.CloseExistingDialog)
+                {
+                    _npcInteractionOverlay.Close();
+                    _packetScriptDedicatedOwnerRuntime.Clear();
+                    ClearPacketScriptDedicatedOwnerVisualState();
+                    ClearAnimationDisplayerLocalQuestDeliveryOwner();
+                    _activeNpcInteractionNpc = null;
+                    _activeNpcInteractionNpcId = 0;
+                }
+
+                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+            }
+
+            if (request.CloseExistingDialog)
             {
                 _npcInteractionOverlay.Close();
                 _packetScriptDedicatedOwnerRuntime.Clear();
@@ -186,7 +201,6 @@ namespace HaCreator.MapSimulator
                 ClearAnimationDisplayerLocalQuestDeliveryOwner();
                 _activeNpcInteractionNpc = null;
                 _activeNpcInteractionNpcId = 0;
-                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
             }
 
             _gameState.EnterDirectionMode();

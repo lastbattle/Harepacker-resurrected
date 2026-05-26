@@ -358,6 +358,11 @@ namespace HaCreator.MapSimulator.Entities
             _color = new Color(_color.R, _color.G, _color.B, alpha);
         }
 
+        public void SetRgbTint(byte red, byte green, byte blue)
+        {
+            _color = new Color(red, green, blue, _color.A);
+        }
+
         public bool Front { get { return front; } }
 
         public int PageId { get { return _pageId; } }

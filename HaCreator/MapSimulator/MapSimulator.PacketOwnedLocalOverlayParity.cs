@@ -122,6 +122,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
         private const int PacketOwnedBalloonClientCenterArrowBottomInset = 9;
         private const double PacketOwnedBalloonClientCenterArrowBias = 0.699999988079071d;
+        private const int PacketOwnedBalloonNativeLayerZ = -1;
+        private const int PacketOwnedBalloonNativeFontSlotCount = 12;
         private const int PacketOwnedBalloonInlineIconSize = 16;
         private const int PacketOwnedBalloonInlineIconSpacing = 2;
         private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
@@ -723,7 +725,7 @@ namespace HaCreator.MapSimulator
             return Math.Max(0, requestedWidth);
         }
 
-        private int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
+        private static int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
         {
             return Math.Max(1, ResolvePacketOwnedBalloonContentWidth(requestedWidth));
         }
@@ -2282,6 +2284,7 @@ namespace HaCreator.MapSimulator
                 bodyHeight,
                 lifetimeMs,
                 expiresAt,
+                ResolvePacketOwnedBalloonWrapWidth(requestedWidth),
                 analyzedLineCount,
                 lineHeight,
                 ResolvePacketOwnedBalloonClientInitArrowKind());
@@ -2347,6 +2350,7 @@ namespace HaCreator.MapSimulator
                 layerHeight,
                 message.LifetimeMs,
                 message.ExpiresAt,
+                ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth),
                 analyzedLineCount,
                 lineHeight,
                 arrowKind);
@@ -2362,23 +2366,33 @@ namespace HaCreator.MapSimulator
             int layerHeight,
             int lifetimeMs,
             int expiresAt,
+            int textAnalyzerWrapWidth,
             int analyzedLineCount,
             int lineHeight,
             PacketOwnedBalloonArrowKind arrowKind)
         {
+            bool hasOriginVector = anchorMode == LocalOverlayBalloonAnchorMode.Avatar;
             return new LocalOverlayBalloonNativeLayerSnapshot(
                 ownerIdentity,
                 anchorMode,
                 anchor,
                 new Point(bodyBounds.X, bodyBounds.Y),
+                PacketOwnedBalloonNativeLayerZ,
                 packetWidth,
                 layerWidth,
                 layerHeight,
                 lifetimeMs,
                 expiresAt,
+                hasOriginVector ? "Avatar" : "Field",
+                "AvatarLayerUnderFace",
+                hasOriginVector ? "PacketOriginVector" : "ScreenPoint",
+                true,
+                hasOriginVector,
+                PacketOwnedBalloonNativeFontSlotCount,
+                Math.Max(0, textAnalyzerWrapWidth),
                 Math.Max(0, analyzedLineCount),
                 Math.Max(0, lineHeight),
-                anchorMode == LocalOverlayBalloonAnchorMode.Avatar,
+                hasOriginVector,
                 arrowKind.ToString());
         }
 

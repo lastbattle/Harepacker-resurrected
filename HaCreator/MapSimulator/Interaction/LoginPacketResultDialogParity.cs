@@ -18,6 +18,11 @@ namespace HaCreator.MapSimulator
         UpdatePinCodeResult = 13,
         EnableSpwResult = 14,
         CheckSpwResult = 15,
+        CheckPasswordResult = 16,
+        CheckPasswordResultLicense = 17,
+        GuestIdLoginResult = 18,
+        GuestIdLoginResultLicense = 19,
+        WebsiteHandoff = 20,
     }
 
     internal static class LoginPacketResultDialogParity
@@ -58,6 +63,19 @@ namespace HaCreator.MapSimulator
 
         public static LoginPacketResultDialogOwner ResolveCheckSpwOwner() =>
             LoginPacketResultDialogOwner.CheckSpwResult;
+
+        public static LoginPacketResultDialogOwner ResolveCheckPasswordOwner(bool licenseAgreement = false) =>
+            licenseAgreement
+                ? LoginPacketResultDialogOwner.CheckPasswordResultLicense
+                : LoginPacketResultDialogOwner.CheckPasswordResult;
+
+        public static LoginPacketResultDialogOwner ResolveGuestIdLoginOwner(bool licenseAgreement = false) =>
+            licenseAgreement
+                ? LoginPacketResultDialogOwner.GuestIdLoginResultLicense
+                : LoginPacketResultDialogOwner.GuestIdLoginResult;
+
+        public static LoginPacketResultDialogOwner ResolveWebsiteHandoffOwner() =>
+            LoginPacketResultDialogOwner.WebsiteHandoff;
 
         public static LoginPacketResultDialogOwner ResolveDeleteCharacterOwner(byte? resultCode)
         {

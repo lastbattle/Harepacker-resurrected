@@ -7901,7 +7901,9 @@ namespace HaCreator.MapSimulator
             Vector2 fallbackPosition = presentation.WorldOrigin
                 ?? getOwnerPosition?.Invoke()
                 ?? Vector2.Zero;
-            bool fallbackFacingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
+            bool fallbackFacingRight = presentation.FacingRightOverride
+                ?? getOwnerFacingRight?.Invoke()
+                ?? presentation.FacingRight;
             TryRememberRemoteTownPortalSkillCastObservation(presentation.CharacterId, presentation.SkillId, fallbackPosition);
             int delayRate = presentation.DelayRateOverride is > 0
                 ? presentation.DelayRateOverride.Value
@@ -8786,7 +8788,8 @@ namespace HaCreator.MapSimulator
                         branchName,
                         presentation.OriginOffset,
                         presentation.FollowOwnerFacing,
-                        presentation.FollowOwnerPosition);
+                        presentation.FollowOwnerPosition,
+                        presentation.FacingRightOverride);
                 }
             }
 
@@ -8803,7 +8806,8 @@ namespace HaCreator.MapSimulator
                         branchName,
                         presentation.OriginOffset,
                         presentation.FollowOwnerFacing,
-                        presentation.FollowOwnerPosition);
+                        presentation.FollowOwnerPosition,
+                        presentation.FacingRightOverride);
                 }
             }
         }

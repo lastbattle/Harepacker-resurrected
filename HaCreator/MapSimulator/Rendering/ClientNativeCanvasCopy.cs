@@ -190,6 +190,85 @@ namespace HaCreator.MapSimulator.Rendering
                 maxChannelDelta);
         }
 
+        internal static NativeCopyCaptureComparison CompareAlpha255CaptureRegion(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            Color[] sourcePixels,
+            int sourceWidth,
+            int sourceHeight,
+            int x,
+            int y,
+            Color[] nativeCapturedPixels,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight)
+        {
+            if (nativeCapturedPixels == null ||
+                destinationWidth <= 0 ||
+                destinationHeight <= 0 ||
+                captureWidth <= 0 ||
+                captureHeight <= 0 ||
+                nativeCapturedPixels.Length < captureWidth * captureHeight)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            Color[] managedPixels = CopyAlpha255PixelsForTesting(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                sourcePixels,
+                sourceWidth,
+                sourceHeight,
+                x,
+                y);
+            if (managedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            int left = Math.Max(0, captureX);
+            int top = Math.Max(0, captureY);
+            int right = Math.Min(destinationWidth, captureX + captureWidth);
+            int bottom = Math.Min(destinationHeight, captureY + captureHeight);
+            if (right <= left || bottom <= top)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            int mismatchedPixels = 0;
+            int maxChannelDelta = 0;
+            int comparedPixels = 0;
+            for (int pixelY = top; pixelY < bottom; pixelY++)
+            {
+                int nativeY = pixelY - captureY;
+                for (int pixelX = left; pixelX < right; pixelX++)
+                {
+                    int nativeX = pixelX - captureX;
+                    Color managed = managedPixels[pixelY * destinationWidth + pixelX];
+                    Color native = nativeCapturedPixels[nativeY * captureWidth + nativeX];
+                    int channelDelta = Math.Max(
+                        Math.Max(Math.Abs(managed.A - native.A), Math.Abs(managed.R - native.R)),
+                        Math.Max(Math.Abs(managed.G - native.G), Math.Abs(managed.B - native.B)));
+                    if (channelDelta != 0)
+                    {
+                        mismatchedPixels++;
+                        maxChannelDelta = Math.Max(maxChannelDelta, channelDelta);
+                    }
+
+                    comparedPixels++;
+                }
+            }
+
+            return new NativeCopyCaptureComparison(
+                true,
+                comparedPixels,
+                mismatchedPixels,
+                maxChannelDelta);
+        }
+
         private static Bitmap CreateBitmapFromPixelsForTesting(Color[] pixels, int width, int height)
         {
             Bitmap bitmap = new(width, height, PixelFormat.Format32bppArgb);

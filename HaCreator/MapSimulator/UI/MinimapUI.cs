@@ -1499,8 +1499,14 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (_bIsCollapsedState || _helperMarkers.Count == 0 || _trackedUserMarkerCount == 0)
+            if (!ShouldEvaluateTrackedUserMarkersForTesting(
+                    _bIsCollapsedState,
+                    _helperMarkers.Count,
+                    _directionMarkers.Count,
+                    _trackedUserMarkerCount))
+            {
                 return;
+            }
 
             for (int i = 0; i < _trackedUserMarkerCount; i++)
             {
@@ -1624,6 +1630,17 @@ namespace HaCreator.MapSimulator.UI
                 || minimapPoint.Y < 0
                 || minimapPoint.X >= paneWidth
                 || minimapPoint.Y >= paneHeight;
+        }
+
+        internal static bool ShouldEvaluateTrackedUserMarkersForTesting(
+            bool isCollapsed,
+            int helperMarkerCount,
+            int directionMarkerCount,
+            int trackedUserMarkerCount)
+        {
+            return !isCollapsed
+                && trackedUserMarkerCount > 0
+                && (helperMarkerCount > 0 || directionMarkerCount > 0);
         }
 
         internal static bool ShouldRegisterTrackedUserHoverTargetForTesting(

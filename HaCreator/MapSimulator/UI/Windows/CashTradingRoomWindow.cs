@@ -111,6 +111,15 @@ namespace HaCreator.MapSimulator.UI
             public string RemoteProgressState { get; init; } = string.Empty;
             public int Revision { get; init; }
             public string PacketSignature { get; init; } = string.Empty;
+            public int PacketCommoditySerialNumber { get; init; }
+            public int PacketItemId { get; init; }
+            public int PacketPrice { get; init; }
+            public int PacketQuantity { get; init; }
+            public bool PacketCommodityOnSale { get; init; }
+            public string PacketListingTitle { get; init; } = string.Empty;
+            public string PacketSeller { get; init; } = string.Empty;
+            public string PacketListingSignature { get; init; } = string.Empty;
+            public string PacketSummary { get; init; } = string.Empty;
         }
 
         public sealed class TradingRoomRuntimeSnapshot
@@ -218,6 +227,15 @@ namespace HaCreator.MapSimulator.UI
             public TradeSessionStage Stage { get; set; } = TradeSessionStage.Draft;
             public int Revision { get; set; }
             public string PacketSignature { get; set; } = string.Empty;
+            public int PacketCommoditySerialNumber { get; set; }
+            public int PacketItemId { get; set; }
+            public int PacketPrice { get; set; }
+            public int PacketQuantity { get; set; }
+            public bool PacketCommodityOnSale { get; set; }
+            public string PacketListingTitle { get; set; } = string.Empty;
+            public string PacketSeller { get; set; } = string.Empty;
+            public string PacketListingSignature { get; set; } = string.Empty;
+            public string PacketSummary { get; set; } = string.Empty;
         }
 
         private const int ChatEditX = 410;
@@ -470,6 +488,23 @@ namespace HaCreator.MapSimulator.UI
                 VisibleChatEntries = Array.Empty<string>(),
                 FocusTarget = TradeOwnerFocusTarget.ChatEdit.ToString(),
                 StatusMessage = "CCashTradingRoomDlg initial runtime snapshot."
+            };
+        }
+
+        internal static TradeSessionRuntimeSnapshot BuildPacketTradeSessionRuntimeSnapshotForTests(PacketTradeSessionSnapshot packetSnapshot)
+        {
+            return new TradeSessionRuntimeSnapshot
+            {
+                PacketSignature = packetSnapshot?.Signature ?? string.Empty,
+                PacketCommoditySerialNumber = packetSnapshot?.CommoditySerialNumber ?? 0,
+                PacketItemId = packetSnapshot?.ItemId ?? 0,
+                PacketPrice = packetSnapshot?.Price ?? 0,
+                PacketQuantity = packetSnapshot?.Quantity ?? 0,
+                PacketCommodityOnSale = packetSnapshot?.CommodityOnSale == true,
+                PacketListingTitle = packetSnapshot?.ListingTitle ?? string.Empty,
+                PacketSeller = packetSnapshot?.Seller ?? string.Empty,
+                PacketListingSignature = packetSnapshot?.ListingSignature ?? string.Empty,
+                PacketSummary = packetSnapshot?.PacketSummary ?? string.Empty
             };
         }
 
@@ -1032,6 +1067,15 @@ namespace HaCreator.MapSimulator.UI
 
             _packetSessionSignature = signature;
             _sessionRuntime.PacketSignature = signature;
+            _sessionRuntime.PacketCommoditySerialNumber = snapshot.CommoditySerialNumber;
+            _sessionRuntime.PacketItemId = snapshot.ItemId;
+            _sessionRuntime.PacketPrice = snapshot.Price;
+            _sessionRuntime.PacketQuantity = snapshot.Quantity;
+            _sessionRuntime.PacketCommodityOnSale = snapshot.CommodityOnSale;
+            _sessionRuntime.PacketListingTitle = snapshot.ListingTitle ?? string.Empty;
+            _sessionRuntime.PacketSeller = snapshot.Seller ?? string.Empty;
+            _sessionRuntime.PacketListingSignature = snapshot.ListingSignature ?? string.Empty;
+            _sessionRuntime.PacketSummary = snapshot.PacketSummary ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(snapshot.Seller))
             {
                 _remoteTraderName = snapshot.Seller.Trim();
@@ -1161,7 +1205,16 @@ namespace HaCreator.MapSimulator.UI
                     RemoteAccepted = _remoteAccepted,
                     RemoteProgressState = _remoteProgressState.ToString(),
                     Revision = _sessionRuntime.Revision,
-                    PacketSignature = _sessionRuntime.PacketSignature ?? string.Empty
+                    PacketSignature = _sessionRuntime.PacketSignature ?? string.Empty,
+                    PacketCommoditySerialNumber = _sessionRuntime.PacketCommoditySerialNumber,
+                    PacketItemId = _sessionRuntime.PacketItemId,
+                    PacketPrice = _sessionRuntime.PacketPrice,
+                    PacketQuantity = _sessionRuntime.PacketQuantity,
+                    PacketCommodityOnSale = _sessionRuntime.PacketCommodityOnSale,
+                    PacketListingTitle = _sessionRuntime.PacketListingTitle ?? string.Empty,
+                    PacketSeller = _sessionRuntime.PacketSeller ?? string.Empty,
+                    PacketListingSignature = _sessionRuntime.PacketListingSignature ?? string.Empty,
+                    PacketSummary = _sessionRuntime.PacketSummary ?? string.Empty
                 },
                 ButtonControls = BuildButtonControlRuntimeStates(_focusedControl),
                 VisibleChatEntries = visibleChatEntries,

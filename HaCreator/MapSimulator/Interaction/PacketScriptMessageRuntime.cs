@@ -124,12 +124,12 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (entry == null)
                 {
-                request = new PacketScriptMessageOpenRequest(
-                    null,
-                    speaker.NpcId,
-                    CloseExistingDialog: decoded.CloseExistingDialog || entry == null,
-                    AutoResponse: autoResponse,
-                    DedicatedOwner: decoded.DedicatedOwner);
+                    request = new PacketScriptMessageOpenRequest(
+                        null,
+                        speaker.NpcId,
+                        CloseExistingDialog: decoded.CloseExistingDialog,
+                        AutoResponse: autoResponse,
+                        DedicatedOwner: decoded.DedicatedOwner);
                     _activePromptContext = null;
                     _statusMessage = autoResponse?.Summary ?? decoded.StatusMessage ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
                     message = _statusMessage;

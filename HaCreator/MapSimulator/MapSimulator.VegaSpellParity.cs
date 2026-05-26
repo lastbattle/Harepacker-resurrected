@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using MapleLib.PacketLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
@@ -40,7 +41,6 @@ namespace HaCreator.MapSimulator
         private const byte VegaClientInventoryOperationSlotTypeEquip = 1;
         private const byte VegaClientInventoryOperationSlotTypeBundle = 2;
         private const byte VegaClientInventoryOperationSlotTypePet = 3;
-        private const string VegaResultLoopSoundKeyPrefix = "PacketOwnedSound:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
         private bool _vegaResultLoopSoundActive;
@@ -2780,7 +2780,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            string soundKey = BuildVegaResultLoopSoundKey(resolvedDescriptor);
+            string soundKey = BuildVegaResultLoopSoundKey(resolvedDescriptor, soundProperty);
             if (_soundManager.TryPlayClientSoundEffect(
                     soundKey,
                     soundProperty,
@@ -2859,15 +2859,17 @@ namespace HaCreator.MapSimulator
 
         internal static string BuildVegaResultLoopSoundKeyForTests(string resolvedDescriptor)
         {
-            return BuildVegaResultLoopSoundKey(resolvedDescriptor);
+            return BuildVegaResultLoopSoundKey(resolvedDescriptor, soundProperty: null);
         }
 
-        private static string BuildVegaResultLoopSoundKey(string resolvedDescriptor)
+        private static string BuildVegaResultLoopSoundKey(
+            string resolvedDescriptor,
+            WzBinaryProperty soundProperty)
         {
             string normalizedDescriptor = NormalizeVegaResultLoopSoundDescriptor(
                 resolvedDescriptor,
                 VegaResultPreludeLoopSoundFallback);
-            return $"{VegaResultLoopSoundKeyPrefix}:{normalizedDescriptor}";
+            return SoundManager.BuildPacketOwnedClientSoundKey(normalizedDescriptor, soundProperty);
         }
 
         internal static string NormalizeVegaResultLoopSoundDescriptorForTests(string descriptor)

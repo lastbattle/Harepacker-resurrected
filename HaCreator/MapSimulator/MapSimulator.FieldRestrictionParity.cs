@@ -212,6 +212,14 @@ namespace HaCreator.MapSimulator
             {
                 _gameState?.SetStandAloneMode(true);
             }
+            else if (FieldInteractionRestrictionEvaluator.ShouldApplyPartyStandAloneMode(
+                         _mapBoard?.MapInfo,
+                         _socialListRuntime?.HasPartyAdmissionContext() == true,
+                         _socialListRuntime?.UsesPacketOwnedPartyAdmissionContext() == true,
+                         _socialListRuntime?.HasPacketOwnedPartyAdmissionContext() == true))
+            {
+                _gameState?.SetStandAloneMode(true);
+            }
 
             PetController pets = _playerManager?.Pets;
             if (pets != null)

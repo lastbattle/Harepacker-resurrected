@@ -75,10 +75,10 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>(?:raw[\s_\-]*)?move[\s_\-]*action)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88VecCtrlMismatchClassAssignmentRegex = new(
-            @"[""']?(?<label>(?:vec(?:tor)?[\s_\-]*)?(?:ctrl|control|owner|state)[\s_\-]*(?:mismatch|diff|parity)|(?:m[\s_\-]*)?pvc[\s_\-]*(?:mismatch|diff|parity)|vec[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            @"[""']?(?<label>(?:vec(?:tor)?[\s_\-]*)?(?:ctrl|control|owner|state)(?:[\s_\-]*(?:byte|flag|release))?[\s_\-]*(?:mismatch|diff|parity)|c[\s_\-:>.]*vec[\s_\-:>.]*ctrl[\s_\-:>.]*release[\s_\-]*(?:mismatch|diff|parity)|(?:m[\s_\-]*)?pvc[\s_\-]*(?:mismatch|diff|parity)|vec[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88VecCtrlFieldValueRegex = new(
-            @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner|owner[\s_\-]*(?:byte|state|flag)|c[\s_\-:>.]*vec[\s_\-:>.]*ctrl[\s_\-:>.]*release|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
             @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
@@ -1958,6 +1958,25 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
+                case "ownerbyte":
+                case "ownerstate":
+                case "ownerflag":
+                case "ownerbytemismatch":
+                case "ownerbytediff":
+                case "ownerbyteparity":
+                case "ownerstatemismatch":
+                case "ownerstatediff":
+                case "ownerstateparity":
+                case "ownerflagmismatch":
+                case "ownerflagdiff":
+                case "ownerflagparity":
+                case "cvectrlrelease":
+                case "cvectrlreleasereturn":
+                case "cvectrlreleasebyte":
+                case "cvectrlreleasevalue":
+                case "cvectrlreleasemismatch":
+                case "cvectrlreleasediff":
+                case "cvectrlreleaseparity":
                 case "pvc":
                 case "mpvc":
                 case "pvcbyte":

@@ -332,6 +332,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ImeCandidateWindowMinimumWidth = 64;
         private const int ImeCandidateWindowBorderPadding = 2;
         private const int ImeCandidateWindowHorizontalPadding = 4;
+        private static readonly Color ClientEditImeCandidateTextColor = Color.Black;
+        private static readonly Color ClientEditImeCandidateSelectedTextColor = Color.White;
+        private static readonly Color ClientEditImeCandidateTextShadowColor = Color.Transparent;
         private const byte ImeCompositionAttributeTargetConverted = 1;
         private const byte ImeCompositionAttributeTargetNotConverted = 3;
         private Point _pointNotificationAnchor = new Point(512, 60);
@@ -498,6 +501,19 @@ namespace HaCreator.MapSimulator.UI
                 && pressedCandidateIndex >= 0
                 && pressedListIndex == hoveredListIndex
                 && pressedCandidateIndex == hoveredCandidateIndex;
+        }
+
+        internal static Color ResolveClientEditImeCandidateTextColor(bool selected)
+        {
+            // CCtrlEdit::OnCreate creates m_pFontCand as black and m_pFontCandSel as white.
+            return selected
+                ? ClientEditImeCandidateSelectedTextColor
+                : ClientEditImeCandidateTextColor;
+        }
+
+        internal static Color ResolveClientEditImeCandidateTextShadowColor()
+        {
+            return ClientEditImeCandidateTextShadowColor;
         }
 
         internal static int ResolveClientEditImeCandidateIndexFromPoint(
@@ -2143,8 +2159,8 @@ namespace HaCreator.MapSimulator.UI
                         candidateIndex == candidateListState.Selection,
                         bounds.Width - (ImeCandidateWindowHorizontalPadding * 2),
                         rowHeight,
-                        textColor,
-                        shadowColor);
+                        ResolveClientEditImeCandidateTextColor(candidateIndex == candidateListState.Selection),
+                        ResolveClientEditImeCandidateTextShadowColor());
                     RegisterImeCandidateHitRegion(
                         new Rectangle(
                             bounds.X,
@@ -2169,8 +2185,8 @@ namespace HaCreator.MapSimulator.UI
                     candidateIndex == candidateListState.Selection,
                     Math.Max(1, cellWidth - 2),
                     Math.Max(1, ResolveFontLineSpacing() + 1),
-                    textColor,
-                    shadowColor);
+                    ResolveClientEditImeCandidateTextColor(candidateIndex == candidateListState.Selection),
+                    ResolveClientEditImeCandidateTextShadowColor());
                 RegisterImeCandidateHitRegion(
                     new Rectangle(
                         bounds.X + 3 + (i * cellWidth),
@@ -2225,8 +2241,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 visibleText,
                 position,
-                selected ? Color.White : textColor,
-                selected ? Color.Black : shadowColor);
+                textColor,
+                shadowColor);
         }
 
         private void DrawWhisperPickerModalComboSelection(

@@ -125,6 +125,7 @@ namespace HaCreator.MapSimulator.Animation
         internal sealed class SecondaryMotionBlurAnimationState
         {
             public bool TerminateRequested { get; set; }
+            public bool PauseRequested { get; set; }
             public bool IsTerminated { get; internal set; }
             public int SimulatedAnimationStateId { get; internal set; }
             public int SimulatedMotionBlurListNodeId { get; internal set; }
@@ -3176,6 +3177,34 @@ namespace HaCreator.MapSimulator.Animation
                 sourceUol);
         }
 
+        internal void AddMobOwnedAttackFalling(
+            List<IDXObject> frames,
+            string sourceUol,
+            float startX,
+            float startY,
+            float endY,
+            float fallSpeed,
+            float horizontalDrift,
+            bool rotation,
+            int currentTimeMs,
+            byte alpha = byte.MaxValue,
+            int initialElapsedMs = 0)
+        {
+            AddFalling(
+                frames,
+                startX,
+                startY,
+                endY,
+                fallSpeed,
+                horizontalDrift,
+                rotation,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.MobOwnedAttackFalling,
+                sourceUol,
+                initialElapsedMs);
+        }
+
         private void AddFallingBurst(
             List<IDXObject> frames,
             float centerX,
@@ -4689,6 +4718,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             _state.TerminateRequested = false;
+            _state.PauseRequested = false;
             _state.IsTerminated = false;
             _state.CaptureRegisteredLayerReferences(
                 _state.SimulatedOverlayLayerHandleId,
@@ -4714,34 +4744,37 @@ namespace HaCreator.MapSimulator.Animation
                 int sampleTime = _nextUpdateTime;
                 _nextUpdateTime += _intervalMs;
 
-                List<IDXObject> snapshotFrames = _snapshotFrameFactory?.Invoke(sampleTime);
-                if (!AnimationEffects.HasFrames(snapshotFrames))
+                if (_state?.PauseRequested != true)
                 {
-                    snapshotFrames = _fallbackFrames;
-                }
-
-                if (AnimationEffects.HasFrames(snapshotFrames))
-                {
-                    Vector2 snapshotPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
-                    bool snapshotFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
-                    Vector2? samplePosition = _snapshotPositionFactory?.Invoke(sampleTime);
-                    bool? sampleFlip = _snapshotFlipFactory?.Invoke(sampleTime);
-                    if (samplePosition.HasValue)
+                    List<IDXObject> snapshotFrames = _snapshotFrameFactory?.Invoke(sampleTime);
+                    if (!AnimationEffects.HasFrames(snapshotFrames))
                     {
-                        snapshotPosition = samplePosition.Value;
+                        snapshotFrames = _fallbackFrames;
                     }
 
-                    if (sampleFlip.HasValue)
+                    if (AnimationEffects.HasFrames(snapshotFrames))
                     {
-                        snapshotFlip = sampleFlip.Value;
-                    }
+                        Vector2 snapshotPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
+                        bool snapshotFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
+                        Vector2? samplePosition = _snapshotPositionFactory?.Invoke(sampleTime);
+                        bool? sampleFlip = _snapshotFlipFactory?.Invoke(sampleTime);
+                        if (samplePosition.HasValue)
+                        {
+                            snapshotPosition = samplePosition.Value;
+                        }
 
-                    _snapshots.Add(new MotionBlurSnapshot(
-                        snapshotPosition,
-                        snapshotFlip,
-                        sampleTime,
-                        snapshotFrames,
-                        CaptureSnapshotTrace(sampleTime, snapshotFrames)));
+                        if (sampleFlip.HasValue)
+                        {
+                            snapshotFlip = sampleFlip.Value;
+                        }
+
+                        _snapshots.Add(new MotionBlurSnapshot(
+                            snapshotPosition,
+                            snapshotFlip,
+                            sampleTime,
+                            snapshotFrames,
+                            CaptureSnapshotTrace(sampleTime, snapshotFrames)));
+                    }
                 }
             }
 
@@ -5547,7 +5580,8 @@ namespace HaCreator.MapSimulator.Animation
     internal enum AnimationFallingOwner
     {
         Generic = 0,
-        PacketOwnedFalling = 1
+        PacketOwnedFalling = 1,
+        MobOwnedAttackFalling = 2
     }
 
     internal enum AnimationAreaAnimationOwner
@@ -6002,6 +6036,32 @@ namespace HaCreator.MapSimulator.Animation
         bool IsByteIdenticalNativeLayer);
 
     /// <summary>
+    /// Presentation boundary between recovered native one-time animation-displayer owners
+    /// and the simulator's managed DX frame renderer.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredPresentationBoundaryState(
+        string NativeDisplayerOwnerEntrypoint,
+        string NativeLoadLayerEntrypoint,
+        string NativeAnimateEntrypoint,
+        string NativeRegisterEntrypoint,
+        string ManagedDrawEntrypoint,
+        string ManagedRendererBackend,
+        string SourceUol,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool UsesNativeGr2DLayerExecution,
+        bool UsesManagedDxFrameExecution,
+        bool IsByteIdenticalNativeOutput,
+        bool UsesLiveOriginResolver,
+        bool UsesLiveFlipResolver,
+        bool UsesOverlayParent,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
+        int LoadLayerCanvasValue,
+        int LoadLayerOptionValue,
+        int LoadLayerAlphaValue,
+        bool LoadLayerFlip,
+        int RegisterOneTimeAnimationDelayMs);
+
+    /// <summary>
     /// Recovered GA_STOP Animate variant setup from one-time animation-displayer owners.
     /// The native path initializes two VARIANTARG values, copies vtMissing into both,
     /// passes them to IWzGr2DLayer::Animate, and then clears both variants.
@@ -6174,6 +6234,8 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredCanvasSettings CanvasSettings,
         CanvasLayerRecoveredLayerSettings LayerSettings,
         CanvasLayerRecoveredPositionSettings Position,
+        bool HasNativePosition,
+        CanvasLayerRecoveredPositionSettings NativePosition,
         CanvasLayerRecoveredInsertCommand[] InsertCommands,
         bool RegistersOneTimeAnimation);
 
@@ -6664,16 +6726,19 @@ namespace HaCreator.MapSimulator.Animation
         {
             bool hasOverlayPosition = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
             int overlayLayerPositionOffsetY = ownerTrace?.OverlayLayerPositionOffsetY ?? 0;
+            CanvasLayerRecoveredPositionSettings primaryPosition = registrationTrace.HasNativePosition
+                ? registrationTrace.NativePosition
+                : registrationTrace.Position;
             CanvasLayerRecoveredPositionSettings overlayPosition = hasOverlayPosition
                 ? new CanvasLayerRecoveredPositionSettings(
-                    registrationTrace.Position.Left,
-                    registrationTrace.Position.Top + overlayLayerPositionOffsetY)
+                    primaryPosition.Left,
+                    primaryPosition.Top + overlayLayerPositionOffsetY)
                 : default;
 
             return new CanvasLayerRecoveredNativeLayerState(
                 registrationTrace.CanvasSettings,
                 registrationTrace.LayerSettings,
-                registrationTrace.Position,
+                primaryPosition,
                 hasOverlayPosition,
                 overlayPosition,
                 registrationTrace.LayerSettings.FinalizeLayerOptionValue,
@@ -7029,7 +7094,9 @@ namespace HaCreator.MapSimulator.Animation
                 0,
                 default,
                 default,
-                registrationTrace.Position,
+                registrationTrace.HasNativePosition
+                    ? registrationTrace.NativePosition
+                    : registrationTrace.Position,
                 0,
                 registrationTrace.CanvasSettings));
 
@@ -7045,8 +7112,12 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     new CanvasLayerRecoveredPositionSettings(
-                        registrationTrace.Position.Left,
-                        registrationTrace.Position.Top + overlayLayerPositionOffsetY),
+                        registrationTrace.HasNativePosition
+                            ? registrationTrace.NativePosition.Left
+                            : registrationTrace.Position.Left,
+                        (registrationTrace.HasNativePosition
+                            ? registrationTrace.NativePosition.Top
+                            : registrationTrace.Position.Top) + overlayLayerPositionOffsetY),
                     0,
                     registrationTrace.CanvasSettings));
             }
@@ -7151,7 +7222,8 @@ namespace HaCreator.MapSimulator.Animation
             int canvasHeight,
             IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
             CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
-            bool registersOneTimeAnimation)
+            bool registersOneTimeAnimation,
+            CanvasLayerRecoveredPositionSettings? recoveredNativePosition = null)
         {
             CanvasLayerRecoveredInsertCommand[] recoveredInsertCommands;
             if (insertDescriptors == null || insertDescriptors.Count == 0)
@@ -7181,6 +7253,8 @@ namespace HaCreator.MapSimulator.Animation
                 new CanvasLayerRecoveredPositionSettings(
                     (int)Math.Round(left, MidpointRounding.AwayFromZero),
                     (int)Math.Round(top, MidpointRounding.AwayFromZero)),
+                recoveredNativePosition.HasValue,
+                recoveredNativePosition.GetValueOrDefault(),
                 recoveredInsertCommands,
                 registersOneTimeAnimation);
         }
@@ -7356,6 +7430,7 @@ namespace HaCreator.MapSimulator.Animation
         internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
         internal OneTimeAnimationRecoveredLayerSurfaceState RecoveredLayerSurfaceState { get; private set; }
         internal OneTimeAnimationRecoveredNativeAnimateVariantState RecoveredNativeAnimateVariantState { get; private set; }
+        internal OneTimeAnimationRecoveredPresentationBoundaryState RecoveredPresentationBoundaryState { get; private set; }
         internal OneTimeAnimationRecoveredBasicFloatTrace? RecoveredBasicFloatTrace { get; private set; }
         internal int CurrentFrameIndex => _currentFrame;
 
@@ -7442,6 +7517,11 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeAnimateVariantState = BuildRecoveredNativeAnimateVariantState(
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
+            RecoveredPresentationBoundaryState = BuildRecoveredPresentationBoundaryState(
+                recoveredRegistrationTrace,
+                getPosition,
+                getFlip,
+                playbackMode);
             RecoveredBasicFloatTrace = BuildRecoveredBasicFloatTrace(playbackMode, frames, recoveredRegistrationTrace);
 
             if (initialElapsedMs > 0)
@@ -8184,6 +8264,50 @@ namespace HaCreator.MapSimulator.Animation
                 UsesNativeIWzGr2DLayer: false,
                 UsesNativeIWzVector2D: false,
                 IsByteIdenticalNativeLayer: false);
+        }
+
+        internal static OneTimeAnimationRecoveredPresentationBoundaryState BuildRecoveredPresentationBoundaryState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            AnimationOneTimePlaybackMode playbackMode)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            return new OneTimeAnimationRecoveredPresentationBoundaryState(
+                NativeDisplayerOwnerEntrypoint: ResolveNativeDisplayerOwnerEntrypoint(trace),
+                NativeLoadLayerEntrypoint: "CAnimationDisplayer::LoadLayer",
+                NativeAnimateEntrypoint: "IWzGr2DLayer::Animate",
+                NativeRegisterEntrypoint: "CAnimationDisplayer::RegisterOneTimeAnimation",
+                ManagedDrawEntrypoint: "IDXObject.DrawObject",
+                ManagedRendererBackend: "XNA/MonoGame SpriteBatch",
+                SourceUol: trace.SourceUol,
+                PlaybackMode: playbackMode,
+                UsesNativeGr2DLayerExecution: false,
+                UsesManagedDxFrameExecution: true,
+                IsByteIdenticalNativeOutput: false,
+                UsesLiveOriginResolver: getPosition != null && trace.UsesOriginVector,
+                UsesLiveFlipResolver: getFlip != null,
+                UsesOverlayParent: trace.UsesOverlayLayer,
+                OverlayParentKind: trace.OverlayParentKind,
+                LoadLayerCanvasValue: trace.LoadLayerCanvasValue,
+                LoadLayerOptionValue: trace.LoadLayerOptionValue,
+                LoadLayerAlphaValue: trace.LoadLayerAlphaValue,
+                LoadLayerFlip: trace.LoadLayerFlip,
+                RegisterOneTimeAnimationDelayMs: trace.RegisterOneTimeAnimationDelayMs);
+        }
+
+        private static string ResolveNativeDisplayerOwnerEntrypoint(
+            OneTimeAnimationRecoveredRegistrationTrace trace)
+        {
+            return trace.MobTemplatePathStringPoolId == MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId
+                   && trace.EffectNameStringPoolId == MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId
+                ? "CAnimationDisplayer::Effect_FullChargedAngerGauge"
+                : "CAnimationDisplayer";
         }
 
         internal static OneTimeAnimationRecoveredNativeAnimateVariantState BuildRecoveredNativeAnimateVariantState(
@@ -9324,11 +9448,11 @@ namespace HaCreator.MapSimulator.Animation
                     ownerState,
                     ownerState.ItemEffectReferenceCountAfterAllocate),
                 BuildRecoveredNativeItemEffectOperation(
-                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
-                    ownerState,
-                    ownerState.ItemEffectReferenceCountAfterManagerRetain),
-                BuildRecoveredNativeItemEffectOperation(
                     registrationKind,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
                     ownerState,
                     ownerState.ItemEffectReferenceCountAfterManagerRetain),
                 BuildRecoveredNativeItemEffectOperation(
@@ -9378,13 +9502,13 @@ namespace HaCreator.MapSimulator.Animation
                     effectVariantIndex,
                     ordinal));
                 operations.Add(BuildRecoveredNativeItemEffectOperation(
-                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    registrationKind,
                     ownerState,
-                    ownerState.ItemEffectReferenceCountAfterManagerRetain,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
                     effectVariantIndex,
                     ordinal));
                 operations.Add(BuildRecoveredNativeItemEffectOperation(
-                    registrationKind,
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
                     ownerState,
                     ownerState.ItemEffectReferenceCountAfterManagerRetain,
                     effectVariantIndex,

@@ -9,6 +9,9 @@ namespace HaCreator.MapSimulator.Character
     {
         private const int FaceOwnedPlanePositionCode = 1;
         private const int OverFaceOwnedPlanePositionCode = 2;
+        private const int EnergyChargeAdditionalLayerRefCount = 1;
+        private const int EnergyChargeParentUnderFaceRefCount = 1;
+        private const int EnergyChargeListNodeRefCount = 1;
         private static readonly HashSet<int> RotateSensitiveRawActionCodes = new()
         {
             101,
@@ -21,6 +24,205 @@ namespace HaCreator.MapSimulator.Character
 
         private static readonly HashSet<string> RotateSensitiveActionNames =
             BuildRotateSensitiveActionNames();
+
+        public enum EnergyChargeAdditionalLayerMutationKind
+        {
+            CaptureOwnerReference = 0,
+            CaptureParentUnderFaceReference = 1,
+            ReparentToUnderFace = 2,
+            RestoreAlpha = 3,
+            AnimateRepeat = 4,
+            ReleaseParentUnderFaceReference = 5,
+            ReleaseOwnerReference = 6
+        }
+
+        public readonly record struct EnergyChargeAdditionalLayerMutation(
+            EnergyChargeAdditionalLayerMutationKind Kind,
+            int AdditionalLayerIndex,
+            int SimulatedLayerHandleId,
+            int SimulatedListNodeId,
+            int SimulatedParentUnderFaceLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int SimulatedListNodeRefCount,
+            int SimulatedParentUnderFaceLayerRefCount,
+            int Alpha,
+            string AnimationMode,
+            string SourceEffectName)
+        {
+            public static EnergyChargeAdditionalLayerMutation CaptureOwnerReference(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.CaptureOwnerReference,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId: 0,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: 0,
+                    alpha: 0,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation CaptureParentUnderFaceReference(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.CaptureParentUnderFaceReference,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: EnergyChargeParentUnderFaceRefCount,
+                    alpha: 0,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation ReparentToUnderFace(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.ReparentToUnderFace,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: EnergyChargeParentUnderFaceRefCount,
+                    alpha: 0,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation RestoreAlpha(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                int alpha,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.RestoreAlpha,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: EnergyChargeParentUnderFaceRefCount,
+                    alpha,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation AnimateRepeat(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string animationMode,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.AnimateRepeat,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: EnergyChargeParentUnderFaceRefCount,
+                    alpha: 0,
+                    animationMode,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation ReleaseParentUnderFaceReference(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.ReleaseParentUnderFaceReference,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: EnergyChargeAdditionalLayerRefCount,
+                    listNodeRefCount: EnergyChargeListNodeRefCount,
+                    parentRefCount: 0,
+                    alpha: 0,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            public static EnergyChargeAdditionalLayerMutation ReleaseOwnerReference(
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                string sourceEffectName)
+            {
+                return Create(
+                    EnergyChargeAdditionalLayerMutationKind.ReleaseOwnerReference,
+                    additionalLayerIndex,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId: 0,
+                    layerRefCount: 0,
+                    listNodeRefCount: 0,
+                    parentRefCount: 0,
+                    alpha: 0,
+                    animationMode: null,
+                    sourceEffectName);
+            }
+
+            private static EnergyChargeAdditionalLayerMutation Create(
+                EnergyChargeAdditionalLayerMutationKind kind,
+                int additionalLayerIndex,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                int layerRefCount,
+                int listNodeRefCount,
+                int parentRefCount,
+                int alpha,
+                string animationMode,
+                string sourceEffectName)
+            {
+                return new EnergyChargeAdditionalLayerMutation(
+                    kind,
+                    Math.Max(0, additionalLayerIndex),
+                    Math.Max(0, layerHandleId),
+                    Math.Max(0, listNodeId),
+                    Math.Max(0, parentUnderFaceLayerHandleId),
+                    Math.Max(0, layerRefCount),
+                    Math.Max(0, listNodeRefCount),
+                    Math.Max(0, parentRefCount),
+                    MathHelper.Clamp(alpha, 0, 255),
+                    animationMode ?? string.Empty,
+                    sourceEffectName ?? string.Empty);
+            }
+        }
 
         public static bool ShouldHideDuringPlayerAction(params string[] actionNames)
         {

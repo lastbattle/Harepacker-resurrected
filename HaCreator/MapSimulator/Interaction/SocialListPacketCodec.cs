@@ -1280,7 +1280,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                     case SocialListClientGuildResultKind.Ranking:
                     {
-                        int guildId = reader.ReadInt32();
+                        reader.ReadInt32();
                         int count = reader.ReadInt32();
                         List<GuildRankingSeedEntry> rankingEntries = new(Math.Max(0, count));
                         for (int i = 0; i < count; i++)
@@ -1305,7 +1305,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<SocialListClientGuildMemberEntry>(), Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(kind, 0, rankingEntries, Array.Empty<SocialListClientGuildMemberEntry>(), Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 

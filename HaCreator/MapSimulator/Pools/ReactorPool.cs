@@ -3165,12 +3165,13 @@ namespace HaCreator.MapSimulator.Pools
                     static candidate => candidate.ContainsCurrentLocalUserPosition,
                     candidate => candidate.VisualState == initialState))
             {
-                if (TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
+                if (TrySelectCandidateForDisjointPacketEnterSignals(
                         scope,
                         initialState,
-                        out index))
+                        out index,
+                        out PacketEnterAuthoredReactorSelectionReason disjointSignalReason))
                 {
-                    selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
+                    selectionReason = disjointSignalReason;
                     return true;
                 }
 
@@ -3287,12 +3288,14 @@ namespace HaCreator.MapSimulator.Pools
             return index >= 0;
         }
 
-        private static bool TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
+        private static bool TrySelectCandidateForDisjointPacketEnterSignals(
             IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
             int initialState,
-            out int index)
+            out int index,
+            out PacketEnterAuthoredReactorSelectionReason selectionReason)
         {
             index = -1;
+            selectionReason = PacketEnterAuthoredReactorSelectionReason.None;
             if (candidates == null
                 || candidates.Count <= 1)
             {
@@ -3363,6 +3366,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!hasSignalScoreTie && strongestCandidates.Count == 1)
             {
                 index = strongestCandidates[0].Index;
+                selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                 return index >= 0;
             }
 
@@ -3376,6 +3380,7 @@ namespace HaCreator.MapSimulator.Pools
                 .ThenBy(static candidate => candidate.Index)
                 .Select(static candidate => candidate.Index)
                 .FirstOrDefault();
+            selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
             return index >= 0;
         }
 

@@ -775,6 +775,9 @@ namespace HaCreator.MapSimulator
         private bool _hasPortalOwnedMovePathFlushAdmission;
         private readonly List<MovePathElement> _portalOwnedMovePathPostFlushCarry = new();
         private CMovePathClientPacketCodec.ClientFlushTail? _lastSimulatorPortalOwnedMovePathFlushTail;
+        private CMovePathClientPacketCodec.ClientFlushTail? _lastCapturedPortalOwnedMovePathFlushTail;
+        private string _lastCapturedPortalOwnedMovePathFlushTailSource;
+        private bool _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession;
         private byte[] _lastCapturedPortalOwnedMovePathKeyPadMemoryStates;
         private string _lastCapturedPortalOwnedMovePathKeyPadMemorySource;
         private bool _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession;
@@ -22334,7 +22337,12 @@ namespace HaCreator.MapSimulator
 
             foreach (MobItem targetMob in ResolveMobSkillStatusTargets(sourceMob, definition, runtimeData, currentTick))
             {
-                if (!MobSkillSelectionParity.ShouldApplyStatusToTarget(targetMob?.AI, definition, runtimeData))
+                if (!MobSkillSelectionParity.ShouldApplyStatusToTarget(
+                        targetMob?.AI,
+                        definition,
+                        runtimeData,
+                        currentTick,
+                        ResolveMobSkillStatusRefreshLeadTimeMs(runtimeData, skill)))
                 {
                     continue;
                 }
@@ -34433,6 +34441,8 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalUpInteract(int currentTime)
         {
+            RejectAnonymousPassiveTransferRequestOwnership();
+
             PassiveTransferFieldHorizontalOnKeyDownDecision horizontalOnKeyDownDecision =
                 EvaluatePassiveTransferFieldHorizontalOnKeyDown();
             if (horizontalOnKeyDownDecision.ShouldStopSkillMacro)
@@ -34584,6 +34594,18 @@ namespace HaCreator.MapSimulator
         {
             _passiveTransferRequestPending = false;
             _passiveTransferRequestOwner = PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.None;
+        }
+
+        private void RejectAnonymousPassiveTransferRequestOwnership()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldRejectAnonymousQueuedRetryOwnership(
+                    _passiveTransferRequestPending,
+                    _passiveTransferRequestOwner))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
         }
 
         private void ArmPassiveTransferRequest(PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner owner)
@@ -35510,33 +35532,135 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        internal string DescribePortalOwnedMovePathKeyPadMemoryParityStatus()
+        internal bool TryRecordPortalOwnedMovePathFlushTailCapture(
+            IReadOnlyList<byte> payload,
+            bool includeClientRandomCounts,
+            string source,
+            out string message)
         {
-            bool hasSimulatorTail = _lastSimulatorPortalOwnedMovePathFlushTail.HasValue;
-            bool hasCapture = _lastCapturedPortalOwnedMovePathKeyPadMemoryStates != null;
-            string simulatorText = hasSimulatorTail
-                ? $"sim keypad={FormatPortalOwnedMovePathKeyPadStates(_lastSimulatorPortalOwnedMovePathFlushTail.Value.PassiveKeyPadStates)}"
-                : "sim tail unavailable";
-            string captureText = hasCapture
-                ? $"capture keypad={FormatPortalOwnedMovePathKeyPadStates(_lastCapturedPortalOwnedMovePathKeyPadMemoryStates)} from {_lastCapturedPortalOwnedMovePathKeyPadMemorySource}"
-                : "capture unavailable";
-
-            if (!hasCapture || !hasSimulatorTail)
+            message = null;
+            byte[] payloadBytes = payload == null
+                ? Array.Empty<byte>()
+                : payload is byte[] byteArray
+                    ? byteArray
+                    : payload.ToArray();
+            if (!CMovePathClientPacketCodec.TryDecodeWithClientFlushTail(
+                    payloadBytes,
+                    out _,
+                    out CMovePathClientPacketCodec.ClientFlushTail flushTail,
+                    out string error,
+                    includeClientRandomCounts))
             {
-                return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}.";
+                message = error ?? "Captured portal-owned move path flush tail could not be decoded.";
+                return false;
             }
 
-            bool match = CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
-                _lastSimulatorPortalOwnedMovePathFlushTail.Value.PassiveKeyPadStates,
-                _lastCapturedPortalOwnedMovePathKeyPadMemoryStates);
-            string proofText = _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession
-                ? match
-                    ? "Official-session m_aKeyPadState memory byte proof matched the simulator portal flush tail."
-                    : "Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator portal flush tail."
-                : match
-                    ? "Manual m_aKeyPadState memory capture matched; official-session byte proof still pending."
-                    : "Manual m_aKeyPadState memory capture differs; official-session byte proof still pending.";
-            return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}; keypad {(match ? "match" : "mismatch")}. {proofText}";
+            _lastCapturedPortalOwnedMovePathFlushTail = flushTail;
+            _lastCapturedPortalOwnedMovePathFlushTailSource =
+                string.IsNullOrWhiteSpace(source) ? "manual portal flush-tail capture" : source.Trim();
+            _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession =
+                IsPortalOwnedMovePathOfficialSessionCaptureSource(_lastCapturedPortalOwnedMovePathFlushTailSource);
+            message = DescribePortalOwnedMovePathKeyPadMemoryParityStatus();
+            return true;
+        }
+
+        internal string DescribePortalOwnedMovePathKeyPadMemoryParityStatus()
+        {
+            PortalOwnedMovePathFlushTailComparison comparison = CompareLastPortalOwnedMovePathFlushTailCapture();
+            string simulatorText = comparison.HasSimulatorTail
+                ? $"sim keypad={comparison.SimulatorKeyPadStates}, bounds={comparison.SimulatorBounds}"
+                : "sim tail unavailable";
+            string captureText = comparison.HasCapturedTail
+                ? $"capture keypad={comparison.CapturedKeyPadStates}, bounds={comparison.CapturedBounds} from {comparison.CapturedSource}"
+                : "capture unavailable";
+            string memoryCaptureText = comparison.HasCapturedKeyPadMemoryStates
+                ? $"memory keypad={comparison.CapturedKeyPadMemoryStates} from {comparison.CapturedKeyPadMemorySource}"
+                : "memory capture unavailable";
+
+            if (!comparison.HasCapturedTail && !comparison.HasCapturedKeyPadMemoryStates)
+            {
+                return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}; {memoryCaptureText}.";
+            }
+
+            string tailMatchText = comparison.HasCapturedTail
+                ? comparison.HasSimulatorTail
+                    ? $"tail keypad {(comparison.KeyPadStatesMatch ? "match" : "mismatch")}, bounds {(comparison.BoundsMatch ? "match" : "mismatch")}"
+                    : "tail waiting for simulator capture"
+                : "tail capture unavailable";
+            string memoryMatchText = comparison.HasCapturedKeyPadMemoryStates
+                ? comparison.HasSimulatorTail
+                    ? $"memory keypad {(comparison.KeyPadMemoryStatesMatch ? "match" : "mismatch")}"
+                    : "memory waiting for simulator capture"
+                : "memory capture unavailable";
+            return $"Portal-owned CMovePath::Encode keypad parity: {simulatorText}; {captureText}; {memoryCaptureText}; {tailMatchText}; {memoryMatchText}. {ResolvePortalOwnedMovePathFlushTailProofText(comparison)}";
+        }
+
+        internal PortalOwnedMovePathFlushTailComparison CompareLastPortalOwnedMovePathFlushTailCapture()
+        {
+            return ComparePortalOwnedMovePathFlushTails(
+                _lastSimulatorPortalOwnedMovePathFlushTail,
+                _lastCapturedPortalOwnedMovePathFlushTail,
+                _lastCapturedPortalOwnedMovePathFlushTailSource,
+                _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryStates,
+                _lastCapturedPortalOwnedMovePathKeyPadMemorySource,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession);
+        }
+
+        internal static PortalOwnedMovePathFlushTailComparison ComparePortalOwnedMovePathFlushTails(
+            CMovePathClientPacketCodec.ClientFlushTail? simulatorTail,
+            CMovePathClientPacketCodec.ClientFlushTail? capturedTail,
+            string capturedSource,
+            bool capturedFromOfficialSession,
+            IReadOnlyList<byte> capturedKeyPadMemoryStates = null,
+            string capturedKeyPadMemorySource = null,
+            bool capturedKeyPadMemoryFromOfficialSession = false)
+        {
+            bool hasSimulatorTail = simulatorTail.HasValue;
+            bool hasCapturedTail = capturedTail.HasValue;
+            CMovePathClientPacketCodec.ClientFlushTail simulator = hasSimulatorTail ? simulatorTail.Value : default;
+            CMovePathClientPacketCodec.ClientFlushTail captured = hasCapturedTail ? capturedTail.Value : default;
+            bool keyPadStatesMatch = hasSimulatorTail
+                && hasCapturedTail
+                && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                    simulator.PassiveKeyPadStates,
+                    captured.PassiveKeyPadStates);
+            bool boundsMatch = hasSimulatorTail
+                && hasCapturedTail
+                && ArePortalOwnedMovePathFlushTailBoundsEqual(simulator, captured);
+            bool hasCapturedKeyPadMemoryStates = capturedKeyPadMemoryStates != null;
+            bool keyPadMemoryStatesMatch = hasSimulatorTail
+                && hasCapturedKeyPadMemoryStates
+                && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                    simulator.PassiveKeyPadStates,
+                    capturedKeyPadMemoryStates);
+            bool capturedTailKeyPadMemoryStatesMatch = hasCapturedTail
+                && hasCapturedKeyPadMemoryStates
+                && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                    captured.PassiveKeyPadStates,
+                    capturedKeyPadMemoryStates);
+
+            return new PortalOwnedMovePathFlushTailComparison(
+                hasSimulatorTail,
+                hasCapturedTail,
+                keyPadStatesMatch,
+                boundsMatch,
+                hasSimulatorTail ? FormatPortalOwnedMovePathKeyPadStates(simulator.PassiveKeyPadStates) : "none",
+                hasCapturedTail ? FormatPortalOwnedMovePathKeyPadStates(captured.PassiveKeyPadStates) : "none",
+                string.IsNullOrWhiteSpace(capturedSource) ? "none" : capturedSource.Trim(),
+                capturedFromOfficialSession,
+                capturedFromOfficialSession && keyPadStatesMatch,
+                capturedFromOfficialSession && keyPadStatesMatch && boundsMatch,
+                hasCapturedKeyPadMemoryStates,
+                keyPadMemoryStatesMatch,
+                capturedTailKeyPadMemoryStatesMatch,
+                hasCapturedKeyPadMemoryStates ? FormatPortalOwnedMovePathKeyPadStates(capturedKeyPadMemoryStates) : "none",
+                string.IsNullOrWhiteSpace(capturedKeyPadMemorySource) ? "none" : capturedKeyPadMemorySource.Trim(),
+                capturedKeyPadMemoryFromOfficialSession,
+                capturedKeyPadMemoryFromOfficialSession && keyPadMemoryStatesMatch,
+                capturedKeyPadMemoryFromOfficialSession && capturedTailKeyPadMemoryStatesMatch,
+                hasSimulatorTail ? FormatPortalOwnedMovePathFlushTailBounds(simulator) : "none",
+                hasCapturedTail ? FormatPortalOwnedMovePathFlushTailBounds(captured) : "none");
         }
 
         internal static bool IsPortalOwnedMovePathOfficialSessionCaptureSource(string source)
@@ -35559,6 +35683,151 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Join(",", states.Select(state => (state & 0x0F).ToString("X1", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        internal static string FormatPortalOwnedMovePathFlushTailBounds(
+            CMovePathClientPacketCodec.ClientFlushTail tail)
+        {
+            return string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0},{1},{2},{3}",
+                tail.Left,
+                tail.Top,
+                tail.Right,
+                tail.Bottom);
+        }
+
+        private static bool ArePortalOwnedMovePathFlushTailBoundsEqual(
+            CMovePathClientPacketCodec.ClientFlushTail left,
+            CMovePathClientPacketCodec.ClientFlushTail right)
+        {
+            return left.Left == right.Left
+                   && left.Top == right.Top
+                   && left.Right == right.Right
+                   && left.Bottom == right.Bottom;
+        }
+
+        private static string ResolvePortalOwnedMovePathFlushTailProofText(
+            PortalOwnedMovePathFlushTailComparison comparison)
+        {
+            List<string> proofs = new();
+            if (comparison.HasCapturedTail)
+            {
+                if (!comparison.CapturedFromOfficialSession)
+                {
+                    proofs.Add("Manual flush-tail capture recorded; official-session full-tail byte proof still pending.");
+                }
+                else if (!comparison.HasSimulatorTail)
+                {
+                    proofs.Add("Official-session flush-tail capture recorded; waiting for simulator tail to compare.");
+                }
+                else if (!comparison.KeyPadStatesMatch)
+                {
+                    proofs.Add("Official-session flush-tail keypad byte proof failed; captured keypad tail differs from the simulator tail.");
+                }
+                else
+                {
+                    proofs.Add(comparison.BoundsMatch
+                        ? "Official-session flush-tail keypad and move-bounds byte proof matched."
+                        : "Official-session flush-tail keypad byte proof matched; move-bounds byte proof differs.");
+                }
+            }
+
+            if (comparison.HasCapturedKeyPadMemoryStates)
+            {
+                if (!comparison.CapturedKeyPadMemoryFromOfficialSession)
+                {
+                    proofs.Add("Manual m_aKeyPadState memory capture recorded; official-session memory byte proof still pending.");
+                }
+                else if (!comparison.HasSimulatorTail)
+                {
+                    proofs.Add(comparison.OfficialSessionTailKeyPadMemoryByteProven
+                        ? "Official-session m_aKeyPadState memory bytes match the captured flush-tail keypad bytes; waiting for simulator tail to compare."
+                        : "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.");
+                }
+                else if (!comparison.KeyPadMemoryStatesMatch)
+                {
+                    proofs.Add("Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator tail.");
+                }
+                else
+                {
+                    proofs.Add(comparison.OfficialSessionTailKeyPadMemoryByteProven
+                        ? "Official-session m_aKeyPadState memory byte proof matched the simulator tail and captured flush-tail keypad bytes."
+                        : "Official-session m_aKeyPadState memory byte proof matched the simulator tail; captured flush-tail keypad byte proof still pending.");
+                }
+            }
+
+            return proofs.Count == 0
+                ? "Awaiting captured client tail or memory proof."
+                : string.Join(" ", proofs);
+        }
+
+        internal readonly struct PortalOwnedMovePathFlushTailComparison
+        {
+            public PortalOwnedMovePathFlushTailComparison(
+                bool hasSimulatorTail,
+                bool hasCapturedTail,
+                bool keyPadStatesMatch,
+                bool boundsMatch,
+                string simulatorKeyPadStates,
+                string capturedKeyPadStates,
+                string capturedSource,
+                bool capturedFromOfficialSession,
+                bool officialSessionKeyPadByteProven,
+                bool officialSessionFullTailByteProven,
+                bool hasCapturedKeyPadMemoryStates,
+                bool keyPadMemoryStatesMatch,
+                bool capturedTailKeyPadMemoryStatesMatch,
+                string capturedKeyPadMemoryStates,
+                string capturedKeyPadMemorySource,
+                bool capturedKeyPadMemoryFromOfficialSession,
+                bool officialSessionKeyPadMemoryByteProven,
+                bool officialSessionTailKeyPadMemoryByteProven,
+                string simulatorBounds,
+                string capturedBounds)
+            {
+                HasSimulatorTail = hasSimulatorTail;
+                HasCapturedTail = hasCapturedTail;
+                KeyPadStatesMatch = keyPadStatesMatch;
+                BoundsMatch = boundsMatch;
+                SimulatorKeyPadStates = simulatorKeyPadStates;
+                CapturedKeyPadStates = capturedKeyPadStates;
+                CapturedSource = capturedSource;
+                CapturedFromOfficialSession = capturedFromOfficialSession;
+                OfficialSessionKeyPadByteProven = officialSessionKeyPadByteProven;
+                OfficialSessionFullTailByteProven = officialSessionFullTailByteProven;
+                HasCapturedKeyPadMemoryStates = hasCapturedKeyPadMemoryStates;
+                KeyPadMemoryStatesMatch = keyPadMemoryStatesMatch;
+                CapturedTailKeyPadMemoryStatesMatch = capturedTailKeyPadMemoryStatesMatch;
+                CapturedKeyPadMemoryStates = capturedKeyPadMemoryStates;
+                CapturedKeyPadMemorySource = capturedKeyPadMemorySource;
+                CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
+                OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
+                OfficialSessionTailKeyPadMemoryByteProven = officialSessionTailKeyPadMemoryByteProven;
+                SimulatorBounds = simulatorBounds;
+                CapturedBounds = capturedBounds;
+            }
+
+            public bool HasSimulatorTail { get; }
+            public bool HasCapturedTail { get; }
+            public bool KeyPadStatesMatch { get; }
+            public bool BoundsMatch { get; }
+            public string SimulatorKeyPadStates { get; }
+            public string CapturedKeyPadStates { get; }
+            public string CapturedSource { get; }
+            public bool CapturedFromOfficialSession { get; }
+            public bool OfficialSessionKeyPadByteProven { get; }
+            public bool OfficialSessionFullTailByteProven { get; }
+            public bool HasCapturedKeyPadMemoryStates { get; }
+            public bool KeyPadMemoryStatesMatch { get; }
+            public bool CapturedTailKeyPadMemoryStatesMatch { get; }
+            public string CapturedKeyPadMemoryStates { get; }
+            public string CapturedKeyPadMemorySource { get; }
+            public bool CapturedKeyPadMemoryFromOfficialSession { get; }
+            public bool OfficialSessionKeyPadMemoryByteProven { get; }
+            public bool OfficialSessionTailKeyPadMemoryByteProven { get; }
+            public string SimulatorBounds { get; }
+            public string CapturedBounds { get; }
         }
 
         private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
@@ -36967,7 +37236,13 @@ namespace HaCreator.MapSimulator
 
             RegisterPacketOwnedStageTransitionObject(mapItem, objInst);
 
-            QuestGatedMapObjectState? state = BuildQuestGatedMapObjectState(objInst);
+            ObjectInstanceQuest[] rootAuthoredQuestInfo = objInst.BaseInfo is ObjectInfo objectInfo
+                ? ResolvePacketOwnedNamedObjectQuestInfo(objectInfo.ParentObject as WzImageProperty)
+                : Array.Empty<ObjectInstanceQuest>();
+            QuestGatedMapObjectState? state = BuildQuestGatedMapObjectState(
+                objInst,
+                rootAuthoredQuestInfo,
+                mergeQuestInfo: true);
             if (!state.HasValue)
             {
                 return;

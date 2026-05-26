@@ -167,30 +167,30 @@ namespace HaCreator.MapSimulator.Managers
 
         public string DescribeRecentPackets()
         {
-            InboundPacketTrace[] inbound;
-            OutboundPacketTrace[] outbound;
+            string[] inboundLines;
+            string[] outboundLines;
             lock (_sync)
             {
-                inbound = _recentInboundPackets.ToArray();
-                outbound = _recentOutboundPackets.ToArray();
+                inboundLines = _recentInboundPackets
+                    .Select((trace, index) =>
+                        $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} verify={DescribeVerificationWindow(trace)} summary={trace.Summary} raw={trace.RawPacketHex}")
+                    .ToArray();
+                outboundLines = _recentOutboundPackets
+                    .Select((trace, index) =>
+                        $"{index + 1}. opcode={trace.Opcode} sequence={trace.Sequence} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} verify={DescribeVerificationWindow(trace)} summary={trace.Summary} raw={trace.RawPacketHex}")
+                    .ToArray();
             }
 
-            string inboundText = inbound.Length == 0
+            string inboundText = inboundLines.Length == 0
                 ? $"Inbound opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange}: none captured."
                 : "Inbound opcode traces:"
                   + Environment.NewLine
-                  + string.Join(
-                      Environment.NewLine,
-                      inbound.Select((trace, index) =>
-                          $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
-            string outboundText = outbound.Length == 0
+                  + string.Join(Environment.NewLine, inboundLines);
+            string outboundText = outboundLines.Length == 0
                 ? $"Outbound opcode {OutboundPulleyRequestOpcode}: none captured or queued."
                 : "Outbound opcode traces:"
                   + Environment.NewLine
-                  + string.Join(
-                      Environment.NewLine,
-                      outbound.Select((trace, index) =>
-                          $"{index + 1}. opcode={trace.Opcode} sequence={trace.Sequence} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
+                  + string.Join(Environment.NewLine, outboundLines);
 
             return $"{inboundText}{Environment.NewLine}{outboundText}";
         }
@@ -1387,6 +1387,30 @@ namespace HaCreator.MapSimulator.Managers
         {
             return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId)
                 && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private string DescribeVerificationWindow(OutboundPacketTrace trace)
+        {
+            if (trace.TraceSequence <= _verificationClearedAfterTraceSequence)
+            {
+                return "retained-before-clearverify";
+            }
+
+            return IsInitializedLiveProxiedSource(trace)
+                ? "eligible"
+                : "not-live-proxied";
+        }
+
+        private string DescribeVerificationWindow(InboundPacketTrace trace)
+        {
+            if (trace.TraceSequence <= _verificationClearedAfterTraceSequence)
+            {
+                return "retained-before-clearverify";
+            }
+
+            return IsInitializedLiveProxiedSource(trace)
+                ? "eligible"
+                : "not-live-proxied";
         }
 
         private bool IsPairedCurrentInitializedProxySession(

@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeActionSpeechFadeDurationMs;
         private int _activeActionSpeechNativeWidth;
         private Func<MobAnimationSet.ActionSpeakConditionContext> _actionSpeakConditionContextProvider;
+        private Action<MobItem, string, int> _actionSpeakStartedHandler;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -92,6 +93,11 @@ namespace HaCreator.MapSimulator.Entities
         /// They should not be targetable by player attacks.
         /// </summary>
         public bool IsProtectedFromPlayerDamage => _mobInstance?.MobInfo?.MobData?.DamagedByMob == true;
+
+        /// <summary>
+        /// Mirrors Mob.wz info/notAttack, which CMob::ProcessAttack checks before pending attack processing.
+        /// </summary>
+        public bool IsNotAttack => _mobInstance?.MobInfo?.MobData?.NotAttack == true;
 
         /// <summary>
         /// Escort and damagedByMob mobs participate in the encounter mob-vs-mob combat lane.
@@ -135,6 +141,8 @@ namespace HaCreator.MapSimulator.Entities
         public int ActiveActionSpeechFadeDurationMs => _activeActionSpeechFadeDurationMs;
 
         public int ActiveActionSpeechNativeWidth => _activeActionSpeechNativeWidth;
+
+        internal string DisplayName => _mobInstance?.MobInfo?.Name;
 
         internal bool PacketOwnedExpiryClientSuspended { get; private set; }
 
@@ -410,7 +418,9 @@ namespace HaCreator.MapSimulator.Entities
 
             if (!died &&
                 !originatedFromPlayer &&
-                SpecialMobInteractionRules.ShouldUseDamagedByMobGreyBlink(_mobInstance?.MobInfo?.MobData))
+                SpecialMobInteractionRules.ShouldStartDamagedByMobGreyBlink(
+                    _mobInstance?.MobInfo?.MobData,
+                    AI.LastDamageTaken))
             {
                 NotifyDamagedByMobEncounterHit(currentTick);
             }
@@ -1699,6 +1709,11 @@ namespace HaCreator.MapSimulator.Entities
             _actionSpeakConditionContextProvider = conditionContextProvider;
         }
 
+        internal void SetActionSpeakStartedHandler(Action<MobItem, string, int> actionSpeakStartedHandler)
+        {
+            _actionSpeakStartedHandler = actionSpeakStartedHandler;
+        }
+
         private static bool ShouldSkipMobActionChange(
             string requestedAction,
             string currentAction,
@@ -1791,6 +1806,7 @@ namespace HaCreator.MapSimulator.Entities
                 out int fadeDurationMs);
             _activeActionSpeechFadeDurationMs = fadeDurationMs;
             _activeActionSpeechExpiresAt = currentTick + timeoutMs;
+            _actionSpeakStartedHandler?.Invoke(this, _activeActionSpeechText, currentTick);
         }
 
         public bool IsActionSpeechActive(int currentTick)

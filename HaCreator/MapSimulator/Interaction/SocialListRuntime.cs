@@ -143,6 +143,32 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        internal IEnumerable<string> EnumerateNewYearCardReceiverSearchCandidateNames()
+        {
+            HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
+            foreach (SocialListTab tab in new[] { SocialListTab.Friend, SocialListTab.Guild })
+            {
+                if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> entries))
+                {
+                    continue;
+                }
+
+                foreach (SocialEntryState entry in entries)
+                {
+                    if (entry == null || entry.IsLocalPlayer || string.IsNullOrWhiteSpace(entry.Name))
+                    {
+                        continue;
+                    }
+
+                    string name = entry.Name.Trim();
+                    if (emitted.Add(name))
+                    {
+                        yield return name;
+                    }
+                }
+            }
+        }
+
         internal void SetPacketWhisperLocationInfo(string characterName, string locationInfo, byte result = 1, int value = 0)
         {
             string normalizedName = string.IsNullOrWhiteSpace(characterName)

@@ -1409,7 +1409,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> requiredBuffIds,
             Func<int, bool> hasActiveBuffProvider)
         {
-            if (requiredBuffIds == null || requiredBuffIds.Count == 0)
+            if (!HasAuthoredNonZeroBuffDemand(requiredBuffIds))
             {
                 return false;
             }
@@ -1440,9 +1440,14 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> excludedBuffIds,
             Func<int, bool> hasActiveBuffProvider)
         {
-            if (excludedBuffIds == null || excludedBuffIds.Count == 0 || hasActiveBuffProvider == null)
+            if (!HasAuthoredNonZeroBuffDemand(excludedBuffIds))
             {
                 return false;
+            }
+
+            if (hasActiveBuffProvider == null)
+            {
+                return true;
             }
 
             for (int i = 0; i < excludedBuffIds.Count; i++)
@@ -1454,6 +1459,24 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 if (hasActiveBuffProvider(-Math.Abs(buffId)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasAuthoredNonZeroBuffDemand(IReadOnlyList<int> buffIds)
+        {
+            if (buffIds == null || buffIds.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < buffIds.Count; i++)
+            {
+                if (buffIds[i] != 0)
                 {
                     return true;
                 }

@@ -405,6 +405,23 @@ namespace HaCreator.MapSimulator.UI
             string requesterLine = FormatRequesterLine(profile, requesterName);
             string secondaryLine = FormatSecondaryPayloadLine(profile, request.Type, message);
 
+            if (request.Type == SharedFadeYesNoModalType.FriendRegister
+                && fields.Level <= 0)
+            {
+                return new SharedFadeYesNoResolvedText(
+                    requesterLine,
+                    secondaryLine,
+                    request.Footer ?? string.Empty);
+            }
+
+            if (request.Type == SharedFadeYesNoModalType.NewYearCardArrived)
+            {
+                return new SharedFadeYesNoResolvedText(
+                    string.IsNullOrWhiteSpace(message) ? "New Year Card arrived" : message,
+                    requesterLine,
+                    request.Footer ?? string.Empty);
+            }
+
             if (profile.UsesLevelJobLine)
             {
                 return new SharedFadeYesNoResolvedText(
@@ -434,13 +451,13 @@ namespace HaCreator.MapSimulator.UI
                 SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1", usesTallIconCenter: true),
                 SharedFadeYesNoModalType.TradeInvite => InviteProfile("backgrnd", "icon2"),
                 SharedFadeYesNoModalType.CashTradeInvite => AlarmProfile("backgrnd6", "icon9", 160, 44),
-                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 155, 44, suppressesIcon: true),
+                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 154, 44, suppressesIcon: true),
                 SharedFadeYesNoModalType.ExpeditionApply => InviteProfile("backgrnd9", "icon0"),
                 SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5", usesTallIconCenter: true),
-                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 155, 44),
+                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 154, 44),
                 SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5", usesTallIconCenter: true),
-                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 155, 44),
-                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 155, 44),
+                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 154, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 154, 44),
                 SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoVisualProfile(
                     "backgrnd5",
                     null,
@@ -607,13 +624,13 @@ namespace HaCreator.MapSimulator.UI
                 SharedFadeYesNoModalType.FriendRegister => CreateProfile(0x538, 0x530, NativeInviteLifetimeMilliseconds, 206, 60),
                 SharedFadeYesNoModalType.TradeInvite => CreateProfile(0x538, 0x531, NativeInviteLifetimeMilliseconds, 206, 60),
                 SharedFadeYesNoModalType.CashTradeInvite => CreateProfile(0x1442, 0x1443, NativeInviteLifetimeMilliseconds, 160, 44),
-                SharedFadeYesNoModalType.NewMemo => CreateProfile(0x53A, -1, NativeIndefiniteLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.NewMemo => CreateProfile(0x53A, -1, NativeIndefiniteLifetimeMilliseconds, 154, 44),
                 SharedFadeYesNoModalType.PartyInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
                 SharedFadeYesNoModalType.AllianceInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
-                SharedFadeYesNoModalType.QuestClear => CreateProfile(0x53B, alternateIcon ? 0x536 : 0x535, NativeQuestClearLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.QuestClear => CreateProfile(0x53B, alternateIcon ? 0x536 : 0x535, NativeQuestClearLifetimeMilliseconds, 154, 44),
                 SharedFadeYesNoModalType.GuildInvite => CreateProfile(0x538, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),
-                SharedFadeYesNoModalType.UserAlarm => CreateProfile(0x539, alternateIcon ? 0x533 : 0x532, DefaultLifetimeMilliseconds, 155, 44),
-                SharedFadeYesNoModalType.ParcelAlarm => CreateProfile(0x53B, 0xF71, quickDelivery ? NativeIndefiniteLifetimeMilliseconds : DefaultLifetimeMilliseconds, 155, 44),
+                SharedFadeYesNoModalType.UserAlarm => CreateProfile(0x539, alternateIcon ? 0x533 : 0x532, DefaultLifetimeMilliseconds, 154, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => CreateProfile(0x53B, 0xF71, quickDelivery ? NativeIndefiniteLifetimeMilliseconds : DefaultLifetimeMilliseconds, 154, 44),
                 SharedFadeYesNoModalType.PartyQuestAlarm => CreateProfile(0x53C, -1, NativeInviteLifetimeMilliseconds, 155, 51),
                 SharedFadeYesNoModalType.FamilyInvite => CreateProfile(0x538, 0x530, NativeInviteLifetimeMilliseconds, 206, 60),
                 SharedFadeYesNoModalType.PartyApply => CreateProfile(0x15B2, 0x534, NativeInviteLifetimeMilliseconds, 206, 60),

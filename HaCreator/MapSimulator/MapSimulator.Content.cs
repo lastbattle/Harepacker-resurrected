@@ -1456,6 +1456,13 @@ namespace HaCreator.MapSimulator
                 _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
                 _hasPortalOwnedMovePathFlushAdmission = false;
                 _portalOwnedMovePathPostFlushCarry.Clear();
+                _lastSimulatorPortalOwnedMovePathFlushTail = null;
+                _lastCapturedPortalOwnedMovePathFlushTail = null;
+                _lastCapturedPortalOwnedMovePathFlushTailSource = null;
+                _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession = false;
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryStates = null;
+                _lastCapturedPortalOwnedMovePathKeyPadMemorySource = null;
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession = false;
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();

@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public const int DigestDurationMs = 3000;
         public const int WriggleIntervalMs = 500;
+        public const int MobWriggleSuspendedState = 4;
         public const int AbsorbOutcomeTimeoutFloorMs = 800;
         public const int AbsorbOutcomeTimeoutCeilingMs = 1800;
         public const int BufferedAbsorbOutcomeLifetimeMs = 1800;

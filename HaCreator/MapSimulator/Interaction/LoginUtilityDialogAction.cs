@@ -32,5 +32,6 @@ namespace HaCreator.MapSimulator
         EntrustedShopBlacklistNotice = 27,
         FieldMessageBoxChalkboardCompose = 28,
         EngagementProposalRequestNote = 29,
+        UnregisterFamilyCharacter = 30,
     }
 }

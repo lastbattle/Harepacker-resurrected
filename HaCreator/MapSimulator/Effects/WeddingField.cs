@@ -3246,10 +3246,17 @@ namespace HaCreator.MapSimulator.Effects
             int maskWordCount = Math.Max(currentMaskWords.Length, resetWordCount);
             if (maskWordCount == 0)
             {
+                WeddingParticipantNameTagSignature previousNameTagSignature = CreateNameTagSignature(participant);
                 participant.TemporaryStats = default;
                 participant.TemporaryStatDelay = 0;
                 ApplyParticipantTemporaryStatPresentation(participant);
                 participant.TemporaryStatRevision++;
+                if (participant.NameTagRevision == 0
+                    || !previousNameTagSignature.Equals(CreateNameTagSignature(participant)))
+                {
+                    RefreshParticipantNameTag(participant);
+                }
+
                 return;
             }
 

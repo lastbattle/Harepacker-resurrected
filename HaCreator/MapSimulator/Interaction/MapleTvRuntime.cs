@@ -982,7 +982,7 @@ namespace HaCreator.MapSimulator.Interaction
             string[] lines = (_showMessage && _displayLines.Any(line => !string.IsNullOrWhiteSpace(line)))
                 ? _displayLines
                 : _draftLines;
-            int totalWaitTime = Math.Max(0, _showMessage ? _activeDurationMs : _draftDurationMs);
+            int totalWaitTime = ResolvePacketTotalWaitSeconds(_showMessage ? _activeDurationMs : _draftDurationMs);
 
             PacketWriter writer = new();
             writer.WriteByte(flag);
@@ -1152,6 +1152,11 @@ namespace HaCreator.MapSimulator.Interaction
             return definition.StringPoolId >= 0
                 ? $"MapleTV send result ({definition.StatusLabel}, code {definition.ResultCode}, StringPool 0x{definition.StringPoolId:X}; localized client text unresolved)."
                 : $"MapleTV send result failed (code {definition.ResultCode}).";
+        }
+
+        private static int ResolvePacketTotalWaitSeconds(int durationMs)
+        {
+            return Math.Max(0, (int)Math.Ceiling(Math.Max(0, durationMs) / 1000f));
         }
 
         private void AdvanceClientRequestStage(

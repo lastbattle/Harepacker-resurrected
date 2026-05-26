@@ -2296,6 +2296,7 @@ namespace HaCreator.MapSimulator.Pools
             summon.LastBodyContactBaseDamage = damageResult.BaseDamage;
             summon.LastBodyContactDamage = damageResult.Damage;
             summon.LastBodyContactAttackWasMagic = damageResult.DamageType == MobDamageType.Magical;
+            summon.LastBodyContactDamageFormulaTrace = damageResult.FormulaTrace;
         }
 
         private bool TryReadAvatarLook(ref PacketReader reader, out LoginAvatarLook avatarLook, out string message)
@@ -8510,6 +8511,7 @@ namespace HaCreator.MapSimulator.Pools
             int tokenStart = 0;
             bool inQuote = false;
             char quoteChar = '\0';
+            int depth = 0;
             for (int i = 0; i < effectPath.Length; i++)
             {
                 char current = effectPath[i];
@@ -8529,7 +8531,24 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (inQuote || !IsPacketMobAttackGeneralEffectTokenDelimiter(current))
+                if (inQuote)
+                {
+                    continue;
+                }
+
+                if (IsPacketMobAttackGeneralEffectOpeningCompositeDelimiter(current))
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (IsPacketMobAttackGeneralEffectClosingCompositeDelimiter(current))
+                {
+                    depth = Math.Max(0, depth - 1);
+                    continue;
+                }
+
+                if (depth > 0 || !IsPacketMobAttackGeneralEffectTokenDelimiter(current))
                 {
                     continue;
                 }
@@ -8568,6 +8587,16 @@ namespace HaCreator.MapSimulator.Pools
                    || value == '\n'
                    || value == '\t'
                    || value == ' ';
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectOpeningCompositeDelimiter(char value)
+        {
+            return value == '[' || value == '{' || value == '(';
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectClosingCompositeDelimiter(char value)
+        {
+            return value == ']' || value == '}' || value == ')';
         }
 
         private static bool IsPacketMobAttackGeneralEffectEscapedQuote(string value, int quoteIndex)
@@ -10083,8 +10112,18 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "hitPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "recordValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "recordData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "recordValues", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "recordText", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "recordPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rowValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rowData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rowPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "entryValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "entryData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "entryPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "itemValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "itemData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "itemPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawPayload", StringComparison.OrdinalIgnoreCase)
@@ -10100,8 +10139,19 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "bstrData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "wstr", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "wstrValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "m_Data", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Data_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "data_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "_bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Ztl_bstr_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "ZtlBstr", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "ZtlBstrT", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "m_wstr", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "mWstr", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "m_str", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mStr", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "assetValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "assetData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "assetPayload", StringComparison.OrdinalIgnoreCase)
@@ -10113,6 +10163,8 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "sHitUOL", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "sHitUolPath", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "sHitUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "attackInfo", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mobAttackInfo", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "mobAttackInfoHit", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "mobAttackInfoHitPath", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "mobAttackInfoSHit", StringComparison.OrdinalIgnoreCase)

@@ -8189,6 +8189,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (TryReadEmbeddedClientSkillAssetUolCompactRecordVariantLevel(
+                    normalizedWholeName,
+                    ClientSkillAssetCharacterLevelFieldNames,
+                    out variantLevel))
+            {
+                isCharacterLevelVariant = true;
+                return true;
+            }
+
+            if (TryReadEmbeddedClientSkillAssetUolCompactRecordVariantLevel(
+                    normalizedWholeName,
+                    ClientSkillAssetSkillLevelFieldNames,
+                    out variantLevel))
+            {
+                isCharacterLevelVariant = false;
+                return true;
+            }
+
             return false;
         }
 
@@ -8223,6 +8241,58 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 variantLevel = parsedLevel;
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadEmbeddedClientSkillAssetUolCompactRecordVariantLevel(
+            string normalizedName,
+            IReadOnlyList<string> variantFieldNames,
+            out int variantLevel)
+        {
+            variantLevel = 0;
+            if (string.IsNullOrWhiteSpace(normalizedName)
+                || variantFieldNames == null)
+            {
+                return false;
+            }
+
+            foreach (string fieldName in variantFieldNames
+                         .OrderByDescending(static name => NormalizeClientSkillAssetUolVariantFieldName(name).Length))
+            {
+                string normalizedFieldName = NormalizeClientSkillAssetUolVariantFieldName(fieldName);
+                if (string.IsNullOrWhiteSpace(normalizedFieldName))
+                {
+                    continue;
+                }
+
+                int fieldIndex = normalizedName.IndexOf(normalizedFieldName, StringComparison.Ordinal);
+                while (fieldIndex >= 0)
+                {
+                    int levelStart = fieldIndex + normalizedFieldName.Length;
+                    if (levelStart < normalizedName.Length && char.IsDigit(normalizedName[levelStart]))
+                    {
+                        int levelEnd = levelStart + 1;
+                        while (levelEnd < normalizedName.Length && char.IsDigit(normalizedName[levelEnd]))
+                        {
+                            levelEnd++;
+                        }
+
+                        string levelToken = normalizedName.Substring(levelStart, levelEnd - levelStart);
+                        if (int.TryParse(levelToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel)
+                            && parsedLevel > 0)
+                        {
+                            variantLevel = parsedLevel;
+                            return true;
+                        }
+                    }
+
+                    fieldIndex = normalizedName.IndexOf(
+                        normalizedFieldName,
+                        fieldIndex + normalizedFieldName.Length,
+                        StringComparison.Ordinal);
+                }
             }
 
             return false;
@@ -11062,11 +11132,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
-            string decodedValue = System.Text.Encoding.UTF8.GetString(bytes)
-                .Trim()
-                .Trim(ClientSummonedUolTokenTrimChars)
-                .Trim();
-            if (LooksLikeClientSummonedUolDecodedSidecarText(decodedValue))
+            foreach (string decodedValue in EnumerateClientSummonedUolDecodedByteTextVariants(bytes))
             {
                 yield return decodedValue;
             }
@@ -11103,13 +11169,68 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CultureInfo.InvariantCulture);
             }
 
-            string decodedValue = System.Text.Encoding.UTF8.GetString(bytes)
-                .Trim()
-                .Trim(ClientSummonedUolTokenTrimChars)
-                .Trim();
-            if (LooksLikeClientSummonedUolDecodedSidecarText(decodedValue))
+            foreach (string decodedValue in EnumerateClientSummonedUolDecodedByteTextVariants(bytes))
             {
                 yield return decodedValue;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolDecodedByteTextVariants(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0 || bytes.Length > 2048)
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.Ordinal);
+            foreach (System.Text.Encoding encoding in EnumerateClientSummonedUolDecodedByteTextEncodings(bytes))
+            {
+                string decodedValue = encoding.GetString(bytes)
+                    .Trim('\uFEFF', '\0')
+                    .Trim()
+                    .Trim(ClientSummonedUolTokenTrimChars)
+                    .Trim();
+                if (LooksLikeClientSummonedUolDecodedSidecarText(decodedValue)
+                    && yieldedValues.Add(decodedValue))
+                {
+                    yield return decodedValue;
+                }
+            }
+        }
+
+        private static IEnumerable<System.Text.Encoding> EnumerateClientSummonedUolDecodedByteTextEncodings(byte[] bytes)
+        {
+            yield return System.Text.Encoding.UTF8;
+
+            if (bytes.Length < 4 || bytes.Length % 2 != 0)
+            {
+                yield break;
+            }
+
+            int evenNulls = 0;
+            int oddNulls = 0;
+            for (int i = 0; i < bytes.Length; i += 2)
+            {
+                if (bytes[i] == 0)
+                {
+                    evenNulls++;
+                }
+
+                if (bytes[i + 1] == 0)
+                {
+                    oddNulls++;
+                }
+            }
+
+            int pairCount = bytes.Length / 2;
+            if (oddNulls * 2 >= pairCount)
+            {
+                yield return System.Text.Encoding.Unicode;
+            }
+
+            if (evenNulls * 2 >= pairCount)
+            {
+                yield return System.Text.Encoding.BigEndianUnicode;
             }
         }
 
@@ -15105,7 +15226,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string GetClientActionNameFromRawActionValue(int rawActionCode)
         {
-            return CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+            return MorphClientActionResolver.TryGetClientMorphActionNameFromRawCode(rawActionCode, out string actionName)
                 ? actionName
                 : null;
         }

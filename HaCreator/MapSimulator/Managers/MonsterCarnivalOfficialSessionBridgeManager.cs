@@ -586,6 +586,53 @@ namespace HaCreator.MapSimulator.Managers
             return _observedOutboundRequests.TryDequeue(out request);
         }
 
+        public bool TryVerifyLiveOwnership(out string status)
+        {
+            LiveOwnershipVerificationState state = CurrentLiveOwnershipVerificationState;
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _liveOutboundRequestEvidence.HasValue,
+                _liveInboundCarnivalPacketEvidence.HasValue,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
+            status = $"{verification} {evidence}";
+            LastStatus = status;
+            return state == LiveOwnershipVerificationState.Complete;
+        }
+
+        public string ClearLiveOwnershipVerification()
+        {
+            int cleared = 0;
+            while (_observedOutboundRequests.TryDequeue(out _))
+            {
+                cleared++;
+            }
+
+            if (_liveInboundCarnivalPacketEvidence.HasValue)
+            {
+                _liveInboundCarnivalPacketEvidence = null;
+                cleared++;
+            }
+
+            if (_liveOutboundRequestEvidence.HasValue)
+            {
+                _liveOutboundRequestEvidence = null;
+                cleared++;
+            }
+
+            int retainedRecentCount;
+            lock (_sync)
+            {
+                retainedRecentCount = _recentPackets.Count;
+            }
+
+            LastStatus =
+                $"Cleared Monster Carnival live ownership verification evidence for the current proxy session ({cleared} item(s)); retained {retainedRecentCount} recent packet trace(s).";
+            return LastStatus;
+        }
+
         public bool IsCurrentInitializedProxySessionEvidence(long? proxySessionId, short? sessionVersion)
         {
             return IsCurrentInitializedProxySession(proxySessionId, sessionVersion);

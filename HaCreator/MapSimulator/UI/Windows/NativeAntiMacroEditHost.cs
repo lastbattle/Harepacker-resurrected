@@ -2010,8 +2010,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string sanitized = RemoveControlCharacters(clipboardText);
-            if (sanitized.Length == 0)
+            if (!TryResolveClientClipboardText(clipboardText, out string sanitized, _clientEncoding))
             {
                 return;
             }
@@ -2056,6 +2055,58 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static bool TryResolveClientClipboardText(string clipboardText, out string resolvedText, Encoding encoding = null)
+        {
+            resolvedText = RemoveControlCharacters(clipboardText);
+            if (resolvedText.Length == 0)
+            {
+                return false;
+            }
+
+            if (!IsClientSingleByteClipboardText(resolvedText, encoding))
+            {
+                resolvedText = string.Empty;
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool IsClientSingleByteClipboardText(string text, Encoding encoding = null)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return true;
+            }
+
+            foreach (char character in text)
+            {
+                if (!IsClientSingleByteClipboardCharacter(character, encoding))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsClientSingleByteClipboardCharacter(char character, Encoding encoding)
+        {
+            if (char.IsControl(character))
+            {
+                return true;
+            }
+
+            try
+            {
+                return SkillMacroNameRules.GetByteCount(character.ToString(), encoding) == 1;
+            }
+            catch (EncoderFallbackException)
+            {
+                return false;
+            }
         }
 
         internal static int ResolveClientOwnedNavigationCaret(string text, int selectionStart, int selectionEnd, bool moveRight)

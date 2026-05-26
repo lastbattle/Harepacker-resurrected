@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.AI;
 using MapleLib.WzLib.WzStructure.Data.MobStructure;
+using System;
 
 namespace HaCreator.MapSimulator.Entities
 {
@@ -45,6 +46,17 @@ namespace HaCreator.MapSimulator.Entities
         public static bool ShouldUseDamagedByMobGreyBlink(MobData mobData)
         {
             return mobData?.DamagedByMob == true && mobData.Escort != 1;
+        }
+
+        public static bool ShouldStartDamagedByMobGreyBlink(MobData mobData, int damage)
+        {
+            if (!ShouldUseDamagedByMobGreyBlink(mobData))
+            {
+                return false;
+            }
+
+            int pushedDamage = Math.Max(0, mobData.Pushed);
+            return damage >= pushedDamage;
         }
 
         public static int NormalizeRemoveAfterSecondsToMilliseconds(int removeAfterSeconds)

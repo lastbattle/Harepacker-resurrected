@@ -313,6 +313,12 @@ namespace HaCreator.MapSimulator
                 background.Flip);
             if (bgItem != null)
             {
+                if (_contextOwnedStageCurrentBackColorArgb.HasValue
+                    && ShouldApplyContextOwnedStageBackData(_mapBoard?.MapInfo?.id ?? 0))
+                {
+                    ApplyContextOwnedStageBackLayerTint(bgItem, _contextOwnedStageCurrentBackColorArgb.Value);
+                }
+
                 if (background.front)
                 {
                     backgrounds_front.Add(bgItem);
@@ -333,6 +339,23 @@ namespace HaCreator.MapSimulator
             }
 
             return ContextOwnedStagePeriodColorHelper.Resolve(_contextOwnedStageCurrentBackColorArgb.Value);
+        }
+
+        internal static Color ResolveContextOwnedStageBackLayerTint(uint colorValue, byte alpha)
+        {
+            Color tint = ContextOwnedStagePeriodColorHelper.Resolve(colorValue);
+            return new Color(tint.R, tint.G, tint.B, alpha);
+        }
+
+        private static void ApplyContextOwnedStageBackLayerTint(BackgroundItem backgroundItem, uint colorValue)
+        {
+            if (backgroundItem == null)
+            {
+                return;
+            }
+
+            Color tint = ResolveContextOwnedStageBackLayerTint(colorValue, backgroundItem.Color.A);
+            backgroundItem.SetRgbTint(tint.R, tint.G, tint.B);
         }
 
         private bool ShouldApplyContextOwnedStageBackData(int mapId)

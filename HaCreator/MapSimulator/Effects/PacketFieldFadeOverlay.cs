@@ -234,6 +234,7 @@ namespace HaCreator.MapSimulator.Effects
             return new PacketFieldFadeNativeLayerSnapshot(
                 CanvasWidth: 1024,
                 CanvasHeight: 768,
+                FillColorArgb: unchecked((int)0xFF000000),
                 LayerPosition: new Point(-512, -468),
                 LayerZ: layerZ,
                 StartingAlpha: startingAlpha,
@@ -242,7 +243,11 @@ namespace HaCreator.MapSimulator.Effects
                 HoldMs: holdMs,
                 FadeOutMs: fadeOutMs,
                 StartedAt: startedAt,
-                UsesCenterOrigin: true);
+                UsesCenterOrigin: true,
+                OriginKind: "Gr2DCenter",
+                OwnsCanvasReference: true,
+                OwnsLayerReference: true,
+                UsesAlphaRelMove: true);
         }
 
         private readonly record struct FadeEntry(
@@ -290,6 +295,7 @@ namespace HaCreator.MapSimulator.Effects
     internal readonly record struct PacketFieldFadeNativeLayerSnapshot(
         int CanvasWidth,
         int CanvasHeight,
+        int FillColorArgb,
         Point LayerPosition,
         int LayerZ,
         int StartingAlpha,
@@ -298,5 +304,9 @@ namespace HaCreator.MapSimulator.Effects
         int HoldMs,
         int FadeOutMs,
         int StartedAt,
-        bool UsesCenterOrigin);
+        bool UsesCenterOrigin,
+        string OriginKind,
+        bool OwnsCanvasReference,
+        bool OwnsLayerReference,
+        bool UsesAlphaRelMove);
 }

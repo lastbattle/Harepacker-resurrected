@@ -959,9 +959,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void PasteClipboardText()
         {
-            if (NativeAntiMacroEditHost.TryGetClientClipboardText(out string clipboardText))
+            if (NativeAntiMacroEditHost.TryGetClientClipboardText(out string clipboardText)
+                && NativeAntiMacroEditHost.TryResolveClientClipboardText(clipboardText, out string resolvedClipboardText, _clientEncoding))
             {
-                HandleCommittedText(clipboardText, capturesKeyboardInput: true);
+                HandleCommittedText(resolvedClipboardText, capturesKeyboardInput: true);
             }
         }
 

@@ -121,6 +121,13 @@ namespace HaCreator.MapSimulator.UI
         internal const int SearchResultChildCheckBoxY = 10;
         internal const int SearchResultChildCheckBoxWidth = 105;
         internal const int SearchResultChildCheckBoxHeight = 11;
+        internal const int SearchResultChildRowX = 18;
+        internal const int SearchResultChildRowY = 34;
+        internal const int SearchResultChildRowHeight = 35;
+        internal const int SearchResultChildLinkButtonX = 326;
+        internal const int SearchResultChildLinkButtonWidth = 55;
+        internal const int ScanConfirmationModalWidth = 260;
+        internal const int ScanConfirmationModalHeight = 72;
         internal const int ShopLinkSuccessResultCode = 0;
         internal const int ShopLinkNoShopResultCode = 1;
         internal const int ShopLinkAlreadyMovedResultCode = 2;
@@ -285,6 +292,8 @@ namespace HaCreator.MapSimulator.UI
             public int SearchResultMaxPageCount { get; init; }
             public int ChildOwnerLeft { get; init; }
             public int ChildOwnerTop { get; init; }
+            public int ChildOwnerWidth { get; init; }
+            public int ChildOwnerHeight { get; init; }
             public bool ChildPreviousButtonEnabled { get; init; }
             public bool ChildNextButtonEnabled { get; init; }
             public IReadOnlyList<int> PreviousPageItemIds { get; init; } = Array.Empty<int>();
@@ -299,6 +308,10 @@ namespace HaCreator.MapSimulator.UI
             public bool ScanConfirmationPending { get; init; }
             public int PendingScanConfirmationItemId { get; init; }
             public string PendingScanConfirmationSummary { get; init; } = string.Empty;
+            public int ScanConfirmationLeft { get; init; }
+            public int ScanConfirmationTop { get; init; }
+            public int ScanConfirmationWidth { get; init; }
+            public int ScanConfirmationHeight { get; init; }
             public int? LastShopLinkResultCode { get; init; }
             public string LastShopLinkResultSummary { get; init; } = string.Empty;
             public int LastScannerResultSubtype { get; init; }
@@ -445,6 +458,8 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultMaxPageCount = SearchResultMaxPageCount,
                 ChildOwnerLeft = Position.X + (_searchBackgroundTexture?.Width ?? GetWindowBounds().Width),
                 ChildOwnerTop = Position.Y,
+                ChildOwnerWidth = GetChildOwnerWidth(),
+                ChildOwnerHeight = GetChildOwnerHeight(),
                 ChildPreviousButtonEnabled = IsChildPreviousButtonEnabled(),
                 ChildNextButtonEnabled = IsChildNextButtonEnabled(),
                 PreviousPageItemIds = GetChildPageItemIds(_searchResultPageIndex - 1),
@@ -459,6 +474,10 @@ namespace HaCreator.MapSimulator.UI
                 ScanConfirmationPending = _scanConfirmationPending,
                 PendingScanConfirmationItemId = _pendingScanConfirmationItemId,
                 PendingScanConfirmationSummary = _pendingScanConfirmationSummary,
+                ScanConfirmationLeft = GetScanConfirmationBounds().X,
+                ScanConfirmationTop = GetScanConfirmationBounds().Y,
+                ScanConfirmationWidth = ScanConfirmationModalWidth,
+                ScanConfirmationHeight = ScanConfirmationModalHeight,
                 LastShopLinkResultCode = _lastShopLinkResultCode,
                 LastShopLinkResultSummary = _lastShopLinkResultSummary,
                 LastScannerResultSubtype = _lastScannerResultSubtype,
@@ -658,6 +677,8 @@ namespace HaCreator.MapSimulator.UI
                 : $"{Math.Min(_selectedIndex + 1, _results.Count).ToString(CultureInfo.InvariantCulture)} / {_results.Count.ToString(CultureInfo.InvariantCulture)}";
             sprite.DrawString(_font, TrimToWidth(countLabel, 32), new Vector2(bounds.X + 14, bounds.Y + FooterY - 17), new Color(255, 233, 160));
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 38), new Vector2(bounds.X + 14, bounds.Y + FooterY), new Color(214, 223, 236));
+            DrawActiveChildOwner(sprite);
+            DrawPendingScanConfirmation(sprite);
         }
 
         private void RegisterButton(UIObject button, int x, int y, Action action)
@@ -1188,6 +1209,137 @@ namespace HaCreator.MapSimulator.UI
                 .Take(pageSize)
                 .Select(result => result.IsPacketFedShopRow && IsShopLinkButtonEnabled(result.ChannelId, CurrentChannelId, result.IsNpcShop))
                 .ToList();
+        }
+
+        private int GetChildOwnerWidth()
+        {
+            return _resultBackgroundTexture?.Width
+                ?? (_activeAddOnMode == ScannerAddOnMode.SearchResult && _searchResultChildAssetAvailable
+                    ? Math.Max(1, _searchResultChildAssetWidth)
+                    : 189);
+        }
+
+        private int GetChildOwnerHeight()
+        {
+            return _resultBackgroundTexture?.Height
+                ?? (_activeAddOnMode == ScannerAddOnMode.SearchResult && _searchResultChildAssetAvailable
+                    ? Math.Max(1, _searchResultChildAssetHeight)
+                    : 249);
+        }
+
+        private Rectangle GetChildOwnerBounds()
+        {
+            Rectangle parentBounds = GetWindowBounds();
+            int left = Position.X + (_searchBackgroundTexture?.Width ?? parentBounds.Width);
+            return new Rectangle(left, Position.Y, GetChildOwnerWidth(), GetChildOwnerHeight());
+        }
+
+        private Rectangle GetScanConfirmationBounds()
+        {
+            Rectangle childBounds = GetChildOwnerBounds();
+            int left = childBounds.X + Math.Max(0, (childBounds.Width - ScanConfirmationModalWidth) / 2);
+            int top = childBounds.Y + Math.Max(0, (childBounds.Height - ScanConfirmationModalHeight) / 2);
+            return new Rectangle(left, top, ScanConfirmationModalWidth, ScanConfirmationModalHeight);
+        }
+
+        private void DrawActiveChildOwner(SpriteBatch sprite)
+        {
+            if (_activeAddOnMode == ScannerAddOnMode.None)
+            {
+                return;
+            }
+
+            Rectangle childBounds = GetChildOwnerBounds();
+            if (_resultBackgroundTexture != null)
+            {
+                sprite.Draw(_resultBackgroundTexture, childBounds.Location.ToVector2(), Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixelTexture, childBounds, new Color(20, 24, 32, 230));
+                DrawBorder(sprite, childBounds, new Color(235, 226, 190, 180));
+            }
+
+            string title = _activeAddOnMode switch
+            {
+                ScannerAddOnMode.HotList => "Top searched items",
+                ScannerAddOnMode.Category => "Item categories",
+                ScannerAddOnMode.SearchResult when _results.Any(result => result.IsPacketFedShopRow) => "Shop scan result",
+                ScannerAddOnMode.SearchResult => "Item search result",
+                _ => "Shop scanner"
+            };
+            sprite.DrawString(_font, TrimToWidth(title, 36), new Vector2(childBounds.X + 16, childBounds.Y + 10), new Color(45, 53, 73));
+
+            int pageSize = GetCurrentChildPageSize();
+            IReadOnlyList<ScannerResult> pageRows = _results
+                .Skip(_searchResultPageIndex * pageSize)
+                .Take(pageSize)
+                .ToList();
+            for (int i = 0; i < pageRows.Count; i++)
+            {
+                ScannerResult row = pageRows[i];
+                int rowTop = childBounds.Y + SearchResultChildRowY + (i * SearchResultChildRowHeight);
+                if (rowTop + SearchResultChildRowHeight > childBounds.Bottom - 20)
+                {
+                    break;
+                }
+
+                Rectangle rowBounds = new(childBounds.X + SearchResultChildRowX, rowTop, Math.Max(32, childBounds.Width - (SearchResultChildRowX * 2)), SearchResultChildRowHeight - 2);
+                bool selected = _selectedIndex == (_searchResultPageIndex * pageSize) + i;
+                sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 112) : new Color(255, 255, 255, 38));
+
+                string rowTitle = row.IsPacketFedShopRow
+                    ? $"{row.ShopOwnerName} {row.Price.ToString("N0", CultureInfo.InvariantCulture)}"
+                    : row.Name;
+                sprite.DrawString(_font, TrimToWidth(rowTitle, 44), new Vector2(rowBounds.X + 6, rowBounds.Y + 2), selected ? new Color(30, 45, 80) : new Color(52, 60, 78));
+
+                string detail = row.IsPacketFedShopRow
+                    ? (row.IsNpcShop
+                        ? "NPC shop row"
+                        : $"{row.ShopTitle} / ch{row.ChannelId.ToString(CultureInfo.InvariantCulture)} / {row.Quantity.ToString(CultureInfo.InvariantCulture)}")
+                    : $"{row.InventoryType} / {row.ItemId.ToString(CultureInfo.InvariantCulture)}";
+                sprite.DrawString(_font, TrimToWidth(detail, 50), new Vector2(rowBounds.X + 6, rowBounds.Y + 16), new Color(87, 95, 112));
+
+                if (row.IsPacketFedShopRow)
+                {
+                    Rectangle linkBounds = new(
+                        childBounds.X + SearchResultChildLinkButtonX,
+                        rowBounds.Y + 9,
+                        SearchResultChildLinkButtonWidth,
+                        16);
+                    bool enabled = IsShopLinkButtonEnabled(row.ChannelId, CurrentChannelId, row.IsNpcShop);
+                    sprite.Draw(_pixelTexture, linkBounds, enabled ? new Color(75, 111, 151, 190) : new Color(95, 95, 95, 120));
+                    sprite.DrawString(_font, "Link", new Vector2(linkBounds.X + 12, linkBounds.Y + 1), enabled ? Color.White : new Color(190, 190, 190));
+                }
+            }
+
+            string pageText = _searchResultTotalPages <= 0
+                ? "0 / 0"
+                : $"{(_searchResultPageIndex + 1).ToString(CultureInfo.InvariantCulture)} / {_searchResultTotalPages.ToString(CultureInfo.InvariantCulture)}";
+            sprite.DrawString(_font, pageText, new Vector2(childBounds.X + 16, childBounds.Bottom - 24), new Color(75, 82, 98));
+        }
+
+        private void DrawPendingScanConfirmation(SpriteBatch sprite)
+        {
+            if (!_scanConfirmationPending)
+            {
+                return;
+            }
+
+            Rectangle modalBounds = GetScanConfirmationBounds();
+            sprite.Draw(_pixelTexture, modalBounds, new Color(18, 21, 28, 238));
+            DrawBorder(sprite, modalBounds, new Color(238, 224, 174, 230));
+            sprite.DrawString(_font, TrimToWidth(_pendingScanConfirmationSummary, 42), new Vector2(modalBounds.X + 12, modalBounds.Y + 12), Color.White);
+            sprite.DrawString(_font, "OK", new Vector2(modalBounds.X + 72, modalBounds.Bottom - 24), new Color(255, 233, 160));
+            sprite.DrawString(_font, "Cancel", new Vector2(modalBounds.X + 154, modalBounds.Bottom - 24), new Color(255, 233, 160));
+        }
+
+        private void DrawBorder(SpriteBatch sprite, Rectangle bounds, Color color)
+        {
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
         }
 
         private void RefreshRows()
@@ -1732,7 +1884,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return TryReadInt64(payload, ref offset, out _);
+            return TryReadInt64(payload, ref offset, out _)
+                && TryReadInt32(payload, ref offset, out _);
         }
 
         private static bool TrySkipBundleItemSlotBody(byte[] payload, ref int offset, int itemId)

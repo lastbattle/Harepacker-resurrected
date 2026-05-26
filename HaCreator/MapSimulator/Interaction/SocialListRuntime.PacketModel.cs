@@ -391,7 +391,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankingEntries(IReadOnlyList<GuildRankingSeedEntry> rankingEntries, int guildId)
         {
-            if (TryBuildGuildScopedResultIgnore(
+            bool hasScopedGuildId = guildId > 0;
+            if (hasScopedGuildId &&
+                TryBuildGuildScopedResultIgnore(
                     (byte)SocialListClientGuildResultKind.Ranking,
                     guildId,
                     "ranking rows",
@@ -400,7 +402,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return ignoredMessage;
             }
 
-            RememberPacketGuildId(guildId);
+            if (hasScopedGuildId)
+            {
+                RememberPacketGuildId(guildId);
+            }
+
             _packetGuildRankingEntries.Clear();
             if (rankingEntries != null)
             {
@@ -421,8 +427,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return _packetGuildRankingEntries.Count > 0
-                ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) refreshed {_packetGuildRankingEntries.Count} rival guild ranking row{(_packetGuildRankingEntries.Count == 1 ? string.Empty : "s")} for guild {guildId}."
-                : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) cleared rival guild ranking rows for guild {guildId}.";
+                ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) refreshed {_packetGuildRankingEntries.Count} rival guild ranking row{(_packetGuildRankingEntries.Count == 1 ? string.Empty : "s")}."
+                : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) cleared rival guild ranking rows.";
         }
 
         internal string UpsertPacketGuildRankingEntry(

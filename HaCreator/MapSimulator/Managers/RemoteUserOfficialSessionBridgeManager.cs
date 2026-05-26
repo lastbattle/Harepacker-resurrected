@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
         private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserCommonPacket (0x94cdb0) dispatches common-user ownership on 181-208 with no tutor owner branch; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; CWvsContext::OnPacket (0x9e5830) dispatches opcode 122 to CWvsContext::OnNewYearCardRes (0xa01fd0), whose subtypes 13 and 14 call CUserPool::OnNewYearCardRecordAdd/Remove; CUserPool::Update couple-chair lock admission at 0x94c9f4/0x94ca01 consumes raw pair records only when dwPairCharacterID is 0 or the current owner.";
-        private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides two seat-bound 300ms effect frames; v95 CUserPool::OnUserRemotePacket routes opcode 222 to CUserRemote::OnSetActivePortableChair, and CUser::SetActivePortableChair (0x8eff80) immediately derives CUserPool::OnCoupleChairRecordAdd for 3012xxx chairs or OnCoupleChairRecordRemove otherwise, so native v95 traffic proves the authoritative couple-chair record owner through opcode 222 instead of separate add/remove opcodes.";
+        private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides two seat-bound 300ms effect frames; v95 CUserPool::OnUserRemotePacket routes opcode 222 to CUserRemote::OnSetActivePortableChair (0x949240), which stores m_nPortableChairID, then CUserRemote::Update (0x9563c5) applies the 0x400 portable-chair update through CUser::SetActivePortableChair (0x8eff80), deriving CUserPool::OnCoupleChairRecordAdd for 3012xxx chairs or OnCoupleChairRecordRemove otherwise, so native v95 traffic proves the authoritative couple-chair record owner through ordered opcode 222 observations instead of separate add/remove opcodes.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -817,12 +817,12 @@ namespace HaCreator.MapSimulator.Managers
                     out PortableChairRecordCaptureEntry derivedAddEntry,
                     out PortableChairRecordCaptureEntry derivedRemoveEntry))
             {
-                return $"{buildTag}:authoritative-official-setactive-portable-chair-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} chair={derivedAddEntry.ChairItemId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
+                return $"{buildTag}:authoritative-official-update-portable-chair-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} chair={derivedAddEntry.ChairItemId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
             }
 
             if (HasOfficialSetActivePortableChairRecordCaptureForBuild(buildTag))
             {
-                return $"{buildTag}:official-setactive-portable-chair-derived-record candidate opcode=222; awaiting ordered same-owner add/remove";
+                return $"{buildTag}:official-update-portable-chair-derived-record candidate opcode=222; awaiting ordered same-owner add/remove";
             }
 
             List<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>> addEvidence = evidenceByOpcode
@@ -2423,7 +2423,7 @@ namespace HaCreator.MapSimulator.Managers
                     status = addPacket.Status.GetValueOrDefault(-1);
                     if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "mapped dispatch", StringComparison.OrdinalIgnoreCase))
                     {
-                        reason = $"derived=CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}";
+                        reason = $"derived=CUserRemote::OnSetActivePortableChair -> CUserRemote::Update flag 0x400 -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}";
                     }
                 }
                 else
@@ -2432,7 +2432,7 @@ namespace HaCreator.MapSimulator.Managers
                     characterId = removePacket.CharacterId;
                     if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "mapped dispatch", StringComparison.OrdinalIgnoreCase))
                     {
-                        reason = "derived=CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordRemove";
+                        reason = "derived=CUserRemote::OnSetActivePortableChair -> CUserRemote::Update flag 0x400 -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordRemove";
                     }
                 }
             }

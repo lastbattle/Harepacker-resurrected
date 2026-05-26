@@ -140,8 +140,12 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reduce\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        private static readonly Regex ArrayForEachAliasCallPattern = new(
-            @"(?:^|[;\{\(\s,])(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*forEach\s*\(",
+        private static readonly Regex ArrayIteratorAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:forEach|map|filter|flatMap|some|every|find|findIndex)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex ArrayReduceIteratorAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reduce\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex ForOfAliasLoopPattern = new(
@@ -6572,7 +6576,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            foreach (Match match in ArrayForEachAliasCallPattern.Matches(value))
+            foreach (Match match in ArrayIteratorAliasCallPattern.Matches(value))
             {
                 string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
                 if (!TryGetStaticArrayAliasValues(sourceName, objectMemberAliasMap, out IReadOnlyList<string> aliasValues))
@@ -6599,6 +6603,48 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 if (!TryParseIteratorCallback(arguments[0], out string itemName, out string callbackBody))
+                {
+                    continue;
+                }
+
+                CollectIteratorBodyTimerCallbackPublications(
+                    callbackBody,
+                    itemName,
+                    aliasValues,
+                    inheritedDelayMs,
+                    publications,
+                    seen,
+                    localAliasMap,
+                    objectMemberAliasMap);
+            }
+
+            foreach (Match match in ArrayReduceIteratorAliasCallPattern.Matches(value))
+            {
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                if (!TryGetStaticArrayAliasValues(sourceName, objectMemberAliasMap, out IReadOnlyList<string> aliasValues))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+                if (arguments.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!TryParseReduceIteratorCallback(arguments[0], out string itemName, out string callbackBody))
                 {
                     continue;
                 }
@@ -6672,7 +6718,31 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             var ranges = new List<(int Start, int End)>();
-            foreach (Match match in ArrayForEachAliasCallPattern.Matches(value))
+            foreach (Match match in ArrayIteratorAliasCallPattern.Matches(value))
+            {
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                int endIndex = closeIndex + 1;
+                int semicolonIndex = SkipWhitespace(value, endIndex);
+                if (semicolonIndex >= 0 && semicolonIndex < value.Length && value[semicolonIndex] == ';')
+                {
+                    endIndex = semicolonIndex + 1;
+                }
+
+                ranges.Add((match.Index, endIndex));
+            }
+
+            foreach (Match match in ArrayReduceIteratorAliasCallPattern.Matches(value))
             {
                 int openIndex = value.IndexOf('(', match.Index);
                 if (openIndex < 0)
@@ -6799,6 +6869,50 @@ namespace HaCreator.MapSimulator.Fields
             if (TryParseSingleParameterFunctionBodyCallback(normalizedCallback, out parameterText, out string bodyText))
             {
                 itemName = NormalizeFunctionAliasArgument(parameterText).TrimEnd(';');
+                callbackBody = bodyText;
+                return IsPotentialFunctionAliasName(itemName) && !string.IsNullOrWhiteSpace(callbackBody);
+            }
+
+            return false;
+        }
+
+        private static bool TryParseReduceIteratorCallback(
+            string callback,
+            out string itemName,
+            out string callbackBody)
+        {
+            itemName = string.Empty;
+            callbackBody = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression))
+            {
+                IReadOnlyList<string> parameters = SplitTopLevelByComma(
+                    StripOuterBalancedParentheses(parameterText?.Trim()));
+                if (parameters.Count < 2)
+                {
+                    return false;
+                }
+
+                itemName = NormalizeFunctionAliasArgument(parameters[1]).TrimEnd(';');
+                callbackBody = StripOuterBalancedParentheses(bodyExpression?.Trim()).TrimEnd(';');
+                return IsPotentialFunctionAliasName(itemName) && !string.IsNullOrWhiteSpace(callbackBody);
+            }
+
+            if (TryParseTwoParameterFunctionCallback(normalizedCallback, out parameterText, out string bodyText))
+            {
+                IReadOnlyList<string> parameters = SplitTopLevelByComma(
+                    StripOuterBalancedParentheses(parameterText?.Trim()));
+                if (parameters.Count < 2)
+                {
+                    return false;
+                }
+
+                itemName = NormalizeFunctionAliasArgument(parameters[1]).TrimEnd(';');
                 callbackBody = bodyText;
                 return IsPotentialFunctionAliasName(itemName) && !string.IsNullOrWhiteSpace(callbackBody);
             }

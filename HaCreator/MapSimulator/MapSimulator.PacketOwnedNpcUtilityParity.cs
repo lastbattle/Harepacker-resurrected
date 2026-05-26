@@ -38,6 +38,16 @@ namespace HaCreator.MapSimulator
                 case 364:
                 case 365:
                 {
+                    if (packetType == 364)
+                    {
+                        string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.NpcShop);
+                        if (!string.IsNullOrWhiteSpace(blockingOwner))
+                        {
+                            message = _packetOwnedNpcShopRuntime.ApplyOpenBlockedByUniqueModelessOwner(blockingOwner);
+                            return true;
+                        }
+                    }
+
                     bool applied = _packetOwnedNpcShopRuntime.TryApplyPacket(packetType, payload, out message);
                     if (applied && packetType == 364)
                     {
@@ -51,6 +61,16 @@ namespace HaCreator.MapSimulator
                 case 369:
                 case 370:
                 {
+                    if (packetType == 370 && payload.Length > 0 && payload[0] == 35)
+                    {
+                        string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.StoreBank);
+                        if (!string.IsNullOrWhiteSpace(blockingOwner))
+                        {
+                            message = _packetOwnedStoreBankRuntime.ApplyOpenBlockedByUniqueModelessOwner(blockingOwner);
+                            return true;
+                        }
+                    }
+
                     bool applied = _packetOwnedStoreBankRuntime.TryApplyPacket(packetType, payload, out message);
                     if (applied && !_packetOwnedStoreBankRuntime.HasPendingGetAllRequest)
                     {

@@ -3,7 +3,9 @@ using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.PacketLib;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -112,6 +114,18 @@ namespace HaCreator.MapSimulator.UI
             public int ItemId { get; init; }
         }
 
+        private sealed class CashShopCommodityMetadata
+        {
+            public int SerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public int Count { get; init; } = 1;
+            public long Price { get; init; }
+            public int Priority { get; init; }
+            public int PeriodDays { get; init; }
+            public int Gender { get; init; } = 2;
+            public bool OnSale { get; init; }
+        }
+
         internal readonly struct CashLimitGoodsCountChange
         {
             public CashLimitGoodsCountChange(int itemId, int commoditySerialNumber, int remainCount)
@@ -143,6 +157,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ReceiveGiftAcceptNoticeStringPoolId = 0x0AC0;
         private const int MaxTrailingCashItemInfoDecodeRows = 32;
         private const int MaxTrailingItcDecodeRows = 32;
+        private static readonly object CashShopCommodityMetadataLock = new();
+        private static Dictionary<int, CashShopCommodityMetadata> s_cashShopCommodityBySerialNumber;
+        private static Dictionary<int, List<CashShopCommodityMetadata>> s_cashShopCommoditiesByItemId;
 
         internal sealed class GiftListPacketSnapshot
         {

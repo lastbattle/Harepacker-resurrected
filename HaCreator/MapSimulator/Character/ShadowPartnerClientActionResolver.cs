@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Character
             int ListNodeObjectId,
             int RegisteredAnimationObjectId,
             int ActionFrameCanvasObjectId,
+            int InsertCanvasResultObjectId,
             int ParentUnderFaceLayerObjectId,
             IReadOnlyList<ShadowPartnerLayerNativeOperation> NativeOperations);
 
@@ -3451,6 +3452,7 @@ namespace HaCreator.MapSimulator.Character
         private const int ShadowPartnerLayerListNodeSalt = 40000;
         private const int ShadowPartnerRegisteredAnimationSalt = 80000;
         private const int ShadowPartnerActionFrameCanvasSalt = 120000;
+        private const int ShadowPartnerInsertCanvasResultSalt = 160000;
         private const int ShadowPartnerUnderFaceParentLayerObjectId = 5;
         internal const int ClientActionManInitDefaultPieceDelayMs = 150;
 
@@ -4324,12 +4326,14 @@ namespace HaCreator.MapSimulator.Character
                 layerObjectId + ShadowPartnerLayerListNodeSalt,
                 usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
                 layerObjectId + ShadowPartnerActionFrameCanvasSalt,
+                layerObjectId + ShadowPartnerInsertCanvasResultSalt,
                 ShadowPartnerUnderFaceParentLayerObjectId,
                 BuildShadowPartnerLayerNativeOperations(
                     layerObjectId,
                     layerObjectId + ShadowPartnerLayerListNodeSalt,
                     usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
                     layerObjectId + ShadowPartnerActionFrameCanvasSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasResultSalt,
                     ShadowPartnerUnderFaceParentLayerObjectId));
         }
 
@@ -4338,6 +4342,7 @@ namespace HaCreator.MapSimulator.Character
             int listNodeObjectId,
             int registeredAnimationObjectId,
             int actionFrameCanvasObjectId,
+            int insertCanvasResultObjectId,
             int parentUnderFaceLayerObjectId)
         {
             bool usesOneTimeLayer = registeredAnimationObjectId > 0;
@@ -4427,7 +4432,7 @@ namespace HaCreator.MapSimulator.Character
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasResultVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasResultObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
@@ -4568,7 +4573,7 @@ namespace HaCreator.MapSimulator.Character
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasResultVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasResultObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
@@ -4585,6 +4590,12 @@ namespace HaCreator.MapSimulator.Character
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha1Variant,
+                    ++sequence,
+                    layerObjectId,
+                    listNodeObjectId,
+                    ReferenceDelta: 0));
+                operations.Add(new ShadowPartnerLayerNativeOperation(
+                    ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha2Variant,
                     ++sequence,
                     layerObjectId,
                     listNodeObjectId,

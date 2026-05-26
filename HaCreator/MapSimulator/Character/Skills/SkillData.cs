@@ -2924,6 +2924,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastBodyContactBaseDamage { get; set; }
         public int LastBodyContactDamage { get; set; }
         public bool LastBodyContactAttackWasMagic { get; set; }
+        internal SummonDamageRuntimeRules.BodyContactDamageFormulaTrace LastBodyContactDamageFormulaTrace { get; set; }
         public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
         public int HitPeriodRemainingMs { get; set; }
