@@ -16,10 +16,9 @@ namespace HaCreator.MapSimulator.UI
     public sealed class AvatarPreviewCarouselWindow : UIWindowBase
     {
         private const int EntriesPerPage = 3;
-        private const int CardTopLeftX = 18;
-        private const int CardTopLeftY = 46;
-        private const int CardGapX = 14;
-        private const int NameTagOffsetY = 63;
+        public const int ClientSlotAnchorX = 170;
+        public const int ClientSlotAnchorY = 80;
+        public const int ClientSlotStrideX = 125;
         private const int DoubleClickThresholdMs = 400;
         private const int ClientNameTagMinimumWidth = 58;
         private const int ClientNameTagHorizontalPadding = 18;
@@ -231,7 +230,6 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                Rectangle cardBounds = GetCardBounds(slotIndex);
                 bool isSelected = displaySlotIndex == _selectedDisplayIndex;
                 Point slotAnchor = GetSlotAnchor(slotIndex);
                 DrawCard(sprite, slotAnchor, isSelected);
@@ -277,7 +275,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (_nameTagTextRasterizer != null || _font != null)
                 {
-                    DrawNameTag(sprite, build.Name, isSelected, absoluteAnchorX, absoluteAnchorY + NameTagOffsetY);
+                    DrawNameTag(sprite, build.Name, isSelected, absoluteAnchorX, Position.Y + ClientSlotAnchorY);
                 }
             }
         }
@@ -471,9 +469,12 @@ namespace HaCreator.MapSimulator.UI
 
         private Point GetCardTopLeft(int visibleSlotIndex)
         {
+            PreviewCanvasFrame frame = _selectedCardFrame.Texture != null
+                ? _selectedCardFrame
+                : _normalCardFrame;
             return new Point(
-                CardTopLeftX + (visibleSlotIndex * (_cardWidth + CardGapX)),
-                CardTopLeftY);
+                ClientSlotAnchorX + (visibleSlotIndex * ClientSlotStrideX) - frame.Origin.X,
+                ClientSlotAnchorY - frame.Origin.Y);
         }
 
         private void DrawCard(SpriteBatch sprite, Point slotAnchor, bool isSelected)

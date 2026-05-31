@@ -380,6 +380,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         int RemoveCanvasArgumentVariantOrdinal = -1,
         int CanvasPropertyRefDelta = 0,
         int LoadCanvasPropertyValueVariantRefDelta = 0,
+        int LoadCanvasArgumentVariantRefDelta = 0,
+        int LoadCanvasArgumentVariantObjectId = 0,
+        int InsertCanvasResultObjectId = 0,
         string LoadCanvasPropertyName = null,
         int LoadCanvasPropertyDefaultValue = 0,
         int AfterimageActionCanvasArrayObjectId = 0,
@@ -416,6 +419,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ZOrder { get; set; } = 0;        // Draw order
         public int? PositionCode { get; set; }      // Optional WZ `pos` anchor selection
         public int HitAfterMs { get; set; }         // Optional WZ `hitAfter` delay before damage presentation
+        public bool OnlyOnce { get; set; }          // Optional WZ `onlyOnce` gate for target hit layer registration
         public int? ClientEventDelayMs { get; set; }
 
         public List<IDXObject> ToTextureFrames()
@@ -2812,6 +2816,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool? FacingRightOverride { get; set; }
         public int? DelayRateOverride { get; set; }
         public SkillManager.ClientDoActiveSummonMonsterPacketPayload? ClientDoActiveSummonMonsterPacketPayload { get; set; }
+        public SkillManager.ClientDoActivePreparePacketPayload? ClientDoActivePreparePacketPayload { get; set; }
         public SkillManager.ClientDoActiveTownPortalPacketPayload? ClientDoActiveTownPortalPacketPayload { get; set; }
         public SkillManager.ClientDoActiveTeslaCoilPacketPayload? ClientDoActiveTeslaCoilPacketPayload { get; set; }
 
@@ -2914,6 +2919,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int[] PendingTeslaAttackConfirmedTargetMobIds { get; set; } = Array.Empty<int>();
         public int LastTeslaAttackResolvedTime { get; set; } = int.MinValue;
         public int NextSupportTime { get; set; } = int.MinValue;
+        public Dictionary<int, int> HealingRobotNextSupportTimesByCharacterId { get; } = new();
         public int SupportSuspendUntilTime { get; set; } = int.MinValue;
         public int NextHealTime { get; set; } = int.MinValue;
         public int NextBuffTime { get; set; } = int.MinValue;

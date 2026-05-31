@@ -30,6 +30,14 @@ namespace HaCreator.MapSimulator
         int Height,
         Point Origin);
 
+    internal readonly record struct AnimationDisplayerCombatFeedbackDigitCanvasTrace(
+        string OwnerSetName,
+        int Digit,
+        string CanvasPath,
+        int Width,
+        int Height,
+        Point Origin);
+
     internal readonly record struct AnimationDisplayerCombatFeedbackCriticalOwnerTrace(
         string LargeCriticalOwnerSetName,
         string SmallCriticalOwnerSetName,
@@ -57,6 +65,9 @@ namespace HaCreator.MapSimulator
         bool RedHasShot,
         bool BlueHasShot,
         bool VioletHasShot,
+        AnimationDisplayerCombatFeedbackDigitCanvasTrace[] RedDigitCanvasTraces,
+        AnimationDisplayerCombatFeedbackDigitCanvasTrace[] BlueDigitCanvasTraces,
+        AnimationDisplayerCombatFeedbackDigitCanvasTrace[] VioletDigitCanvasTraces,
         AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] RedSpecialTextCanvasTraces,
         AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] BlueSpecialTextCanvasTraces,
         AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[] VioletSpecialTextCanvasTraces,
@@ -946,7 +957,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryRegisterAnimationDisplayerNewYearAnimation(Rectangle area)
         {
-            return TryRegisterAnimationDisplayerAreaAnimation(
+            return TryRegisterAnimationDisplayerPacketOwnedTransientAreaAnimation(
                 cacheKey: "newyear",
                 effectUol: AnimationDisplayerNewYearEffectUol,
                 area,
@@ -967,7 +978,7 @@ namespace HaCreator.MapSimulator
                 string effectUol = i < effectUols.Length
                     ? effectUols[i]
                     : BuildAnimationDisplayerFireCrackerEffectUol(i, weatherPath: null);
-                anyRegistered |= TryRegisterAnimationDisplayerAreaAnimation(
+                anyRegistered |= TryRegisterAnimationDisplayerPacketOwnedTransientAreaAnimation(
                     cacheKey: $"firecracker:{i}",
                     effectUol,
                     area,
@@ -1626,12 +1637,39 @@ namespace HaCreator.MapSimulator
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(redSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(blueSpecialTextNames, "shot"),
                 HasAnimationDisplayerCombatFeedbackAuthoredSpecialText(violetSpecialTextNames, "shot"),
+                BuildAnimationDisplayerCombatFeedbackDigitCanvasTraces(DamageColorType.Red),
+                BuildAnimationDisplayerCombatFeedbackDigitCanvasTraces(DamageColorType.Blue),
+                BuildAnimationDisplayerCombatFeedbackDigitCanvasTraces(DamageColorType.Violet),
                 BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Red),
                 BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Blue),
                 BuildAnimationDisplayerCombatFeedbackSpecialTextCanvasTraces(DamageColorType.Violet),
                 BuildAnimationDisplayerCombatFeedbackCriticalOwnerTrace(),
                 UsesNoRed0ForDamageNumberSpecialTextComposition: true,
                 RejectsUnsupportedColorValues: true);
+        }
+
+        internal static AnimationDisplayerCombatFeedbackDigitCanvasTrace[]
+            BuildAnimationDisplayerCombatFeedbackDigitCanvasTraces(DamageColorType colorType)
+        {
+            string ownerSetName = ResolveAnimationDisplayerCombatFeedbackSpecialTextOwnerSetName(colorType);
+            if (string.IsNullOrWhiteSpace(ownerSetName))
+            {
+                return Array.Empty<AnimationDisplayerCombatFeedbackDigitCanvasTrace>();
+            }
+
+            var traces = new AnimationDisplayerCombatFeedbackDigitCanvasTrace[10];
+            for (int digit = 0; digit < traces.Length; digit++)
+            {
+                traces[digit] = new AnimationDisplayerCombatFeedbackDigitCanvasTrace(
+                    ownerSetName,
+                    digit,
+                    $"effect/BasicEff.img/{ownerSetName}/{digit}",
+                    ResolveAnimationDisplayerCombatFeedbackDigitWidth(digit),
+                    ResolveAnimationDisplayerCombatFeedbackDigitHeight(digit),
+                    ResolveAnimationDisplayerCombatFeedbackDigitOrigin(digit));
+            }
+
+            return traces;
         }
 
         internal static AnimationDisplayerCombatFeedbackSpecialTextCanvasTrace[]
@@ -1670,6 +1708,60 @@ namespace HaCreator.MapSimulator
                 CriticalEffectWidth: 62,
                 CriticalEffectHeight: 57,
                 CriticalEffectOrigin: new Point(41, 70));
+        }
+
+        private static int ResolveAnimationDisplayerCombatFeedbackDigitWidth(int digit)
+        {
+            return digit switch
+            {
+                0 => 31,
+                1 => 22,
+                2 => 29,
+                3 => 28,
+                4 => 31,
+                5 => 29,
+                6 => 31,
+                7 => 29,
+                8 => 31,
+                9 => 31,
+                _ => 0
+            };
+        }
+
+        private static int ResolveAnimationDisplayerCombatFeedbackDigitHeight(int digit)
+        {
+            return digit switch
+            {
+                0 => 33,
+                1 => 32,
+                2 => 33,
+                3 => 32,
+                4 => 33,
+                5 => 32,
+                6 => 33,
+                7 => 32,
+                8 => 33,
+                9 => 33,
+                _ => 0
+            };
+        }
+
+        private static Point ResolveAnimationDisplayerCombatFeedbackDigitOrigin(int digit)
+        {
+            return digit switch
+            {
+                0 => new Point(15, 32),
+                1 => new Point(11, 31),
+                2 => new Point(14, 32),
+                3 => new Point(14, 31),
+                4 => new Point(15, 32),
+                5 => new Point(14, 31),
+                6 => new Point(15, 32),
+                7 => new Point(14, 31),
+                8 => new Point(15, 32),
+                9 => new Point(15, 32),
+                _ => Point.Zero
+            };
         }
 
         private static int ResolveAnimationDisplayerCombatFeedbackSpecialTextWidth(string spriteName)
@@ -4293,6 +4385,7 @@ namespace HaCreator.MapSimulator
                     packetAnchorPosition.Y,
                     fallbackFacingRight,
                     presentation.CurrentTime,
+                    zOrder: presentation.LayerZ.GetValueOrDefault(),
                     initialElapsedMs: initialElapsedMs);
             }
             else
@@ -4306,6 +4399,7 @@ namespace HaCreator.MapSimulator
                     packetAnchorPosition.Y,
                     fallbackFacingRight,
                     presentation.CurrentTime,
+                    zOrder: presentation.LayerZ.GetValueOrDefault(),
                     initialElapsedMs: initialElapsedMs);
             }
         }
@@ -4665,11 +4759,7 @@ namespace HaCreator.MapSimulator
                 Vector2 anchor = ResolveAnimationDisplayerReservedVisualAnchor(getPosition, metadata);
                 if (metadata.Type == 1 && metadata.Width > 0 && metadata.Height > 0)
                 {
-                    Rectangle area = new(
-                        (int)MathF.Round(anchor.X - (metadata.Width / 2f)),
-                        (int)MathF.Round(anchor.Y - (metadata.Height / 2f)),
-                        Math.Max(1, metadata.Width),
-                        Math.Max(1, metadata.Height));
+                    Rectangle area = ResolveAnimationDisplayerReservedArea(anchor, metadata);
                     int durationMs = Math.Max(1, metadata.DurationMs > 0 ? metadata.DurationMs : 1000);
                     int updateIntervalMs = 100;
                     int updateCount = ResolveAnimationDisplayerReservedAreaBurstAttemptCount(
@@ -5038,6 +5128,28 @@ namespace HaCreator.MapSimulator
             return new Vector2(
                 ownerPosition.X + metadata.OffsetX + metadata.RelativeOffsetX,
                 ownerPosition.Y + metadata.OffsetY + metadata.RelativeOffsetY);
+        }
+
+        internal static Rectangle ResolveAnimationDisplayerReservedArea(
+            Vector2 resolvedAnchor,
+            AnimationDisplayerReservedEffectMetadata metadata)
+        {
+            int width = Math.Max(1, metadata.Width);
+            int height = Math.Max(1, metadata.Height);
+            if (metadata.PositionX.HasValue && metadata.PositionY.HasValue)
+            {
+                return new Rectangle(
+                    metadata.PositionX.Value + metadata.OffsetX + metadata.RelativeOffsetX,
+                    metadata.PositionY.Value + metadata.OffsetY + metadata.RelativeOffsetY,
+                    width,
+                    height);
+            }
+
+            return new Rectangle(
+                (int)MathF.Round(resolvedAnchor.X - (width / 2f)),
+                (int)MathF.Round(resolvedAnchor.Y - (height / 2f)),
+                width,
+                height);
         }
 
         private bool TryPlayAnimationDisplayerReservedSoundEffect(string descriptor)
@@ -10001,16 +10113,32 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var points = new List<Vector2>(childCount);
-            for (int index = 0; index < childCount; index++)
+            var pointsByIndex = new List<(int Index, Vector2 Point)>(childCount);
+            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < childCount; i++)
             {
-                WzImageProperty childProperty = resolvedGenerationPointProperty[index.ToString(CultureInfo.InvariantCulture)];
-                if (ResolveAnimationDisplayerLinkedRealProperty(childProperty) is not WzVectorProperty point)
+                WzImageProperty childProperty = children[i];
+                string childName = childProperty?.Name;
+                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
+                    || !seenSegments.Add(childName)
+                    || ResolveAnimationDisplayerLinkedRealProperty(childProperty) is not WzVectorProperty point)
                 {
-                    break;
+                    continue;
                 }
 
-                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
+                pointsByIndex.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
+            }
+
+            if (pointsByIndex.Count <= 0)
+            {
+                return null;
+            }
+
+            pointsByIndex.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            var points = new List<Vector2>(pointsByIndex.Count);
+            for (int i = 0; i < pointsByIndex.Count; i++)
+            {
+                points.Add(pointsByIndex[i].Point);
             }
 
             return points.Count > 0

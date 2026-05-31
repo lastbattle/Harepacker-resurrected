@@ -37,6 +37,11 @@ namespace HaCreator.MapSimulator.Character
             int RegisteredAnimationObjectId,
             int ActionFrameCanvasObjectId,
             int InsertCanvasResultObjectId,
+            int InsertCanvasDelayVariantObjectId,
+            int InsertCanvasAlpha0VariantObjectId,
+            int InsertCanvasAlpha1VariantObjectId,
+            int InsertCanvasAlpha2VariantObjectId,
+            int InsertCanvasOriginVariantObjectId,
             int ParentUnderFaceLayerObjectId,
             IReadOnlyList<ShadowPartnerLayerNativeOperation> NativeOperations);
 
@@ -3453,6 +3458,11 @@ namespace HaCreator.MapSimulator.Character
         private const int ShadowPartnerRegisteredAnimationSalt = 80000;
         private const int ShadowPartnerActionFrameCanvasSalt = 120000;
         private const int ShadowPartnerInsertCanvasResultSalt = 160000;
+        private const int ShadowPartnerInsertCanvasDelayVariantSalt = 161000;
+        private const int ShadowPartnerInsertCanvasAlpha0VariantSalt = 162000;
+        private const int ShadowPartnerInsertCanvasAlpha1VariantSalt = 163000;
+        private const int ShadowPartnerInsertCanvasAlpha2VariantSalt = 164000;
+        private const int ShadowPartnerInsertCanvasOriginVariantSalt = 165000;
         private const int ShadowPartnerUnderFaceParentLayerObjectId = 5;
         internal const int ClientActionManInitDefaultPieceDelayMs = 150;
 
@@ -4327,6 +4337,11 @@ namespace HaCreator.MapSimulator.Character
                 usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
                 layerObjectId + ShadowPartnerActionFrameCanvasSalt,
                 layerObjectId + ShadowPartnerInsertCanvasResultSalt,
+                layerObjectId + ShadowPartnerInsertCanvasDelayVariantSalt,
+                layerObjectId + ShadowPartnerInsertCanvasAlpha0VariantSalt,
+                layerObjectId + ShadowPartnerInsertCanvasAlpha1VariantSalt,
+                layerObjectId + ShadowPartnerInsertCanvasAlpha2VariantSalt,
+                layerObjectId + ShadowPartnerInsertCanvasOriginVariantSalt,
                 ShadowPartnerUnderFaceParentLayerObjectId,
                 BuildShadowPartnerLayerNativeOperations(
                     layerObjectId,
@@ -4334,6 +4349,11 @@ namespace HaCreator.MapSimulator.Character
                     usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
                     layerObjectId + ShadowPartnerActionFrameCanvasSalt,
                     layerObjectId + ShadowPartnerInsertCanvasResultSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasDelayVariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha0VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha1VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha2VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasOriginVariantSalt,
                     ShadowPartnerUnderFaceParentLayerObjectId));
         }
 
@@ -4343,6 +4363,11 @@ namespace HaCreator.MapSimulator.Character
             int registeredAnimationObjectId,
             int actionFrameCanvasObjectId,
             int insertCanvasResultObjectId,
+            int insertCanvasDelayVariantObjectId,
+            int insertCanvasAlpha0VariantObjectId,
+            int insertCanvasAlpha1VariantObjectId,
+            int insertCanvasAlpha2VariantObjectId,
+            int insertCanvasOriginVariantObjectId,
             int parentUnderFaceLayerObjectId)
         {
             bool usesOneTimeLayer = registeredAnimationObjectId > 0;
@@ -4438,31 +4463,31 @@ namespace HaCreator.MapSimulator.Character
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasDelayVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasDelayVariantObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha0Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha0VariantObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha1Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha1VariantObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha2Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha2VariantObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasOriginVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasOriginVariantObjectId,
                     registeredAnimationObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
@@ -4579,31 +4604,31 @@ namespace HaCreator.MapSimulator.Character
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasDelayVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasDelayVariantObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha0Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha0VariantObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha1Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha1VariantObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasAlpha2Variant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasAlpha2VariantObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(
                     ShadowPartnerLayerNativeOperationKind.ClearInsertCanvasOriginVariant,
                     ++sequence,
-                    layerObjectId,
+                    insertCanvasOriginVariantObjectId,
                     listNodeObjectId,
                     ReferenceDelta: 0));
                 operations.Add(new ShadowPartnerLayerNativeOperation(

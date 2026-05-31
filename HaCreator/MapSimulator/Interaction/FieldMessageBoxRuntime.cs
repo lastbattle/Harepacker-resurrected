@@ -57,6 +57,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int CuiHopeButtonHeight = 16;
         internal const int CuiHopeItemNameDrawX = 40;
         internal const int CuiHopeItemNameDrawY = 21;
+        internal const int CuiHopeEditControlFirstId = 0;
+        internal const int CuiHopeFontStringPoolId = 0x1A25;
+        internal const int CuiHopeEditBackColor = 0;
+        internal const uint CuiHopeEditFontColor = 0xFF65280C;
         private const int ChalkboardDialogOkButtonId = 1;
         private const int ChalkboardDialogCancelButtonId = 2;
         private const int ChalkboardDialogLineTooLongStringPoolId = 0x11E;
@@ -1013,7 +1017,7 @@ namespace HaCreator.MapSimulator.Interaction
             string okState = lineCount == 0
                 ? "disabled"
                 : "enabled";
-            return $"CUIHope chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; prompt StringPool 0x{ComposePromptStringPoolId:X} \"{_chalkboardDialogState.PromptText}\", OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft lines {lineCount}/{CuiHopeLineCount}, edit max {CuiHopeLineMaxLength} each. {_chalkboardDialogState.ItemDescription}";
+            return $"CUIHope chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; prompt StringPool 0x{ComposePromptStringPoolId:X} \"{_chalkboardDialogState.PromptText}\", OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft lines {lineCount}/{CuiHopeLineCount}, native CCtrlEdit ids {CuiHopeEditControlFirstId}-{CuiHopeEditControlFirstId + CuiHopeLineCount - 1} use nHorzMax {CuiHopeLineMaxLength}, font StringPool 0x{CuiHopeFontStringPoolId:X}, back 0x{CuiHopeEditBackColor:X}, color 0x{CuiHopeEditFontColor:X8}. {_chalkboardDialogState.ItemDescription}";
         }
 
         private sealed record ChalkboardDialogState(
@@ -1224,6 +1228,29 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<string> NormalizeChalkboardDialogLinesForDialog(string text)
         {
             return NormalizeChalkboardDialogLines(text);
+        }
+
+        internal static IReadOnlyList<string> ResolveChalkboardDialogEditRowsForDisplay(string text)
+        {
+            string normalizedNewlines = NormalizeChalkboardDialogNewlines(text);
+            string[] splitLines = normalizedNewlines.Split('\n');
+            string[] rows = new string[CuiHopeLineCount];
+            for (int index = 0; index < rows.Length; index++)
+            {
+                string row = index < splitLines.Length
+                    ? splitLines[index] ?? string.Empty
+                    : string.Empty;
+                rows[index] = row.Length > CuiHopeLineMaxLength
+                    ? row[..CuiHopeLineMaxLength]
+                    : row;
+            }
+
+            return rows;
+        }
+
+        internal static IReadOnlyList<string> ResolveChalkboardDialogEditRowsForDisplayForTest(string text)
+        {
+            return ResolveChalkboardDialogEditRowsForDisplay(text);
         }
 
         internal static (int X, int Y, int Width, int Height)[] ResolveCuiHopeEditRowsForTest()

@@ -33,6 +33,8 @@ namespace HaCreator.MapSimulator.Character
         PhysicalDefenseDown,
         MagicDefenseDown,
         ElementalWeaken,
+        AttackLimit,
+        BuffLimit,
         BattlefieldFlag
     }
 
@@ -219,7 +221,13 @@ namespace HaCreator.MapSimulator.Character
             bool forcedJump = ResolveForcedJump();
             bool jumpBlocked = movementLocked || (seduced && !forcedJump) || HasStatus(PlayerMobStatusEffect.Weakness);
             bool polymorphed = HasStatus(PlayerMobStatusEffect.Polymorph);
-            bool skillCastBlocked = movementLocked || seduced || banished || polymorphed || HasStatus(PlayerMobStatusEffect.Seal);
+            bool skillCastBlocked = movementLocked
+                                    || seduced
+                                    || banished
+                                    || polymorphed
+                                    || HasStatus(PlayerMobStatusEffect.Seal)
+                                    || HasStatus(PlayerMobStatusEffect.AttackLimit)
+                                    || HasStatus(PlayerMobStatusEffect.BuffLimit);
             bool pickupBlocked = movementLocked || seduced;
             float moveSpeedMultiplier = ResolveMoveSpeedMultiplier();
             float additionalMissChance = ResolveAdditionalMissChance();
@@ -269,6 +277,16 @@ namespace HaCreator.MapSimulator.Character
             if (HasStatus(PlayerMobStatusEffect.Seal))
             {
                 return "Skills cannot be used while sealed.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.AttackLimit))
+            {
+                return "Skills cannot be used while attack-limited.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.BuffLimit))
+            {
+                return "Skills cannot be used while buff-limited.";
             }
 
             if (HasStatus(PlayerMobStatusEffect.Attract))
@@ -1689,6 +1707,12 @@ namespace HaCreator.MapSimulator.Character
             {
                 case PlayerMobStatusEffect.Seal:
                     status = PlayerSkillBlockingStatus.Seal;
+                    return true;
+                case PlayerMobStatusEffect.AttackLimit:
+                    status = PlayerSkillBlockingStatus.AttackLimit;
+                    return true;
+                case PlayerMobStatusEffect.BuffLimit:
+                    status = PlayerSkillBlockingStatus.BuffLimit;
                     return true;
                 case PlayerMobStatusEffect.Stun:
                     status = PlayerSkillBlockingStatus.Stun;

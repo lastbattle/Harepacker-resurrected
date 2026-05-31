@@ -269,6 +269,115 @@ namespace HaCreator.MapSimulator.Rendering
                 maxChannelDelta);
         }
 
+        internal static NativeCopyCaptureComparison CompareAlpha255Bgra32Capture(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            Color[] sourcePixels,
+            int sourceWidth,
+            int sourceHeight,
+            int x,
+            int y,
+            byte[] nativeCapturedBgra32,
+            int nativeCaptureStride = 0)
+        {
+            Color[] nativeCapturedPixels = DecodeBgra32CapturePixels(
+                nativeCapturedBgra32,
+                destinationWidth,
+                destinationHeight,
+                nativeCaptureStride);
+            if (nativeCapturedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            return CompareAlpha255Capture(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                sourcePixels,
+                sourceWidth,
+                sourceHeight,
+                x,
+                y,
+                nativeCapturedPixels);
+        }
+
+        internal static NativeCopyCaptureComparison CompareAlpha255Bgra32CaptureRegion(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            Color[] sourcePixels,
+            int sourceWidth,
+            int sourceHeight,
+            int x,
+            int y,
+            byte[] nativeCapturedBgra32,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight,
+            int nativeCaptureStride = 0)
+        {
+            Color[] nativeCapturedPixels = DecodeBgra32CapturePixels(
+                nativeCapturedBgra32,
+                captureWidth,
+                captureHeight,
+                nativeCaptureStride);
+            if (nativeCapturedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            return CompareAlpha255CaptureRegion(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                sourcePixels,
+                sourceWidth,
+                sourceHeight,
+                x,
+                y,
+                nativeCapturedPixels,
+                captureX,
+                captureY,
+                captureWidth,
+                captureHeight);
+        }
+
+        internal static Color[] DecodeBgra32CapturePixels(byte[] bgra32Bytes, int width, int height, int stride = 0)
+        {
+            if (bgra32Bytes == null || width <= 0 || height <= 0)
+            {
+                return Array.Empty<Color>();
+            }
+
+            int minimumStride = checked(width * 4);
+            int resolvedStride = stride == 0 ? minimumStride : stride;
+            int absoluteStride = Math.Abs(resolvedStride);
+            if (absoluteStride < minimumStride || bgra32Bytes.Length < absoluteStride * height)
+            {
+                return Array.Empty<Color>();
+            }
+
+            Color[] pixels = new Color[width * height];
+            for (int row = 0; row < height; row++)
+            {
+                int rowOffset = ResolveRowOffset(resolvedStride, absoluteStride, height, row);
+                for (int column = 0; column < width; column++)
+                {
+                    int byteIndex = rowOffset + column * 4;
+                    pixels[row * width + column] = Color.FromArgb(
+                        bgra32Bytes[byteIndex + 3],
+                        bgra32Bytes[byteIndex + 2],
+                        bgra32Bytes[byteIndex + 1],
+                        bgra32Bytes[byteIndex]);
+                }
+            }
+
+            return pixels;
+        }
+
         private static Bitmap CreateBitmapFromPixelsForTesting(Color[] pixels, int width, int height)
         {
             Bitmap bitmap = new(width, height, PixelFormat.Format32bppArgb);

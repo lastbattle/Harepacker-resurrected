@@ -2095,6 +2095,8 @@ namespace HaCreator.MapSimulator.Loaders
         internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset, int RightInset);
         internal readonly record struct CollapsedMinimapButtonChromeMetrics(int LaneTop, int LaneHeight);
         internal readonly record struct CollapsedMinimapClientTitleLayout(int StreetNameX, int SeparatorX, int MapNameX, int TextY);
+        internal readonly record struct CollapsedMinimapClientTitleSegment(string Text, int X, int Y);
+        internal readonly record struct CollapsedMinimapClientTitleDrawPlan(IReadOnlyList<CollapsedMinimapClientTitleSegment> Segments);
 
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int stateButtonWidth,
@@ -2311,6 +2313,38 @@ namespace HaCreator.MapSimulator.Loaders
             return new CollapsedMinimapClientTitleLayout(streetNameX, separatorX, mapNameX, COLLAPSED_MINIMAP_CLIENT_TEXT_TOP);
         }
 
+        internal static CollapsedMinimapClientTitleDrawPlan ResolveCollapsedMinimapClientTitleDrawPlanForTesting(
+            string streetName,
+            string mapName,
+            int streetNameTextWidth)
+        {
+            string renderStreetName = string.IsNullOrWhiteSpace(streetName) ? string.Empty : streetName.Trim();
+            string renderMapName = string.IsNullOrWhiteSpace(mapName) ? string.Empty : mapName.Trim();
+            CollapsedMinimapClientTitleLayout layout =
+                ResolveCollapsedMinimapClientTitleLayoutForTesting(streetNameTextWidth);
+
+            if (renderStreetName.Length > 0 && renderMapName.Length > 0)
+            {
+                return new CollapsedMinimapClientTitleDrawPlan(new[]
+                {
+                    new CollapsedMinimapClientTitleSegment(renderStreetName, layout.StreetNameX, layout.TextY),
+                    new CollapsedMinimapClientTitleSegment(COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR, layout.SeparatorX, layout.TextY),
+                    new CollapsedMinimapClientTitleSegment(renderMapName, layout.MapNameX, layout.TextY)
+                });
+            }
+
+            string renderTitle = renderStreetName.Length > 0 ? renderStreetName : renderMapName;
+            if (renderTitle.Length == 0)
+            {
+                return new CollapsedMinimapClientTitleDrawPlan(Array.Empty<CollapsedMinimapClientTitleSegment>());
+            }
+
+            return new CollapsedMinimapClientTitleDrawPlan(new[]
+            {
+                new CollapsedMinimapClientTitleSegment(renderTitle, layout.StreetNameX, layout.TextY)
+            });
+        }
+
         internal static SD.Rectangle ResolveCollapsedMinimapIconOpaqueBoundsForTesting(SD.Bitmap icon)
         {
             if (!TryGetBitmapDimensions(icon, out int width, out int height) ||
@@ -2467,7 +2501,6 @@ namespace HaCreator.MapSimulator.Loaders
             string renderTitle = ResolveCollapsedMinimapClientTitleTextForTesting(streetName, mapName);
             string renderStreetName = string.IsNullOrWhiteSpace(streetName) ? string.Empty : streetName.Trim();
             string renderMapName = string.IsNullOrWhiteSpace(mapName) ? string.Empty : mapName.Trim();
-            bool renderClientSplitTitle = renderStreetName.Length > 0 && renderMapName.Length > 0;
             int iconWidth = 0;
             int iconHeight = 0;
             int maxTextHeight = Math.Max(1, titleLaneHeight);
@@ -2517,20 +2550,31 @@ namespace HaCreator.MapSimulator.Loaders
             if (renderTitle.Length > 0 && textRect.Width > 0 && textRect.Height > 0)
             {
                 using SD.Font titleFont = ClientTextRasterizer.CreateClientFont(scaledPixelSize > 0f ? scaledPixelSize : MINIMAP_STREETNAME_TOOLTIP_FONTSIZE);
-                if (renderClientSplitTitle)
-                {
-                    SD.Size streetSize = SWF.TextRenderer.MeasureText(
-                        graphics,
+                SD.Size streetSize = SWF.TextRenderer.MeasureText(
+                    graphics,
+                    renderStreetName,
+                    titleFont,
+                    new SD.Size(maxTextWidth, maxTextHeight),
+                    CollapsedMinimapTitleTextFormatFlags);
+                CollapsedMinimapClientTitleDrawPlan drawPlan =
+                    ResolveCollapsedMinimapClientTitleDrawPlanForTesting(
                         renderStreetName,
-                        titleFont,
-                        new SD.Size(maxTextWidth, maxTextHeight),
-                        CollapsedMinimapTitleTextFormatFlags);
-                    CollapsedMinimapClientTitleLayout layout =
-                        ResolveCollapsedMinimapClientTitleLayoutForTesting(streetSize.Width);
-                    int textTop = layout.TextY;
-                    DrawCollapsedMinimapTitleSegment(graphics, renderStreetName, titleFont, textColor, layout.StreetNameX, textTop, maxTextWidth, textRect.Height);
-                    DrawCollapsedMinimapTitleSegment(graphics, COLLAPSED_MINIMAP_CLIENT_TITLE_SEPARATOR, titleFont, textColor, layout.SeparatorX, textTop, maxTextWidth, textRect.Height);
-                    DrawCollapsedMinimapTitleSegment(graphics, renderMapName, titleFont, textColor, layout.MapNameX, textTop, maxTextWidth, textRect.Height);
+                        renderMapName,
+                        streetSize.Width);
+                if (drawPlan.Segments.Count > 0)
+                {
+                    foreach (CollapsedMinimapClientTitleSegment segment in drawPlan.Segments)
+                    {
+                        DrawCollapsedMinimapTitleSegment(
+                            graphics,
+                            segment.Text,
+                            titleFont,
+                            textColor,
+                            segment.X,
+                            segment.Y,
+                            maxTextWidth,
+                            textRect.Height);
+                    }
                 }
                 else
                 {

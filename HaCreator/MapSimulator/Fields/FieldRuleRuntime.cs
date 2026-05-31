@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator.Fields
             _recoveryRate > 0f ||
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
-            FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit).Count > 0 ||
+            FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit, _mapInfo).Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit, _mapInfo).Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
@@ -323,7 +323,7 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add($"Allowed-item rule active ({_allowedItems.Count} item(s)): {FormatItemPreview(_allowedItems)}.");
             }
 
-            IReadOnlyList<string> itemRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit);
+            IReadOnlyList<string> itemRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit, _mapInfo);
             for (int i = 0; i < itemRestrictionNotices.Count; i++)
             {
                 messages.Add(itemRestrictionNotices[i]);

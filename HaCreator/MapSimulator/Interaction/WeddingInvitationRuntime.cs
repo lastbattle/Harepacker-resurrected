@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string PriorOwnerTypeName = EngagementProposalRuntime.ClientOwnerTypeName;
         internal const int PriorOwnerCloseRetValue = 1;
         internal const int AcceptButtonControlId = 1;
+        internal const int AcceptButtonModalRetValue = AcceptButtonControlId;
         internal const bool ClientModalReturnIgnored = true;
         internal const bool ClientDialogReleasedAfterModal = true;
         internal const bool ClientOpenSubtypeSkipsResultNotice = true;
@@ -173,7 +174,7 @@ namespace HaCreator.MapSimulator.Interaction
             string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
                 ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
                 : string.Empty;
-            _statusMessage = $"Closed wedding invitation for {_groomName} and {_brideName} through the client OK button path. {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} calls {ClientPresentationMode}, releases the dialog reference after the modal returns, skips the generic result-notice branch, and ignores the modal return, so this owner does not stage a downstream invitation-owned handoff; proposal and wish-list progression remains owned by their separate seams.{packetEvidence}";
+            _statusMessage = $"Closed wedding invitation for {_groomName} and {_brideName} through the client OK button path. Button control id {AcceptButtonControlId} returns modal value {AcceptButtonModalRetValue}; {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} calls {ClientPresentationMode}, releases the dialog reference after the modal returns, skips the generic result-notice branch, and ignores that modal return, so this owner does not stage a downstream invitation-owned handoff; proposal and wish-list progression remains owned by their separate seams.{packetEvidence}";
             return _statusMessage;
         }
 
@@ -258,6 +259,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOwnerEntryPoint = ClientOwnerEntryPoint,
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
                 ClientPresentationMode = ClientPresentationMode,
+                AcceptButtonControlId = AcceptButtonControlId,
+                AcceptButtonModalRetValue = AcceptButtonModalRetValue,
                 ModalReturnIgnored = ClientModalReturnIgnored,
                 DialogReleasedAfterModal = ClientDialogReleasedAfterModal,
                 OpenSubtypeSkipsResultNotice = ClientOpenSubtypeSkipsResultNotice,
@@ -267,7 +270,7 @@ namespace HaCreator.MapSimulator.Interaction
             string packetState = observation.LastOpenUsedMarriageResultPacket
                 ? $" packet=[{FormatPayload(observation.LastMarriageResultPacketPayload)}];"
                 : string.Empty;
-            message = $"Captured {ClientOwnerTypeName} close observation: {observation.CloseAction} for {observation.GroomName} and {observation.BrideName}; source={observation.SourceDescription}; rawDialogType={observation.RawClientDialogType}; selectedDialogType={observation.ClientDialogType};{packetState} modalReturnIgnored={observation.ModalReturnIgnored}; downstream=not-invitation-owned.";
+            message = $"Captured {ClientOwnerTypeName} close observation: {observation.CloseAction} for {observation.GroomName} and {observation.BrideName}; source={observation.SourceDescription}; rawDialogType={observation.RawClientDialogType}; selectedDialogType={observation.ClientDialogType}; acceptControl={observation.AcceptButtonControlId}; modalRet={observation.AcceptButtonModalRetValue};{packetState} modalReturnIgnored={observation.ModalReturnIgnored}; downstream=not-invitation-owned.";
             return true;
         }
 
@@ -296,6 +299,7 @@ namespace HaCreator.MapSimulator.Interaction
                 BackgroundUolStringPoolId = ResolveBackgroundUolStringPoolId(_style),
                 DialogUolStringPoolId = ResolveDialogTitleStringPoolId(resolvedClientDialogType),
                 AcceptButtonControlId = AcceptButtonControlId,
+                AcceptButtonModalRetValue = AcceptButtonModalRetValue,
                 NeatBackgroundUolStringPoolId = NeatBackgroundUolStringPoolId,
                 SweetBackgroundUolStringPoolId = SweetBackgroundUolStringPoolId,
                 PremiumBackgroundUolStringPoolId = PremiumBackgroundUolStringPoolId,
@@ -590,6 +594,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int BackgroundUolStringPoolId { get; init; }
         public int DialogUolStringPoolId { get; init; }
         public int AcceptButtonControlId { get; init; }
+        public int AcceptButtonModalRetValue { get; init; }
         public int NeatBackgroundUolStringPoolId { get; init; }
         public int SweetBackgroundUolStringPoolId { get; init; }
         public int PremiumBackgroundUolStringPoolId { get; init; }
@@ -657,6 +662,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int RawClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
+        public int AcceptButtonControlId { get; init; }
+        public int AcceptButtonModalRetValue { get; init; }
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;
         public string SourceDescription { get; init; } = string.Empty;

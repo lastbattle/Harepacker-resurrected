@@ -23,6 +23,13 @@ namespace HaCreator.MapSimulator
         GuestIdLoginResult = 18,
         GuestIdLoginResultLicense = 19,
         WebsiteHandoff = 20,
+        PicCreateDialog = 21,
+        PicVerifyDialog = 22,
+        PicNotice = 23,
+        SpwSetupChoice = 24,
+        SpwSetupInput = 25,
+        SpwVerifyInput = 26,
+        AccountMigrationDialog = 27,
     }
 
     internal static class LoginPacketResultDialogParity
@@ -49,9 +56,9 @@ namespace HaCreator.MapSimulator
         {
             return resultCode switch
             {
-                1 => LoginPacketResultDialogOwner.CheckPinCodeResultCreate,
-                2 or 4 => LoginPacketResultDialogOwner.CheckPinCodeResultVerify,
-                _ => LoginPacketResultDialogOwner.CheckPinCodeResultNotice,
+                1 => LoginPacketResultDialogOwner.PicCreateDialog,
+                2 or 4 => LoginPacketResultDialogOwner.PicVerifyDialog,
+                _ => LoginPacketResultDialogOwner.PicNotice,
             };
         }
 
@@ -76,6 +83,20 @@ namespace HaCreator.MapSimulator
 
         public static LoginPacketResultDialogOwner ResolveWebsiteHandoffOwner() =>
             LoginPacketResultDialogOwner.WebsiteHandoff;
+
+        public static LoginPacketResultDialogOwner ResolveAccountMigrationOwner() =>
+            LoginPacketResultDialogOwner.AccountMigrationDialog;
+
+        public static LoginPacketResultDialogOwner ResolveSpwSetupChoiceOwner() =>
+            LoginPacketResultDialogOwner.SpwSetupChoice;
+
+        public static LoginPacketResultDialogOwner ResolveSpwSetupInputOwner() =>
+            LoginPacketResultDialogOwner.SpwSetupInput;
+
+        public static LoginPacketResultDialogOwner ResolveSpwVerifyOwner(bool inputPrompt) =>
+            inputPrompt
+                ? LoginPacketResultDialogOwner.SpwVerifyInput
+                : LoginPacketResultDialogOwner.CheckSpwResult;
 
         public static LoginPacketResultDialogOwner ResolveDeleteCharacterOwner(byte? resultCode)
         {

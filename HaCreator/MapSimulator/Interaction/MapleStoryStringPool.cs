@@ -88,6 +88,11 @@ namespace HaCreator.MapSimulator.Interaction
             // from these StringPool ids before drawing detail CT rows.
             [0x05AF] = "Canvas#Font",
             [0x05B0] = "BA",
+            // Recovered from MapleStory.exe v95 `get_basic_font`.
+            // The FONT_BASIC_BLACK branch creates an IWzFont through `Canvas#Font`,
+            // then calls IWzFont::Create with this face name, height 12, and
+            // color 0xFF000000 before `CUICharDetail::Draw` renders its rows.
+            [0x1A25] = "DODOOMCHE",
             // Recovered from MapleStory.exe v95 StringPool::GetString. The generated table
             // in this workspace uses the decoded storage order, not the client key lookup,
             // so direct index resolution for these MapleTV result ids is incorrect.
@@ -274,6 +279,9 @@ namespace HaCreator.MapSimulator.Interaction
             // The generated table drifts around these ids in the current workspace;
             // keep the direct bound-jump `Effect_General` paths pinned to the client
             // ids used after the local `ShowSkillEffect` request.
+            [0x0932] = "Effect/BasicEff.img/DoubleJump",
+            [0x0AD4] = "Effect/BasicEff.img/Flying",
+            [0x0AD5] = "Effect/BasicEff.img/Flying1",
             [0x13FD] = "Effect/BasicEff.img/SoulRush",
             [0x17A8] = "Effect/BasicEff.img/Flying2",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnSkillLearnItemResult` and
@@ -482,6 +490,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x01DF] = "Your opponent denied your request.",
             [0x01E5] = "Time left : %d sec.",
             [0x01E6] = "It's [ %s ]'s turn.",
+            // Recovered from MapleStory.exe v95 `COmokDlg::AnimateRoundEffect`.
+            // The generated table drifts around this tournament block; keep the
+            // round-effect WZ root and title strings on the client StringPool ids.
+            [0x09E8] = "UI/UIWindow.img/MinigameTable/Effect",
+            [0x09E9] = "Round of %d",
+            [0x09EA] = "Finals",
+            [0x09EB] = "Semi-finals",
             [0x061A] = "UI/UIWindow2.img/Minigame/MemoryGame/card/back%d",
             [0x0645] = "Draw",
             [0x0646] = "Win",

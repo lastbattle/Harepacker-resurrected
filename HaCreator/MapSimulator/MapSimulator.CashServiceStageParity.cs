@@ -439,6 +439,22 @@ namespace HaCreator.MapSimulator
                     "BtCancel",
                     () => ExecuteCashServiceClientCancelIngress(
                         ClearCashShopItemSearchResult));
+                itemSearchWindow.SetExternalAction(
+                    "ResultPrevious",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => MoveCashShopItemSearchResultSelection(-1)));
+                itemSearchWindow.SetExternalAction(
+                    "ResultNext",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => MoveCashShopItemSearchResultSelection(1)));
+                itemSearchWindow.SetExternalAction(
+                    "ResultPagePrevious",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => MoveCashShopItemSearchResultPage(-1)));
+                itemSearchWindow.SetExternalAction(
+                    "ResultPageNext",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => MoveCashShopItemSearchResultPage(1)));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
@@ -1473,6 +1489,26 @@ namespace HaCreator.MapSimulator
             return stageWindow.ClearCashShopItemSearchResult(Environment.TickCount);
         }
 
+        private string MoveCashShopItemSearchResultSelection(int delta)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_ItemSearch is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.MoveCashShopItemSearchResultSelection(delta, Environment.TickCount);
+        }
+
+        private string MoveCashShopItemSearchResultPage(int delta)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_ItemSearch is waiting for the parent CCashShop stage.";
+            }
+
+            return stageWindow.MoveCashShopItemSearchResultPage(delta, Environment.TickCount);
+        }
+
         private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerState(AdminShopDialogUI cashShopWindow)
         {
             IReadOnlyList<string> lines = BuildCashShopTabOwnerLines(cashShopWindow);
@@ -2381,15 +2417,29 @@ namespace HaCreator.MapSimulator
             return BuildCashShopItemSearchWrapperOwnerStateForTests(
                 lines,
                 stageWindow?.CashShopSearchResultCount ?? 0,
-                stageWindow?.CashShopItemSearchAllItemFilter == true);
+                stageWindow?.CashShopItemSearchAllItemFilter == true,
+                stageWindow?.CashShopSearchResultSelectedIndex ?? -1,
+                stageWindow?.CashShopSearchResultScrollOffset ?? 0,
+                stageWindow?.CashShopSearchResultPageIndex ?? 0,
+                stageWindow?.CashStageCatalogSnapshotEntries);
         }
 
         internal static CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerStateForTests(
             IReadOnlyList<string> lines = null,
             int searchResultCount = 0,
-            bool allItemFilterEnabled = false)
+            bool allItemFilterEnabled = false,
+            int selectedIndex = -1,
+            int scrollOffset = 0,
+            int pageIndex = 0,
+            IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> resultEntries = null)
         {
             IReadOnlyList<string> stateLines = lines ?? Array.Empty<string>();
+            const int visibleCount = 5;
+            int totalCount = Math.Max(0, searchResultCount);
+            int clampedScrollOffset = Math.Clamp(scrollOffset, 0, Math.Max(0, totalCount - visibleCount));
+            int clampedSelectedIndex = totalCount > 0
+                ? Math.Clamp(selectedIndex < 0 ? clampedScrollOffset : selectedIndex, 0, totalCount - 1)
+                : -1;
             return new CashShopStageChildWindow.CashShopWrapperOwnerState
             {
                 OwnerName = "CCSWnd_ItemSearch",
@@ -2406,13 +2456,83 @@ namespace HaCreator.MapSimulator
                     Height = 22,
                     SourceStringPoolId = 0x12FA
                 },
+                SearchDialogPriceComboControl = new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "CItemSearchDlg.PriceCombo",
+                    ControlId = 2000,
+                    Position = new Microsoft.Xna.Framework.Point(3, 103),
+                    Width = 52,
+                    Height = 16
+                },
+                SearchDialogEditControl = new CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState
+                {
+                    ActionKey = "CItemSearchDlg.EditItemName",
+                    ControlId = 1000,
+                    Position = new Microsoft.Xna.Framework.Point(103, 27),
+                    Width = 140,
+                    Height = 16,
+                    SourceStringPoolId = 0x1A25
+                },
                 ButtonControls = BuildCashShopItemSearchButtonControlsForTests(),
                 PriceRanges = BuildCashShopItemSearchPriceRangesForTests(),
-                SearchResultCount = Math.Max(0, searchResultCount),
+                ScrollBarRuntime = CashShopStageChildWindow.BuildScrollBarControlRuntimeState(
+                    controlId: 0,
+                    upButtonId: 1,
+                    downButtonId: 0,
+                    position: new Microsoft.Xna.Framework.Point(241, 54),
+                    height: 167,
+                    wheelRange: 167,
+                    offset: clampedScrollOffset,
+                    maxOffset: Math.Max(0, totalCount - visibleCount),
+                    visibleCount: Math.Min(visibleCount, totalCount),
+                    totalCount: totalCount,
+                    isDragging: false),
+                SearchResultRows = BuildCashShopItemSearchResultRowsForTests(resultEntries, totalCount, clampedSelectedIndex, clampedScrollOffset, visibleCount),
+                SearchResultCount = totalCount,
+                SearchResultSelectedIndex = clampedSelectedIndex,
+                SearchResultScrollOffset = clampedScrollOffset,
+                SearchResultPageIndex = Math.Max(Math.Max(0, pageIndex), clampedScrollOffset / visibleCount),
+                SearchResultPageSize = visibleCount,
+                SearchResultVisibleCount = Math.Min(visibleCount, totalCount),
+                ActivePriceRangeIndex = 0,
                 AllItemFilterEnabled = allItemFilterEnabled,
                 HasDedicatedWzSurface = true,
                 Lines = stateLines
             };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.CashShopWrapperOwnerState.SearchResultRowState> BuildCashShopItemSearchResultRowsForTests(
+            IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> resultEntries,
+            int totalCount,
+            int selectedIndex,
+            int scrollOffset,
+            int visibleCount)
+        {
+            if (totalCount <= 0 || visibleCount <= 0)
+            {
+                return Array.Empty<CashShopStageChildWindow.CashShopWrapperOwnerState.SearchResultRowState>();
+            }
+
+            int clampedOffset = Math.Clamp(scrollOffset, 0, Math.Max(0, totalCount - visibleCount));
+            int rowCount = Math.Min(visibleCount, totalCount - clampedOffset);
+            List<CashShopStageChildWindow.CashShopWrapperOwnerState.SearchResultRowState> rows = new(rowCount);
+            for (int row = 0; row < rowCount; row++)
+            {
+                int absoluteIndex = clampedOffset + row;
+                CashServiceStageWindow.PacketCatalogEntry entry =
+                    resultEntries != null && absoluteIndex < resultEntries.Count ? resultEntries[absoluteIndex] : null;
+                rows.Add(new CashShopStageChildWindow.CashShopWrapperOwnerState.SearchResultRowState
+                {
+                    Index = absoluteIndex,
+                    Title = string.IsNullOrWhiteSpace(entry?.Title)
+                        ? $"Search result {absoluteIndex.ToString(CultureInfo.InvariantCulture)}"
+                        : entry.Title,
+                    PriceLabel = entry?.PriceLabel ?? string.Empty,
+                    IsSelected = absoluteIndex == selectedIndex
+                });
+            }
+
+            return rows;
         }
 
         internal static IReadOnlyList<CashShopStageChildWindow.CashShopWrapperOwnerState.ButtonControlState> BuildCashShopItemSearchButtonControlsForTests()

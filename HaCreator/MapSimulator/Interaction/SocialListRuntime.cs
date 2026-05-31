@@ -429,6 +429,14 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshotEntry.IsOnline = entry.IsOnline;
                 snapshotEntry.IsLeader = entry.IsLeader;
                 snapshotEntry.IsLocalPlayer = entry.IsLocalPlayer;
+                PartyHpValue partyHpValue = _currentTab == SocialListTab.Party && _showPartyHpSummary
+                    ? ResolvePartyHpValue(entry, firstVisibleIndex + i)
+                    : default;
+                snapshotEntry.ShowPartyHpGauge = _currentTab == SocialListTab.Party && _showPartyHpSummary;
+                snapshotEntry.PartyCurrentHp = partyHpValue.CurrentHp;
+                snapshotEntry.PartyMaxHp = partyHpValue.MaxHp;
+                snapshotEntry.PartyHpGaugeFillWidth = CalculatePartyHpGaugeFillWidth(partyHpValue.CurrentHp, partyHpValue.MaxHp);
+                snapshotEntry.PartyHpUsesPacketValue = partyHpValue.UsesPacketValue;
             }
 
             if (_snapshotEntriesBuffer.Count > visibleEntryCount)
@@ -1666,18 +1674,38 @@ namespace HaCreator.MapSimulator.Interaction
             return NotifySocialListTextObserved($"Party HP display {state} from the WZ-backed BtHP toggle.");
         }
 
+        internal static int CalculatePartyHpGaugeFillWidth(int currentHp, int maxHp)
+        {
+            if (maxHp <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp((PartyHpGaugeWidth * Math.Clamp(currentHp, 0, maxHp)) / maxHp, 0, PartyHpGaugeWidth);
+        }
+
+        private const int PartyHpGaugeWidth = 63;
+
         private static string BuildPartyHpSummary(SocialEntryState entry, int entryIndex)
+        {
+            PartyHpValue hpValue = ResolvePartyHpValue(entry, entryIndex);
+            return hpValue.MaxHp > 0
+                ? $"HP {hpValue.CurrentHp}/{hpValue.MaxHp}"
+                : "HP --/--";
+        }
+
+        private static PartyHpValue ResolvePartyHpValue(SocialEntryState entry, int entryIndex)
         {
             if (entry == null)
             {
-                return "HP --/--";
+                return default;
             }
 
             if (entry.PartyMaxHp.GetValueOrDefault() > 0)
             {
                 int packetMaxHp = Math.Max(1, entry.PartyMaxHp!.Value);
                 int packetCurrentHp = Math.Clamp(entry.PartyCurrentHp.GetValueOrDefault(), 0, packetMaxHp);
-                return $"HP {packetCurrentHp}/{packetMaxHp}";
+                return new PartyHpValue(packetCurrentHp, packetMaxHp, true);
             }
 
             int seed = entry.MemberId.GetValueOrDefault(0);
@@ -1693,7 +1721,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? 42 + ((seed + (entryIndex * 17)) % 58)
                     : 0;
             int currentHp = Math.Clamp((maxHp * percent) / 100, 0, maxHp);
-            return $"HP {currentHp}/{maxHp}";
+            return new PartyHpValue(currentHp, maxHp, false);
         }
 
         private string AddGuildMember()
@@ -2218,6 +2246,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int Channel { get; set; }
             public bool IsDiscoverable { get; set; }
         }
+
+        private readonly record struct PartyHpValue(int CurrentHp, int MaxHp, bool UsesPacketValue);
     }
 
     internal sealed class SocialListSnapshot
@@ -2250,6 +2280,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsOnline { get; set; }
         public bool IsLeader { get; set; }
         public bool IsLocalPlayer { get; set; }
+        public bool ShowPartyHpGauge { get; set; }
+        public int PartyCurrentHp { get; set; }
+        public int PartyMaxHp { get; set; }
+        public int PartyHpGaugeFillWidth { get; set; }
+        public bool PartyHpUsesPacketValue { get; set; }
     }
 
     internal sealed class SocialTrackedEntrySnapshot

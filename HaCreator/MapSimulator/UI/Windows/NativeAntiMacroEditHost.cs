@@ -65,6 +65,11 @@ namespace HaCreator.MapSimulator.UI
         private const int VkUp = 0x26;
         private const int VkRight = 0x27;
         private const int VkDown = 0x28;
+        internal const int ClientVirtualKeyReturn = VkReturn;
+        internal const int ClientVirtualKeyLeft = VkLeft;
+        internal const int ClientVirtualKeyRight = VkRight;
+        internal const int ClientVirtualKeyUp = VkUp;
+        internal const int ClientVirtualKeyDown = VkDown;
         private const int VkInsert = 0x2D;
         private const int VkDelete = 0x2E;
         private const int VkF1 = 0x70;

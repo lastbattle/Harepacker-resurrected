@@ -996,7 +996,8 @@ namespace HaCreator.MapSimulator
                 ? $"Lv{skillLevel}"
                 : "SKILL";
             return new KeyConfigWindow.ShortcutVisualState(
-                skill?.IconDisabledTexture ?? skill?.IconTexture,
+                // CUIKeyConfig::DrawFuncKeyMapped copies CSkillInfo::GetSkill(id)->apCanvas[1].
+                skill?.IconTexture ?? skill?.IconDisabledTexture,
                 title,
                 detail,
                 badgeText: badgeText,
@@ -1118,6 +1119,11 @@ namespace HaCreator.MapSimulator
         }
 
         internal static bool PacketOwnedKeyConfigMacroUsesNormalIconForTests()
+        {
+            return true;
+        }
+
+        internal static bool PacketOwnedKeyConfigSkillUsesNormalIconForTests()
         {
             return true;
         }

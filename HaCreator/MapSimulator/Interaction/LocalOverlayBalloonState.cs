@@ -204,6 +204,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<LocalOverlayBalloonVisualCacheKey, Texture2D> _cachedVisuals = new();
         private object _cachedAnalyzedLines;
         private int _cachedAnalyzedWrapWidth = -1;
+        private LocalOverlayBalloonAnalyzedTextSnapshot? _cachedAnalyzedTextSnapshot;
         private Texture2D _cachedBodyTexture;
         private int _cachedBodyWidth;
         private int _cachedBodyHeight;
@@ -241,6 +242,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int OwnerIdentity { get; }
         public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
         public LocalOverlayBalloonNativeLayerSnapshot? NativeLayerSnapshot { get; private set; }
+        public LocalOverlayBalloonAnalyzedTextSnapshot? AnalyzedTextSnapshot => _cachedAnalyzedTextSnapshot;
 
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrEmpty(Text) &&
@@ -262,8 +264,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void SetAnalyzedLines<TLine>(int wrapWidth, TLine[] lines)
         {
+            SetAnalyzedLines(
+                wrapWidth,
+                lines,
+                LocalOverlayBalloonAnalyzedTextSnapshot.CreateManagedApproximation(
+                    wrapWidth,
+                    lines?.Length ?? 0));
+        }
+
+        public void SetAnalyzedLines<TLine>(
+            int wrapWidth,
+            TLine[] lines,
+            LocalOverlayBalloonAnalyzedTextSnapshot snapshot)
+        {
             _cachedAnalyzedWrapWidth = wrapWidth;
             _cachedAnalyzedLines = lines == null || lines.Length == 0 ? null : lines;
+            _cachedAnalyzedTextSnapshot = _cachedAnalyzedLines == null ? null : snapshot;
         }
 
         public void SetNativeLayerSnapshot(LocalOverlayBalloonNativeLayerSnapshot snapshot)
@@ -336,6 +352,7 @@ namespace HaCreator.MapSimulator.Interaction
             _cachedBodyHeight = 0;
             _cachedAnalyzedLines = null;
             _cachedAnalyzedWrapWidth = -1;
+            _cachedAnalyzedTextSnapshot = null;
             NativeLayerSnapshot = null;
             foreach ((LocalOverlayBalloonVisualCacheKey _, Texture2D texture) in _cachedVisuals)
             {
@@ -373,6 +390,36 @@ namespace HaCreator.MapSimulator.Interaction
         int LineHeight,
         bool HasOriginVector,
         string ArrowKind);
+
+    internal readonly record struct LocalOverlayBalloonAnalyzedTextSnapshot(
+        int TextAnalyzerWrapWidth,
+        int NativeFontSlotCount,
+        int AnalyzedLineCount,
+        bool UsesNativeComFontTable,
+        bool UsesManagedTextAnalyzerApproximation,
+        bool WhiteBased,
+        int QuestId,
+        bool SkipListIcon,
+        string FontTableOwnerKind,
+        string CtInfoOwnerKind)
+    {
+        public static LocalOverlayBalloonAnalyzedTextSnapshot CreateManagedApproximation(
+            int wrapWidth,
+            int analyzedLineCount)
+        {
+            return new LocalOverlayBalloonAnalyzedTextSnapshot(
+                Math.Max(0, wrapWidth),
+                12,
+                Math.Max(0, analyzedLineCount),
+                false,
+                true,
+                false,
+                0,
+                false,
+                "ManagedFontTableMirror",
+                "MessageOwnedWrappedLines");
+        }
+    }
 
     internal sealed class LocalOverlayBalloonSkin
     {

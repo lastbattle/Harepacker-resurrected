@@ -50,7 +50,11 @@ namespace HaCreator.MapSimulator.UI
             int EditRightMargin,
             int EditDialogCode,
             int EditImeCandidateFormCount,
-            uint EditImeCompositionStyle);
+            uint EditImeCompositionStyle,
+            bool EditCancelsImeCompositionOnFocusGain,
+            bool EditDisablesImeOpenStatusOnFocusGain,
+            bool EditForwardsEnterAndArrowKeyDownToParent,
+            bool EditExtendsSelectionWithShiftNavigation);
 
         private sealed class LayoutProfile
         {
@@ -208,7 +212,15 @@ namespace HaCreator.MapSimulator.UI
                 NativeAntiMacroEditHost.ClientEditRightMargin,
                 NativeAntiMacroEditHost.GetClientOwnedAntiMacroDialogCode(),
                 NativeAntiMacroEditHost.CandidateListCount,
-                NativeAntiMacroEditHost.ImeExcludeStyle);
+                NativeAntiMacroEditHost.ImeExcludeStyle,
+                NativeAntiMacroEditHost.ShouldCancelImeCompositionOnFocusChange(hasFocus: true),
+                NativeAntiMacroEditHost.ShouldDisableImeOpenStatusOnFocusChange(hasFocus: true),
+                NativeAntiMacroEditHost.ShouldForwardClientOwnedKeyDownToParent(NativeAntiMacroEditHost.ClientVirtualKeyReturn)
+                    && NativeAntiMacroEditHost.ShouldForwardClientOwnedKeyDownToParent(NativeAntiMacroEditHost.ClientVirtualKeyLeft)
+                    && NativeAntiMacroEditHost.ShouldForwardClientOwnedKeyDownToParent(NativeAntiMacroEditHost.ClientVirtualKeyRight)
+                    && NativeAntiMacroEditHost.ShouldForwardClientOwnedKeyDownToParent(NativeAntiMacroEditHost.ClientVirtualKeyUp)
+                    && NativeAntiMacroEditHost.ShouldForwardClientOwnedKeyDownToParent(NativeAntiMacroEditHost.ClientVirtualKeyDown),
+                NativeAntiMacroEditHost.ShouldExtendClientOwnedNavigationSelection(NativeAntiMacroEditHost.ClientVirtualKeyLeft, shiftHeld: true));
         }
 
         public void TryAttachNativeEditHost(IntPtr parentWindowHandle)

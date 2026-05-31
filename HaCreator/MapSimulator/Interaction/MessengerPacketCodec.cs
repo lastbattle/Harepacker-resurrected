@@ -299,6 +299,13 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildClientActivityPulsePayload(string contactName, bool active)
+        {
+            PacketWriter writer = new();
+            writer.WriteMapleString($"{NormalizeText(contactName)}{(active ? '1' : '0')}");
+            return writer.ToArray();
+        }
+
         public static byte[] BuildMemberInfoPayload(
             string contactName,
             bool isOnline,

@@ -36,6 +36,9 @@ namespace HaCreator.MapSimulator.Managers
         private InboundPacketTrace? _liveInboundTransportPacketEvidence;
         private OutboundPacketTrace? _liveOutboundFieldInitRequestEvidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+        private short? _currentInitializedSessionVersion;
+        private long? _currentInitializedProxySessionId;
+        private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -48,6 +51,7 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source,
+            short? SessionVersion,
             long? ProxySessionId);
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -55,7 +59,9 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source,
+            short? SessionVersion = null,
             long? ProxySessionId = null);
+        private readonly record struct InitializedProxySessionKey(short SessionVersion, long ProxySessionId);
         public enum LiveOwnershipVerificationState
         {
             Idle,
@@ -87,6 +93,7 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingPacketCount => _pendingOutboundPackets.Count;
         internal bool HasObservedLiveInboundTransportPacket => _hasObservedLiveInboundTransportPacket;
         internal bool HasObservedLiveOutboundFieldInitRequest => _hasObservedLiveOutboundFieldInitRequest;
+        internal bool HasPairedLiveOwnershipVerificationEvidence => HasPairedCurrentLiveOwnershipEvidence();
         internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
             HasConnectedSession,
             HasPassiveEstablishedSocketPair,
@@ -109,7 +116,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected Maple session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}"
+                ? $"connected Maple session {DescribeCurrentInitializedProxySession()}"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -869,12 +876,13 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
+                RecordInitializedProxySession(e.SessionVersion, e.ProxySessionId);
                 int flushed = FlushQueuedOutboundPacketsViaProxy(out string flushFailureStatus);
                 LastStatus = !string.IsNullOrWhiteSpace(flushFailureStatus)
-                    ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)}, flushed {flushed} queued outbound packet(s), and retained {PendingPacketCount} queued outbound packet(s). {flushFailureStatus}"
+                    ? $"Transport official-session bridge initialized Maple crypto for version={e.SessionVersion} proxySession={FormatProxySessionId(e.ProxySessionId)}, flushed {flushed} queued outbound packet(s), and retained {PendingPacketCount} queued outbound packet(s). {flushFailureStatus}"
                     : flushed > 0
-                        ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued outbound packet(s)."
-                        : $"{_roleSessionProxy.LastStatus} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
+                        ? $"Transport official-session bridge initialized Maple crypto for version={e.SessionVersion} proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued outbound packet(s)."
+                        : $"{_roleSessionProxy.LastStatus} version={e.SessionVersion} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
                 return;
             }
 
@@ -890,6 +898,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuildPayloadPreview(message.Payload),
                 Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
                 $"official-session:{e.SourceEndpoint}",
+                e.SessionVersion,
                 e.ProxySessionId));
             _pendingMessages.Enqueue(message);
             ReceivedCount++;
@@ -922,6 +931,7 @@ namespace HaCreator.MapSimulator.Managers
                     BuildPayloadPreview(payload),
                     Convert.ToHexString(e.RawPacket),
                     $"official-session:{e.SourceEndpoint}",
+                    e.SessionVersion,
                     e.ProxySessionId));
 
                 if (isTransportOpcode)
@@ -940,6 +950,7 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload,
             string source,
             bool countAsTypedSend,
+            short? sessionVersion,
             long? proxySessionId)
         {
             if (countAsTypedSend)
@@ -963,6 +974,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuildPayloadPreview(payload),
                 Convert.ToHexString(rawPacket),
                 source,
+                sessionVersion,
                 proxySessionId));
         }
 
@@ -1015,7 +1027,8 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             long? proxySessionId = _roleSessionProxy.CurrentProxySessionId;
-            RecordSentOutboundPacket(opcode, clonedPacket, payload, "simulator-send", countAsTypedSend, proxySessionId);
+            short? sessionVersion = _roleSessionProxy.CurrentSessionVersion;
+            RecordSentOutboundPacket(opcode, clonedPacket, payload, "simulator-send", countAsTypedSend, sessionVersion, proxySessionId);
             status = $"Injected outbound {DescribeOutboundPacket(opcode, clonedPacket)} into live session proxySession={FormatProxySessionId(proxySessionId)}. {proxyStatus}";
             LastStatus = status;
             return true;
@@ -1036,7 +1049,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 TryDecodeOpcode(packet.RawPacket, out int opcode, out byte[] payload);
-                RecordSentOutboundPacket(opcode, packet.RawPacket, payload, "deferred-flush", countAsTypedSend: true, _roleSessionProxy.CurrentProxySessionId);
+                RecordSentOutboundPacket(opcode, packet.RawPacket, payload, "deferred-flush", true, _roleSessionProxy.CurrentSessionVersion, _roleSessionProxy.CurrentProxySessionId);
                 flushed++;
             }
 
@@ -1134,6 +1147,9 @@ namespace HaCreator.MapSimulator.Managers
 
             _recentOutboundPackets.Clear();
             ClearLiveOwnershipVerificationEvidenceCore();
+            _currentInitializedSessionVersion = null;
+            _currentInitializedProxySessionId = null;
+            _initializedProxySessions.Clear();
             ReceivedCount = 0;
             SentCount = 0;
             ForwardedOutboundCount = 0;
@@ -1151,6 +1167,23 @@ namespace HaCreator.MapSimulator.Managers
             _hasObservedLiveOutboundFieldInitRequest = false;
             _liveInboundTransportPacketEvidence = null;
             _liveOutboundFieldInitRequestEvidence = null;
+        }
+
+        private void RecordInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            lock (_sync)
+            {
+                if (!sessionVersion.HasValue || !proxySessionId.HasValue)
+                {
+                    _currentInitializedSessionVersion = null;
+                    _currentInitializedProxySessionId = null;
+                    return;
+                }
+
+                _currentInitializedSessionVersion = sessionVersion.Value;
+                _currentInitializedProxySessionId = proxySessionId.Value;
+                _initializedProxySessions.Add(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+            }
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
@@ -1315,19 +1348,19 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     OutboundPacketTrace outbound = _liveOutboundFieldInitRequestEvidence.Value;
                     InboundPacketTrace inbound = _liveInboundTransportPacketEvidence.Value;
-                    return $"Live ownership verification evidence: outbound proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}; inbound proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
+                    return $"Live ownership verification evidence: outbound version={FormatSessionVersion(outbound.SessionVersion)} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}; inbound version={FormatSessionVersion(inbound.SessionVersion)} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
                 }
 
                 if (_liveOutboundFieldInitRequestEvidence.HasValue)
                 {
                     OutboundPacketTrace outbound = _liveOutboundFieldInitRequestEvidence.Value;
-                    return $"Live ownership verification evidence: outbound proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}.";
+                    return $"Live ownership verification evidence: outbound version={FormatSessionVersion(outbound.SessionVersion)} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}.";
                 }
 
                 if (_liveInboundTransportPacketEvidence.HasValue)
                 {
                     InboundPacketTrace inbound = _liveInboundTransportPacketEvidence.Value;
-                    return $"Live ownership verification evidence: inbound proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
+                    return $"Live ownership verification evidence: inbound version={FormatSessionVersion(inbound.SessionVersion)} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}.";
                 }
             }
 
@@ -1338,9 +1371,36 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                return IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveOutboundFieldInitRequestEvidence?.ProxySessionId)
-                    && IsSameProxySession(_roleSessionProxy.CurrentProxySessionId, _liveInboundTransportPacketEvidence?.ProxySessionId);
+                return IsPairedCurrentInitializedProxySession(
+                    _liveOutboundFieldInitRequestEvidence?.SessionVersion,
+                    _liveOutboundFieldInitRequestEvidence?.ProxySessionId,
+                    _liveInboundTransportPacketEvidence?.SessionVersion,
+                    _liveInboundTransportPacketEvidence?.ProxySessionId);
             }
+        }
+
+        private bool IsPairedCurrentInitializedProxySession(
+            short? outboundSessionVersion,
+            long? outboundProxySessionId,
+            short? inboundSessionVersion,
+            long? inboundProxySessionId)
+        {
+            return outboundSessionVersion.HasValue
+                && inboundSessionVersion.HasValue
+                && outboundSessionVersion.Value == inboundSessionVersion.Value
+                && IsSameProxySession(outboundProxySessionId, inboundProxySessionId)
+                && IsCurrentInitializedProxySession(outboundSessionVersion, outboundProxySessionId);
+        }
+
+        private bool IsCurrentInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            return sessionVersion.HasValue
+                && proxySessionId.HasValue
+                && _currentInitializedSessionVersion.HasValue
+                && _currentInitializedProxySessionId.HasValue
+                && _currentInitializedSessionVersion.Value == sessionVersion.Value
+                && _currentInitializedProxySessionId.Value == proxySessionId.Value
+                && _initializedProxySessions.Contains(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
         }
 
         private static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
@@ -1353,6 +1413,62 @@ namespace HaCreator.MapSimulator.Managers
         private static string FormatProxySessionId(long? proxySessionId)
         {
             return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "unknown";
+        }
+
+        internal void RecordInitializedProxySessionForTests(short sessionVersion, long proxySessionId)
+        {
+            RecordInitializedProxySession(sessionVersion, proxySessionId);
+        }
+
+        internal bool TryRecordOutboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                return false;
+            }
+
+            RecordOutboundPacket(new OutboundPacketTrace(
+                opcode,
+                payload?.Length ?? 0,
+                BuildPayloadPreview(payload),
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                source,
+                sessionVersion,
+                proxySessionId));
+            return true;
+        }
+
+        internal bool TryRecordInboundTraceForTests(byte[] rawPacket, string source, short? sessionVersion = null, long? proxySessionId = null)
+        {
+            if (!TryDecodeInboundTransportPacket(rawPacket, source, out TransportationPacketInboxMessage message))
+            {
+                return false;
+            }
+
+            RecordInboundPacket(new InboundPacketTrace(
+                message.PacketType,
+                message.Payload?.Length ?? 0,
+                BuildPayloadPreview(message.Payload),
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                source,
+                sessionVersion,
+                proxySessionId));
+            return true;
+        }
+
+        private static string FormatSessionVersion(short? sessionVersion)
+        {
+            return sessionVersion.HasValue ? sessionVersion.Value.ToString() : "unknown";
+        }
+
+        private string DescribeCurrentInitializedProxySession()
+        {
+            lock (_sync)
+            {
+                return _currentInitializedSessionVersion.HasValue && _currentInitializedProxySessionId.HasValue
+                    ? $"version={_currentInitializedSessionVersion.Value} proxySession={_currentInitializedProxySessionId.Value} initializedSessionCount={_initializedProxySessions.Count}"
+                    : $"proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}";
+            }
         }
 
         private static string BuildPayloadPreview(byte[] payload)

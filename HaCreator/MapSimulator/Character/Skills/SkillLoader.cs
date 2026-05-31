@@ -4223,6 +4223,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             animation.ZOrder = GetInt(node, "z");
             animation.PositionCode = node["pos"] != null ? GetInt(node, "pos") : null;
             animation.HitAfterMs = Math.Max(0, GetInt(node, "hitAfter"));
+            animation.OnlyOnce = GetInt(node, "onlyOnce") != 0;
             if (GetInt(node, "flip") != 0)
             {
                 ApplyBranchFlipToAnimationFrames(animation);
@@ -7177,6 +7178,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return new ClientSummonedUolCandidateValue(nameCandidateValue, variantEntryPathParts);
                 }
 
+                foreach (string ownerMatchedNameCandidateValue in EnumerateClientSummonedUolOwnerMatchedTableEntryNameCandidateValues(
+                             tableEntry,
+                             skillId))
+                {
+                    yield return new ClientSummonedUolCandidateValue(ownerMatchedNameCandidateValue, variantEntryPathParts);
+                }
+
                 foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolAlternatingIndexedRecordFields(tableEntry))
                 {
                     if (!IsClientSummonedUolTableEntryValueName(FieldName)
@@ -8456,6 +8464,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return nameVariant;
                     yield break;
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolOwnerMatchedTableEntryNameCandidateValues(
+            WzImageProperty tableEntry,
+            int skillId)
+        {
+            if (tableEntry == null || skillId <= 0 || string.IsNullOrWhiteSpace(tableEntry.Name))
+            {
+                yield break;
+            }
+
+            if (!TryReadNestedClientSummonedUolTableOwnerSkillId(
+                    tableEntry,
+                    out int ownerSkillId,
+                    depthRemaining: ClientSummonedUolTableOwnerFieldTraversalDepth)
+                || ownerSkillId != skillId)
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string nameVariant in EnumerateClientSummonedUolDecodedTextVariants(tableEntry.Name))
+            {
+                if (!LooksLikeClientSummonedUolHeuristicCandidateValue(nameVariant)
+                    || LooksLikeClientSummonedUolOwnerOnlyTupleToken(nameVariant, skillId)
+                    || !yieldedValues.Add(nameVariant))
+                {
+                    continue;
+                }
+
+                yield return nameVariant;
             }
         }
 

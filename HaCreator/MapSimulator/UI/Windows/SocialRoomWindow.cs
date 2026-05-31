@@ -71,6 +71,20 @@ namespace HaCreator.MapSimulator.UI
             public Func<bool> EnabledResolver { get; }
         }
 
+        public readonly struct OmokRoundEffectFrame
+        {
+            public OmokRoundEffectFrame(Texture2D texture, Point origin, int delayMs)
+            {
+                Texture = texture;
+                Origin = origin;
+                DelayMs = Math.Max(1, delayMs);
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+            public int DelayMs { get; }
+        }
+
         private readonly string _windowName;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Texture2D _panelTexture;
@@ -80,6 +94,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
         private readonly Dictionary<int, Texture2D> _tradeItemIconCache = new Dictionary<int, Texture2D>();
+        private readonly Dictionary<int, OmokRoundEffectFrame[]> _miniRoomOmokRoundEffectFrames = new Dictionary<int, OmokRoundEffectFrame[]>();
         private readonly List<ButtonBinding> _buttonBindings = new List<ButtonBinding>();
         private SpriteFont _font;
         private UIObject _tradingRoomTradeButton;
@@ -238,6 +253,26 @@ namespace HaCreator.MapSimulator.UI
             _miniRoomOmokWinTexture = winTexture;
             _miniRoomOmokLoseTexture = loseTexture;
             _miniRoomOmokDrawTexture = drawTexture;
+        }
+
+        public void SetMiniRoomOmokRoundEffectFrames(IReadOnlyDictionary<int, OmokRoundEffectFrame[]> framesByRound)
+        {
+            _miniRoomOmokRoundEffectFrames.Clear();
+            if (framesByRound == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, OmokRoundEffectFrame[]> pair in framesByRound)
+            {
+                OmokRoundEffectFrame[] frames = pair.Value?
+                    .Where(frame => frame.Texture != null)
+                    .ToArray();
+                if (frames?.Length > 0)
+                {
+                    _miniRoomOmokRoundEffectFrames[Math.Max(0, pair.Key)] = frames;
+                }
+            }
         }
 
         public void BindButton(UIObject button, Action action)
@@ -486,6 +521,7 @@ namespace HaCreator.MapSimulator.UI
             DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 178, notePanel.Y + 12, notePanel.Width - 188, 24));
             DrawOmokDialogInfoPanels(sprite, notePanel);
             DrawOmokTurnAndResultLayers(sprite);
+            DrawOmokTournamentRoundEffect(sprite);
 
             DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
             float chatY = chatPanel.Bottom - 22;
@@ -705,6 +741,57 @@ namespace HaCreator.MapSimulator.UI
             return string.Equals(_runtime.RoomState, "Omok draw", StringComparison.OrdinalIgnoreCase)
                 ? _miniRoomOmokDrawTexture
                 : null;
+        }
+
+        private void DrawOmokTournamentRoundEffect(SpriteBatch sprite)
+        {
+            if (!_runtime.MiniRoomOmokTournamentRoundEffectVisible
+                || !_miniRoomOmokRoundEffectFrames.TryGetValue(_runtime.MiniRoomOmokTournamentRoundEffectKey, out OmokRoundEffectFrame[] frames)
+                || frames.Length == 0)
+            {
+                return;
+            }
+
+            OmokRoundEffectFrame frame = ResolveOmokRoundEffectFrame(frames, _runtime.MiniRoomOmokTournamentRoundEffectElapsedMs);
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            float alpha = ResolveOmokRoundEffectAlpha();
+            Vector2 position = new Vector2(
+                Position.X + 200 - frame.Origin.X,
+                Position.Y + 200 - frame.Origin.Y);
+            sprite.Draw(frame.Texture, position, Color.White * alpha);
+        }
+
+        private static OmokRoundEffectFrame ResolveOmokRoundEffectFrame(IReadOnlyList<OmokRoundEffectFrame> frames, int elapsedMs)
+        {
+            int totalDuration = frames.Sum(frame => Math.Max(1, frame.DelayMs));
+            int frameClock = totalDuration > 0 ? Math.Max(0, elapsedMs) % totalDuration : 0;
+            int cursor = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                cursor += Math.Max(1, frames[i].DelayMs);
+                if (frameClock < cursor)
+                {
+                    return frames[i];
+                }
+            }
+
+            return frames[^1];
+        }
+
+        private float ResolveOmokRoundEffectAlpha()
+        {
+            int fadeMs = Math.Max(0, _runtime.MiniRoomOmokTournamentRoundEffectFadeMs);
+            int remainingMs = Math.Max(0, 6000 - _runtime.MiniRoomOmokTournamentRoundEffectElapsedMs);
+            if (fadeMs <= 0 || remainingMs >= fadeMs)
+            {
+                return 1f;
+            }
+
+            return MathHelper.Clamp(remainingMs / (float)fadeMs, 0f, 1f);
         }
 
         private Color ResolveOmokDialogBannerColor()

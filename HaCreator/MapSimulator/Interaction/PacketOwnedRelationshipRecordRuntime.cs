@@ -366,10 +366,18 @@ namespace HaCreator.MapSimulator.Interaction
                 : default;
 
             if (remoteUserPool != null
-                && remoteUserPool.TryGetRelationshipRecord(relationshipType, characterId, out RemoteUserRelationshipRecord existingRecord))
+                && remoteUserPool.TryGetRelationshipRecordForParticipant(
+                    relationshipType,
+                    characterId,
+                    out int ownerCharacterId,
+                    out RemoteUserRelationshipRecord existingRecord))
             {
-                itemSerial = existingRecord.ItemSerial;
-                dispatchKey = ResolveAvatarModifiedDispatchKey(relationshipType, characterId, existingRecord);
+                itemSerial = ResolveAvatarModifiedRemoveSerial(characterId, ownerCharacterId, existingRecord);
+                dispatchKey = ResolveAvatarModifiedRemoveDispatchKey(
+                    relationshipType,
+                    ownerCharacterId > 0 ? ownerCharacterId : characterId,
+                    itemSerial,
+                    existingRecord);
             }
 
             return new RemoteUserRelationshipRecordRemovePacket(
@@ -377,6 +385,51 @@ namespace HaCreator.MapSimulator.Interaction
                 dispatchKey,
                 itemSerial,
                 characterId);
+        }
+
+        private static long? ResolveAvatarModifiedRemoveSerial(
+            int characterId,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord existingRecord)
+        {
+            if (characterId > 0)
+            {
+                if (existingRecord.CharacterId.GetValueOrDefault(ownerCharacterId) == characterId)
+                {
+                    return existingRecord.ItemSerial;
+                }
+
+                if (existingRecord.PairCharacterId.GetValueOrDefault() == characterId)
+                {
+                    return existingRecord.PairItemSerial ?? existingRecord.ItemSerial;
+                }
+            }
+
+            return existingRecord.ItemSerial ?? existingRecord.PairItemSerial;
+        }
+
+        private static RemoteRelationshipRecordDispatchKey ResolveAvatarModifiedRemoveDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            long? itemSerial,
+            RemoteUserRelationshipRecord existingRecord)
+        {
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship
+                    => new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        itemSerial,
+                        CharacterId: null),
+                RemoteRelationshipOverlayType.Marriage
+                    => new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                        Serial: null,
+                        ownerCharacterId > 0
+                            ? ownerCharacterId
+                            : existingRecord.CharacterId),
+                _ => ResolveAvatarModifiedDispatchKey(relationshipType, ownerCharacterId, existingRecord)
+            };
         }
 
         private static RemoteRelationshipRecordDispatchKey ResolveAvatarModifiedDispatchKey(

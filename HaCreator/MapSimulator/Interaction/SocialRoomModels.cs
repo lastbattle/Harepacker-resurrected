@@ -5439,7 +5439,11 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    packetLength = payload[offset + 1] == 1 ? 2 : 3;
+                    int gameResultHeaderLength = payload[offset + 1] == 1 ? 2 : 3;
+                    int gameResultWithRecordsLength = gameResultHeaderLength + (ClientMiniGameRecordByteLength * 2);
+                    packetLength = remaining >= gameResultWithRecordsLength
+                        ? gameResultWithRecordsLength
+                        : gameResultHeaderLength;
                     return remaining >= packetLength;
                 case OmokRetreatResultPacketType:
                     if (remaining < 2)
@@ -7195,6 +7199,54 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        internal static bool TryIdentifyMerchantBaseUpdatePayloadForAutoMapping(byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length < 2 || payload[0] != PersonalShopBasePacketType)
+            {
+                detail = "subtype 25 payload is missing the CMiniRoomBaseDlg::OnPacketBase wrapper.";
+                return false;
+            }
+
+            byte baseSubType = payload[1];
+            if (baseSubType != MiniRoomBaseUpdatePacketSubType)
+            {
+                if (IsMiniRoomBasePacketSubType(baseSubType))
+                {
+                    detail = $"subtype 25 wraps CMiniRoomBaseDlg::OnPacketBase subtype {baseSubType}.";
+                    return true;
+                }
+
+                detail = $"subtype 25 wraps unknown CMiniRoomBaseDlg::OnPacketBase subtype {baseSubType}.";
+                return false;
+            }
+
+            byte[] nestedPayload = payload.AsSpan(2).ToArray();
+            if (TryDecodeMerchantShopFullRefreshPayload(nestedPayload, out List<MerchantPacketItemRow> rows, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries direct CPersonalShopDlg::OnRefresh item-array payload with {rows.Count} row(s).";
+                return true;
+            }
+
+            if (nestedPayload.Length > sizeof(int) &&
+                TryDecodeMerchantShopFullRefreshPayload(nestedPayload.AsSpan(sizeof(int)).ToArray(), out List<MerchantPacketItemRow> entrustedRows, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries CEntrustedShopDlg::OnRefresh leading m_nMoney plus CPersonalShopDlg::OnRefresh item-array payload with {entrustedRows.Count} row(s).";
+                return true;
+            }
+
+            if (nestedPayload.Length > 1 &&
+                nestedPayload[0] == MerchantShopRowRefreshPacketType &&
+                TryDecodeMerchantShopRowRefreshPayload(nestedPayload.AsSpan(1).ToArray(), out MerchantShopRowRefresh rowRefresh, out _))
+            {
+                detail = $"subtype 25/base subtype 6 carries nested subtype 15 {rowRefresh.DecodeShape} for merchant packet slot {rowRefresh.PacketSlotIndex}.";
+                return true;
+            }
+
+            detail = "subtype 25/base subtype 6 did not match the modeled CPersonalShopDlg::OnRefresh item-array or subtype-15 merchant row refresh payload shapes.";
+            return false;
+        }
+
         private static bool TryDecodeLegacyMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
         {
             rowRefresh = default;
@@ -7994,8 +8046,19 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedBlacklistPendingMutationName = resolvedName;
             _entrustedBlacklistPendingMutationAdd = add;
             _entrustedBlacklistPendingMutationRawPacketHex = rawHex;
-            _entrustedChildDialogStatus =
-                $"{summary} CBlackListDlg::{(add ? "AddBlackList" : "DeleteBlackList")} sent the request and left the displayed child list unchanged until authoritative server subtype {EntrustedShopBlackListResultPacketType} rebuilds the blacklist owner.";
+            if (add)
+            {
+                ApplyEntrustedBlacklistAddLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::AddBlackList sent the request, inserted {resolvedName} into the local child list immediately, and waits for authoritative server subtype {EntrustedShopBlackListResultPacketType} to confirm or rebuild the blacklist owner.");
+            }
+            else
+            {
+                ApplyEntrustedBlacklistDeleteLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::DeleteBlackList sent the request, removed {resolvedName} from the local child list immediately, and waits for authoritative server subtype {EntrustedShopBlackListResultPacketType} to confirm or rebuild the blacklist owner.");
+            }
+
             StatusMessage = _entrustedChildDialogStatus;
             PersistState();
             message = StatusMessage;

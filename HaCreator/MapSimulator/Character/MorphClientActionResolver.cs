@@ -1126,8 +1126,14 @@ namespace HaCreator.MapSimulator.Character
             // `ride2` is the first action after the client-seeded morph table and
             // remains rejected as a raw morph request even though the WZ action-name
             // alias can still resolve through the ordinary resolver surface.
-            return rawActionCode != ClientMorphActionTableExclusiveUpperBound
-                   && IsClientConfirmedPostTableRawMorphActionName(actionName);
+            if (rawActionCode == ClientMorphActionTableExclusiveUpperBound
+                || !IsClientConfirmedPostTableRawMorphActionName(actionName))
+            {
+                actionName = null;
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsClientConfirmedPostTableRawMorphActionName(string actionName)

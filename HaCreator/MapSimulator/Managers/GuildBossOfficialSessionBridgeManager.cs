@@ -48,7 +48,7 @@ namespace HaCreator.MapSimulator.Managers
         private long? _currentInitializedProxySessionId;
         private long _traceSequence;
         private long _verificationClearedAfterTraceSequence;
-        private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
+        private readonly Dictionary<InitializedProxySessionKey, long> _initializedProxySessionTraceSequences = new();
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -932,7 +932,7 @@ namespace HaCreator.MapSimulator.Managers
                 _currentInitializedProxySessionId = null;
                 _traceSequence = 0;
                 _verificationClearedAfterTraceSequence = 0;
-                _initializedProxySessions.Clear();
+                _initializedProxySessionTraceSequences.Clear();
             }
         }
         private int FlushQueuedPulleyRequestsViaProxy()
@@ -1269,7 +1269,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _currentInitializedSessionVersion = sessionVersion;
                     _currentInitializedProxySessionId = proxySessionId;
-                    _initializedProxySessions.Add(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+                    _initializedProxySessionTraceSequences[new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value)] = _traceSequence;
                 }
                 else
                 {
@@ -1380,13 +1380,13 @@ namespace HaCreator.MapSimulator.Managers
         private bool IsInitializedLiveProxiedSource(OutboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId)
-                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+                && IsTraceAfterInitializedProxySession(trace.SessionVersion, trace.ProxySessionId, trace.TraceSequence);
         }
 
         private bool IsInitializedLiveProxiedSource(InboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId)
-                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+                && IsTraceAfterInitializedProxySession(trace.SessionVersion, trace.ProxySessionId, trace.TraceSequence);
         }
 
         private string DescribeVerificationWindow(OutboundPacketTrace trace)
@@ -1444,7 +1444,20 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            return _initializedProxySessions.Contains(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+            return _initializedProxySessionTraceSequences.ContainsKey(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+        }
+
+        private bool IsTraceAfterInitializedProxySession(short? sessionVersion, long? proxySessionId, long traceSequence)
+        {
+            if (!sessionVersion.HasValue || !proxySessionId.HasValue)
+            {
+                return false;
+            }
+
+            return _initializedProxySessionTraceSequences.TryGetValue(
+                    new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value),
+                    out long initializedAtTraceSequence)
+                && traceSequence > initializedAtTraceSequence;
         }
 
         private string DescribeCurrentInitializedProxySession()
@@ -1452,7 +1465,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 return _currentInitializedSessionVersion.HasValue && _currentInitializedProxySessionId.HasValue
-                    ? $"version={_currentInitializedSessionVersion.Value} proxySession={_currentInitializedProxySessionId.Value} initializedSessionCount={_initializedProxySessions.Count}"
+                    ? $"version={_currentInitializedSessionVersion.Value} proxySession={_currentInitializedProxySessionId.Value} initializedSessionCount={_initializedProxySessionTraceSequences.Count}"
                     : $"proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}";
             }
         }

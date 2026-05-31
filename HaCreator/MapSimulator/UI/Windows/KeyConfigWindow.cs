@@ -1275,7 +1275,7 @@ namespace HaCreator.MapSimulator.UI
             Color tint = ShouldTintClientFuncKeyMappedIcon(shortcutVisualState.DrawLayer, shortcutVisualState.Unavailable)
                 ? ClientFuncKeyMappedUnavailableTint
                 : Color.White;
-            sprite.Draw(iconTexture, composition.IconBounds, tint);
+            sprite.Draw(iconTexture, ResolveClientFuncKeyMappedDrawBounds(composition, compact), tint);
 
             if (composition.HasUnavailableOverlay)
             {
@@ -1421,6 +1421,19 @@ namespace HaCreator.MapSimulator.UI
                 cellBounds.Y - Math.Max(1, drawHeight) + ClientFuncKeyMappedCellSize,
                 Math.Max(1, drawWidth),
                 Math.Max(1, drawHeight));
+        }
+
+        internal static Rectangle ResolveClientFuncKeyMappedDrawBounds(ClientFuncKeyMappedComposition composition, bool compact)
+        {
+            if (!compact
+                && composition.Kind is ClientFuncKeyMappedCompositionKind.SkillCanvasCopy
+                    or ClientFuncKeyMappedCompositionKind.MacroCanvasCopy
+                && composition.NativeCanvasCopyBounds != Rectangle.Empty)
+            {
+                return composition.NativeCanvasCopyBounds;
+            }
+
+            return composition.IconBounds;
         }
 
         internal static bool ShouldTintClientFuncKeyMappedIcon(ShortcutVisualState.ClientDrawLayer drawLayer, bool unavailable)

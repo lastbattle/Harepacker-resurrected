@@ -123,6 +123,11 @@ namespace HaCreator.MapSimulator
             {
                 int questId = reader.ReadUInt16();
                 int remainingMs = reader.ReadInt32();
+                if (timeKeepQuestTimer)
+                {
+                    _questRuntime.ClearPacketOwnedQuestExKeptRecord(questId);
+                }
+
                 applied.Add(_packetFieldStateRuntime.ApplyQuestTimer(questId, remainingMs, timeKeepQuestTimer, currTickCount));
             }
 
@@ -141,6 +146,11 @@ namespace HaCreator.MapSimulator
             {
                 message = restrictionMessage;
                 return false;
+            }
+
+            if (timeKeepQuestTimer)
+            {
+                _questRuntime.ClearPacketOwnedQuestExKeptRecord(questId);
             }
 
             message = _packetFieldStateRuntime.ApplyQuestTimer(questId, remainingMs, timeKeepQuestTimer, currTickCount);

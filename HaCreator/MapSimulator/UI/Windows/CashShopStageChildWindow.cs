@@ -118,6 +118,14 @@ namespace HaCreator.MapSimulator.UI
                 public int HighPrice { get; init; }
             }
 
+            public sealed class SearchResultRowState
+            {
+                public int Index { get; init; }
+                public string Title { get; init; } = string.Empty;
+                public string PriceLabel { get; init; } = string.Empty;
+                public bool IsSelected { get; init; }
+            }
+
             public string OwnerName { get; init; } = string.Empty;
             public string Status { get; init; } = string.Empty;
             public string NativeCreateFunction { get; init; } = string.Empty;
@@ -126,10 +134,13 @@ namespace HaCreator.MapSimulator.UI
             public SelectorControlRuntimeState SelectorRuntime { get; init; }
             public ButtonControlState SortComboControl { get; init; }
             public ButtonControlState SearchButtonControl { get; init; }
+            public ButtonControlState SearchDialogPriceComboControl { get; init; }
+            public ButtonControlState SearchDialogEditControl { get; init; }
             public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
             public IReadOnlyList<CanvasSlotState> CanvasSlots { get; init; } = Array.Empty<CanvasSlotState>();
             public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
             public IReadOnlyList<PriceRangeState> PriceRanges { get; init; } = Array.Empty<PriceRangeState>();
+            public IReadOnlyList<SearchResultRowState> SearchResultRows { get; init; } = Array.Empty<SearchResultRowState>();
             public int LastKeyDownTick { get; init; }
             public int CurrentCategory { get; init; }
             public int CurrentSortType { get; init; }
@@ -138,6 +149,12 @@ namespace HaCreator.MapSimulator.UI
             public Point BestEventBadgePosition { get; init; }
             public int PendingCommoditySerialNumber { get; init; }
             public int SearchResultCount { get; init; }
+            public int SearchResultSelectedIndex { get; init; } = -1;
+            public int SearchResultScrollOffset { get; init; }
+            public int SearchResultPageIndex { get; init; }
+            public int SearchResultPageSize { get; init; }
+            public int SearchResultVisibleCount { get; init; }
+            public int ActivePriceRangeIndex { get; init; }
             public bool AllItemFilterEnabled { get; init; }
             public bool HasDedicatedWzSurface { get; init; }
             public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
@@ -1060,6 +1077,17 @@ namespace HaCreator.MapSimulator.UI
                 DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult; rows {state.SearchResultCount.ToString(CultureInfo.InvariantCulture)}; all-item {(state.AllItemFilterEnabled ? "on" : "off")}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
             }
 
+            if (state.SearchDialogPriceComboControl != null || state.SearchDialogEditControl != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Dialog controls price {FormatWrapperButton(state.SearchDialogPriceComboControl)} / edit {FormatWrapperButton(state.SearchDialogEditControl)}; active price range {state.ActivePriceRangeIndex.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
             if (state.ButtonControls.Count > 0)
             {
                 string buttonLine = string.Join(", ", state.ButtonControls.Select(FormatWrapperButton));
@@ -1084,6 +1112,28 @@ namespace HaCreator.MapSimulator.UI
                 DrawWrapped(sprite, $"Price ranges {priceLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
             }
 
+            if (state.ScrollBarRuntime != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Result popup page {state.SearchResultPageIndex.ToString(CultureInfo.InvariantCulture)} size {state.SearchResultPageSize.ToString(CultureInfo.InvariantCulture)}; selected {state.SearchResultSelectedIndex.ToString(CultureInfo.InvariantCulture)}; scroll {state.ScrollBarRuntime.Offset.ToString(CultureInfo.InvariantCulture)}/{state.ScrollBarRuntime.MaxOffset.ToString(CultureInfo.InvariantCulture)} at {state.ScrollBarRuntime.Position.X.ToString(CultureInfo.InvariantCulture)},{state.ScrollBarRuntime.Position.Y.ToString(CultureInfo.InvariantCulture)} {state.ScrollBarRuntime.Height.ToString(CultureInfo.InvariantCulture)}px.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            foreach (CashShopWrapperOwnerState.SearchResultRowState row in state.SearchResultRows.Take(3))
+            {
+                DrawWrapped(
+                    sprite,
+                    $"{(row.IsSelected ? "> " : string.Empty)}{row.Index.ToString(CultureInfo.InvariantCulture)} {row.Title} {row.PriceLabel}",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
             if (state.BestSlotCount > 0)
             {
                 DrawWrapped(
@@ -1103,6 +1153,11 @@ namespace HaCreator.MapSimulator.UI
 
         private static string FormatWrapperButton(CashShopWrapperOwnerState.ButtonControlState button)
         {
+            if (button == null)
+            {
+                return "none";
+            }
+
             return $"{button.ActionKey}#{button.ControlId.ToString(CultureInfo.InvariantCulture)} at {button.Position.X.ToString(CultureInfo.InvariantCulture)},{button.Position.Y.ToString(CultureInfo.InvariantCulture)} {button.Width.ToString(CultureInfo.InvariantCulture)}x{button.Height.ToString(CultureInfo.InvariantCulture)}";
         }
 
@@ -2240,6 +2295,37 @@ namespace HaCreator.MapSimulator.UI
                 case MapSimulatorWindowNames.CashShopOneADay:
                     HandleOneADayKeyboard(keyboardState);
                     break;
+                case MapSimulatorWindowNames.CashShopItemSearch:
+                    HandleCashShopItemSearchKeyboard(keyboardState);
+                    break;
+            }
+        }
+
+        private void HandleCashShopItemSearchKeyboard(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultNext"));
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPrevious"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPageNext"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPagePrevious"));
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtSearch"));
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtCancel"));
             }
         }
 
@@ -3950,7 +4036,8 @@ namespace HaCreator.MapSimulator.UI
                 || _windowName == MapSimulatorWindowNames.ItcList
                 || _windowName == MapSimulatorWindowNames.CashShopStatus
                 || _windowName == MapSimulatorWindowNames.ItcStatus
-                || _windowName == MapSimulatorWindowNames.CashShopOneADay;
+                || _windowName == MapSimulatorWindowNames.CashShopOneADay
+                || _windowName == MapSimulatorWindowNames.CashShopItemSearch;
         }
 
         private string[] GetStatusButtonKeys()

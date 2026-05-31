@@ -196,7 +196,8 @@ namespace HaCreator.MapSimulator.Managers
                 MesoGiveSucceededStringPoolId,
                 "You have received {0} mesos.",
                 1);
-            return FormatInvariant(format, mesoAmount);
+            // The native handler passes the Decode4 value to a `%d` StringPool format.
+            return FormatInvariant(format, unchecked((int)mesoAmount));
         }
 
         public static string GetMesoGiveFailedText()

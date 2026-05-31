@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogVisualStyle _visualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogFrameVariant _frameVariant = LoginUtilityDialogFrameVariant.Default;
+        private LoginPacketDialogOwner _dialogOwner = LoginPacketDialogOwner.LoginUtilityDialog;
         private LoginPacketResultDialogOwner _packetResultOwner = LoginPacketResultDialogOwner.None;
         private bool _primaryButtonEnabled = true;
         private KeyboardState _previousKeyboardState;
@@ -149,6 +150,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action PrimaryRequested;
         public event Action SecondaryRequested;
         public string InputValue => _inputValue;
+        internal LoginPacketDialogOwner DialogOwner => _dialogOwner;
         internal LoginPacketResultDialogOwner PacketResultOwner => _packetResultOwner;
 
         public override void SetFont(SpriteFont font)
@@ -160,11 +162,12 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
+            _dialogOwner = LoginPacketDialogOwner.LoginUtilityDialog;
             _packetResultOwner = LoginPacketResultDialogOwner.None;
             ClearInputFocus();
         }
 
-        public void Configure(
+        internal void Configure(
             string title,
             string body,
             string primaryLabel,
@@ -181,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
             LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null,
             bool primaryButtonEnabled = true,
+            LoginPacketDialogOwner dialogOwner = LoginPacketDialogOwner.LoginUtilityDialog,
             LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None)
         {
             _title = title ?? string.Empty;
@@ -199,6 +203,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardType = softKeyboardType;
             _visualStyle = visualStyle;
             _frameVariant = frameVariant;
+            _dialogOwner = dialogOwner;
             _packetResultOwner = packetResultOwner;
             _primaryButtonEnabled = primaryButtonEnabled;
             Frame = ResolveFrame(frameVariant);
@@ -1024,7 +1029,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawFieldMessageBoxChalkboardInputRows(SpriteBatch sprite)
         {
+            IReadOnlyList<string> displayRows = FieldMessageBoxRuntime.ResolveChalkboardDialogEditRowsForDisplay(_inputValue);
             IReadOnlyList<string> normalizedLines = FieldMessageBoxRuntime.NormalizeChalkboardDialogLinesForDialog(_inputValue);
+            int activeRowIndex = ResolveFieldMessageBoxChalkboardActiveEditRowIndex(_inputValue);
             bool showingPlaceholder = normalizedLines.Count == 0 && !string.IsNullOrWhiteSpace(_inputPlaceholder);
             Color valueColor = showingPlaceholder
                 ? new Color(164, 164, 164)
@@ -1033,16 +1040,14 @@ namespace HaCreator.MapSimulator.UI
             for (int rowIndex = 0; rowIndex < FieldMessageBoxRuntime.CuiHopeLineCount; rowIndex++)
             {
                 Rectangle rowBounds = GetFieldMessageBoxChalkboardInputRowBounds(rowIndex);
-                string rowText = rowIndex < normalizedLines.Count
-                    ? normalizedLines[rowIndex]
-                    : rowIndex == 0 && showingPlaceholder
-                        ? _inputPlaceholder
+                string rowText = rowIndex == 0 && showingPlaceholder
+                    ? _inputPlaceholder
+                    : rowIndex < displayRows.Count
+                        ? displayRows[rowIndex]
                         : string.Empty;
-                string visibleText = BuildVisibleInputText(rowText);
-                if (rowIndex != normalizedLines.Count - 1 || string.IsNullOrEmpty(_compositionText))
-                {
-                    visibleText = rowText;
-                }
+                string visibleText = rowIndex == activeRowIndex && !showingPlaceholder
+                    ? BuildVisibleInputText(rowText)
+                    : rowText;
 
                 if (string.IsNullOrWhiteSpace(visibleText))
                 {
@@ -1066,6 +1071,28 @@ namespace HaCreator.MapSimulator.UI
                 Position.Y + FieldMessageBoxRuntime.CuiHopeInputY + (normalizedRowIndex * FieldMessageBoxRuntime.CuiHopeInputVerticalStride),
                 FieldMessageBoxRuntime.CuiHopeInputWidth,
                 FieldMessageBoxRuntime.CuiHopeInputHeight);
+        }
+
+        private static int ResolveFieldMessageBoxChalkboardActiveEditRowIndex(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            int rowIndex = 0;
+            string normalizedText = text
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
+            foreach (char character in normalizedText)
+            {
+                if (character == '\n')
+                {
+                    rowIndex++;
+                }
+            }
+
+            return Math.Clamp(rowIndex, 0, FieldMessageBoxRuntime.CuiHopeLineCount - 1);
         }
 
         private string TruncateToRowWidth(string text, float maxWidth)

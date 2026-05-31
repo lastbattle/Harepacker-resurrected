@@ -13,11 +13,12 @@ namespace HaCreator.MapSimulator.Interaction
     internal delegate bool MessengerEnterPayloadBuilder(string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message);
     internal delegate bool MessengerMigratedPayloadBuilder(out byte[] payload, out string message);
     internal delegate bool MessengerSelfEnterResultPayloadBuilder(int? slotOverride, out byte[] payload, out string message);
+    internal delegate bool MessengerActivityPulsePayloadBuilder(string participantToken, bool active, out byte[] payload, out string message);
 
     internal static class MessengerCommandRouter
     {
-        private const string PacketRawUsage = "Usage: /messenger packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex bytes>";
-        private const string RemoteUsage = "Usage: /messenger remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...";
+        private const string PacketRawUsage = "Usage: /messenger packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult|activity> <hex bytes>";
+        private const string RemoteUsage = "Usage: /messenger remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult|activity> ...";
         private const string RemoveUsage = "Usage: /messenger packet remove <name>";
         private const string UpsertUsage = "Usage: /messenger packet upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>";
         private const string InviteUsage = "Usage: /messenger packet invite <name>";
@@ -37,7 +38,8 @@ namespace HaCreator.MapSimulator.Interaction
             MessengerAvatarPayloadBuilder buildAvatarPayload,
             MessengerEnterPayloadBuilder buildEnterPayload,
             MessengerMigratedPayloadBuilder buildMigratedPayload,
-            MessengerSelfEnterResultPayloadBuilder buildSelfEnterResultPayload)
+            MessengerSelfEnterResultPayloadBuilder buildSelfEnterResultPayload,
+            MessengerActivityPulsePayloadBuilder buildActivityPulsePayload)
         {
             if (args.Length < 2)
             {
@@ -152,6 +154,21 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     goto default;
+                case "activity":
+                case "activitypulse":
+                case "pulse":
+                    if (LooksLikeBinaryPayloadArgument(args, 2))
+                    {
+                        string activityUsage = $"Usage: /messenger packet {args[1]} <name> [active|inactive] OR <payloadhex=..|payloadb64=..>";
+                        if (!TryParsePacketPayload(args, 2, parseBinaryPayloadArgument, activityUsage, out byte[] activityPayload, out string activityError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(activityError);
+                        }
+
+                        return applyDispatchSubtype(6, activityPayload);
+                    }
+
+                    return BuildAndApplyActivityPulsePayload(args, buildActivityPulsePayload, applyDispatchSubtype);
                 case "dispatch":
                 case "onpacket":
                     string dispatchUsage = $"Usage: /messenger packet {args[1]} <payloadhex=..|payloadb64=..>";
@@ -200,6 +217,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return applyDispatch(dispatchPayload);
             }
 
+            if (string.Equals(args[1], "activity", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "activitypulse", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "pulse", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!tryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] activityPayload))
+                {
+                    return ChatCommandHandler.CommandResult.Error(PacketRawUsage);
+                }
+
+                return applyDispatch(PrependDispatchSubtype(6, activityPayload));
+            }
+
             if (!TryParseMessengerPacketType(args[1], out MessengerPacketType packetType))
             {
                 return ChatCommandHandler.CommandResult.Error(PacketRawUsage);
@@ -222,7 +251,8 @@ namespace HaCreator.MapSimulator.Interaction
             MessengerAvatarPayloadBuilder buildAvatarPayload,
             MessengerEnterPayloadBuilder buildEnterPayload,
             MessengerMigratedPayloadBuilder buildMigratedPayload,
-            MessengerSelfEnterResultPayloadBuilder buildSelfEnterResultPayload)
+            MessengerSelfEnterResultPayloadBuilder buildSelfEnterResultPayload,
+            MessengerActivityPulsePayloadBuilder buildActivityPulsePayload)
         {
             if (args.Length < 2)
             {
@@ -290,6 +320,10 @@ namespace HaCreator.MapSimulator.Interaction
                 case "selfenterresult":
                 case "selfenter":
                     return BuildAndApplySelfEnterResultPayload(args, buildSelfEnterResultPayload, applyDispatchSubtype, usage: "Usage: /messenger remote selfenterresult [slot|fail]");
+                case "activity":
+                case "activitypulse":
+                case "pulse":
+                    return BuildAndApplyActivityPulsePayload(args, buildActivityPulsePayload, applyDispatchSubtype, usage: "Usage: /messenger remote activity <name> [active|inactive]");
                 default:
                     return ChatCommandHandler.CommandResult.Error(RemoteUsage);
             }
@@ -392,6 +426,42 @@ namespace HaCreator.MapSimulator.Interaction
             return applyDispatchSubtype(1, payload);
         }
 
+        private static ChatCommandHandler.CommandResult BuildAndApplyActivityPulsePayload(
+            string[] args,
+            MessengerActivityPulsePayloadBuilder buildActivityPulsePayload,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
+            string usage = "Usage: /messenger packet activity <name> [active|inactive]")
+        {
+            if (args.Length < 3)
+            {
+                return ChatCommandHandler.CommandResult.Error(usage);
+            }
+
+            if (!TryParseOptionalActivityFlag(args, 3, usage, out bool active))
+            {
+                return ChatCommandHandler.CommandResult.Error(usage);
+            }
+
+            if (!buildActivityPulsePayload(args[2], active, out byte[] payload, out string message))
+            {
+                return ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            return applyDispatchSubtype(6, payload);
+        }
+
+        private static byte[] PrependDispatchSubtype(byte subtype, byte[] payload)
+        {
+            byte[] dispatchPayload = new byte[(payload?.Length ?? 0) + 1];
+            dispatchPayload[0] = subtype;
+            if (payload?.Length > 0)
+            {
+                payload.CopyTo(dispatchPayload, 1);
+            }
+
+            return dispatchPayload;
+        }
+
         private static bool TryParsePacketPayload(
             string[] args,
             int payloadIndex,
@@ -478,6 +548,35 @@ namespace HaCreator.MapSimulator.Interaction
                 : false;
         }
 
+        private static bool TryParseOptionalActivityFlag(string[] args, int index, string usage, out bool active)
+        {
+            active = true;
+            if (args.Length <= index)
+            {
+                return true;
+            }
+
+            switch (args[index].Trim().ToLowerInvariant())
+            {
+                case "active":
+                case "online":
+                case "on":
+                case "1":
+                case "true":
+                    active = true;
+                    return true;
+                case "inactive":
+                case "offline":
+                case "off":
+                case "0":
+                case "false":
+                    active = false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static bool TryParseMessengerPacketType(string token, out MessengerPacketType packetType)
         {
             packetType = MessengerPacketType.Invite;
@@ -536,7 +635,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string GetPacketUsage()
         {
-            return "Usage: /messenger packet <seed|clear|remove <name>|upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|avatar <name|local> [slot]|enter <name|local> [slot] [channel] [new|existing]|migrated|selfenterresult [slot|fail]|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>";
+            return "Usage: /messenger packet <seed|clear|remove <name>|upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|avatar <name|local> [slot]|enter <name|local> [slot] [channel] [new|existing]|migrated|selfenterresult [slot|fail]|activity <name> [active|inactive]|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult|activity> <payloadhex=..|payloadb64=..>>";
         }
     }
 }

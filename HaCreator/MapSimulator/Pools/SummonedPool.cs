@@ -3758,7 +3758,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (requiresNaturalExpiry
-                && !PacketOwnedSummonUpdateRules.ShouldTriggerExpirySelfDestruct(state.Summon, currentTime))
+                && !PacketOwnedSummonUpdateRules.ShouldTriggerExpirySelfDestruct(
+                    state.Summon,
+                    currentTime,
+                    SummonRuntimeRules.HasActiveOneTimeActionPlayback(state.Summon, currentTime)))
             {
                 return false;
             }
@@ -7101,15 +7104,90 @@ namespace HaCreator.MapSimulator.Pools
                 "value",
                 "data",
                 "payload",
+                "valueData",
+                "valuePayload",
+                "payloadValue",
+                "payloadData",
                 "targetValue",
+                "targetData",
+                "targetPayload",
                 "pathValue",
+                "pathData",
+                "pathText",
+                "pathPayload",
                 "uolData",
+                "uolValue",
+                "uolValueData",
+                "uolText",
+                "uolPayload",
                 "sourceValue",
+                "sourceData",
+                "sourceText",
+                "sourcePayload",
                 "hitValue",
+                "hitData",
+                "hitText",
+                "hitPayload",
                 "recordValue",
+                "recordData",
+                "recordValues",
+                "recordText",
+                "recordPayload",
+                "rowValue",
+                "rowData",
+                "rowPayload",
+                "entryValue",
+                "entryData",
+                "entryPayload",
+                "itemValue",
+                "itemData",
+                "itemPayload",
+                "raw",
+                "rawValue",
+                "rawData",
+                "rawPayload",
+                "body",
+                "content",
+                "text",
+                "json",
+                "clientValue",
+                "clientData",
+                "clientPayload",
+                "clientString",
+                "clientStringValue",
+                "clientStringData",
+                "clientStringPayload",
+                "stringValue",
+                "rawString",
+                "m_Data",
+                "mData",
+                "_bstr_t",
+                "bstr_t",
+                "Ztl_bstr_t",
+                "ZtlBstr",
+                "ZtlBstrT",
+                "Data_t",
+                "data_t",
+                "Data",
+                "m_wstr",
+                "mWstr",
+                "m_str",
+                "mStr",
+                "bstr",
+                "bstrValue",
+                "bstrData",
+                "bstrPayload",
+                "wstr",
+                "wstrValue",
+                "wstrData",
+                "wstrPayload",
+                "assetValue",
+                "assetData",
+                "assetPayload",
                 "target",
                 "targetPath",
                 "sourcePath",
+                "sourceText",
                 "srcPath",
                 "hitPath",
                 "sHitPath",
@@ -7152,6 +7230,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return null;
+        }
+
+        internal static string TryExtractPacketMobAttackSourcePathTokenForTest(
+            WzImageProperty property)
+        {
+            return TryExtractPacketMobAttackSourcePathToken(property);
         }
 
         private static string ResolvePacketMobAttackGeneralEffectRelativeSourceBasePath(WzImageProperty property)
@@ -9258,7 +9342,8 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            string normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
+            string normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                DecodePacketMobAttackGeneralEffectOpaquePathToken(token) ?? token);
             bool hasNormalizedSourceAliasAssignment = TryNormalizePacketMobAttackGeneralEffectSourceAliasAssignmentToken(
                 normalized,
                 out string normalizedSourceAliasAssignment);
@@ -9297,6 +9382,165 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalized.Trim('/');
+        }
+
+        private static string DecodePacketMobAttackGeneralEffectOpaquePathToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            string trimmed = token.Trim();
+            byte[] bytes = null;
+            if (trimmed.StartsWith("hex:", StringComparison.OrdinalIgnoreCase))
+            {
+                bytes = TryDecodePacketMobAttackGeneralEffectHexBytes(trimmed.Substring(4));
+            }
+            else if (LooksLikePacketMobAttackGeneralEffectBase64Token(trimmed))
+            {
+                try
+                {
+                    bytes = Convert.FromBase64String(trimmed);
+                }
+                catch (FormatException)
+                {
+                    bytes = null;
+                }
+            }
+
+            if (bytes == null || bytes.Length == 0 || bytes.Length > 2048)
+            {
+                return null;
+            }
+
+            foreach (System.Text.Encoding encoding in EnumeratePacketMobAttackGeneralEffectByteTextEncodings(bytes))
+            {
+                string decodedValue = encoding.GetString(bytes)
+                    .Trim('\uFEFF', '\0')
+                    .Trim();
+                if (decodedValue.IndexOf('\0') < 0
+                    && LooksLikePacketMobAttackGeneralEffectDecodedOpaquePath(decodedValue))
+                {
+                    return decodedValue;
+                }
+            }
+
+            return null;
+        }
+
+        private static byte[] TryDecodePacketMobAttackGeneralEffectHexBytes(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            string normalizedValue = value.Trim();
+            if (normalizedValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedValue = normalizedValue.Substring(2);
+            }
+
+            normalizedValue = normalizedValue.Replace(" ", string.Empty).Replace("_", string.Empty);
+            if (normalizedValue.Length == 0 || normalizedValue.Length % 2 != 0)
+            {
+                return null;
+            }
+
+            var bytes = new byte[normalizedValue.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!byte.TryParse(
+                        normalizedValue.Substring(i * 2, 2),
+                        NumberStyles.HexNumber,
+                        CultureInfo.InvariantCulture,
+                        out bytes[i]))
+                {
+                    return null;
+                }
+            }
+
+            return bytes;
+        }
+
+        private static bool LooksLikePacketMobAttackGeneralEffectBase64Token(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Length < 12 || value.Length % 4 != 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if ((current >= 'A' && current <= 'Z')
+                    || (current >= 'a' && current <= 'z')
+                    || (current >= '0' && current <= '9')
+                    || current == '+'
+                    || current == '/'
+                    || current == '=')
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
+        private static IEnumerable<System.Text.Encoding> EnumeratePacketMobAttackGeneralEffectByteTextEncodings(byte[] bytes)
+        {
+            yield return System.Text.Encoding.UTF8;
+
+            if (bytes == null || bytes.Length < 4 || bytes.Length % 2 != 0)
+            {
+                yield break;
+            }
+
+            int evenNulls = 0;
+            int oddNulls = 0;
+            for (int i = 0; i < bytes.Length; i += 2)
+            {
+                if (bytes[i] == 0)
+                {
+                    evenNulls++;
+                }
+
+                if (bytes[i + 1] == 0)
+                {
+                    oddNulls++;
+                }
+            }
+
+            int pairCount = bytes.Length / 2;
+            if (oddNulls * 2 >= pairCount)
+            {
+                yield return System.Text.Encoding.Unicode;
+            }
+
+            if (evenNulls * 2 >= pairCount)
+            {
+                yield return System.Text.Encoding.BigEndianUnicode;
+            }
+        }
+
+        private static bool LooksLikePacketMobAttackGeneralEffectDecodedOpaquePath(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return value.IndexOf('/', StringComparison.Ordinal) >= 0
+                   || value.IndexOf('\\') >= 0
+                   || value.Contains(".img", StringComparison.OrdinalIgnoreCase)
+                   || value.IndexOf('=', StringComparison.Ordinal) > 0
+                   || value.IndexOf(':', StringComparison.Ordinal) > 0
+                   || value.IndexOf('|') >= 0
+                   || value.IndexOf(';') >= 0
+                   || value.IndexOf(',') >= 0;
         }
 
         private static bool TryNormalizePacketMobAttackGeneralEffectSourceAliasAssignmentToken(
@@ -10124,25 +10368,36 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "itemValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "itemData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "itemPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "raw", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "body", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "content", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "text", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "json", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "clientValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "clientData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "clientPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "clientString", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "clientStringValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "clientStringData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "clientStringPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "stringValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "rawString", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "bstr", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "bstrValue", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "bstrData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "bstrPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "wstr", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "wstrValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "wstrData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "wstrPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "m_Data", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "mData", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "Data_t", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "data_t", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Data", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "_bstr_t", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "bstr_t", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "Ztl_bstr_t", StringComparison.OrdinalIgnoreCase)

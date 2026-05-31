@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int IconOffsetX = 17;
         private const int IconOffsetY = 22;
         private const int IconTextGap = 10;
+        private const int NativeFadeLineStep = 13;
 
         private readonly string _windowName;
         private readonly int _screenWidth;
@@ -59,6 +60,8 @@ namespace HaCreator.MapSimulator.UI
         private int _iconOffsetX = IconOffsetX;
         private int _iconOffsetY = IconOffsetY;
         private int _lastAppliedSharedFadeCreatedTick = int.MinValue;
+        private bool _usesSharedFadeYesNoNativeTextLayout;
+        private SharedFadeYesNoPayloadProfile _sharedFadeYesNoPayloadProfile;
 
         public InGameConfirmDialogWindow(
             IDXObject frame,
@@ -118,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
             _footerColor = _presentation.FooterColor ?? new Color(255, 228, 151);
             _iconOffsetX = _presentation.IconOffsetX ?? IconOffsetX;
             _iconOffsetY = _presentation.IconOffsetY ?? IconOffsetY;
+            _usesSharedFadeYesNoNativeTextLayout = false;
             CenterFrame();
             ConfigureButtons();
         }
@@ -249,6 +253,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_usesSharedFadeYesNoNativeTextLayout)
+            {
+                DrawSharedFadeYesNoContents(sprite);
+                return;
+            }
+
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
@@ -360,8 +370,89 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.Body,
                 snapshot.Footer,
                 snapshot.Presentation ?? fallbackPresentation ?? CreateSharedFadeYesNoPresentation(snapshot));
+            _sharedFadeYesNoPayloadProfile = SharedFadeYesNoModalOwner.ResolvePayloadProfile(snapshot.Type);
+            _usesSharedFadeYesNoNativeTextLayout = snapshot.Type != SharedFadeYesNoModalType.Generic;
             _lastAppliedSharedFadeCreatedTick = snapshot.CreatedTick;
             ApplySharedFadeYesNoButtonLayout();
+        }
+
+        private void DrawSharedFadeYesNoContents(SpriteBatch sprite)
+        {
+            if (_icon != null)
+            {
+                sprite.Draw(
+                    _icon,
+                    new Vector2(Position.X + _iconOffsetX, Position.Y + _iconOffsetY),
+                    Color.White);
+            }
+
+            bool centerAligned = _sharedFadeYesNoPayloadProfile.PrimaryTextX >= 100;
+            DrawNativeFadeTextLine(
+                sprite,
+                _title,
+                _sharedFadeYesNoPayloadProfile.PrimaryTextX,
+                _sharedFadeYesNoPayloadProfile.PrimaryTextY,
+                _titleColor,
+                centerAligned);
+
+            DrawNativeFadeTextLine(
+                sprite,
+                _body,
+                _sharedFadeYesNoPayloadProfile.SecondaryTextX,
+                _sharedFadeYesNoPayloadProfile.SecondaryTextY,
+                _bodyColor,
+                centerAligned);
+
+            if (!string.IsNullOrWhiteSpace(_footer))
+            {
+                int footerY = _sharedFadeYesNoPayloadProfile.UsesLevelJobLine
+                    ? _sharedFadeYesNoPayloadProfile.SecondaryTextY + NativeFadeLineStep
+                    : ResolveFooterY();
+                DrawNativeFadeTextLine(
+                    sprite,
+                    _footer,
+                    _sharedFadeYesNoPayloadProfile.SecondaryTextX,
+                    footerY,
+                    _footerColor,
+                    centerAligned);
+            }
+        }
+
+        private void DrawNativeFadeTextLine(
+            SpriteBatch sprite,
+            string text,
+            int x,
+            int y,
+            Color color,
+            bool centerAligned)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            string[] lines = text.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                float drawX = Position.X + x;
+                if (centerAligned)
+                {
+                    drawX -= MeasureLineWidth(line) / 2f;
+                }
+
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    line,
+                    new Vector2(drawX, Position.Y + y + (i * _font.LineSpacing)),
+                    color);
+            }
         }
 
         private void TryRaiseSharedFadeYesNoButton(int buttonId, Action fallbackAction)

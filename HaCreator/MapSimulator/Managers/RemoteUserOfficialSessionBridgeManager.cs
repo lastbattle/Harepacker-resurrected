@@ -817,12 +817,12 @@ namespace HaCreator.MapSimulator.Managers
                     out PortableChairRecordCaptureEntry derivedAddEntry,
                     out PortableChairRecordCaptureEntry derivedRemoveEntry))
             {
-                return $"{buildTag}:authoritative-official-update-portable-chair-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} chair={derivedAddEntry.ChairItemId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
+                return $"{buildTag}:authoritative-official-setactive-portable-chair-record opcode={derivedAddEntry.Opcode} owner={derivedAddEntry.CharacterId} chair={derivedAddEntry.ChairItemId} sequence={derivedAddEntry.Sequence}->{derivedRemoveEntry.Sequence}";
             }
 
             if (HasOfficialSetActivePortableChairRecordCaptureForBuild(buildTag))
             {
-                return $"{buildTag}:official-update-portable-chair-derived-record candidate opcode=222; awaiting ordered same-owner add/remove";
+                return $"{buildTag}:official-setactive-portable-chair-derived-record candidate opcode=222; awaiting ordered same-owner add/remove";
             }
 
             List<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>> addEvidence = evidenceByOpcode
@@ -2423,7 +2423,7 @@ namespace HaCreator.MapSimulator.Managers
                     status = addPacket.Status.GetValueOrDefault(-1);
                     if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "mapped dispatch", StringComparison.OrdinalIgnoreCase))
                     {
-                        reason = $"derived=CUserRemote::OnSetActivePortableChair -> CUserRemote::Update flag 0x400 -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}";
+                        reason = $"derived=CUserRemote::OnSetActivePortableChair -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd chair={addPacket.ChairItemId}";
                     }
                 }
                 else
@@ -2432,7 +2432,7 @@ namespace HaCreator.MapSimulator.Managers
                     characterId = removePacket.CharacterId;
                     if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "mapped dispatch", StringComparison.OrdinalIgnoreCase))
                     {
-                        reason = "derived=CUserRemote::OnSetActivePortableChair -> CUserRemote::Update flag 0x400 -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordRemove";
+                        reason = "derived=CUserRemote::OnSetActivePortableChair -> CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordRemove";
                     }
                 }
             }

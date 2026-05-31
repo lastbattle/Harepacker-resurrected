@@ -7,6 +7,10 @@ namespace HaCreator.MapSimulator
     {
         LoginUtilityDialog = 0,
         ConnectionNotice = 1,
+        PicDialog = 2,
+        SpwDialog = 3,
+        AccountMigrationDialog = 4,
+        WebsiteHandoffDialog = 5,
     }
 
     internal sealed class LoginPacketDialogPromptConfiguration

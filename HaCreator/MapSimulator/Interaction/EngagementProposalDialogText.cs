@@ -48,6 +48,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const byte ResultSubtypeReservationLockedBreak = 32;
         internal const byte ResultSubtypeInvitationInvalid = 34;
         internal const byte ResultSubtypeServerNotice = 36;
+        internal const byte ServerNoticeHiddenFlag = 0;
+        internal const byte ServerNoticeVisibleFlag = 1;
 
         private const string WaitForResponseFallback = "Waiting for her response...";
         private const string IncomingRequestPromptFallback = "%s has requested engagement.\r\nWill you accept this proposal?";

@@ -891,9 +891,9 @@ namespace HaCreator.MapSimulator
             string sender,
             int currentTick)
         {
-            string normalizedSender = sender?.Trim() ?? string.Empty;
+            string notificationSender = sender ?? string.Empty;
             if (!TryBuildPacketOwnedSuppressedIncomingWhisperNotificationPayload(
-                    normalizedSender,
+                    notificationSender,
                     currentTick,
                     out byte[] payload))
             {
@@ -903,7 +903,7 @@ namespace HaCreator.MapSimulator
             }
 
             string payloadHex = Convert.ToHexString(payload);
-            string summary = $"Mirrored CField::OnWhisper suppressed-whisper notification as opcode {PacketOwnedSuppressedIncomingWhisperNotificationOpcode} [{payloadHex}] with subtype {PacketOwnedSuppressedIncomingWhisperNotificationSubtype}, update time {currentTick}, and sender {normalizedSender}.";
+            string summary = $"Mirrored CField::OnWhisper suppressed-whisper notification as opcode {PacketOwnedSuppressedIncomingWhisperNotificationOpcode} [{payloadHex}] with subtype {PacketOwnedSuppressedIncomingWhisperNotificationSubtype}, update time {currentTick}, and sender {notificationSender}.";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                 PacketOwnedSuppressedIncomingWhisperNotificationOpcode,
                 payload,
@@ -959,8 +959,8 @@ namespace HaCreator.MapSimulator
             out byte[] payload)
         {
             payload = Array.Empty<byte>();
-            string normalizedSender = sender?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(normalizedSender))
+            string notificationSender = sender ?? string.Empty;
+            if (string.IsNullOrEmpty(notificationSender))
             {
                 return false;
             }
@@ -971,7 +971,7 @@ namespace HaCreator.MapSimulator
                 using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
                 writer.Write(PacketOwnedSuppressedIncomingWhisperNotificationSubtype);
                 writer.Write(updateTime);
-                WritePacketOwnedMapleString(writer, normalizedSender);
+                WritePacketOwnedMapleString(writer, notificationSender);
                 writer.Flush();
                 payload = stream.ToArray();
                 return true;
@@ -2861,6 +2861,7 @@ namespace HaCreator.MapSimulator
         {
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowCenter,
+                PacketOwnedUiClientOrigin.OriginCC,
                 0,
                 PacketOwnedScreenEffectYOffset,
                 key ?? string.Empty,
@@ -2884,6 +2885,7 @@ namespace HaCreator.MapSimulator
         {
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowTopLeft,
+                PacketOwnedUiClientOrigin.OriginLT,
                 layerRole == PacketOwnedRewardRouletteLayerRole.Job
                     ? 0
                     : PacketOwnedRewardRouletteOffsetX,
@@ -3152,6 +3154,14 @@ namespace HaCreator.MapSimulator
                 registration.LoadLayerFlip);
         }
 
+        internal static PacketOwnedUiClientOrigin GetPacketOwnedScreenEffectClientOriginForTest()
+        {
+            return ResolvePacketOwnedScreenEffectRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "screen:test").ClientOrigin;
+        }
+
         internal static (PacketOwnedUiAnimateMode AnimateMode, bool RegisterOneTimeAnimation) GetPacketOwnedScreenEffectAnimationRegistrationForTest()
         {
             PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(
@@ -3237,6 +3247,22 @@ namespace HaCreator.MapSimulator
                 registration.Alpha,
                 registration.LoadLayerReserved,
                 registration.LoadLayerFlip);
+        }
+
+        internal static PacketOwnedUiClientOrigin GetPacketOwnedRewardRouletteClientOriginForTest(int layerIndex)
+        {
+            PacketOwnedRewardRouletteLayerRole layerRole = layerIndex switch
+            {
+                0 => PacketOwnedRewardRouletteLayerRole.Job,
+                1 => PacketOwnedRewardRouletteLayerRole.Part,
+                2 => PacketOwnedRewardRouletteLayerRole.Level,
+                _ => throw new ArgumentOutOfRangeException(nameof(layerIndex))
+            };
+            return ResolvePacketOwnedRewardRouletteRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "reward-roulette",
+                layerRole).ClientOrigin;
         }
 
         internal static (PacketOwnedUiAnimateMode AnimateMode, bool RegisterOneTimeAnimation) GetPacketOwnedRewardRouletteAnimationRegistrationForTest(int layerIndex)
@@ -3682,8 +3708,15 @@ namespace HaCreator.MapSimulator
             GaStop
         }
 
+        internal enum PacketOwnedUiClientOrigin
+        {
+            OriginLT,
+            OriginCC
+        }
+
         private readonly record struct PacketOwnedUiRegistration(
             PacketOwnedUiAnchorMode AnchorMode,
+            PacketOwnedUiClientOrigin ClientOrigin,
             int OffsetX,
             int OffsetY,
             string Key,

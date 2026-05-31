@@ -48,6 +48,30 @@ namespace HaCreator.MapSimulator.Managers
         private const int CoupleRecordByteLength = 0x21;
         private const int FriendRecordByteLength = 0x25;
         private const int MarriageRecordByteLength = 0x30;
+        private const ulong CharacterDataKnownFlagMask =
+            0x1UL |
+            CharacterDataMesoFlag |
+            CharacterDataEquipInventoryFlag |
+            CharacterDataUseInventoryFlag |
+            CharacterDataSetupInventoryFlag |
+            CharacterDataEtcInventoryFlag |
+            CharacterDataCashInventoryFlag |
+            CharacterDataInventorySlotLimitsFlag |
+            CharacterDataSkillRecordFlag |
+            CharacterDataSkillExpirationFlag |
+            CharacterDataMiniGameRecordFlag |
+            CharacterDataRelationshipRecordFlag |
+            CharacterDataMapTransferFlag |
+            CharacterDataSkillCooldownFlag |
+            CharacterDataInt16ValueRecordFlag |
+            CharacterDataQuestRecordFlag |
+            CharacterDataShortFileTimeRecordFlag |
+            CharacterDataNewYearCardRecordFlag |
+            CharacterDataQuestExRecordFlag |
+            CharacterDataTwoIntValueRecordFlag |
+            CharacterDataWildHunterInfoFlag |
+            CharacterDataQuestCompleteRecordFlag |
+            CharacterDataVisitorQuestRecordFlag;
         internal const int BootstrapBookByteLength =
             (MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity) * sizeof(int);
 
@@ -76,7 +100,9 @@ namespace HaCreator.MapSimulator.Managers
             matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
-            if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
+            if (payload.Length < BootstrapBookByteLength ||
+                isPlausibleMapId == null ||
+                HasUnsupportedCharacterDataFlags(characterDataFlags))
             {
                 return false;
             }
@@ -202,6 +228,11 @@ namespace HaCreator.MapSimulator.Managers
             return matchedOffset == 0 &&
                    !matchedKnownLeadingCharacterDataTail &&
                    matchedOpaquePreMapTransferByteCount < 0;
+        }
+
+        private static bool HasUnsupportedCharacterDataFlags(ulong characterDataFlags)
+        {
+            return (characterDataFlags & ~CharacterDataKnownFlagMask) != 0;
         }
 
         private static bool TryFindBootstrapBooksAtExactTail(

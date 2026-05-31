@@ -272,6 +272,7 @@ namespace HaCreator.MapSimulator.Character
             public bool HideOnRotateAction { get; init; }
             public string ClientLayerOwnerName { get; init; }
             public int ClientLayerReplayGateMs { get; init; }
+            public ClientOwnedAvatarEffectLayerTrace ClientOwnedLayerTrace { get; set; }
             public bool UsesEnergyChargeAdditionalLayer { get; init; }
             public int EnergyChargeAdditionalLayerIndex { get; init; }
             public int EnergyChargeAdditionalLayerAlpha { get; init; }
@@ -388,6 +389,137 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private sealed class ClientOwnedAvatarEffectLayerTrace
+        {
+            private readonly List<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> _mutations = new();
+
+            public int SkillId { get; }
+            public string OwnerName { get; }
+            public string SourceEffectName { get; }
+            public int SimulatedLayerHandleId { get; }
+            public int SimulatedListNodeId { get; }
+            public int SimulatedParentUnderFaceLayerHandleId { get; }
+            public int SimulatedLayerHandleRefCount { get; private set; }
+            public int SimulatedListNodeRefCount { get; private set; }
+            public int SimulatedParentUnderFaceLayerHandleRefCount { get; private set; }
+            public bool Visible { get; private set; } = true;
+            public IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> Mutations => _mutations;
+
+            public ClientOwnedAvatarEffectLayerTrace(
+                int skillId,
+                string ownerName,
+                string sourceEffectName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId)
+            {
+                SkillId = skillId;
+                OwnerName = ownerName ?? string.Empty;
+                SourceEffectName = sourceEffectName ?? string.Empty;
+                SimulatedLayerHandleId = Math.Max(0, layerHandleId);
+                SimulatedListNodeId = Math.Max(0, listNodeId);
+                SimulatedParentUnderFaceLayerHandleId = Math.Max(0, parentUnderFaceLayerHandleId);
+            }
+
+            public void CaptureUnderFaceReference()
+            {
+                if (SimulatedLayerHandleId <= 0 || SimulatedListNodeId <= 0)
+                {
+                    return;
+                }
+
+                SimulatedLayerHandleRefCount = 1;
+                SimulatedListNodeRefCount = 1;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.CaptureOwnerReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SourceEffectName));
+                if (SimulatedParentUnderFaceLayerHandleId <= 0)
+                {
+                    return;
+                }
+
+                SimulatedParentUnderFaceLayerHandleRefCount = 1;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.CaptureParentUnderFaceReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SourceEffectName));
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReparentToUnderFace(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SourceEffectName));
+            }
+
+            public void SetVisible(bool visible)
+            {
+                if (SimulatedLayerHandleId <= 0 || Visible == visible)
+                {
+                    return;
+                }
+
+                Visible = visible;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.SetVisible(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    visible,
+                    SourceEffectName));
+            }
+
+            public void Release()
+            {
+                if (SimulatedLayerHandleId <= 0
+                    || (SimulatedLayerHandleRefCount == 0
+                        && SimulatedListNodeRefCount == 0
+                        && SimulatedParentUnderFaceLayerHandleRefCount == 0))
+                {
+                    return;
+                }
+
+                Visible = false;
+                if (SimulatedParentUnderFaceLayerHandleRefCount > 0)
+                {
+                    _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReleaseParentUnderFaceReference(
+                        OwnerName,
+                        SimulatedLayerHandleId,
+                        SimulatedListNodeId,
+                        SimulatedParentUnderFaceLayerHandleId,
+                        SourceEffectName));
+                }
+
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReleaseOwnerReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SourceEffectName));
+                SimulatedLayerHandleRefCount = 0;
+                SimulatedListNodeRefCount = 0;
+                SimulatedParentUnderFaceLayerHandleRefCount = 0;
+            }
+
+            public ClientOwnedAvatarEffectLayerSnapshot ToSnapshot()
+            {
+                return new ClientOwnedAvatarEffectLayerSnapshot(
+                    SkillId,
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SimulatedLayerHandleRefCount,
+                    SimulatedListNodeRefCount,
+                    SimulatedParentUnderFaceLayerHandleRefCount,
+                    Visible,
+                    SourceEffectName,
+                    Mutations);
+            }
+        }
+
         private sealed class TransientSkillAvatarEffectState
         {
             public int SkillId { get; init; }
@@ -402,6 +534,7 @@ namespace HaCreator.MapSimulator.Character
             public SkillAvatarEffectPlane FinishSecondaryPlane { get; init; }
             public string ClientLayerOwnerName { get; init; }
             public bool? FacingRightOverride { get; init; }
+            public ClientOwnedAvatarEffectLayerTrace ClientOwnedLayerTrace { get; set; }
             public bool IsFinishing { get; set; }
 
             public bool HasFinishAnimation =>
@@ -601,6 +734,7 @@ namespace HaCreator.MapSimulator.Character
             InitializeCreateLayerCanvasVariant,
             InitializeCreateLayerFilterVariant,
             CreateHelperLayer,
+            StoreHelperLayerSlot,
             ReleaseCreateLayerLocal,
             ClearCreateLayerCanvasVariant,
             ClearCreateLayerFilterVariant,
@@ -636,6 +770,7 @@ namespace HaCreator.MapSimulator.Character
             CreateLayerCanvasVariant,
             CreateLayerFilterVariant,
             HelperLayerLocal,
+            HelperLayerSlot,
             UnderFaceOverlayVariant,
             SourceOriginVariant
         }
@@ -744,6 +879,18 @@ namespace HaCreator.MapSimulator.Character
             string AnimationMode,
             string SourceEffectName,
             IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> Mutations);
+        internal readonly record struct ClientOwnedAvatarEffectLayerSnapshot(
+            int SkillId,
+            string OwnerName,
+            int SimulatedLayerHandleId,
+            int SimulatedListNodeId,
+            int SimulatedParentUnderFaceLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int SimulatedListNodeRefCount,
+            int SimulatedParentUnderFaceLayerHandleRefCount,
+            bool Visible,
+            string SourceEffectName,
+            IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> Mutations);
 
         #region Constants
 
@@ -975,6 +1122,8 @@ namespace HaCreator.MapSimulator.Character
         private const int ClientOwnedEnergyChargeParentUnderFaceLayerHandleId = 15;
         private int _nextClientOwnedEnergyChargeAdditionalLayerHandleId = 1;
         private int _nextClientOwnedEnergyChargeAdditionalListNodeId = 1;
+        private int _nextClientOwnedAvatarEffectLayerHandleId = 1;
+        private int _nextClientOwnedAvatarEffectListNodeId = 1;
         private IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting =
             Array.Empty<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation>();
         private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
@@ -5011,6 +5160,47 @@ namespace HaCreator.MapSimulator.Character
                 : _nextClientOwnedEnergyChargeAdditionalListNodeId++;
         }
 
+        private int NextClientOwnedAvatarEffectLayerHandleId()
+        {
+            return _nextClientOwnedAvatarEffectLayerHandleId == int.MaxValue
+                ? _nextClientOwnedAvatarEffectLayerHandleId = 1
+                : _nextClientOwnedAvatarEffectLayerHandleId++;
+        }
+
+        private int NextClientOwnedAvatarEffectListNodeId()
+        {
+            return _nextClientOwnedAvatarEffectListNodeId == int.MaxValue
+                ? _nextClientOwnedAvatarEffectListNodeId = 1
+                : _nextClientOwnedAvatarEffectListNodeId++;
+        }
+
+        private ClientOwnedAvatarEffectLayerTrace CreateClientOwnedUnderFaceLayerTrace(
+            int skillId,
+            string ownerName,
+            string sourceEffectName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return null;
+            }
+
+            var trace = new ClientOwnedAvatarEffectLayerTrace(
+                skillId,
+                ownerName,
+                sourceEffectName,
+                NextClientOwnedAvatarEffectLayerHandleId(),
+                NextClientOwnedAvatarEffectListNodeId(),
+                ClientOwnedEnergyChargeParentUnderFaceLayerHandleId);
+            trace.CaptureUnderFaceReference();
+            return trace;
+        }
+
+        private static bool UsesClientOwnedUnderFaceLayerTrace(string ownerName)
+        {
+            return string.Equals(ownerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(ownerName, ClientOwnedDoubleJumpAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase);
+        }
+
         internal IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> GetLastReleasedEnergyChargeAdditionalLayerMutationsForTesting()
         {
             return _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting;
@@ -5038,6 +5228,22 @@ namespace HaCreator.MapSimulator.Character
                 effectState.EnergyChargeAdditionalLayerSourceEffectName,
                 effectState.EnergyChargeAdditionalLayerMutations);
         }
+        internal ClientOwnedAvatarEffectLayerSnapshot? GetClientOwnedAvatarEffectLayerSnapshotForTesting(string ownerName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return null;
+            }
+
+            ClientOwnedAvatarEffectLayerTrace trace = _activeSkillAvatarEffects
+                .Select(state => state?.ClientOwnedLayerTrace)
+                .FirstOrDefault(layer => string.Equals(layer?.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            trace ??= _transientSkillAvatarEffects
+                .Select(state => state?.ClientOwnedLayerTrace)
+                .FirstOrDefault(layer => string.Equals(layer?.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            return trace?.ToSnapshot();
+        }
+
         public bool ApplySkillAvatarEffect(int skillId, SkillData skill, int currentTime)
         {
             if (!TryCreateSkillAvatarEffect(skillId, skill, out SkillAvatarEffectState effectState))
@@ -5055,6 +5261,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             CaptureEnergyChargeAdditionalLayerReference(effectState);
+            if (UsesClientOwnedUnderFaceLayerTrace(effectState.ClientLayerOwnerName))
+            {
+                effectState.ClientOwnedLayerTrace = CreateClientOwnedUnderFaceLayerTrace(
+                    skillId,
+                    effectState.ClientLayerOwnerName,
+                    effectState.GroundUnderFaceAnimation?.Name ?? effectState.GroundOverlayAnimation?.Name ?? string.Empty);
+            }
+
             _activeSkillAvatarEffects.Add(effectState);
             StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
             return true;
@@ -5109,6 +5323,14 @@ namespace HaCreator.MapSimulator.Character
             if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffectState, out int restoredStartTime))
             {
                 transientEffectState.AnimationStartTime = restoredStartTime;
+            }
+
+            if (UsesClientOwnedUnderFaceLayerTrace(transientEffectState.ClientLayerOwnerName))
+            {
+                transientEffectState.ClientOwnedLayerTrace = CreateClientOwnedUnderFaceLayerTrace(
+                    skillId,
+                    transientEffectState.ClientLayerOwnerName,
+                    transientEffectState.Animation?.Name ?? transientEffectState.SecondaryAnimation?.Name ?? string.Empty);
             }
 
             _transientSkillAvatarEffects.Add(transientEffectState);
@@ -5167,6 +5389,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                effectState.ClientOwnedLayerTrace?.Release();
                 effectState.ReleaseEnergyChargeAdditionalLayerReference();
                 if (effectState.UsesEnergyChargeAdditionalLayer)
                 {
@@ -5190,6 +5413,8 @@ namespace HaCreator.MapSimulator.Character
                 {
                     continue;
                 }
+
+                effectState.ClientOwnedLayerTrace?.Release();
 
                 effectState.ReleaseEnergyChargeAdditionalLayerReference();
                 if (effectState.UsesEnergyChargeAdditionalLayer)
@@ -5231,10 +5456,16 @@ namespace HaCreator.MapSimulator.Character
                             transientEffect.AnimationStartTime = restoredStartTime;
                         }
 
+                        if (string.Equals(transientEffect.ClientLayerOwnerName, ClientOwnedDoubleJumpAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            transientEffect.ClientOwnedLayerTrace?.SetVisible(true);
+                        }
+
                         StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffect, currentTime);
                         continue;
                     }
 
+                    transientEffect.ClientOwnedLayerTrace?.Release();
                     _transientSkillAvatarEffects.RemoveAt(i);
                     continue;
                 }
@@ -5255,6 +5486,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     if (IsSkillAvatarEffectAnimationComplete(effectState, currentTime))
                     {
+                        effectState.ClientOwnedLayerTrace?.Release();
                         effectState.ReleaseEnergyChargeAdditionalLayerReference();
                         _activeSkillAvatarEffects.RemoveAt(i);
                         continue;
@@ -5266,6 +5498,11 @@ namespace HaCreator.MapSimulator.Character
 
                 if (effectState.Mode == currentMode)
                 {
+                    if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        effectState.ClientOwnedLayerTrace?.SetVisible(currentMode != SkillAvatarEffectMode.LadderOrRope);
+                    }
+
                     StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
                     continue;
                 }
@@ -5273,6 +5510,10 @@ namespace HaCreator.MapSimulator.Character
                 bool hasCurrentModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, currentMode);
                 bool hasPreviousModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, effectState.Mode);
                 effectState.Mode = currentMode;
+                if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    effectState.ClientOwnedLayerTrace?.SetVisible(currentMode != SkillAvatarEffectMode.LadderOrRope);
+                }
 
                 if (hasCurrentModeAnimation || hasPreviousModeAnimation)
                 {
@@ -8620,7 +8861,7 @@ namespace HaCreator.MapSimulator.Character
             int sourceCurrentTime,
             int relMoveEndTime)
         {
-            var operations = new List<MirrorImagePreparedLayerNativeOperation>(24);
+            var operations = new List<MirrorImagePreparedLayerNativeOperation>(25);
             int sequence = 0;
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.GetMirrorSrcLayer,
@@ -8656,6 +8897,13 @@ namespace HaCreator.MapSimulator.Character
                 sourceLayer,
                 preparedLayerObjectId,
                 RelatedObjectId: underFaceLayerObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.StoreHelperLayerSlot,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: (int)sourceLayer,
                 ReferenceDelta: preparedLayerObjectId != 0 ? 1 : 0));
             operations.Add(new MirrorImagePreparedLayerNativeOperation(
                 MirrorImagePreparedLayerNativeOperationKind.ReleaseCreateLayerLocal,
@@ -8860,6 +9108,13 @@ namespace HaCreator.MapSimulator.Character
                         AddMirrorImagePreparedNativeReferenceDelta(
                             balances,
                             MirrorImagePreparedLayerNativeReferenceKind.HelperLayerLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.StoreHelperLayerSlot:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.HelperLayerSlot,
                             operation.ObjectId,
                             operation.ReferenceDelta);
                         break;
@@ -12856,6 +13111,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 if (_transientSkillAvatarEffects[i].SkillId == skillId)
                 {
+                    _transientSkillAvatarEffects[i].ClientOwnedLayerTrace?.Release();
                     _transientSkillAvatarEffects.RemoveAt(i);
                 }
             }
@@ -12863,6 +13119,11 @@ namespace HaCreator.MapSimulator.Character
 
         public void ClearAllTransientSkillAvatarEffects()
         {
+            foreach (TransientSkillAvatarEffectState effectState in _transientSkillAvatarEffects)
+            {
+                effectState?.ClientOwnedLayerTrace?.Release();
+            }
+
             _transientSkillAvatarEffects.Clear();
         }
 

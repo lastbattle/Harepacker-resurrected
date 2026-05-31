@@ -142,6 +142,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int MonsterBookRegistrationResultPacketType = 1047;
         public const int MonsterBookOwnershipSyncPacketType = 1048;
         public const int RevivePremiumSafetyCharmContextPacketType = 1049;
+        public const int RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType = 0x12;
         public const int RevivePremiumSafetyCharmAuthenMessageClientPacketType = 0x13;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
@@ -658,6 +659,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("premiumsafetycharmauthenmessage", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RevivePremiumSafetyCharmAuthenMessageClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("authencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onauthencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("reviveauthencodechanged", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("premiumsafetycharmauthencodechanged", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType;
                 return true;
             }
 
@@ -1298,6 +1308,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == MonsterBookRegistrationResultPacketType
                 || packetType == MonsterBookOwnershipSyncPacketType
                 || packetType == RevivePremiumSafetyCharmContextPacketType
+                || packetType == RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType
                 || packetType == RevivePremiumSafetyCharmAuthenMessageClientPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
@@ -1519,6 +1530,7 @@ namespace HaCreator.MapSimulator.Managers
                 MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
                 MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
                 RevivePremiumSafetyCharmContextPacketType => "RevivePremiumSafetyCharmContext(1049)",
+                RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType => "CClientSocket::OnAuthenCodeChanged(18)",
                 RevivePremiumSafetyCharmAuthenMessageClientPacketType => "CClientSocket::OnAuthenMessage(19)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"

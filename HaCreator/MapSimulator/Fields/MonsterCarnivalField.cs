@@ -1396,6 +1396,12 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2UiWindowListSelectionRouteCount;
         private int _season2UiWindowListDoubleClickSendRouteCount;
         private int _season2UiWindowListNoSelectionRouteCount;
+        private int _season2UiWindowListDecisionEnableRouteCount;
+        private int _season2UiWindowListDecisionDisableRouteCount;
+        private int _season2UiWindowListInvalidationRouteCount;
+        private int _season2UiWindowListTooltipRouteCount;
+        private bool _season2UiWindowDecisionButtonEnabled;
+        private int _season2UiWindowLastSelectItemOrdinal;
         private int _season2SubDialogLastSendTick = int.MinValue;
         private int _season2SubDialogCOutPacket262PayloadCount;
         private string _season2SubDialogLastCOutPacket262PayloadHex;
@@ -1487,6 +1493,12 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2UiWindowListSelectionRouteCount => _season2UiWindowListSelectionRouteCount;
         public int Season2UiWindowListDoubleClickSendRouteCount => _season2UiWindowListDoubleClickSendRouteCount;
         public int Season2UiWindowListNoSelectionRouteCount => _season2UiWindowListNoSelectionRouteCount;
+        public int Season2UiWindowListDecisionEnableRouteCount => _season2UiWindowListDecisionEnableRouteCount;
+        public int Season2UiWindowListDecisionDisableRouteCount => _season2UiWindowListDecisionDisableRouteCount;
+        public int Season2UiWindowListInvalidationRouteCount => _season2UiWindowListInvalidationRouteCount;
+        public int Season2UiWindowListTooltipRouteCount => _season2UiWindowListTooltipRouteCount;
+        public bool Season2UiWindowDecisionButtonEnabled => _season2UiWindowDecisionButtonEnabled;
+        public int Season2UiWindowLastSelectItemOrdinal => _season2UiWindowLastSelectItemOrdinal;
         public int Season2SubDialogCOutPacket262PayloadCount => _season2SubDialogCOutPacket262PayloadCount;
         public string Season2SubDialogLastCOutPacket262PayloadHex => _season2SubDialogLastCOutPacket262PayloadHex;
         public MonsterCarnivalSeason2BtOkSendLifecycle Season2SubDialogBtOkSendLifecycle => _season2SubDialogBtOkSendLifecycle;
@@ -2217,21 +2229,24 @@ namespace HaCreator.MapSimulator.Fields
             if (!TryResolveSeason2UiWindowListRowIndex(mousePosition, viewportWidth, entries.Count, out int rowIndex)
                 || rowIndex >= entries.Count)
             {
+                RecordSeason2UiWindowListMouseButtonOwnerRoute(selectItemOrdinal: 0, decisionButtonEnabled: false);
                 _season2UiWindowListNoSelectionRouteCount++;
                 _season2SubDialogLastButtonRoute =
-                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList no-selection click ({mousePosition.X},{mousePosition.Y})";
+                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList no-selection click ({mousePosition.X},{mousePosition.Y}) -> CTabList::GetSelectItemIdx=0 -> BtDecision::SetEnable(0) -> CUIMonsterCarnival::DrawListTooltip";
                 RecordSeason2SubDialogRouteEvent($"list-no-selection(count={_season2UiWindowListNoSelectionRouteCount})");
                 message = "Season 2 Monster Carnival UIWindow2 list consumed a no-selection click.";
                 return true;
             }
 
             MonsterCarnivalEntry entry = entries[rowIndex];
+            int selectItemOrdinal = rowIndex + 1;
+            RecordSeason2UiWindowListMouseButtonOwnerRoute(selectItemOrdinal, decisionButtonEnabled: true);
             _selectedEntryIndex = entry.Index;
             _lastRequestTab = (int)entry.Tab;
             _lastRequestIndex = entry.Index;
             _season2UiWindowListSelectionRouteCount++;
             _season2SubDialogLastButtonRoute =
-                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList selected tab={(int)entry.Tab},index={entry.Index},id={entry.Id},doubleClick={isDoubleClick}";
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/summonList selected tab={(int)entry.Tab},index={entry.Index},id={entry.Id},ordinal={selectItemOrdinal},doubleClick={isDoubleClick} -> CTabList::GetSelectItemIdx={selectItemOrdinal} -> BtDecision::SetEnable(1) -> CUIMonsterCarnival::DrawListTooltip";
             RecordSeason2SubDialogRouteEvent($"list-select(tab={(int)entry.Tab},index={entry.Index},id={entry.Id},double={isDoubleClick})");
 
             if (isDoubleClick)
@@ -2246,6 +2261,32 @@ namespace HaCreator.MapSimulator.Fields
 
             message = DescribeStatus();
             return true;
+        }
+
+        private void RecordSeason2UiWindowListMouseButtonOwnerRoute(int selectItemOrdinal, bool decisionButtonEnabled)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                return;
+            }
+
+            if (_season2UiWindowLastSelectItemOrdinal != selectItemOrdinal)
+            {
+                _season2UiWindowListInvalidationRouteCount++;
+            }
+
+            _season2UiWindowLastSelectItemOrdinal = Math.Max(0, selectItemOrdinal);
+            _season2UiWindowDecisionButtonEnabled = decisionButtonEnabled;
+            if (decisionButtonEnabled)
+            {
+                _season2UiWindowListDecisionEnableRouteCount++;
+            }
+            else
+            {
+                _season2UiWindowListDecisionDisableRouteCount++;
+            }
+
+            _season2UiWindowListTooltipRouteCount++;
         }
 
         public bool TrySetMobSpellCount(int index, int count, out string message)
@@ -3326,6 +3367,12 @@ namespace HaCreator.MapSimulator.Fields
             _season2UiWindowListSelectionRouteCount = 0;
             _season2UiWindowListDoubleClickSendRouteCount = 0;
             _season2UiWindowListNoSelectionRouteCount = 0;
+            _season2UiWindowListDecisionEnableRouteCount = 0;
+            _season2UiWindowListDecisionDisableRouteCount = 0;
+            _season2UiWindowListInvalidationRouteCount = 0;
+            _season2UiWindowListTooltipRouteCount = 0;
+            _season2UiWindowDecisionButtonEnabled = false;
+            _season2UiWindowLastSelectItemOrdinal = 0;
             _season2SubDialogLastSendTick = int.MinValue;
             _season2SubDialogCOutPacket262PayloadCount = 0;
             _season2SubDialogLastCOutPacket262PayloadHex = null;
@@ -5494,7 +5541,7 @@ namespace HaCreator.MapSimulator.Fields
             string payloadText = string.IsNullOrWhiteSpace(_season2SubDialogLastCOutPacket262PayloadHex)
                 ? "none"
                 : _season2SubDialogLastCOutPacket262PayloadHex;
-            string listText = $"listSelectRoutes={_season2UiWindowListSelectionRouteCount},listDoubleClickSendRoutes={_season2UiWindowListDoubleClickSendRouteCount},listNoSelectionRoutes={_season2UiWindowListNoSelectionRouteCount}";
+            string listText = $"listSelectRoutes={_season2UiWindowListSelectionRouteCount},listDoubleClickSendRoutes={_season2UiWindowListDoubleClickSendRouteCount},listNoSelectionRoutes={_season2UiWindowListNoSelectionRouteCount},listDecisionEnabled={_season2UiWindowDecisionButtonEnabled},listDecisionEnableRoutes={_season2UiWindowListDecisionEnableRouteCount},listDecisionDisableRoutes={_season2UiWindowListDecisionDisableRouteCount},listInvalidations={_season2UiWindowListInvalidationRouteCount},listTooltips={_season2UiWindowListTooltipRouteCount},listSelectOrdinal={_season2UiWindowLastSelectItemOrdinal}";
             string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},blockedPending={_season2SubDialogBtOkBlockedPendingRouteCount},blockedNoCp={_season2SubDialogBtOkBlockedNoCpRouteCount},blockedCooldown={_season2SubDialogBtOkBlockedCooldownRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},{listText},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},packet262Payloads={_season2SubDialogCOutPacket262PayloadCount},lastPacket262={payloadText},sendLifecycle={lifecycleText},sendLifecycleSummary={lifecycleSummary},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)

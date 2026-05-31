@@ -1167,7 +1167,7 @@ namespace HaCreator.MapSimulator.Fields
                 RockPaperScissorsResultType.Win => WinSoundStringPoolId,
                 RockPaperScissorsResultType.Lose => LoseSoundStringPoolId,
                 RockPaperScissorsResultType.Draw => DrawSoundStringPoolId,
-                RockPaperScissorsResultType.TimeOver => TimerSoundStringPoolId,
+                RockPaperScissorsResultType.TimeOver => LoseSoundStringPoolId,
                 _ => 0
             };
         }

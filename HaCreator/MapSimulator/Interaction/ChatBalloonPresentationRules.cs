@@ -341,7 +341,111 @@ namespace HaCreator.MapSimulator.Interaction
                 new Point(fullWidth, fullHeight),
                 bodyBounds,
                 arrowPosition,
-                includeArrow);
+                includeArrow,
+                ResolveCreateCanvasPastePlan(skin, bodyBounds, arrowPosition, includeArrow));
+        }
+
+        private static IReadOnlyList<ChatBalloonCanvasPasteEntry> ResolveCreateCanvasPastePlan(
+            ChatBalloonCanvasSkinMetrics skin,
+            Rectangle bodyBounds,
+            Point arrowPosition,
+            bool includeArrow)
+        {
+            List<ChatBalloonCanvasPasteEntry> entries = new()
+            {
+                new("nw", $"{skin.Path}/nw", Point.Zero, new Point(skin.CornerWidth, skin.CornerHeight), 255),
+                new("ne", $"{skin.Path}/ne", new Point(bodyBounds.Right, 0), new Point(skin.CornerWidth, skin.CornerHeight), 255),
+                new("sw", $"{skin.Path}/sw", new Point(0, bodyBounds.Bottom), new Point(skin.CornerWidth, skin.CornerHeight), 255),
+                new("se", $"{skin.Path}/se", new Point(bodyBounds.Right, bodyBounds.Bottom), new Point(skin.CornerWidth, skin.CornerHeight), 255)
+            };
+
+            AddRepeatedCanvasSlices(
+                entries,
+                "n",
+                $"{skin.Path}/n",
+                new Point(bodyBounds.X, 0),
+                bodyBounds.Width,
+                skin.CenterTileWidth,
+                skin.CornerHeight,
+                horizontal: true);
+            AddRepeatedCanvasSlices(
+                entries,
+                "s",
+                $"{skin.Path}/s",
+                new Point(bodyBounds.X, bodyBounds.Bottom),
+                bodyBounds.Width,
+                skin.CenterTileWidth,
+                skin.CornerHeight,
+                horizontal: true);
+            AddRepeatedCanvasSlices(
+                entries,
+                "w",
+                $"{skin.Path}/w",
+                new Point(0, bodyBounds.Y),
+                bodyBounds.Height,
+                skin.CornerWidth,
+                skin.CenterTileHeight,
+                horizontal: false);
+            AddRepeatedCanvasSlices(
+                entries,
+                "e",
+                $"{skin.Path}/e",
+                new Point(bodyBounds.Right, bodyBounds.Y),
+                bodyBounds.Height,
+                skin.CornerWidth,
+                skin.CenterTileHeight,
+                horizontal: false);
+
+            for (int y = 0; y < bodyBounds.Height; y += skin.CenterTileHeight)
+            {
+                int tileHeight = Math.Min(skin.CenterTileHeight, bodyBounds.Height - y);
+                for (int x = 0; x < bodyBounds.Width; x += skin.CenterTileWidth)
+                {
+                    int tileWidth = Math.Min(skin.CenterTileWidth, bodyBounds.Width - x);
+                    entries.Add(new ChatBalloonCanvasPasteEntry(
+                        "c",
+                        $"{skin.Path}/c",
+                        new Point(bodyBounds.X + x, bodyBounds.Y + y),
+                        new Point(tileWidth, tileHeight),
+                        255));
+                }
+            }
+
+            if (includeArrow)
+            {
+                entries.Add(new ChatBalloonCanvasPasteEntry(
+                    "arrow",
+                    $"{skin.Path}/arrow",
+                    arrowPosition,
+                    new Point(skin.ArrowWidth, skin.ArrowHeight),
+                    255));
+            }
+
+            return entries;
+        }
+
+        private static void AddRepeatedCanvasSlices(
+            List<ChatBalloonCanvasPasteEntry> entries,
+            string role,
+            string sourcePath,
+            Point start,
+            int length,
+            int tileWidth,
+            int tileHeight,
+            bool horizontal)
+        {
+            int tileLength = Math.Max(1, horizontal ? tileWidth : tileHeight);
+            for (int offset = 0; offset < length; offset += tileLength)
+            {
+                int currentLength = Math.Min(tileLength, length - offset);
+                Point destination = horizontal
+                    ? new Point(start.X + offset, start.Y)
+                    : new Point(start.X, start.Y + offset);
+                Point sourceSize = horizontal
+                    ? new Point(currentLength, tileHeight)
+                    : new Point(tileWidth, currentLength);
+                entries.Add(new ChatBalloonCanvasPasteEntry(role, sourcePath, destination, sourceSize, 255));
+            }
         }
 
         private static int ResolveLongestTitlePrefixLength(
@@ -557,7 +661,8 @@ namespace HaCreator.MapSimulator.Interaction
         Point CanvasSize,
         Rectangle BodyBounds,
         Point ArrowPosition,
-        bool IncludesArrow);
+        bool IncludesArrow,
+        IReadOnlyList<ChatBalloonCanvasPasteEntry> PastedCanvases);
 
     internal readonly record struct ChatBalloonCanvasPasteEntry(
         string Role,

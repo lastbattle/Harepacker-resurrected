@@ -241,7 +241,8 @@ namespace HaCreator.MapSimulator
             bool IwzSoundInterfaceRetainedBeforeRawBuffer = false,
             bool AilHandleStoredBeforeMsLength = false,
             bool AilQuickPlayAfterLastUpdate = false,
-            bool AilQuickLoadMemFailureAfterRawBuffer = false);
+            bool AilQuickLoadMemFailureAfterRawBuffer = false,
+            IReadOnlyList<string> NativeOperationTrace = null);
 
         internal readonly record struct PacketOwnedRadioMmsStopPlan(
             bool EnteredStop,
@@ -531,7 +532,9 @@ namespace HaCreator.MapSimulator
             bool EmptyTextSkipped,
             int TextAnalyzerWidth = 0,
             int ComputedTextHeight = 0,
-            int TutorFontSlotCount = 0);
+            int TutorFontSlotCount = 0,
+            int LayerOriginX = 0,
+            int LayerOriginY = 0);
 
         internal readonly record struct PacketOwnedTutorBalloonCanvasDrawOperation(
             string PartName,
@@ -5824,6 +5827,12 @@ namespace HaCreator.MapSimulator
                         LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmContextPacketType,
                         source,
                         out message);
+
+                case LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType:
+                    return TryApplyRevivePremiumSafetyCharmAuthenCodeChangedPayload(payload, source, out message);
+
+                case LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmAuthenMessageClientPacketType:
+                    return TryApplyRevivePremiumSafetyCharmAuthenMessagePayload(payload, out message);
 
                   case LocalUtilityPacketInboxManager.LogoutGiftClientPacketType:
                       return TryApplyPacketOwnedLogoutGiftPayload(payload, out message);
@@ -12090,6 +12099,240 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyRevivePremiumSafetyCharmAuthenMessagePayload(byte[] payload, out string message)
+        {
+            if (!TryDecodeRevivePremiumSafetyCharmAuthenMessagePayload(
+                    payload,
+                    out uint argumentMinutes,
+                    out byte sessionCount,
+                    out message))
+            {
+                return false;
+            }
+
+            bool contextArmed = _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(fallback: false);
+            bool cashShopStage = IsRevivePremiumSafetyCharmAuthenMessageCashShopStageActive();
+            if (!ShouldShowRevivePremiumSafetyCharmAuthenMessage(
+                    contextArmed,
+                    cashShopStage,
+                    argumentMinutes))
+            {
+                message =
+                    $"Observed CClientSocket::OnAuthenMessage premium argument payload minutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, sessionCount={sessionCount.ToString(CultureInfo.InvariantCulture)}, but the client gate suppressed CWvsContext::ShowPremiumArgument because CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] armed={(contextArmed ? 1 : 0)} and cashShopStage={(cashShopStage ? 1 : 0)}.";
+                return true;
+            }
+
+            string notice = BuildRevivePremiumSafetyCharmAuthenMessage(argumentMinutes, sessionCount);
+            message =
+                $"Applied CClientSocket::OnAuthenMessage premium argument notice from CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}]: {notice}";
+            ShowUtilityFeedbackMessage(message);
+            return true;
+        }
+
+        private bool TryApplyRevivePremiumSafetyCharmAuthenCodeChangedPayload(
+            byte[] payload,
+            string source,
+            out string message)
+        {
+            if (!TryDecodeRevivePremiumSafetyCharmAuthenCodeChangedPayload(
+                    payload,
+                    out byte authenCode,
+                    out bool armed,
+                    out uint argumentMinutes,
+                    out bool disconnectRequested,
+                    out message))
+            {
+                return false;
+            }
+
+            bool mutationFromOfficialSession = IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(source);
+            string mutationSource = $"packet-owned-revive-premium-safety-charm-authen-code:{LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmAuthenCodeChangedClientPacketType}:{(string.IsNullOrWhiteSpace(source) ? "local-utility" : source)}";
+            if (!ShouldAllowPacketOwnedRevivePremiumSafetyCharmContextMutationSource(
+                    _localUtilityOfficialSessionBridge.HasConnectedSession,
+                    mutationFromOfficialSession))
+            {
+                message =
+                    $"Ignored CClientSocket::OnAuthenCodeChanged CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] mutation from {mutationSource} because a live official-session bridge is attached and context mutations must come from official-session packet history.";
+                return false;
+            }
+
+            if (!ShouldApplyPacketOwnedRevivePremiumSafetyCharmContextMutationWithOfficialHistory(
+                    _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved,
+                    mutationFromOfficialSession))
+            {
+                message =
+                    $"Ignored CClientSocket::OnAuthenCodeChanged CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] mutation from {mutationSource} because official-session context mutation history is already active for the current runtime owner.";
+                return false;
+            }
+
+            bool previousArmed = _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(fallback: false);
+            bool changed = ShouldApplyRevivePremiumSafetyCharmAuthenCodeChangedMutation(previousArmed, armed);
+            int runtimeCharacterId = Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
+            if (changed)
+            {
+                if (mutationFromOfficialSession)
+                {
+                    _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = true;
+                }
+
+                _packetOwnedLocalUtilityContext.SetRevivePremiumSafetyCharmContextValue(
+                    armed,
+                    mutationSource,
+                    currTickCount,
+                    runtimeCharacterId);
+            }
+
+            bool cashShopStage = IsRevivePremiumSafetyCharmAuthenMessageCashShopStageActive();
+            string notice = changed && ShouldShowRevivePremiumSafetyCharmAuthenMessage(
+                armed,
+                cashShopStage,
+                argumentMinutes)
+                    ? BuildRevivePremiumSafetyCharmAuthenMessage(argumentMinutes, sessionCount: 0)
+                    : string.Empty;
+            message =
+                $"Applied CClientSocket::OnAuthenCodeChanged authenCode=0x{authenCode:X2}, armed={(armed ? 1 : 0)}, previous={(previousArmed ? 1 : 0)}, changed={(changed ? 1 : 0)}, argumentMinutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, disconnectRequested={(disconnectRequested ? 1 : 0)}.";
+            if (!string.IsNullOrWhiteSpace(notice))
+            {
+                message = $"{message} {notice}";
+            }
+
+            ShowUtilityFeedbackMessage($"{message} {_packetOwnedLocalUtilityContext.DescribeRevivePremiumSafetyCharmContext(ReviveOwnerPremiumSafetyCharmContextSlot)}");
+            return true;
+        }
+
+        private bool IsRevivePremiumSafetyCharmAuthenMessageCashShopStageActive()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage)?.IsVisible == true
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop)?.IsVisible == true;
+        }
+
+        internal static bool TryDecodeRevivePremiumSafetyCharmAuthenCodeChangedPayload(
+            byte[] payload,
+            out byte authenCode,
+            out bool armed,
+            out uint argumentMinutes,
+            out bool disconnectRequested,
+            out string message)
+        {
+            authenCode = 0;
+            armed = false;
+            argumentMinutes = 0;
+            disconnectRequested = false;
+            message = "Revive premium safety charm authen-code payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length < sizeof(byte) + sizeof(uint))
+            {
+                message = "Revive premium safety charm authen-code payload must start with Decode1(authen code) and Decode4(argument minutes).";
+                return false;
+            }
+
+            authenCode = payload[0];
+            armed = ((authenCode >> 1) & 1) != 0;
+            disconnectRequested = (authenCode & 4) != 0;
+            argumentMinutes = BitConverter.ToUInt32(payload, sizeof(byte));
+            int trailingBytes = payload.Length - sizeof(byte) - sizeof(uint);
+            message = trailingBytes > 0
+                ? $"Decoded CClientSocket::OnAuthenCodeChanged authenCode=0x{authenCode:X2}, armed={(armed ? 1 : 0)}, argumentMinutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, disconnectRequested={(disconnectRequested ? 1 : 0)} with {trailingBytes.ToString(CultureInfo.InvariantCulture)} trailing byte(s)."
+                : $"Decoded CClientSocket::OnAuthenCodeChanged authenCode=0x{authenCode:X2}, armed={(armed ? 1 : 0)}, argumentMinutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, disconnectRequested={(disconnectRequested ? 1 : 0)}.";
+            return true;
+        }
+
+        internal static bool ShouldApplyRevivePremiumSafetyCharmAuthenCodeChangedMutation(
+            bool previousArmed,
+            bool newArmed)
+        {
+            return previousArmed != newArmed;
+        }
+
+        internal static bool TryDecodeRevivePremiumSafetyCharmAuthenMessagePayload(
+            byte[] payload,
+            out uint argumentMinutes,
+            out byte sessionCount,
+            out string message)
+        {
+            argumentMinutes = 0;
+            sessionCount = 0;
+            message = "Revive premium safety charm authen-message payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length < sizeof(uint) + sizeof(byte))
+            {
+                message = "Revive premium safety charm authen-message payload must start with Decode4(argument minutes) and Decode1(session count).";
+                return false;
+            }
+
+            argumentMinutes = BitConverter.ToUInt32(payload, 0);
+            sessionCount = payload[sizeof(uint)];
+            int trailingBytes = payload.Length - sizeof(uint) - sizeof(byte);
+            message = trailingBytes > 0
+                ? $"Decoded CClientSocket::OnAuthenMessage premium argument minutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, sessionCount={sessionCount.ToString(CultureInfo.InvariantCulture)} with {trailingBytes.ToString(CultureInfo.InvariantCulture)} trailing byte(s)."
+                : $"Decoded CClientSocket::OnAuthenMessage premium argument minutes={argumentMinutes.ToString(CultureInfo.InvariantCulture)}, sessionCount={sessionCount.ToString(CultureInfo.InvariantCulture)}.";
+            return true;
+        }
+
+        internal static bool ShouldShowRevivePremiumSafetyCharmAuthenMessage(
+            bool contextArmed,
+            bool cashShopStage,
+            uint argumentMinutes)
+        {
+            // Client evidence:
+            // - CClientSocket::OnAuthenMessage decodes DWORD argument + BYTE session count.
+            // - It calls CWvsContext::ShowPremiumArgument only when CWvsContext[2073]
+            //   is armed and the current stage is not CCashShop.
+            // - ShowPremiumArgument itself exits without chat text when the argument is zero.
+            return contextArmed && !cashShopStage && argumentMinutes != 0;
+        }
+
+        internal static string BuildRevivePremiumSafetyCharmAuthenMessage(
+            uint argumentMinutes,
+            byte sessionCount)
+        {
+            uint hours = argumentMinutes / 60u;
+            uint minutes = argumentMinutes % 60u;
+            string hourText = hours == 0
+                ? string.Empty
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    MapleStoryStringPool.GetCompositeFormatOrFallback(
+                        0x0CE5,
+                        "{0} hour(s)",
+                        maxPlaceholderCount: 1,
+                        out _),
+                    hours);
+            string minuteText = minutes == 0
+                ? string.Empty
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    MapleStoryStringPool.GetCompositeFormatOrFallback(
+                        0x0CE6,
+                        "{0} minute(s)",
+                        maxPlaceholderCount: 1,
+                        out _),
+                    minutes);
+            string format = sessionCount == 0
+                ? MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    0x0CE7,
+                    "Premium argument time remaining: {0}{1}.",
+                    maxPlaceholderCount: 2,
+                    out _)
+                : MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    0x0CE8,
+                    "Premium argument time remaining: {0}{1}; session count: {2}.",
+                    maxPlaceholderCount: 3,
+                    out _);
+
+            return sessionCount == 0
+                ? string.Format(CultureInfo.InvariantCulture, format, hourText, minuteText)
+                : string.Format(CultureInfo.InvariantCulture, format, hourText, minuteText, sessionCount);
+        }
+
         internal static bool TryDecodePacketOwnedRadioCreateLayerContextPayload(
             byte[] payload,
             out bool hasOverride,
@@ -12924,6 +13167,7 @@ namespace HaCreator.MapSimulator
         {
             int normalizedLength = Math.Max(0, msLength);
             int normalizedPosition = Math.Max(0, requestedPositionMs);
+            bool positionAccepted = normalizedLength >= normalizedPosition;
             if (!trackPropertyLoaded)
             {
                 return new PacketOwnedRadioMmsPlayPlan(
@@ -12941,7 +13185,14 @@ namespace HaCreator.MapSimulator
                     MsPosition: normalizedPosition,
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.None,
-                    FailureReason: "CRadioManager::Play could not resolve the StringPool[0x1501] track property.");
+                    FailureReason: "CRadioManager::Play could not resolve the StringPool[0x1501] track property.",
+                    NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                        trackPropertyLoaded: false,
+                        soundObjectLoaded: false,
+                        rawBufferLoaded: false,
+                        ailQuickLoadMemSucceeded: false,
+                        positionAccepted: false,
+                        started: false));
             }
 
             if (!soundObjectLoaded)
@@ -12962,7 +13213,14 @@ namespace HaCreator.MapSimulator
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
                     FailureReason: "CRadioManager::MMS_Play could not query the StringPool[0x1502] IWzSound object.",
-                    IwzSoundQueryInterfaceAttempted: true);
+                    IwzSoundQueryInterfaceAttempted: true,
+                    NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                        trackPropertyLoaded: true,
+                        soundObjectLoaded: false,
+                        rawBufferLoaded: false,
+                        ailQuickLoadMemSucceeded: false,
+                        positionAccepted: false,
+                        started: false));
             }
 
             if (!rawBufferLoaded)
@@ -12988,7 +13246,14 @@ namespace HaCreator.MapSimulator
                     FailureReason: failureReason,
                     IwzSoundRawBufferQueried: true,
                     IwzSoundQueryInterfaceAttempted: true,
-                    IwzSoundInterfaceRetainedBeforeRawBuffer: true);
+                    IwzSoundInterfaceRetainedBeforeRawBuffer: true,
+                    NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                        trackPropertyLoaded: true,
+                        soundObjectLoaded: true,
+                        rawBufferLoaded: false,
+                        ailQuickLoadMemSucceeded: false,
+                        positionAccepted: false,
+                        started: false));
             }
 
             if (!ailQuickLoadMemSucceeded)
@@ -13013,10 +13278,17 @@ namespace HaCreator.MapSimulator
                     AilQuickLoadMemSucceeded: false,
                     IwzSoundQueryInterfaceAttempted: true,
                     IwzSoundInterfaceRetainedBeforeRawBuffer: true,
-                    AilQuickLoadMemFailureAfterRawBuffer: true);
+                    AilQuickLoadMemFailureAfterRawBuffer: true,
+                    NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                        trackPropertyLoaded: true,
+                        soundObjectLoaded: true,
+                        rawBufferLoaded: true,
+                        ailQuickLoadMemSucceeded: false,
+                        positionAccepted: false,
+                        started: false));
             }
 
-            if (normalizedLength < normalizedPosition)
+            if (!positionAccepted)
             {
                 return new PacketOwnedRadioMmsPlayPlan(
                     TrackPropertyLoaded: true,
@@ -13040,7 +13312,14 @@ namespace HaCreator.MapSimulator
                     AilQuickUnloadOnRejectedPosition: true,
                     IwzSoundQueryInterfaceAttempted: true,
                     IwzSoundInterfaceRetainedBeforeRawBuffer: true,
-                    AilHandleStoredBeforeMsLength: true);
+                    AilHandleStoredBeforeMsLength: true,
+                    NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                        trackPropertyLoaded: true,
+                        soundObjectLoaded: true,
+                        rawBufferLoaded: true,
+                        ailQuickLoadMemSucceeded: true,
+                        positionAccepted: false,
+                        started: false));
             }
 
             int lastUpdateTick = HasPacketOwnedRadioClientTrackDuration(normalizedLength)
@@ -13075,7 +13354,78 @@ namespace HaCreator.MapSimulator
                 IwzSoundQueryInterfaceAttempted: true,
                 IwzSoundInterfaceRetainedBeforeRawBuffer: true,
                 AilHandleStoredBeforeMsLength: true,
-                AilQuickPlayAfterLastUpdate: true);
+                AilQuickPlayAfterLastUpdate: true,
+                NativeOperationTrace: CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+                    trackPropertyLoaded: true,
+                    soundObjectLoaded: true,
+                    rawBufferLoaded: true,
+                    ailQuickLoadMemSucceeded: true,
+                    positionAccepted: true,
+                    started: true));
+        }
+
+        private static IReadOnlyList<string> CreatePacketOwnedRadioMmsPlayNativeOperationTrace(
+            bool trackPropertyLoaded,
+            bool soundObjectLoaded,
+            bool rawBufferLoaded,
+            bool ailQuickLoadMemSucceeded,
+            bool positionAccepted,
+            bool started)
+        {
+            List<string> trace = new();
+            if (!trackPropertyLoaded)
+            {
+                trace.Add("CRadioManager::Play.ResolveTrackProperty(StringPool[0x1501]) failed before MMS_Play");
+                return trace;
+            }
+
+            trace.Add("CRadioManager::MMS_Play.StringPool[0x1502]");
+            trace.Add("CRadioManager::MMS_Play.FormatTrackUOL");
+            trace.Add("CRadioManager::MMS_Play.GetObjectA(Sound/Radio.img/%s/track)");
+            trace.Add("CRadioManager::MMS_Play.QueryInterface(IWzSound)");
+            trace.Add("CRadioManager::MMS_Play.ReleaseObjectVariants");
+            if (!soundObjectLoaded)
+            {
+                trace.Add("CRadioManager::MMS_Play.Return0WhenSoundMissing");
+                trace.Add("CRadioManager::MMS_Play.ReleaseTrackUOL");
+                return trace;
+            }
+
+            trace.Add("CRadioManager::MMS_Play.IWzSoundRawBufferQuery");
+            if (!rawBufferLoaded)
+            {
+                trace.Add("CRadioManager::MMS_Play.Return0WhenRawBufferMissing");
+                trace.Add("CRadioManager::MMS_Play.ReleaseTrackUOL");
+                return trace;
+            }
+
+            trace.Add("CRadioManager::MMS_Play.AIL_quick_load_mem");
+            trace.Add("CRadioManager::MMS_Play.Store_m_handle");
+            if (!ailQuickLoadMemSucceeded)
+            {
+                trace.Add("CRadioManager::MMS_Play.Return0WhenAilHandleMissing");
+                trace.Add("CRadioManager::MMS_Play.ReleaseTrackUOL");
+                return trace;
+            }
+
+            trace.Add("CRadioManager::MMS_Play.AIL_quick_ms_length");
+            if (!positionAccepted)
+            {
+                trace.Add("CRadioManager::MMS_Play.AIL_quick_unloadOnPastEnd");
+                trace.Add("CRadioManager::MMS_Play.ReleaseTrackUOL");
+                return trace;
+            }
+
+            trace.Add("CRadioManager::MMS_Play.AIL_quick_set_ms_position");
+            trace.Add("CRadioManager::MMS_Play.AIL_quick_ms_position");
+            trace.Add("CRadioManager::MMS_Play.Store_m_tLastUpdate(get_update_time-ms_position+ms_length)");
+            if (started)
+            {
+                trace.Add("CRadioManager::MMS_Play.AIL_quick_play(loop=1)");
+            }
+
+            trace.Add("CRadioManager::MMS_Play.ReleaseTrackUOL");
+            return trace;
         }
 
         private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out int rawBufferLength, out string failureReason)
@@ -13712,6 +14062,7 @@ namespace HaCreator.MapSimulator
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, rawBytes={Math.Max(0, _lastPacketOwnedRadioClientRawBufferLength)}, ailLoadFailureAfterRaw={_lastPacketOwnedRadioMmsPlayPlan.AilQuickLoadMemFailureAfterRawBuffer}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, ailStatus={ResolvePacketOwnedRadioAilQuickStatus(_lastPacketOwnedRadioClientHandleStatus)}, failure={failure}; " +
+                $"MMS_Play native trace={string.Join(" > ", _lastPacketOwnedRadioMmsPlayPlan.NativeOperationTrace ?? Array.Empty<string>())}; " +
                 $"last CRadioManager::Play entered={_lastPacketOwnedRadioPlayPlan.EnteredPlay}, trackProp={_lastPacketOwnedRadioPlayPlan.TrackPropertyLoaded}, mmsPlay={_lastPacketOwnedRadioPlayPlan.MmsPlaySucceeded}, playingBeforeBgm={_lastPacketOwnedRadioPlayPlan.SetPlayingBeforeBgmVolumeCapture}, bgmBeforeTrackName={_lastPacketOwnedRadioPlayPlan.CapturedBgmVolumeBeforeTrackName}, trackNameLoaded={_lastPacketOwnedRadioPlayPlan.LoadedTrackNameFromProperty}, trackNameBeforeMute={_lastPacketOwnedRadioPlayPlan.TrackNameLoadedBeforeMute}, muteBeforeShowUi={_lastPacketOwnedRadioPlayPlan.MuteBeforeShowUi}, showUiBeforeStartChat={_lastPacketOwnedRadioPlayPlan.ShowUiBeforeStartChat}, startChatUsesTrackName={_lastPacketOwnedRadioPlayPlan.StartChatUsesTrackName}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, haltBeforeUnload={_lastPacketOwnedRadioMmsStopPlan.HaltBeforeUnload}, mmsStopBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.MmsStopBeforeTrackRelease}, clearBeforeSoundRelease={_lastPacketOwnedRadioMmsStopPlan.ClearedHandleBeforeSoundRelease}, soundBeforeTrackRelease={_lastPacketOwnedRadioMmsStopPlan.SoundReleasedBeforeTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 $"last CRadioManager::Stop entered={_lastPacketOwnedRadioStopPlan.EnteredStop}, mmsStopBeforeShowUi={_lastPacketOwnedRadioStopPlan.MmsStopBeforeShowUi}, showUiBeforeMute={_lastPacketOwnedRadioStopPlan.ShowUiBeforeMute}, muteBeforeTrackRelease={_lastPacketOwnedRadioStopPlan.MuteBeforeTrackPropertyRelease}, trackReleaseBeforePlayingClear={_lastPacketOwnedRadioStopPlan.TrackPropertyReleaseBeforePlayingClear}, playingClearBeforeCompletionChat={_lastPacketOwnedRadioStopPlan.PlayingClearBeforeCompletionChat}, completionChatBeforeTrackNameRelease={_lastPacketOwnedRadioStopPlan.CompletionChatBeforeTrackNameRelease}, releasedTrack={_lastPacketOwnedRadioStopPlan.ReleasedTrackProperty}, clearedPlaying={_lastPacketOwnedRadioStopPlan.ClearedPlaying}, emittedCompletionChat={_lastPacketOwnedRadioStopPlan.EmittedCompletionChat}, releasedTrackName={_lastPacketOwnedRadioStopPlan.ReleasedTrackName}; " +
@@ -16759,7 +17110,9 @@ namespace HaCreator.MapSimulator
                         displayMessage,
                         layerWidth,
                         layerHeight,
-                        localOwnerJobId);
+                        localOwnerJobId,
+                        firstFrame?.X ?? 0,
+                        firstFrame?.Y ?? 0);
                 return;
             }
 
@@ -17319,7 +17672,9 @@ namespace HaCreator.MapSimulator
             TutorMessageSnapshot displayMessage,
             int layerWidth,
             int layerHeight,
-            int localJobId)
+            int localJobId,
+            int layerOriginX = 0,
+            int layerOriginY = 0)
         {
             int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(displayVariant.SkillId)
                 ? displayVariant.SkillId
@@ -17360,7 +17715,9 @@ namespace HaCreator.MapSimulator
                 source.Source,
                 Repeats: true,
                 SayPlaybackRequested: sayPlaybackRequested,
-                EmptyTextSkipped: false);
+                EmptyTextSkipped: false,
+                LayerOriginX: Math.Max(0, layerOriginX),
+                LayerOriginY: Math.Max(0, layerOriginY));
         }
 
         internal static PacketOwnedTutorMessageLayerState BuildPacketOwnedTutorTextMessageLayerState(

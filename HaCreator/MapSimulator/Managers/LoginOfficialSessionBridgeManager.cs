@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class LoginSelectCharacterByVacRoundTripEvidence
     {
+        public string RequestSource { get; init; }
         public int? RequestOpcode { get; init; }
         public int? RequestCharacterId { get; init; }
         public int? RequestWorldId { get; init; }
@@ -209,7 +210,7 @@ namespace HaCreator.MapSimulator.Managers
             LoginSelectCharacterByVacRoundTripEvidence evidence = GetSelectCharacterByVacRoundTripEvidence();
             if (evidence.IsComplete)
             {
-                return $"VAC round-trip complete: opcode {evidence.RequestOpcode} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}, backend result {evidence.ResultCode}/{evidence.SecondaryCode} from {evidence.ResultSource} to {evidence.EndpointText}, simulator handoff {evidence.FieldHandoffEndpointText}.";
+                return $"VAC round-trip complete: opcode {evidence.RequestOpcode} from {evidence.RequestSource ?? "unknown"} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}, backend result {evidence.ResultCode}/{evidence.SecondaryCode} from {evidence.ResultSource} to {evidence.EndpointText}, simulator handoff {evidence.FieldHandoffEndpointText}.";
             }
 
             if (evidence.HasSuccessfulResult)
@@ -219,7 +220,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (evidence.HasRequest)
             {
-                return $"VAC round-trip waiting for backend result: opcode {evidence.RequestOpcode} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}.";
+                return $"VAC round-trip waiting for backend result: opcode {evidence.RequestOpcode} from {evidence.RequestSource ?? "unknown"} character {evidence.RequestCharacterId} world {evidence.RequestWorldId}.";
             }
 
             return "VAC round-trip evidence not captured.";
@@ -599,6 +600,7 @@ namespace HaCreator.MapSimulator.Managers
                 _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence
                 {
                     RequestOpcode = current.RequestOpcode,
+                    RequestSource = current.RequestSource,
                     RequestCharacterId = current.RequestCharacterId,
                     RequestWorldId = current.RequestWorldId,
                     RequestPacketHex = current.RequestPacketHex,
@@ -934,8 +936,11 @@ namespace HaCreator.MapSimulator.Managers
             bool capturedAuth = e != null &&
                 !e.IsInit &&
                 TryCaptureCheckPasswordAuthFromClientPacket(e.RawPacket, $"official-client:{e.SourceEndpoint}");
+            bool capturedVacRequest = e != null &&
+                !e.IsInit &&
+                TryCaptureSelectCharacterByVacRequestFromClientPacket(e.RawPacket, $"official-client:{e.SourceEndpoint}");
 
-            if (!capturedAuth)
+            if (!capturedAuth && !capturedVacRequest)
             {
                 LastStatus = _roleSessionProxy.LastStatus;
             }
@@ -988,10 +993,20 @@ namespace HaCreator.MapSimulator.Managers
             short opcode,
             byte[] packet)
         {
+            RecordSelectCharacterByVacRequestEvidence(request, opcode, packet, "simulator-injected");
+        }
+
+        private void RecordSelectCharacterByVacRequestEvidence(
+            LoginSelectCharacterByVacRequest request,
+            short opcode,
+            byte[] packet,
+            string source)
+        {
             lock (_sync)
             {
                 _selectCharacterByVacRoundTripEvidence = new LoginSelectCharacterByVacRoundTripEvidence
                 {
+                    RequestSource = string.IsNullOrWhiteSpace(source) ? "unknown" : source.Trim(),
                     RequestOpcode = opcode,
                     RequestCharacterId = request.CharacterId,
                     RequestWorldId = request.WorldId,
@@ -1025,6 +1040,7 @@ namespace HaCreator.MapSimulator.Managers
                     RequestWorldId = current.RequestWorldId,
                     RequestPacketHex = current.RequestPacketHex,
                     RequestSentAtUtc = current.RequestSentAtUtc,
+                    RequestSource = current.RequestSource,
                     ResultSource = normalizedSource,
                     ResultPacketHex = Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                     ResultReceivedAtUtc = DateTime.UtcNow,
@@ -1053,6 +1069,18 @@ namespace HaCreator.MapSimulator.Managers
         internal bool TryCaptureCheckPasswordAuthFromClientPacket(byte[] rawPacket, string source)
         {
             return TryCaptureCheckPasswordAuth(rawPacket, source);
+        }
+
+        internal bool TryCaptureSelectCharacterByVacRequestFromClientPacket(byte[] rawPacket, string source)
+        {
+            if (!TryReadSelectCharacterByVacRequest(rawPacket, out LoginSelectCharacterByVacRequest request, out short opcode))
+            {
+                return false;
+            }
+
+            RecordSelectCharacterByVacRequestEvidence(request, opcode, rawPacket, source);
+            LastStatus = $"Captured SelectCharacterByVAC request opcode {opcode} for character {request.CharacterId} in world {request.WorldId} from {(string.IsNullOrWhiteSpace(source) ? "official-client" : source)}.";
+            return true;
         }
 
         private static bool TryReadCheckPasswordAuth(
@@ -1106,6 +1134,81 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch
             {
+                return false;
+            }
+        }
+
+        private static bool TryReadSelectCharacterByVacRequest(
+            byte[] rawPacket,
+            out LoginSelectCharacterByVacRequest request,
+            out short opcode)
+        {
+            request = default;
+            opcode = 0;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using PacketReader reader = new(rawPacket);
+                opcode = reader.ReadShort();
+                byte loginOpt;
+                int characterId;
+                int worldId;
+                string secondaryPassword = null;
+                string macAddress;
+                string macAddressWithHddSerial;
+
+                switch (opcode)
+                {
+                    case OutboundSelectCharacterByVacLoginOpt0Opcode:
+                        loginOpt = 0;
+                        _ = reader.ReadByte();
+                        characterId = reader.ReadInt();
+                        worldId = reader.ReadInt();
+                        macAddress = reader.ReadMapleString();
+                        macAddressWithHddSerial = reader.ReadMapleString();
+                        secondaryPassword = reader.ReadMapleString();
+                        break;
+                    case OutboundSelectCharacterByVacLoginOpt1Opcode:
+                        loginOpt = 1;
+                        secondaryPassword = reader.ReadMapleString();
+                        characterId = reader.ReadInt();
+                        worldId = reader.ReadInt();
+                        macAddress = reader.ReadMapleString();
+                        macAddressWithHddSerial = reader.ReadMapleString();
+                        break;
+                    case OutboundSelectCharacterByVacOpcode:
+                        loginOpt = 2;
+                        characterId = reader.ReadInt();
+                        worldId = reader.ReadInt();
+                        macAddress = reader.ReadMapleString();
+                        macAddressWithHddSerial = reader.ReadMapleString();
+                        break;
+                    default:
+                        return false;
+                }
+
+                if (characterId <= 0 || worldId < 0)
+                {
+                    return false;
+                }
+
+                request = new LoginSelectCharacterByVacRequest(
+                    characterId,
+                    worldId,
+                    loginOpt,
+                    secondaryPassword,
+                    macAddress,
+                    macAddressWithHddSerial);
+                return true;
+            }
+            catch
+            {
+                request = default;
+                opcode = 0;
                 return false;
             }
         }

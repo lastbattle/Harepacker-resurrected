@@ -72,10 +72,15 @@ namespace HaCreator.MapSimulator.Pools
                    && mobHitbox.Intersects(summonHitbox);
         }
 
-        public static bool ShouldTriggerExpirySelfDestruct(ActiveSummon summon, int currentTime)
+        public static bool ShouldTriggerExpirySelfDestruct(
+            ActiveSummon summon,
+            int currentTime,
+            bool hasActiveOneTimeActionPlayback = false)
         {
             return summon?.SkillData?.SelfDestructMinion == true
+                   && summon.Level > 0
                    && !summon.ExpiryActionTriggered
+                   && !hasActiveOneTimeActionPlayback
                    && summon.HasReachedNaturalExpiry(currentTime);
         }
 

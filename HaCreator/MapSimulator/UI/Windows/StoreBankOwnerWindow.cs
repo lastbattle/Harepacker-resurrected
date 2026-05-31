@@ -59,11 +59,14 @@ namespace HaCreator.MapSimulator.UI
             int RowPrimaryTextY,
             int RowSecondaryTextX,
             int RowSecondaryTextY,
+            int RowSeparatorY,
             int ScrollBarX,
             int ScrollBarY,
             int ScrollBarHeight,
             int MoneyRightX,
-            int MoneyY);
+            int MoneyY,
+            int MoneyShadowOffsetX,
+            int MoneyShadowOffsetY);
 
         private readonly struct Layer
         {
@@ -179,11 +182,14 @@ namespace HaCreator.MapSimulator.UI
                 RowPrimaryTextY,
                 RowSecondaryTextX,
                 RowSecondaryTextY,
+                RowHeight,
                 ScrollBarX,
                 ScrollBarY,
                 ScrollBarHeight,
                 MoneyRightX,
-                MoneyY);
+                MoneyY,
+                1,
+                1);
         }
 
         public override void SetFont(SpriteFont font)

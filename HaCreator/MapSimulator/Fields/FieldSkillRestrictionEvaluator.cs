@@ -420,7 +420,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)
         {
-            foreach (WzImageProperty property in EnumerateNamedChildren(noSkillProperty, "skill"))
+            foreach (WzImageProperty property in EnumerateSkillIdChildren(noSkillProperty))
             {
                 if (MatchesListedSkill(property, skillId))
                 {
@@ -433,7 +433,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesAnyListedSkillClass(WzImageProperty noSkillProperty, int currentJobId, SkillData skill)
         {
-            foreach (WzImageProperty property in EnumerateNamedChildren(noSkillProperty, "class"))
+            foreach (WzImageProperty property in EnumerateSkillClassChildren(noSkillProperty))
             {
                 if (MatchesListedSkillClass(property, skill))
                 {
@@ -460,7 +460,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool HasMeaningfulNoSkillRule(WzImageProperty noSkillProperty)
         {
-            foreach (WzImageProperty skillProperty in EnumerateNamedChildren(noSkillProperty, "skill"))
+            foreach (WzImageProperty skillProperty in EnumerateSkillIdChildren(noSkillProperty))
             {
                 if (HasClientIndexedIntValues(skillProperty))
                 {
@@ -468,7 +468,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            foreach (WzImageProperty classProperty in EnumerateNamedChildren(noSkillProperty, "class"))
+            foreach (WzImageProperty classProperty in EnumerateSkillClassChildren(noSkillProperty))
             {
                 if (HasClientIndexedIntValues(classProperty))
                 {
@@ -491,7 +491,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesSkillInfoRule(WzImageProperty skillInfoProperty, SkillData skill, bool matchFlatValuesAsSkillIds)
         {
-            foreach (WzImageProperty classProperty in EnumerateNamedChildren(skillInfoProperty, "class"))
+            foreach (WzImageProperty classProperty in EnumerateSkillClassChildren(skillInfoProperty))
             {
                 if (MatchesListedSkillClass(classProperty, skill))
                 {
@@ -499,7 +499,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            foreach (WzImageProperty skillProperty in EnumerateNamedChildren(skillInfoProperty, "skill"))
+            foreach (WzImageProperty skillProperty in EnumerateSkillIdChildren(skillInfoProperty))
             {
                 if (MatchesListedSkill(skillProperty, skill.SkillId))
                 {
@@ -696,6 +696,41 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
         }
+
+        private static IEnumerable<WzImageProperty> EnumerateSkillIdChildren(WzImageProperty root)
+        {
+            foreach (WzImageProperty skillProperty in EnumerateNamedChildren(root, "skill"))
+            {
+                yield return skillProperty;
+            }
+
+            // WZ maps publish this list as `skill`, while the recovered client
+            // owner is Field::SkillInfo::lnID. Accept client-side sidecar names
+            // without changing the WZ-authored shape.
+            foreach (WzImageProperty idProperty in EnumerateNamedChildren(root, "id"))
+            {
+                yield return idProperty;
+            }
+
+            foreach (WzImageProperty lnIdProperty in EnumerateNamedChildren(root, "lnID"))
+            {
+                yield return lnIdProperty;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateSkillClassChildren(WzImageProperty root)
+        {
+            foreach (WzImageProperty classProperty in EnumerateNamedChildren(root, "class"))
+            {
+                yield return classProperty;
+            }
+
+            foreach (WzImageProperty lnClassProperty in EnumerateNamedChildren(root, "lnClass"))
+            {
+                yield return lnClassProperty;
+            }
+        }
+
         private static IEnumerable<WzImageProperty> EnumerateNamedChildren(WzImageProperty root, string propertyName)
         {
             if (root == null || string.IsNullOrWhiteSpace(propertyName))

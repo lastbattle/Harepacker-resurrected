@@ -35,7 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<PendingRequest> _pendingOutboundRequests = new();
         private readonly ConcurrentQueue<ObservedOutboundRequest> _observedOutboundRequests = new();
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
-        private readonly Queue<string> _recentPackets = new();
+        private readonly Queue<RecentPacketTrace> _recentPackets = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
@@ -43,6 +43,8 @@ namespace HaCreator.MapSimulator.Managers
         private short? _currentInitializedSessionVersion;
         private InboundPacketTrace? _liveInboundCarnivalPacketEvidence;
         private OutboundPacketTrace? _liveOutboundRequestEvidence;
+        private int _traceSequence;
+        private int _verificationClearedAfterTraceSequence;
 
         private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
 
@@ -59,6 +61,15 @@ namespace HaCreator.MapSimulator.Managers
             int EntryIndex,
             string Source,
             string Summary,
+            string RawPacketHex,
+            long? ProxySessionId,
+            short? SessionVersion);
+
+        private readonly record struct RecentPacketTrace(
+            int TraceSequence,
+            int Opcode,
+            int PacketType,
+            string Source,
             string RawPacketHex,
             long? ProxySessionId,
             short? SessionVersion);
@@ -563,7 +574,7 @@ namespace HaCreator.MapSimulator.Managers
                     return "none";
                 }
 
-                return string.Join(" | ", _recentPackets);
+                return string.Join(" | ", _recentPackets.Select(FormatRecentPacketTrace));
             }
         }
 
@@ -625,6 +636,7 @@ namespace HaCreator.MapSimulator.Managers
             int retainedRecentCount;
             lock (_sync)
             {
+                _verificationClearedAfterTraceSequence = _traceSequence;
                 retainedRecentCount = _recentPackets.Count;
             }
 
@@ -1241,15 +1253,31 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                string proxySession = proxySessionId.HasValue
-                    ? $" proxySession={DescribeProxySession(proxySessionId, sessionVersion)}"
-                    : string.Empty;
-                _recentPackets.Enqueue($"opcode={opcode} type={DescribePacketType(packetType)} source={source}{proxySession} raw={Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}");
+                _traceSequence++;
+                _recentPackets.Enqueue(new RecentPacketTrace(
+                    _traceSequence,
+                    opcode,
+                    packetType,
+                    source,
+                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    proxySessionId,
+                    sessionVersion));
                 while (_recentPackets.Count > RecentPacketCapacity)
                 {
                     _recentPackets.Dequeue();
                 }
             }
+        }
+
+        private string FormatRecentPacketTrace(RecentPacketTrace trace)
+        {
+            string proxySession = trace.ProxySessionId.HasValue
+                ? $" proxySession={DescribeProxySession(trace.ProxySessionId, trace.SessionVersion)}"
+                : string.Empty;
+            string verificationWindow = trace.TraceSequence <= _verificationClearedAfterTraceSequence
+                ? "retained-before-clearverify"
+                : "eligible";
+            return $"seq={trace.TraceSequence} opcode={trace.Opcode} type={DescribePacketType(trace.PacketType)} source={trace.Source}{proxySession} verification={verificationWindow} raw={trace.RawPacketHex}";
         }
 
         private static byte[] BuildRequestPacket(MonsterCarnivalTab tab, int entryIndex)

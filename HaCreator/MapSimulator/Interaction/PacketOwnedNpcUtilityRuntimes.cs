@@ -1357,6 +1357,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ? $"Pending {BuildPendingRetrievalRequestLabel()} modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC4)."
                         : $"Pending {BuildPendingRetrievalRequestLabel()} modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC5).")
                     : "No get-all confirmation modal is currently staged.",
+                "Draw seams: CStoreBankDlg::DrawGetItem uses StoreBank/en rows at (10,93) with StoreBank/line separators at row+35; DrawMoney right-aligns at x=170, y=304 with a 1px shadow.",
                 HasShipmentPrompt
                     ? BuildShipmentPromptSummary()
                     : "No shipment prompt is currently staged.",
@@ -3741,26 +3742,57 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ClearInfoFromCurrentOwnerTabButton()
         {
-            int? clearOption = _pageIndex switch
-            {
-                0 => 0,
-                1 => 0,
-                2 => 1,
-                _ => null
-            };
-
-            if (!clearOption.HasValue)
+            if (!TryResolveCurrentOwnerTabClearOption(out int clearOption))
             {
                 StatusMessage = "CUIBattleRecord tab-clear ignored the simulator packet-log page because the recovered owner button only maps to native DamageInfo/RecoveryItemInfo clear options.";
                 AppendNote(StatusMessage);
                 return StatusMessage;
             }
 
-            string message = ClearInfo(clearOption.Value);
+            string message = ClearInfo(clearOption);
             _timerSetMilliseconds = 0;
             _timerStopRemainMilliseconds = 0;
             _timerExpiryTick = 0;
-            StatusMessage = $"{message} CUIBattleRecord::OnButtonClicked tab-clear mapped page {CurrentPageIndex.ToString(CultureInfo.InvariantCulture)} back to native ClearInfo({clearOption.Value.ToString(CultureInfo.InvariantCulture)}) and reset the staged timer controls.";
+            StatusMessage = $"{message} CUIBattleRecord::OnButtonClicked tab-clear mapped page {CurrentPageIndex.ToString(CultureInfo.InvariantCulture)} back to native ClearInfo({clearOption.ToString(CultureInfo.InvariantCulture)}) and reset the staged timer controls.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
+        internal bool TryResolveCurrentOwnerTabClearOption(out int clearOption)
+        {
+            switch (_pageIndex)
+            {
+                case 0:
+                case 1:
+                    clearOption = 0;
+                    return true;
+
+                case 2:
+                    clearOption = 1;
+                    return true;
+
+                default:
+                    clearOption = -1;
+                    return false;
+            }
+        }
+
+        internal string BuildOwnerClearConfirmationBody(bool allClear)
+        {
+            return allClear
+                ? MapleStoryStringPool.GetOrFallback(
+                    0x188B,
+                    "Do you want to clear all battle-record information?")
+                : MapleStoryStringPool.GetOrFallback(
+                    0x1900,
+                    "Do you want to clear the selected battle-record information?");
+        }
+
+        internal string CancelOwnerClearConfirmation(bool allClear)
+        {
+            StatusMessage = allClear
+                ? "CUIBattleRecord button 2002 clear-all confirmation was cancelled; ClearInfo(3) was not called."
+                : "CUIBattleRecord button 2001 tab-clear confirmation was cancelled; ClearInfo was not called.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }

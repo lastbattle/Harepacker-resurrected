@@ -612,6 +612,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     int canvasObjectId = ResolveAfterimageCanvasObjectId(frame);
                     int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
+                    int insertCanvasResultObjectId = ResolveInsertCanvasResultObjectId(
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal);
                     int? frameRawActionCode = frame.AfterimageActionRawCode;
                     string frameActionName = frame.AfterimageActionName;
 
@@ -662,6 +666,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         InsertCanvasResultVariantRefDelta: 1,
+                        InsertCanvasResultObjectId: insertCanvasResultObjectId,
                         AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                         LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame),
                         ActionRange: actionRange));
@@ -673,6 +678,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameRawActionCode,
                         frameActionName,
                         InsertCanvasResultVariantRefDelta: -1,
+                        InsertCanvasResultObjectId: insertCanvasResultObjectId,
                         AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                         ActionRange: actionRange));
                     AddLoadCanvasArgumentVariantCleanupOperations(
@@ -749,6 +755,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     AfterimageActionCanvasArrayObjectId: actionCanvasArrayObjectId,
                     LoadCanvasArgumentVariantOrdinal: ordinal,
+                    LoadCanvasArgumentVariantRefDelta: -1,
+                    LoadCanvasArgumentVariantObjectId: ResolveLoadCanvasArgumentVariantObjectId(
+                        canvasObjectId,
+                        canvasOrdinal,
+                        ordinal),
                     ActionRange: actionRange));
             }
         }
@@ -1128,6 +1139,43 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int hash = 23;
                 hash = (hash * 37) + targetLayerObjectId;
                 hash = (hash * 37) + removeCanvasIndex;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveInsertCanvasResultObjectId(int targetLayerObjectId, int canvasObjectId, int canvasOrdinal)
+        {
+            if (targetLayerObjectId == 0 || canvasObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 31;
+                hash = (hash * 43) + targetLayerObjectId;
+                hash = (hash * 43) + canvasObjectId;
+                hash = (hash * 43) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        internal static int ResolveLoadCanvasArgumentVariantObjectId(
+            int canvasObjectId,
+            int canvasOrdinal,
+            int argumentOrdinal)
+        {
+            if (canvasObjectId == 0 || argumentOrdinal < 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 37;
+                hash = (hash * 47) + canvasObjectId;
+                hash = (hash * 47) + canvasOrdinal;
+                hash = (hash * 47) + argumentOrdinal;
                 return hash == 0 ? 1 : hash;
             }
         }

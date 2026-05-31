@@ -77,7 +77,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal NewYearCardRuntime()
         {
-            _searchResults.AddRange(new[] { "ExplorerGM", "MapleAdmin", "Cassandra" });
         }
 
         internal void UpdateLocalSender(string senderName)
@@ -511,23 +510,6 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (string candidate in ResolveCandidateGroup(packetOwnedNames, normalizedQuery, hasQuery, emitted))
             {
                 yield return candidate;
-            }
-
-            if (emitted.Count != 0)
-            {
-                yield break;
-            }
-
-            string[] fallbackNames = hasQuery
-                ? new[] { normalizedQuery }
-                : new[] { "ExplorerGM", "MapleAdmin", "Cassandra" };
-            foreach (string fallbackName in fallbackNames)
-            {
-                string candidate = NormalizeName(fallbackName, string.Empty);
-                if (candidate.Length != 0 && emitted.Add(candidate))
-                {
-                    yield return candidate;
-                }
             }
         }
 

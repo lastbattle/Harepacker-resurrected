@@ -215,7 +215,6 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "backgrnd2", device, out Point overlayOffset), overlayOffset);
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "backgrnd3", device, out Point contentOffset), contentOffset);
-                window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "line", device, out Point lineOffset), lineOffset);
             }
 
             return window;

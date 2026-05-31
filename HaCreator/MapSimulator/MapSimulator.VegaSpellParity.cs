@@ -2299,6 +2299,13 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                short currentScrollPosition = expectedScrollSlotIndex >= 0
+                    ? (short)(expectedScrollSlotIndex + 1)
+                    : (short)0;
+                short currentModifierPosition = expectedModifierSlotIndex >= 0
+                    ? (short)(expectedModifierSlotIndex + 1)
+                    : (short)0;
+
                 for (int i = 0; i < operationCount; i++)
                 {
                     if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(byte) * 2 + sizeof(short), out rejectReason))
@@ -2330,13 +2337,31 @@ namespace HaCreator.MapSimulator
                                 break;
                             }
 
-                            if (!string.IsNullOrWhiteSpace(rejectReason))
+                            if (string.IsNullOrWhiteSpace(rejectReason))
+                            {
+                                if (!TrySkipVegaClientInventoryOperationAddEntryBody(
+                                        reader,
+                                        out rejectReason))
+                                {
+                                    return false;
+                                }
+
+                                break;
+                            }
+
+                            if (!IsVegaClientInventoryOperationAddMismatch(rejectReason))
                             {
                                 return false;
                             }
 
-                            rejectReason = "Inventory-operation payload included a mode-0 entry before the matching Vega equipment add entry could be decoded.";
-                            return false;
+                            if (!TrySkipVegaClientInventoryOperationAddEntryBody(
+                                    reader,
+                                    out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            break;
                         case 1:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
                             {
@@ -2348,13 +2373,13 @@ namespace HaCreator.MapSimulator
                                 operationState,
                                 inventoryType,
                                 fromPosition,
+                                currentScrollPosition,
+                                currentModifierPosition,
                                 newCount,
                                 expectedScrollItemId,
                                 expectedScrollInventoryType,
-                                expectedScrollSlotIndex,
                                 expectedModifierItemId,
-                                expectedModifierInventoryType,
-                                expectedModifierSlotIndex);
+                                expectedModifierInventoryType);
                             break;
                         case 2:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(short), out rejectReason))
@@ -2362,20 +2387,28 @@ namespace HaCreator.MapSimulator
                                 return false;
                             }
 
-                            _ = reader.ReadInt16();
+                            short toPosition = reader.ReadInt16();
+                            TrackVegaClientInventoryOperationSlotMove(
+                                inventoryType,
+                                fromPosition,
+                                toPosition,
+                                expectedScrollInventoryType,
+                                expectedModifierInventoryType,
+                                ref currentScrollPosition,
+                                ref currentModifierPosition);
                             break;
                         case 3:
                             operationState = ObserveVegaClientInventoryOperationCount(
                                 operationState,
                                 inventoryType,
                                 fromPosition,
+                                currentScrollPosition,
+                                currentModifierPosition,
                                 0,
                                 expectedScrollItemId,
                                 expectedScrollInventoryType,
-                                expectedScrollSlotIndex,
                                 expectedModifierItemId,
-                                expectedModifierInventoryType,
-                                expectedModifierSlotIndex);
+                                expectedModifierInventoryType);
                             break;
                         case 4:
                             if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(int), out rejectReason))
@@ -2413,20 +2446,20 @@ namespace HaCreator.MapSimulator
             VegaClientInventoryOperationState operationState,
             byte inventoryType,
             short position,
+            short currentScrollPosition,
+            short currentModifierPosition,
             int finalCount,
             int expectedScrollItemId,
             InventoryType expectedScrollInventoryType,
-            int expectedScrollSlotIndex,
             int expectedModifierItemId,
-            InventoryType expectedModifierInventoryType,
-            int expectedModifierSlotIndex)
+            InventoryType expectedModifierInventoryType)
         {
             if (MatchesVegaClientInventoryOperationSlot(
                     inventoryType,
                     position,
+                    currentScrollPosition,
                     expectedScrollItemId,
-                    expectedScrollInventoryType,
-                    expectedScrollSlotIndex))
+                    expectedScrollInventoryType))
             {
                 operationState = operationState with
                 {
@@ -2438,9 +2471,9 @@ namespace HaCreator.MapSimulator
             if (MatchesVegaClientInventoryOperationSlot(
                     inventoryType,
                     position,
+                    currentModifierPosition,
                     expectedModifierItemId,
-                    expectedModifierInventoryType,
-                    expectedModifierSlotIndex))
+                    expectedModifierInventoryType))
             {
                 operationState = operationState with
                 {
@@ -2455,20 +2488,46 @@ namespace HaCreator.MapSimulator
         private static bool MatchesVegaClientInventoryOperationSlot(
             byte inventoryType,
             short position,
+            short currentExpectedPosition,
             int expectedItemId,
-            InventoryType expectedInventoryType,
-            int expectedSlotIndex)
+            InventoryType expectedInventoryType)
         {
             if (expectedItemId <= 0 ||
                 expectedInventoryType == InventoryType.NONE ||
-                expectedSlotIndex < 0 ||
+                currentExpectedPosition == 0 ||
                 !Enum.IsDefined(typeof(InventoryType), (int)inventoryType) ||
                 (InventoryType)inventoryType != expectedInventoryType)
             {
                 return false;
             }
 
-            return position == expectedSlotIndex + 1;
+            return position == currentExpectedPosition;
+        }
+
+        private static void TrackVegaClientInventoryOperationSlotMove(
+            byte inventoryType,
+            short fromPosition,
+            short toPosition,
+            InventoryType expectedScrollInventoryType,
+            InventoryType expectedModifierInventoryType,
+            ref short currentScrollPosition,
+            ref short currentModifierPosition)
+        {
+            if (!Enum.IsDefined(typeof(InventoryType), (int)inventoryType))
+            {
+                return;
+            }
+
+            InventoryType decodedInventoryType = (InventoryType)inventoryType;
+            if (decodedInventoryType == expectedScrollInventoryType && fromPosition == currentScrollPosition)
+            {
+                currentScrollPosition = toPosition;
+            }
+
+            if (decodedInventoryType == expectedModifierInventoryType && fromPosition == currentModifierPosition)
+            {
+                currentModifierPosition = toPosition;
+            }
         }
 
         private static bool TryReadVegaClientInventoryOperationEquipAddEntry(
@@ -2553,6 +2612,184 @@ namespace HaCreator.MapSimulator
                     out rejectReason);
             }
 
+            return false;
+        }
+
+        private static bool IsVegaClientInventoryOperationAddMismatch(string rejectReason)
+        {
+            return !string.IsNullOrWhiteSpace(rejectReason)
+                && rejectReason.IndexOf("did not match the pending equip item", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool TrySkipVegaClientInventoryOperationAddEntryBody(
+            BinaryReader reader,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (reader?.BaseStream is not { CanSeek: true } stream)
+            {
+                rejectReason = "Inventory-operation add entry reader is unavailable.";
+                return false;
+            }
+
+            if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            int itemId = reader.ReadInt32();
+            bool hasCashSerial = reader.ReadByte() != 0;
+            if (hasCashSerial)
+            {
+                if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            if (!TryEnsureVegaInventoryOperationRemaining(stream, sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt64();
+            return slotType switch
+            {
+                VegaClientInventoryOperationSlotTypeEquip => TrySkipVegaClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
+                VegaClientInventoryOperationSlotTypeBundle => TrySkipVegaClientInventoryOperationBundleBody(reader, itemId, out rejectReason),
+                VegaClientInventoryOperationSlotTypePet => TrySkipVegaClientInventoryOperationPetBody(reader, out rejectReason),
+                _ => FailVegaClientInventoryOperationUnsupportedSlotType(slotType, out rejectReason)
+            };
+        }
+
+        private static bool TrySkipVegaClientInventoryOperationEquipBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            out string rejectReason)
+        {
+            long bodyStart = reader?.BaseStream?.CanSeek == true ? reader.BaseStream.Position : -1;
+            if (TrySkipVegaClientInventoryOperationEquipBody(
+                    reader,
+                    hasCashSerial,
+                    VegaClientEquipSnapshotStatFieldCount,
+                    out rejectReason))
+            {
+                return true;
+            }
+
+            if (bodyStart >= 0)
+            {
+                reader.BaseStream.Position = bodyStart;
+                return TrySkipVegaClientInventoryOperationEquipBody(
+                    reader,
+                    hasCashSerial,
+                    VegaClientEquipSnapshotLegacyStatFieldCount,
+                    out rejectReason);
+            }
+
+            return false;
+        }
+
+        private static bool TrySkipVegaClientInventoryOperationEquipBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            int statFieldCount,
+            out string rejectReason)
+        {
+            if (!TryEnsureVegaInventoryOperationRemaining(
+                    reader?.BaseStream,
+                    sizeof(byte) * 2 + (sizeof(short) * statFieldCount),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            for (int i = 0; i < statFieldCount; i++)
+            {
+                _ = reader.ReadInt16();
+            }
+
+            if (!TryReadVegaClientMapleString(reader, out rejectReason))
+            {
+                return false;
+            }
+
+            const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (!TryEnsureVegaInventoryOperationRemaining(
+                    reader.BaseStream,
+                    equipTailLength + (hasCashSerial ? 0 : sizeof(long)) + sizeof(long) + sizeof(int),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            reader.BaseStream.Position += equipTailLength;
+            if (!hasCashSerial)
+            {
+                reader.BaseStream.Position += sizeof(long);
+            }
+
+            reader.BaseStream.Position += sizeof(long) + sizeof(int);
+            return true;
+        }
+
+        private static bool TrySkipVegaClientInventoryOperationBundleBody(
+            BinaryReader reader,
+            int itemId,
+            out string rejectReason)
+        {
+            if (!TryEnsureVegaInventoryOperationRemaining(reader?.BaseStream, sizeof(ushort), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadUInt16();
+            if (!TryReadVegaClientMapleString(reader, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(short), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            if ((itemId / 10000) is 207 or 233)
+            {
+                if (!TryEnsureVegaInventoryOperationRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            return true;
+        }
+
+        private static bool TrySkipVegaClientInventoryOperationPetBody(
+            BinaryReader reader,
+            out string rejectReason)
+        {
+            const int petBodyLength = 13 + sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (!TryEnsureVegaInventoryOperationRemaining(reader?.BaseStream, petBodyLength, out rejectReason))
+            {
+                return false;
+            }
+
+            reader.BaseStream.Position += petBodyLength;
+            return true;
+        }
+
+        private static bool FailVegaClientInventoryOperationUnsupportedSlotType(byte slotType, out string rejectReason)
+        {
+            rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
             return false;
         }
 

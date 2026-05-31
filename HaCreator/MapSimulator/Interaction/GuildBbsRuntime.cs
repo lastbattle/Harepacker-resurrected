@@ -2514,6 +2514,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryDecodeCashInventoryMutationRows(payload, ownedItemIds, out detail))
+            {
+                return true;
+            }
+
             int byteCount = payload[0];
             if (byteCount > 0
                 && byteCount <= _cashEmoticonCount
@@ -2579,6 +2584,69 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryDecodeCashInventoryMutationRows(byte[] payload, HashSet<int> ownedItemIds, out string detail)
+        {
+            detail = null;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            int rowCount = BitConverter.ToInt32(payload, 0);
+            const int cashInventoryMutationRowLength = sizeof(short) + sizeof(short) + sizeof(int);
+            if (rowCount <= 0
+                || payload.Length != sizeof(int) + (rowCount * cashInventoryMutationRowLength))
+            {
+                return false;
+            }
+
+            ownedItemIds.Clear();
+            int ignoredUnsupportedCount = 0;
+            int ignoredOtherCashInventoryRows = 0;
+            int offset = sizeof(int);
+            for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
+            {
+                int quantity = BitConverter.ToUInt16(payload, offset);
+                int slotIndex = BitConverter.ToUInt16(payload, offset + sizeof(short));
+                int rawItemId = BitConverter.ToInt32(payload, offset + sizeof(short) + sizeof(short));
+                offset += cashInventoryMutationRowLength;
+
+                if (quantity <= 0 || slotIndex <= 0 || rawItemId <= 0)
+                {
+                    ownedItemIds.Clear();
+                    return false;
+                }
+
+                if (TryResolvePacketCashItemId(rawItemId, out int itemId))
+                {
+                    ownedItemIds.Add(itemId);
+                    continue;
+                }
+
+                if (IsIgnoredUnsupportedCashEmoticonId(rawItemId))
+                {
+                    ignoredUnsupportedCount++;
+                    continue;
+                }
+
+                ignoredOtherCashInventoryRows++;
+            }
+
+            if (ownedItemIds.Count == 0 && ignoredUnsupportedCount == 0)
+            {
+                return false;
+            }
+
+            string baseDetail = $"matched CCashShop inventory mutation rows with {ownedItemIds.Count} Guild BBS cash emoticon id(s)";
+            if (ignoredOtherCashInventoryRows > 0)
+            {
+                baseDetail += $"; ignored {ignoredOtherCashInventoryRows} non-Guild-BBS cash inventory row(s)";
+            }
+
+            detail = AppendIgnoredCashEntitlementDetail(baseDetail, ignoredUnsupportedCount);
+            return true;
         }
 
         private bool TryDecodeCashOwnershipBitMask(byte[] payload, HashSet<int> ownedItemIds, out string detail)

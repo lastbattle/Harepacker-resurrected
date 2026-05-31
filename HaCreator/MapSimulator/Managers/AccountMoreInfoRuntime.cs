@@ -1148,17 +1148,6 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (child is WzStringProperty directNameProperty)
-            {
-                if (string.IsNullOrWhiteSpace(directNameProperty.Value))
-                {
-                    return false;
-                }
-
-                name = directNameProperty.Value;
-                return true;
-            }
-
             if (child is not IPropertyContainer container)
             {
                 return false;

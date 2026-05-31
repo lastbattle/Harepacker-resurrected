@@ -738,7 +738,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                string stateSfx = (child["sfx"] as WzStringProperty)?.Value?.Trim();
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
+                string stateSfx = (realChild?["sfx"] as WzStringProperty)?.Value?.Trim();
                 if (!string.IsNullOrWhiteSpace(stateSfx))
                 {
                     stateSfxByIndex[stateIndex] = stateSfx;
@@ -815,8 +816,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
                 PacketOwnedNamedObjectVectorAnimationProfile vectorProfile =
-                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(child);
+                    PacketOwnedNamedObjectVectorAnimationProfile.FromWzProperty(realChild);
                 if (vectorProfile != null)
                 {
                     vectorAnimationByIndex[stateIndex] = vectorProfile;
@@ -841,7 +843,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                PacketOwnedNamedObjectAlphaProfile alphaProfile = PacketOwnedNamedObjectAlphaProfile.FromWzProperty(child);
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
+                PacketOwnedNamedObjectAlphaProfile alphaProfile = PacketOwnedNamedObjectAlphaProfile.FromWzProperty(realChild);
                 if (alphaProfile != null)
                 {
                     alphaByIndex[stateIndex] = alphaProfile;

@@ -116,31 +116,6 @@ namespace HaCreator.MapSimulator
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
-        internal static float ResolveSoundVolumeScale(Vector2 listenerPosition, DropItem drop)
-        {
-            if (drop == null)
-            {
-                return 1f;
-            }
-
-            const float minDistance = 64f;
-            const float maxDistance = 900f;
-            const float minVolume = 0.2f;
-
-            float distance = Vector2.Distance(listenerPosition, new Vector2(drop.X, drop.Y));
-            if (distance <= minDistance)
-            {
-                return 1f;
-            }
-
-            if (distance >= maxDistance)
-            {
-                return minVolume;
-            }
-
-            float normalized = 1f - ((distance - minDistance) / (maxDistance - minDistance));
-            return MathHelper.Lerp(minVolume, 1f, MathHelper.Clamp(normalized, 0f, 1f));
-        }
     }
 
     internal static class PacketOwnedDropPetPickupPresentation
@@ -440,16 +415,6 @@ namespace HaCreator.MapSimulator
             WzImage skillImage = Program.FindImage("Skill", PacketOwnedDropExplosionPresentation.SkillImageName);
             skillImage?.ParseImage();
             return skillImage?["skill"]?["4211006"]?["hit"] as WzImageProperty;
-        }
-
-        private float ResolvePacketOwnedDropExplodeVolumeScale(DropItem drop)
-        {
-            if (_playerManager?.Player == null)
-            {
-                return 1f;
-            }
-
-            return PacketOwnedDropExplosionPresentation.ResolveSoundVolumeScale(_playerManager.Player.Position, drop);
         }
 
         private int ResolveAnimationDisplayerPacketOwnedDropExplosionInitialElapsed(

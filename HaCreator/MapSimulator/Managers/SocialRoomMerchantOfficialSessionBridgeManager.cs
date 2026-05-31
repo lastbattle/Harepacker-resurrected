@@ -829,17 +829,19 @@ namespace HaCreator.MapSimulator.Managers
 
                     break;
                 case 46:
-                    if (payload.Length >= 2)
+                    if (TryMeasureEntrustedVisitListPayload(payload, out int visitListLength)
+                        && visitListLength == payload.Length)
                     {
-                        detail = "subtype 46 has the entrusted visit-list result shape for CEntrustedShopDlg::OnPacket.";
+                        detail = "subtype 46 has the exact entrusted visit-list result shape for CEntrustedShopDlg::OnPacket.";
                         return true;
                     }
 
                     break;
                 case 47:
-                    if (payload.Length >= 2)
+                    if (TryMeasureEntrustedBlacklistPayload(payload, out int blacklistLength)
+                        && blacklistLength == payload.Length)
                     {
-                        detail = "subtype 47 has the entrusted blacklist result shape for CEntrustedShopDlg::OnPacket.";
+                        detail = "subtype 47 has the exact entrusted blacklist result shape for CEntrustedShopDlg::OnPacket.";
                         return true;
                     }
 
@@ -853,6 +855,87 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsKnownMiniRoomBaseSubtype(byte packetSubType)
         {
             return packetSubType is 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 14;
+        }
+
+        private static bool TryMeasureEntrustedVisitListPayload(byte[] payload, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || payload.Length < 3 || payload[0] != RequestSubtypeEntrustedShopVisitList)
+            {
+                return false;
+            }
+
+            int offset = 1;
+            if (!TryReadUnsignedShort(payload, ref offset, out int count))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TrySkipMapleString(payload, ref offset)
+                    || payload.Length - offset < sizeof(int))
+                {
+                    return false;
+                }
+
+                offset += sizeof(int);
+            }
+
+            packetLength = offset;
+            return true;
+        }
+
+        private static bool TryMeasureEntrustedBlacklistPayload(byte[] payload, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || payload.Length < 3 || payload[0] != RequestSubtypeEntrustedShopBlacklist)
+            {
+                return false;
+            }
+
+            int offset = 1;
+            if (!TryReadUnsignedShort(payload, ref offset, out int count))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TrySkipMapleString(payload, ref offset))
+                {
+                    return false;
+                }
+            }
+
+            packetLength = offset;
+            return true;
+        }
+
+        private static bool TryReadUnsignedShort(byte[] payload, ref int offset, out int value)
+        {
+            value = 0;
+            if (payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            offset += sizeof(ushort);
+            return true;
+        }
+
+        private static bool TrySkipMapleString(byte[] payload, ref int offset)
+        {
+            if (!TryReadUnsignedShort(payload, ref offset, out int length)
+                || length < 0
+                || payload.Length - offset < length)
+            {
+                return false;
+            }
+
+            offset += length;
+            return true;
         }
 
         private static string DescribeKind(SocialRoomKind kind)

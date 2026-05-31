@@ -297,12 +297,13 @@ namespace HaCreator.MapSimulator.Managers
             out string reason)
         {
             handle = 0;
+            string admissionKey = NormalizeClientSoundAdmissionKey(key, sound);
             ClientSoundPlaybackPlan plan = ResolveClientSoundPlaybackPlan(
-                key,
+                admissionKey,
                 hasSoundProperty: sound != null,
                 loop,
                 startVolumeScale,
-                _activeSoundCounts.GetOrAdd(key ?? string.Empty, 0),
+                _activeSoundCounts.GetOrAdd(admissionKey ?? string.Empty, 0),
                 suppressWhileActive,
                 _disposed,
                 _focusActive);
@@ -313,26 +314,26 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            RegisterClientSoundSource(key, sound);
+            RegisterClientSoundSource(admissionKey, sound);
 
             if (plan.Action == ClientSoundPlaybackAction.PlayLooping)
             {
-                handle = PlayLoopingSoundHandle(key, plan.StartVolumeScale);
+                handle = PlayLoopingSoundHandle(admissionKey, plan.StartVolumeScale);
                 reason = handle == 0 ? "loop-start-failed" : "played";
                 if (handle != 0 && !TryGetClientLoopingSoundState(handle, out _))
                 {
-                    AdmitClientSoundState(key, plan.StartVolumeScale, loop: true, handle);
+                    AdmitClientSoundState(admissionKey, plan.StartVolumeScale, loop: true, handle);
                 }
 
                 return handle != 0;
             }
 
-            if (!TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason, out OneShotSound oneShot))
+            if (!TryPlaySound(admissionKey, plan.StartVolumeScale, suppressWhileActive, out reason, out OneShotSound oneShot))
             {
                 return false;
             }
 
-            uint stateId = AdmitClientSoundState(key, plan.StartVolumeScale, loop: false, loopHandle: 0);
+            uint stateId = AdmitClientSoundState(admissionKey, plan.StartVolumeScale, loop: false, loopHandle: 0);
             oneShot.ClientSoundStateId = stateId;
             return true;
         }
@@ -1092,8 +1093,86 @@ namespace HaCreator.MapSimulator.Managers
             return $"{normalizedOwnerPrefix}:{ResolveClientSoundPath(descriptor, sound)}";
         }
 
+        internal static string NormalizeClientSoundAdmissionKey(string key, WzBinaryProperty sound)
+        {
+            string normalizedKey = key?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedKey))
+            {
+                return normalizedKey;
+            }
+
+            if (HasExplicitClientSoundOwnerPrefix(normalizedKey))
+            {
+                return normalizedKey;
+            }
+
+            if (TryResolveCallerLocalSoundPath(normalizedKey, out string callerLocalPath))
+            {
+                return $"RegisteredSound:{callerLocalPath}";
+            }
+
+            string soundPath = ResolveClientSoundPath(normalizedKey, sound);
+            return string.IsNullOrWhiteSpace(soundPath)
+                ? normalizedKey
+                : $"RegisteredSound:{soundPath}";
+        }
+
+        private static bool HasExplicitClientSoundOwnerPrefix(string key)
+        {
+            return key.StartsWith("RegisteredSound:", StringComparison.Ordinal)
+                   || key.StartsWith("PacketOwnedSound:", StringComparison.Ordinal)
+                   || key.StartsWith("UIObject:", StringComparison.Ordinal)
+                   || key.StartsWith("VegaResultLoop:", StringComparison.Ordinal);
+        }
+
+        private static bool TryResolveCallerLocalSoundPath(string descriptor, out string soundPath)
+        {
+            soundPath = null;
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string[] parts = descriptor.Trim().Split(':');
+            if (parts.Length < 3)
+            {
+                return false;
+            }
+
+            if (string.Equals(parts[0], "Skill", StringComparison.OrdinalIgnoreCase))
+            {
+                soundPath = $"Sound/Skill.img/{parts[1].Trim()}/{string.Join("/", parts, 2, parts.Length - 2)}";
+                return true;
+            }
+
+            if (string.Equals(parts[0], "Mob", StringComparison.OrdinalIgnoreCase))
+            {
+                string mobId = parts[1].Trim();
+                if (int.TryParse(mobId, out _))
+                {
+                    mobId = mobId.PadLeft(7, '0');
+                }
+
+                soundPath = $"Sound/Mob.img/{mobId}/{string.Join("/", parts, 2, parts.Length - 2)}";
+                return true;
+            }
+
+            if (string.Equals(parts[0], "WeaponSfx", StringComparison.OrdinalIgnoreCase))
+            {
+                soundPath = $"Sound/Weapon.img/{parts[1].Trim()}/{string.Join("/", parts, 2, parts.Length - 2)}";
+                return true;
+            }
+
+            return false;
+        }
+
         internal static string ResolveClientSoundPath(string descriptor, WzBinaryProperty sound)
         {
+            if (TryResolveCallerLocalSoundPath(descriptor, out string callerLocalPath))
+            {
+                return callerLocalPath;
+            }
+
             string path = sound?.FullPath?.Replace('\\', '/');
             string normalizedDescriptor = descriptor?.Trim().Replace('\\', '/');
 

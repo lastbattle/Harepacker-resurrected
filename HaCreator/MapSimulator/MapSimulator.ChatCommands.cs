@@ -6336,7 +6336,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Monster Carnival HUD state",
 
-                            "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]]",
+                            "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]]",
                 args =>
                 {
                     static bool TryParseMonsterCarnivalSessionPacketType(string text, out int packetType)
@@ -6639,6 +6639,19 @@ namespace HaCreator.MapSimulator
                             {
                                 return ChatCommandHandler.CommandResult.Info(
                                     $"{field.DescribeStatus()}{Environment.NewLine}{_monsterCarnivalOfficialSessionBridge.DescribeStatus()}");
+                            }
+
+                            if (string.Equals(args[1], "verify", StringComparison.OrdinalIgnoreCase))
+                            {
+                                bool verified = _monsterCarnivalOfficialSessionBridge.TryVerifyLiveOwnership(out string verifyStatus);
+                                return verified
+                                    ? ChatCommandHandler.CommandResult.Ok($"{verifyStatus} {_monsterCarnivalOfficialSessionBridge.DescribeStatus()}")
+                                    : ChatCommandHandler.CommandResult.Info($"{verifyStatus} {_monsterCarnivalOfficialSessionBridge.DescribeStatus()}");
+                            }
+
+                            if (string.Equals(args[1], "clearverify", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalOfficialSessionBridge.ClearLiveOwnershipVerification());
                             }
 
                             if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
@@ -10444,7 +10457,8 @@ namespace HaCreator.MapSimulator
                                 (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
                                 (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
                                 (out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketMigratedPayload(() => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, out payload, out message),
-                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message));
+                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message),
+                                (string participantToken, bool active, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketActivityPulsePayload(participantToken, active, out payload, out message));
                         case "packetraw":
                             return MessengerCommandRouter.HandlePacketRawCommand(
                                 args,
@@ -10470,7 +10484,8 @@ namespace HaCreator.MapSimulator
                                 (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
                                 (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
                                 (out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketMigratedPayload(() => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, out payload, out message),
-                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message));
+                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message),
+                                (string participantToken, bool active, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketActivityPulsePayload(participantToken, active, out payload, out message));
                         case "session":
                             return HandleMessengerSessionCommand(args.Skip(1).ToArray());
 
@@ -13646,11 +13661,6 @@ namespace HaCreator.MapSimulator
                         ownerName,
                         quickJoin: string.Equals(action, "quickjoin", StringComparison.OrdinalIgnoreCase),
                         packetOwned: false);
-                    if (!CanAutoSendExpeditionOutboundRequest())
-                    {
-                        return ChatCommandHandler.CommandResult.Ok(staged);
-                    }
-
                     ExpeditionIntermediaryOutboundRequest outboundRequest = new(
                         string.Equals(action, "quickjoin", StringComparison.OrdinalIgnoreCase)
                             ? ExpeditionIntermediaryOutboundRequestKind.QuickJoin
@@ -13661,9 +13671,9 @@ namespace HaCreator.MapSimulator
                         PartyIndex: 0,
                         NoticeKind: ExpeditionNoticeKind.Joined,
                         RemovalKind: ExpeditionRemovalKind.Leave);
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok($"{staged} {sendStatus}")
-                        : ChatCommandHandler.CommandResult.Error($"{staged} Live expedition send failed: {sendStatus}");
+                        : ChatCommandHandler.CommandResult.Error($"{staged} Expedition outbound synthesis failed: {sendStatus}");
                 }
 
                 case "open":
@@ -13684,16 +13694,14 @@ namespace HaCreator.MapSimulator
                         : TryGetExpeditionPositionalValue(args, index + 1, out string positionalTitle)
                             ? NormalizeExpeditionCommandText(positionalTitle)
                             : null;
-                    string localStatus = _socialListRuntime.StartLocalExpeditionIntermediary(title, registrationDraft: string.Equals(action, "register", StringComparison.OrdinalIgnoreCase));
-                    if (!CanAutoSendExpeditionOutboundRequest())
-                    {
-                        return ChatCommandHandler.CommandResult.Ok(localStatus);
-                    }
-
                     int partyQuestId = TryGetExpeditionCommandInt(args, index + 1, "pq", out int parsedPartyQuestId) ? parsedPartyQuestId : 0;
+                    string localStatus = _socialListRuntime.StartLocalExpeditionIntermediary(
+                        title,
+                        registrationDraft: string.Equals(action, "register", StringComparison.OrdinalIgnoreCase),
+                        partyQuestId: partyQuestId);
                     if (partyQuestId <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                        return ChatCommandHandler.CommandResult.Ok($"{localStatus} Expedition create/register outbound synthesis skipped: pq=<partyQuestId> is required by the recovered client request layout.");
                     }
 
                     ExpeditionIntermediaryOutboundRequest outboundRequest = new(
@@ -13707,9 +13715,9 @@ namespace HaCreator.MapSimulator
                         NoticeKind: ExpeditionNoticeKind.Joined,
                         RemovalKind: ExpeditionRemovalKind.Leave,
                         PartyQuestId: partyQuestId);
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
-                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Expedition outbound synthesis failed: {sendStatus}");
                 }
 
                 case "get":
@@ -13802,11 +13810,6 @@ namespace HaCreator.MapSimulator
 
                     int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 73;
                     string localStatus = _socialListRuntime.ApplyExpeditionResponseInvite(inviterName, responseCode, packetOwned, retCode);
-                    if (!CanAutoSendExpeditionOutboundRequest())
-                    {
-                        return ChatCommandHandler.CommandResult.Ok(localStatus);
-                    }
-
                     ExpeditionIntermediaryOutboundRequest outboundRequest = new(
                         ExpeditionIntermediaryOutboundRequestKind.Response,
                         ExpeditionTitle: string.Empty,
@@ -13816,9 +13819,9 @@ namespace HaCreator.MapSimulator
                         NoticeKind: ExpeditionNoticeKind.Joined,
                         RemovalKind: ExpeditionRemovalKind.Leave,
                         ResponseAccepted: responseCode == ExpeditionIntermediaryPacketTable.AcceptedInviteResponseValue || responseCode == 1);
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
-                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Expedition outbound synthesis failed: {sendStatus}");
                 }
 
                 case "notice":
@@ -13874,14 +13877,9 @@ namespace HaCreator.MapSimulator
                             : 0;
                     int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 69;
                     string localStatus = _socialListRuntime.ApplyExpeditionMasterChanged(masterPartyIndex, packetOwned, retCode);
-                    if (!CanAutoSendExpeditionOutboundRequest())
-                    {
-                        return ChatCommandHandler.CommandResult.Ok(localStatus);
-                    }
-
                     if (!TryResolveExpeditionCommandCharacterId(args, index + 1, masterPartyIndex, out int characterId, out string resolveStatus))
                     {
-                        return ChatCommandHandler.CommandResult.Ok($"{localStatus} Live expedition change-master send skipped: {resolveStatus}");
+                        return ChatCommandHandler.CommandResult.Ok($"{localStatus} Expedition change-master outbound synthesis skipped: {resolveStatus}");
                     }
 
                     ExpeditionIntermediaryOutboundRequest outboundRequest = new(
@@ -13893,9 +13891,9 @@ namespace HaCreator.MapSimulator
                         NoticeKind: ExpeditionNoticeKind.Joined,
                         RemovalKind: ExpeditionRemovalKind.Leave,
                         CharacterId: characterId);
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
-                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Expedition outbound synthesis failed: {sendStatus}");
                 }
 
                 case "removed":
@@ -13918,10 +13916,11 @@ namespace HaCreator.MapSimulator
                             ExpeditionRemovalKind.Removed => 68,
                             _ => 67
                         };
+                    int removalCharacterId = TryGetExpeditionCommandInt(args, index + 1, "charid", out int parsedCharacterId) ? parsedCharacterId : 0;
                     string localStatus = _socialListRuntime.ApplyExpeditionRemoved(removalKind, packetOwned, retCode);
-                    if (!CanAutoSendExpeditionOutboundRequest())
+                    if (removalKind == ExpeditionRemovalKind.Removed && removalCharacterId <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                        return ChatCommandHandler.CommandResult.Ok($"{localStatus} Expedition remove outbound synthesis skipped: charid=<characterId> is required by the recovered client kick request layout.");
                     }
 
                     ExpeditionIntermediaryOutboundRequest outboundRequest = new(
@@ -13936,10 +13935,10 @@ namespace HaCreator.MapSimulator
                         PartyIndex: 0,
                         NoticeKind: ExpeditionNoticeKind.Left,
                         RemovalKind: removalKind,
-                        CharacterId: TryGetExpeditionCommandInt(args, index + 1, "charid", out int parsedCharacterId) ? parsedCharacterId : 0);
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        CharacterId: removalCharacterId);
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
-                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Expedition outbound synthesis failed: {sendStatus}");
                 }
 
                 case "remove":
@@ -13974,12 +13973,7 @@ namespace HaCreator.MapSimulator
                         NoticeKind: ExpeditionNoticeKind.Removed,
                         RemovalKind: ExpeditionRemovalKind.Removed,
                         CharacterId: characterId);
-                    if (!CanAutoSendExpeditionOutboundRequest())
-                    {
-                        return ChatCommandHandler.CommandResult.Ok($"{outboundRequest.Describe()} staged; attach /expedition bridge to inject the recovered outbound packet.");
-                    }
-
-                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                    return TryDispatchExpeditionOutboundRequest(outboundRequest, $"/expedition {action}", out string sendStatus)
                         ? ChatCommandHandler.CommandResult.Ok(sendStatus)
                         : ChatCommandHandler.CommandResult.Error(sendStatus);
                 }

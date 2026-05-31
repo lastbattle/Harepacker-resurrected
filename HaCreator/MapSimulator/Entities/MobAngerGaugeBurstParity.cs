@@ -291,7 +291,12 @@ namespace HaCreator.MapSimulator.Entities
         {
             return startTick == int.MinValue
                 || intervalMs <= 0
-                || unchecked(currentTick - startTick) >= intervalMs;
+                || currentTick >= ResolveReplayGateTargetTick(startTick, intervalMs);
+        }
+
+        public static int ResolveReplayGateTargetTick(int startTick, int intervalMs)
+        {
+            return unchecked(startTick + intervalMs);
         }
 
         public static MobAngerGaugeFullChargeCallerTrace CreateRecoveredCallerTrace(
@@ -310,6 +315,7 @@ namespace HaCreator.MapSimulator.Entities
                 MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId,
                 ResolveOwnerEffectPath(mobTemplateId, loadedEffectPath),
                 intervalMs,
+                ResolveReplayGateTargetTick(startTick, intervalMs),
                 HasReplayGateElapsed(currentTick, startTick, intervalMs),
                 UsesDelayedAttackEntryOwner: true,
                 EnumeratesDelayedAttackEntryList: true,
@@ -317,6 +323,7 @@ namespace HaCreator.MapSimulator.Entities
                 ReadsAttackInfoSpecialAttackFlag: true,
                 CallsMobOwnerWithoutDelayedEntryDueTimeCheck: true,
                 UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall: true,
+                UsesSignedAdditiveReplayGate: true,
                 UpdatesStartTimeBeforeAnimationDisplayerCall: true,
                 UpdatesStartTimeBeforeStringPoolBuild: true,
                 UsesRecoveredSlashPathSeparator: true,
@@ -385,6 +392,7 @@ namespace HaCreator.MapSimulator.Entities
         int EffectNameStringPoolId,
         string SourceUol,
         int FullChargeEffectTimeMs,
+        int ReplayGateTargetTick,
         bool ReplayGateElapsed,
         bool UsesDelayedAttackEntryOwner,
         bool EnumeratesDelayedAttackEntryList,
@@ -392,6 +400,7 @@ namespace HaCreator.MapSimulator.Entities
         bool ReadsAttackInfoSpecialAttackFlag,
         bool CallsMobOwnerWithoutDelayedEntryDueTimeCheck,
         bool UpdatesFullChargeEffectTimeFromAttackAfterBeforeMobCall,
+        bool UsesSignedAdditiveReplayGate,
         bool UpdatesStartTimeBeforeAnimationDisplayerCall,
         bool UpdatesStartTimeBeforeStringPoolBuild,
         bool UsesRecoveredSlashPathSeparator,

@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int SearchResultChildRowHeight = 35;
         internal const int SearchResultChildLinkButtonX = 326;
         internal const int SearchResultChildLinkButtonWidth = 55;
+        internal const int NativeItemSlotPayloadInventoryTypeCode = 1;
         internal const int ScanConfirmationModalWidth = 260;
         internal const int ScanConfirmationModalHeight = 72;
         internal const int ShopLinkSuccessResultCode = 0;
@@ -1617,12 +1618,18 @@ namespace HaCreator.MapSimulator.UI
 
                     int inventoryTypeCode = payload[offset++];
                     int itemSlotPayloadStart = offset;
-                    bool hasItemSlotPayload = TrySkipItemSlotPayload(
-                        payload,
-                        ref offset,
-                        itemId,
-                        out int decodedItemSlotType,
-                        out int decodedItemSlotItemId);
+                    bool hasItemSlotPayload = false;
+                    int decodedItemSlotType = 0;
+                    int decodedItemSlotItemId = 0;
+                    if (inventoryTypeCode == NativeItemSlotPayloadInventoryTypeCode)
+                    {
+                        hasItemSlotPayload = TrySkipItemSlotPayload(
+                            payload,
+                            ref offset,
+                            itemId,
+                            out decodedItemSlotType,
+                            out decodedItemSlotItemId);
+                    }
                     rows.Add(new ScannerPacketShopRow
                     {
                         ShopOwnerName = ownerName,

@@ -1854,7 +1854,7 @@ namespace HaCreator.MapSimulator.Pools
                 X = x,
                 Y = y,
                 Flip = flip,
-                Name = string.IsNullOrWhiteSpace(name) ? $"packet_{packetObjectId}" : name,
+                Name = ResolvePacketEnterSpawnPointName(name),
                 RespawnTimeMs = 0,
                 ActivationTypeOverride = ReactorActivationType.None,
                 CanRespawn = false,
@@ -1972,6 +1972,11 @@ namespace HaCreator.MapSimulator.Pools
             return string.IsNullOrWhiteSpace(name)
                 ? string.Empty
                 : name.Trim();
+        }
+
+        internal static string ResolvePacketEnterSpawnPointName(string name)
+        {
+            return ResolvePacketEnterRuntimeName(name);
         }
 
         public bool TryChangePacketOwnedReactorState(

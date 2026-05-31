@@ -285,6 +285,9 @@ namespace HaCreator.MapSimulator.UI
         private int _cashShopLastKeyDownTick = int.MinValue;
         private bool _cashShopItemSearchAllItemFilter;
         private int _cashShopSearchResultCount;
+        private int _cashShopSearchResultSelectedIndex = -1;
+        private int _cashShopSearchResultScrollOffset;
+        private int _cashShopSearchResultPageIndex;
         private int _lastOpenTick = int.MinValue;
         private int _wishlistCount;
         private int _chargeParam;
@@ -385,6 +388,9 @@ namespace HaCreator.MapSimulator.UI
         public int CashShopLastKeyDownTick => _cashShopLastKeyDownTick;
         public bool CashShopItemSearchAllItemFilter => _cashShopItemSearchAllItemFilter;
         public int CashShopSearchResultCount => _cashShopSearchResultCount;
+        public int CashShopSearchResultSelectedIndex => _cashShopSearchResultSelectedIndex;
+        public int CashShopSearchResultScrollOffset => _cashShopSearchResultScrollOffset;
+        public int CashShopSearchResultPageIndex => _cashShopSearchResultPageIndex;
         public int WishlistCount => _wishlistCount;
         public long NexonCashBalance => _nexonCash;
         public long MaplePointBalance => _maplePoint;
@@ -565,6 +571,9 @@ namespace HaCreator.MapSimulator.UI
             _cashShopLastKeyDownTick = tickCount;
             _cashShopItemSearchAllItemFilter = false;
             _cashShopSearchResultCount = 0;
+            _cashShopSearchResultSelectedIndex = -1;
+            _cashShopSearchResultScrollOffset = 0;
+            _cashShopSearchResultPageIndex = 0;
             _cashStageCatalogSnapshotEntries.Clear();
             _cashStageCatalogSnapshotPaneLabel = "Stage catalog";
             _cashStageCatalogSnapshotBrowseModeLabel = "All";
@@ -782,10 +791,83 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _cashShopSearchResultCount = Math.Max(_cashShopSearchResultCount, _cashStageCatalogSnapshotEntries.Count);
+            _cashShopSearchResultSelectedIndex = _cashShopSearchResultCount > 0 ? 0 : -1;
+            _cashShopSearchResultScrollOffset = 0;
+            _cashShopSearchResultPageIndex = 0;
             _cashShopLastKeyDownTick = tickCount;
-            _searchState = $"CCashShop::SetSearchResult copied {_cashShopSearchResultCount.ToString(CultureInfo.InvariantCulture)} modeled row(s) into m_lCommSearchResult.";
+            _searchState = $"CCashShop::SetSearchResult copied {_cashShopSearchResultCount.ToString(CultureInfo.InvariantCulture)} modeled row(s) into m_lCommSearchResult and reset the WZ-backed result popup scroll.";
             ApplyCashShopWrapperCategoryChange(10, tickCount);
             return $"{_searchState} CCSWnd_Tab moved to category 10.";
+        }
+
+        public string MoveCashShopItemSearchResultSelection(int delta, int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_ItemSearch search results are only valid inside the Cash Shop stage.";
+            }
+
+            if (_cashShopSearchResultCount <= 0)
+            {
+                _cashShopSearchResultSelectedIndex = -1;
+                _cashShopSearchResultScrollOffset = 0;
+                _cashShopSearchResultPageIndex = 0;
+                _searchState = "CCSWnd_ItemSearch result popup has no modeled rows to scroll.";
+                return _searchState;
+            }
+
+            const int visibleCount = 5;
+            int selectedIndex = _cashShopSearchResultSelectedIndex < 0 ? 0 : _cashShopSearchResultSelectedIndex;
+            selectedIndex = Math.Clamp(selectedIndex + Math.Sign(delta), 0, _cashShopSearchResultCount - 1);
+            _cashShopSearchResultSelectedIndex = selectedIndex;
+            _cashShopSearchResultScrollOffset = Math.Clamp(
+                _cashShopSearchResultScrollOffset,
+                0,
+                Math.Max(0, _cashShopSearchResultCount - visibleCount));
+            if (selectedIndex < _cashShopSearchResultScrollOffset)
+            {
+                _cashShopSearchResultScrollOffset = selectedIndex;
+            }
+            else if (selectedIndex >= _cashShopSearchResultScrollOffset + visibleCount)
+            {
+                _cashShopSearchResultScrollOffset = Math.Max(0, selectedIndex - visibleCount + 1);
+            }
+
+            _cashShopSearchResultPageIndex = _cashShopSearchResultScrollOffset / visibleCount;
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState =
+                $"CCSWnd_ItemSearch result popup selected row {_cashShopSearchResultSelectedIndex.ToString(CultureInfo.InvariantCulture)} with scroll offset {_cashShopSearchResultScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            return _searchState;
+        }
+
+        public string MoveCashShopItemSearchResultPage(int delta, int tickCount)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop)
+            {
+                return "CCSWnd_ItemSearch search results are only valid inside the Cash Shop stage.";
+            }
+
+            if (_cashShopSearchResultCount <= 0)
+            {
+                _cashShopSearchResultSelectedIndex = -1;
+                _cashShopSearchResultScrollOffset = 0;
+                _cashShopSearchResultPageIndex = 0;
+                _searchState = "CCSWnd_ItemSearch result popup has no modeled page to move.";
+                return _searchState;
+            }
+
+            const int visibleCount = 5;
+            int maxOffset = Math.Max(0, _cashShopSearchResultCount - visibleCount);
+            _cashShopSearchResultScrollOffset = Math.Clamp(
+                _cashShopSearchResultScrollOffset + (Math.Sign(delta) * visibleCount),
+                0,
+                maxOffset);
+            _cashShopSearchResultSelectedIndex = Math.Clamp(_cashShopSearchResultScrollOffset, 0, _cashShopSearchResultCount - 1);
+            _cashShopSearchResultPageIndex = _cashShopSearchResultScrollOffset / visibleCount;
+            _cashShopLastKeyDownTick = tickCount;
+            _searchState =
+                $"CCSWnd_ItemSearch result popup moved to page {_cashShopSearchResultPageIndex.ToString(CultureInfo.InvariantCulture)} at scroll offset {_cashShopSearchResultScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            return _searchState;
         }
 
         public string ClearCashShopItemSearchResult(int tickCount)
@@ -796,6 +878,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _cashShopSearchResultCount = 0;
+            _cashShopSearchResultSelectedIndex = -1;
+            _cashShopSearchResultScrollOffset = 0;
+            _cashShopSearchResultPageIndex = 0;
             _cashShopLastKeyDownTick = tickCount;
             _searchState = "CCSWnd_ItemSearch result popup closed and m_lCommSearchResult is modeled as empty.";
             return _searchState;
@@ -843,11 +928,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _cashStageCatalogSnapshotEntries.Clear();
-            _cashStageCatalogSnapshotEntries.AddRange(BuildCashShopStageCatalogSnapshotEntries(
+            IReadOnlyList<PacketCatalogEntry> stageEntries = BuildCashShopStageCatalogSnapshotEntries(
                 snapshot,
                 packetOwnedAdminShopEntries,
-                packetOwnedAdminShopSummary));
+                packetOwnedAdminShopSummary);
+            if (stageEntries.Count == 0
+                && snapshot == null
+                && (packetOwnedAdminShopEntries == null || packetOwnedAdminShopEntries.Count == 0))
+            {
+                return;
+            }
+
+            _cashStageCatalogSnapshotEntries.Clear();
+            _cashStageCatalogSnapshotEntries.AddRange(stageEntries);
 
             _cashStageCatalogSnapshotPaneLabel = string.IsNullOrWhiteSpace(snapshot?.PaneLabel)
                 ? "Stage catalog"
@@ -866,6 +959,129 @@ namespace HaCreator.MapSimulator.UI
             _cashStageCatalogSnapshotTotalCount = Math.Max(
                 _cashStageCatalogSnapshotEntries.Count,
                 Math.Max(0, snapshot?.TotalCount ?? 0));
+        }
+
+        internal void CapturePacketOwnedAdminShopOpenSnapshot(
+            AdminShopPacketOwnedOpenPayloadSnapshot snapshot,
+            string packetOwnedAdminShopSummary)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop || snapshot == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<PacketCatalogEntry> entries = BuildPacketOwnedAdminShopStageCatalogEntries(snapshot);
+            if (entries.Count == 0)
+            {
+                return;
+            }
+
+            _cashStageCatalogSnapshotEntries.Clear();
+            _cashStageCatalogSnapshotEntries.AddRange(entries);
+            _cashStageCatalogSnapshotPaneLabel = "Stage packet catalog";
+            _cashStageCatalogSnapshotBrowseModeLabel = snapshot.AskItemWishlist ? "Wish" : "All";
+            _cashStageCatalogSnapshotCategoryLabel = "CCashShop";
+            _cashStageCatalogSnapshotFooterMessage = !string.IsNullOrWhiteSpace(packetOwnedAdminShopSummary)
+                ? packetOwnedAdminShopSummary.Trim()
+                : $"CCashShop captured CAdminShopDlg::SetAdminShopDlg packet catalog for NPC {snapshot.NpcTemplateId.ToString(CultureInfo.InvariantCulture)} with {snapshot.CommodityCount.ToString(CultureInfo.InvariantCulture)} decoded row(s).";
+            _cashStageCatalogSnapshotSelectedIndex = 0;
+            _cashStageCatalogSnapshotScrollOffset = 0;
+            _cashStageCatalogSnapshotTotalCount = Math.Max(snapshot.CommodityCount, entries.Count);
+        }
+
+        internal static IReadOnlyList<PacketCatalogEntry> BuildPacketOwnedAdminShopStageCatalogEntries(
+            AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
+        {
+            if (snapshot?.Rows == null || snapshot.Rows.Count == 0)
+            {
+                return Array.Empty<PacketCatalogEntry>();
+            }
+
+            List<PacketCatalogEntry> entries = new(snapshot.Rows.Count);
+            foreach (AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot row in snapshot.Rows)
+            {
+                PacketCatalogEntry entry = BuildPacketOwnedAdminShopStageCatalogEntry(snapshot, row);
+                if (entry != null)
+                {
+                    entries.Add(entry);
+                }
+            }
+
+            return entries;
+        }
+
+        private static PacketCatalogEntry BuildPacketOwnedAdminShopStageCatalogEntry(
+            AdminShopPacketOwnedOpenPayloadSnapshot snapshot,
+            AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot row)
+        {
+            if (row == null)
+            {
+                return null;
+            }
+
+            int resolvedItemId = Math.Max(0, row.ItemId);
+            long metadataPrice = 0;
+            int metadataCount = 0;
+            bool metadataOnSale = row.SaleState == 0;
+            if (row.SerialNumber > 0
+                && AdminShopDialogUI.TryResolveCommodityBySerialNumber(
+                    row.SerialNumber,
+                    out int commodityItemId,
+                    out metadataPrice,
+                    out metadataCount,
+                    out metadataOnSale)
+                && commodityItemId > 0)
+            {
+                resolvedItemId = commodityItemId;
+            }
+
+            bool buyRow = row.Price > 0;
+            long rowPrice = Math.Abs((long)row.Price);
+            if (rowPrice == 0 && metadataPrice > 0)
+            {
+                rowPrice = metadataPrice;
+            }
+
+            int quantity = Math.Max(1, metadataCount > 0 ? metadataCount : 1);
+            string title = resolvedItemId > 0 && InventoryItemMetadataResolver.TryResolveItemName(resolvedItemId, out string itemName)
+                ? itemName
+                : row.SerialNumber > 0
+                    ? $"Commodity SN {row.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Packet row {Math.Max(1, row.PacketRowIndex).ToString(CultureInfo.InvariantCulture)}";
+            string wzDescription = resolvedItemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(resolvedItemId, out string description)
+                ? description
+                : "No item description was resolved from WZ for this packet-authored row.";
+            string packetSummary =
+                $"CCashShop-owned packet catalog row: row={Math.Max(1, row.PacketRowIndex).ToString(CultureInfo.InvariantCulture)}, packetOffset={row.PacketRowOffset.ToString(CultureInfo.InvariantCulture)}, sn={row.SerialNumber.ToString(CultureInfo.InvariantCulture)}, itemID={resolvedItemId.ToString(CultureInfo.InvariantCulture)}, packetItemID={row.ItemId.ToString(CultureInfo.InvariantCulture)}, price={row.Price.ToString(CultureInfo.InvariantCulture)}, saleState=0x{row.SaleState:X2}, maxPerSlot={Math.Max(1, row.MaxPerSlot).ToString(CultureInfo.InvariantCulture)}, wishlist={(snapshot.AskItemWishlist ? "on" : "off")}.";
+
+            return new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = string.IsNullOrWhiteSpace(wzDescription)
+                    ? packetSummary
+                    : $"{wzDescription} {packetSummary}",
+                Seller = snapshot.NpcTemplateId > 0
+                    ? $"NPC {snapshot.NpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                    : "Packet-owned shop",
+                PriceLabel = buyRow
+                    ? $"{rowPrice.ToString("N0", CultureInfo.InvariantCulture)} NX"
+                    : $"Sell {rowPrice.ToString("N0", CultureInfo.InvariantCulture)} meso",
+                StateLabel = buyRow
+                    ? row.SaleState == 0 && metadataOnSale
+                        ? "Packet-owned shop"
+                        : $"SaleState {row.SaleState.ToString(CultureInfo.InvariantCulture)}"
+                    : "Sell template",
+                ListingId = Math.Max(0, row.SerialNumber),
+                CommodityId = Math.Max(0, row.SerialNumber),
+                ItemId = resolvedItemId,
+                Quantity = quantity,
+                Price = (int)Math.Clamp(rowPrice, 0L, int.MaxValue),
+                PacketRowIndex = row.PacketRowIndex,
+                PacketSource = "CCashShop stage-owned CAdminShopDlg::SetAdminShopDlg packet catalog row",
+                PacketFieldSummary = packetSummary,
+                PacketRawByteLength = row.PacketRawByteLength,
+                PacketPayloadRawHex = row.PacketPayloadRawHex
+            };
         }
 
         internal static IReadOnlyList<PacketCatalogEntry> BuildCashShopStageCatalogSnapshotEntries(
@@ -1306,7 +1522,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 _searchState,
                 "CCSWnd_ItemSearch is modeled as the dedicated search wrapper backed by ui/CashShop.img/CSItemSearch PopUp/PopUp1.",
-                $"CCSWnd_ItemSearch::OnButtonClicked opens CItemSearchDlg with WZ price ranges, price combo 2000 at 3,103, edit 1000 at 103,27, OK/Cancel buttons 1/2, filters on-sale cash commodities, and forwards results through CCashShop::SetSearchResult; all-item filter {(_cashShopItemSearchAllItemFilter ? "on" : "off")}."
+                $"CCSWnd_ItemSearch::OnButtonClicked opens CItemSearchDlg with WZ price ranges, price combo 2000 at 3,103, edit 1000 at 103,27, OK/Cancel buttons 1/2, filters on-sale non-meso cash commodities by item-name substring and price overlap, and forwards results through CCashShop::SetSearchResult; all-item filter {(_cashShopItemSearchAllItemFilter ? "on" : "off")}.",
+                $"Result popup uses UI/CashShop.img/CSItemSearch/PopUp1 Scroll art (base 15x167, thumb 13x25) with modeled selected row {_cashShopSearchResultSelectedIndex.ToString(CultureInfo.InvariantCulture)}, page {_cashShopSearchResultPageIndex.ToString(CultureInfo.InvariantCulture)}, and offset {_cashShopSearchResultScrollOffset.ToString(CultureInfo.InvariantCulture)}."
             };
         }
 

@@ -888,6 +888,7 @@ namespace HaCreator.MapSimulator
         private LoginUtilityDialogVisualStyle _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogFrameVariant _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+        private LoginPacketDialogOwner _loginUtilityDialogOwner = LoginPacketDialogOwner.LoginUtilityDialog;
         private LoginPacketResultDialogOwner _loginUtilityDialogPacketResultOwner = LoginPacketResultDialogOwner.None;
         private bool _loginUtilityDialogPrimaryEnabled = true;
         private bool _loginUtilityDialogTracksDirectionModeOwner;
@@ -4283,11 +4284,13 @@ namespace HaCreator.MapSimulator
                 (text, whisper) =>
                 {
                     string draftMessage = _avatarMegaphoneRuntime.ApplySendDialogDraft(text, whisper);
+                    string requestMessage = MirrorAvatarMegaphoneConsumeCashItemUseRequest();
                     string publishMessage = PublishAvatarMegaphoneDraft();
-                    ShowUtilityFeedbackMessage(publishMessage);
+                    string combinedMessage = $"{publishMessage} {requestMessage}";
+                    ShowUtilityFeedbackMessage(combinedMessage);
                     return publishMessage.StartsWith("Avatar megaphone activated", StringComparison.Ordinal)
-                        ? publishMessage
-                        : draftMessage;
+                        ? combinedMessage
+                        : $"{draftMessage} {requestMessage}";
                 },
                 () => ShowUtilityFeedbackMessage("Closed avatar megaphone send dialog."));
             dialogWindow.SetFont(_fontChat);
@@ -4297,6 +4300,32 @@ namespace HaCreator.MapSimulator
         {
             WireAvatarMegaphoneSendDialogData();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.AvatarMegaphoneSendDialog);
+        }
+
+        private string MirrorAvatarMegaphoneConsumeCashItemUseRequest()
+        {
+            if (!_avatarMegaphoneRuntime.TryBuildConsumeCashItemUseRequest(
+                    currTickCount,
+                    out AvatarMegaphoneConsumeCashItemUseRequest request,
+                    out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            byte[] payload = AvatarMegaphonePacketCodec.EncodeConsumeCashItemUseRequestPayload(request);
+            string payloadHex = Convert.ToHexString(payload);
+            int opcode = AvatarMegaphonePacketCodec.ConsumeCashItemUseRequestOpcode;
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out string outboxStatus))
+            {
+                return $"Dispatched CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the local-utility outbox. {outboxStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedStatus))
+            {
+                return $"Queued CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for local-utility outbox delivery after immediate dispatch was unavailable. Outbox: {outboxStatus} Queue: {queuedStatus}";
+            }
+
+            return $"Kept CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] simulator-local after the local-utility outbox rejected dispatch and queueing. Outbox: {outboxStatus} Queue: {queuedStatus}";
         }
 
         private string PublishAvatarMegaphoneDraft()
@@ -10440,6 +10469,15 @@ namespace HaCreator.MapSimulator
             int durationMs,
             string statusMessage)
         {
+            if (IsLoginRuntimeSceneActive)
+            {
+                statusMessage = TrySendLiveOfficialSelectorRequest(
+                    requestKind,
+                    worldId,
+                    channelIndex,
+                    statusMessage);
+            }
+
             _selectorRequestKind = requestKind;
             _selectorRequestWorldId = Math.Max(0, worldId);
             _selectorRequestChannelIndex = Math.Max(0, channelIndex);
@@ -10453,6 +10491,72 @@ namespace HaCreator.MapSimulator
             RefreshWorldChannelSelectorWindows();
             SyncLoginEntryDialogs();
         }
+
+        private string TrySendLiveOfficialSelectorRequest(
+            SelectorRequestKind requestKind,
+            int worldId,
+            int channelIndex,
+            string fallbackStatusMessage)
+        {
+            if (!_loginOfficialSessionBridge.HasConnectedSession)
+            {
+                return fallbackStatusMessage;
+            }
+
+            string bridgeStatus = null;
+            bool sent = requestKind switch
+            {
+                SelectorRequestKind.LoginWorldCheck => TrySendLiveOfficialCheckUserLimitRequest(worldId, out bridgeStatus),
+                SelectorRequestKind.ChannelChange when IsLoginRuntimeSceneActive => TrySendLiveOfficialSelectWorldRequest(worldId, channelIndex, out bridgeStatus),
+                _ => false
+            };
+
+            if (!sent)
+            {
+                return fallbackStatusMessage;
+            }
+
+            return string.IsNullOrWhiteSpace(bridgeStatus)
+                ? fallbackStatusMessage
+                : $"{bridgeStatus}; waiting for live login packet bridge response.";
+        }
+
+        private bool TrySendLiveOfficialCheckUserLimitRequest(int worldId, out string status)
+        {
+            status = null;
+            if (!IsLoginRuntimeSceneActive || !_loginOfficialSessionBridge.HasConnectedSession)
+            {
+                return false;
+            }
+
+            return _loginOfficialSessionBridge.TrySendCheckUserLimitRequest(worldId, out status);
+        }
+
+        private bool TrySendLiveOfficialSelectWorldRequest(int worldId, int channelIndex, out string status)
+        {
+            status = null;
+            if (!IsLoginRuntimeSceneActive || !_loginOfficialSessionBridge.HasConnectedSession)
+            {
+                return false;
+            }
+
+            if (!TryResolveLiveOfficialCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial))
+            {
+                status = "Login official-session SelectWorld injection needs client-auth material captured from a live opcode 1 CheckPassword request, or /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode].";
+                return false;
+            }
+
+            return _loginOfficialSessionBridge.TrySendSelectWorldRequest(
+                new LoginSelectWorldRequest(
+                    authMaterial.NexonPassport,
+                    authMaterial.MachineId,
+                    authMaterial.GameRoomClient,
+                    authMaterial.GameStartMode,
+                    Math.Max(0, worldId),
+                    Math.Max(0, channelIndex)),
+                out status);
+        }
+
         private void CancelWorldChannelSelectorRequest(string resultMessage)
         {
             _selectorRequestKind = SelectorRequestKind.None;
@@ -16435,6 +16539,7 @@ namespace HaCreator.MapSimulator
                 _loginUtilityDialogFrameVariant,
                 _loginUtilityDialogInputBoundsOverride,
                 _loginUtilityDialogPrimaryEnabled,
+                _loginUtilityDialogOwner,
                 _loginUtilityDialogPacketResultOwner);
             if (_loginUtilityDialogTracksDirectionModeOwner)
             {
@@ -16471,6 +16576,7 @@ namespace HaCreator.MapSimulator
             bool trackDirectionModeOwner = false,
             bool hasExplicitTrackDirectionModeOwner = false,
             bool primaryButtonEnabled = true,
+            LoginPacketDialogOwner dialogOwner = LoginPacketDialogOwner.LoginUtilityDialog,
             LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None)
         {
             if (!string.IsNullOrWhiteSpace(returnWindowName))
@@ -16505,6 +16611,7 @@ namespace HaCreator.MapSimulator
                 noticeTextIndex,
                 inputLabel,
                 visualStyle);
+            _loginUtilityDialogOwner = dialogOwner;
             _loginUtilityDialogPacketResultOwner = packetResultOwner;
             _loginUtilityDialogTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
                 trackDirectionModeOwner,
@@ -16739,6 +16846,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
             _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
             _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+            _loginUtilityDialogOwner = LoginPacketDialogOwner.LoginUtilityDialog;
             _loginUtilityDialogPacketResultOwner = LoginPacketResultDialogOwner.None;
             _loginUtilityDialogTracksDirectionModeOwner = false;
             _loginUtilityDialogInputValue = string.Empty;
@@ -22608,7 +22716,7 @@ namespace HaCreator.MapSimulator
         {
             int actionLeadTimeMs = Math.Max(1000, Math.Max(skill?.SkillAfter ?? 0, skill?.EffectAfter ?? 0));
             int durationMs = Math.Max(0, runtimeData?.DurationMs ?? 0);
-            int intervalMs = Math.Max(0, runtimeData?.IntervalMs ?? 0);
+            int intervalMs = Math.Max(0, PlayerMobStatusController.ResolvePeriodicTickInterval(runtimeData, 0));
             if (durationMs <= 0 || intervalMs <= 0 || intervalMs >= durationMs)
             {
                 return actionLeadTimeMs;
@@ -33974,14 +34082,17 @@ namespace HaCreator.MapSimulator
                     rewardIdentitySeed,
                     rewardItemIds,
                     maxRewardCount: 2);
-                if (!ShouldSuppressSimulatorOwnedAuthoredRewardListDropFallback(
-                        recentPacketDropAgeMs,
-                        _dropPool?.ActiveDrops,
-                        rewardItemIdsToSpawn))
+                IReadOnlyList<int> simulatorOwnedRewardItemIdsToSpawn = FilterSimulatorOwnedAuthoredRewardListDrops(
+                    recentPacketDropAgeMs,
+                    _dropPool?.ActiveDrops,
+                    rewardItemIdsToSpawn);
+                if (simulatorOwnedRewardItemIdsToSpawn.Count > 0)
                 {
-                    for (int i = 0; i < rewardItemIdsToSpawn.Count; i++)
+                    int rewardDropOwnerId = _playerManager?.Player?.Build?.Id ?? 0;
+                    int rewardDropSourceId = ResolveSimulatorOwnedMobDeathDropSourceId(mob?.PoolId ?? 0, killedMobId);
+                    for (int i = 0; i < simulatorOwnedRewardItemIdsToSpawn.Count; i++)
                     {
-                        int rewardItemId = rewardItemIdsToSpawn[i];
+                        int rewardItemId = simulatorOwnedRewardItemIdsToSpawn[i];
                         int rewardQuantity = MobStatusRewardParity.ResolveDropItemQuantity(mob, rewardItemId, 1, supportDropRatePercent);
                         _dropPool.SpawnItemDrop(
                             mobX - 18f - (18f * i),
@@ -33989,7 +34100,9 @@ namespace HaCreator.MapSimulator
                             rewardItemId.ToString(CultureInfo.InvariantCulture),
                             rewardQuantity,
                             currentTick,
-                            isRare: true);
+                            ownerId: rewardDropOwnerId,
+                            isRare: true,
+                            sourceId: rewardDropSourceId);
                     }
                 }
             }
@@ -34018,9 +34131,7 @@ namespace HaCreator.MapSimulator
                 // the same owner/source shape the drop pool uses for client-authored pickup windows.
                 const int cardQuantity = 1;
                 int cardDropOwnerId = _playerManager?.Player?.Build?.Id ?? 0;
-                int cardDropSourceId = mob?.PoolId > 0
-                    ? mob.PoolId
-                    : killedMobId;
+                int cardDropSourceId = ResolveSimulatorOwnedMobDeathDropSourceId(mob?.PoolId ?? 0, killedMobId);
                 _dropPool.SpawnItemDrop(
                     mobX + 18f,
                     mobY,
@@ -34082,6 +34193,44 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static IReadOnlyList<int> FilterSimulatorOwnedAuthoredRewardListDrops(
+            int recentPacketDropAgeMs,
+            IReadOnlyList<DropItem> activeDrops,
+            IReadOnlyList<int> rewardItemIds)
+        {
+            if (rewardItemIds == null || rewardItemIds.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (ShouldSuppressSimulatorOwnedMonsterCardDropFallback(recentPacketDropAgeMs))
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> filteredRewardItemIds = null;
+            for (int i = 0; i < rewardItemIds.Count; i++)
+            {
+                int rewardItemId = rewardItemIds[i];
+                if (rewardItemId <= 0 || HasActivePacketOwnedItemDrop(activeDrops, rewardItemId))
+                {
+                    continue;
+                }
+
+                filteredRewardItemIds ??= new List<int>(rewardItemIds.Count);
+                filteredRewardItemIds.Add(rewardItemId);
+            }
+
+            return (IReadOnlyList<int>)filteredRewardItemIds ?? Array.Empty<int>();
+        }
+
+        internal static int ResolveSimulatorOwnedMobDeathDropSourceId(int mobPoolId, int mobTemplateId)
+        {
+            return mobPoolId > 0
+                ? mobPoolId
+                : Math.Max(0, mobTemplateId);
         }
 
         private static bool HasActivePacketOwnedItemDrop(
@@ -34487,7 +34636,9 @@ namespace HaCreator.MapSimulator
                 StopSkillMacroForHandleUpKeyDown();
             }
 
-            if (!PassiveTransferFieldReadinessEvaluator.CanHandleFreshUpKeyDown(_localFollowRuntime.HasAttachedDriver))
+            if (!PassiveTransferFieldReadinessEvaluator.CanHandleFreshUpKeyDown(
+                    _localFollowRuntime.HasAttachedDriver,
+                    ResolvePassiveTransferFieldHandleUpKeyDownInputOwner(interactInputSource)))
             {
                 return;
             }
@@ -35833,9 +35984,57 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
             IReadOnlyList<MovePathElement> encodedPath)
         {
+            return ResolvePortalOwnedLocalUserFlushKeyPadStates(
+                encodedPath,
+                _playerManager?.LatestLocalClientKeyPadState,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryStates,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession);
+        }
+
+        internal static IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
+            IReadOnlyList<MovePathElement> encodedPath,
+            byte? fallbackKeyPadState,
+            IReadOnlyList<byte> capturedKeyPadMemoryStates,
+            bool capturedKeyPadMemoryFromOfficialSession)
+        {
+            if (TryResolveOfficialPortalOwnedKeyPadMemoryStates(
+                    encodedPath,
+                    capturedKeyPadMemoryStates,
+                    capturedKeyPadMemoryFromOfficialSession,
+                    out IReadOnlyList<byte> officialStates))
+            {
+                return officialStates;
+            }
+
             return CMovePathClientPacketCodec.ResolveClientFlushTailPassiveKeyPadStates(
                 encodedPath,
-                _playerManager?.LatestLocalClientKeyPadState);
+                fallbackKeyPadState);
+        }
+
+        private static bool TryResolveOfficialPortalOwnedKeyPadMemoryStates(
+            IReadOnlyList<MovePathElement> encodedPath,
+            IReadOnlyList<byte> capturedKeyPadMemoryStates,
+            bool capturedKeyPadMemoryFromOfficialSession,
+            out IReadOnlyList<byte> states)
+        {
+            states = Array.Empty<byte>();
+            int encodedCount = encodedPath?.Count ?? 0;
+            if (!capturedKeyPadMemoryFromOfficialSession
+                || encodedCount <= 0
+                || capturedKeyPadMemoryStates == null
+                || capturedKeyPadMemoryStates.Count != encodedCount)
+            {
+                return false;
+            }
+
+            byte[] normalizedStates = new byte[encodedCount];
+            for (int i = 0; i < normalizedStates.Length; i++)
+            {
+                normalizedStates[i] = (byte)(capturedKeyPadMemoryStates[i] & 0x0F);
+            }
+
+            states = normalizedStates;
+            return true;
         }
 
         internal static bool ShouldAdmitPortalOwnedMovePathFlushCadence(

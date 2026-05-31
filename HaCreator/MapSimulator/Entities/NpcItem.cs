@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Entities
         private Func<MapleTvVisualAssets> _mapleTvVisualAssetsProvider;
         private Func<MapleTvSnapshot> _mapleTvSnapshotProvider;
         private SpriteFont _mapleTvFont;
+        private readonly NpcMapleTvNativeCanvasGraphState _mapleTvNativeCanvasGraph = new();
         private int _mapleTvMessageX;
         private int _mapleTvMessageY;
         private int _mapleTvAdX;
@@ -96,6 +97,7 @@ namespace HaCreator.MapSimulator.Entities
         public int MapleTvMessageY => _mapleTvMessageY;
         public int MapleTvAdX => _mapleTvAdX;
         public int MapleTvAdY => _mapleTvAdY;
+        internal NpcMapleTvNativeCanvasGraphSnapshot MapleTvNativeCanvasGraphSnapshot => _mapleTvNativeCanvasGraph.BuildSnapshot();
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -769,6 +771,8 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            UpdateMapleTvNativeCanvasGraph(visualAssets, snapshot);
+
             Point floatOffset = ResolveClientFloatVisualOffsetAtTick(tickCount);
             if (!snapshot.IsShowingMessage)
             {
@@ -985,9 +989,21 @@ namespace HaCreator.MapSimulator.Entities
             MapleTvVisualAssets visualAssets,
             MapleTvSnapshot snapshot)
         {
-            if (visualAssets == null || snapshot == null || !snapshot.IsShowingMessage)
+            if (visualAssets == null || snapshot == null)
             {
                 return Array.Empty<NpcMapleTvNativeCanvasOperation>();
+            }
+
+            if (!snapshot.IsShowingMessage)
+            {
+                string idleCanvasName = snapshot.QueueExists ? "TVoff" : "TVbasic";
+                return new[]
+                {
+                    NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTV", -2),
+                    NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTVMSGIntermission", -2),
+                    NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTVMSGBasicUI", -2),
+                    NpcMapleTvNativeCanvasOperation.InsertCanvas("m_pLayerMapleTV", idleCanvasName)
+                };
             }
 
             int variantKey = ResolveActorLocalMapleTvChatVariantKey(visualAssets, snapshot);
@@ -1008,7 +1024,9 @@ namespace HaCreator.MapSimulator.Entities
             var operations = new List<NpcMapleTvNativeCanvasOperation>
             {
                 NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTV", -2),
-                NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTVMSGIntermission", -2)
+                NpcMapleTvNativeCanvasOperation.RemoveCanvas("m_pLayerMapleTVMSGIntermission", -2),
+                NpcMapleTvNativeCanvasOperation.InsertCanvas("m_pLayerMapleTV", $"TVmedia/{snapshot.ResolvedMediaIndex}"),
+                NpcMapleTvNativeCanvasOperation.InsertCanvas("m_pLayerMapleTVMSGIntermission", "TVon")
             };
 
             if (stringPoolId != 0)
@@ -1038,6 +1056,18 @@ namespace HaCreator.MapSimulator.Entities
             operations.Add(NpcMapleTvNativeCanvasOperation.DrawCanvasText("receiver", receiverOffset.X, receiverOffset.Y));
             operations.Add(NpcMapleTvNativeCanvasOperation.InsertCanvas("m_pLayerMapleTVMSGBasicUI", "pCanvasMSG"));
             return operations;
+        }
+
+        private void UpdateMapleTvNativeCanvasGraph(MapleTvVisualAssets visualAssets, MapleTvSnapshot snapshot)
+        {
+            IReadOnlyList<NpcMapleTvNativeCanvasOperation> operations =
+                BuildActorLocalMapleTvNativeCanvasPlan(visualAssets, snapshot);
+            if (operations.Count == 0)
+            {
+                return;
+            }
+
+            _mapleTvNativeCanvasGraph.Apply(operations);
         }
 
         private static int ResolveNativeMapleTvChatLayerOffsetX(int messageType)
@@ -1344,6 +1374,156 @@ namespace HaCreator.MapSimulator.Entities
                 layerName: layerName,
                 canvasName: canvasName);
         }
+    }
+
+    internal sealed class NpcMapleTvNativeCanvasGraphState
+    {
+        private readonly Dictionary<string, List<string>> _layerCanvases = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<string>> _canvasTextSlots = new(StringComparer.Ordinal);
+        private readonly List<string> _loadedLayerFamilies = new();
+        private readonly List<string> _animatedLayers = new();
+
+        internal void Apply(IReadOnlyList<NpcMapleTvNativeCanvasOperation> operations)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            foreach (NpcMapleTvNativeCanvasOperation operation in operations)
+            {
+                Apply(operation);
+            }
+        }
+
+        internal NpcMapleTvNativeCanvasGraphSnapshot BuildSnapshot()
+        {
+            return new NpcMapleTvNativeCanvasGraphSnapshot(
+                CloneDictionary(_layerCanvases),
+                CloneDictionary(_canvasTextSlots),
+                _loadedLayerFamilies.ToArray(),
+                _animatedLayers.ToArray());
+        }
+
+        private void Apply(NpcMapleTvNativeCanvasOperation operation)
+        {
+            if (operation == null)
+            {
+                return;
+            }
+
+            switch (operation.Kind)
+            {
+                case NpcMapleTvNativeCanvasOperationKind.RemoveCanvas:
+                    ApplyRemoveCanvas(operation);
+                    break;
+
+                case NpcMapleTvNativeCanvasOperationKind.LoadLayer:
+                    _loadedLayerFamilies.Add(FormatLoadedLayer(operation));
+                    break;
+
+                case NpcMapleTvNativeCanvasOperationKind.AnimateRepeat:
+                    if (!string.IsNullOrWhiteSpace(operation.LayerName))
+                    {
+                        _animatedLayers.Add(operation.LayerName);
+                    }
+                    break;
+
+                case NpcMapleTvNativeCanvasOperationKind.CreateMessageCanvas:
+                    if (!string.IsNullOrWhiteSpace(operation.CanvasName))
+                    {
+                        _canvasTextSlots[operation.CanvasName] = new List<string>();
+                    }
+                    break;
+
+                case NpcMapleTvNativeCanvasOperationKind.DrawText:
+                    if (!string.IsNullOrWhiteSpace(operation.CanvasName)
+                        && !string.IsNullOrWhiteSpace(operation.TextSlot))
+                    {
+                        if (!_canvasTextSlots.TryGetValue(operation.CanvasName, out List<string> slots))
+                        {
+                            slots = new List<string>();
+                            _canvasTextSlots[operation.CanvasName] = slots;
+                        }
+
+                        slots.Add(operation.TextSlot);
+                    }
+                    break;
+
+                case NpcMapleTvNativeCanvasOperationKind.InsertCanvas:
+                    if (!string.IsNullOrWhiteSpace(operation.LayerName)
+                        && !string.IsNullOrWhiteSpace(operation.CanvasName))
+                    {
+                        if (!_layerCanvases.TryGetValue(operation.LayerName, out List<string> canvases))
+                        {
+                            canvases = new List<string>();
+                            _layerCanvases[operation.LayerName] = canvases;
+                        }
+
+                        canvases.Remove(operation.CanvasName);
+                        canvases.Add(operation.CanvasName);
+                    }
+                    break;
+            }
+        }
+
+        private void ApplyRemoveCanvas(NpcMapleTvNativeCanvasOperation operation)
+        {
+            if (string.IsNullOrWhiteSpace(operation.LayerName)
+                || !_layerCanvases.TryGetValue(operation.LayerName, out List<string> canvases))
+            {
+                return;
+            }
+
+            if (operation.CanvasIndex < 0)
+            {
+                canvases.Clear();
+            }
+            else if (operation.CanvasIndex < canvases.Count)
+            {
+                canvases.RemoveAt(operation.CanvasIndex);
+            }
+
+            if (canvases.Count == 0)
+            {
+                _layerCanvases.Remove(operation.LayerName);
+            }
+        }
+
+        private static string FormatLoadedLayer(NpcMapleTvNativeCanvasOperation operation)
+        {
+            string family = operation.UolFamily ?? string.Empty;
+            return $"{family}:0x{operation.StringPoolId:X4}@{operation.OffsetX},{operation.OffsetY}";
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<string>> CloneDictionary(
+            Dictionary<string, List<string>> source)
+        {
+            return source.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value.ToArray(),
+                StringComparer.Ordinal);
+        }
+    }
+
+    internal sealed class NpcMapleTvNativeCanvasGraphSnapshot
+    {
+        internal NpcMapleTvNativeCanvasGraphSnapshot(
+            IReadOnlyDictionary<string, IReadOnlyList<string>> layerCanvases,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> canvasTextSlots,
+            IReadOnlyList<string> loadedLayerFamilies,
+            IReadOnlyList<string> animatedLayers)
+        {
+            LayerCanvases = layerCanvases ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            CanvasTextSlots = canvasTextSlots ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            LoadedLayerFamilies = loadedLayerFamilies ?? Array.Empty<string>();
+            AnimatedLayers = animatedLayers ?? Array.Empty<string>();
+        }
+
+        internal IReadOnlyDictionary<string, IReadOnlyList<string>> LayerCanvases { get; }
+        internal IReadOnlyDictionary<string, IReadOnlyList<string>> CanvasTextSlots { get; }
+        internal IReadOnlyList<string> LoadedLayerFamilies { get; }
+        internal IReadOnlyList<string> AnimatedLayers { get; }
     }
 
     internal enum NpcFloatVectorNativeOperationKind

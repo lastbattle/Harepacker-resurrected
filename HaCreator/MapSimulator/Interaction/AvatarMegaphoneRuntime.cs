@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ShakeStepMs = 65;
         private const int ShakeOffsetMagnitude = 5;
         private static readonly IReadOnlyList<string> ClientDrawPassOrder =
-            new[] { "background", "avatar", "avatarSkin", "nameTag", "messageText", "senderName" };
+            new[] { "avatar", "avatarSkin", "nameTag", "messageText", "senderName" };
         internal const int ChatLogType = 18;
         internal const int TrembleForce = 16;
         internal const int SendDialogRowMax = 4;
@@ -576,7 +576,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            Texture2D backgroundTexture = ResolveBackgroundTexture(device);
             Texture2D shortNameTagTexture = ResolveNameTagTexture(device, longTag: false);
             Texture2D longNameTagTexture = ResolveNameTagTexture(device, longTag: true);
             IReadOnlyList<AvatarMegaphoneAnimationFrame> itemFrames = ResolveItemFrames(_activePresentation.ItemProfile.ResourcePath, device);
@@ -585,11 +584,6 @@ namespace HaCreator.MapSimulator.Interaction
             bool useLongNameTag = ResolveNameTagStringPoolIdForWidth(senderWidth) == 0x0FB1;
             Texture2D nameTagTexture = useLongNameTag ? longNameTagTexture : shortNameTagTexture;
             int nameTagX = layout.PanelX + ResolveNameTagXForWidth(senderWidth);
-
-            if (backgroundTexture != null)
-            {
-                spriteBatch.Draw(backgroundTexture, new Vector2(layout.PanelX, 0), Color.White);
-            }
 
             DrawPreviewAvatar(spriteBatch, currentTick, layout.PanelX);
 
@@ -711,24 +705,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 0;
-        }
-
-        private Texture2D ResolveBackgroundTexture(GraphicsDevice device)
-        {
-            if (_animationCache.TryGetValue("__background__", out IReadOnlyList<AvatarMegaphoneAnimationFrame> cachedFrames)
-                && cachedFrames.Count > 0)
-            {
-                return cachedFrames[0].Texture;
-            }
-
-            WzCanvasProperty canvas = ResolveCanvas(MapleStoryStringPool.GetOrFallback(0x0FAE, "UI/UIWindow.img/AvatarMegaphone/backgrnd"));
-            Texture2D texture = LoadTexture(canvas, device);
-            if (texture != null)
-            {
-                _animationCache["__background__"] = new[] { new AvatarMegaphoneAnimationFrame(texture, Point.Zero, 0) };
-            }
-
-            return texture;
         }
 
         private Texture2D ResolveNameTagTexture(GraphicsDevice device, bool longTag)

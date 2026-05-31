@@ -1287,21 +1287,21 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             string guildName = NormalizeRoleLabel(reader.ReadString16(), $"Guild {i + 1}");
                             int points = reader.ReadInt32();
-                            int level = reader.ReadInt32();
-                            int memberCount = reader.ReadInt32();
-                            int rank = reader.ReadInt32();
+                            int markBackground = reader.ReadInt32();
+                            int markBackgroundColor = reader.ReadInt32();
                             int mark = reader.ReadInt32();
+                            int markColor = reader.ReadInt32();
                             rankingEntries.Add(new GuildRankingSeedEntry(
                                 guildName,
                                 "Guild Master",
                                 points,
-                                level > 0 ? $"Lv. {level}" : string.Empty,
-                                memberCount > 0 ? $"{memberCount} member{(memberCount == 1 ? string.Empty : "s")}" : string.Empty,
-                                rank > 0 ? $"Rank #{rank}" : string.Empty,
-                                null,
-                                null,
+                                string.Empty,
+                                string.Empty,
+                                string.Empty,
+                                markBackground,
+                                markBackgroundColor,
                                 mark,
-                                null,
+                                markColor,
                                 IsPacketOwned: true));
                         }
 

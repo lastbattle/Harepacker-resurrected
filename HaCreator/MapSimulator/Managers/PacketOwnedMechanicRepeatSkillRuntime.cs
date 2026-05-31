@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner|owner[\s_\-]*(?:byte|state|flag)|c[\s_\-:>.]*vec[\s_\-:>.]*ctrl[\s_\-:>.]*release|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
-            @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
+            @"(?<name>[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*\s*[:=])|[;\r\n]|$)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -3809,11 +3809,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalized = propertyName.Trim()
-                .Replace("_", string.Empty, StringComparison.Ordinal)
-                .Replace("-", string.Empty, StringComparison.Ordinal)
-                .Replace(" ", string.Empty, StringComparison.Ordinal)
-                .ToLowerInvariant();
+            string normalized = NormalizeSg88CaptureComparisonLabel(propertyName);
             if (normalized.EndsWith("base64", StringComparison.Ordinal))
             {
                 normalized = normalized.Substring(0, normalized.Length - "base64".Length);
@@ -3821,6 +3817,11 @@ namespace HaCreator.MapSimulator.Managers
             else if (normalized.EndsWith("b64", StringComparison.Ordinal))
             {
                 normalized = normalized.Substring(0, normalized.Length - "b64".Length);
+            }
+
+            if (TryNormalizeSg88CompositePacketComparisonLabel(normalized, out normalizedName))
+            {
+                return true;
             }
 
             switch (normalized)
@@ -4259,6 +4260,122 @@ namespace HaCreator.MapSimulator.Managers
                 default:
                     return false;
             }
+        }
+
+        private static string NormalizeSg88CaptureComparisonLabel(string label)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return string.Empty;
+            }
+
+            return label.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .Replace(".", string.Empty, StringComparison.Ordinal)
+                .Replace("/", string.Empty, StringComparison.Ordinal)
+                .Replace("\\", string.Empty, StringComparison.Ordinal)
+                .Replace("[", string.Empty, StringComparison.Ordinal)
+                .Replace("]", string.Empty, StringComparison.Ordinal)
+                .Replace("(", string.Empty, StringComparison.Ordinal)
+                .Replace(")", string.Empty, StringComparison.Ordinal)
+                .Replace("{", string.Empty, StringComparison.Ordinal)
+                .Replace("}", string.Empty, StringComparison.Ordinal)
+                .Replace(":", string.Empty, StringComparison.Ordinal)
+                .Replace(">", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+        }
+
+        private static bool TryNormalizeSg88CompositePacketComparisonLabel(
+            string normalized,
+            out string normalizedName)
+        {
+            normalizedName = null;
+            if (string.IsNullOrWhiteSpace(normalized)
+                || !HasSg88PacketComparisonValueSignal(normalized))
+            {
+                return false;
+            }
+
+            if (ContainsSg88ComparisonSideToken(
+                    normalized,
+                    "official",
+                    "client",
+                    "captured",
+                    "capture",
+                    "observed",
+                    "actual",
+                    "wire",
+                    "native",
+                    "live",
+                    "baseline",
+                    "golden",
+                    "reference",
+                    "left",
+                    "lhs",
+                    "source",
+                    "from",
+                    "before",
+                    "previous"))
+            {
+                normalizedName = "observed";
+                return true;
+            }
+
+            if (ContainsSg88ComparisonSideToken(
+                    normalized,
+                    "simulator",
+                    "simulated",
+                    "generated",
+                    "replay",
+                    "replayed",
+                    "rebuilt",
+                    "expected",
+                    "candidate",
+                    "emulated",
+                    "reconstructed",
+                    "right",
+                    "rhs",
+                    "target",
+                    "destination",
+                    "after",
+                    "current",
+                    "mapsim",
+                    "mapsimulator",
+                    "sut"))
+            {
+                normalizedName = "rebuilt";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool HasSg88PacketComparisonValueSignal(string normalized)
+        {
+            return normalized.Contains("value", StringComparison.Ordinal)
+                   || normalized.Contains("byte", StringComparison.Ordinal)
+                   || normalized.Contains("raw", StringComparison.Ordinal)
+                   || normalized.Contains("packet", StringComparison.Ordinal)
+                   || normalized.Contains("payload", StringComparison.Ordinal)
+                   || normalized.Contains("hex", StringComparison.Ordinal)
+                   || normalized.Contains("dump", StringComparison.Ordinal)
+                   || normalized.Contains("base64", StringComparison.Ordinal)
+                   || normalized.Contains("b64", StringComparison.Ordinal);
+        }
+
+        private static bool ContainsSg88ComparisonSideToken(string normalized, params string[] tokens)
+        {
+            foreach (string token in tokens)
+            {
+                if (normalized.Contains(token, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsSg88MismatchPairJsonLabel(string propertyName)

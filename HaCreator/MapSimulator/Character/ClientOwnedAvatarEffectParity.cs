@@ -36,6 +36,173 @@ namespace HaCreator.MapSimulator.Character
             ReleaseOwnerReference = 6
         }
 
+        public enum ClientOwnedAvatarLayerMutationKind
+        {
+            CaptureOwnerReference = 0,
+            CaptureParentUnderFaceReference = 1,
+            ReparentToUnderFace = 2,
+            SetVisible = 3,
+            ReleaseParentUnderFaceReference = 4,
+            ReleaseOwnerReference = 5
+        }
+
+        public readonly record struct ClientOwnedAvatarLayerMutation(
+            ClientOwnedAvatarLayerMutationKind Kind,
+            string OwnerName,
+            int SimulatedLayerHandleId,
+            int SimulatedListNodeId,
+            int SimulatedParentUnderFaceLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int SimulatedListNodeRefCount,
+            int SimulatedParentUnderFaceLayerHandleRefCount,
+            bool Visible,
+            string SourceEffectName)
+        {
+            public static ClientOwnedAvatarLayerMutation CaptureOwnerReference(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.CaptureOwnerReference,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId: 0,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    parentRefCount: 0,
+                    visible: true,
+                    sourceEffectName);
+            }
+
+            public static ClientOwnedAvatarLayerMutation CaptureParentUnderFaceReference(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.CaptureParentUnderFaceReference,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    parentRefCount: 1,
+                    visible: true,
+                    sourceEffectName);
+            }
+
+            public static ClientOwnedAvatarLayerMutation ReparentToUnderFace(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.ReparentToUnderFace,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    parentRefCount: 1,
+                    visible: true,
+                    sourceEffectName);
+            }
+
+            public static ClientOwnedAvatarLayerMutation SetVisible(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                bool visible,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.SetVisible,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    parentRefCount: parentUnderFaceLayerHandleId > 0 ? 1 : 0,
+                    visible,
+                    sourceEffectName);
+            }
+
+            public static ClientOwnedAvatarLayerMutation ReleaseParentUnderFaceReference(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.ReleaseParentUnderFaceReference,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    parentRefCount: 0,
+                    visible: false,
+                    sourceEffectName);
+            }
+
+            public static ClientOwnedAvatarLayerMutation ReleaseOwnerReference(
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                string sourceEffectName)
+            {
+                return Create(
+                    ClientOwnedAvatarLayerMutationKind.ReleaseOwnerReference,
+                    ownerName,
+                    layerHandleId,
+                    listNodeId,
+                    parentUnderFaceLayerHandleId: 0,
+                    layerRefCount: 0,
+                    listNodeRefCount: 0,
+                    parentRefCount: 0,
+                    visible: false,
+                    sourceEffectName);
+            }
+
+            private static ClientOwnedAvatarLayerMutation Create(
+                ClientOwnedAvatarLayerMutationKind kind,
+                string ownerName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId,
+                int layerRefCount,
+                int listNodeRefCount,
+                int parentRefCount,
+                bool visible,
+                string sourceEffectName)
+            {
+                return new ClientOwnedAvatarLayerMutation(
+                    kind,
+                    ownerName ?? string.Empty,
+                    Math.Max(0, layerHandleId),
+                    Math.Max(0, listNodeId),
+                    Math.Max(0, parentUnderFaceLayerHandleId),
+                    Math.Max(0, layerRefCount),
+                    Math.Max(0, listNodeRefCount),
+                    Math.Max(0, parentRefCount),
+                    visible,
+                    sourceEffectName ?? string.Empty);
+            }
+        }
+
         public readonly record struct EnergyChargeAdditionalLayerMutation(
             EnergyChargeAdditionalLayerMutationKind Kind,
             int AdditionalLayerIndex,

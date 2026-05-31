@@ -100,6 +100,18 @@ namespace HaCreator.MapSimulator.Entities
         public bool IsNotAttack => _mobInstance?.MobInfo?.MobData?.NotAttack == true;
 
         /// <summary>
+        /// Mirrors CMob::IsNotEnemyMob for local-player delayed attack admission.
+        /// </summary>
+        public bool IsNotEnemyMob => ResolveClientNotEnemyMob(_mobInstance?.MobInfo?.MobData, AI?.IsDazzled == true);
+
+        internal static bool ResolveClientNotEnemyMob(MobData mobData, bool isDazzled)
+        {
+            return mobData?.DamagedByMob == true ||
+                   mobData?.Escort == 1 ||
+                   isDazzled;
+        }
+
+        /// <summary>
         /// Escort and damagedByMob mobs participate in the encounter mob-vs-mob combat lane.
         /// </summary>
         public bool UsesMobCombatLane
@@ -521,7 +533,12 @@ namespace HaCreator.MapSimulator.Entities
                 return DamagedByMobBlinkDurationMs;
             }
 
-            hitAction ??= AnimationKeys.ResolveMobHitAction(animationSet);
+            hitAction ??= ResolveFirstClientHitAction(animationSet);
+            if (string.IsNullOrWhiteSpace(hitAction) || !animationSet.HasAnimation(hitAction))
+            {
+                return DamagedByMobBlinkDurationMs;
+            }
+
             List<IDXObject> frames = animationSet.GetFrames(hitAction);
             if (frames == null || frames.Count == 0)
             {
@@ -537,6 +554,28 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0
                 ? (int)Math.Min(duration, int.MaxValue)
                 : DamagedByMobBlinkDurationMs;
+        }
+
+        private static string ResolveFirstClientHitAction(AnimationSetBase animationSet)
+        {
+            if (animationSet == null)
+            {
+                return null;
+            }
+
+            if (animationSet.HasAnimation(AnimationKeys.Hit1))
+            {
+                return AnimationKeys.Hit1;
+            }
+
+            if (animationSet.HasAnimation(AnimationKeys.Hit2))
+            {
+                return AnimationKeys.Hit2;
+            }
+
+            return animationSet.HasAnimation(AnimationKeys.Hit)
+                ? AnimationKeys.Hit
+                : null;
         }
 
         private string SelectClientHitAction()

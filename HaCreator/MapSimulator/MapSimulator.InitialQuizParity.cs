@@ -252,6 +252,45 @@ namespace HaCreator.MapSimulator
             internal string ClientTimeoutSenderMethodName => "CUIInitialQuiz::SendResult";
         }
 
+        internal readonly record struct InitialQuizOwnerSetValuesSnapshot(
+            string Title,
+            string ProblemText,
+            string HintText,
+            int MinInputCharacters,
+            int MaxInputCharacters,
+            int MinInputByteLength,
+            int MaxInputByteLength,
+            int RemainingMilliseconds,
+            bool CopiesTitleString,
+            bool CopiesProblemString,
+            bool CopiesHintString,
+            bool ReleasesPassedTitleString,
+            bool ReleasesPassedProblemString,
+            bool ReleasesPassedHintString,
+            bool ComputesTimeOverFromTimeGetTime,
+            bool InvalidatesOwnerAfterSetValues)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SetValues";
+        }
+
+        internal readonly record struct InitialQuizOwnerSendResultSnapshot(
+            bool PreviousResultSent,
+            bool SendsPacket,
+            bool SetsResultSentBeforePacketBuild,
+            short OutboundOpcode,
+            byte MessageType,
+            string SubmittedValue,
+            int SubmittedClientByteLength,
+            byte[] RawPacket,
+            bool EncodesSubmittedValueWithClientString,
+            bool SendsThroughClientSocket,
+            bool RemovesSendBufferAfterSend,
+            bool ReleasesSubmittedStringAfterCall)
+        {
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SendResult";
+            internal string ClientSocketMethodName => "CClientSocket::SendPacket";
+        }
+
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
@@ -1921,6 +1960,59 @@ namespace HaCreator.MapSimulator
                 DestroysOwnerOnTimeout: timedOut,
                 ClearsContextRemainFlagOnTimeout: timedOut,
                 CallsBaseUpdateAfterChange: changed);
+        }
+
+        internal static InitialQuizOwnerSetValuesSnapshot BuildInitialQuizOwnerSetValuesSnapshot(
+            string title,
+            string problemText,
+            string hintText,
+            int minInputCharacters,
+            int maxInputCharacters,
+            int remainingMilliseconds)
+        {
+            int minimum = Math.Max(0, minInputCharacters);
+            int maximum = Math.Max(0, maxInputCharacters);
+            return new InitialQuizOwnerSetValuesSnapshot(
+                Title: title ?? string.Empty,
+                ProblemText: problemText ?? string.Empty,
+                HintText: hintText ?? string.Empty,
+                MinInputCharacters: minimum,
+                MaxInputCharacters: maximum,
+                MinInputByteLength: minimum * 2,
+                MaxInputByteLength: maximum * 2,
+                RemainingMilliseconds: Math.Max(0, remainingMilliseconds),
+                CopiesTitleString: true,
+                CopiesProblemString: true,
+                CopiesHintString: true,
+                ReleasesPassedTitleString: true,
+                ReleasesPassedProblemString: true,
+                ReleasesPassedHintString: true,
+                ComputesTimeOverFromTimeGetTime: true,
+                InvalidatesOwnerAfterSetValues: true);
+        }
+
+        internal static InitialQuizOwnerSendResultSnapshot BuildInitialQuizOwnerSendResultSnapshot(
+            string submittedValue,
+            bool previousResultSent)
+        {
+            submittedValue ??= string.Empty;
+            bool sendsPacket = !previousResultSent;
+            byte[] rawPacket = sendsPacket
+                ? PacketScriptMessageRuntime.BuildInitialQuizOwnerResponsePacketBytes(submittedValue)
+                : Array.Empty<byte>();
+            return new InitialQuizOwnerSendResultSnapshot(
+                PreviousResultSent: previousResultSent,
+                SendsPacket: sendsPacket,
+                SetsResultSentBeforePacketBuild: sendsPacket,
+                OutboundOpcode: 65,
+                MessageType: 6,
+                SubmittedValue: submittedValue,
+                SubmittedClientByteLength: InitialQuizTimerRuntime.GetClientMapleStringByteCount(submittedValue),
+                RawPacket: rawPacket,
+                EncodesSubmittedValueWithClientString: sendsPacket,
+                SendsThroughClientSocket: sendsPacket,
+                RemovesSendBufferAfterSend: sendsPacket,
+                ReleasesSubmittedStringAfterCall: true);
         }
 
         internal static float ResolveInitialQuizOwnerDrawTextScale(InitialQuizOwnerDrawTextSource source)

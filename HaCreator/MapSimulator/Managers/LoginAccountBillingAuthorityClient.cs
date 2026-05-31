@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace HaCreator.MapSimulator.Managers
@@ -25,6 +28,10 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class HttpLoginAccountBillingAuthorityClient : ILoginAccountBillingAuthorityClient
     {
         public const string EndpointEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_URL";
+        public const string AuthorizationEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_AUTHORIZATION";
+        public const string BearerTokenEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_BEARER_TOKEN";
+        public const string ClientIdEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_CLIENT_ID";
+        public const string ClientSecretEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_CLIENT_SECRET";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -33,11 +40,25 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly string _endpointUrl;
         private readonly TimeSpan _timeout;
+        private readonly string _authorizationHeader;
+        private readonly string _clientId;
+        private readonly string _clientSecret;
+        private readonly HttpMessageHandler _messageHandler;
 
-        public HttpLoginAccountBillingAuthorityClient(string endpointUrl, TimeSpan? timeout = null)
+        public HttpLoginAccountBillingAuthorityClient(
+            string endpointUrl,
+            TimeSpan? timeout = null,
+            string authorizationHeader = null,
+            string clientId = null,
+            string clientSecret = null,
+            HttpMessageHandler messageHandler = null)
         {
             _endpointUrl = string.IsNullOrWhiteSpace(endpointUrl) ? null : endpointUrl.Trim();
             _timeout = timeout ?? TimeSpan.FromMilliseconds(250);
+            _authorizationHeader = string.IsNullOrWhiteSpace(authorizationHeader) ? null : authorizationHeader.Trim();
+            _clientId = string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim();
+            _clientSecret = string.IsNullOrWhiteSpace(clientSecret) ? null : clientSecret.Trim();
+            _messageHandler = messageHandler;
         }
 
         public static ILoginAccountBillingAuthorityClient CreateFromEnvironment()
@@ -45,7 +66,11 @@ namespace HaCreator.MapSimulator.Managers
             string endpointUrl = Environment.GetEnvironmentVariable(EndpointEnvironmentVariableName);
             return string.IsNullOrWhiteSpace(endpointUrl)
                 ? null
-                : new HttpLoginAccountBillingAuthorityClient(endpointUrl);
+                : new HttpLoginAccountBillingAuthorityClient(
+                    endpointUrl,
+                    authorizationHeader: ResolveAuthorizationHeaderFromEnvironment(),
+                    clientId: Environment.GetEnvironmentVariable(ClientIdEnvironmentVariableName),
+                    clientSecret: Environment.GetEnvironmentVariable(ClientSecretEnvironmentVariableName));
         }
 
         public bool TryResolveExtraCharacterEntitlement(
@@ -61,15 +86,34 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                using HttpClient client = new()
-                {
-                    Timeout = _timeout
-                };
+                using HttpClient client = _messageHandler == null
+                    ? new HttpClient()
+                    : new HttpClient(_messageHandler, disposeHandler: false);
+                client.Timeout = _timeout;
 
-                string requestUrl = BuildRequestUrl(accountName, accountId);
-                string json = client.GetStringAsync(requestUrl).GetAwaiter().GetResult();
+                using HttpRequestMessage request = new(HttpMethod.Get, BuildRequestUrl(accountName, accountId));
+                ApplyConfiguredAuthorityHeaders(request);
+
+                using HttpResponseMessage responseMessage = client.SendAsync(request).GetAwaiter().GetResult();
+                if (!responseMessage.IsSuccessStatusCode)
+                {
+                    return false;
+                }
+
+                byte[] responseBytes = responseMessage.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                if (TryResolvePacketAuthoredEntitlement(
+                        responseBytes,
+                        accountId,
+                        source: "remote-account-billing-authority-packet",
+                        out entitlement))
+                {
+                    return true;
+                }
+
+                string json = Encoding.UTF8.GetString(responseBytes);
                 RemoteEntitlementResponse response =
                     JsonSerializer.Deserialize<RemoteEntitlementResponse>(json, JsonOptions);
+
                 if (response == null)
                 {
                     return false;
@@ -79,6 +123,14 @@ namespace HaCreator.MapSimulator.Managers
                 if (resolvedAccountId != accountId)
                 {
                     return false;
+                }
+
+                if (TryResolvePacketAuthoredEntitlement(
+                        response,
+                        accountId,
+                        out entitlement))
+                {
+                    return true;
                 }
 
                 bool canHaveExtraCharacter = response.CanHaveExtraCharacter &&
@@ -104,6 +156,206 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static string ResolveAuthorizationHeaderFromEnvironment()
+        {
+            string authorizationHeader = Environment.GetEnvironmentVariable(AuthorizationEnvironmentVariableName);
+            if (!string.IsNullOrWhiteSpace(authorizationHeader))
+            {
+                return authorizationHeader.Trim();
+            }
+
+            string bearerToken = Environment.GetEnvironmentVariable(BearerTokenEnvironmentVariableName);
+            return string.IsNullOrWhiteSpace(bearerToken)
+                ? null
+                : "Bearer " + bearerToken.Trim();
+        }
+
+        private void ApplyConfiguredAuthorityHeaders(HttpRequestMessage request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_authorizationHeader) &&
+                AuthenticationHeaderValue.TryParse(_authorizationHeader, out AuthenticationHeaderValue authorization))
+            {
+                request.Headers.Authorization = authorization;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_clientId))
+            {
+                request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Client-Id", _clientId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_clientSecret))
+            {
+                request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Client-Secret", _clientSecret);
+            }
+        }
+
+        private static bool TryResolvePacketAuthoredEntitlement(
+            RemoteEntitlementResponse response,
+            int accountId,
+            out LoginAccountBillingEntitlementRecord entitlement)
+        {
+            entitlement = null;
+            if (response == null)
+            {
+                return false;
+            }
+
+            foreach (string packetText in EnumeratePacketTextFields(response))
+            {
+                if (TryDecodePacketText(packetText, out byte[] packetBytes) &&
+                    TryResolvePacketAuthoredEntitlement(
+                        packetBytes,
+                        accountId,
+                        string.IsNullOrWhiteSpace(response.Source)
+                            ? "remote-account-billing-authority-packet"
+                            : response.Source.Trim(),
+                        out entitlement))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumeratePacketTextFields(RemoteEntitlementResponse response)
+        {
+            yield return response.ExtraCharInfoResultPacketHex;
+            yield return response.ExtraCharInfoResultPacketBase64;
+            yield return response.PacketHex;
+            yield return response.PacketBase64;
+            yield return response.PayloadHex;
+            yield return response.PayloadBase64;
+        }
+
+        private static bool TryDecodePacketText(string value, out byte[] packetBytes)
+        {
+            packetBytes = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = value.Trim();
+            if (TryDecodeHex(normalizedValue, out packetBytes))
+            {
+                return true;
+            }
+
+            try
+            {
+                packetBytes = Convert.FromBase64String(normalizedValue);
+                return packetBytes.Length > 0;
+            }
+            catch (FormatException)
+            {
+                packetBytes = null;
+                return false;
+            }
+        }
+
+        private static bool TryDecodeHex(string value, out byte[] bytes)
+        {
+            bytes = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = value.Trim();
+            if (normalizedValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedValue = normalizedValue[2..];
+            }
+
+            normalizedValue = normalizedValue
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(":", string.Empty, StringComparison.Ordinal);
+            if (normalizedValue.Length == 0 ||
+                normalizedValue.Length % 2 != 0)
+            {
+                return false;
+            }
+
+            bytes = new byte[normalizedValue.Length / 2];
+            for (int index = 0; index < bytes.Length; index++)
+            {
+                if (!byte.TryParse(
+                        normalizedValue.Substring(index * 2, 2),
+                        NumberStyles.HexNumber,
+                        CultureInfo.InvariantCulture,
+                        out bytes[index]))
+                {
+                    bytes = null;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryResolvePacketAuthoredEntitlement(
+            byte[] packetBytes,
+            int accountId,
+            string source,
+            out LoginAccountBillingEntitlementRecord entitlement)
+        {
+            entitlement = null;
+            if (packetBytes == null ||
+                packetBytes.Length < 5 ||
+                accountId <= 0)
+            {
+                return false;
+            }
+
+            if (!TryDecodeExtraCharInfoPacket(packetBytes, out LoginExtraCharInfoResultProfile profile) ||
+                profile.AccountId != accountId)
+            {
+                return false;
+            }
+
+            bool canHaveExtraCharacter = profile.ResultFlag == 0 && profile.CanHaveExtraCharacter;
+            entitlement = new LoginAccountBillingEntitlementRecord
+            {
+                AccountId = accountId,
+                BuyCharacterCount = canHaveExtraCharacter ? 1 : 0,
+                ResultFlag = canHaveExtraCharacter ? (byte)0 : (byte)1,
+                CanHaveExtraCharacter = canHaveExtraCharacter,
+                Source = string.IsNullOrWhiteSpace(source)
+                    ? "remote-account-billing-authority-packet"
+                    : source.Trim()
+            };
+            return true;
+        }
+
+        private static bool TryDecodeExtraCharInfoPacket(
+            byte[] packetBytes,
+            out LoginExtraCharInfoResultProfile profile)
+        {
+            profile = null;
+            if (LoginExtraCharInfoResultCodec.TryDecode(packetBytes, out profile, out _))
+            {
+                return true;
+            }
+
+            if (packetBytes == null ||
+                packetBytes.Length < 7 ||
+                BitConverter.ToUInt16(packetBytes, 0) != (ushort)LoginPacketType.ExtraCharInfoResult)
+            {
+                return false;
+            }
+
+            byte[] payloadBytes = new byte[packetBytes.Length - 2];
+            Buffer.BlockCopy(packetBytes, 2, payloadBytes, 0, payloadBytes.Length);
+            return LoginExtraCharInfoResultCodec.TryDecode(payloadBytes, out profile, out _);
+        }
+
         private string BuildRequestUrl(string accountName, int accountId)
         {
             string separator = _endpointUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
@@ -125,6 +377,12 @@ namespace HaCreator.MapSimulator.Managers
             public byte ResultFlag { get; set; }
             public bool CanHaveExtraCharacter { get; set; }
             public string Source { get; set; }
+            public string ExtraCharInfoResultPacketHex { get; set; }
+            public string ExtraCharInfoResultPacketBase64 { get; set; }
+            public string PacketHex { get; set; }
+            public string PacketBase64 { get; set; }
+            public string PayloadHex { get; set; }
+            public string PayloadBase64 { get; set; }
         }
     }
 }

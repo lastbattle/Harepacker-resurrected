@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Combat
         internal const int ClientAnimationDisplayerMobBulletLoadAction = 1;
         private const string AnimationDisplayerMobCategoryPrefix = "Mob";
         internal const string AnimationDisplayerMobBulletOwnerActionName = "attack1";
+        internal const int ClientProcessAttackMaxSummonRectHits = 2;
+        internal const int ClientProcessAttackMaxMobRectHits = 15;
 
         public readonly record struct AnimationDisplayerProjectileRegistrationRequest(
             int MobId,
@@ -811,7 +813,8 @@ namespace HaCreator.MapSimulator.Combat
                         projectile.Attack,
                         projectile.TargetInfo,
                         currentTime,
-                        ResolveProjectileLockedImpactPlayerManager(projectile.TargetInfo, playerManager)))
+                        ResolveProjectileLockedImpactPlayerManager(projectile.TargetInfo, playerManager),
+                        suppressNotEnemyMobLocalPlayerHit: false))
                 {
                     SpawnMobWorldEffects(
                         projectile.SourceMob,
@@ -917,6 +920,7 @@ namespace HaCreator.MapSimulator.Combat
 
                         if (!targetedSummoned &&
                             !targetedMob &&
+                            CanApplyLocalPlayerDelayedAttackHit(groundAttack.SourceMob) &&
                             playerManager?.Combat != null &&
                             playerManager.IsPlayerActive &&
                             CanHitPlayerTarget(groundAttack.Attack, requireGroundedForJumpAttack: false))
@@ -1020,6 +1024,7 @@ namespace HaCreator.MapSimulator.Combat
 
                         if (!targetedSummoned &&
                             !targetedMob &&
+                            CanApplyLocalPlayerDelayedAttackHit(directAttack.SourceMob) &&
                             playerManager?.Combat != null &&
                             playerManager.IsPlayerActive &&
                             CanHitPlayerTarget(directAttack.Attack, requireGroundedForJumpAttack: true) &&
@@ -3391,7 +3396,8 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             MobTargetInfo targetInfo,
             int currentTime,
-            PlayerManager playerManager = null)
+            PlayerManager playerManager = null,
+            bool suppressNotEnemyMobLocalPlayerHit = true)
         {
             if (targetInfo == null)
             {
@@ -3401,6 +3407,11 @@ namespace HaCreator.MapSimulator.Combat
             if (targetInfo.TargetType == MobTargetType.Player)
             {
                 if (playerManager?.Combat == null || !playerManager.IsPlayerActive)
+                {
+                    return false;
+                }
+
+                if (suppressNotEnemyMobLocalPlayerHit && !CanApplyLocalPlayerDelayedAttackHit(sourceMob))
                 {
                     return false;
                 }
@@ -3604,6 +3615,7 @@ namespace HaCreator.MapSimulator.Combat
 
             int excludedTargetId = targetInfo?.TargetType == MobTargetType.Summoned ? targetInfo.TargetId : 0;
             bool hitAny = false;
+            int hitCount = 0;
             CopyItems(puppets, _puppetIterationBuffer);
             for (int i = 0; i < _puppetIterationBuffer.Count; i++)
             {
@@ -3621,6 +3633,11 @@ namespace HaCreator.MapSimulator.Combat
 
                 _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
                 hitAny = true;
+                hitCount++;
+                if (hitCount >= ClientProcessAttackMaxSummonRectHits)
+                {
+                    break;
+                }
             }
 
             _puppetIterationBuffer.Clear();
@@ -3647,6 +3664,7 @@ namespace HaCreator.MapSimulator.Combat
 
             int excludedTargetId = targetInfo?.TargetType == MobTargetType.Mob ? targetInfo.TargetId : 0;
             bool hitAny = false;
+            int hitCount = 0;
             CopyItems(mobs, _mobIterationBuffer);
             for (int i = 0; i < _mobIterationBuffer.Count; i++)
             {
@@ -3667,6 +3685,11 @@ namespace HaCreator.MapSimulator.Combat
                 }
 
                 hitAny |= ApplyMobDamage(sourceMob, attack, mob, currentTime);
+                hitCount++;
+                if (hitCount >= ClientProcessAttackMaxMobRectHits)
+                {
+                    break;
+                }
             }
 
             _mobIterationBuffer.Clear();
@@ -3711,6 +3734,11 @@ namespace HaCreator.MapSimulator.Combat
         internal static bool ShouldSweepProjectileImpactCollateralTargets(bool targetedSummoned, bool targetedMob)
         {
             return !targetedSummoned && !targetedMob;
+        }
+
+        internal static bool CanApplyLocalPlayerDelayedAttackHit(MobItem sourceMob)
+        {
+            return sourceMob?.IsNotEnemyMob != true;
         }
 
         private static bool ShouldProcessAttackOwner(MobItem sourceMob)

@@ -862,7 +862,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
 
                 case ClientGetItemSuccessSubtype:
-                    message = ApplyClientGetItemSuccess();
+                    message = ApplyClientGetItemSuccess(payload);
                     return true;
 
                 case ClientGetItemFailureSubtype:
@@ -890,8 +890,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            string refreshSummary = TryApplyClientGetItemsRefresh(payload, startOffset: 1, out int refreshedRows)
-                ? $" Refreshed gift rows from the packet-owned CWishListGiveDlg::SetGetItems tab mask ({refreshedRows} row(s))."
+            string refreshSummary = TryApplyClientGiveSuccessPayload(payload, out int refreshedRows, out int refreshedWishListRows, out bool usedWishListPrefix)
+                ? $" Refreshed gift rows from the packet-owned CWishListGiveDlg::SetGetItems tab mask ({refreshedRows} row(s)){(usedWishListPrefix ? $" after applying CWishListGiveDlg::SetWishList ({refreshedWishListRows} row(s))." : ".")}"
                 : " Kept existing optimistic gift rows because the packet did not include a decodable SetGetItems refresh body.";
 
             _hasPendingTransferRequest = false;
@@ -904,6 +904,81 @@ namespace HaCreator.MapSimulator.Interaction
                 $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype}; dismissing this notice will close the modeless give dialog through the client SetRet success path.{refreshSummary}",
                 closeOwnerOnDismiss: true);
             return _statusMessage;
+        }
+
+        private bool TryApplyClientGiveSuccessPayload(
+            IReadOnlyList<byte> payload,
+            out int refreshedRows,
+            out int refreshedWishListRows,
+            out bool usedWishListPrefix)
+        {
+            refreshedRows = 0;
+            refreshedWishListRows = 0;
+            usedWishListPrefix = false;
+
+            if (TryApplyClientGetItemsRefresh(payload, startOffset: 1, out refreshedRows))
+            {
+                return true;
+            }
+
+            byte[] packetBytes = payload?.ToArray() ?? Array.Empty<byte>();
+            if (!TryReadClientWishListPrefix(packetBytes, startOffset: 1, out List<InventorySlotData> wishEntries, out int nextOffset))
+            {
+                return false;
+            }
+
+            if (!TryApplyClientGetItemsRefresh(packetBytes, nextOffset, out refreshedRows))
+            {
+                return false;
+            }
+
+            _wishListEntries.Clear();
+            _wishListEntries.AddRange(wishEntries);
+            refreshedWishListRows = wishEntries.Count;
+            usedWishListPrefix = true;
+            return true;
+        }
+
+        private bool TryReadClientWishListPrefix(
+            IReadOnlyList<byte> payload,
+            int startOffset,
+            out List<InventorySlotData> entries,
+            out int nextOffset)
+        {
+            entries = new List<InventorySlotData>();
+            nextOffset = startOffset;
+            byte[] packetBytes = payload?.ToArray() ?? Array.Empty<byte>();
+            if (startOffset < 0 || startOffset >= packetBytes.Length)
+            {
+                return false;
+            }
+
+            using BinaryReader reader = new(packetBytes);
+            reader.BaseStream.Position = startOffset;
+            int count = reader.ReadByte();
+            if (count < 0 || count > MaxWishListEntryCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryReadMapleString(reader, out string itemName))
+                {
+                    return false;
+                }
+
+                string normalizedName = (itemName ?? string.Empty).Trim();
+                if (normalizedName.Length == 0)
+                {
+                    return false;
+                }
+
+                entries.Add(CreateWishListInputEntry(normalizedName));
+            }
+
+            nextOffset = (int)reader.BaseStream.Position;
+            return nextOffset < packetBytes.Length;
         }
 
         private string ApplyClientPutItemFailure(byte subtype, string noticeText, bool restoreOptimisticState)
@@ -1247,7 +1322,7 @@ namespace HaCreator.MapSimulator.Interaction
             return category == 207 || category == 233;
         }
 
-        private string ApplyClientGetItemSuccess()
+        private string ApplyClientGetItemSuccess(IReadOnlyList<byte> payload)
         {
             if (_hasPendingTransferRequest && _pendingTransferSubtype != 0 && _pendingTransferSubtype != SendGetItemRequestSubtype)
             {
@@ -1255,13 +1330,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
+            string refreshSummary = TryApplyClientGetItemsRefresh(payload, startOffset: 1, out int refreshedRows)
+                ? $" Refreshed receive rows from the packet-owned CWishListRecvDlg::SetGetItems tab mask ({refreshedRows} row(s))."
+                : " Kept existing optimistic receive rows because the packet did not include a decodable SetGetItems refresh body.";
+
             _hasPendingTransferRequest = false;
             ClearPendingTransferState();
             ClearTransientActionState();
             RefreshCandidateEntries();
             ClampSelections();
             NormalizeViewportState();
-            _statusMessage = $"Applied CWishListRecvDlg::OnPacket subtype {ClientGetItemSuccessSubtype}; refreshed receive rows and reopened Get actions without closing the modeless receive dialog.";
+            _selectedGiftIndex = -1;
+            _statusMessage = $"Applied CWishListRecvDlg::OnPacket subtype {ClientGetItemSuccessSubtype}; reopened Get actions without closing the modeless receive dialog.{refreshSummary}";
             return _statusMessage;
         }
 

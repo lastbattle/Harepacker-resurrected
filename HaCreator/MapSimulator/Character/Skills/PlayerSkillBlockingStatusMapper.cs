@@ -5,6 +5,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         Stun,
         Freeze,
         Seal,
+        AttackLimit,
+        BuffLimit,
         StopMotion,
         Attract,
         Polymorph
@@ -49,6 +51,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PlayerSkillBlockingStatus.Stun => "Skills cannot be used while stunned.",
                 PlayerSkillBlockingStatus.Freeze => "Skills cannot be used while frozen.",
                 PlayerSkillBlockingStatus.Seal => "Skills cannot be used while sealed.",
+                PlayerSkillBlockingStatus.AttackLimit => "Skills cannot be used while attack-limited.",
+                PlayerSkillBlockingStatus.BuffLimit => "Skills cannot be used while buff-limited.",
                 PlayerSkillBlockingStatus.StopMotion => "Skills cannot be used while motion is locked.",
                 PlayerSkillBlockingStatus.Attract => "Skills cannot be used while seduced.",
                 PlayerSkillBlockingStatus.Polymorph => "Skills cannot be used while polymorphed.",

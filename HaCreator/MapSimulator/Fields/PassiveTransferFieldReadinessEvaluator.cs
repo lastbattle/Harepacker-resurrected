@@ -463,9 +463,12 @@ namespace HaCreator.MapSimulator.Fields
             return unchecked(currentTick - requestSentTick) < Math.Max(0, cooldownMs);
         }
 
-        public static bool CanHandleFreshUpKeyDown(bool hasAttachedPacketOwnedDriver)
+        public static bool CanHandleFreshUpKeyDown(
+            bool hasAttachedPacketOwnedDriver,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
         {
-            return !hasAttachedPacketOwnedDriver;
+            return !hasAttachedPacketOwnedDriver
+                   || inputOwner == HandleUpKeyDownInputOwner.OnJoystickButton;
         }
 
         public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool isFreshUpKeyDown)

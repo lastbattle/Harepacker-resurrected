@@ -2494,16 +2494,18 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int ResolveClientRemoteDirectionHoverOrderForTesting(DirectionArrow? direction)
         {
+            // CUIMiniMap::OnMouseMove scans remote direction tooltip owners by
+            // edge slot before falling through to NPC, employee, and portal hits.
             return direction switch
             {
                 DirectionArrow.NorthWest => 0,
-                DirectionArrow.North => 1,
-                DirectionArrow.NorthEast => 2,
-                DirectionArrow.East => 3,
-                DirectionArrow.SouthWest => 4,
-                DirectionArrow.South => 5,
-                DirectionArrow.West => 6,
-                DirectionArrow.SouthEast => 7,
+                DirectionArrow.West => 1,
+                DirectionArrow.SouthWest => 2,
+                DirectionArrow.North => 3,
+                DirectionArrow.NorthEast => 4,
+                DirectionArrow.East => 5,
+                DirectionArrow.SouthEast => 6,
+                DirectionArrow.South => 7,
                 _ => int.MaxValue
             };
         }

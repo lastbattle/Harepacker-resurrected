@@ -34,6 +34,12 @@ namespace HaCreator.MapSimulator.UI
             public Point AvatarAnchor { get; init; }
             public int LayerZ { get; init; }
             public string OriginMode { get; init; } = string.Empty;
+            public string BackgroundSourcePath { get; init; } = string.Empty;
+            public System.Drawing.Size BackgroundCanvasSize { get; init; }
+            public string PreviewShellOnSourcePath { get; init; } = string.Empty;
+            public System.Drawing.Size PreviewShellOnCanvasSize { get; init; }
+            public string PreviewShellOffSourcePath { get; init; } = string.Empty;
+            public System.Drawing.Size PreviewShellOffCanvasSize { get; init; }
             public int ControlTabId { get; init; }
             public Point ControlTabPosition { get; init; }
             public System.Drawing.Size ControlTabSize { get; init; }
@@ -95,6 +101,13 @@ namespace HaCreator.MapSimulator.UI
         private const int ButtonY = 237;
         private const int PreviewHeight = 165;
         private const int PreviewBackgroundCanvasCount = 3;
+        private const string PreviewBackgroundSourcePath = "UI/CashShop.img/Base/Preview";
+        private const string PreviewShellOnSourcePath = "UI/CashShop.img/Base/PreviewOnOff/On/0";
+        private const string PreviewShellOffSourcePath = "UI/CashShop.img/Base/PreviewOnOff/Off/0";
+        private const int PreviewShellOnWidth = 230;
+        private const int PreviewShellOnHeight = 226;
+        private const int PreviewShellOffWidth = 35;
+        private const int PreviewShellOffHeight = 21;
         private const int PreviewBackgroundLayerZ = unchecked((int)0xC0000000);
         private const int UserPreviewControlTabId = 1004;
         private const int UserPreviewControlTabX = 3;
@@ -246,6 +259,12 @@ namespace HaCreator.MapSimulator.UI
                     AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
                     LayerZ = PreviewBackgroundLayerZ,
                     OriginMode = "Origin_LT",
+                    BackgroundSourcePath = PreviewBackgroundSourcePath,
+                    BackgroundCanvasSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
+                    PreviewShellOnSourcePath = PreviewShellOnSourcePath,
+                    PreviewShellOnCanvasSize = new System.Drawing.Size(PreviewShellOnWidth, PreviewShellOnHeight),
+                    PreviewShellOffSourcePath = PreviewShellOffSourcePath,
+                    PreviewShellOffCanvasSize = new System.Drawing.Size(PreviewShellOffWidth, PreviewShellOffHeight),
                     ControlTabId = UserPreviewControlTabId,
                     ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
                     ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),
@@ -928,6 +947,12 @@ namespace HaCreator.MapSimulator.UI
                     AvatarAnchor = new Point(PreviewX + (PreviewWidth / 2), PreviewY + PreviewFeetOffsetY),
                     LayerZ = PreviewBackgroundLayerZ,
                     OriginMode = "Origin_LT",
+                    BackgroundSourcePath = PreviewBackgroundSourcePath,
+                    BackgroundCanvasSize = new System.Drawing.Size(PreviewWidth, PreviewHeight),
+                    PreviewShellOnSourcePath = PreviewShellOnSourcePath,
+                    PreviewShellOnCanvasSize = new System.Drawing.Size(PreviewShellOnWidth, PreviewShellOnHeight),
+                    PreviewShellOffSourcePath = PreviewShellOffSourcePath,
+                    PreviewShellOffCanvasSize = new System.Drawing.Size(PreviewShellOffWidth, PreviewShellOffHeight),
                     ControlTabId = UserPreviewControlTabId,
                     ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
                     ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),

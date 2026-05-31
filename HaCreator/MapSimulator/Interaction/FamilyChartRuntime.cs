@@ -29,6 +29,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientFamilyTreeGrandchildCountStringId = 0x1204;
         private const int ClientFamilyTreeEmptyBranchStringId = 0x11FD;
         private const int ClientFamilyTreeJuniorEntryStringId = 0x1201;
+        private const int ClientFamilyPrivilegeRepUsedStringId = 0x121D;
+        private const int ClientFamilyPrivilegeUsedStringId = 0x121E;
 
         private readonly Dictionary<int, FamilyMemberState> _members = new();
         private readonly Queue<FamilyRecruitSeed> _juniorSeeds = new();
@@ -1105,7 +1107,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ConsumeEntitlementUse(localPlayer, specialCost);
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
                     string privilegeMessage = $"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.";
-                    NotifySocialChatObserved(privilegeMessage);
+                    NotifyPrivilegeUseObserved(localPlayer, specialCost, _entitlementType);
                     return new FamilyEntitlementUseResult(
                         privilegeMessage,
                         WasApplied: true,
@@ -1998,7 +2000,7 @@ namespace HaCreator.MapSimulator.Interaction
                     case FamilyEntitlementType.DropAndExpBuff:
                         ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
                         _activePrivilege = new FamilyPrivilegeState(pendingRequest.Type, Environment.TickCount + EntitlementDurationMs);
-                        NotifySocialChatObserved($"{GetEntitlementLabel(pendingRequest.Type)} request completed.");
+                        NotifyPrivilegeUseObserved(localPlayer, specialCost, pendingRequest.Type);
                         message = $"Applied packet-owned family privilege completion for {GetEntitlementLabel(pendingRequest.Type)}.";
                         _pendingPrivilegeRequest = null;
                         return true;
@@ -2011,7 +2013,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 pendingRequest.TargetLocation,
                                 pendingRequest.TargetPosition);
                             ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
-                            NotifySocialChatObserved($"{pendingRequest.TargetName} move request accepted.");
+                            NotifyPrivilegeUseObserved(localPlayer, specialCost, pendingRequest.Type);
                             message = $"Accepted packet-owned cross-map family move to {pendingRequest.TargetName}; awaiting server-owned map-transfer/session ingress completion.";
                             _pendingPrivilegeRequest = null;
                             return true;
@@ -2025,7 +2027,7 @@ namespace HaCreator.MapSimulator.Interaction
                             pendingRequest.TargetPosition,
                             $"Completed packet-owned family move transfer to {pendingRequest.TargetName} ({pendingRequest.TargetLocation}).");
                         ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
-                        NotifySocialChatObserved($"{pendingRequest.TargetName} move request completed.");
+                        NotifyPrivilegeUseObserved(localPlayer, specialCost, pendingRequest.Type);
                         message = $"Applied packet-owned move completion for {pendingRequest.TargetName}.";
                         _pendingPrivilegeRequest = null;
                         return true;
@@ -2042,7 +2044,7 @@ namespace HaCreator.MapSimulator.Interaction
                         }
 
                         ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
-                        NotifySocialChatObserved($"Summoned {pendingRequest.TargetName}.");
+                        NotifyPrivilegeUseObserved(localPlayer, specialCost, pendingRequest.Type);
                         message = $"Applied packet-owned summon completion for {pendingRequest.TargetName}.";
                         _pendingPrivilegeRequest = null;
                         return true;
@@ -2074,11 +2076,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             FamilyMemberState localPlayer = GetMember(LocalPlayerId);
-            ConsumeEntitlementUse(localPlayer, GetSpecialReputationCost(localPlayer, pendingRequest.Type), pendingRequest.Type);
-            NotifySocialChatObserved($"{GetEntitlementLabel(pendingRequest.Type)} state arrived.");
+            int specialCost = GetSpecialReputationCost(localPlayer, pendingRequest.Type);
+            ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
+            NotifyPrivilegeUseObserved(localPlayer, specialCost, pendingRequest.Type);
             _pendingPrivilegeRequest = null;
             message = $"Completed pending family privilege request for {GetEntitlementLabel(entitlementType)}.";
             return true;
+        }
+
+        private void NotifyPrivilegeUseObserved(
+            FamilyMemberState localPlayer,
+            int reputationCost,
+            FamilyEntitlementType entitlementType)
+        {
+            string repUsedMessage = FormatFamilyResultMessage(
+                ClientFamilyPrivilegeRepUsedStringId,
+                "You have used {0} Rep Points.",
+                Math.Max(0, reputationCost));
+            string entitlementUsedMessage = FormatFamilyResultMessage(
+                ClientFamilyPrivilegeUsedStringId,
+                "{0} has used '{1}' Entitlement.",
+                localPlayer?.Name ?? "Player",
+                GetEntitlementLabel(entitlementType));
+            NotifySocialMessagesObserved(repUsedMessage, entitlementUsedMessage);
         }
 
         private void QueuePrivilegeTeleport(Vector2 position, string message)

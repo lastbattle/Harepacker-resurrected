@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastRequestPacketType = -1;
         private int _lastResponsePacketType = -1;
         private int _lastMarriageResultSubtype = -1;
+        private bool _lastMarriageResultNoticeVisible;
         private bool _isOpen;
         private bool _lastPrimaryActionSent;
         private EngagementProposalDialogMode _mode;
@@ -166,6 +167,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
             _lastMarriageResultSubtype = -1;
+            _lastMarriageResultNoticeVisible = false;
             _isOpen = true;
 
             ResolveItemMetadata();
@@ -194,6 +196,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
             _lastMarriageResultSubtype = -1;
+            _lastMarriageResultNoticeVisible = false;
             _isOpen = true;
 
             ResolveItemMetadata();
@@ -607,6 +610,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
             _lastMarriageResultSubtype = -1;
+            _lastMarriageResultNoticeVisible = false;
             _acceptedProposal = null;
             _statusMessage = "Cleared engagement proposal state.";
             return _statusMessage;
@@ -626,6 +630,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool closedDialog = _isOpen;
             _isOpen = false;
             _lastMarriageResultSubtype = subtype;
+            _lastMarriageResultNoticeVisible = subtype != EngagementProposalDialogText.ResultSubtypeServerNotice
+                || !string.IsNullOrWhiteSpace(serverText);
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
 
@@ -686,7 +692,10 @@ namespace HaCreator.MapSimulator.Interaction
             string closeState = closedDialog
                 ? "closed the live CEngageDlg first"
                 : "no live CEngageDlg was open";
-            _statusMessage = $"Applied CWvsContext::OnMarriageResult subtype {subtype}: {notice} The client {closeState} before showing the result notice.";
+            string noticeState = _lastMarriageResultNoticeVisible
+                ? $"showing the result notice: {notice}"
+                : "skipping the result notice because subtype 36 decoded a zero visibility flag";
+            _statusMessage = $"Applied CWvsContext::OnMarriageResult subtype {subtype}: The client {closeState} before {noticeState}.";
             message = _statusMessage;
             return true;
         }
@@ -736,6 +745,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LastResponsePacketType = _lastResponsePacketType,
                 LastResponsePayload = Array.AsReadOnly((byte[])_lastResponsePayload.Clone()),
                 LastMarriageResultSubtype = _lastMarriageResultSubtype,
+                LastMarriageResultNoticeVisible = _lastMarriageResultNoticeVisible,
                 AcceptedProposal = _acceptedProposal,
                 ClientOwnerTypeName = ClientOwnerTypeName,
                 PrimaryDialogAssetPath = PrimaryDialogAssetPath,
@@ -769,7 +779,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $" Last response packet {snapshot.LastResponsePacketType} [{FormatPayload(snapshot.LastResponsePayload)}]."
                 : string.Empty;
             string marriageResultState = snapshot.LastMarriageResultSubtype >= 0
-                ? $" Last marriage-result subtype {snapshot.LastMarriageResultSubtype}."
+                ? $" Last marriage-result subtype {snapshot.LastMarriageResultSubtype} (noticeVisible={snapshot.LastMarriageResultNoticeVisible})."
                 : string.Empty;
             string handoffState = snapshot.AcceptedProposal == null
                 ? string.Empty
@@ -1026,7 +1036,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (subtype == EngagementProposalDialogText.ResultSubtypeServerNotice)
                 {
-                    serverText = ReadMapleString(reader);
+                    byte hasText = reader.ReadByte();
+                    if (hasText != EngagementProposalDialogText.ServerNoticeHiddenFlag
+                        && hasText != EngagementProposalDialogText.ServerNoticeVisibleFlag)
+                    {
+                        error = $"Marriage-result subtype {subtype} server-notice flag must be {EngagementProposalDialogText.ServerNoticeHiddenFlag} or {EngagementProposalDialogText.ServerNoticeVisibleFlag}, but decoded {hasText}.";
+                        return false;
+                    }
+
+                    if (hasText == EngagementProposalDialogText.ServerNoticeVisibleFlag)
+                    {
+                        serverText = ReadMapleString(reader);
+                    }
                 }
 
                 if (!EngagementProposalDialogText.TryGetMarriageResultNotice(subtype, serverText, out _))
@@ -1035,7 +1056,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                if (stream.Position != stream.Length)
+                if (stream.Position != stream.Length && !MarriageResultSubtypeCarriesOpaqueRecordPayload(subtype))
                 {
                     error = $"Marriage-result subtype {subtype} payload has {stream.Length - stream.Position} unexpected trailing bytes.";
                     return false;
@@ -1107,6 +1128,12 @@ namespace HaCreator.MapSimulator.Interaction
                 error = $"Failed to decode engagement decision payload: {ex.Message}";
                 return false;
             }
+        }
+
+        private static bool MarriageResultSubtypeCarriesOpaqueRecordPayload(byte subtype)
+        {
+            return subtype == EngagementProposalDialogText.ResultSubtypeEngaged
+                || subtype == EngagementProposalDialogText.ResultSubtypeMarried;
         }
 
         private static void WriteMapleString(BinaryWriter writer, string value)
@@ -1232,6 +1259,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int LastRequestPacketType { get; init; } = -1;
         public int LastResponsePacketType { get; init; } = -1;
         public int LastMarriageResultSubtype { get; init; } = -1;
+        public bool LastMarriageResultNoticeVisible { get; init; }
         public EngagementProposalDialogMode Mode { get; init; }
         public string ProposerName { get; init; } = string.Empty;
         public string PartnerName { get; init; } = string.Empty;

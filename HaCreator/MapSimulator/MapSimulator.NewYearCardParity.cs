@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
@@ -93,7 +94,9 @@ namespace HaCreator.MapSimulator
                 case "search":
                     string query = args.Length >= 2 ? string.Join(' ', args.Skip(1)) : string.Empty;
                     ShowNewYearCardSenderWindow();
-                    return ChatCommandHandler.CommandResult.Ok(_newYearCardRuntime.Search(query));
+                    return ChatCommandHandler.CommandResult.Ok(_newYearCardRuntime.Search(
+                        query,
+                        BuildNewYearCardReceiverSearchCandidateNames()));
 
                 case "scroll":
                     if (args.Length < 2
@@ -179,7 +182,9 @@ namespace HaCreator.MapSimulator
 
             window.SetSnapshotProvider(_newYearCardRuntime.GetSenderSnapshot);
             window.SetActions(
-                () => _newYearCardRuntime.Search(_newYearCardRuntime.GetSenderSnapshot().TargetName),
+                () => _newYearCardRuntime.Search(
+                    _newYearCardRuntime.GetSenderSnapshot().TargetName,
+                    BuildNewYearCardReceiverSearchCandidateNames()),
                 () => TrySendNewYearCard(confirmedEmptyMemo: false, out string message) ? message : message,
                 () => _newYearCardRuntime.MarkSendRejected("CUINewYearCardSenderDlg was cancelled before _SendNewYearCard."));
         }
@@ -293,6 +298,15 @@ namespace HaCreator.MapSimulator
             _newYearCardRuntime.UpdateLocalSender(
                 _playerManager?.Player?.Build?.Name
                 ?? _loginCharacterRoster?.SelectedEntry?.Build?.Name);
+        }
+
+        private IReadOnlyList<string> BuildNewYearCardReceiverSearchCandidateNames()
+        {
+            _socialListRuntime.UpdateLocalContext(
+                _playerManager?.Player?.Build,
+                GetCurrentMapTransferDisplayName(),
+                1);
+            return _socialListRuntime.EnumerateNewYearCardReceiverSearchCandidateNames().ToArray();
         }
 
         private static bool TryParseNewYearCardHexBytes(string value, out byte[] bytes, out string error)

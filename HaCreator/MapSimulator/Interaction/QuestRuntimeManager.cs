@@ -2678,6 +2678,26 @@ namespace HaCreator.MapSimulator.Interaction
             return updatedValue;
         }
 
+        public string ClearPacketOwnedQuestExKeptRecord(int questId)
+        {
+            if (questId <= 0)
+            {
+                return string.Empty;
+            }
+
+            bool hasQuestRecordValue = TryGetQuestRecordValue(questId, out string questRecordValue);
+            string existingValue = TryGetQuestExRecordValue(questId, out string questExValue)
+                ? questExValue
+                : (hasQuestRecordValue ? questRecordValue : string.Empty);
+            string updatedValue = RemoveQuestDetailRecordTokenValue(existingValue, "kept");
+            SetPacketOwnedQuestExRecordValue(questId, updatedValue);
+            if (hasQuestRecordValue || !string.IsNullOrWhiteSpace(updatedValue))
+            {
+                SetPacketOwnedQuestRecordValue(questId, updatedValue);
+            }
+            return updatedValue;
+        }
+
         internal static string UpsertQuestDetailRecordTokenValue(string recordValue, string token, string value)
         {
             string normalizedToken = token?.Trim() ?? string.Empty;
@@ -2728,6 +2748,53 @@ namespace HaCreator.MapSimulator.Interaction
             if (!replaced)
             {
                 entries.Add($"{normalizedToken}={normalizedValue}");
+            }
+
+            return string.Join(";", entries);
+        }
+
+        internal static string RemoveQuestDetailRecordTokenValue(string recordValue, string token)
+        {
+            string normalizedToken = token?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedToken) || string.IsNullOrWhiteSpace(recordValue))
+            {
+                return recordValue?.Trim() ?? string.Empty;
+            }
+
+            string trimmedRecordValue = recordValue.Trim();
+            if (string.Equals(normalizedToken, "kept", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(trimmedRecordValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return string.Empty;
+            }
+
+            var entries = new List<string>();
+            string[] rawEntries = trimmedRecordValue.Split(QuestRecordTokenDelimiters, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < rawEntries.Length; i++)
+            {
+                string entry = rawEntries[i]?.Trim() ?? string.Empty;
+                if (entry.Length == 0)
+                {
+                    continue;
+                }
+
+                int separatorIndex = entry.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    separatorIndex = entry.IndexOf(':');
+                }
+
+                if (separatorIndex <= 0)
+                {
+                    entries.Add(entry);
+                    continue;
+                }
+
+                string key = entry[..separatorIndex].Trim();
+                if (!string.Equals(key, normalizedToken, StringComparison.OrdinalIgnoreCase))
+                {
+                    entries.Add(entry);
+                }
             }
 
             return string.Join(";", entries);

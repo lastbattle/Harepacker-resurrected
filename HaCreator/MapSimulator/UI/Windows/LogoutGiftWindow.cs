@@ -895,29 +895,39 @@ namespace HaCreator.MapSimulator.UI
                 return KeyFocusedFrames[0];
             }
 
-            int totalDelay = 0;
-            for (int i = 0; i < KeyFocusedFrames.Count; i++)
+            return KeyFocusedFrames[ResolveKeyFocusedFrameIndex(tickCount, KeyFocusedFrames)];
+        }
+
+        internal static int ResolveKeyFocusedFrameIndex(int tickCount, IReadOnlyList<LogoutGiftButtonSkinFrame> frames)
+        {
+            if (frames == null || frames.Count == 0)
             {
-                totalDelay += Math.Max(1, KeyFocusedFrames[i].Delay);
+                return -1;
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDelay += Math.Max(1, frames[i].Delay);
             }
 
             if (totalDelay <= 0)
             {
-                return KeyFocusedFrames[0];
+                return 0;
             }
 
             int animationTick = Math.Abs(tickCount % totalDelay);
             int accumulatedDelay = 0;
-            for (int i = 0; i < KeyFocusedFrames.Count; i++)
+            for (int i = 0; i < frames.Count; i++)
             {
-                accumulatedDelay += Math.Max(1, KeyFocusedFrames[i].Delay);
+                accumulatedDelay += Math.Max(1, frames[i].Delay);
                 if (animationTick < accumulatedDelay)
                 {
-                    return KeyFocusedFrames[i];
+                    return i;
                 }
             }
 
-            return KeyFocusedFrames[^1];
+            return frames.Count - 1;
         }
 
         internal static Point ResolveFrameSize(LogoutGiftButtonSkin skin)
@@ -965,11 +975,24 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
+            return ResolveKeyFocusedFrameBounds(
+                buttonBounds,
+                frame.Origin,
+                new Point(frame.Texture.Width, frame.Texture.Height));
+        }
+
+        internal static Rectangle ResolveKeyFocusedFrameBounds(Rectangle buttonBounds, Point origin, Point frameSize)
+        {
+            if (frameSize.X <= 0 || frameSize.Y <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
             return new Rectangle(
-                buttonBounds.X - frame.Origin.X,
-                buttonBounds.Y - frame.Origin.Y,
-                frame.Texture.Width,
-                frame.Texture.Height);
+                buttonBounds.X - origin.X,
+                buttonBounds.Y - origin.Y,
+                frameSize.X,
+                frameSize.Y);
         }
     }
 

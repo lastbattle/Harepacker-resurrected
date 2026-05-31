@@ -2406,7 +2406,9 @@ namespace HaCreator.MapSimulator.Loaders
                     HpThreshold = Math.Max(0, ReadOptionalInt(variantNode, parentHpThreshold, "hp")),
                     Width = Math.Max(0, ReadOptionalInt(variantNode, parentWidth, "width", "nWidth")),
                     Messages = messages,
-                    ConditionGroups = ReadMobSpeakConditionGroups(variantNode["con"])
+                    ConditionGroups = MergeMobSpeakConditionGroups(
+                        templateMetadata?.ConditionGroups,
+                        ReadMobSpeakConditionGroups(variantNode["con"]))
                 });
             }
 

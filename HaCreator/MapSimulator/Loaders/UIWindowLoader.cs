@@ -1690,8 +1690,10 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
 
-                cardButton.X = 18 + (slot * 197);
-                cardButton.Y = 46;
+                cardButton.X = AvatarPreviewCarouselWindow.ClientSlotAnchorX
+                    + (slot * AvatarPreviewCarouselWindow.ClientSlotStrideX)
+                    - cardSelectedFrame.Origin.X;
+                cardButton.Y = AvatarPreviewCarouselWindow.ClientSlotAnchorY - cardSelectedFrame.Origin.Y;
                 cardButtons.Add(cardButton);
             }
 
@@ -4646,6 +4648,57 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(commonProperty, "win", device),
                 LoadCanvasTexture(commonProperty, "lose", device),
                 LoadCanvasTexture(commonProperty, "draw", device));
+            window.SetMiniRoomOmokRoundEffectFrames(LoadMiniRoomOmokRoundEffectFrames(device));
+        }
+
+        private static IReadOnlyDictionary<int, SocialRoomWindow.OmokRoundEffectFrame[]> LoadMiniRoomOmokRoundEffectFrames(GraphicsDevice device)
+        {
+            Dictionary<int, SocialRoomWindow.OmokRoundEffectFrame[]> framesByRound = new Dictionary<int, SocialRoomWindow.OmokRoundEffectFrame[]>();
+            WzSubProperty effectRoot = ResolveUiSubPropertyFromStringPoolPath(0x9E8, "UIWindow.img", "MinigameTable", "Effect");
+            if (effectRoot == null || device == null)
+            {
+                return framesByRound;
+            }
+
+            foreach (WzImageProperty child in effectRoot.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int round)
+                    || child is not WzSubProperty roundProperty)
+                {
+                    continue;
+                }
+
+                SocialRoomWindow.OmokRoundEffectFrame[] frames = roundProperty.WzProperties
+                    .OfType<WzCanvasProperty>()
+                    .OrderBy(canvas => int.TryParse(canvas.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex) ? frameIndex : int.MaxValue)
+                    .Select(canvas => LoadMiniRoomOmokRoundEffectFrame(canvas, device))
+                    .Where(frame => frame.Texture != null)
+                    .ToArray();
+                if (frames.Length > 0)
+                {
+                    framesByRound[round] = frames;
+                }
+            }
+
+            return framesByRound;
+        }
+
+        private static SocialRoomWindow.OmokRoundEffectFrame LoadMiniRoomOmokRoundEffectFrame(WzCanvasProperty canvas, GraphicsDevice device)
+        {
+            Texture2D texture = LoadCanvasTexture(canvas, device);
+            if (texture == null)
+            {
+                return default;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            int delayMs = canvas["delay"] is WzIntProperty delayProperty
+                ? Math.Max(1, delayProperty.Value)
+                : 100;
+            return new SocialRoomWindow.OmokRoundEffectFrame(
+                texture,
+                new Point((int)origin.X, (int)origin.Y),
+                delayMs);
         }
 
 
@@ -5260,6 +5313,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
             WzSubProperty charProperty = cashShopImage?["CSChar"] as WzSubProperty;
             WzSubProperty previewProperty = cashShopImage?["Base"]?["Preview"] as WzSubProperty;
+            WzSubProperty previewOnProperty = cashShopImage?["Base"]?["PreviewOnOff"]?["On"] as WzSubProperty;
             if (charProperty == null || previewProperty == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -5281,10 +5335,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            IDXObject previewOnLayer = LoadWindowCanvasLayerWithOffset(previewOnProperty, "0", device, out Point previewOnOffset);
             CashAvatarPreviewWindow window = new(
                 device,
-                windowBackgroundLayer: null,
-                windowBackgroundOffset: Point.Zero,
+                windowBackgroundLayer: previewOnLayer,
+                windowBackgroundOffset: previewOnOffset,
                 windowOverlayLayer: null,
                 windowOverlayOffset: Point.Zero,
                 windowContentLayer: null,
@@ -7983,10 +8038,10 @@ namespace HaCreator.MapSimulator.Loaders
                 position);
 
             // CUIAvatarMegaphone::OnCreate places these controls at fixed client coordinates.
-            okButton.X = 52;
-            okButton.Y = 170;
-            cancelButton.X = 102;
-            cancelButton.Y = 170;
+            okButton.X = AvatarMegaphoneRuntime.SendDialogOkButtonX;
+            okButton.Y = AvatarMegaphoneRuntime.SendDialogOkButtonY;
+            cancelButton.X = AvatarMegaphoneRuntime.SendDialogCancelButtonX;
+            cancelButton.Y = AvatarMegaphoneRuntime.SendDialogCancelButtonY;
             window.InitializeControls(okButton, cancelButton);
             return window;
         }

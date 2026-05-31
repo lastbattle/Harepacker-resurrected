@@ -460,13 +460,63 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityFootholdStatesByPlatformId[platform.Id] = entry.State;
                 platform.IsActive = entry.State != 0;
                 platform.IsVisible = entry.State != 0;
-                if (entry.MovingState != null)
-                {
-                    ApplyPacketOwnedFootholdMovingStateToPlatform(platform, entry.MovingState);
-                }
-                else
+            }
+
+            if (entry.MovingState != null)
+            {
+                ApplyPacketOwnedFootholdMovingStateToPlatformsForPacketParity(platforms, entry.MovingState);
+            }
+            else
+            {
+                foreach (DynamicPlatform platform in platforms)
                 {
                     ApplyPacketOwnedFootholdStateWithoutMovingStateForPacketParity(platform);
+                }
+            }
+        }
+
+        internal static void ApplyPacketOwnedFootholdMovingStateToPlatformsForPacketParity(
+            IReadOnlyList<DynamicPlatform> platforms,
+            PacketFieldUtilityMovingFootholdState movingState)
+        {
+            if (platforms == null || platforms.Count == 0 || movingState == null)
+            {
+                return;
+            }
+
+            DynamicPlatform firstPlatform = null;
+            for (int i = 0; i < platforms.Count; i++)
+            {
+                if (platforms[i] != null)
+                {
+                    firstPlatform = platforms[i];
+                    break;
+                }
+            }
+
+            if (firstPlatform == null)
+            {
+                return;
+            }
+
+            float previousObjectX = firstPlatform.X;
+            float previousObjectY = firstPlatform.Y;
+            float objectDeltaX = movingState.CurrentX - previousObjectX;
+            float objectDeltaY = movingState.CurrentY - previousObjectY;
+            bool useSharedObjectDelta = platforms.Count > 1;
+            for (int i = 0; i < platforms.Count; i++)
+            {
+                DynamicPlatform platform = platforms[i];
+                if (platform == null)
+                {
+                    continue;
+                }
+
+                ApplyPacketOwnedFootholdMovingStateToPlatform(platform, movingState);
+                if (useSharedObjectDelta)
+                {
+                    platform.DeltaX = objectDeltaX;
+                    platform.DeltaY = objectDeltaY;
                 }
             }
         }

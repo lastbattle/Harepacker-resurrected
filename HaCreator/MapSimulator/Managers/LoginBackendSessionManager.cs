@@ -534,7 +534,16 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (removedWorldId > 0 && ActiveWorldId == 0)
+            if (removedEntry?.WorldId.HasValue == true)
+            {
+                removedWorldId = Math.Max(0, removedEntry.WorldId.Value);
+            }
+
+            if (removedEntry?.WorldId.HasValue == true)
+            {
+                ActiveWorldId = removedWorldId;
+            }
+            else if (removedWorldId > 0 && ActiveWorldId == 0)
             {
                 ActiveWorldId = removedWorldId;
             }
@@ -559,18 +568,20 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedWorldId = Math.Max(0, entry.WorldId ?? 0);
-            if (resolvedWorldId <= 0)
+            int resolvedWorldId = entry.WorldId.HasValue
+                ? Math.Max(0, entry.WorldId.Value)
+                : -1;
+            if (resolvedWorldId < 0)
             {
                 resolvedWorldId = Math.Max(0, fallbackWorldId);
             }
 
-            if (resolvedWorldId <= 0)
+            if (resolvedWorldId < 0)
             {
                 resolvedWorldId = Math.Max(0, ActiveWorldId);
             }
 
-            if (resolvedWorldId <= 0)
+            if (resolvedWorldId < 0)
             {
                 resolvedWorldId = 0;
             }

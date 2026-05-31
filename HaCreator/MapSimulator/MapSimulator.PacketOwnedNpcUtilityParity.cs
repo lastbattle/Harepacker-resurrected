@@ -580,6 +580,7 @@ namespace HaCreator.MapSimulator
                         message = adminShopWindow.ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(
                             blockingOwner,
                             snapshot);
+                        CapturePacketOwnedAdminShopOpenAtCashShopStage(snapshot, message);
                         return true;
                     }
 
@@ -588,6 +589,7 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    CapturePacketOwnedAdminShopOpenAtCashShopStage(snapshot, message);
                     PublishDynamicObjectTagStatesForNpc(npcTemplateId, currTickCount);
                     message = ShowPacketOwnedAdminShopOwnerWindow(adminShopWindow, message);
                     return true;
@@ -795,6 +797,16 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private void CapturePacketOwnedAdminShopOpenAtCashShopStage(
+            AdminShopPacketOwnedOpenPayloadSnapshot snapshot,
+            string packetOwnedAdminShopSummary)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                stageWindow.CapturePacketOwnedAdminShopOpenSnapshot(snapshot, packetOwnedAdminShopSummary);
+            }
         }
 
         private bool IsVisibleCashShopFamilyUniqueModelessOwner()

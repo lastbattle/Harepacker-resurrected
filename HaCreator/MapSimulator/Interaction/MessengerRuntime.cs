@@ -1363,6 +1363,29 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildPacketActivityPulsePayload(
+            string participantToken,
+            bool active,
+            out byte[] payload,
+            out string message)
+        {
+            payload = null;
+            message = null;
+
+            string resolvedName = NormalizeParticipantName(participantToken);
+            if (resolvedName == null)
+            {
+                message = "Messenger OnChat activity pulse needs a participant name.";
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildClientActivityPulsePayload(resolvedName, active);
+            message = active
+                ? $"Built packet-authored CUIMessenger::OnChat activity pulse for {resolvedName}."
+                : $"Built packet-authored CUIMessenger::OnChat inactive pulse for {resolvedName}.";
+            return true;
+        }
+
         public string WhisperSelected()
         {
             return WhisperSelected("Meet at your current map.");
@@ -2873,6 +2896,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (participantIndex < 0)
             {
                 return $"Messenger avatar packet slot {packet.SlotIndex} is not active.";
+            }
+
+            if (_windowState != MessengerWindowState.Max)
+            {
+                RecordPacketSummary(
+                    $"Ignored Messenger avatar packet for slot {packet.SlotIndex} because CUIMessenger::OnAvatar only calls SetAvatar while expanded.");
+                return $"Messenger avatar packet slot {packet.SlotIndex} was ignored while the Messenger window is {_windowState.ToDisplayName()}.";
             }
 
             MessengerParticipantState participant = _participants[participantIndex];

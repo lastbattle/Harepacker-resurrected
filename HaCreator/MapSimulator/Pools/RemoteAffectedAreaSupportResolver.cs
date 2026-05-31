@@ -122,6 +122,8 @@ namespace HaCreator.MapSimulator.Pools
             PlayerMobStatusEffect.PhysicalDefenseDown,
             PlayerMobStatusEffect.MagicDefenseDown,
             PlayerMobStatusEffect.ElementalWeaken,
+            PlayerMobStatusEffect.AttackLimit,
+            PlayerMobStatusEffect.BuffLimit,
             PlayerMobStatusEffect.BattlefieldFlag
         };
 
@@ -922,7 +924,7 @@ namespace HaCreator.MapSimulator.Pools
             if (ContainsToken(hostileSearchText, "buffLimit"))
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
-                    PlayerMobStatusEffect.Seal,
+                    PlayerMobStatusEffect.BuffLimit,
                     durationMs,
                     1,
                     PropPercent: primaryStatusPropPercent));
@@ -1048,7 +1050,7 @@ namespace HaCreator.MapSimulator.Pools
             if (ContainsToken(hostileSearchText, "attackLimit", "incapacitate"))
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
-                    PlayerMobStatusEffect.Stun,
+                    PlayerMobStatusEffect.AttackLimit,
                     durationMs,
                     1,
                     PropPercent: primaryStatusPropPercent));

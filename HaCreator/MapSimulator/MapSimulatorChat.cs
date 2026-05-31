@@ -1394,7 +1394,7 @@ namespace HaCreator.MapSimulator
             if (_clientChatHelperHasMutedTime
                 && HasClientChatHelperElapsedLessThan(tickCount, _clientChatHelperMutedTime, ClientChatHelperMuteWindowMs))
             {
-                return false;
+                return RejectClientChatHelperTryChat();
             }
 
             if (IsClientChatContextBlocked)
@@ -1403,7 +1403,7 @@ namespace HaCreator.MapSimulator
                     ResolveClientChatHelperContextBlockedMessage(),
                     tickCount,
                     8);
-                return false;
+                return RejectClientChatHelperTryChat();
             }
 
             if (!ClientCurseProcessParity.TryProcessString(
@@ -1414,7 +1414,7 @@ namespace HaCreator.MapSimulator
                     out string curseNotice))
             {
                 ShowClientChatHelperNotice(curseNotice ?? ClientCurseProcessParity.GetInappropriateContentNotice(), tickCount);
-                return false;
+                return RejectClientChatHelperTryChat();
             }
 
             if (_clientChatHelperHasLastCheckedTime
@@ -1440,7 +1440,7 @@ namespace HaCreator.MapSimulator
             {
                 MuteClientChatHelper(tickCount);
                 ShowClientChatHelperNotice(ResolveClientChatHelperRepeatedMessageNotice(), tickCount);
-                return false;
+                return RejectClientChatHelperTryChat();
             }
 
             int currentIndex = _clientChatHelperChatIndex;
@@ -1457,11 +1457,20 @@ namespace HaCreator.MapSimulator
             {
                 MuteClientChatHelper(tickCount);
                 ShowClientChatHelperNotice(ResolveClientChatHelperFloodNotice(), tickCount);
-                return false;
+                return RejectClientChatHelperTryChat();
             }
 
             AddToInputHistory(originalMessage);
             return true;
+        }
+
+        private bool RejectClientChatHelperTryChat()
+        {
+            // CChatHelper::TryChat only reaches HistoryAdd on the accepted branch.
+            // Rejected sends must not arm the submitted-history reuse lane.
+            _pendingClientChatHelperSubmittedHistoryIndex = false;
+            _pendingClientChatHelperSubmittedHistoryForwardIndex = -1;
+            return false;
         }
 
         private bool AreClientChatHelperRecentMessagesEqual()

@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
         private string _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
         private int _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+        private int _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
 
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
@@ -483,6 +484,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge.SentCount;
             _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = _localUtilityOfficialSessionBridge.ForwardedOutboundCount;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge.ReceivedCount;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
 
             window.ClearChallenge();
@@ -545,7 +547,7 @@ namespace HaCreator.MapSimulator
             string resultSourceState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroResultSource)
                 ? "resultSource=none"
                 : _lastPacketOwnedAntiMacroAuthoritativeRoundTrip
-                    ? $"resultSource={_lastPacketOwnedAntiMacroResultSource} (authoritative round-trip, latency={_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms, payload={_lastPacketOwnedAntiMacroResultPayloadHex})"
+                    ? $"resultSource={_lastPacketOwnedAntiMacroResultSource} (authoritative round-trip, latency={_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms, bridgeInboundDelta={ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(_lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal, _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal)}, payload={_lastPacketOwnedAntiMacroResultPayloadHex})"
                     : $"resultSource={_lastPacketOwnedAntiMacroResultSource}";
             return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}, {resultSourceState}. {_lastPacketOwnedAntiMacroSummary}";
         }
@@ -602,6 +604,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
         }
@@ -682,6 +685,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+                _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
                 _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
             }
@@ -1025,6 +1029,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
 
@@ -1069,6 +1074,20 @@ namespace HaCreator.MapSimulator
             {
                 return Math.Max(0, resultTick - submittedTick);
             }
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(
+            int submitReceivedOrdinalBaseline,
+            int resultReceivedOrdinal)
+        {
+            if (submitReceivedOrdinalBaseline < 0
+                || resultReceivedOrdinal < 0
+                || resultReceivedOrdinal <= submitReceivedOrdinalBaseline)
+            {
+                return -1;
+            }
+
+            return resultReceivedOrdinal - submitReceivedOrdinalBaseline;
         }
 
         internal static int ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
@@ -1900,6 +1919,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge?.SentCount ?? -1;
             _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = Math.Max(0, e.ObservedOrdinal - 1);
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
             _lastPacketOwnedAntiMacroSummary =
                 $"Observed live client anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} from {ResolvePacketOwnedAntiMacroResultSource(e.Source)} and started packet-owned result tracking with remaining={remainingMs}ms.";
@@ -1928,6 +1948,7 @@ namespace HaCreator.MapSimulator
             if (authoritativeRoundTrip)
             {
                 _lastPacketOwnedAntiMacroResultTick = Environment.TickCount;
+                _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
                 int submittedTick = submittedTickForLatency == int.MinValue
                     ? _lastPacketOwnedAntiMacroSubmittedTick
                     : submittedTickForLatency;
@@ -1935,7 +1956,13 @@ namespace HaCreator.MapSimulator
                     submittedTick,
                     _lastPacketOwnedAntiMacroResultTick);
                 _packetOwnedAntiMacroAwaitingResult = false;
-                sourceSummary = $" Result arrived from {source} and completed the official-session anti-macro round-trip in {_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms.";
+                int bridgeInboundDelta = ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(
+                    _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal,
+                    _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal);
+                string bridgeEvidence = bridgeInboundDelta >= 0
+                    ? $" bridgeInboundDelta={bridgeInboundDelta}."
+                    : string.Empty;
+                sourceSummary = $" Result arrived from {source} and completed the official-session anti-macro round-trip in {_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms.{bridgeEvidence}";
             }
             else
             {

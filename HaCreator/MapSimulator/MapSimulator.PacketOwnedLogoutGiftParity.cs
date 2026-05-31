@@ -798,7 +798,11 @@ namespace HaCreator.MapSimulator
             Texture2D hovered = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "mouseOver", "3", "1");
             Texture2D pressed = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "pressed", "2", "3");
             Texture2D disabled = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "disabled", "0", "4");
-            Texture2D keyFocused = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "keyFocused", "1", "0");
+            IReadOnlyList<LogoutGiftButtonSkinFrame> keyFocusedFrames =
+                LoadPacketOwnedLogoutGiftButtonKeyFocusedFrames(buttonProperty["keyFocused"] as WzSubProperty);
+            Texture2D keyFocused = keyFocusedFrames.Count > 0
+                ? keyFocusedFrames[0].Texture
+                : LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "keyFocused", "1", "0");
             if (normal == null && hovered == null && pressed == null && disabled == null && keyFocused == null)
             {
                 return null;
@@ -809,7 +813,50 @@ namespace HaCreator.MapSimulator
                 hovered,
                 pressed,
                 disabled,
-                keyFocused);
+                keyFocused,
+                keyFocusedFrames);
+        }
+
+        private IReadOnlyList<LogoutGiftButtonSkinFrame> LoadPacketOwnedLogoutGiftButtonKeyFocusedFrames(WzSubProperty keyFocusedProperty)
+        {
+            if (keyFocusedProperty == null)
+            {
+                return Array.Empty<LogoutGiftButtonSkinFrame>();
+            }
+
+            List<LogoutGiftButtonSkinFrame> frames = new();
+            for (int i = 0; ; i++)
+            {
+                if (keyFocusedProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty canvas)
+                {
+                    break;
+                }
+
+                Texture2D texture = LoadUiCanvasTexture(canvas);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+                int delay = ResolvePacketOwnedLogoutGiftButtonFrameDelay(canvas["delay"]);
+                frames.Add(new LogoutGiftButtonSkinFrame(
+                    texture,
+                    origin == null ? Point.Zero : new Point(origin.X.Value, origin.Y.Value),
+                    delay));
+            }
+
+            return frames;
+        }
+
+        internal static int ResolvePacketOwnedLogoutGiftButtonFrameDelay(WzImageProperty delayProperty)
+        {
+            return Math.Max(1, delayProperty switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzStringProperty stringProperty => stringProperty.GetInt(),
+                _ => 1
+            });
         }
 
         private Texture2D LoadPacketOwnedLogoutGiftButtonStateTexture(

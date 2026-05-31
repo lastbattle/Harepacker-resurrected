@@ -19,6 +19,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
@@ -58,6 +59,24 @@ namespace HaCreator.MapSimulator.Effects
         public const int CurrentWrapperRelayOpcode = 163;
         internal const int TimeOverFieldSoundStringPoolId = 0x0A24;
         internal const string TimeOverFieldSoundFallbackDescriptor = "Dojang/timeOver";
+        internal const int PlayerLayerStringPoolId = 0x11D0;
+        internal const int MonsterLayerStringPoolId = 0x11D1;
+        internal const int ClockLayerStringPoolId = 0x11D2;
+        internal const int EnergyEmptyLayerStringPoolId = 0x11D3;
+        internal const int EnergyFullLayerStringPoolId = 0x11D4;
+        internal const int BarGaugeLayerStringPoolId = 0x11D5;
+        internal const int EnergyGaugeLayerStringPoolId = 0x11D6;
+        internal const int NumberRootStringPoolId = 0x11D7;
+        internal const int TimerColonStringPoolId = 0x11D8;
+        private const string PlayerLayerPath = "UI/UIWindow.img/muruengRaid/player";
+        private const string MonsterLayerPath = "UI/UIWindow.img/muruengRaid/monster";
+        private const string ClockLayerPath = "UI/UIWindow.img/muruengRaid/clock";
+        private const string EnergyEmptyLayerPath = "UI/UIWindow.img/muruengRaid/energy/empty";
+        private const string EnergyFullLayerPath = "UI/UIWindow.img/muruengRaid/energy/full";
+        private const string BarGaugeLayerPath = "UI/UIWindow.img/muruengRaid/player/Gage";
+        private const string EnergyGaugeLayerPath = "UI/UIWindow.img/muruengRaid/energy/empty/Gage";
+        private const string NumberRootPath = "UI/UIWindow.img/muruengRaid/number";
+        private const string TimerColonPath = "UI/UIWindow.img/muruengRaid/number/bar";
         private const int TimerLayerOffsetX = -55;
         private const int TimerLayerY = 16;
         private const int TimerLayerWidth = 112;
@@ -224,6 +243,19 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         public static IReadOnlyList<DojoPacketContract> KnownPacketContracts => PacketContracts;
         public static IReadOnlyList<DojoSharedDispatchContract> KnownSharedDispatchContracts => SharedDispatchContracts;
+        internal static IReadOnlyList<DojoResourceContract> ClientResourceContracts { get; } =
+            new[]
+            {
+                new DojoResourceContract(PlayerLayerStringPoolId, "player-backplate", PlayerLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(MonsterLayerStringPoolId, "monster-backplate", MonsterLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(ClockLayerStringPoolId, "clock-backplate", ClockLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(EnergyEmptyLayerStringPoolId, "empty-energy-backplate", EnergyEmptyLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(EnergyFullLayerStringPoolId, "full-energy-animation", EnergyFullLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(BarGaugeLayerStringPoolId, "player-and-monster-gauge-fill", BarGaugeLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(EnergyGaugeLayerStringPoolId, "empty-energy-gauge-fill", EnergyGaugeLayerPath, "CField_Dojang::Init"),
+                new DojoResourceContract(NumberRootStringPoolId, "timer-digit-root", NumberRootPath, "CField_Dojang::Init"),
+                new DojoResourceContract(TimerColonStringPoolId, "timer-colon", TimerColonPath, "CField_Dojang::OnClock")
+            };
         internal static DojoHudGeometry ClientHudGeometry => new(
             PlayerGaugeOffsetX,
             MonsterGaugeOffsetX,
@@ -2087,7 +2119,8 @@ namespace HaCreator.MapSimulator.Effects
             _playerTexture = LoadCanvasTexture(muruengRaid?["player"]?["0"] as WzCanvasProperty);
             _playerGaugeTexture = LoadCanvasTexture(muruengRaid?["player"]?["Gage"]?["0"] as WzCanvasProperty);
             _monsterTexture = LoadCanvasTexture(muruengRaid?["monster"]?["0"] as WzCanvasProperty);
-            _monsterGaugeTexture = LoadCanvasTexture(muruengRaid?["monster"]?["Gage"]?["0"] as WzCanvasProperty);
+            _monsterGaugeTexture = _playerGaugeTexture
+                ?? LoadCanvasTexture(muruengRaid?["monster"]?["Gage"]?["0"] as WzCanvasProperty);
             _energyTexture = LoadCanvasTexture(muruengRaid?["energy"]?["empty"]?["0"] as WzCanvasProperty);
             _energyGaugeTexture = LoadCanvasTexture(muruengRaid?["energy"]?["empty"]?["Gage"]?["0"] as WzCanvasProperty);
             _timerColonTexture = LoadCanvasTexture(muruengRaid?["number"]?["bar"] as WzCanvasProperty);
@@ -2558,6 +2591,15 @@ namespace HaCreator.MapSimulator.Effects
             string OwnerEvidence,
             string PayloadContract,
             bool IsClientConfirmed);
+        internal readonly record struct DojoResourceContract(
+            int StringPoolId,
+            string LayerName,
+            string WzPath,
+            string OwnerEvidence)
+        {
+            public string ResolvedStringPoolText =>
+                MapleStoryStringPool.GetOrFallback(StringPoolId, WzPath);
+        }
         private enum DojoResultEffect
         {
             None,

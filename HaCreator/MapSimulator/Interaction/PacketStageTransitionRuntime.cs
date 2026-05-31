@@ -4116,6 +4116,7 @@ namespace HaCreator.MapSimulator.Interaction
                 List<PacketCharacterDataBackwardUpdateCashMutation> mutationSequenceForType = new();
                 Dictionary<long, short> mutationEffectivePositionsForType = new();
                 Dictionary<short, long> mutationEffectiveSerialNumbersForType = new();
+                Dictionary<short, int> mutationEffectiveRecordByteCountsForType = new();
                 int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
                 HashSet<short> occupiedPositivePositions = BuildBackwardUpdateOccupiedPositivePositions(slots, slotCapacity);
                 HashSet<short> reservedValidatedPositions = new();
@@ -4191,6 +4192,13 @@ namespace HaCreator.MapSimulator.Interaction
                         }
                     }
 
+                    bool overwrotePriorEffectiveCashItem = mutationEffectiveSerialNumbersForType.TryGetValue(
+                        effectivePosition,
+                        out long priorEffectiveCashItemSerialNumber);
+                    int priorEffectiveCashItemRecordByteCount = overwrotePriorEffectiveCashItem &&
+                        mutationEffectiveRecordByteCountsForType.TryGetValue(effectivePosition, out int mappedPriorRecordByteCount)
+                            ? mappedPriorRecordByteCount
+                            : 0;
                     PacketCharacterDataBackwardUpdateCashMutation mutation = new(
                         inventoryType,
                         slot.InventoryPosition,
@@ -4208,11 +4216,15 @@ namespace HaCreator.MapSimulator.Interaction
                         slot.SectionRecordStartOffset,
                         slot.SectionRecordEndOffset,
                         MutationSequenceIndex: mutationSequenceForType.Count,
-                        MutationOperation: ResolveBackwardUpdateCashMutationOperation(usedFallback, usedReplacement));
+                        MutationOperation: ResolveBackwardUpdateCashMutationOperation(usedFallback, usedReplacement),
+                        OverwrotePriorEffectiveCashItem: overwrotePriorEffectiveCashItem,
+                        PriorEffectiveCashItemSerialNumber: priorEffectiveCashItemSerialNumber,
+                        PriorEffectiveCashItemRecordByteCount: priorEffectiveCashItemRecordByteCount);
                     mutationSequenceForType.Add(mutation);
                     aggregatedMutationSequence.Add(mutation);
                     mutationEffectivePositionsForType[slot.CashItemSerialNumber] = effectivePosition;
                     mutationEffectiveSerialNumbersForType[effectivePosition] = slot.CashItemSerialNumber;
+                    mutationEffectiveRecordByteCountsForType[effectivePosition] = slotByteCount;
                 }
 
                 positionValidatedCountsByType[inventoryType] = validatedForType;
@@ -6945,7 +6957,10 @@ namespace HaCreator.MapSimulator.Interaction
         int SectionRecordEndOffset = -1,
         int MutationSequenceIndex = -1,
         string MutationOperation = null,
-        byte[] RawBytes = null)
+        byte[] RawBytes = null,
+        bool OverwrotePriorEffectiveCashItem = false,
+        long PriorEffectiveCashItemSerialNumber = 0,
+        int PriorEffectiveCashItemRecordByteCount = 0)
     {
         internal const string ValidatedPositionOperation = "ValidatedPosition";
         internal const string FallbackInsertionOperation = "FallbackInsertion";

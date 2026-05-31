@@ -2686,7 +2686,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if ((packet.EnterType == 1 || packet.EnterType == 2) && !existingDrop.IsReal)
                 {
-                    PromoteClientFakeDrop(existingDrop, packet, currentTime);
+                    PromoteClientFakeDrop(existingDrop);
                 }
 
                 _lastPacketEnterAppliedTime = currentTime;
@@ -2776,7 +2776,7 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private void PromoteClientFakeDrop(DropItem drop, RemoteDropEnterPacket packet, int currentTime)
+        private static void PromoteClientFakeDrop(DropItem drop)
         {
             if (drop == null)
             {
@@ -2784,38 +2784,6 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             drop.IsReal = true;
-            drop.PacketEnterType = packet.EnterType;
-            drop.OwnerId = packet.OwnerId;
-            drop.OwnershipType = packet.OwnershipType;
-            drop.SourceId = packet.SourceId;
-            drop.AllowPetPickup = packet.AllowPetPickup;
-            drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
-            ApplyPacketDropLayerOrdering(drop, packet, page: drop.PacketLayerPage, zMass: drop.PacketLayerZMass);
-            drop.OwnerExpireTime = ResolveClientOwnershipExpireTime(currentTime, packet.DelayMs, packet.OwnerId);
-            drop.ExpireTime = ResolvePacketExpireTime(
-                currentTime,
-                packet.IsMoney,
-                packet.ExpireRaw,
-                _packetExpireTimeUtcResolver?.Invoke() ?? DateTime.UtcNow);
-            drop.HoverAmplitude = packet.IsMoney ? 3f : 2f;
-            drop.HoverFrequency = packet.EnterType == 4 ? 0.6f : 1f;
-            drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
-                ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
-                : 0;
-            drop.PacketEnterAlphaRampStartTime = currentTime;
-
-            ApplyPacketDropPresentation(drop, packet);
-
-            if (packet.EnterType == 2)
-            {
-                SnapDropToPacketIdle(drop, currentTime);
-            }
-
-            if (ShouldRetireExpiredPacketEnter(drop, packet, currentTime))
-            {
-                drop.SnapToTargetPosition();
-                drop.StartRemoveFade(currentTime, DropItem.EXPIRE_FADE_DURATION);
-            }
         }
 
         private void ApplyPacketDropPresentation(DropItem drop, RemoteDropEnterPacket packet)

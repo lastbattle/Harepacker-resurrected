@@ -745,7 +745,7 @@ namespace HaCreator.MapSimulator.Entities
             if (properEventIndex < 0)
             {
                 if (HasAuthoredState(state)
-                    && TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
+                    && TryResolveStateLayerSource(state, out sourceKind, out sourceProperty))
                 {
                     return true;
                 }
@@ -788,6 +788,28 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return TryResolveStateHitSource(state, out sourceKind, out sourceProperty);
+        }
+
+        private bool TryResolveStateLayerSource(int state, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)
+        {
+            if (_stateLayerProperties.TryGetValue(state, out sourceProperty) && sourceProperty != null)
+            {
+                sourceKind = HitAnimationSourceKind.StateLayer;
+                if (HasRenderableHitLayerSource(sourceKind, sourceProperty))
+                {
+                    return true;
+                }
+            }
+
+            if (_stateFrames.TryGetValue(state, out IDXObject[] frames) && frames.Length > 0)
+            {
+                sourceKind = HitAnimationSourceKind.StateLayer;
+                return true;
+            }
+
+            sourceKind = HitAnimationSourceKind.None;
+            sourceProperty = null;
+            return false;
         }
 
         private static bool HasRenderableHitLayerSource(HitAnimationSourceKind sourceKind, WzImageProperty sourceProperty)

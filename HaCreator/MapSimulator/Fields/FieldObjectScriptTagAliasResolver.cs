@@ -6477,7 +6477,16 @@ namespace HaCreator.MapSimulator.Fields
                 localAliasMap,
                 objectMemberAliasMap);
 
-            string directCallbackScanValue = RemoveStaticArrayIteratorCallbackBodies(value);
+            CollectInlineStaticCollectionIteratorTimerCallbackPublications(
+                value,
+                inheritedDelayMs,
+                publications,
+                seen,
+                localAliasMap,
+                objectMemberAliasMap);
+
+            string directCallbackScanValue = RemoveInlineStaticCollectionIteratorCallbackBodies(
+                RemoveStaticArrayIteratorCallbackBodies(value));
             foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(directCallbackScanValue, includeNested: false))
             {
                 if (!IsScriptCallbackFunctionName(call.FunctionName)
@@ -6710,6 +6719,312 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static void CollectInlineStaticCollectionIteratorTimerCallbackPublications(
+            string value,
+            int inheritedDelayMs,
+            ICollection<ScriptAliasPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seen,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || publications == null
+                || seen == null
+                || objectMemberAliasMap == null
+                || objectMemberAliasMap.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectKeyAliasMap =
+                BuildObjectKeyAliasMap(value, localAliasMap, objectMemberAliasMap);
+            foreach ((IReadOnlyList<string> AliasValues, IReadOnlyList<string> Arguments, bool IsReduce) iteratorCall
+                     in EnumerateInlineStaticCollectionIteratorCalls(value, objectMemberAliasMap, objectKeyAliasMap))
+            {
+                if (iteratorCall.Arguments.Count == 0)
+                {
+                    continue;
+                }
+
+                if (iteratorCall.IsReduce)
+                {
+                    if (!TryParseReduceIteratorCallback(iteratorCall.Arguments[0], out string itemName, out string callbackBody))
+                    {
+                        continue;
+                    }
+
+                    CollectIteratorBodyTimerCallbackPublications(
+                        callbackBody,
+                        itemName,
+                        iteratorCall.AliasValues,
+                        inheritedDelayMs,
+                        publications,
+                        seen,
+                        localAliasMap,
+                        objectMemberAliasMap);
+                    continue;
+                }
+
+                if (!TryParseIteratorCallback(iteratorCall.Arguments[0], out string iteratorItemName, out string iteratorCallbackBody))
+                {
+                    continue;
+                }
+
+                CollectIteratorBodyTimerCallbackPublications(
+                    iteratorCallbackBody,
+                    iteratorItemName,
+                    iteratorCall.AliasValues,
+                    inheritedDelayMs,
+                    publications,
+                    seen,
+                    localAliasMap,
+                    objectMemberAliasMap);
+            }
+        }
+
+        private static IEnumerable<(IReadOnlyList<string> AliasValues, IReadOnlyList<string> Arguments, bool IsReduce)> EnumerateInlineStaticCollectionIteratorCalls(
+            string value,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectKeyAliasMap)
+        {
+            const string objectPrefix = "Object.";
+            int objectIndex = value.IndexOf(objectPrefix, StringComparison.Ordinal);
+            while (objectIndex >= 0)
+            {
+                int methodStart = objectIndex + objectPrefix.Length;
+                int methodEnd = methodStart;
+                while (methodEnd < value.Length && char.IsLetter(value[methodEnd]))
+                {
+                    methodEnd++;
+                }
+
+                string staticMethodName = methodEnd > methodStart
+                    ? value[methodStart..methodEnd]
+                    : string.Empty;
+                if (!staticMethodName.Equals("keys", StringComparison.OrdinalIgnoreCase)
+                    && !staticMethodName.Equals("values", StringComparison.OrdinalIgnoreCase)
+                    && !staticMethodName.Equals("entries", StringComparison.OrdinalIgnoreCase))
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int staticOpenIndex = SkipWhitespace(value, methodEnd);
+                if (staticOpenIndex < 0 || staticOpenIndex >= value.Length || value[staticOpenIndex] != '(')
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int staticCloseIndex = FindMatchingCloseParenthesis(value, staticOpenIndex);
+                if (staticCloseIndex <= staticOpenIndex)
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                var staticArguments = new List<string>(SplitFunctionArguments(value[(staticOpenIndex + 1)..staticCloseIndex]));
+                if (staticArguments.Count != 1)
+                {
+                    objectIndex = value.IndexOf(objectPrefix, staticCloseIndex + 1, StringComparison.Ordinal);
+                    continue;
+                }
+
+                string sourceName = NormalizeFunctionAliasArgument(staticArguments[0]).TrimEnd(';');
+                if (!TryResolveInlineStaticCollectionAliasValues(
+                        staticMethodName,
+                        sourceName,
+                        objectMemberAliasMap,
+                        objectKeyAliasMap,
+                        out IReadOnlyList<string> aliasValues))
+                {
+                    objectIndex = value.IndexOf(objectPrefix, staticCloseIndex + 1, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int cursor = SkipWhitespace(value, staticCloseIndex + 1);
+                while (cursor >= 0 && cursor < value.Length && value[cursor] == '.')
+                {
+                    if (!TryReadChainedMethodCall(
+                            value,
+                            cursor,
+                            out string chainedMethodName,
+                            out IReadOnlyList<string> chainedArguments,
+                            out int nextCursor))
+                    {
+                        break;
+                    }
+
+                    if (staticMethodName.Equals("entries", StringComparison.OrdinalIgnoreCase)
+                        && chainedMethodName.Equals("map", StringComparison.OrdinalIgnoreCase)
+                        && chainedArguments.Count == 1
+                        && TryResolveObjectEntriesMapProjection(chainedArguments[0], out bool projectKeys)
+                        && TryResolveInlineStaticCollectionAliasValues(
+                            projectKeys ? "keys" : "values",
+                            sourceName,
+                            objectMemberAliasMap,
+                            objectKeyAliasMap,
+                            out IReadOnlyList<string> projectedAliasValues))
+                    {
+                        aliasValues = projectedAliasValues;
+                        staticMethodName = projectKeys ? "keys" : "values";
+                        cursor = SkipWhitespace(value, nextCursor);
+                        continue;
+                    }
+
+                    if (IsRecoverableStaticArrayTransform(chainedMethodName, chainedArguments))
+                    {
+                        cursor = SkipWhitespace(value, nextCursor);
+                        continue;
+                    }
+
+                    if (IsSideEffectIteratorMethodName(chainedMethodName))
+                    {
+                        yield return (aliasValues, chainedArguments, IsReduce: false);
+                        break;
+                    }
+
+                    if (chainedMethodName.Equals("reduce", StringComparison.OrdinalIgnoreCase))
+                    {
+                        yield return (aliasValues, chainedArguments, IsReduce: true);
+                        break;
+                    }
+
+                    break;
+                }
+
+                objectIndex = value.IndexOf(objectPrefix, staticCloseIndex + 1, StringComparison.Ordinal);
+            }
+        }
+
+        private static bool TryResolveInlineStaticCollectionAliasValues(
+            string staticMethodName,
+            string sourceName,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectKeyAliasMap,
+            out IReadOnlyList<string> aliasValues)
+        {
+            aliasValues = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(staticMethodName) || !IsPotentialFunctionAliasName(sourceName))
+            {
+                return false;
+            }
+
+            if (staticMethodName.Equals("values", StringComparison.OrdinalIgnoreCase)
+                || staticMethodName.Equals("entries", StringComparison.OrdinalIgnoreCase))
+            {
+                if (objectMemberAliasMap == null
+                    || !objectMemberAliasMap.TryGetValue(sourceName, out IReadOnlyDictionary<string, string> valueAliasMap))
+                {
+                    return false;
+                }
+
+                var values = new List<string>();
+                foreach (KeyValuePair<string, string> alias in valueAliasMap)
+                {
+                    string normalizedAlias = NormalizeFunctionAliasArgument(alias.Value).TrimEnd(';');
+                    if (IsPotentialFunctionAliasName(normalizedAlias))
+                    {
+                        values.Add(normalizedAlias);
+                    }
+                }
+
+                aliasValues = values.Count == 0 ? Array.Empty<string>() : values;
+                return aliasValues.Count > 0;
+            }
+
+            IReadOnlyDictionary<string, string> keyAliasMap;
+            if ((objectKeyAliasMap == null || !objectKeyAliasMap.TryGetValue(sourceName, out keyAliasMap))
+                && (objectMemberAliasMap == null || !objectMemberAliasMap.TryGetValue(sourceName, out keyAliasMap)))
+            {
+                return false;
+            }
+
+            var keys = new List<string>();
+            foreach (KeyValuePair<string, string> alias in keyAliasMap)
+            {
+                string normalizedAlias = NormalizeFunctionAliasArgument(alias.Key).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(normalizedAlias))
+                {
+                    keys.Add(normalizedAlias);
+                }
+            }
+
+            aliasValues = keys.Count == 0 ? Array.Empty<string>() : keys;
+            return aliasValues.Count > 0;
+        }
+
+        private static bool TryReadChainedMethodCall(
+            string value,
+            int memberIndex,
+            out string methodName,
+            out IReadOnlyList<string> arguments,
+            out int nextIndex)
+        {
+            methodName = string.Empty;
+            arguments = Array.Empty<string>();
+            nextIndex = memberIndex;
+            if (string.IsNullOrWhiteSpace(value)
+                || memberIndex < 0
+                || memberIndex >= value.Length
+                || value[memberIndex] != '.')
+            {
+                return false;
+            }
+
+            int nameStart = memberIndex + 1;
+            int nameEnd = nameStart;
+            while (nameEnd < value.Length && (char.IsLetterOrDigit(value[nameEnd]) || value[nameEnd] == '_'))
+            {
+                nameEnd++;
+            }
+
+            if (nameEnd <= nameStart)
+            {
+                return false;
+            }
+
+            int openIndex = SkipWhitespace(value, nameEnd);
+            if (openIndex < 0 || openIndex >= value.Length || value[openIndex] != '(')
+            {
+                return false;
+            }
+
+            int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+            if (closeIndex <= openIndex)
+            {
+                return false;
+            }
+
+            methodName = value[nameStart..nameEnd];
+            arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+            nextIndex = closeIndex + 1;
+            return true;
+        }
+
+        private static bool IsSideEffectIteratorMethodName(string methodName)
+        {
+            if (string.IsNullOrWhiteSpace(methodName))
+            {
+                return false;
+            }
+
+            switch (methodName.Trim())
+            {
+                case "forEach":
+                case "map":
+                case "filter":
+                case "flatMap":
+                case "some":
+                case "every":
+                case "find":
+                case "findIndex":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static string RemoveStaticArrayIteratorCallbackBodies(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -6797,6 +7112,117 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 ranges.Add((match.Index, endIndex));
+            }
+
+            if (ranges.Count == 0)
+            {
+                return value;
+            }
+
+            var builder = new StringBuilder(value);
+            for (int i = 0; i < ranges.Count; i++)
+            {
+                int start = Math.Max(0, ranges[i].Start);
+                int end = Math.Min(value.Length, ranges[i].End);
+                for (int index = start; index < end; index++)
+                {
+                    builder[index] = ' ';
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static string RemoveInlineStaticCollectionIteratorCallbackBodies(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            const string objectPrefix = "Object.";
+            var ranges = new List<(int Start, int End)>();
+            int objectIndex = value.IndexOf(objectPrefix, StringComparison.Ordinal);
+            while (objectIndex >= 0)
+            {
+                int methodStart = objectIndex + objectPrefix.Length;
+                int methodEnd = methodStart;
+                while (methodEnd < value.Length && char.IsLetter(value[methodEnd]))
+                {
+                    methodEnd++;
+                }
+
+                string staticMethodName = methodEnd > methodStart
+                    ? value[methodStart..methodEnd]
+                    : string.Empty;
+                if (!staticMethodName.Equals("keys", StringComparison.OrdinalIgnoreCase)
+                    && !staticMethodName.Equals("values", StringComparison.OrdinalIgnoreCase)
+                    && !staticMethodName.Equals("entries", StringComparison.OrdinalIgnoreCase))
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int staticOpenIndex = SkipWhitespace(value, methodEnd);
+                if (staticOpenIndex < 0 || staticOpenIndex >= value.Length || value[staticOpenIndex] != '(')
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int staticCloseIndex = FindMatchingCloseParenthesis(value, staticOpenIndex);
+                if (staticCloseIndex <= staticOpenIndex)
+                {
+                    objectIndex = value.IndexOf(objectPrefix, objectIndex + objectPrefix.Length, StringComparison.Ordinal);
+                    continue;
+                }
+
+                int cursor = SkipWhitespace(value, staticCloseIndex + 1);
+                while (cursor >= 0 && cursor < value.Length && value[cursor] == '.')
+                {
+                    if (!TryReadChainedMethodCall(
+                            value,
+                            cursor,
+                            out string chainedMethodName,
+                            out IReadOnlyList<string> chainedArguments,
+                            out int nextCursor))
+                    {
+                        break;
+                    }
+
+                    if (staticMethodName.Equals("entries", StringComparison.OrdinalIgnoreCase)
+                        && chainedMethodName.Equals("map", StringComparison.OrdinalIgnoreCase)
+                        && chainedArguments.Count == 1
+                        && TryResolveObjectEntriesMapProjection(chainedArguments[0], out bool projectKeys))
+                    {
+                        staticMethodName = projectKeys ? "keys" : "values";
+                        cursor = SkipWhitespace(value, nextCursor);
+                        continue;
+                    }
+
+                    if (IsRecoverableStaticArrayTransform(chainedMethodName, chainedArguments))
+                    {
+                        cursor = SkipWhitespace(value, nextCursor);
+                        continue;
+                    }
+
+                    if (IsSideEffectIteratorMethodName(chainedMethodName)
+                        || chainedMethodName.Equals("reduce", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int endIndex = nextCursor;
+                        int semicolonIndex = SkipWhitespace(value, endIndex);
+                        if (semicolonIndex >= 0 && semicolonIndex < value.Length && value[semicolonIndex] == ';')
+                        {
+                            endIndex = semicolonIndex + 1;
+                        }
+
+                        ranges.Add((cursor, endIndex));
+                    }
+
+                    break;
+                }
+
+                objectIndex = value.IndexOf(objectPrefix, staticCloseIndex + 1, StringComparison.Ordinal);
             }
 
             if (ranges.Count == 0)
