@@ -201,6 +201,16 @@ namespace HaCreator.MapSimulator.Interaction
             return built;
         }
 
+        internal bool TryBuildTrunkOwnerReturnOutboundRequest(int returnCode, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            bool built = _trunkDialogRuntime.TryBuildOwnerReturnOutboundRequest(returnCode, out request, out message);
+            _lastTrunkDispatchSummary = built
+                ? $"CTrunkDlg::OnButtonClicked routed owner button id {returnCode.ToString(CultureInfo.InvariantCulture)} into SetRet({returnCode.ToString(CultureInfo.InvariantCulture)})."
+                : $"CTrunkDlg::SetRet owner return request was ignored. {message}";
+            _lastDispatchSummary = _lastTrunkDispatchSummary;
+            return built;
+        }
+
         internal bool IsPacketOwnedTrunkDialogOpen => _trunkDialogRuntime.IsOpen;
 
         internal bool TryBuildTrunkGetItemOutboundRequest(
@@ -857,6 +867,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _requestInFlight;
         private int _transferGetCost;
         private int _transferPutCost;
+        private int _lastOwnerReturnCode = -1;
 
         internal PacketOwnedTrunkDialogRuntime(Func<SimulatorStorageRuntime> storageRuntimeResolver)
         {
@@ -941,7 +952,10 @@ namespace HaCreator.MapSimulator.Interaction
             SimulatorStorageRuntime runtime = _storageRuntimeResolver();
             int usedSlots = runtime?.GetUsedSlotCount() ?? 0;
             long meso = runtime?.GetMesoCount() ?? 0;
-            return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, costGet={_transferGetCost.ToString(CultureInfo.InvariantCulture)}, costPut={_transferPutCost.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
+            string returnSummary = _lastOwnerReturnCode >= 0
+                ? $" Last owner return: SetRet({_lastOwnerReturnCode.ToString(CultureInfo.InvariantCulture)}) from CTrunkDlg::OnButtonClicked."
+                : string.Empty;
+            return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, costGet={_transferGetCost.ToString(CultureInfo.InvariantCulture)}, costPut={_transferPutCost.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}.{returnSummary} {StatusMessage}";
         }
 
         internal bool TryBuildGetItemOutboundRequest(
@@ -1140,23 +1154,41 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryBuildCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
+            return TryBuildOwnerReturnOutboundRequest(2, out request, out message);
+        }
+
+        internal bool TryBuildOwnerReturnOutboundRequest(int returnCode, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
             request = default;
+            if (!IsNativeOwnerReturnCode(returnCode))
+            {
+                StatusMessage = $"CTrunkDlg ignored unsupported owner return code {returnCode.ToString(CultureInfo.InvariantCulture)}; recovered OnButtonClicked only routes ids 1, 2, and 8 into SetRet.";
+                message = StatusMessage;
+                return false;
+            }
+
             if (!IsOpen)
             {
-                StatusMessage = "CTrunkDlg ignored close because the owner is already closed.";
+                StatusMessage = $"CTrunkDlg ignored SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) because the owner is already closed.";
                 message = StatusMessage;
                 return false;
             }
 
             IsOpen = false;
             _requestInFlight = false;
-            StatusMessage = "CTrunkDlg::SetRet closed the owner and mirrored packet 67 [08].";
+            _lastOwnerReturnCode = returnCode;
+            StatusMessage = $"CTrunkDlg::OnButtonClicked routed owner button id {returnCode.ToString(CultureInfo.InvariantCulture)} into SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) and mirrored packet 67 [08]; the return code stays dialog-local.";
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 TrunkOutboundOpcode,
                 new byte[] { TrunkCloseMode },
-                "Mirrored CTrunkDlg::SetRet close/return request (opcode 67, mode 8).");
+                $"Mirrored CTrunkDlg::SetRet({returnCode.ToString(CultureInfo.InvariantCulture)}) close/return request (opcode 67, mode 8; IDA 0x767250 confirms nRet is stored dialog-local and is not encoded after the mode byte).");
             message = StatusMessage;
             return true;
+        }
+
+        private static bool IsNativeOwnerReturnCode(int returnCode)
+        {
+            return returnCode is 1 or 2 or 8;
         }
 
         private bool TryApplySnapshotPacket(byte[] payload, bool openDialog, out string message)

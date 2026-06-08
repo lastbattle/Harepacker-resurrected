@@ -41,6 +41,21 @@ namespace HaCreator.MapSimulator.UI
             return string.Format(format, Math.Max(1, requiredLevel));
         }
 
+        public static string FormatGuildSkillNoGuildCurrentLine()
+        {
+            return $"{FormatCurrentLevelHeader(0)} Requires guild membership.";
+        }
+
+        public static string FormatGuildSkillNoGuildNextLine()
+        {
+            return $"{FormatNextLevelHeader(1)} Requires guild membership.";
+        }
+
+        public static string ResolveGuildSkillNoGuildStateText()
+        {
+            return "Requires guild membership.";
+        }
+
         private static string FormatLevelHeader(int stringPoolId, string fallbackFormat, int level)
         {
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(

@@ -29,8 +29,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!entry.InGuild)
             {
-                lines.Add(SkillTooltipClientText.FormatCurrentLevelHeader(0));
-                lines.Add("Join a guild.");
+                lines.Add(SkillTooltipClientText.FormatGuildSkillNoGuildCurrentLine());
             }
             else if (!string.IsNullOrWhiteSpace(entry.CurrentEffectDescription))
             {
@@ -50,8 +49,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!entry.InGuild)
             {
-                lines.Add(SkillTooltipClientText.FormatNextLevelHeader(1));
-                lines.Add("Requires guild membership.");
+                lines.Add(SkillTooltipClientText.FormatGuildSkillNoGuildNextLine());
             }
             else if (entry.CurrentLevel >= entry.MaxLevel)
             {

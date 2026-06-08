@@ -781,6 +781,9 @@ namespace HaCreator.MapSimulator
         private byte[] _lastCapturedPortalOwnedMovePathKeyPadMemoryStates;
         private string _lastCapturedPortalOwnedMovePathKeyPadMemorySource;
         private bool _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession;
+        private bool _lastCapturedPortalOwnedMovePathKeyPadMemoryIsPostFlushClearEvidence;
+        private const int MaxRecentPortalOwnedMovePathFlushTailCaptures = 8;
+        private readonly Queue<PortalOwnedMovePathFlushTailCaptureRecord> _recentCapturedPortalOwnedMovePathFlushTails = new();
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -4315,17 +4318,28 @@ namespace HaCreator.MapSimulator
             byte[] payload = AvatarMegaphonePacketCodec.EncodeConsumeCashItemUseRequestPayload(request);
             string payloadHex = Convert.ToHexString(payload);
             int opcode = AvatarMegaphonePacketCodec.ConsumeCashItemUseRequestOpcode;
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out string bridgeStatus))
+            {
+                return $"Dispatched CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}";
+            }
+
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out string outboxStatus))
             {
-                return $"Dispatched CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the local-utility outbox. {outboxStatus}";
+                return $"Dispatched CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queuedBridgeStatus))
+            {
+                return $"Queued CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for deferred official-session injection after immediate dispatch was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
             }
 
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedStatus))
             {
-                return $"Queued CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for local-utility outbox delivery after immediate dispatch was unavailable. Outbox: {outboxStatus} Queue: {queuedStatus}";
+                return $"Queued CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedStatus}";
             }
 
-            return $"Kept CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] simulator-local after the local-utility outbox rejected dispatch and queueing. Outbox: {outboxStatus} Queue: {queuedStatus}";
+            return $"Kept CUIAvatarMegaphone SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] simulator-local after neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
         private string PublishAvatarMegaphoneDraft()
@@ -6907,7 +6921,7 @@ namespace HaCreator.MapSimulator
             string key = BuildSocialRoomPersistenceKey(runtime);
             SocialRoomRuntimeSnapshot snapshot = _socialRoomPersistenceStore.Load(key);
             runtime.ConfigurePersistence(key, SaveSocialRoomSnapshot, snapshot);
-            if (runtime.Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop)
+            if (runtime.Kind is SocialRoomKind.MiniRoom or SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop)
             {
                 _packetOwnedEmployeePoolDispatcher.RestoreFromRoomSnapshot(runtime.BuildSnapshot());
             }
@@ -7018,7 +7032,8 @@ namespace HaCreator.MapSimulator
             SocialRoomKind[] searchOrder =
             {
                 SocialRoomKind.EntrustedShop,
-                SocialRoomKind.PersonalShop
+                SocialRoomKind.PersonalShop,
+                SocialRoomKind.MiniRoom
             };
 
 
@@ -16611,7 +16626,7 @@ namespace HaCreator.MapSimulator
                 noticeTextIndex,
                 inputLabel,
                 visualStyle);
-            _loginUtilityDialogOwner = dialogOwner;
+            _loginUtilityDialogOwner = ResolveLoginUtilityDialogOwner(dialogOwner, action, packetResultOwner);
             _loginUtilityDialogPacketResultOwner = packetResultOwner;
             _loginUtilityDialogTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
                 trackDirectionModeOwner,
@@ -16829,6 +16844,49 @@ namespace HaCreator.MapSimulator
             }
 
             return frameVariant;
+        }
+
+        private static LoginPacketDialogOwner ResolveLoginUtilityDialogOwner(
+            LoginPacketDialogOwner requestedOwner,
+            LoginUtilityDialogAction action,
+            LoginPacketResultDialogOwner packetResultOwner)
+        {
+            if (requestedOwner != LoginPacketDialogOwner.LoginUtilityDialog)
+            {
+                return requestedOwner;
+            }
+
+            return action switch
+            {
+                LoginUtilityDialogAction.SetPic or
+                LoginUtilityDialogAction.VerifyPic => LoginPacketDialogOwner.PicDialog,
+                LoginUtilityDialogAction.SecondaryPasswordDecision or
+                LoginUtilityDialogAction.SetSpw or
+                LoginUtilityDialogAction.VerifySpw => LoginPacketDialogOwner.SpwDialog,
+                LoginUtilityDialogAction.AccountMigrationDecision or
+                LoginUtilityDialogAction.VerifyBirthDate => LoginPacketDialogOwner.AccountMigrationDialog,
+                LoginUtilityDialogAction.WebsiteHandoffDecision or
+                LoginUtilityDialogAction.WebsiteHandoff => LoginPacketDialogOwner.WebsiteHandoffDialog,
+                _ => ResolveLoginUtilityDialogOwner(packetResultOwner),
+            };
+        }
+
+        private static LoginPacketDialogOwner ResolveLoginUtilityDialogOwner(LoginPacketResultDialogOwner packetResultOwner)
+        {
+            return packetResultOwner switch
+            {
+                LoginPacketResultDialogOwner.PicCreateDialog or
+                LoginPacketResultDialogOwner.PicVerifyDialog or
+                LoginPacketResultDialogOwner.PicNotice => LoginPacketDialogOwner.PicDialog,
+                LoginPacketResultDialogOwner.SpwSetupChoice or
+                LoginPacketResultDialogOwner.SpwSetupInput or
+                LoginPacketResultDialogOwner.SpwVerifyInput or
+                LoginPacketResultDialogOwner.EnableSpwResult or
+                LoginPacketResultDialogOwner.CheckSpwResult => LoginPacketDialogOwner.SpwDialog,
+                LoginPacketResultDialogOwner.AccountMigrationDialog => LoginPacketDialogOwner.AccountMigrationDialog,
+                LoginPacketResultDialogOwner.WebsiteHandoff => LoginPacketDialogOwner.WebsiteHandoffDialog,
+                _ => LoginPacketDialogOwner.LoginUtilityDialog,
+            };
         }
 
 
@@ -18196,6 +18254,7 @@ namespace HaCreator.MapSimulator
                 visualStyle: prompt.VisualStyle,
                 frameVariant: prompt.FrameVariant,
                 inputBoundsOverride: prompt.InputBoundsOverride,
+                dialogOwner: prompt.Owner,
                 packetResultOwner: prompt.PacketResultOwner,
                 trackDirectionModeOwner: ResolveSharedHostDirectionModeOwnerTracking(
                     prompt.TrackDirectionModeOwner,
@@ -18345,12 +18404,14 @@ namespace HaCreator.MapSimulator
                 },
                 LoginPacketType.SetAccountResult => new LoginPacketDialogPromptConfiguration
                 {
+                    Owner = LoginPacketDialogOwner.AccountMigrationDialog,
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Select how the simulator account should continue before entering the login bootstrap flow.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.YesNo,
                     PrimaryLabel = "Migrate",
                     SecondaryLabel = "Later",
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveAccountMigrationOwner(),
                 },
                 LoginPacketType.ConfirmEulaResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -18361,6 +18422,7 @@ namespace HaCreator.MapSimulator
                 },
                 LoginPacketType.CheckPinCodeResult => new LoginPacketDialogPromptConfiguration
                 {
+                    Owner = LoginPacketDialogOwner.PicDialog,
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Enter the configured PIC to continue the login bootstrap flow.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
@@ -18372,9 +18434,11 @@ namespace HaCreator.MapSimulator
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveCheckPinCodeOwner(packetProfile?.ResultCode),
                 },
                 LoginPacketType.UpdatePinCodeResult => new LoginPacketDialogPromptConfiguration
                 {
+                    Owner = LoginPacketDialogOwner.PicDialog,
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Create a PIC for the simulator account before continuing.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
@@ -18386,6 +18450,7 @@ namespace HaCreator.MapSimulator
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveUpdatePinCodeOwner(),
                 },
                 LoginPacketType.CheckDuplicatedIdResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -18395,14 +18460,17 @@ namespace HaCreator.MapSimulator
                 },
                 LoginPacketType.EnableSpwResult => new LoginPacketDialogPromptConfiguration
                 {
+                    Owner = LoginPacketDialogOwner.SpwDialog,
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Set up a secondary password now, or continue without one for this simulator account.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.NowLater,
                     VisualStyle = LoginUtilityDialogVisualStyle.SecondaryPasswordChoice,
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveSpwSetupChoiceOwner(),
                 },
                 LoginPacketType.CheckSpwResult => new LoginPacketDialogPromptConfiguration
                 {
+                    Owner = LoginPacketDialogOwner.SpwDialog,
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Enter the configured secondary password before continuing to world selection.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
@@ -18413,6 +18481,7 @@ namespace HaCreator.MapSimulator
                     InputMaxLength = 16,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveSpwVerifyOwner(inputPrompt: true),
                 },
                 LoginPacketType.CreateNewCharacterResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -18591,7 +18660,11 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            return BuildTryAgainAccountDialogPrompt(packetText, packetDetail);
+            return BuildTryAgainAccountDialogPrompt(
+                packetText,
+                packetDetail,
+                LoginPacketDialogOwner.AccountMigrationDialog,
+                LoginPacketResultDialogParity.ResolveAccountMigrationOwner());
         }
 
         private static LoginPacketDialogPromptConfiguration BuildConfirmEulaResultPrompt(
@@ -18629,6 +18702,8 @@ namespace HaCreator.MapSimulator
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    Owner = LoginPacketDialogOwner.PicDialog,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveCheckPinCodeOwner(1),
                 },
                 2 or 4 => new LoginPacketDialogPromptConfiguration
                 {
@@ -18645,9 +18720,23 @@ namespace HaCreator.MapSimulator
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                     FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                    Owner = LoginPacketDialogOwner.PicDialog,
+                    PacketResultOwner = LoginPacketResultDialogParity.ResolveCheckPinCodeOwner(packetProfile.ResultCode),
                 },
-                3 => BuildClientNoticePrompt(packetText, "PIC verification failed.", packetDetail, 15),
-                7 => BuildClientNoticePrompt(packetText, "PIC verification returned the client to the title step.", packetDetail, 17),
+                3 => BuildClientNoticePrompt(
+                    packetText,
+                    "PIC verification failed.",
+                    packetDetail,
+                    15,
+                    LoginPacketResultDialogParity.ResolveCheckPinCodeOwner(3),
+                    owner: LoginPacketDialogOwner.PicDialog),
+                7 => BuildClientNoticePrompt(
+                    packetText,
+                    "PIC verification returned the client to the title step.",
+                    packetDetail,
+                    17,
+                    LoginPacketResultDialogParity.ResolveCheckPinCodeOwner(7),
+                    owner: LoginPacketDialogOwner.PicDialog),
                 _ => null,
             };
         }
@@ -18663,8 +18752,20 @@ namespace HaCreator.MapSimulator
             }
 
             return packetProfile.ResultCode.Value == 0
-                ? BuildClientNoticePrompt(packetText, "PIC setup completed.", packetDetail, 8)
-                : BuildClientNoticePrompt(packetText, "PIC setup failed.", packetDetail, 15);
+                ? BuildClientNoticePrompt(
+                    packetText,
+                    "PIC setup completed.",
+                    packetDetail,
+                    8,
+                    LoginPacketResultDialogParity.ResolveUpdatePinCodeOwner(),
+                    owner: LoginPacketDialogOwner.PicDialog)
+                : BuildClientNoticePrompt(
+                    packetText,
+                    "PIC setup failed.",
+                    packetDetail,
+                    15,
+                    LoginPacketResultDialogParity.ResolveUpdatePinCodeOwner(),
+                    owner: LoginPacketDialogOwner.PicDialog);
         }
 
         private static LoginPacketDialogPromptConfiguration BuildCheckDuplicatedIdResultPrompt(
@@ -18776,11 +18877,13 @@ namespace HaCreator.MapSimulator
                         ? "Secondary password setup was disabled for the account."
                         : "Secondary password setup was enabled for the account.",
                     packetDetail,
-                    packetProfile.SecondaryCode.GetValueOrDefault() == 0 ? 40 : 39),
-                6 or 9 => BuildClientNoticePrompt(packetText, "Secondary password setup could not continue.", packetDetail, 18),
-                20 => BuildClientNoticePrompt(packetText, "Secondary password setup hit the client security warning path.", packetDetail, 93),
-                22 => BuildClientNoticePrompt(packetText, "Secondary password setup returned the client warning 91.", packetDetail, 91),
-                23 => BuildClientNoticePrompt(packetText, "Secondary password setup returned the client warning 92.", packetDetail, 92),
+                    packetProfile.SecondaryCode.GetValueOrDefault() == 0 ? 40 : 39,
+                    LoginPacketResultDialogParity.ResolveEnableSpwOwner(),
+                    owner: LoginPacketDialogOwner.SpwDialog),
+                6 or 9 => BuildClientNoticePrompt(packetText, "Secondary password setup could not continue.", packetDetail, 18, LoginPacketResultDialogParity.ResolveEnableSpwOwner(), owner: LoginPacketDialogOwner.SpwDialog),
+                20 => BuildClientNoticePrompt(packetText, "Secondary password setup hit the client security warning path.", packetDetail, 93, LoginPacketResultDialogParity.ResolveEnableSpwOwner(), owner: LoginPacketDialogOwner.SpwDialog),
+                22 => BuildClientNoticePrompt(packetText, "Secondary password setup returned the client warning 91.", packetDetail, 91, LoginPacketResultDialogParity.ResolveEnableSpwOwner(), owner: LoginPacketDialogOwner.SpwDialog),
+                23 => BuildClientNoticePrompt(packetText, "Secondary password setup returned the client warning 92.", packetDetail, 92, LoginPacketResultDialogParity.ResolveEnableSpwOwner(), owner: LoginPacketDialogOwner.SpwDialog),
                 _ => null,
             };
         }
@@ -18791,21 +18894,31 @@ namespace HaCreator.MapSimulator
             string packetDetail)
         {
             return packetProfile.ResultCode.HasValue || packetProfile.SecondaryCode.HasValue || !string.IsNullOrWhiteSpace(packetText)
-                ? BuildClientNoticePrompt(packetText, "Secondary password verification failed.", packetDetail, 93)
+                ? BuildClientNoticePrompt(
+                    packetText,
+                    "Secondary password verification failed.",
+                    packetDetail,
+                    93,
+                    LoginPacketResultDialogParity.ResolveCheckSpwOwner(),
+                    owner: LoginPacketDialogOwner.SpwDialog)
                 : null;
         }
 
         private static LoginPacketDialogPromptConfiguration BuildTryAgainAccountDialogPrompt(
             string packetText,
-            string packetDetail)
+            string packetDetail,
+            LoginPacketDialogOwner owner = LoginPacketDialogOwner.LoginUtilityDialog,
+            LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None)
         {
             return new LoginPacketDialogPromptConfiguration
             {
+                Owner = owner,
                 Title = "Login Utility",
                 Body = CombineLoginDialogBody(packetText, "Try Again!", packetDetail),
                 ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                 Action = LoginUtilityDialogAction.DismissOnly,
                 FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+                PacketResultOwner = packetResultOwner,
             };
         }
 
@@ -18815,10 +18928,12 @@ namespace HaCreator.MapSimulator
             string packetDetail,
             int noticeTextIndex,
             LoginPacketResultDialogOwner packetResultOwner = LoginPacketResultDialogOwner.None,
-            LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.LoginNotice)
+            LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
+            LoginPacketDialogOwner owner = LoginPacketDialogOwner.LoginUtilityDialog)
         {
             return new LoginPacketDialogPromptConfiguration
             {
+                Owner = owner,
                 Title = "Login Utility",
                 Body = CombineLoginDialogBody(packetText, defaultBody, packetDetail),
                 NoticeTextIndex = noticeTextIndex,
@@ -25357,17 +25472,18 @@ namespace HaCreator.MapSimulator
             SocialRoomKind? hintedKind,
             SocialRoomKind? preferredKind)
         {
-            List<SocialRoomKind> order = new(2);
-            TryAppendEmployeeBridgeMerchantKind(order, hintedKind);
-            TryAppendEmployeeBridgeMerchantKind(order, preferredKind);
-            TryAppendEmployeeBridgeMerchantKind(order, SocialRoomKind.EntrustedShop);
-            TryAppendEmployeeBridgeMerchantKind(order, SocialRoomKind.PersonalShop);
+            List<SocialRoomKind> order = new(3);
+            TryAppendEmployeeBridgeKind(order, hintedKind);
+            TryAppendEmployeeBridgeKind(order, preferredKind);
+            TryAppendEmployeeBridgeKind(order, SocialRoomKind.EntrustedShop);
+            TryAppendEmployeeBridgeKind(order, SocialRoomKind.PersonalShop);
+            TryAppendEmployeeBridgeKind(order, SocialRoomKind.MiniRoom);
             return order;
         }
 
-        private static void TryAppendEmployeeBridgeMerchantKind(List<SocialRoomKind> order, SocialRoomKind? kind)
+        private static void TryAppendEmployeeBridgeKind(List<SocialRoomKind> order, SocialRoomKind? kind)
         {
-            if (!kind.HasValue || !IsMerchantSocialRoomKind(kind.Value) || order.Contains(kind.Value))
+            if (!kind.HasValue || !IsEmployeeBridgeSocialRoomKind(kind.Value) || order.Contains(kind.Value))
             {
                 return;
             }
@@ -25375,9 +25491,11 @@ namespace HaCreator.MapSimulator
             order.Add(kind.Value);
         }
 
-        private static bool IsMerchantSocialRoomKind(SocialRoomKind kind)
+        private static bool IsEmployeeBridgeSocialRoomKind(SocialRoomKind kind)
         {
-            return kind == SocialRoomKind.EntrustedShop || kind == SocialRoomKind.PersonalShop;
+            return kind == SocialRoomKind.EntrustedShop
+                || kind == SocialRoomKind.PersonalShop
+                || kind == SocialRoomKind.MiniRoom;
         }
 
         private bool TryResolveSocialRoomEmployeeBridgeRuntimeByHintScore(
@@ -25390,7 +25508,7 @@ namespace HaCreator.MapSimulator
             SocialRoomKind? preferredKind = ResolveEmployeeBridgeHintPreferredKind(hint);
 
             SocialRoomEmployeeBridgeHintCandidate? bestCandidate = null;
-            foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop })
+            foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop, SocialRoomKind.MiniRoom })
             {
                 if (!TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime candidateRuntime))
                 {
@@ -25483,6 +25601,10 @@ namespace HaCreator.MapSimulator
         {
             switch (miniRoomType)
             {
+                case 1:
+                case 2:
+                    kind = SocialRoomKind.MiniRoom;
+                    return true;
                 case 3:
                     kind = SocialRoomKind.PersonalShop;
                     return true;
@@ -34157,8 +34279,7 @@ namespace HaCreator.MapSimulator
                 return -1;
             }
 
-            int elapsed = unchecked(currentTick - lastPacketEnterTick);
-            return elapsed < 0 ? -1 : elapsed;
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, lastPacketEnterTick);
         }
 
         internal static bool ShouldSuppressSimulatorOwnedMonsterCardDropFallback(int recentPacketDropAgeMs)
@@ -34631,14 +34752,18 @@ namespace HaCreator.MapSimulator
 
                 return;
 
-            if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForFreshUpKeyDown(interactPressed))
+            PassiveTransferFieldHandleUpKeyDownDispatchDecision freshHandleUpKeyDownDispatchDecision =
+                PassiveTransferFieldReadinessEvaluator.EvaluateFreshHandleUpKeyDownDispatch(
+                    interactPressed,
+                    _localFollowRuntime.HasAttachedDriver,
+                    ResolvePassiveTransferFieldHandleUpKeyDownInputOwner(interactInputSource));
+
+            if (freshHandleUpKeyDownDispatchDecision.ShouldStopSkillMacro)
             {
                 StopSkillMacroForHandleUpKeyDown();
             }
 
-            if (!PassiveTransferFieldReadinessEvaluator.CanHandleFreshUpKeyDown(
-                    _localFollowRuntime.HasAttachedDriver,
-                    ResolvePassiveTransferFieldHandleUpKeyDownInputOwner(interactInputSource)))
+            if (!freshHandleUpKeyDownDispatchDecision.ShouldDispatchHandleUpKeyDown)
             {
                 return;
             }
@@ -35679,6 +35804,11 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(source) ? "manual portal m_aKeyPadState capture" : source.Trim();
             _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession =
                 IsPortalOwnedMovePathOfficialSessionCaptureSource(_lastCapturedPortalOwnedMovePathKeyPadMemorySource);
+            _lastCapturedPortalOwnedMovePathKeyPadMemoryIsPostFlushClearEvidence =
+                IsPortalOwnedMovePathPostFlushKeyPadMemoryClearEvidence(
+                    _lastCapturedPortalOwnedMovePathKeyPadMemoryStates,
+                    _lastCapturedPortalOwnedMovePathKeyPadMemorySource,
+                    _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession);
             message = DescribePortalOwnedMovePathKeyPadMemoryParityStatus();
             return true;
         }
@@ -35711,6 +35841,10 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(source) ? "manual portal flush-tail capture" : source.Trim();
             _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession =
                 IsPortalOwnedMovePathOfficialSessionCaptureSource(_lastCapturedPortalOwnedMovePathFlushTailSource);
+            RecordRecentPortalOwnedMovePathFlushTailCapture(
+                flushTail,
+                _lastCapturedPortalOwnedMovePathFlushTailSource,
+                _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession);
             message = DescribePortalOwnedMovePathKeyPadMemoryParityStatus();
             return true;
         }
@@ -35755,7 +35889,9 @@ namespace HaCreator.MapSimulator
                 _lastCapturedPortalOwnedMovePathFlushTailFromOfficialSession,
                 _lastCapturedPortalOwnedMovePathKeyPadMemoryStates,
                 _lastCapturedPortalOwnedMovePathKeyPadMemorySource,
-                _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession);
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession,
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryIsPostFlushClearEvidence,
+                EnumerateRecentOfficialSessionPortalOwnedMovePathFlushTailCapturesNewestFirst());
         }
 
         internal static PortalOwnedMovePathFlushTailComparison ComparePortalOwnedMovePathFlushTails(
@@ -35765,7 +35901,9 @@ namespace HaCreator.MapSimulator
             bool capturedFromOfficialSession,
             IReadOnlyList<byte> capturedKeyPadMemoryStates = null,
             string capturedKeyPadMemorySource = null,
-            bool capturedKeyPadMemoryFromOfficialSession = false)
+            bool capturedKeyPadMemoryFromOfficialSession = false,
+            bool capturedKeyPadMemoryIsPostFlushClearEvidence = false,
+            IEnumerable<PortalOwnedMovePathFlushTailCaptureRecord> recentOfficialSessionFullTailCaptures = null)
         {
             bool hasSimulatorTail = simulatorTail.HasValue;
             bool hasCapturedTail = capturedTail.HasValue;
@@ -35790,6 +35928,23 @@ namespace HaCreator.MapSimulator
                 && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
                     captured.PassiveKeyPadStates,
                     capturedKeyPadMemoryStates);
+            bool officialSessionTailKeyPadMemoryByteProven = capturedTailKeyPadMemoryStatesMatch
+                && capturedFromOfficialSession
+                && capturedKeyPadMemoryFromOfficialSession;
+            bool officialSessionRecentFullTailKeyPadMemoryByteProven =
+                TryFindRecentOfficialSessionPortalOwnedMovePathFlushTailKeyPadMemoryCapture(
+                    capturedKeyPadMemoryStates,
+                    hasCapturedKeyPadMemoryStates,
+                    capturedKeyPadMemoryFromOfficialSession,
+                    recentOfficialSessionFullTailCaptures,
+                    out PortalOwnedMovePathFlushTailCaptureRecord recentFullTailKeyPadMemoryCapture);
+            bool hasRecentOfficialSessionFullTailCapture =
+                TryFindRecentOfficialSessionPortalOwnedMovePathFullTailCapture(
+                    simulator,
+                    hasSimulatorTail,
+                    recentOfficialSessionFullTailCaptures,
+                    out PortalOwnedMovePathFlushTailCaptureRecord recentFullTailCapture,
+                    out bool recentFullTailMatched);
 
             return new PortalOwnedMovePathFlushTailComparison(
                 hasSimulatorTail,
@@ -35809,9 +35964,113 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(capturedKeyPadMemorySource) ? "none" : capturedKeyPadMemorySource.Trim(),
                 capturedKeyPadMemoryFromOfficialSession,
                 capturedKeyPadMemoryFromOfficialSession && keyPadMemoryStatesMatch,
-                capturedKeyPadMemoryFromOfficialSession && capturedTailKeyPadMemoryStatesMatch,
+                officialSessionTailKeyPadMemoryByteProven,
+                officialSessionRecentFullTailKeyPadMemoryByteProven,
+                recentFullTailKeyPadMemoryCapture?.Source,
+                capturedKeyPadMemoryIsPostFlushClearEvidence,
+                hasRecentOfficialSessionFullTailCapture,
+                recentFullTailMatched,
+                recentFullTailCapture?.Source,
                 hasSimulatorTail ? FormatPortalOwnedMovePathFlushTailBounds(simulator) : "none",
                 hasCapturedTail ? FormatPortalOwnedMovePathFlushTailBounds(captured) : "none");
+        }
+
+        private void RecordRecentPortalOwnedMovePathFlushTailCapture(
+            CMovePathClientPacketCodec.ClientFlushTail tail,
+            string source,
+            bool fromOfficialSession)
+        {
+            while (_recentCapturedPortalOwnedMovePathFlushTails.Count >= MaxRecentPortalOwnedMovePathFlushTailCaptures)
+            {
+                _recentCapturedPortalOwnedMovePathFlushTails.Dequeue();
+            }
+
+            _recentCapturedPortalOwnedMovePathFlushTails.Enqueue(new PortalOwnedMovePathFlushTailCaptureRecord
+            {
+                Tail = tail,
+                Source = string.IsNullOrWhiteSpace(source) ? "captured portal flush tail" : source.Trim(),
+                FromOfficialSession = fromOfficialSession
+            });
+        }
+
+        private IEnumerable<PortalOwnedMovePathFlushTailCaptureRecord> EnumerateRecentOfficialSessionPortalOwnedMovePathFlushTailCapturesNewestFirst()
+        {
+            foreach (PortalOwnedMovePathFlushTailCaptureRecord candidate in _recentCapturedPortalOwnedMovePathFlushTails.Reverse())
+            {
+                if (candidate?.FromOfficialSession == true)
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static bool TryFindRecentOfficialSessionPortalOwnedMovePathFullTailCapture(
+            CMovePathClientPacketCodec.ClientFlushTail simulatorTail,
+            bool hasSimulatorTail,
+            IEnumerable<PortalOwnedMovePathFlushTailCaptureRecord> recentOfficialSessionFullTailCaptures,
+            out PortalOwnedMovePathFlushTailCaptureRecord capture,
+            out bool matched)
+        {
+            capture = null;
+            matched = false;
+
+            if (recentOfficialSessionFullTailCaptures == null)
+            {
+                return false;
+            }
+
+            foreach (PortalOwnedMovePathFlushTailCaptureRecord candidate in recentOfficialSessionFullTailCaptures)
+            {
+                if (candidate == null || !candidate.FromOfficialSession)
+                {
+                    continue;
+                }
+
+                if (hasSimulatorTail
+                    && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                        simulatorTail.PassiveKeyPadStates,
+                        candidate.Tail.PassiveKeyPadStates)
+                    && ArePortalOwnedMovePathFlushTailBoundsEqual(simulatorTail, candidate.Tail))
+                {
+                    capture = candidate;
+                    matched = true;
+                    return true;
+                }
+
+                capture ??= candidate;
+            }
+
+            return capture != null;
+        }
+
+        private static bool TryFindRecentOfficialSessionPortalOwnedMovePathFlushTailKeyPadMemoryCapture(
+            IReadOnlyList<byte> keyPadMemoryStates,
+            bool hasKeyPadMemoryStates,
+            bool fromOfficialSession,
+            IEnumerable<PortalOwnedMovePathFlushTailCaptureRecord> recentOfficialSessionFullTailCaptures,
+            out PortalOwnedMovePathFlushTailCaptureRecord capture)
+        {
+            capture = null;
+            if (!hasKeyPadMemoryStates
+                || !fromOfficialSession
+                || recentOfficialSessionFullTailCaptures == null)
+            {
+                return false;
+            }
+
+            foreach (PortalOwnedMovePathFlushTailCaptureRecord candidate in recentOfficialSessionFullTailCaptures)
+            {
+                if (candidate?.FromOfficialSession == true
+                    && CMovePathClientPacketCodec.AreClientFlushTailPassiveKeyPadStatesEqual(
+                        candidate.Tail.PassiveKeyPadStates,
+                        keyPadMemoryStates))
+                {
+                    capture = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool IsPortalOwnedMovePathOfficialSessionCaptureSource(string source)
@@ -35824,6 +36083,30 @@ namespace HaCreator.MapSimulator
             string normalized = source.Trim();
             return normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase)
                    || normalized.Contains(" official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsPortalOwnedMovePathPostFlushKeyPadMemoryClearEvidence(
+            IReadOnlyList<byte> keyPadMemoryStates,
+            string source,
+            bool fromOfficialSession)
+        {
+            return fromOfficialSession
+                   && (keyPadMemoryStates?.Count ?? -1) == 0
+                   && IsPortalOwnedMovePathPostFlushCaptureSource(source);
+        }
+
+        private static bool IsPortalOwnedMovePathPostFlushCaptureSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            string normalized = source.Trim();
+            return normalized.IndexOf("post-flush", StringComparison.OrdinalIgnoreCase) >= 0
+                   || normalized.IndexOf("post Flush", StringComparison.OrdinalIgnoreCase) >= 0
+                   || normalized.IndexOf("after-flush", StringComparison.OrdinalIgnoreCase) >= 0
+                   || normalized.IndexOf("after Flush", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         internal static string FormatPortalOwnedMovePathKeyPadStates(IReadOnlyList<byte> states)
@@ -35894,7 +36177,19 @@ namespace HaCreator.MapSimulator
                 {
                     proofs.Add(comparison.OfficialSessionTailKeyPadMemoryByteProven
                         ? "Official-session m_aKeyPadState memory bytes match the captured flush-tail keypad bytes; waiting for simulator tail to compare."
+                        : comparison.CapturedKeyPadMemoryIsPostFlushClearEvidence
+                            ? "Official-session m_aKeyPadState memory capture is empty, matching the client post-Flush clear state; waiting for simulator tail to compare pre-encode keypad values."
                         : "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.");
+                }
+                else if (comparison.CapturedKeyPadMemoryIsPostFlushClearEvidence
+                    && !string.Equals(comparison.SimulatorKeyPadStates, "none", StringComparison.Ordinal))
+                {
+                    proofs.Add("Official-session m_aKeyPadState memory capture is empty, matching the client post-Flush clear state; pre-encode value byte proof still needs a before-Flush memory capture.");
+                }
+                else if (string.Equals(comparison.CapturedKeyPadMemoryStates, "none", StringComparison.Ordinal)
+                    && !string.Equals(comparison.SimulatorKeyPadStates, "none", StringComparison.Ordinal))
+                {
+                    proofs.Add("Official-session m_aKeyPadState memory capture is empty, but the capture source is not marked post-Flush; pre-encode value byte proof still needs a before-Flush memory capture.");
                 }
                 else if (!comparison.KeyPadMemoryStatesMatch)
                 {
@@ -35904,6 +36199,8 @@ namespace HaCreator.MapSimulator
                 {
                     proofs.Add(comparison.OfficialSessionTailKeyPadMemoryByteProven
                         ? "Official-session m_aKeyPadState memory byte proof matched the simulator tail and captured flush-tail keypad bytes."
+                        : comparison.OfficialSessionRecentFullTailKeyPadMemoryByteProven
+                            ? $"Official-session m_aKeyPadState memory byte proof matched the simulator tail and recent full flush-tail keypad bytes from {comparison.OfficialSessionRecentFullTailKeyPadMemorySource}."
                         : "Official-session m_aKeyPadState memory byte proof matched the simulator tail; captured flush-tail keypad byte proof still pending.");
                 }
             }
@@ -35934,6 +36231,12 @@ namespace HaCreator.MapSimulator
                 bool capturedKeyPadMemoryFromOfficialSession,
                 bool officialSessionKeyPadMemoryByteProven,
                 bool officialSessionTailKeyPadMemoryByteProven,
+                bool officialSessionRecentFullTailKeyPadMemoryByteProven,
+                string officialSessionRecentFullTailKeyPadMemorySource,
+                bool capturedKeyPadMemoryIsPostFlushClearEvidence,
+                bool hasRecentOfficialSessionFullTailCapture,
+                bool recentOfficialSessionFullTailByteProven,
+                string recentOfficialSessionFullTailSource,
                 string simulatorBounds,
                 string capturedBounds)
             {
@@ -35955,6 +36258,12 @@ namespace HaCreator.MapSimulator
                 CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
                 OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
                 OfficialSessionTailKeyPadMemoryByteProven = officialSessionTailKeyPadMemoryByteProven;
+                OfficialSessionRecentFullTailKeyPadMemoryByteProven = officialSessionRecentFullTailKeyPadMemoryByteProven;
+                OfficialSessionRecentFullTailKeyPadMemorySource = officialSessionRecentFullTailKeyPadMemorySource;
+                CapturedKeyPadMemoryIsPostFlushClearEvidence = capturedKeyPadMemoryIsPostFlushClearEvidence;
+                HasRecentOfficialSessionFullTailCapture = hasRecentOfficialSessionFullTailCapture;
+                RecentOfficialSessionFullTailByteProven = recentOfficialSessionFullTailByteProven;
+                RecentOfficialSessionFullTailSource = recentOfficialSessionFullTailSource;
                 SimulatorBounds = simulatorBounds;
                 CapturedBounds = capturedBounds;
             }
@@ -35977,8 +36286,21 @@ namespace HaCreator.MapSimulator
             public bool CapturedKeyPadMemoryFromOfficialSession { get; }
             public bool OfficialSessionKeyPadMemoryByteProven { get; }
             public bool OfficialSessionTailKeyPadMemoryByteProven { get; }
+            public bool OfficialSessionRecentFullTailKeyPadMemoryByteProven { get; }
+            public string OfficialSessionRecentFullTailKeyPadMemorySource { get; }
+            public bool CapturedKeyPadMemoryIsPostFlushClearEvidence { get; }
+            public bool HasRecentOfficialSessionFullTailCapture { get; }
+            public bool RecentOfficialSessionFullTailByteProven { get; }
+            public string RecentOfficialSessionFullTailSource { get; }
             public string SimulatorBounds { get; }
             public string CapturedBounds { get; }
+        }
+
+        internal sealed class PortalOwnedMovePathFlushTailCaptureRecord
+        {
+            public CMovePathClientPacketCodec.ClientFlushTail Tail { get; init; }
+            public string Source { get; init; }
+            public bool FromOfficialSession { get; init; }
         }
 
         private IReadOnlyList<byte> ResolvePortalOwnedLocalUserFlushKeyPadStates(
@@ -39079,7 +39401,9 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnClientDoActiveSummonMonsterPacketPayloadReady = HandleClientDoActiveSummonMonsterPacketPayloadReady;
             _playerManager.Skills.OnClientBoundJumpSkillUsePacketPayloadReady = HandleClientBoundJumpSkillUsePacketPayloadReady;
             _playerManager.Skills.OnClientBoundJumpPassengerCheckRequested = HandleClientBoundJumpPassengerCheckRequested;
+            _playerManager.Skills.OnClientDoActivePreparePacketPayloadReady = HandleClientDoActivePreparePacketPayloadReady;
             _playerManager.Skills.OnClientDoActiveTownPortalPacketPayloadReady = HandleClientDoActiveTownPortalPacketPayloadReady;
+            _playerManager.Skills.OnClientDoActiveTeslaCoilPacketPayloadReady = HandleClientDoActiveTeslaCoilPacketPayloadReady;
             _playerManager.Skills.OnSwallowAbsorbRequested = HandleAnimationDisplayerSwallowAbsorbRequested;
             _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
@@ -40902,10 +41226,32 @@ namespace HaCreator.MapSimulator
         private void HandleClientDoActiveSummonMonsterPacketPayloadReady(
             SkillManager.ClientDoActiveSummonMonsterPacketPayload payload)
         {
-            byte[] encodedPayload = SkillManager.EncodeClientDoActiveSummonMonsterPacketPayloadForTesting(payload);
+            DispatchClientDoActivePacketPayload(
+                SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                SkillManager.EncodeClientDoActiveSummonMonsterPacketPayloadForTesting(payload));
+        }
+
+        private void HandleClientDoActivePreparePacketPayloadReady(
+            SkillManager.ClientDoActivePreparePacketPayload payload)
+        {
+            DispatchClientDoActivePacketPayload(
+                SkillManager.ClientDoActivePreparePacketOpcode,
+                SkillManager.EncodeClientDoActivePreparePacketPayloadForTesting(payload));
+        }
+
+        private void HandleClientDoActiveTeslaCoilPacketPayloadReady(
+            SkillManager.ClientDoActiveTeslaCoilPacketPayload payload)
+        {
+            DispatchClientDoActivePacketPayload(
+                SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                SkillManager.EncodeClientDoActiveTeslaCoilPacketPayloadForTesting(payload));
+        }
+
+        private void DispatchClientDoActivePacketPayload(int opcode, byte[] encodedPayload)
+        {
             string bridgeStatus = "live bridge unavailable";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    opcode,
                     encodedPayload,
                     out bridgeStatus))
             {
@@ -40914,7 +41260,7 @@ namespace HaCreator.MapSimulator
 
             string outboxStatus = "packet outbox unavailable";
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    opcode,
                     encodedPayload,
                     out outboxStatus))
             {
@@ -40923,7 +41269,7 @@ namespace HaCreator.MapSimulator
 
             if (_localUtilityOfficialSessionBridge.IsRunning
                 && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                    opcode,
                     encodedPayload,
                     out _))
             {
@@ -40931,7 +41277,7 @@ namespace HaCreator.MapSimulator
             }
 
             _localUtilityPacketOutbox.TryQueueOutboundPacket(
-                SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
+                opcode,
                 encodedPayload,
                 out _);
         }
@@ -40939,38 +41285,9 @@ namespace HaCreator.MapSimulator
         private void HandleClientBoundJumpSkillUsePacketPayloadReady(
             SkillManager.ClientBoundJumpSkillUsePacketPayload payload)
         {
-            byte[] encodedPayload = SkillManager.EncodeClientBoundJumpSkillUsePacketPayloadForTesting(payload);
-            string bridgeStatus = "live bridge unavailable";
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out bridgeStatus))
-            {
-                return;
-            }
-
-            string outboxStatus = "packet outbox unavailable";
-            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out outboxStatus))
-            {
-                return;
-            }
-
-            if (_localUtilityOfficialSessionBridge.IsRunning
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out _))
-            {
-                return;
-            }
-
-            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+            DispatchClientDoActivePacketPayload(
                 SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                encodedPayload,
-                out _);
+                SkillManager.EncodeClientBoundJumpSkillUsePacketPayloadForTesting(payload));
         }
 
         private void HandleClientBoundJumpPassengerCheckRequested(int skillId, int currentTime)
@@ -41007,38 +41324,9 @@ namespace HaCreator.MapSimulator
         private void HandleClientDoActiveTownPortalPacketPayloadReady(
             SkillManager.ClientDoActiveTownPortalPacketPayload payload)
         {
-            byte[] encodedPayload = SkillManager.EncodeClientDoActiveTownPortalPacketPayloadForTesting(payload);
-            string bridgeStatus = "live bridge unavailable";
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out bridgeStatus))
-            {
-                return;
-            }
-
-            string outboxStatus = "packet outbox unavailable";
-            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out outboxStatus))
-            {
-                return;
-            }
-
-            if (_localUtilityOfficialSessionBridge.IsRunning
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                    encodedPayload,
-                    out _))
-            {
-                return;
-            }
-
-            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+            DispatchClientDoActivePacketPayload(
                 SkillManager.ClientDoActiveSummonMonsterPacketOpcode,
-                encodedPayload,
-                out _);
+                SkillManager.EncodeClientDoActiveTownPortalPacketPayloadForTesting(payload));
         }
 
 
@@ -45286,6 +45574,12 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerReferenceCount = buffEntry.TemporaryStatViewParentLayerReferenceCount;
             renderData.TemporaryStatViewMainLayerReferenceCount = buffEntry.TemporaryStatViewMainLayerReferenceCount;
             renderData.TemporaryStatViewShadowLayerReferenceCount = buffEntry.TemporaryStatViewShadowLayerReferenceCount;
+            renderData.TemporaryStatViewIconCanvasIdentity = buffEntry.TemporaryStatViewIconCanvasIdentity;
+            renderData.TemporaryStatViewMainLayerCreateResultIdentity = buffEntry.TemporaryStatViewMainLayerCreateResultIdentity;
+            renderData.TemporaryStatViewMainLayerOriginVectorIdentity = buffEntry.TemporaryStatViewMainLayerOriginVectorIdentity;
+            renderData.TemporaryStatViewMainLayerInsertResultVariantIdentity = buffEntry.TemporaryStatViewMainLayerInsertResultVariantIdentity;
+            renderData.TemporaryStatViewShadowLayerCreateResultIdentity = buffEntry.TemporaryStatViewShadowLayerCreateResultIdentity;
+            renderData.TemporaryStatViewShadowLayerOriginVectorIdentity = buffEntry.TemporaryStatViewShadowLayerOriginVectorIdentity;
             renderData.TemporaryStatViewOwnerName = buffEntry.TemporaryStatViewOwnerName;
             renderData.TemporaryStatViewParentLayerName = buffEntry.TemporaryStatViewParentLayerName;
             renderData.TemporaryStatViewMainLayerName = buffEntry.TemporaryStatViewMainLayerName;

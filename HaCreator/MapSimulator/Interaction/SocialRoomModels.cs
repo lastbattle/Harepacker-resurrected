@@ -1522,9 +1522,42 @@ namespace HaCreator.MapSimulator.Interaction
             }
             if (_employeePoolRuntime.HasEntries
                 && !hasPooledEmployee
-                && (Kind == SocialRoomKind.PersonalShop || Kind == SocialRoomKind.EntrustedShop))
+                && IsEmployeeBackedFieldActorKind(Kind))
             {
                 return null;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                if (!hasPooledEmployee)
+                {
+                    return null;
+                }
+
+                int templateId = pooledEmployee.TemplateId;
+                SocialRoomFieldActorTemplate template = ResolvePersonalShopFieldActorTemplate(templateId);
+                string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {ModeName} | {RoomState}";
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    template,
+                    ResolveEmployeeDisplayHeadline("MiniRoom"),
+                    detail,
+                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
+                    templateId: templateId,
+                    useOwnerAnchor: false,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: pooledEmployee.WorldX,
+                    worldY: pooledEmployee.WorldY,
+                    hasWorldPosition: true,
+                    flip: _employeeFlip,
+                    miniRoomType: pooledEmployee.MiniRoomType,
+                    miniRoomSerial: pooledEmployee.MiniRoomSerial,
+                    miniRoomBalloonTitle: pooledEmployee.BalloonTitle,
+                    miniRoomBalloonByte0: pooledEmployee.BalloonByte0,
+                    miniRoomBalloonByte1: pooledEmployee.BalloonByte1,
+                    miniRoomBalloonByte2: pooledEmployee.BalloonByte2,
+                    hasMiniRoomBalloonByte2: pooledEmployee.HasBalloonByte2);
             }
 
             if (Kind == SocialRoomKind.PersonalShop)
@@ -1538,7 +1571,7 @@ namespace HaCreator.MapSimulator.Interaction
                     template,
                     headline,
                     detail,
-                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix()}",
+                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
                     templateId: templateId,
                     useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
                     anchorOffsetX: _employeeAnchorOffsetX,
@@ -1594,7 +1627,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entrustedTemplate,
                 entrustedHeadline,
                 entrustedDetail,
-                $"{ResolveEmployeeStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
+                $"{ResolveEmployeeStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix(pooledEmployee)}",
                 templateId: entrustedTemplateId,
                 useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
                 anchorOffsetX: _employeeAnchorOffsetX,
@@ -10488,14 +10521,23 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(OwnerName) ? "Owner" : OwnerName;
         }
 
-        private string BuildEmployeePacketStateKeySuffix()
+        private string BuildEmployeePacketStateKeySuffix(SocialRoomEmployeePoolEntryState pooledEmployeeOverride = null)
         {
-            if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee))
+            SocialRoomEmployeePoolEntryState pooledEmployee = pooledEmployeeOverride;
+            if ((pooledEmployee != null && pooledEmployee.IsVisible)
+                || TryGetVisibleEmployeePoolEntry(out pooledEmployee))
             {
                 return $"|pkt|{pooledEmployee.EmployerId}|{pooledEmployee.FootholdId}|{pooledEmployee.MiniRoomType}|{pooledEmployee.MiniRoomSerial}|{pooledEmployee.BalloonTitle}|{pooledEmployee.BalloonByte0}|{pooledEmployee.BalloonByte1}|{pooledEmployee.BalloonByte2}|{pooledEmployee.HasBalloonByte2}";
             }
 
             return string.Empty;
+        }
+
+        private static bool IsEmployeeBackedFieldActorKind(SocialRoomKind kind)
+        {
+            return kind == SocialRoomKind.PersonalShop
+                || kind == SocialRoomKind.EntrustedShop
+                || kind == SocialRoomKind.MiniRoom;
         }
 
         private bool TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState state)
@@ -10507,7 +10549,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int normalizedEmployerId = Math.Max(0, employerId);
             if (normalizedEmployerId <= 0
-                || (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop))
+                || !IsEmployeeBackedFieldActorKind(Kind))
             {
                 return false;
             }
@@ -10519,7 +10561,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int ScoreEmployeeRoutingHint(SocialRoomEmployeePoolCodec.RoutingHint hint)
         {
-            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            if (!IsEmployeeBackedFieldActorKind(Kind))
             {
                 return 0;
             }
@@ -10528,7 +10570,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (hint.MiniRoomType != 0)
             {
-                bool kindMatches = (hint.MiniRoomType == 3 && Kind == SocialRoomKind.PersonalShop)
+                bool kindMatches = ((hint.MiniRoomType == 1 || hint.MiniRoomType == 2) && Kind == SocialRoomKind.MiniRoom)
+                    || (hint.MiniRoomType == 3 && Kind == SocialRoomKind.PersonalShop)
                     || ((hint.MiniRoomType == 4 || hint.MiniRoomType == 5) && Kind == SocialRoomKind.EntrustedShop);
                 score += kindMatches ? 30 : -20;
             }
@@ -10569,7 +10612,7 @@ namespace HaCreator.MapSimulator.Interaction
             string statusMessage,
             bool persistState)
         {
-            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            if (!IsEmployeeBackedFieldActorKind(Kind))
             {
                 return;
             }

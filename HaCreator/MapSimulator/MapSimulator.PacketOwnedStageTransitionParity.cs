@@ -540,6 +540,7 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<BaseDXDrawableItem>();
             }
 
+            ObjectInstanceQuest[] rootAuthoredQuestInfo = ResolvePacketOwnedNamedObjectQuestInfo(objectProperty);
             List<BaseDXDrawableItem> branchItems = new();
             Dictionary<int, BaseDXDrawableItem> branchesByState = new();
             foreach (int stateIndex in authoredStateIndexes.OrderBy(static state => state))
@@ -580,7 +581,10 @@ namespace HaCreator.MapSimulator
                 ObjectInstanceQuest[] branchQuestInfo = ResolvePacketOwnedNamedObjectQuestInfo(branchProperty);
                 QuestGatedMapObjectState? questState = BuildQuestGatedMapObjectState(
                     objInst,
-                    branchQuestInfo.Length > 0 ? branchQuestInfo : null);
+                    ResolvePacketOwnedNamedObjectBranchQuestInfo(
+                        rootAuthoredQuestInfo,
+                        branchQuestInfo),
+                    mergeQuestInfo: true);
                 if (questState.HasValue)
                 {
                     questGatedMapObjects[branchItem] = questState.Value;
@@ -593,6 +597,13 @@ namespace HaCreator.MapSimulator
             }
 
             return branchItems;
+        }
+
+        internal static ObjectInstanceQuest[] ResolvePacketOwnedNamedObjectBranchQuestInfo(
+            IEnumerable<ObjectInstanceQuest> rootAuthoredQuestInfo,
+            IEnumerable<ObjectInstanceQuest> branchAuthoredQuestInfo)
+        {
+            return MergePacketOwnedNamedObjectQuestInfo(rootAuthoredQuestInfo, branchAuthoredQuestInfo);
         }
 
         private static QuestGatedMapObjectState? BuildQuestGatedMapObjectState(

@@ -101,6 +101,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const ulong CharacterDataWildHunterInfoFlag = 0x200000UL;
         private const ulong CharacterDataQuestCompleteRecordFlag = 0x400000UL;
         private const ulong CharacterDataVisitorQuestRecordFlag = 0x800000UL;
+        private const int CharacterDataTwoIntValue1ClientStorageOffset = 0x519;
+        private const int CharacterDataTwoIntValue2ClientStorageOffset = 0x51D;
+        private const int CharacterDataTwoIntValue1ClientDecodeAddress = 0x4FD16C;
+        private const int CharacterDataTwoIntValue2ClientDecodeAddress = 0x4FD17D;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
@@ -3067,7 +3071,9 @@ namespace HaCreator.MapSimulator.Interaction
                     0,
                     true,
                     0,
-                    checked((int)(reader.BaseStream.Position - sectionStart)));
+                    checked((int)(reader.BaseStream.Position - sectionStart)),
+                    BuildCharacterDataTwoIntValueClientStorageOffsets(),
+                    BuildCharacterDataTwoIntValueClientDecodeAddresses());
                 snapshot = snapshot with
                 {
                     PreInventoryHeaderValue1 = twoIntValueRecord.Value1,
@@ -3096,6 +3102,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return slotLimits;
+        }
+
+        private static IReadOnlyDictionary<string, int> BuildCharacterDataTwoIntValueClientStorageOffsets()
+        {
+            return new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                [nameof(PacketCharacterDataTwoIntValueRecord.Value1)] = CharacterDataTwoIntValue1ClientStorageOffset,
+                [nameof(PacketCharacterDataTwoIntValueRecord.Value2)] = CharacterDataTwoIntValue2ClientStorageOffset
+            };
+        }
+
+        private static IReadOnlyDictionary<string, int> BuildCharacterDataTwoIntValueClientDecodeAddresses()
+        {
+            return new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                [nameof(PacketCharacterDataTwoIntValueRecord.Value1)] = CharacterDataTwoIntValue1ClientDecodeAddress,
+                [nameof(PacketCharacterDataTwoIntValueRecord.Value2)] = CharacterDataTwoIntValue2ClientDecodeAddress
+            };
         }
 
         private static bool TryDecodeCharacterDataInventorySections(
@@ -6418,7 +6442,9 @@ namespace HaCreator.MapSimulator.Interaction
         int NativeIndex = -1,
         bool IsSemanticRecord = true,
         int SectionRecordStartOffset = -1,
-        int SectionRecordEndOffset = -1);
+        int SectionRecordEndOffset = -1,
+        IReadOnlyDictionary<string, int> ClientStorageOffsets = null,
+        IReadOnlyDictionary<string, int> ClientDecodeAddresses = null);
 
     internal readonly record struct PacketCharacterDataSkillExpirationRecord(
         int SkillId,
@@ -6975,7 +7001,9 @@ namespace HaCreator.MapSimulator.Interaction
         int NativeIndex = -1,
         bool IsSemanticRecord = true,
         int SectionRecordStartOffset = -1,
-        int SectionRecordEndOffset = -1);
+        int SectionRecordEndOffset = -1,
+        IReadOnlyDictionary<string, int> ClientStorageOffsets = null,
+        IReadOnlyDictionary<string, int> ClientDecodeAddresses = null);
 
     internal readonly record struct PacketCharacterDataItemSlot(
         InventoryType InventoryType,

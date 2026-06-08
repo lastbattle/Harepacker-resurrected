@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action<int, int> TriggerTremble { get; init; }
         internal Action<int> ForceFieldFadeOut { get; init; }
         internal Action<string> RequestBgm { get; init; }
-        internal Func<string, bool> PlayFieldSound { get; init; }
+        internal Func<string, int, bool> PlayFieldSound { get; init; }
         internal Func<byte, int, int, bool> PlaySummonEffectSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
         internal Func<string, int, int, int?, bool> SetObjectTagStateIndex { get; init; }
@@ -1116,7 +1116,8 @@ namespace HaCreator.MapSimulator.Interaction
                 case 4:
                     {
                         string descriptor = ReadMapleString(reader);
-                        bool played = callbacks?.PlayFieldSound?.Invoke(descriptor) == true;
+                        const int fieldSoundVolumePercent = 100;
+                        bool played = callbacks?.PlayFieldSound?.Invoke(descriptor, fieldSoundVolumePercent) == true;
                         _lastFieldSoundDescriptor = descriptor;
                         _lastFieldEffectSummary = $"field sound '{descriptor}'";
                         _statusMessage = played

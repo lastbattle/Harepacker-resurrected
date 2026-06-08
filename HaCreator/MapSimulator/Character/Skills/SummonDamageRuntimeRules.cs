@@ -1,4 +1,6 @@
 using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Entities;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using System;
 
 namespace HaCreator.MapSimulator.Character.Skills
@@ -180,6 +182,58 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        public static BodyContactDamageResult ResolveBodyContactClientDamageResult(
+            MobItem mob,
+            uint damageRandom = 0,
+            int targetLevel = 0,
+            int targetPhysicalDefense = 0,
+            int targetMagicalDefense = 0,
+            int targetPhysicalDamageReductionPercent = 0,
+            int targetMagicalDamageReductionPercent = 0,
+            int targetSwallowDefensePercent = 0,
+            int targetInvinciblePercent = 0)
+        {
+            MobData mobData = mob?.MobData;
+            MobAttackEntry currentAttack = mob?.AI?.GetCurrentAttack();
+            bool currentAttackIsMagic = currentAttack?.MagicAttack == true;
+            int baseDamage = ResolveBodyContactBaseDamage(
+                mobData?.PADamage ?? 0,
+                currentAttack?.Damage ?? 0,
+                mobData?.MADamage ?? 0,
+                currentAttackIsMagic);
+            MobDamageType damageType = ResolveBodyContactDamageType(currentAttackIsMagic);
+            BodyContactDamageFormulaKind formulaKind = currentAttackIsMagic
+                ? BodyContactDamageFormulaKind.MDamageSummoned
+                : BodyContactDamageFormulaKind.PDamageSummoned;
+            int additiveDefense = currentAttackIsMagic
+                ? targetMagicalDefense
+                : targetPhysicalDefense;
+            int passiveReduction = currentAttackIsMagic
+                ? targetMagicalDamageReductionPercent
+                : targetPhysicalDamageReductionPercent;
+            int powerOrMagicUpPercent = currentAttackIsMagic
+                ? ResolveMobStatusPercent(mob?.AI, MobStatusEffect.MADamage)
+                  + ResolveMobStatusPercent(mob?.AI, MobStatusEffect.MagicUp)
+                : ResolveMobStatusPercent(mob?.AI, MobStatusEffect.PADamage)
+                  + ResolveMobStatusPercent(mob?.AI, MobStatusEffect.PowerUp);
+            BodyContactDamageFormulaInput input = new(
+                formulaKind,
+                baseDamage,
+                damageRandom,
+                additiveDefense,
+                mobData != null ? mobData.Level : mob?.AI?.Level ?? 0,
+                targetLevel,
+                passiveReduction,
+                targetInvinciblePercent,
+                targetSwallowDefensePercent,
+                powerOrMagicUpPercent);
+            int resolvedDamage = ResolveDamageSummonedFormula(input, out BodyContactDamageFormulaTrace trace);
+            return new BodyContactDamageResult(baseDamage, damageType, resolvedDamage)
+            {
+                FormulaTrace = trace
+            };
+        }
+
         public static int ResolveDamageSummonedFormula(
             BodyContactDamageFormulaInput input,
             out BodyContactDamageFormulaTrace trace)
@@ -322,6 +376,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SwallowDefensePercent: 0,
                 PowerOrMagicUpPercent: 0,
                 FinalUnclampedDamage: finalDamage);
+        }
+
+        private static int ResolveMobStatusPercent(MobAI mobAI, MobStatusEffect effect)
+        {
+            return mobAI?.GetClientStatusPercentForDamageFormula(effect) ?? 0;
         }
 
         public static int ResolveBodyContactRelativeMotionX(

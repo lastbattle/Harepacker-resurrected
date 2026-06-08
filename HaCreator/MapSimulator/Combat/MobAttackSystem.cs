@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Combat
             public bool Flip { get; set; }
             public int LaneIndex { get; set; }
             public int LaneCount { get; set; }
+            public bool AnimationDisplayerRegistered { get; set; }
 
             public Rectangle GetHitbox(int currentTime)
             {
@@ -532,23 +533,6 @@ namespace HaCreator.MapSimulator.Combat
                     LaneCount = laneCount
                 };
                 _activeMobProjectiles.Add(projectile);
-
-                string ballUol = BuildAnimationDisplayerMobBulletEffectUol(mobItem.MobId, attack.AnimationName);
-                bool hasClientMobActionFrames = mobItem.HasActionAnimation(
-                    ResolveAnimationDisplayerMobBulletOwnerActionName(attack.AnimationName));
-                bool hasCanvasFrames = projectile.Frames?.Count > 0;
-                _onAnimationDisplayerProjectileRegistration?.Invoke(new AnimationDisplayerProjectileRegistrationRequest(
-                    mobItem.MobId,
-                    attack.AnimationName,
-                    ballUol,
-                    attack?.AttackAfter ?? 0,
-                    attack?.AttackType ?? -1,
-                    attack?.IsRanged == true,
-                    hasClientMobActionFrames,
-                    hasCanvasFrames,
-                    () => projectile.Position,
-                    () => !projectile.Flip,
-                    currentTime));
             }
         }
 
@@ -774,6 +758,8 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                RegisterAnimationDisplayerProjectileAtLaunch(projectile, currentTime);
+
                 projectile.PreviousPosition = projectile.Position;
                 projectile.Position = ResolveProjectilePositionAtTime(
                     projectile.LaunchPoint,
@@ -867,6 +853,42 @@ namespace HaCreator.MapSimulator.Combat
 
                 _activeMobProjectiles.RemoveAt(i);
             }
+        }
+
+        private void RegisterAnimationDisplayerProjectileAtLaunch(ActiveMobProjectile projectile, int currentTime)
+        {
+            if (projectile == null ||
+                projectile.AnimationDisplayerRegistered ||
+                projectile.SourceMob == null ||
+                projectile.Attack == null)
+            {
+                return;
+            }
+
+            projectile.AnimationDisplayerRegistered = true;
+            if (_onAnimationDisplayerProjectileRegistration == null)
+            {
+                return;
+            }
+
+            MobItem mobItem = projectile.SourceMob;
+            MobAttackEntry attack = projectile.Attack;
+            string ballUol = BuildAnimationDisplayerMobBulletEffectUol(mobItem.MobId, attack.AnimationName);
+            bool hasClientMobActionFrames = mobItem.HasActionAnimation(
+                ResolveAnimationDisplayerMobBulletOwnerActionName(attack.AnimationName));
+            bool hasCanvasFrames = projectile.Frames?.Count > 0;
+            _onAnimationDisplayerProjectileRegistration.Invoke(new AnimationDisplayerProjectileRegistrationRequest(
+                mobItem.MobId,
+                attack.AnimationName,
+                ballUol,
+                0,
+                attack.AttackType,
+                attack.IsRanged,
+                hasClientMobActionFrames,
+                hasCanvasFrames,
+                () => projectile.Position,
+                () => !projectile.Flip,
+                currentTime));
         }
 
         private void UpdateMobGroundAttacks(int currentTime, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)

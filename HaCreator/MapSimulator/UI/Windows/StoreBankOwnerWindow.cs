@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowWidth = 178;
         private const int RowHeight = 35;
         private const int RowPitch = 42;
+        private const int DrawGetItemBottomExclusiveY = 303;
         private const int RowHitHeight = 42;
         private const int RowIconX = 12;
         private const int RowIconY = 1;
@@ -37,6 +38,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarHeight = 203;
         private const int MoneyRightX = 170;
         private const int MoneyY = 304;
+        private const string MoneyMeasureFont = "FONT_NO_WHITE";
+        private const string MoneyDrawFont = "FONT_NO_BLACK";
         private const int FooterX = 12;
         private const int FooterY = 308;
         private const int FooterWidth = 182;
@@ -66,7 +69,10 @@ namespace HaCreator.MapSimulator.UI
             int MoneyRightX,
             int MoneyY,
             int MoneyShadowOffsetX,
-            int MoneyShadowOffsetY);
+            int MoneyShadowOffsetY,
+            int DrawGetItemBottomExclusiveY,
+            string MoneyMeasureFont,
+            string MoneyDrawFont);
 
         private readonly struct Layer
         {
@@ -189,7 +195,10 @@ namespace HaCreator.MapSimulator.UI
                 MoneyRightX,
                 MoneyY,
                 1,
-                1);
+                1,
+                DrawGetItemBottomExclusiveY,
+                MoneyMeasureFont,
+                MoneyDrawFont);
         }
 
         public override void SetFont(SpriteFont font)

@@ -29,6 +29,8 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechNativeScreenCanvasInsertX = 0;
         private const int MobActionSpeechNativeScreenCanvasInsertY = 0;
         private const int MobActionSpeechNativeCanvasFactoryStringPoolId = 0x03D0;
+        private const int MobActionSpeechNativeMobSkinRootStringPoolId = 0x059A;
+        private const int MobActionSpeechNativeMobSkinPrefixStringPoolId = 0x0666;
         private const int MobActionSpeechNativeCreateCanvasBaseAlpha = 253;
         private const int MobActionSpeechChatLogStringPoolId = 0x072D;
         private const int MobActionSpeechChatLogType = 25;
@@ -510,12 +512,18 @@ namespace HaCreator.MapSimulator
             public int CanvasInsertY { get; init; }
             public int CanvasInsertAlpha { get; init; }
             public int CanvasFactoryStringPoolId { get; init; }
+            public int MobSkinRootStringPoolId { get; init; }
+            public int MobSkinPrefixStringPoolId { get; init; }
             public int CreateCanvasBaseAlpha { get; init; }
             public int ChatLogStringPoolId { get; init; }
             public int ChatLogType { get; init; }
             public bool FormatsStatusBarChatLog { get; init; }
             public bool CentersEachTextLine { get; init; }
             public bool UsesNativeFontTextWidth { get; init; }
+            public bool RequiresOverlayLayerAndOriginVector { get; init; }
+            public bool UsesTemplateChatBalloonArgument { get; init; }
+            public bool ReadsScreenChatBeforeBranch { get; init; }
+            public bool CallsSetFadeDelayAfterBranch { get; init; }
             public bool AssignsLayerChat { get; init; }
             public IReadOnlyList<string> NativeLifetimeOperations { get; init; }
         }
@@ -591,6 +599,7 @@ namespace HaCreator.MapSimulator
                 ? new[]
                 {
                     "MakeMobBalloon.ResolveMobSkin",
+                    "MakeMobBalloon.BuildSkinUOL(StringPool=0x059A,StringPool=0x0666,nChatBalloon)",
                     "MakeMobBalloon.ReadProperty(screenChat)",
                     "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
                     "CMob.TrySpeaking.FormatChatLog(StringPool=0x072D,type=25)",
@@ -614,11 +623,12 @@ namespace HaCreator.MapSimulator
                     "Release(source canvas)",
                     "Release(pProp)",
                     "Release(bsText)",
-                    "SetFadeDelay"
+                    "SetFadeDelay(after-branch)"
                 }
                 : new[]
                 {
                     "MakeMobBalloon.ResolveMobSkin",
+                    "MakeMobBalloon.BuildSkinUOL(StringPool=0x059A,StringPool=0x0666,nChatBalloon)",
                     "MakeMobBalloon.ReadProperty(screenChat)",
                     "MakeMobBalloon.UseSpeechWidthOrTemplateWidth",
                     "CMob.TrySpeaking.FormatChatLog(StringPool=0x072D,type=25)",
@@ -629,7 +639,7 @@ namespace HaCreator.MapSimulator
                     "DrawTextA(centered-line)",
                     "AttachOwnerOverlayLayer",
                     "StoreTimeout",
-                    "SetFadeDelay"
+                    "SetFadeDelay(after-branch)"
                 };
 
             return new MobActionSpeechNativeCompositionTrace
@@ -659,12 +669,18 @@ namespace HaCreator.MapSimulator
                 CanvasInsertY = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertY : 0,
                 CanvasInsertAlpha = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertAlpha : 0,
                 CanvasFactoryStringPoolId = MobActionSpeechNativeCanvasFactoryStringPoolId,
+                MobSkinRootStringPoolId = MobActionSpeechNativeMobSkinRootStringPoolId,
+                MobSkinPrefixStringPoolId = MobActionSpeechNativeMobSkinPrefixStringPoolId,
                 CreateCanvasBaseAlpha = MobActionSpeechNativeCreateCanvasBaseAlpha,
                 ChatLogStringPoolId = MobActionSpeechChatLogStringPoolId,
                 ChatLogType = MobActionSpeechChatLogType,
                 FormatsStatusBarChatLog = true,
                 CentersEachTextLine = true,
                 UsesNativeFontTextWidth = true,
+                RequiresOverlayLayerAndOriginVector = true,
+                UsesTemplateChatBalloonArgument = true,
+                ReadsScreenChatBeforeBranch = true,
+                CallsSetFadeDelayAfterBranch = true,
                 AssignsLayerChat = useScreenLayer,
                 NativeLifetimeOperations = lifetimeOperations
             };

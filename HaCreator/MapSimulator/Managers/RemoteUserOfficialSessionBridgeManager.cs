@@ -797,7 +797,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (_portableChairRecordOpcodeEvidenceByBuild.Count == 0)
                 {
-                    return "awaiting official-session add/remove capture";
+                    return "awaiting ordered official opcode 222 SetActivePortableChair add/remove capture";
                 }
 
                 return string.Join(

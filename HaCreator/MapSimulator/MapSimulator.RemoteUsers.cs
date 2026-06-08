@@ -916,12 +916,35 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            string trimmed = rawText.Trim();
             const string opcodePrefix = "opcode=";
-            if (trimmed.StartsWith(opcodePrefix, StringComparison.OrdinalIgnoreCase)
-                && ushort.TryParse(trimmed.Substring(opcodePrefix.Length), out ushort opcode))
+            string[] segments = rawText.Split(new[] { ' ', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = segments.Length - 1; i >= 0; i--)
             {
-                return opcode;
+                string segment = segments[i].Trim();
+                if (!segment.StartsWith(opcodePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string opcodeText = segment.Substring(opcodePrefix.Length).Trim();
+                if (opcodeText.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    && ushort.TryParse(
+                        opcodeText.Substring(2),
+                        NumberStyles.HexNumber,
+                        CultureInfo.InvariantCulture,
+                        out ushort hexOpcode))
+                {
+                    return hexOpcode;
+                }
+
+                if (ushort.TryParse(
+                    opcodeText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out ushort opcode))
+                {
+                    return opcode;
+                }
             }
 
             return 0;
@@ -943,8 +966,8 @@ namespace HaCreator.MapSimulator
                 return source;
             }
 
-            if (rawText.StartsWith("opcode=", StringComparison.OrdinalIgnoreCase)
-                || rawText.StartsWith("reason=", StringComparison.OrdinalIgnoreCase))
+            if (rawText.IndexOf("opcode=", StringComparison.OrdinalIgnoreCase) >= 0
+                || rawText.IndexOf("reason=", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return $"{source}; {rawText}";
             }

@@ -1242,15 +1242,15 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _isInGuild
                         ? $"Guild: {_guildName}"
-                        : $"{SkillTooltipClientText.FormatCurrentLevelHeader(0)} Join a guild to use guild skills.",
+                        : SkillTooltipClientText.FormatGuildSkillNoGuildCurrentLine(),
                     _isInGuild
                         ? string.IsNullOrWhiteSpace(pendingActionLabel)
                             ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}"
                             : $"Pending: {pendingActionLabel} approval  |  Guild Lv. {_guildLevel}"
-                        : $"{SkillTooltipClientText.FormatNextLevelHeader(1)} Guild skills unlock with real guild membership.",
+                        : SkillTooltipClientText.FormatGuildSkillNoGuildNextLine(),
                     _isInGuild
                         ? $"SP: {_availablePoints}  |  GP: {FormatCompactGuildPoints(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
-                        : "State: No guild"
+                        : $"State: {SkillTooltipClientText.ResolveGuildSkillNoGuildStateText()}"
                 };
             }
 
@@ -1302,7 +1302,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             return _isInGuild
                 ? $"{header} Not learned."
-                : $"{header} Join a guild.";
+                : SkillTooltipClientText.FormatGuildSkillNoGuildCurrentLine();
         }
 
         private string BuildNextEffectSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
@@ -1327,7 +1327,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"{header} {nextEffect}";
 
             if (!_isInGuild)
-                return $"{header} Requires guild membership.";
+                return SkillTooltipClientText.FormatGuildSkillNoGuildNextLine();
 
             if (selectedRequiredGuildLevel > _guildLevel)
                 return $"{header} Requires Guild Lv. {selectedRequiredGuildLevel}.";
@@ -1398,19 +1398,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
             else
             {
-                parts.Add("No guild");
+                parts.Add(SkillTooltipClientText.ResolveGuildSkillNoGuildStateText());
             }
 
             return parts.Count > 0
                 ? string.Join("  |  ", parts)
-                : (_isInGuild ? $"SP {_availablePoints}" : "No guild");
+                : (_isInGuild ? $"SP {_availablePoints}" : SkillTooltipClientText.ResolveGuildSkillNoGuildStateText());
         }
 
         internal static string ResolveStateLabel(bool inGuild, bool canManageSkills, int currentLevel, int durationMinutes, int remainingMinutes)
         {
             if (!inGuild)
             {
-                return "No guild";
+                return SkillTooltipClientText.ResolveGuildSkillNoGuildStateText();
             }
 
             if (remainingMinutes > 0)

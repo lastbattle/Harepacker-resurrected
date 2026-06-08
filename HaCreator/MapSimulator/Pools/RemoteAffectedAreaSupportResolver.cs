@@ -1253,6 +1253,10 @@ namespace HaCreator.MapSimulator.Pools
                     "attract",
                     "bomb",
                     "battlefieldFlag",
+                    "reduceTargetACC",
+                    "reduceTargetPDP",
+                    "reduceTargetMDP",
+                    "reduceTargetDam",
                     "elementalWeaken")
                 || SupportsAlliedMembers(skill))
             {

@@ -3311,22 +3311,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasSignalScoreTie = false;
             for (int i = 0; i < candidates.Count; i++)
             {
-                PacketEnterAuthoredReactorCandidate candidate = candidates[i];
-                int signalScore = 0;
-                if (candidate.IsLocallyTouched)
-                {
-                    signalScore++;
-                }
-
-                if (candidate.ContainsCurrentLocalUserPosition)
-                {
-                    signalScore++;
-                }
-
-                if (candidate.VisualState == initialState)
-                {
-                    signalScore++;
-                }
+                int signalScore = ComputePacketEnterClientSignalScore(candidates[i], initialState);
 
                 if (signalScore > highestSignalScore)
                 {
@@ -3347,26 +3332,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             List<PacketEnterAuthoredReactorCandidate> strongestCandidates = candidates
-                .Where(candidate =>
-                {
-                    int score = 0;
-                    if (candidate.IsLocallyTouched)
-                    {
-                        score++;
-                    }
-
-                    if (candidate.ContainsCurrentLocalUserPosition)
-                    {
-                        score++;
-                    }
-
-                    if (candidate.VisualState == initialState)
-                    {
-                        score++;
-                    }
-
-                    return score == highestSignalScore;
-                })
+                .Where(candidate => ComputePacketEnterClientSignalScore(candidate, initialState) == highestSignalScore)
                 .ToList();
             if (!hasSignalScoreTie && strongestCandidates.Count == 1)
             {
@@ -3387,6 +3353,29 @@ namespace HaCreator.MapSimulator.Pools
                 .FirstOrDefault();
             selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
             return index >= 0;
+        }
+
+        internal static int ComputePacketEnterClientSignalScore(
+            PacketEnterAuthoredReactorCandidate candidate,
+            int initialState)
+        {
+            int signalScore = 0;
+            if (candidate.IsLocallyTouched)
+            {
+                signalScore++;
+            }
+
+            if (candidate.ContainsCurrentLocalUserPosition)
+            {
+                signalScore++;
+            }
+
+            if (candidate.VisualState == initialState)
+            {
+                signalScore++;
+            }
+
+            return signalScore;
         }
 
         private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn, bool promoteLocalUserTouch = false)
@@ -3747,7 +3736,7 @@ namespace HaCreator.MapSimulator.Pools
             return activationDuration;
         }
 
-        private static bool TryStartLocalHitLayer(
+        private bool TryStartLocalHitLayer(
             ReactorItem reactor,
             ReactorRuntimeData data,
             int sourceState,
@@ -3764,6 +3753,7 @@ namespace HaCreator.MapSimulator.Pools
                 && hitDuration > 0)
             {
                 data.LocalHitLayerEndTime = unchecked(currentTick + hitDuration);
+                RefreshReactorLayerPlacement(reactor);
                 return true;
             }
 
@@ -4062,7 +4052,7 @@ namespace HaCreator.MapSimulator.Pools
                 1f);
         }
 
-        private static int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string, int, int> playHitSound)
+        private int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string, int, int> playHitSound)
         {
             if (reactor == null || data == null)
             {
@@ -4128,6 +4118,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ApplyPacketLoadedHitLayerOwnership(data, sourceState);
+            RefreshReactorLayerPlacement(reactor);
 
             string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
             if (!string.IsNullOrWhiteSpace(descriptor))

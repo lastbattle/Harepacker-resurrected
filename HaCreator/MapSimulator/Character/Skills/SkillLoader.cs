@@ -7116,6 +7116,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                     contextPathParts);
             }
 
+            foreach (ClientSummonedUolStructuredRecordCandidateValue recordCandidate in EnumerateClientSummonedUolFieldPairTableRecordCandidateValues(
+                         tableNode,
+                         skillId))
+            {
+                string[] contextPathParts = BuildClientSummonedUolCandidateContextPathParts(
+                    node,
+                    propertyName,
+                    skillNode);
+                if (recordCandidate.HasVariantLevel)
+                {
+                    contextPathParts = BuildClientSkillAssetVariantContextPathParts(
+                        contextPathParts,
+                        recordCandidate.IsCharacterLevelVariant,
+                        recordCandidate.VariantLevel,
+                        propertyName);
+                }
+
+                yield return new ClientSummonedUolCandidateValue(
+                    recordCandidate.Value,
+                    contextPathParts);
+            }
+
             foreach (ClientSummonedUolCandidateValue recordCandidate in EnumerateClientSummonedUolTableRecordCandidateValues(
                          tableNode,
                          node,
@@ -7294,6 +7316,108 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return candidate;
                 }
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolStructuredRecordCandidateValue> EnumerateClientSummonedUolFieldPairTableRecordCandidateValues(
+            WzImageProperty tableNode,
+            int skillId)
+        {
+            if (tableNode?.WzProperties == null || skillId <= 0)
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string recordText in EnumerateClientSummonedUolFieldPairStructuredRecords(
+                         tableNode,
+                         depthRemaining: ClientSummonedUolTableEntryTraversalDepth))
+            {
+                foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+                             recordText,
+                             skillId))
+                {
+                    if (yieldedValues.Add(candidate.Value))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolFieldPairStructuredRecords(
+            WzImageProperty node,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining <= 0)
+            {
+                yield break;
+            }
+
+            var fields = new List<string>();
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (TryReadClientSummonedUolFieldPairObject(child, out string fieldName, out string fieldValue))
+                {
+                    fields.Add($"{fieldName}={fieldValue}");
+                }
+            }
+
+            int ownerFieldCount = fields.Count(static field => IsClientSummonedUolTableOwnerFieldName(field.Split('=')[0]));
+            if (fields.Count > 0
+                && ownerFieldCount == 1
+                && fields.Any(static field => IsClientSummonedUolTableEntryValueName(field.Split('=')[0])))
+            {
+                yield return string.Join(";", fields);
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                foreach (string nestedRecord in EnumerateClientSummonedUolFieldPairStructuredRecords(
+                             child,
+                             depthRemaining - 1))
+                {
+                    yield return nestedRecord;
+                }
+            }
+        }
+
+        private static bool TryReadClientSummonedUolFieldPairObject(
+            WzImageProperty pairNode,
+            out string fieldName,
+            out string fieldValue)
+        {
+            fieldName = null;
+            fieldValue = null;
+            if (pairNode?.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in pairNode.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string value = TrimClientSummonedUolRecordTextFieldToken(GetClientSummonedUolCandidateValue(child));
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolFieldPairKeyFieldName(child.Name))
+                {
+                    fieldName = value;
+                }
+                else if (IsClientSummonedUolFieldPairValueFieldName(child.Name))
+                {
+                    fieldValue = value;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(fieldName)
+                   && !string.IsNullOrWhiteSpace(fieldValue);
         }
 
         private static IEnumerable<(IReadOnlyList<string> Headers, IReadOnlyList<string> Values)> EnumerateClientSummonedUolColumnValueTableEntryRows(
@@ -8019,6 +8143,47 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("payload", StringComparison.Ordinal)
                    || normalizedName.Equals("items", StringComparison.Ordinal)
                    || normalizedName.Equals("list", StringComparison.Ordinal);
+        }
+
+        private static bool IsClientSummonedUolFieldPairKeyFieldName(string name)
+        {
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            return normalizedName.Equals("key", StringComparison.Ordinal)
+                   || normalizedName.Equals("keys", StringComparison.Ordinal)
+                   || normalizedName.Equals("name", StringComparison.Ordinal)
+                   || normalizedName.Equals("names", StringComparison.Ordinal)
+                   || normalizedName.Equals("field", StringComparison.Ordinal)
+                   || normalizedName.Equals("fields", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldname", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldnames", StringComparison.Ordinal)
+                   || normalizedName.Equals("column", StringComparison.Ordinal)
+                   || normalizedName.Equals("columnname", StringComparison.Ordinal)
+                   || normalizedName.Equals("header", StringComparison.Ordinal)
+                   || normalizedName.Equals("headername", StringComparison.Ordinal)
+                   || normalizedName.Equals("member", StringComparison.Ordinal)
+                   || normalizedName.Equals("membername", StringComparison.Ordinal)
+                   || normalizedName.Equals("property", StringComparison.Ordinal)
+                   || normalizedName.Equals("propertyname", StringComparison.Ordinal)
+                   || normalizedName.Equals("slot", StringComparison.Ordinal)
+                   || normalizedName.Equals("slotname", StringComparison.Ordinal);
+        }
+
+        private static bool IsClientSummonedUolFieldPairValueFieldName(string name)
+        {
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            return normalizedName.Equals("value", StringComparison.Ordinal)
+                   || normalizedName.Equals("values", StringComparison.Ordinal)
+                   || normalizedName.Equals("val", StringComparison.Ordinal)
+                   || normalizedName.Equals("data", StringComparison.Ordinal)
+                   || normalizedName.Equals("payload", StringComparison.Ordinal)
+                   || normalizedName.Equals("item", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("rawvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("content", StringComparison.Ordinal)
+                   || normalizedName.Equals("text", StringComparison.Ordinal)
+                   || normalizedName.Equals("string", StringComparison.Ordinal)
+                   || normalizedName.Equals("bstr", StringComparison.Ordinal)
+                   || normalizedName.Equals("wstr", StringComparison.Ordinal);
         }
 
         private static bool TryReadClientSkillAssetUolTableEntryVariantLevel(
@@ -8924,6 +9089,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            bool yieldedFieldPairRows = false;
+            foreach (string fieldPairRow in EnumerateClientSummonedUolFieldPairTextTableRows(normalizedText))
+            {
+                yieldedFieldPairRows = true;
+                yield return fieldPairRow;
+            }
+
+            if (yieldedFieldPairRows)
+            {
+                yield break;
+            }
+
             bool yieldedObjectRows = false;
             foreach (string objectRow in EnumerateClientSummonedUolJsonObjectTableRows(normalizedText))
             {
@@ -8953,6 +9130,119 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             yield return normalizedText;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolFieldPairTextTableRows(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText)
+                || recordText.IndexOf('{') < 0
+                || recordText.IndexOf('}') < 0)
+            {
+                yield break;
+            }
+
+            string[] lines = recordText
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static line => line.Trim())
+                .Where(static line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+            if (lines.Length > 1)
+            {
+                bool yieldedLineRow = false;
+                foreach (string line in lines)
+                {
+                    if (TryBuildClientSummonedUolFieldPairTextTableRow(line, out string rowText))
+                    {
+                        yieldedLineRow = true;
+                        yield return rowText;
+                    }
+                }
+
+                if (yieldedLineRow)
+                {
+                    yield break;
+                }
+            }
+
+            bool yieldedNestedRow = false;
+            foreach (string nestedRowText in EnumerateClientSummonedUolTopLevelBracketGroups(recordText))
+            {
+                if (TryBuildClientSummonedUolFieldPairTextTableRow(nestedRowText, out string rowText))
+                {
+                    yieldedNestedRow = true;
+                    yield return rowText;
+                }
+            }
+
+            if (yieldedNestedRow)
+            {
+                yield break;
+            }
+
+            if (TryBuildClientSummonedUolFieldPairTextTableRow(recordText, out string rootRowText))
+            {
+                yield return rootRowText;
+            }
+        }
+
+        private static bool TryBuildClientSummonedUolFieldPairTextTableRow(
+            string recordText,
+            out string rowText)
+        {
+            rowText = null;
+            string[] objectRows = EnumerateClientSummonedUolJsonObjectTableRows(recordText).ToArray();
+            if (objectRows.Length < 2)
+            {
+                return false;
+            }
+
+            var fields = new List<string>();
+            foreach (string objectRow in objectRows)
+            {
+                if (TryReadClientSummonedUolFieldPairTextObject(objectRow, out string fieldName, out string fieldValue))
+                {
+                    fields.Add($"{fieldName}={fieldValue}");
+                }
+            }
+
+            int ownerFieldCount = fields.Count(static field => IsClientSummonedUolTableOwnerFieldName(field.Split('=')[0]));
+            if (fields.Count == 0
+                || ownerFieldCount != 1
+                || !fields.Any(static field => IsClientSummonedUolTableEntryValueName(field.Split('=')[0])))
+            {
+                return false;
+            }
+
+            rowText = string.Join(";", fields);
+            return true;
+        }
+
+        private static bool TryReadClientSummonedUolFieldPairTextObject(
+            string objectRow,
+            out string fieldName,
+            out string fieldValue)
+        {
+            fieldName = null;
+            fieldValue = null;
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(objectRow))
+            {
+                if (string.IsNullOrWhiteSpace(FieldName) || string.IsNullOrWhiteSpace(FieldValue))
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolFieldPairKeyFieldName(FieldName))
+                {
+                    fieldName = FieldValue;
+                }
+                else if (IsClientSummonedUolFieldPairValueFieldName(FieldName))
+                {
+                    fieldValue = FieldValue;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(fieldName)
+                   && !string.IsNullOrWhiteSpace(fieldValue);
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolHeaderDelimitedTableRows(string recordText)

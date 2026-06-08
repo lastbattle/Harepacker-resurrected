@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string AcceptButtonUolFallback = "UI/UIWindow2.img/Wedding/Invitation/BtOK";
         private const string DefaultDialogUolFallback = "UI/UIWindow.img/Wedding/Invitation/Vegas";
         private const string AlternateDialogUolFallback = "UI/UIWindow.img/Wedding/Invitation/Cathedral";
-        private const string BasicBlackFontFaceFallback = "DotumChe";
+        private const string BasicBlackFontFaceFallback = "Arial";
 
         internal static int ResolveBackgroundUolStringPoolId(WeddingInvitationStyle style)
         {

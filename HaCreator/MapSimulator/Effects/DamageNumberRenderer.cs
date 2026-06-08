@@ -242,6 +242,9 @@ namespace HaCreator.MapSimulator.Effects
             string DamageString,
             int CanvasWidth,
             int CanvasHeight,
+            DamageColorType ColorType,
+            bool RequestedCriticalAttack,
+            bool AppliesCriticalPresentation,
             int DamageStringPoolId,
             CanvasLayerRecoveredEffectHpTextFormatTrace TextFormatTrace,
             PreparedDigitDrawInfo[] Digits,
@@ -562,6 +565,9 @@ namespace HaCreator.MapSimulator.Effects
                     textFormatTrace.FormattedText,
                     0,
                     DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    dmgNumber.ColorType,
+                    dmgNumber.IsCritical,
+                    UsesCriticalPresentation(dmgNumber.ColorType, dmgNumber.IsCritical),
                     DamageNumberFormatStringPoolId,
                     textFormatTrace,
                     Array.Empty<PreparedDigitDrawInfo>(),
@@ -753,6 +759,9 @@ namespace HaCreator.MapSimulator.Effects
                     damageString,
                     0,
                     ResolveCompositeCanvasHeight(),
+                    colorType,
+                    isCritical,
+                    false,
                     DamageNumberFormatStringPoolId,
                     textFormatTrace,
                     Array.Empty<PreparedDigitDrawInfo>(),
@@ -765,7 +774,13 @@ namespace HaCreator.MapSimulator.Effects
 
             if (isMiss)
             {
-                return PrepareSpecialTextVisual(damageString, ResolveSpecialTextDigitSet(), textFormatTrace);
+                return PrepareSpecialTextVisual(
+                    damageString,
+                    ResolveSpecialTextDigitSet(),
+                    textFormatTrace,
+                    colorType,
+                    isCritical,
+                    useCriticalPresentation);
             }
 
             (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth, int recoveredNativeAccumulatedCanvasWidth) = BuildDigitLayout(
@@ -813,6 +828,9 @@ namespace HaCreator.MapSimulator.Effects
                 damageString,
                 composedWidth,
                 ResolveCompositeCanvasHeight(),
+                colorType,
+                isCritical,
+                useCriticalPresentation,
                 DamageNumberFormatStringPoolId,
                 textFormatTrace,
                 digits,
@@ -835,13 +853,19 @@ namespace HaCreator.MapSimulator.Effects
             return PrepareSpecialTextVisual(
                 specialTextName,
                 authoredSpecialTextDigitSet,
-                BuildRecoveredTextFormatTrace(0, isSpecialText: true, specialTextName));
+                BuildRecoveredTextFormatTrace(0, isSpecialText: true, specialTextName),
+                DamageColorType.Red,
+                isCritical: false,
+                appliesCriticalPresentation: false);
         }
 
         private static PreparedDamageNumberVisual PrepareSpecialTextVisual(
             string specialTextName,
             DamageNumberDigitSet authoredSpecialTextDigitSet,
-            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace)
+            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace,
+            DamageColorType colorType,
+            bool isCritical,
+            bool appliesCriticalPresentation)
         {
             string damageString = ResolveSpecialTextName(specialTextName);
             PreparedSpriteDrawInfo? missSprite = null;
@@ -868,6 +892,9 @@ namespace HaCreator.MapSimulator.Effects
                 damageString,
                 canvasWidth,
                 canvasHeight,
+                colorType,
+                isCritical,
+                appliesCriticalPresentation,
                 DamageNumberFormatStringPoolId,
                 textFormatTrace,
                 Array.Empty<PreparedDigitDrawInfo>(),
@@ -1461,8 +1488,17 @@ namespace HaCreator.MapSimulator.Effects
                 && string.Equals(smallOwnerSetName, "NoCri0", StringComparison.OrdinalIgnoreCase);
             bool specialTextOwnerIsAuthoredNoRed0 = usesSpecialTextOwner
                 && string.Equals(smallOwnerSetName, DamageNumberSpecialTextOwnerSetName, StringComparison.OrdinalIgnoreCase);
+            bool supportedColor = visual != null && IsSupportedColorType(visual.ColorType);
 
             return new CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+                visual != null ? (int)visual.ColorType : -1,
+                visual?.RequestedCriticalAttack == true,
+                visual?.AppliesCriticalPresentation == true,
+                visual?.RequestedCriticalAttack == true
+                    && visual?.AppliesCriticalPresentation != true
+                    && supportedColor
+                    && visual.ColorType != DamageColorType.Red,
+                visual != null && !supportedColor,
                 largeOwnerSetName,
                 smallOwnerSetName,
                 firstDigitUsesLargeOwner,

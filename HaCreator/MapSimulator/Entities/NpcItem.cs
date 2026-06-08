@@ -1378,10 +1378,12 @@ namespace HaCreator.MapSimulator.Entities
 
     internal sealed class NpcMapleTvNativeCanvasGraphState
     {
+        private const int MaxOperationHistory = 64;
         private readonly Dictionary<string, List<string>> _layerCanvases = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _canvasTextSlots = new(StringComparer.Ordinal);
         private readonly List<string> _loadedLayerFamilies = new();
         private readonly List<string> _animatedLayers = new();
+        private readonly List<string> _operationHistory = new();
 
         internal void Apply(IReadOnlyList<NpcMapleTvNativeCanvasOperation> operations)
         {
@@ -1402,7 +1404,8 @@ namespace HaCreator.MapSimulator.Entities
                 CloneDictionary(_layerCanvases),
                 CloneDictionary(_canvasTextSlots),
                 _loadedLayerFamilies.ToArray(),
-                _animatedLayers.ToArray());
+                _animatedLayers.ToArray(),
+                _operationHistory.ToArray());
         }
 
         private void Apply(NpcMapleTvNativeCanvasOperation operation)
@@ -1412,6 +1415,7 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            RecordOperation(operation);
             switch (operation.Kind)
             {
                 case NpcMapleTvNativeCanvasOperationKind.RemoveCanvas:
@@ -1477,7 +1481,14 @@ namespace HaCreator.MapSimulator.Entities
 
             if (operation.CanvasIndex < 0)
             {
-                canvases.Clear();
+                if (operation.CanvasIndex == -2)
+                {
+                    canvases.RemoveAt(canvases.Count - 1);
+                }
+                else
+                {
+                    canvases.Clear();
+                }
             }
             else if (operation.CanvasIndex < canvases.Count)
             {
@@ -1496,6 +1507,35 @@ namespace HaCreator.MapSimulator.Entities
             return $"{family}:0x{operation.StringPoolId:X4}@{operation.OffsetX},{operation.OffsetY}";
         }
 
+        private void RecordOperation(NpcMapleTvNativeCanvasOperation operation)
+        {
+            _operationHistory.Add(FormatOperation(operation));
+            if (_operationHistory.Count > MaxOperationHistory)
+            {
+                _operationHistory.RemoveAt(0);
+            }
+        }
+
+        private static string FormatOperation(NpcMapleTvNativeCanvasOperation operation)
+        {
+            return operation.Kind switch
+            {
+                NpcMapleTvNativeCanvasOperationKind.RemoveCanvas =>
+                    $"RemoveCanvas:{operation.LayerName}:{operation.CanvasIndex}",
+                NpcMapleTvNativeCanvasOperationKind.LoadLayer =>
+                    $"LoadLayer:{FormatLoadedLayer(operation)}",
+                NpcMapleTvNativeCanvasOperationKind.AnimateRepeat =>
+                    $"AnimateRepeat:{operation.LayerName}",
+                NpcMapleTvNativeCanvasOperationKind.CreateMessageCanvas =>
+                    $"CreateMessageCanvas:{operation.CanvasName}",
+                NpcMapleTvNativeCanvasOperationKind.DrawText =>
+                    $"DrawText:{operation.CanvasName}:{operation.TextSlot}@{operation.OffsetX},{operation.OffsetY}",
+                NpcMapleTvNativeCanvasOperationKind.InsertCanvas =>
+                    $"InsertCanvas:{operation.LayerName}:{operation.CanvasName}",
+                _ => operation.Kind.ToString()
+            };
+        }
+
         private static IReadOnlyDictionary<string, IReadOnlyList<string>> CloneDictionary(
             Dictionary<string, List<string>> source)
         {
@@ -1512,18 +1552,21 @@ namespace HaCreator.MapSimulator.Entities
             IReadOnlyDictionary<string, IReadOnlyList<string>> layerCanvases,
             IReadOnlyDictionary<string, IReadOnlyList<string>> canvasTextSlots,
             IReadOnlyList<string> loadedLayerFamilies,
-            IReadOnlyList<string> animatedLayers)
+            IReadOnlyList<string> animatedLayers,
+            IReadOnlyList<string> operationHistory)
         {
             LayerCanvases = layerCanvases ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             CanvasTextSlots = canvasTextSlots ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             LoadedLayerFamilies = loadedLayerFamilies ?? Array.Empty<string>();
             AnimatedLayers = animatedLayers ?? Array.Empty<string>();
+            OperationHistory = operationHistory ?? Array.Empty<string>();
         }
 
         internal IReadOnlyDictionary<string, IReadOnlyList<string>> LayerCanvases { get; }
         internal IReadOnlyDictionary<string, IReadOnlyList<string>> CanvasTextSlots { get; }
         internal IReadOnlyList<string> LoadedLayerFamilies { get; }
         internal IReadOnlyList<string> AnimatedLayers { get; }
+        internal IReadOnlyList<string> OperationHistory { get; }
     }
 
     internal enum NpcFloatVectorNativeOperationKind

@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int EnterTitleStringPoolId = 0x1A5D;
         private const int DeletePostPromptStringPoolId = 0xEB2;
         private const int ExistingNoticeStringPoolId = 0xEB3;
+        private const int EntryNotFoundStringPoolId = 0xEC7;
         private const int ClientGuildBbsRequestOpcode = 179;
         private const byte ClientRegisterRequestType = 0;
         private const byte ClientDeleteRequestType = 1;
@@ -346,7 +347,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Author = comment.Author,
                         Body = comment.Body,
                         DateText = comment.CreatedAt.ToLocalTime().ToString("MM.dd HH:mm"),
-                        Emoticon = CreateEmoticonSnapshot(comment.EmoticonKind, comment.EmoticonSlot, comment.CashEmoticonPageIndex),
+                        Emoticon = null,
                         CanDelete = CanDeleteComment(comment)
                     })
                     .ToArray();
@@ -689,9 +690,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Author = _localPlayerName,
                 Body = processedReplyBody,
                 CreatedAt = DateTimeOffset.Now,
-                EmoticonKind = _replyDraft.EmoticonKind,
-                EmoticonSlot = _replyDraft.EmoticonSlot,
-                CashEmoticonPageIndex = _replyDraft.CashEmoticonPageIndex
+                EmoticonKind = GuildBbsEmoticonKind.None,
+                EmoticonSlot = -1,
+                CashEmoticonPageIndex = 0
             });
 
             _replyDraft.Body = string.Empty;
@@ -896,17 +897,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string MoveReplyEmoticonSelection(int delta)
         {
-            MoveEmoticonSelection(
-                _replyDraft.EmoticonKind,
-                _replyDraft.EmoticonSlot,
-                delta,
-                out GuildBbsEmoticonKind resolvedKind,
-                out int resolvedSlot,
-                out int resolvedPage);
-            _replyDraft.EmoticonKind = resolvedKind;
-            _replyDraft.EmoticonSlot = resolvedSlot;
-            _replyDraft.CashEmoticonPageIndex = resolvedPage;
-            return $"Reply emoticon selector moved to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
+            _replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
+            _replyDraft.EmoticonSlot = -1;
+            _replyDraft.CashEmoticonPageIndex = Math.Clamp(_replyDraft.CashEmoticonPageIndex + Math.Sign(delta), 0, GetCashEmoticonPageCount() - 1);
+            return "Guild BBS replies remain text-only; CUIGuildBBS::OnComment sends no emoticon id.";
         }
 
         public string SelectComposeEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
@@ -931,22 +925,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string SelectReplyEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
         {
-            if (!TryResolveEmoticonSelection(kind, slotIndex, cashPageIndex, out GuildBbsEmoticonKind resolvedKind, out int resolvedSlot, out int resolvedPage))
-            {
-                _replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
-                _replyDraft.EmoticonSlot = -1;
-                return "Reply emoticon cleared.";
-            }
-
-            if (resolvedKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(resolvedSlot))
-            {
-                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current Guild BBS entitlement source.";
-            }
-
-            _replyDraft.EmoticonKind = resolvedKind;
-            _replyDraft.EmoticonSlot = resolvedSlot;
-            _replyDraft.CashEmoticonPageIndex = Math.Clamp(resolvedPage, 0, GetCashEmoticonPageCount() - 1);
-            return $"Reply emoticon set to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
+            _replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
+            _replyDraft.EmoticonSlot = -1;
+            _replyDraft.CashEmoticonPageIndex = Math.Clamp(cashPageIndex, 0, GetCashEmoticonPageCount() - 1);
+            return "Guild BBS replies remain text-only; CUIGuildBBS::OnComment sends subtype 4, entry id, and reply text only.";
         }
 
         public string DescribeStatus()
@@ -1398,7 +1380,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return TryApplyViewEntryResultPacket(payload, offset, out detail);
                 case ClientEntryNotFoundResultType:
                     ApplyEntryNotFoundPacket();
-                    detail = $"Decoded Guild BBS board packet -> entry-not-found result 0x{resultType:X2}.";
+                    detail = $"Decoded Guild BBS board packet -> entry-not-found result 0x{resultType:X2}: {GetEntryNotFoundNotice()}";
                     return true;
                 default:
                     detail = $"Guild BBS board packet result type 0x{resultType:X2} is not modeled; expected 0x06, 0x07, or 0x08.";
@@ -1551,6 +1533,15 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _selectedThreadId = 0;
             _commentPageIndex = 0;
+        }
+
+        internal static string GetEntryNotFoundNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                EntryNotFoundStringPoolId,
+                "The selected post cannot be found.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
         }
 
         private bool TryReadListEntry(byte[] payload, ref int offset, bool isNotice, out GuildBbsThreadState thread, out string detail)

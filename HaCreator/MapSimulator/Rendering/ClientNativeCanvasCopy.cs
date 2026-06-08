@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -166,28 +167,35 @@ namespace HaCreator.MapSimulator.Rendering
                 return NativeCopyCaptureComparison.Invalid;
             }
 
-            int mismatchedPixels = 0;
-            int maxChannelDelta = 0;
-            int comparedPixels = Math.Min(managedPixels.Length, nativeCapturedPixels.Length);
-            for (int i = 0; i < comparedPixels; i++)
+            return CompareManagedPixelsToCapture(managedPixels, nativeCapturedPixels);
+        }
+
+        internal static NativeCopyCaptureComparison CompareAlpha255LayerCapture(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            IReadOnlyList<NativeCanvasCopyLayer> layers,
+            Color[] nativeCapturedPixels)
+        {
+            if (nativeCapturedPixels == null ||
+                destinationWidth <= 0 ||
+                destinationHeight <= 0 ||
+                nativeCapturedPixels.Length < destinationWidth * destinationHeight)
             {
-                Color managed = managedPixels[i];
-                Color native = nativeCapturedPixels[i];
-                int channelDelta = Math.Max(
-                    Math.Max(Math.Abs(managed.A - native.A), Math.Abs(managed.R - native.R)),
-                    Math.Max(Math.Abs(managed.G - native.G), Math.Abs(managed.B - native.B)));
-                if (channelDelta != 0)
-                {
-                    mismatchedPixels++;
-                    maxChannelDelta = Math.Max(maxChannelDelta, channelDelta);
-                }
+                return NativeCopyCaptureComparison.Invalid;
             }
 
-            return new NativeCopyCaptureComparison(
-                true,
-                comparedPixels,
-                mismatchedPixels,
-                maxChannelDelta);
+            Color[] managedPixels = CopyAlpha255LayersForTesting(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                layers);
+            if (managedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            return CompareManagedPixelsToCapture(managedPixels, nativeCapturedPixels);
         }
 
         internal static NativeCopyCaptureComparison CompareAlpha255CaptureRegion(
@@ -229,44 +237,57 @@ namespace HaCreator.MapSimulator.Rendering
                 return NativeCopyCaptureComparison.Invalid;
             }
 
-            int left = Math.Max(0, captureX);
-            int top = Math.Max(0, captureY);
-            int right = Math.Min(destinationWidth, captureX + captureWidth);
-            int bottom = Math.Min(destinationHeight, captureY + captureHeight);
-            if (right <= left || bottom <= top)
+            return CompareManagedPixelsToCaptureRegion(
+                managedPixels,
+                destinationWidth,
+                destinationHeight,
+                nativeCapturedPixels,
+                captureX,
+                captureY,
+                captureWidth,
+                captureHeight);
+        }
+
+        internal static NativeCopyCaptureComparison CompareAlpha255LayerCaptureRegion(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            IReadOnlyList<NativeCanvasCopyLayer> layers,
+            Color[] nativeCapturedPixels,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight)
+        {
+            if (nativeCapturedPixels == null ||
+                destinationWidth <= 0 ||
+                destinationHeight <= 0 ||
+                captureWidth <= 0 ||
+                captureHeight <= 0 ||
+                nativeCapturedPixels.Length < captureWidth * captureHeight)
             {
                 return NativeCopyCaptureComparison.Invalid;
             }
 
-            int mismatchedPixels = 0;
-            int maxChannelDelta = 0;
-            int comparedPixels = 0;
-            for (int pixelY = top; pixelY < bottom; pixelY++)
+            Color[] managedPixels = CopyAlpha255LayersForTesting(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                layers);
+            if (managedPixels.Length == 0)
             {
-                int nativeY = pixelY - captureY;
-                for (int pixelX = left; pixelX < right; pixelX++)
-                {
-                    int nativeX = pixelX - captureX;
-                    Color managed = managedPixels[pixelY * destinationWidth + pixelX];
-                    Color native = nativeCapturedPixels[nativeY * captureWidth + nativeX];
-                    int channelDelta = Math.Max(
-                        Math.Max(Math.Abs(managed.A - native.A), Math.Abs(managed.R - native.R)),
-                        Math.Max(Math.Abs(managed.G - native.G), Math.Abs(managed.B - native.B)));
-                    if (channelDelta != 0)
-                    {
-                        mismatchedPixels++;
-                        maxChannelDelta = Math.Max(maxChannelDelta, channelDelta);
-                    }
-
-                    comparedPixels++;
-                }
+                return NativeCopyCaptureComparison.Invalid;
             }
 
-            return new NativeCopyCaptureComparison(
-                true,
-                comparedPixels,
-                mismatchedPixels,
-                maxChannelDelta);
+            return CompareManagedPixelsToCaptureRegion(
+                managedPixels,
+                destinationWidth,
+                destinationHeight,
+                nativeCapturedPixels,
+                captureX,
+                captureY,
+                captureWidth,
+                captureHeight);
         }
 
         internal static NativeCopyCaptureComparison CompareAlpha255Bgra32Capture(
@@ -300,6 +321,32 @@ namespace HaCreator.MapSimulator.Rendering
                 sourceHeight,
                 x,
                 y,
+                nativeCapturedPixels);
+        }
+
+        internal static NativeCopyCaptureComparison CompareAlpha255LayerBgra32Capture(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            IReadOnlyList<NativeCanvasCopyLayer> layers,
+            byte[] nativeCapturedBgra32,
+            int nativeCaptureStride = 0)
+        {
+            Color[] nativeCapturedPixels = DecodeBgra32CapturePixels(
+                nativeCapturedBgra32,
+                destinationWidth,
+                destinationHeight,
+                nativeCaptureStride);
+            if (nativeCapturedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            return CompareAlpha255LayerCapture(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                layers,
                 nativeCapturedPixels);
         }
 
@@ -343,6 +390,79 @@ namespace HaCreator.MapSimulator.Rendering
                 captureY,
                 captureWidth,
                 captureHeight);
+        }
+
+        internal static NativeCopyCaptureComparison CompareAlpha255LayerBgra32CaptureRegion(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            IReadOnlyList<NativeCanvasCopyLayer> layers,
+            byte[] nativeCapturedBgra32,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight,
+            int nativeCaptureStride = 0)
+        {
+            Color[] nativeCapturedPixels = DecodeBgra32CapturePixels(
+                nativeCapturedBgra32,
+                captureWidth,
+                captureHeight,
+                nativeCaptureStride);
+            if (nativeCapturedPixels.Length == 0)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            return CompareAlpha255LayerCaptureRegion(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight,
+                layers,
+                nativeCapturedPixels,
+                captureX,
+                captureY,
+                captureWidth,
+                captureHeight);
+        }
+
+        internal static Color[] CopyAlpha255LayersForTesting(
+            Color[] destinationPixels,
+            int destinationWidth,
+            int destinationHeight,
+            IReadOnlyList<NativeCanvasCopyLayer> layers)
+        {
+            if (destinationPixels == null ||
+                destinationWidth <= 0 ||
+                destinationHeight <= 0 ||
+                destinationPixels.Length < destinationWidth * destinationHeight)
+            {
+                return Array.Empty<Color>();
+            }
+
+            using Bitmap destination = CreateBitmapFromPixelsForTesting(
+                destinationPixels,
+                destinationWidth,
+                destinationHeight);
+
+            if (layers != null)
+            {
+                foreach (NativeCanvasCopyLayer layer in layers)
+                {
+                    if (!layer.IsValid)
+                    {
+                        return Array.Empty<Color>();
+                    }
+
+                    using Bitmap source = CreateBitmapFromPixelsForTesting(
+                        layer.SourcePixels,
+                        layer.SourceWidth,
+                        layer.SourceHeight);
+                    CopyAlpha255(destination, source, layer.X, layer.Y);
+                }
+            }
+
+            return ReadBitmapPixelsForTesting(destination);
         }
 
         internal static Color[] DecodeBgra32CapturePixels(byte[] bgra32Bytes, int width, int height, int stride = 0)
@@ -392,6 +512,39 @@ namespace HaCreator.MapSimulator.Rendering
             return bitmap;
         }
 
+        internal static byte[] EncodeBgra32CapturePixelsForTesting(Color[] pixels, int width, int height, int stride = 0)
+        {
+            if (pixels == null || width <= 0 || height <= 0 || pixels.Length < width * height)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int minimumStride = checked(width * 4);
+            int resolvedStride = stride == 0 ? minimumStride : stride;
+            int absoluteStride = Math.Abs(resolvedStride);
+            if (absoluteStride < minimumStride)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] bytes = new byte[absoluteStride * height];
+            for (int row = 0; row < height; row++)
+            {
+                int rowOffset = ResolveRowOffset(resolvedStride, absoluteStride, height, row);
+                for (int column = 0; column < width; column++)
+                {
+                    Color pixel = pixels[row * width + column];
+                    int byteIndex = rowOffset + column * 4;
+                    bytes[byteIndex] = pixel.B;
+                    bytes[byteIndex + 1] = pixel.G;
+                    bytes[byteIndex + 2] = pixel.R;
+                    bytes[byteIndex + 3] = pixel.A;
+                }
+            }
+
+            return bytes;
+        }
+
         private static Color[] ReadBitmapPixelsForTesting(Bitmap bitmap)
         {
             if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
@@ -409,6 +562,83 @@ namespace HaCreator.MapSimulator.Rendering
             }
 
             return pixels;
+        }
+
+        private static NativeCopyCaptureComparison CompareManagedPixelsToCapture(Color[] managedPixels, Color[] nativeCapturedPixels)
+        {
+            int mismatchedPixels = 0;
+            int maxChannelDelta = 0;
+            int comparedPixels = Math.Min(managedPixels.Length, nativeCapturedPixels.Length);
+            for (int i = 0; i < comparedPixels; i++)
+            {
+                int channelDelta = ResolveMaxChannelDelta(managedPixels[i], nativeCapturedPixels[i]);
+                if (channelDelta != 0)
+                {
+                    mismatchedPixels++;
+                    maxChannelDelta = Math.Max(maxChannelDelta, channelDelta);
+                }
+            }
+
+            return new NativeCopyCaptureComparison(
+                true,
+                comparedPixels,
+                mismatchedPixels,
+                maxChannelDelta);
+        }
+
+        private static NativeCopyCaptureComparison CompareManagedPixelsToCaptureRegion(
+            Color[] managedPixels,
+            int destinationWidth,
+            int destinationHeight,
+            Color[] nativeCapturedPixels,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight)
+        {
+            int left = Math.Max(0, captureX);
+            int top = Math.Max(0, captureY);
+            int right = Math.Min(destinationWidth, captureX + captureWidth);
+            int bottom = Math.Min(destinationHeight, captureY + captureHeight);
+            if (right <= left || bottom <= top)
+            {
+                return NativeCopyCaptureComparison.Invalid;
+            }
+
+            int mismatchedPixels = 0;
+            int maxChannelDelta = 0;
+            int comparedPixels = 0;
+            for (int pixelY = top; pixelY < bottom; pixelY++)
+            {
+                int nativeY = pixelY - captureY;
+                for (int pixelX = left; pixelX < right; pixelX++)
+                {
+                    int nativeX = pixelX - captureX;
+                    int channelDelta = ResolveMaxChannelDelta(
+                        managedPixels[pixelY * destinationWidth + pixelX],
+                        nativeCapturedPixels[nativeY * captureWidth + nativeX]);
+                    if (channelDelta != 0)
+                    {
+                        mismatchedPixels++;
+                        maxChannelDelta = Math.Max(maxChannelDelta, channelDelta);
+                    }
+
+                    comparedPixels++;
+                }
+            }
+
+            return new NativeCopyCaptureComparison(
+                true,
+                comparedPixels,
+                mismatchedPixels,
+                maxChannelDelta);
+        }
+
+        private static int ResolveMaxChannelDelta(Color managed, Color native)
+        {
+            return Math.Max(
+                Math.Max(Math.Abs(managed.A - native.A), Math.Abs(managed.R - native.R)),
+                Math.Max(Math.Abs(managed.G - native.G), Math.Abs(managed.B - native.B)));
         }
 
         internal static Color BlendAlpha255(Color destination, Color source)
@@ -547,5 +777,19 @@ namespace HaCreator.MapSimulator.Rendering
         internal static NativeCopyCaptureComparison Invalid => new(false, 0, 0, 0);
 
         internal bool IsExactMatch => IsValid && ComparedPixels > 0 && MismatchedPixels == 0 && MaxChannelDelta == 0;
+    }
+
+    internal readonly record struct NativeCanvasCopyLayer(
+        Color[] SourcePixels,
+        int SourceWidth,
+        int SourceHeight,
+        int X,
+        int Y)
+    {
+        internal bool IsValid =>
+            SourcePixels != null &&
+            SourceWidth > 0 &&
+            SourceHeight > 0 &&
+            SourcePixels.Length >= SourceWidth * SourceHeight;
     }
 }

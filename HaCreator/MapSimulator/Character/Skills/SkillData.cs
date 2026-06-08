@@ -2296,10 +2296,12 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         RetainSourceLayer,
         CreateRepeatLayer,
+        RetainSourceOriginVectorTemporary,
         CreateOriginVector,
         CopySourceOrigin,
         MoveOriginBySourceOffset,
         AttachOriginVector,
+        ReleaseSourceOriginVectorTemporary,
         CopyLayerOverlay,
         CreateAlphaVector,
         RetainSourceAlphaVectorTemporary,
@@ -2427,6 +2429,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ParentRepeatLayerObjectId { get; init; }
         public int SourceLayerObjectId { get; init; }
         public int SimulatedListNodeObjectId { get; init; }
+        public int SimulatedSourceOriginVectorObjectId { get; init; }
+        public int SimulatedSourceOriginVectorTemporaryAddRefCount { get; init; }
+        public int SimulatedSourceOriginVectorTemporaryReleaseCount { get; init; }
         public int SimulatedOriginVectorObjectId { get; init; }
         public int SimulatedAlphaVectorObjectId { get; init; }
         public int SimulatedSourceCanvasObjectId { get; init; }
@@ -2460,6 +2465,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedReleaseSequence { get; private set; }
         public int SimulatedSourceCanvasTemporaryLiveRefCount =>
             Math.Max(0, SimulatedSourceCanvasTemporaryAddRefCount - SimulatedSourceCanvasTemporaryReleaseCount);
+        public int SimulatedSourceOriginVectorTemporaryLiveRefCount =>
+            Math.Max(0, SimulatedSourceOriginVectorTemporaryAddRefCount - SimulatedSourceOriginVectorTemporaryReleaseCount);
         public int SimulatedSourceAlphaVectorTemporaryLiveRefCount =>
             Math.Max(0, SimulatedSourceAlphaVectorTemporaryAddRefCount - SimulatedSourceAlphaVectorTemporaryReleaseCount);
         public int SimulatedRepeatAlphaVectorTemporaryLiveRefCount =>

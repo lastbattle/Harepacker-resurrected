@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         {
             public string ActionKey { get; init; } = string.Empty;
             public int NativeButtonId { get; init; }
+            public int SourceStringPoolId { get; init; }
             public int TooltipStringPoolId { get; init; }
             public string WzPath { get; init; } = string.Empty;
             public Point Position { get; init; }
@@ -43,8 +44,16 @@ namespace HaCreator.MapSimulator.UI
             public int ControlTabId { get; init; }
             public Point ControlTabPosition { get; init; }
             public System.Drawing.Size ControlTabSize { get; init; }
+            public Point UserControlOnLayerPosition { get; init; }
+            public Point UserControlOffLayerPosition { get; init; }
             public int UserControlNormalStringPoolId { get; init; }
             public int UserControlSelectedStringPoolId { get; init; }
+            public bool HasUserControlNormalProperty { get; init; }
+            public bool HasUserControlSelectedProperty { get; init; }
+            public bool UserControlStateOwnedByStage { get; init; }
+            public bool PhysicalSpaceReloadedOnCreate { get; init; }
+            public bool AvatarLookReloadedOnCreate { get; init; }
+            public bool UserPreviewReinitializedOnCreate { get; init; }
             public int BackgroundIndex { get; init; }
             public int BackgroundCanvasCount { get; init; }
             public int WearInfoCapacity { get; init; }
@@ -114,6 +123,10 @@ namespace HaCreator.MapSimulator.UI
         private const int UserPreviewControlTabY = 141;
         private const int UserPreviewControlTabWidth = 11;
         private const int UserPreviewControlTabHeight = 115;
+        private const int UserPreviewControlOnLayerX = 130;
+        private const int UserPreviewControlOnLayerY = 120;
+        private const int UserPreviewControlOffLayerX = 119;
+        private const int UserPreviewControlOffLayerY = 17;
         private const int UserPreviewControlNormalStringPoolId = 0xC6B;
         private const int UserPreviewControlSelectedStringPoolId = 0xC6C;
         private const int CashShopFieldStringPoolId = 0xC69;
@@ -122,6 +135,8 @@ namespace HaCreator.MapSimulator.UI
         private const int BuyAvatarButtonId = 1000;
         private const int DefaultAvatarButtonId = 1001;
         private const int TakeoffAvatarButtonId = 1002;
+        private const int BuyAvatarButtonSourceStringPoolId = 0x4DF;
+        private const int DefaultAvatarButtonSourceStringPoolId = 0xB8B;
         private const int BuyAvatarTooltipStringPoolId = 0x522;
         private const int DefaultAvatarTooltipStringPoolId = 0x523;
         private const int TakeoffAvatarTooltipStringPoolId = 0xB8C;
@@ -268,8 +283,16 @@ namespace HaCreator.MapSimulator.UI
                     ControlTabId = UserPreviewControlTabId,
                     ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
                     ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),
+                    UserControlOnLayerPosition = new Point(UserPreviewControlOnLayerX, UserPreviewControlOnLayerY),
+                    UserControlOffLayerPosition = new Point(UserPreviewControlOffLayerX, UserPreviewControlOffLayerY),
                     UserControlNormalStringPoolId = UserPreviewControlNormalStringPoolId,
                     UserControlSelectedStringPoolId = UserPreviewControlSelectedStringPoolId,
+                    HasUserControlNormalProperty = true,
+                    HasUserControlSelectedProperty = true,
+                    UserControlStateOwnedByStage = true,
+                    PhysicalSpaceReloadedOnCreate = true,
+                    AvatarLookReloadedOnCreate = true,
+                    UserPreviewReinitializedOnCreate = true,
                     BackgroundIndex = 0,
                     BackgroundCanvasCount = PreviewBackgroundCanvasCount,
                     WearInfoCapacity = ClientWearInfoCapacity,
@@ -956,8 +979,16 @@ namespace HaCreator.MapSimulator.UI
                     ControlTabId = UserPreviewControlTabId,
                     ControlTabPosition = new Point(UserPreviewControlTabX, UserPreviewControlTabY),
                     ControlTabSize = new System.Drawing.Size(UserPreviewControlTabWidth, UserPreviewControlTabHeight),
+                    UserControlOnLayerPosition = new Point(UserPreviewControlOnLayerX, UserPreviewControlOnLayerY),
+                    UserControlOffLayerPosition = new Point(UserPreviewControlOffLayerX, UserPreviewControlOffLayerY),
                     UserControlNormalStringPoolId = UserPreviewControlNormalStringPoolId,
                     UserControlSelectedStringPoolId = UserPreviewControlSelectedStringPoolId,
+                    HasUserControlNormalProperty = true,
+                    HasUserControlSelectedProperty = true,
+                    UserControlStateOwnedByStage = true,
+                    PhysicalSpaceReloadedOnCreate = true,
+                    AvatarLookReloadedOnCreate = true,
+                    UserPreviewReinitializedOnCreate = true,
                     BackgroundIndex = ResolvePreviewIndex(),
                     BackgroundCanvasCount = Math.Max(PreviewBackgroundCanvasCount, _previewBackgrounds?.Length ?? 0),
                     WearInfoCapacity = ClientWearInfoCapacity,
@@ -1018,6 +1049,7 @@ namespace HaCreator.MapSimulator.UI
                 BuildButtonControlRuntimeState(
                     "BtBuyAvatar",
                     BuyAvatarButtonId,
+                    BuyAvatarButtonSourceStringPoolId,
                     BuyAvatarTooltipStringPoolId,
                     "UI/CashShop.img/CSChar/BtBuyAvatar",
                     new Point(BuyButtonX, ButtonY),
@@ -1027,6 +1059,7 @@ namespace HaCreator.MapSimulator.UI
                 BuildButtonControlRuntimeState(
                     "BtDefaultAvatar",
                     DefaultAvatarButtonId,
+                    DefaultAvatarButtonSourceStringPoolId,
                     DefaultAvatarTooltipStringPoolId,
                     "UI/CashShop.img/CSChar/BtDefaultAvatar",
                     new Point(DefaultButtonX, ButtonY),
@@ -1036,6 +1069,7 @@ namespace HaCreator.MapSimulator.UI
                 BuildButtonControlRuntimeState(
                     "BtTakeoffAvatar",
                     TakeoffAvatarButtonId,
+                    0,
                     TakeoffAvatarTooltipStringPoolId,
                     "UI/CashShop.img/CSChar/BtTakeoffAvatar",
                     new Point(TakeoffButtonX, ButtonY),
@@ -1048,6 +1082,7 @@ namespace HaCreator.MapSimulator.UI
         private static ButtonControlRuntimeState BuildButtonControlRuntimeState(
             string actionKey,
             int nativeButtonId,
+            int sourceStringPoolId,
             int tooltipStringPoolId,
             string wzPath,
             Point position,
@@ -1059,6 +1094,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ActionKey = actionKey,
                 NativeButtonId = nativeButtonId,
+                SourceStringPoolId = sourceStringPoolId,
                 TooltipStringPoolId = tooltipStringPoolId,
                 WzPath = wzPath,
                 Position = position,

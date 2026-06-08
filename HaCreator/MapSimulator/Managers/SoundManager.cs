@@ -1101,9 +1101,9 @@ namespace HaCreator.MapSimulator.Managers
                 return normalizedKey;
             }
 
-            if (HasExplicitClientSoundOwnerPrefix(normalizedKey))
+            if (TryNormalizeExplicitClientSoundOwnerKey(normalizedKey, sound, out string explicitOwnerKey))
             {
-                return normalizedKey;
+                return explicitOwnerKey;
             }
 
             if (TryResolveCallerLocalSoundPath(normalizedKey, out string callerLocalPath))
@@ -1117,12 +1117,107 @@ namespace HaCreator.MapSimulator.Managers
                 : $"RegisteredSound:{soundPath}";
         }
 
-        private static bool HasExplicitClientSoundOwnerPrefix(string key)
+        private static bool TryNormalizeExplicitClientSoundOwnerKey(
+            string key,
+            WzBinaryProperty sound,
+            out string normalizedKey)
         {
-            return key.StartsWith("RegisteredSound:", StringComparison.Ordinal)
-                   || key.StartsWith("PacketOwnedSound:", StringComparison.Ordinal)
-                   || key.StartsWith("UIObject:", StringComparison.Ordinal)
-                   || key.StartsWith("VegaResultLoop:", StringComparison.Ordinal);
+            normalizedKey = null;
+            if (TryNormalizeExplicitClientSoundOwnerKey(key, "RegisteredSound:", sound, out normalizedKey)
+                || TryNormalizeExplicitClientSoundOwnerKey(key, "PacketOwnedSound:", sound, out normalizedKey)
+                || TryNormalizeExplicitClientSoundOwnerKey(key, "VegaResultLoop:", sound, out normalizedKey))
+            {
+                return true;
+            }
+
+            if (!key.StartsWith("UIObject:", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string descriptor = key["UIObject:".Length..];
+            if (TrySplitUiObjectClientSoundKey(descriptor, out string semanticName, out string soundDescriptor))
+            {
+                string soundPath = ResolveClientSoundPath(soundDescriptor, sound);
+                normalizedKey = string.IsNullOrWhiteSpace(semanticName)
+                    ? $"UIObject:{soundPath}"
+                    : $"UIObject:{semanticName}:{soundPath}";
+                return true;
+            }
+
+            normalizedKey = key;
+            return true;
+        }
+
+        private static bool TryNormalizeExplicitClientSoundOwnerKey(
+            string key,
+            string ownerPrefix,
+            WzBinaryProperty sound,
+            out string normalizedKey)
+        {
+            normalizedKey = null;
+            if (!key.StartsWith(ownerPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string soundPath = ResolveClientSoundPath(key[ownerPrefix.Length..], sound);
+            normalizedKey = string.IsNullOrWhiteSpace(soundPath)
+                ? key
+                : ownerPrefix + soundPath;
+            return true;
+        }
+
+        private static bool TrySplitUiObjectClientSoundKey(
+            string descriptor,
+            out string semanticName,
+            out string soundDescriptor)
+        {
+            semanticName = null;
+            soundDescriptor = null;
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string trimmed = descriptor.Trim();
+            int separatorIndex = trimmed.IndexOf(':');
+            if (separatorIndex >= 0)
+            {
+                string suffix = trimmed[(separatorIndex + 1)..];
+                if (LooksLikeClientSoundPath(suffix))
+                {
+                    semanticName = trimmed[..separatorIndex].Trim();
+                    soundDescriptor = suffix;
+                    return !string.IsNullOrWhiteSpace(soundDescriptor);
+                }
+            }
+
+            if (!LooksLikeClientSoundPath(trimmed))
+            {
+                return false;
+            }
+
+            soundDescriptor = trimmed;
+            return true;
+        }
+
+        private static bool LooksLikeClientSoundPath(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string normalizedDescriptor = descriptor.Trim().Replace('\\', '/');
+            if (normalizedDescriptor.StartsWith("/", StringComparison.Ordinal))
+            {
+                normalizedDescriptor = normalizedDescriptor[1..];
+            }
+
+            return normalizedDescriptor.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase)
+                   || normalizedDescriptor.StartsWith("Sound.wz/", StringComparison.OrdinalIgnoreCase)
+                   || normalizedDescriptor.IndexOf(".img/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool TryResolveCallerLocalSoundPath(string descriptor, out string soundPath)

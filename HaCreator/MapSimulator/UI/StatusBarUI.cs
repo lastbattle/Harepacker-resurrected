@@ -75,6 +75,12 @@ namespace HaCreator.MapSimulator.UI {
         public int TemporaryStatViewParentLayerReferenceCount { get; set; }
         public int TemporaryStatViewMainLayerReferenceCount { get; set; }
         public int TemporaryStatViewShadowLayerReferenceCount { get; set; }
+        public int TemporaryStatViewIconCanvasIdentity { get; set; }
+        public int TemporaryStatViewMainLayerCreateResultIdentity { get; set; }
+        public int TemporaryStatViewMainLayerOriginVectorIdentity { get; set; }
+        public int TemporaryStatViewMainLayerInsertResultVariantIdentity { get; set; }
+        public int TemporaryStatViewShadowLayerCreateResultIdentity { get; set; }
+        public int TemporaryStatViewShadowLayerOriginVectorIdentity { get; set; }
         public string TemporaryStatViewOwnerName { get; set; }
         public string TemporaryStatViewParentLayerName { get; set; }
         public string TemporaryStatViewMainLayerName { get; set; }

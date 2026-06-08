@@ -1173,7 +1173,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (state == LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence)
             {
-                return $"Live ownership verification in progress: opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were captured in separate proxy sessions, waiting for both directions in one initialized Maple session.";
+                return $"Live ownership verification in progress: opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were captured, waiting for both directions in one current initialized Maple session.";
             }
 
             return $"Live ownership verification idle: start a Guild Boss session bridge and capture opcode {OutboundPulleyRequestOpcode}/{PacketTypeHealerMove}/{PacketTypePulleyStateChange} traffic.";

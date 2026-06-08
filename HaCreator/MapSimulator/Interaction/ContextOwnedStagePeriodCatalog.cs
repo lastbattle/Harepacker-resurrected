@@ -117,6 +117,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return ContextOwnedStageCacheMutationTrace.Empty;
             }
 
+            ContextOwnedStageCleanStageMutationTrace cleanStageMutation =
+                CaptureCleanStageMutationTrace(entry.StageTheme, entry.Mode, stagePeriodCache);
             IReadOnlyList<ContextOwnedStageUnitCacheMutation> keywordMutations =
                 ApplyThemeScopedEnableStateWithTrace(entry.StageTheme, entry.KeywordSequence, keywordCache);
             IReadOnlyList<ContextOwnedStageUnitCacheMutation> questMutations =
@@ -126,6 +128,7 @@ namespace HaCreator.MapSimulator.Interaction
             return new ContextOwnedStageCacheMutationTrace(
                 NormalizeStageTheme(entry.StageTheme),
                 entry.Mode,
+                cleanStageMutation,
                 keywordMutations,
                 questMutations,
                 stagePeriodMutation,
@@ -1710,6 +1713,30 @@ namespace HaCreator.MapSimulator.Interaction
                 mode);
         }
 
+        private static ContextOwnedStageCleanStageMutationTrace CaptureCleanStageMutationTrace(
+            string stageTheme,
+            byte mode,
+            IDictionary<string, byte> stagePeriodCache)
+        {
+            string normalizedTheme = NormalizeStageTheme(stageTheme);
+            if (stagePeriodCache == null || string.IsNullOrWhiteSpace(normalizedTheme))
+            {
+                return ContextOwnedStageCleanStageMutationTrace.Empty;
+            }
+
+            string existingTheme = ResolveExistingEquivalentStringKey(stagePeriodCache, normalizedTheme);
+            byte previousMode = 0;
+            bool hadCachedMode = existingTheme != null
+                && stagePeriodCache.TryGetValue(existingTheme, out previousMode);
+
+            return new ContextOwnedStageCleanStageMutationTrace(
+                existingTheme ?? normalizedTheme,
+                Invoked: true,
+                HadCachedMode: hadCachedMode,
+                PreviousMode: hadCachedMode ? previousMode : null,
+                RequestedMode: mode);
+        }
+
         private static string FormatCacheKey<TKey>(TKey key)
         {
             return key is IFormattable formattable
@@ -1910,6 +1937,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed record ContextOwnedStageCacheMutationTrace(
         string StageTheme,
         byte Mode,
+        ContextOwnedStageCleanStageMutationTrace CleanStageMutation,
         IReadOnlyList<ContextOwnedStageUnitCacheMutation> KeywordMutations,
         IReadOnlyList<ContextOwnedStageUnitCacheMutation> QuestMutations,
         ContextOwnedStagePeriodModeCacheMutation StagePeriodMutation,
@@ -1918,10 +1946,26 @@ namespace HaCreator.MapSimulator.Interaction
         internal static ContextOwnedStageCacheMutationTrace Empty { get; } = new(
             string.Empty,
             0,
+            ContextOwnedStageCleanStageMutationTrace.Empty,
             Array.Empty<ContextOwnedStageUnitCacheMutation>(),
             Array.Empty<ContextOwnedStageUnitCacheMutation>(),
             ContextOwnedStagePeriodModeCacheMutation.Empty,
             ContextOwnedStageActiveBackMutationTrace.Empty);
+    }
+
+    internal readonly record struct ContextOwnedStageCleanStageMutationTrace(
+        string StageTheme,
+        bool Invoked,
+        bool HadCachedMode,
+        byte? PreviousMode,
+        byte RequestedMode)
+    {
+        internal static ContextOwnedStageCleanStageMutationTrace Empty { get; } = new(
+            string.Empty,
+            Invoked: false,
+            HadCachedMode: false,
+            PreviousMode: null,
+            RequestedMode: 0);
     }
 
     internal readonly record struct ContextOwnedStageActiveBackMutationTrace(

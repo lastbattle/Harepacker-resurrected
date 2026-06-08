@@ -716,6 +716,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 yield return lnIdProperty;
             }
+
+            foreach (WzImageProperty lnIdProperty in EnumerateNestedNativeSkillInfoChildren(root, "lnID"))
+            {
+                yield return lnIdProperty;
+            }
         }
 
         private static IEnumerable<WzImageProperty> EnumerateSkillClassChildren(WzImageProperty root)
@@ -726,6 +731,11 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             foreach (WzImageProperty lnClassProperty in EnumerateNamedChildren(root, "lnClass"))
+            {
+                yield return lnClassProperty;
+            }
+
+            foreach (WzImageProperty lnClassProperty in EnumerateNestedNativeSkillInfoChildren(root, "lnClass"))
             {
                 yield return lnClassProperty;
             }
@@ -750,6 +760,39 @@ namespace HaCreator.MapSimulator.Fields
                 if (string.Equals(child?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
                 {
                     yield return child;
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateNestedNativeSkillInfoChildren(WzImageProperty root, string propertyName)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            WzPropertyCollection children = root.WzProperties;
+            if (children == null)
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (child == null
+                    || string.Equals(child.Name, "skill", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "id", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "class", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "lnID", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "lnClass", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty nativeChild in EnumerateNamedChildren(child, propertyName))
+                {
+                    yield return nativeChild;
                 }
             }
         }

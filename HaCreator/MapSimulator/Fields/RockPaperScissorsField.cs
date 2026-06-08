@@ -179,6 +179,10 @@ namespace HaCreator.MapSimulator.Fields
         public int CurrentTipPosition => _tipPosition;
         public string LastMinigameSound => _lastMinigameSound;
         internal bool IsResultLayerVisible => _resultLayerVisible;
+        internal int LastSwitchTick => _lastSwitchTick;
+        internal int RoundDeadlineTick => _roundDeadlineTick;
+        internal int ResultRevealTick => _resultRevealTick;
+        internal int ResultExpireTick => _resultExpireTick;
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -200,14 +204,14 @@ namespace HaCreator.MapSimulator.Fields
             if (_choiceButtonsEnabled && _npcChoice == RockPaperScissorsChoice.None && currentTick > _lastSwitchTick + ChoiceSwitchCadenceMs)
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
-                _lastSwitchTick = currentTick;
+                _lastSwitchTick = CoerceClientStoredTick(currentTick);
                 PlayMinigameSound(SwitchSoundStringPoolId);
             }
 
             if (_switchCadenceMs > 0 && _npcChoice != RockPaperScissorsChoice.None && currentTick > _lastSwitchTick + _switchCadenceMs)
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
-                _lastSwitchTick = currentTick;
+                _lastSwitchTick = CoerceClientStoredTick(currentTick);
                 _switchCadenceMs = CalculateNextSwitchCadence(_switchCadenceMs);
                 if (_switchCadenceMs >= 720 && _currentNpcDisplayIndex == (int)_npcChoice)
                 {
@@ -900,8 +904,8 @@ namespace HaCreator.MapSimulator.Fields
             _mainButtonEnabled = false;
             _exitButtonEnabled = false;
             _resultLayerVisible = false;
-            _resultRevealTick = currentTimeMs + ResultFadeDelayMs;
-            _resultExpireTick = currentTimeMs + ResultExpireDelayMs;
+            _resultRevealTick = CoerceClientStoredTick(currentTimeMs + ResultFadeDelayMs);
+            _resultExpireTick = CoerceClientStoredTick(currentTimeMs + ResultExpireDelayMs);
             UpdateTipText(currentTimeMs);
         }
 
@@ -920,13 +924,18 @@ namespace HaCreator.MapSimulator.Fields
             _mainButtonEnabled = false;
             _exitButtonEnabled = false;
             _switchCadenceMs = ChoiceSwitchCadenceMs;
-            _lastSwitchTick = currentTimeMs;
-            _roundDeadlineTick = currentTimeMs + RoundLimitMs;
+            _lastSwitchTick = CoerceClientStoredTick(currentTimeMs);
+            _roundDeadlineTick = CoerceClientStoredTick(currentTimeMs + RoundLimitMs);
             _resultRevealTick = 0;
             _resultExpireTick = 0;
             _resultLayerVisible = false;
             _lastTimerSoundSecond = int.MinValue;
             UpdateTipText(currentTimeMs);
+        }
+
+        internal static int CoerceClientStoredTick(int tick)
+        {
+            return tick == 0 ? 1 : tick;
         }
 
         private RockPaperScissorsMainButtonType ResolvePostResultMainButtonType()

@@ -1387,7 +1387,11 @@ namespace HaCreator.MapSimulator
             _clientChatHelperUseSubmittedHistoryIndex = true;
         }
 
-        private bool TryApplyClientChatHelperTryChat(string originalMessage, int tickCount, out string processedMessage)
+        private bool TryApplyClientChatHelperTryChat(
+            string originalMessage,
+            int tickCount,
+            out string processedMessage,
+            bool addAcceptedMessageToHistory = true)
         {
             processedMessage = originalMessage ?? string.Empty;
 
@@ -1460,8 +1464,23 @@ namespace HaCreator.MapSimulator
                 return RejectClientChatHelperTryChat();
             }
 
-            AddToInputHistory(originalMessage);
+            if (addAcceptedMessageToHistory)
+            {
+                AddToInputHistory(originalMessage);
+            }
+
             return true;
+        }
+
+        private void AddClientChatHelperCommandHistory(string command)
+        {
+            string trimmedCommand = command?.Trim() ?? string.Empty;
+            if (trimmedCommand.Length == 0)
+            {
+                return;
+            }
+
+            AddToInputHistory(trimmedCommand);
         }
 
         private bool RejectClientChatHelperTryChat()
@@ -2424,11 +2443,17 @@ namespace HaCreator.MapSimulator
             string prefix = GetTargetPrefix(targetType);
             ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
             Color color = ResolveClientChatLogColor(chatLogType);
-            if (!TryApplyClientChatHelperTryChat(payload, tickCount, out string processedPayload))
+            if (!TryApplyClientChatHelperTryChat(
+                    payload,
+                    tickCount,
+                    out string processedPayload,
+                    addAcceptedMessageToHistory: false))
             {
                 disposition = ChatSubmitDisposition.CloseChat;
                 return true;
             }
+
+            AddClientChatHelperCommandHistory(trimmedMessage);
 
             if (string.IsNullOrEmpty(prefix))
             {

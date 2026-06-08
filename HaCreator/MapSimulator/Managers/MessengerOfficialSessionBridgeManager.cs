@@ -521,6 +521,11 @@ namespace HaCreator.MapSimulator.Managers
             RecordObservedInboundPacket(rawPacket, source);
         }
 
+        internal void RecordPassiveRecoveredInboundPacketForTest(byte[] rawPacket)
+        {
+            RecordPassiveInboundPacket(rawPacket);
+        }
+
         internal void RecordRecoveredOutboundPacketForTest(byte[] rawPacket, string source = "test-outbound")
         {
             RecordObservedOutboundPacket(rawPacket, source);
@@ -1243,16 +1248,29 @@ namespace HaCreator.MapSimulator.Managers
                 .Distinct()
                 .OrderBy(opcode => opcode)
                 .ToArray();
+            ushort[] passivelyObservedRecoveredOpcodes = GetPassiveInboundOpcodeKeys()
+                .Where(opcode => recoveredOpcodes.Contains(opcode))
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
+            ushort[] coveredRecoveredOpcodes = observedRecoveredOpcodes
+                .Concat(passivelyObservedRecoveredOpcodes)
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
             ushort[] missingOpcodes = recoveredOpcodes
-                .Where(opcode => !observedRecoveredOpcodes.Contains(opcode))
+                .Where(opcode => !coveredRecoveredOpcodes.Contains(opcode))
                 .ToArray();
             string observed = observedRecoveredOpcodes.Length == 0
                 ? "none"
                 : string.Join("/", observedRecoveredOpcodes);
+            string passive = passivelyObservedRecoveredOpcodes.Length == 0
+                ? "none"
+                : string.Join("/", passivelyObservedRecoveredOpcodes);
             string missing = missingOpcodes.Length == 0
                 ? "none"
                 : string.Join("/", missingOpcodes);
-            return $"recovered inbound opcode coverage observed={observed} missing={missing}";
+            return $"recovered inbound opcode coverage observed={observed} passive={passive} missing={missing}";
         }
 
         private string DescribeRecoveredOutboundCoverage()
@@ -1320,8 +1338,15 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] recoveredResultCodes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMapleTvSendResultCodes()
                     .OrderBy(code => code)
                     .ToArray();
+                HashSet<ushort> coveredInboundOpcodes = _observedInboundOpcodes
+                    .Concat(GetPassiveInboundOpcodeKeys())
+                    .ToHashSet();
+                HashSet<byte> passivelyObservedResultCodes = GetPassiveMapleTvResultCodes();
+                HashSet<byte> coveredResultCodes = _observedMapleTvSendResultCodes
+                    .Concat(passivelyObservedResultCodes)
+                    .ToHashSet();
                 byte[] missingResultCodes = recoveredResultCodes
-                    .Where(code => !_observedMapleTvSendResultCodes.Contains(code))
+                    .Where(code => !coveredResultCodes.Contains(code))
                     .ToArray();
                 string[] missingBranches = new[]
                     {
@@ -1329,7 +1354,7 @@ namespace HaCreator.MapSimulator.Managers
                         PacketOwnedSocialUtilityPacketTable.MapleTvInboundClearMessageOpcode,
                         PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode
                     }
-                    .Where(opcode => !_observedInboundOpcodes.Contains(opcode))
+                    .Where(opcode => !coveredInboundOpcodes.Contains(opcode))
                     .Select(opcode => opcode switch
                     {
                         PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode => "OnSetMessage(405)",
@@ -1341,10 +1366,13 @@ namespace HaCreator.MapSimulator.Managers
                 string resultCodes = _observedMapleTvSendResultCodes.Count == 0
                     ? "none"
                     : string.Join("/", _observedMapleTvSendResultCodes.OrderBy(code => code));
+                string passiveResultCodes = passivelyObservedResultCodes.Count == 0
+                    ? "none"
+                    : string.Join("/", passivelyObservedResultCodes.OrderBy(code => code));
                 string missingCodes = missingResultCodes.Length == 0
                     ? "none"
                     : string.Join("/", missingResultCodes);
-                return $"MapleTV branch coverage missing={(missingBranches.Length == 0 ? "none" : string.Join("/", missingBranches))}; send-result code coverage observed={resultCodes} missing={missingCodes}";
+                return $"MapleTV branch coverage missing={(missingBranches.Length == 0 ? "none" : string.Join("/", missingBranches))}; send-result code coverage observed={resultCodes} passive={passiveResultCodes} missing={missingCodes}";
             }
 
             if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
@@ -1356,21 +1384,28 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] recoveredInstanceSubtypes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerInstanceInboundSubtypes()
                     .OrderBy(subtype => subtype)
                     .ToArray();
+                HashSet<byte> passivelyObservedSubtypes = GetPassiveMessengerInboundSubtypes();
+                HashSet<byte> coveredSubtypes = _observedMessengerInboundSubtypes
+                    .Concat(passivelyObservedSubtypes)
+                    .ToHashSet();
                 byte[] missingSubtypes = recoveredSubtypes
-                    .Where(subtype => !_observedMessengerInboundSubtypes.Contains(subtype))
+                    .Where(subtype => !coveredSubtypes.Contains(subtype))
                     .ToArray();
                 byte[] missingInstanceSubtypes = recoveredInstanceSubtypes
-                    .Where(subtype => !_observedMessengerInboundSubtypes.Contains(subtype))
+                    .Where(subtype => !coveredSubtypes.Contains(subtype))
                     .ToArray();
                 string observed = _observedMessengerInboundSubtypes.Count == 0
                     ? "none"
                     : string.Join("/", _observedMessengerInboundSubtypes.OrderBy(subtype => subtype));
+                string passive = passivelyObservedSubtypes.Count == 0
+                    ? "none"
+                    : string.Join("/", passivelyObservedSubtypes.OrderBy(subtype => subtype));
                 string missing = missingSubtypes.Length == 0
                     ? "none"
                     : string.Join("/", missingSubtypes);
                 string instanceObserved = string.Join(
                     "/",
-                    _observedMessengerInboundSubtypes
+                    coveredSubtypes
                         .Where(subtype => recoveredInstanceSubtypes.Contains(subtype))
                         .OrderBy(subtype => subtype));
                 if (string.IsNullOrWhiteSpace(instanceObserved))
@@ -1381,10 +1416,10 @@ namespace HaCreator.MapSimulator.Managers
                 string instanceMissing = missingInstanceSubtypes.Length == 0
                     ? "none"
                     : string.Join("/", missingInstanceSubtypes);
-                string staticInvite = _observedMessengerInboundSubtypes.Contains(staticInviteSubtype)
+                string staticInvite = coveredSubtypes.Contains(staticInviteSubtype)
                     ? "observed"
                     : "missing";
-                return $"Messenger subtype coverage observed={observed} missing={missing}; static invite subtype 3={staticInvite}; live-instance subtype coverage observed={instanceObserved} missing={instanceMissing}";
+                return $"Messenger subtype coverage observed={observed} passive={passive} missing={missing}; static invite subtype 3={staticInvite}; live-instance subtype coverage observed={instanceObserved} missing={instanceMissing}";
             }
 
             return "owner branch coverage not modeled";
@@ -1522,6 +1557,37 @@ namespace HaCreator.MapSimulator.Managers
                 PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode => "OnSendMessageResult(407)",
                 _ => $"opcode {opcode}"
             };
+        }
+
+        private HashSet<ushort> GetPassiveInboundOpcodeKeys()
+        {
+            return _passiveInboundOpcodeHitCounts.Keys
+                .Where(opcode => opcode > 0)
+                .ToHashSet();
+        }
+
+        private HashSet<byte> GetPassiveMessengerInboundSubtypes()
+        {
+            if (!_passiveInboundSubtypeObservations.TryGetValue(PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode, out HashSet<byte> subtypes))
+            {
+                return new HashSet<byte>();
+            }
+
+            return subtypes.ToHashSet();
+        }
+
+        private HashSet<byte> GetPassiveMapleTvResultCodes()
+        {
+            HashSet<byte> resultCodes = new();
+            foreach (HashSet<byte> codes in _passiveMapleTvResultCodeObservations.Values)
+            {
+                foreach (byte code in codes)
+                {
+                    resultCodes.Add(code);
+                }
+            }
+
+            return resultCodes;
         }
 
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)

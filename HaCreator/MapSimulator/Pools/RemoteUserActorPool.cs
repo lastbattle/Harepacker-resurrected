@@ -686,15 +686,53 @@ namespace HaCreator.MapSimulator.Pools
 
         public sealed class RemotePacketOwnedEmotionState
         {
+            private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
+
             public int ItemId { get; init; }
             public int EmotionId { get; init; }
             public string EmotionName { get; init; }
             public bool ByItemOption { get; init; }
             public SkillAnimation EffectAnimation { get; init; }
+            public int SimulatedOwnerLayerHandleId { get; init; }
+            public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
             public int AnimationStartTime { get; init; }
             public int ExpireTime { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
+
+            public void CaptureRegisteredLayerReference()
+            {
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    return;
+                }
+
+                SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                            RemotePacketOwnedEmotionActionOwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            SimulatedOwnerLayerHandleRefCount,
+                            _visibleLayerReferenceMutations.Count));
+                }
+            }
+
+            public void ReleaseLayerReference()
+            {
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            RemotePacketOwnedEmotionActionOwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
+                SimulatedOwnerLayerHandleRefCount = 0;
+            }
         }
 
         public sealed class RemoteHitState
@@ -1745,6 +1783,7 @@ namespace HaCreator.MapSimulator.Pools
             foreach (RemoteUserActor actor in _actorsById.Values.ToArray())
             {
                 ClearActorFollowLinks(actor);
+                ClearPacketOwnedEmotionState(actor);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 ClearRemoteActiveEffectItemEffectState(actor);
                 ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
@@ -1782,6 +1821,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    ClearPacketOwnedEmotionState(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
                     ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
@@ -1820,6 +1860,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    ClearPacketOwnedEmotionState(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
                     ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
@@ -3823,7 +3864,17 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             out string message)
         {
+            return TryApplyRelationshipRecordAdd(packet, currentTime, out message, out _);
+        }
+
+        public bool TryApplyRelationshipRecordAdd(
+            RemoteUserRelationshipRecordPacket packet,
+            int currentTime,
+            out string message,
+            out bool recordApplied)
+        {
             message = null;
+            recordApplied = false;
             if (!packet.RelationshipRecord.IsActive)
             {
                 message = $"{packet.RelationshipType} relationship record is not active.";
@@ -3898,6 +3949,7 @@ namespace HaCreator.MapSimulator.Pools
             recordTable[ownerCharacterId.Value] = normalizedRecord;
             RegisterRelationshipRecordDispatchKeys(packet.RelationshipType, packet.DispatchKey, normalizedRecord, ownerCharacterId.Value);
             RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
+            recordApplied = true;
 
             message = _actorsById.ContainsKey(ownerCharacterId.Value)
                 ? $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied."
@@ -3993,16 +4045,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            RemoteUserRelationshipRecord ownerCanonicalRecord = hasExistingOwnerRecord
-                ? existingRecord
-                : hasOwnerPairLookupState
-                    ? ownerPairLookupState
-                    : normalizedRecord;
             bool packetOwnerIsCanonicalOwner = IsPairLookupPacketOwnerCanonicalOwner(
                 ownerCharacterId,
-                ownerCanonicalRecord,
-                matchedOwnerCharacterId,
-                matchedRecord);
+                matchedOwnerCharacterId);
             int entryOwnerCharacterId = packetOwnerIsCanonicalOwner ? ownerCharacterId : matchedOwnerCharacterId;
             int entryPairCharacterId = packetOwnerIsCanonicalOwner ? matchedOwnerCharacterId : ownerCharacterId;
             long entryOwnerItemSerial = packetOwnerIsCanonicalOwner ? ownerItemSerial.Value : matchedItemSerial.Value;
@@ -4161,62 +4206,12 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool IsPairLookupPacketOwnerCanonicalOwner(
             int packetOwnerCharacterId,
-            RemoteUserRelationshipRecord packetOwnerRecord,
-            int matchedOwnerCharacterId,
-            RemoteUserRelationshipRecord matchedRecord)
+            int matchedOwnerCharacterId)
         {
-            if (TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
-                    packetOwnerCharacterId,
-                    matchedOwnerCharacterId,
-                    packetOwnerRecord,
-                    out bool packetOwnerIsCanonicalOwner))
-            {
-                return packetOwnerIsCanonicalOwner;
-            }
-
-            if (TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
-                    packetOwnerCharacterId,
-                    matchedOwnerCharacterId,
-                    matchedRecord,
-                    out packetOwnerIsCanonicalOwner))
-            {
-                return packetOwnerIsCanonicalOwner;
-            }
-
+            // CUserPool::OnCoupleRecordAdd / OnFriendRecordAdd match the
+            // incoming item serial against pair-item serial fields, then sort
+            // the final entry by lower character id.
             return packetOwnerCharacterId <= matchedOwnerCharacterId;
-        }
-
-        private static bool TryResolvePairLookupCanonicalOwnerFromRecoveredRecord(
-            int packetOwnerCharacterId,
-            int matchedOwnerCharacterId,
-            RemoteUserRelationshipRecord recoveredRecord,
-            out bool packetOwnerIsCanonicalOwner)
-        {
-            packetOwnerIsCanonicalOwner = false;
-            int recoveredOwnerCharacterId = recoveredRecord.CharacterId.GetValueOrDefault();
-            int recoveredPairCharacterId = recoveredRecord.PairCharacterId.GetValueOrDefault();
-            if (recoveredOwnerCharacterId <= 0 && recoveredPairCharacterId <= 0)
-            {
-                return false;
-            }
-
-            if ((recoveredOwnerCharacterId == packetOwnerCharacterId && recoveredPairCharacterId == matchedOwnerCharacterId)
-                || recoveredOwnerCharacterId == packetOwnerCharacterId
-                || recoveredPairCharacterId == matchedOwnerCharacterId)
-            {
-                packetOwnerIsCanonicalOwner = true;
-                return true;
-            }
-
-            if ((recoveredOwnerCharacterId == matchedOwnerCharacterId && recoveredPairCharacterId == packetOwnerCharacterId)
-                || recoveredOwnerCharacterId == matchedOwnerCharacterId
-                || recoveredPairCharacterId == packetOwnerCharacterId)
-            {
-                packetOwnerIsCanonicalOwner = false;
-                return true;
-            }
-
-            return false;
         }
 
         private static bool TryResolvePairLookupMatchedOwnerCharacterId(
@@ -4577,9 +4572,10 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime)
         {
             if (actor == null
-                || !SkillManager.TryCreateRideVehicleTemporaryStatSetSkillUseEffectRequest(
+                || !SkillManager.TryCreateShowRideVehicleEffectRequest(
                     oldRidingVehicleId,
                     newRidingVehicleId,
+                    actor.Build?.Job ?? 0,
                     currentTime,
                     out SkillUseEffectRequest request))
             {
@@ -4608,9 +4604,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (actor == null
                 || resetRidingVehicleId <= 0
-                || !SkillManager.TryCreateSetRidingVehicleMountSkillUseEffectRequest(
+                || !SkillManager.TryCreateShowRideVehicleEffectRequest(
+                    0,
                     resetRidingVehicleId,
-                    resetRidingVehicleId,
+                    actor.Build?.Job ?? 0,
                     currentTime,
                     out SkillUseEffectRequest request))
             {
@@ -6909,6 +6906,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ClearActorFollowLinks(actor);
+            ClearPacketOwnedEmotionState(actor);
             ClearRemoteActiveEffectMotionBlurState(actor);
             ClearRemoteActiveEffectItemEffectState(actor);
             ReleaseRemoteReceiveHpGaugeLayerReferenceForParity(actor);
@@ -10530,11 +10528,15 @@ namespace HaCreator.MapSimulator.Pools
                     actor.PacketOwnedEmotion.OwnerFacingRight,
                     ResolveRemoteTemporaryStatTickElapsedMs(currentTime, actor.PacketOwnedEmotion.AnimationStartTime),
                     currentTime);
+                actor.PacketOwnedEmotion.ReleaseLayerReference();
             }
 
             SkillAnimation effectAnimation = loadEffectAnimation
                 ? _loader?.LoadPacketOwnedEmotionEffectAnimation(emotionName)
                 : null;
+            int simulatedOwnerLayerHandleId = effectAnimation?.Frames.Count > 0
+                ? NextRemotePacketOwnedEmotionLayerHandleId()
+                : 0;
             int expireDuration = effectAnimation?.TotalDuration > 0
                 ? effectAnimation.TotalDuration
                 : Math.Max(0, durationMs);
@@ -10548,6 +10550,7 @@ namespace HaCreator.MapSimulator.Pools
                 EmotionName = emotionName,
                 ByItemOption = byItemOption,
                 EffectAnimation = effectAnimation,
+                SimulatedOwnerLayerHandleId = simulatedOwnerLayerHandleId,
                 AnimationStartTime = hasRestoredAnimationElapsed
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
@@ -10555,6 +10558,7 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight
             };
+            actor.PacketOwnedEmotion.CaptureRegisteredLayerReference();
 
             if (actor.Assembler != null)
             {
@@ -10585,6 +10589,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            actor.PacketOwnedEmotion?.ReleaseLayerReference();
             actor.PacketOwnedEmotion = null;
             if (actor.Assembler != null)
             {
@@ -11531,7 +11536,8 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.SimulatedSnapshotLayerHandleId,
                     snapshot.SimulatedRepeatAnimationStateId,
                     ResolveRemoteActiveEffectMotionBlurLayerBaseAlpha(snapshot.SourceLayerColorAlpha, ownerAlpha),
-                    fadeEndTime);
+                    fadeEndTime,
+                    sampleTime);
             }
 
             return AnimationEffects.SecondaryMotionBlurUpdateOperation.NormalizeTraceOrder(operations);
@@ -11544,7 +11550,8 @@ namespace HaCreator.MapSimulator.Pools
             int snapshotLayerHandleId,
             int repeatAnimationStateId,
             byte baseAlpha,
-            int fadeEndTime)
+            int fadeEndTime,
+            int sampleTime)
         {
             if (operations == null || layerCode < 0 || sourceLayerHandleId <= 0)
             {
@@ -11624,11 +11631,32 @@ namespace HaCreator.MapSimulator.Pools
                 repeatAnimationStateId,
                 sourceCanvasSlot: 0));
             operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RetainRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? 1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
                 AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RegisterRepeatAnimation,
                 layerCode,
                 sourceLayerHandleId,
                 snapshotLayerHandleId,
                 repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? -1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.StoreLastUpdatedTick,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                time: sampleTime));
             operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
                 AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseBlurLayerLocal,
                 layerCode,
@@ -11714,6 +11742,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemotePacketOwnedEmotionLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         private static int NextRemoteActiveEffectItemEffectLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -11787,6 +11820,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectMotionBlurLayerHandleIdForTesting()
         {
             return NextRemoteActiveEffectMotionBlurLayerHandleId();
+        }
+
+        internal static int NextRemotePacketOwnedEmotionLayerHandleIdForTesting()
+        {
+            return NextRemotePacketOwnedEmotionLayerHandleId();
         }
 
         internal static int NextRemoteActiveEffectItemEffectLayerHandleIdForTesting()

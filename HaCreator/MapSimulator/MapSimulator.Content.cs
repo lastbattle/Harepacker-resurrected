@@ -1463,6 +1463,8 @@ namespace HaCreator.MapSimulator
                 _lastCapturedPortalOwnedMovePathKeyPadMemoryStates = null;
                 _lastCapturedPortalOwnedMovePathKeyPadMemorySource = null;
                 _lastCapturedPortalOwnedMovePathKeyPadMemoryFromOfficialSession = false;
+                _lastCapturedPortalOwnedMovePathKeyPadMemoryIsPostFlushClearEvidence = false;
+                _recentCapturedPortalOwnedMovePathFlushTails.Clear();
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();

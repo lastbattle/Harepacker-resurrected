@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -32,9 +33,15 @@ namespace HaCreator.MapSimulator.Managers
         public const string BearerTokenEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_BEARER_TOKEN";
         public const string ClientIdEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_CLIENT_ID";
         public const string ClientSecretEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_CLIENT_SECRET";
+        public const string RequestModeEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_REQUEST_MODE";
+        public const string RequestSigningSecretEnvironmentVariableName = "MAPSIM_LOGIN_ACCOUNT_BILLING_AUTHORITY_REQUEST_SIGNING_SECRET";
+
+        private const string PostJsonRequestMode = "post-json";
+        private const string ExtraCharacterEntitlementProtocol = "extra-character-entitlement.v95";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true
         };
 
@@ -43,6 +50,8 @@ namespace HaCreator.MapSimulator.Managers
         private readonly string _authorizationHeader;
         private readonly string _clientId;
         private readonly string _clientSecret;
+        private readonly string _requestMode;
+        private readonly string _requestSigningSecret;
         private readonly HttpMessageHandler _messageHandler;
 
         public HttpLoginAccountBillingAuthorityClient(
@@ -51,6 +60,8 @@ namespace HaCreator.MapSimulator.Managers
             string authorizationHeader = null,
             string clientId = null,
             string clientSecret = null,
+            string requestMode = null,
+            string requestSigningSecret = null,
             HttpMessageHandler messageHandler = null)
         {
             _endpointUrl = string.IsNullOrWhiteSpace(endpointUrl) ? null : endpointUrl.Trim();
@@ -58,6 +69,10 @@ namespace HaCreator.MapSimulator.Managers
             _authorizationHeader = string.IsNullOrWhiteSpace(authorizationHeader) ? null : authorizationHeader.Trim();
             _clientId = string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim();
             _clientSecret = string.IsNullOrWhiteSpace(clientSecret) ? null : clientSecret.Trim();
+            _requestMode = string.IsNullOrWhiteSpace(requestMode) ? null : requestMode.Trim();
+            _requestSigningSecret = string.IsNullOrWhiteSpace(requestSigningSecret)
+                ? _clientSecret
+                : requestSigningSecret.Trim();
             _messageHandler = messageHandler;
         }
 
@@ -70,7 +85,9 @@ namespace HaCreator.MapSimulator.Managers
                     endpointUrl,
                     authorizationHeader: ResolveAuthorizationHeaderFromEnvironment(),
                     clientId: Environment.GetEnvironmentVariable(ClientIdEnvironmentVariableName),
-                    clientSecret: Environment.GetEnvironmentVariable(ClientSecretEnvironmentVariableName));
+                    clientSecret: Environment.GetEnvironmentVariable(ClientSecretEnvironmentVariableName),
+                    requestMode: Environment.GetEnvironmentVariable(RequestModeEnvironmentVariableName),
+                    requestSigningSecret: Environment.GetEnvironmentVariable(RequestSigningSecretEnvironmentVariableName));
         }
 
         public bool TryResolveExtraCharacterEntitlement(
@@ -91,7 +108,7 @@ namespace HaCreator.MapSimulator.Managers
                     : new HttpClient(_messageHandler, disposeHandler: false);
                 client.Timeout = _timeout;
 
-                using HttpRequestMessage request = new(HttpMethod.Get, BuildRequestUrl(accountName, accountId));
+                using HttpRequestMessage request = CreateAuthorityRequest(accountName, accountId);
                 ApplyConfiguredAuthorityHeaders(request);
 
                 using HttpResponseMessage responseMessage = client.SendAsync(request).GetAwaiter().GetResult();
@@ -192,6 +209,89 @@ namespace HaCreator.MapSimulator.Managers
             {
                 request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Client-Secret", _clientSecret);
             }
+        }
+
+        private HttpRequestMessage CreateAuthorityRequest(string accountName, int accountId)
+        {
+            string normalizedAccountName = NormalizeAccountName(accountName);
+            if (!IsPostJsonRequestMode())
+            {
+                HttpRequestMessage request = new(HttpMethod.Get, BuildRequestUrl(normalizedAccountName, accountId));
+                ApplyRequestIdentityHeaders(request, normalizedAccountName, accountId);
+                return request;
+            }
+
+            string requestedAtUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+            string nonce = Guid.NewGuid().ToString("N");
+            RemoteEntitlementRequest requestBody = new()
+            {
+                Protocol = ExtraCharacterEntitlementProtocol,
+                AccountId = accountId,
+                AccountName = normalizedAccountName,
+                RequestedPacketType = (int)LoginPacketType.ExtraCharInfoResult,
+                RequestedAtUtc = requestedAtUtc,
+                Nonce = nonce
+            };
+
+            string json = JsonSerializer.Serialize(requestBody, JsonOptions);
+            HttpRequestMessage postRequest = new(HttpMethod.Post, _endpointUrl)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            ApplyRequestIdentityHeaders(postRequest, normalizedAccountName, accountId);
+            postRequest.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Protocol", ExtraCharacterEntitlementProtocol);
+            postRequest.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Requested-Packet-Type", ((int)LoginPacketType.ExtraCharInfoResult).ToString(CultureInfo.InvariantCulture));
+            postRequest.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Requested-At", requestedAtUtc);
+            postRequest.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Nonce", nonce);
+            ApplyRequestSignatureHeader(postRequest, normalizedAccountName, accountId, requestedAtUtc, nonce);
+            return postRequest;
+        }
+
+        private bool IsPostJsonRequestMode()
+        {
+            return string.Equals(_requestMode, PostJsonRequestMode, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(_requestMode, "post", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void ApplyRequestIdentityHeaders(
+            HttpRequestMessage request,
+            string accountName,
+            int accountId)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Account-Id", accountId.ToString(CultureInfo.InvariantCulture));
+            request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Account-Name", accountName);
+        }
+
+        private void ApplyRequestSignatureHeader(
+            HttpRequestMessage request,
+            string accountName,
+            int accountId,
+            string requestedAtUtc,
+            string nonce)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(_requestSigningSecret))
+            {
+                return;
+            }
+
+            string signingText = string.Join(
+                "\n",
+                ExtraCharacterEntitlementProtocol,
+                accountId.ToString(CultureInfo.InvariantCulture),
+                accountName ?? string.Empty,
+                ((int)LoginPacketType.ExtraCharInfoResult).ToString(CultureInfo.InvariantCulture),
+                requestedAtUtc ?? string.Empty,
+                nonce ?? string.Empty);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(_requestSigningSecret);
+            byte[] payloadBytes = Encoding.UTF8.GetBytes(signingText);
+            using HMACSHA256 hmac = new(keyBytes);
+            string signature = Convert.ToHexString(hmac.ComputeHash(payloadBytes)).ToLowerInvariant();
+            request.Headers.TryAddWithoutValidation("X-MapSim-Account-Billing-Signature", "hmac-sha256=" + signature);
         }
 
         private static bool TryResolvePacketAuthoredEntitlement(
@@ -359,15 +459,30 @@ namespace HaCreator.MapSimulator.Managers
         private string BuildRequestUrl(string accountName, int accountId)
         {
             string separator = _endpointUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
-                ? "explorergm"
-                : accountName.Trim();
+            string normalizedAccountName = NormalizeAccountName(accountName);
             return _endpointUrl +
                    separator +
                    "accountId=" +
                    accountId.ToString(CultureInfo.InvariantCulture) +
                    "&accountName=" +
                    Uri.EscapeDataString(normalizedAccountName);
+        }
+
+        private static string NormalizeAccountName(string accountName)
+        {
+            return string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+        }
+
+        private sealed class RemoteEntitlementRequest
+        {
+            public string Protocol { get; set; }
+            public int AccountId { get; set; }
+            public string AccountName { get; set; }
+            public int RequestedPacketType { get; set; }
+            public string RequestedAtUtc { get; set; }
+            public string Nonce { get; set; }
         }
 
         private sealed class RemoteEntitlementResponse

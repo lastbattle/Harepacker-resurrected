@@ -43,7 +43,34 @@ namespace HaCreator.MapSimulator.Character
             int InsertCanvasAlpha2VariantObjectId,
             int InsertCanvasOriginVariantObjectId,
             int ParentUnderFaceLayerObjectId,
+            IReadOnlyList<ShadowPartnerInsertCanvasVariantTrace> InsertCanvasVariantTrace,
             IReadOnlyList<ShadowPartnerLayerNativeOperation> NativeOperations);
+
+        internal enum ShadowPartnerInsertCanvasArgumentKind
+        {
+            Delay,
+            Alpha0,
+            Alpha1,
+            Alpha2,
+            Origin
+        }
+
+        internal enum ShadowPartnerInsertCanvasVariantValueKind
+        {
+            Int32Zero,
+            Int32Delay200,
+            Int32Alpha0,
+            Int32Alpha1,
+            Missing
+        }
+
+        internal readonly record struct ShadowPartnerInsertCanvasVariantTrace(
+            int ArgumentIndex,
+            ShadowPartnerInsertCanvasArgumentKind ArgumentKind,
+            int VariantObjectId,
+            ShadowPartnerInsertCanvasVariantValueKind ValueKind,
+            string NativeLocalName,
+            int ClearSequence);
 
         public enum ShadowPartnerLayerNativeOperationKind
         {
@@ -4343,6 +4370,13 @@ namespace HaCreator.MapSimulator.Character
                 layerObjectId + ShadowPartnerInsertCanvasAlpha2VariantSalt,
                 layerObjectId + ShadowPartnerInsertCanvasOriginVariantSalt,
                 ShadowPartnerUnderFaceParentLayerObjectId,
+                BuildShadowPartnerInsertCanvasVariantTrace(
+                    usesOneTimeLayer,
+                    layerObjectId + ShadowPartnerInsertCanvasDelayVariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha0VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha1VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasAlpha2VariantSalt,
+                    layerObjectId + ShadowPartnerInsertCanvasOriginVariantSalt),
                 BuildShadowPartnerLayerNativeOperations(
                     layerObjectId,
                     layerObjectId + ShadowPartnerLayerListNodeSalt,
@@ -4355,6 +4389,100 @@ namespace HaCreator.MapSimulator.Character
                     layerObjectId + ShadowPartnerInsertCanvasAlpha2VariantSalt,
                     layerObjectId + ShadowPartnerInsertCanvasOriginVariantSalt,
                     ShadowPartnerUnderFaceParentLayerObjectId));
+        }
+
+        private static IReadOnlyList<ShadowPartnerInsertCanvasVariantTrace> BuildShadowPartnerInsertCanvasVariantTrace(
+            bool usesOneTimeLayer,
+            int insertCanvasDelayVariantObjectId,
+            int insertCanvasAlpha0VariantObjectId,
+            int insertCanvasAlpha1VariantObjectId,
+            int insertCanvasAlpha2VariantObjectId,
+            int insertCanvasOriginVariantObjectId)
+        {
+            if (usesOneTimeLayer)
+            {
+                // One-time raw action 47 uses native locals nType=200, pvarg=a0, vAlpha1=a1,
+                // vAlpha0=missing, ptAdj=missing after the InsertCanvas result slot vIndex.
+                return new[]
+                {
+                    new ShadowPartnerInsertCanvasVariantTrace(
+                        0,
+                        ShadowPartnerInsertCanvasArgumentKind.Delay,
+                        insertCanvasDelayVariantObjectId,
+                        ShadowPartnerInsertCanvasVariantValueKind.Int32Delay200,
+                        "nType",
+                        ClearSequence: 1),
+                    new ShadowPartnerInsertCanvasVariantTrace(
+                        1,
+                        ShadowPartnerInsertCanvasArgumentKind.Alpha0,
+                        insertCanvasAlpha0VariantObjectId,
+                        ShadowPartnerInsertCanvasVariantValueKind.Int32Alpha0,
+                        "pvarg",
+                        ClearSequence: 2),
+                    new ShadowPartnerInsertCanvasVariantTrace(
+                        2,
+                        ShadowPartnerInsertCanvasArgumentKind.Alpha1,
+                        insertCanvasAlpha1VariantObjectId,
+                        ShadowPartnerInsertCanvasVariantValueKind.Int32Alpha1,
+                        "vAlpha1",
+                        ClearSequence: 3),
+                    new ShadowPartnerInsertCanvasVariantTrace(
+                        3,
+                        ShadowPartnerInsertCanvasArgumentKind.Alpha2,
+                        insertCanvasAlpha2VariantObjectId,
+                        ShadowPartnerInsertCanvasVariantValueKind.Missing,
+                        "vAlpha0",
+                        ClearSequence: 4),
+                    new ShadowPartnerInsertCanvasVariantTrace(
+                        4,
+                        ShadowPartnerInsertCanvasArgumentKind.Origin,
+                        insertCanvasOriginVariantObjectId,
+                        ShadowPartnerInsertCanvasVariantValueKind.Missing,
+                        "ptAdj",
+                        ClearSequence: 5)
+                };
+            }
+
+            // Persistent helper inserts use ptAdj=0, vAlpha0=a0, vAlpha1=a1,
+            // pvarg=missing, nType=missing after the InsertCanvas result slot vIndex.
+            return new[]
+            {
+                new ShadowPartnerInsertCanvasVariantTrace(
+                    0,
+                    ShadowPartnerInsertCanvasArgumentKind.Delay,
+                    insertCanvasDelayVariantObjectId,
+                    ShadowPartnerInsertCanvasVariantValueKind.Int32Zero,
+                    "ptAdj",
+                    ClearSequence: 1),
+                new ShadowPartnerInsertCanvasVariantTrace(
+                    1,
+                    ShadowPartnerInsertCanvasArgumentKind.Alpha0,
+                    insertCanvasAlpha0VariantObjectId,
+                    ShadowPartnerInsertCanvasVariantValueKind.Int32Alpha0,
+                    "vAlpha0",
+                    ClearSequence: 2),
+                new ShadowPartnerInsertCanvasVariantTrace(
+                    2,
+                    ShadowPartnerInsertCanvasArgumentKind.Alpha1,
+                    insertCanvasAlpha1VariantObjectId,
+                    ShadowPartnerInsertCanvasVariantValueKind.Int32Alpha1,
+                    "vAlpha1",
+                    ClearSequence: 3),
+                new ShadowPartnerInsertCanvasVariantTrace(
+                    3,
+                    ShadowPartnerInsertCanvasArgumentKind.Alpha2,
+                    insertCanvasAlpha2VariantObjectId,
+                    ShadowPartnerInsertCanvasVariantValueKind.Missing,
+                    "pvarg",
+                    ClearSequence: 4),
+                new ShadowPartnerInsertCanvasVariantTrace(
+                    4,
+                    ShadowPartnerInsertCanvasArgumentKind.Origin,
+                    insertCanvasOriginVariantObjectId,
+                    ShadowPartnerInsertCanvasVariantValueKind.Missing,
+                    "nType",
+                    ClearSequence: 5)
+            };
         }
 
         private static IReadOnlyList<ShadowPartnerLayerNativeOperation> BuildShadowPartnerLayerNativeOperations(

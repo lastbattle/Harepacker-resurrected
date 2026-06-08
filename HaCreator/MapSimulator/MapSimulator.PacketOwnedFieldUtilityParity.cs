@@ -512,9 +512,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                float previousPlatformX = platform.X;
+                float previousPlatformY = platform.Y;
                 ApplyPacketOwnedFootholdMovingStateToPlatform(platform, movingState);
                 if (useSharedObjectDelta)
                 {
+                    platform.X = previousPlatformX + objectDeltaX;
+                    platform.Y = previousPlatformY + objectDeltaY;
                     platform.DeltaX = objectDeltaX;
                     platform.DeltaY = objectDeltaY;
                 }

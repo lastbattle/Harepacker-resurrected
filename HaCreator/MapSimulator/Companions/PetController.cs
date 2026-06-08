@@ -350,6 +350,7 @@ namespace HaCreator.MapSimulator.Companions
             {
                 if (pickupAllowed && AutoLootEnabled && owner.State != PlayerState.Ladder && owner.State != PlayerState.Rope)
                 {
+                    PetPickupCapabilities pickupCapabilities = ResolvePetPickupCapabilitiesForSkillMask(SkillMask);
                     Func<DropItem, DropPickupFailureReason> pickupValidator =
                         drop => ValidateAutoLootDropForPetSkillMask(drop, ownerId, currentTime);
                     PetDropTarget target = dropPool.UpdateChasingDropForPet(
@@ -361,7 +362,8 @@ namespace HaCreator.MapSimulator.Companions
                         owner.Y,
                         currentTime,
                         deltaTime,
-                        pickupValidator);
+                        pickupValidator,
+                        pickupCapabilities);
 
                     if (target != null)
                     {
@@ -369,7 +371,14 @@ namespace HaCreator.MapSimulator.Companions
                         moveSpeed = ResolveQuestAdjustedMoveSpeed(target.ChaseSpeed);
                         chasingDrop = target.IsChasing;
 
-                        dropPool.TryPickUpDropByPet(RuntimeId, X, Y, ownerId, currentTime, pickupValidator: pickupValidator);
+                        dropPool.TryPickUpDropByPet(
+                            RuntimeId,
+                            X,
+                            Y,
+                            ownerId,
+                            currentTime,
+                            pickupValidator: pickupValidator,
+                            capabilities: pickupCapabilities);
                     }
                 }
                 else
@@ -399,8 +408,10 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool ShouldAutoLootDropForPetSkillMask(DropType dropType, int skillMask)
         {
+            PetPickupCapabilities capabilities = ResolvePetPickupCapabilitiesForSkillMask(skillMask);
             return dropType == DropType.Meso
-                || PetSkillFlag.PickupItem.Check(skillMask);
+                ? capabilities.PickupMeso
+                : capabilities.PickupItems;
         }
 
         internal static bool ShouldAutoLootDropForPetSkillMask(
@@ -429,6 +440,14 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return true;
+        }
+
+        internal static PetPickupCapabilities ResolvePetPickupCapabilitiesForSkillMask(int skillMask)
+        {
+            return new PetPickupCapabilities(
+                PickupMeso: true,
+                PickupItems: PetSkillFlag.PickupItem.Check(skillMask),
+                PickupOthers: PetSkillFlag.PickupAll.Check(skillMask));
         }
 
         internal static bool IsOtherCharacterDropPastOwnerWindow(

@@ -72,6 +72,10 @@ namespace HaCreator.MapSimulator.Fields
         bool ShouldClearQueuedRetry,
         PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
 
+    public readonly record struct PassiveTransferFieldHandleUpKeyDownDispatchDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldDispatchHandleUpKeyDown);
+
     public readonly record struct PassiveTransferFieldPortalRoutingDecision(
         bool IsPassiveTransferFieldPortal,
         bool ShouldSendTransferFieldRequest,
@@ -469,6 +473,19 @@ namespace HaCreator.MapSimulator.Fields
         {
             return !hasAttachedPacketOwnedDriver
                    || inputOwner == HandleUpKeyDownInputOwner.OnJoystickButton;
+        }
+
+        public static PassiveTransferFieldHandleUpKeyDownDispatchDecision EvaluateFreshHandleUpKeyDownDispatch(
+            bool isFreshUpKeyDown,
+            bool hasAttachedPacketOwnedDriver,
+            HandleUpKeyDownInputOwner inputOwner = HandleUpKeyDownInputOwner.OnKey)
+        {
+            return new PassiveTransferFieldHandleUpKeyDownDispatchDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForFreshUpKeyDown(isFreshUpKeyDown),
+                ShouldDispatchHandleUpKeyDown: isFreshUpKeyDown
+                                             && CanHandleFreshUpKeyDown(
+                                                 hasAttachedPacketOwnedDriver,
+                                                 inputOwner));
         }
 
         public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool isFreshUpKeyDown)

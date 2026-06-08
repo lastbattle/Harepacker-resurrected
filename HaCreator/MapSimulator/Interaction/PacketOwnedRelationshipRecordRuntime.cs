@@ -129,8 +129,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
-            bool addApplied = remoteUserPool.TryApplyRelationshipRecordAdd(addPacket, currentTime, out string addDetail);
-            if (addApplied)
+            bool addAccepted = remoteUserPool.TryApplyRelationshipRecordAdd(
+                addPacket,
+                currentTime,
+                out string addDetail,
+                out bool recordApplied);
+            if (recordApplied)
             {
                 GetState(addPacket.RelationshipType).AddCount++;
                 TotalAddCount++;
@@ -142,9 +146,10 @@ namespace HaCreator.MapSimulator.Interaction
                 addPacket.RelationshipType,
                 addPacket.DispatchKey,
                 operation: "add",
-                addApplied,
+                addAccepted,
+                recordApplied,
                 addDetail);
-            return addApplied;
+            return addAccepted;
         }
 
         public bool TryApplyDecodedRemove(
@@ -175,6 +180,7 @@ namespace HaCreator.MapSimulator.Interaction
                 removePacket.RelationshipType,
                 removePacket.DispatchKey,
                 operation: "remove",
+                removeApplied,
                 removeApplied,
                 removeDetail);
             return removeApplied;
@@ -494,10 +500,11 @@ namespace HaCreator.MapSimulator.Interaction
             RemoteRelationshipOverlayType relationshipType,
             RemoteRelationshipRecordDispatchKey dispatchKey,
             string operation,
+            bool accepted,
             bool applied,
             string detail)
         {
-            string outcome = applied ? "Applied" : "Ignored";
+            string outcome = applied ? "Applied" : accepted ? "Deferred" : "Ignored";
             string keySummary = DescribeDispatchKey(dispatchKey);
             return string.IsNullOrWhiteSpace(detail)
                 ? $"{outcome} {relationshipType} relationship-record {operation} from {source}{keySummary}."

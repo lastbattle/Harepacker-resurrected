@@ -2614,7 +2614,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return TryResolveArrayReducePushIdentityCallback(arguments[0]);
+            return TryResolveArrayReduceAppendIdentityCallback(arguments[0]);
         }
 
         private static bool IsRecoverableStaticArrayReduceToObject(IReadOnlyList<string> arguments)
@@ -2629,7 +2629,7 @@ namespace HaCreator.MapSimulator.Fields
                 && TryResolveObjectReduceAssignIdentityCallback(arguments[0]);
         }
 
-        private static bool TryResolveArrayReducePushIdentityCallback(string callback)
+        private static bool TryResolveArrayReduceAppendIdentityCallback(string callback)
         {
             if (string.IsNullOrWhiteSpace(callback))
             {
@@ -2638,13 +2638,13 @@ namespace HaCreator.MapSimulator.Fields
 
             string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
             if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression)
-                && TryResolveArrayReducePushIdentityCallbackFromParts(parameterText, bodyExpression, normalizedCallback))
+                && TryResolveArrayReduceAppendIdentityCallbackFromParts(parameterText, bodyExpression, normalizedCallback))
             {
                 return true;
             }
 
             return TryParseTwoParameterFunctionCallback(normalizedCallback, out parameterText, out string bodyText)
-                && TryResolveArrayReducePushIdentityCallbackFromParts(parameterText, bodyText, bodyText);
+                && TryResolveArrayReduceAppendIdentityCallbackFromParts(parameterText, bodyText, bodyText);
         }
 
         private static bool TryResolveObjectReduceAssignIdentityCallback(string callback)
@@ -2665,7 +2665,7 @@ namespace HaCreator.MapSimulator.Fields
                 && TryResolveObjectReduceAssignIdentityCallbackFromParts(parameterText, bodyText, bodyText);
         }
 
-        private static bool TryResolveArrayReducePushIdentityCallbackFromParts(
+        private static bool TryResolveArrayReduceAppendIdentityCallbackFromParts(
             string parameterText,
             string bodyExpression,
             string callbackBodyText)
@@ -2685,10 +2685,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return ReducerBodyPushesItemAndReturnsAccumulator(
-                accumulatorName,
-                itemName,
-                bodyExpression,
-                callbackBodyText);
+                    accumulatorName,
+                    itemName,
+                    bodyExpression,
+                    callbackBodyText)
+                || ReducerBodyConcatsItemAndReturnsArray(
+                    accumulatorName,
+                    itemName,
+                    bodyExpression,
+                    callbackBodyText);
         }
 
         private static bool TryResolveObjectReduceAssignIdentityCallbackFromParts(
@@ -2772,6 +2777,47 @@ namespace HaCreator.MapSimulator.Fields
 
             string pattern = $@"\b{Regex.Escape(accumulatorName)}\s*\.\s*push\s*\(\s*{Regex.Escape(itemName)}\s*\)";
             return Regex.IsMatch(callbackBodyText, pattern, RegexOptions.CultureInvariant);
+        }
+
+        private static bool ReducerBodyConcatsItemAndReturnsArray(
+            string accumulatorName,
+            string itemName,
+            string bodyExpression,
+            string callbackBodyText)
+        {
+            if (string.IsNullOrWhiteSpace(accumulatorName)
+                || string.IsNullOrWhiteSpace(itemName)
+                || string.IsNullOrWhiteSpace(callbackBodyText))
+            {
+                return false;
+            }
+
+            string directConcatPattern = BuildAccumulatorConcatItemPattern(accumulatorName, itemName);
+            string normalizedBody = StripOuterBalancedParentheses(bodyExpression?.Trim()).TrimEnd(';');
+            if (Regex.IsMatch(normalizedBody, $@"^\s*{directConcatPattern}\s*$", RegexOptions.CultureInvariant))
+            {
+                return true;
+            }
+
+            foreach (string returnExpression in EnumerateFunctionReturnExpressions(callbackBodyText))
+            {
+                string normalizedReturnExpression = StripOuterBalancedParentheses(returnExpression?.Trim()).TrimEnd(';');
+                if (Regex.IsMatch(normalizedReturnExpression, $@"^\s*{directConcatPattern}\s*$", RegexOptions.CultureInvariant))
+                {
+                    return true;
+                }
+            }
+
+            string assignmentPattern = $@"\b{Regex.Escape(accumulatorName)}\s*=\s*{directConcatPattern}";
+            return Regex.IsMatch(callbackBodyText, assignmentPattern, RegexOptions.CultureInvariant)
+                && ReducerBodyReturnsAccumulator(accumulatorName, bodyExpression, callbackBodyText);
+        }
+
+        private static string BuildAccumulatorConcatItemPattern(string accumulatorName, string itemName)
+        {
+            string escapedAccumulatorName = Regex.Escape(accumulatorName);
+            string escapedItemName = Regex.Escape(itemName);
+            return $@"\b{escapedAccumulatorName}\s*\.\s*concat\s*\(\s*(?:{escapedItemName}|\[\s*{escapedItemName}\s*\])\s*\)";
         }
 
         private static bool ReducerBodyContainsEntryObjectAssignment(

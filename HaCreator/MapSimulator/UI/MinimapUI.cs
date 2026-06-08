@@ -2529,7 +2529,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < trimmed.Length; i++)
             {
                 char current = trimmed[i];
-                bool normalizeWhitespace = current == '\r' || current == '\n' || current == '\t' || current == ' ';
+                bool normalizeWhitespace = char.IsWhiteSpace(current);
                 if (normalizeWhitespace)
                 {
                     if (!previousWasWhitespace)

@@ -1042,7 +1042,10 @@ namespace HaCreator.MapSimulator.Animation
             FadeAlphaToZero,
             StopAnimation,
             InsertSourceCanvas,
+            RetainRegisterArgumentLayer,
             RegisterRepeatAnimation,
+            ReleaseRegisterArgumentLayer,
+            StoreLastUpdatedTick,
             ReleaseBlurLayerLocal,
             ReleaseSourceLayerLocal
         }
@@ -1057,6 +1060,8 @@ namespace HaCreator.MapSimulator.Animation
             byte Alpha,
             int FadeEndTime,
             int ZOffset,
+            int RefCountDelta = 0,
+            int Time = 0,
             int OperationIndex = -1,
             int ClientLayerCopyIndex = -1)
         {
@@ -1090,7 +1095,9 @@ namespace HaCreator.MapSimulator.Animation
                 byte alpha = 0,
                 int fadeEndTime = 0,
                 int sourceCanvasSlot = 0,
-                int zOffset = 0)
+                int zOffset = 0,
+                int refCountDelta = 0,
+                int time = 0)
             {
                 return new SecondaryMotionBlurUpdateOperation(
                     kind,
@@ -1101,7 +1108,9 @@ namespace HaCreator.MapSimulator.Animation
                     Math.Max(0, sourceCanvasSlot),
                     alpha,
                     fadeEndTime,
-                    zOffset);
+                    zOffset,
+                    refCountDelta,
+                    time);
             }
         }
 
@@ -5209,11 +5218,32 @@ namespace HaCreator.MapSimulator.Animation
                 repeatAnimationStateId,
                 sourceCanvasSlot: 0));
             operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RetainRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? 1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
                 AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RegisterRepeatAnimation,
                 layerCode,
                 sourceLayerHandleId,
                 snapshotLayerHandleId,
                 repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? -1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.StoreLastUpdatedTick,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                time: startTime));
             operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
                 AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseBlurLayerLocal,
                 layerCode,
@@ -6480,6 +6510,11 @@ namespace HaCreator.MapSimulator.Animation
     /// on their color owner.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+        int NativeColorType,
+        bool RequestedCriticalAttack,
+        bool AppliesCriticalPresentation,
+        bool CriticalRequestIgnoredForNonRedColor,
+        bool UnsupportedColorRejected,
         string LargeOwnerSetName,
         string SmallOwnerSetName,
         bool FirstDigitUsesLargeOwner,
@@ -9548,6 +9583,14 @@ namespace HaCreator.MapSimulator.Animation
 
             FollowItemEffectRecoveredNativeOperationKind registrationKind =
                 ResolveRecoveredNativeItemEffectRegistrationKind(nextOwnerState);
+
+            if (previousOwnerState.ItemId == nextOwnerState.ItemId
+                && previousOwnerState.ClientEquipIndex == nextOwnerState.ClientEquipIndex
+                && !previousOwnerState.IsReleased)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
             var operations = new List<FollowItemEffectRecoveredNativeOperation>(7)
             {
                 BuildRecoveredNativeItemEffectOperation(
@@ -9572,10 +9615,21 @@ namespace HaCreator.MapSimulator.Animation
                 && previousOwnerState.ItemId != nextOwnerState.ItemId
                 && previousOwnerState.ClientEquipIndex == nextOwnerState.ClientEquipIndex)
             {
+                FollowItemEffectRecoveredNativeOwnerState releasedPreviousOwnerState =
+                    previousOwnerState.IsReleased
+                        ? previousOwnerState
+                        : BuildRecoveredNativeItemEffectOwnerState(
+                            previousOwnerState.ItemId,
+                            previousOwnerState.ClientEquipIndex,
+                            previousOwnerState.CandidateIdentity,
+                            previousOwnerState.EffectVariantCount,
+                            previousOwnerState.EffectVariantIndices,
+                            released: true,
+                            registersAnimateEffect: previousOwnerState.RegistersAnimateEffect);
                 operations.Add(BuildRecoveredNativeItemEffectOperation(
                     FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
-                    previousOwnerState,
-                    previousOwnerState.ItemEffectReferenceCountAfterManagerRelease));
+                    releasedPreviousOwnerState,
+                    releasedPreviousOwnerState.ItemEffectReferenceCountAfterManagerRelease));
             }
 
             operations.Add(BuildRecoveredNativeItemEffectOperation(

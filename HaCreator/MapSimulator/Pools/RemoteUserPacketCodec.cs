@@ -98,8 +98,18 @@ namespace HaCreator.MapSimulator.Pools
         byte[] RawPayload,
         RemoteUserTemporaryStatKnownState KnownState,
         bool HasWeaponCharge,
-        int WeaponChargePayloadOffset)
+        int WeaponChargePayloadOffset,
+        IReadOnlyList<int> ClientDynamicTemporaryStatIndexes = null)
     {
+        public IReadOnlyList<int> ActiveClientDynamicTemporaryStatIndexes =>
+            ClientDynamicTemporaryStatIndexes ?? Array.Empty<int>();
+
+        public int ActiveClientDynamicTemporaryStatRecordCount =>
+            ActiveClientDynamicTemporaryStatIndexes.Count;
+
+        public bool HasClientDynamicTemporaryStatRecords =>
+            ActiveClientDynamicTemporaryStatRecordCount > 0;
+
         public bool HasPayload => RawPayload != null && RawPayload.Length > 0;
 
         public bool HasActiveMaskBits
@@ -751,6 +761,9 @@ namespace HaCreator.MapSimulator.Pools
             YellowAura = 42,
             BlessingArmor = 43
         }
+
+        private const int ClientDynamicTemporaryStatFirstMaskBit = 122;
+        private const int ClientDynamicTemporaryStatSlotCount = 7;
 
         private const int NewYearCardDefaultItemId = 4300000;
 
@@ -2571,7 +2584,8 @@ namespace HaCreator.MapSimulator.Pools
                         remainingPayload.AsSpan(0, encodedLength).ToArray(),
                         DecodeKnownTemporaryStatState(remainingPayload.AsSpan(0, encodedLength), out bool hasWeaponCharge, out int weaponChargePayloadOffset),
                         hasWeaponCharge,
-                        weaponChargePayloadOffset),
+                        weaponChargePayloadOffset,
+                        ResolveClientDynamicTemporaryStatIndexes(maskWords)),
                     delay);
                 return true;
             }
@@ -3997,7 +4011,7 @@ namespace HaCreator.MapSimulator.Pools
         private static string[] SplitHelperMarkerNameSegments(string markerName)
         {
             return markerName.Split(
-                new[] { '/', '.' },
+                new[] { '/', '.', ':', ' ', '\t', '\r', '\n' },
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
@@ -4637,7 +4651,8 @@ namespace HaCreator.MapSimulator.Pools
                 rawPayload,
                 DecodeKnownTemporaryStatState(rawPayload, out bool hasWeaponCharge, out int weaponChargePayloadOffset),
                 hasWeaponCharge,
-                weaponChargePayloadOffset);
+                weaponChargePayloadOffset,
+                ResolveClientDynamicTemporaryStatIndexes(maskWords));
         }
 
         private static int[] DecodeTemporaryStatMaskWords(ReadOnlySpan<byte> maskPayload)
@@ -5088,12 +5103,40 @@ namespace HaCreator.MapSimulator.Pools
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
         {
             int bitIndex = (int)bit;
+            return IsTemporaryStatMaskBitActive(maskWords, bitIndex);
+        }
+
+        private static bool IsTemporaryStatMaskBitActive(int[] maskWords, int bitIndex)
+        {
             int wordIndex = bitIndex / 32;
             int bitOffset = bitIndex % 32;
             return maskWords != null
                 && wordIndex >= 0
                 && wordIndex < maskWords.Length
                 && ((((uint)maskWords[wordIndex]) >> bitOffset) & 0x1u) != 0;
+        }
+
+        private static IReadOnlyList<int> ResolveClientDynamicTemporaryStatIndexes(int[] maskWords)
+        {
+            if (maskWords == null || maskWords.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> indexes = null;
+            for (int index = 0; index < ClientDynamicTemporaryStatSlotCount; index++)
+            {
+                int bitIndex = ClientDynamicTemporaryStatFirstMaskBit + index;
+                if (!IsTemporaryStatMaskBitActive(maskWords, bitIndex))
+                {
+                    continue;
+                }
+
+                indexes ??= new List<int>(ClientDynamicTemporaryStatSlotCount);
+                indexes.Add(index);
+            }
+
+            return indexes ?? (IReadOnlyList<int>)Array.Empty<int>();
         }
 
         private static bool TryResolveChargeSkillIdFromKnownTemporaryStatPayload(

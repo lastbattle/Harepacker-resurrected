@@ -19,7 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void RestoreFromRoomSnapshot(SocialRoomRuntimeSnapshot snapshot)
         {
-            if (snapshot == null || !IsMerchantKind(snapshot.Kind))
+            if (snapshot == null || !IsEmployeeBackedKind(snapshot.Kind))
             {
                 return;
             }
@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    if (TryResolveMerchantKindFromMiniRoomType(entry.MiniRoomType, out SocialRoomKind hintedKind))
+                    if (TryResolveEmployeeBackedKindFromMiniRoomType(entry.MiniRoomType, out SocialRoomKind hintedKind))
                     {
                         _employerKindHints[entry.EmployerId] = hintedKind;
                     }
@@ -84,7 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
             }
 
-            if (handled && IsMerchantKind(kind))
+            if (handled && IsEmployeeBackedKind(kind))
             {
                 bool hasRoutingHint = SocialRoomEmployeePoolCodec.TryDecodeRoutingHint(opcode, payload, out SocialRoomEmployeePoolCodec.RoutingHint routingHint, out _);
                 if (SocialRoomEmployeePoolCodec.TryDecodeEmployerId(payload, out int employerId, out _)
@@ -202,7 +202,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             SocialRoomEmployeePoolCodec.RoutingHint hint = BuildRoutingHint(pooledEmployee);
             FieldActorSnapshotCandidate? bestCandidate = null;
-            foreach (SocialRoomKind candidateKind in BuildMerchantKindSearchOrder(preferredKind, _activeKind))
+            foreach (SocialRoomKind candidateKind in BuildEmployeeBackedKindSearchOrder(preferredKind, _activeKind))
             {
                 SocialRoomRuntime runtime = runtimeResolver(candidateKind);
                 if (runtime == null)
@@ -286,7 +286,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
 enumerate_visible:
-            foreach (SocialRoomKind kind in MerchantKinds)
+            foreach (SocialRoomKind kind in EmployeeBackedKinds)
             {
                 if (_activeKind == kind || preferredKind == kind)
                 {
@@ -299,7 +299,7 @@ enumerate_visible:
                 }
             }
 
-            foreach (SocialRoomKind kind in MerchantKinds)
+            foreach (SocialRoomKind kind in EmployeeBackedKinds)
             {
                 if (_activeKind == kind || preferredKind == kind || visibilityResolver?.Invoke(kind) == true)
                 {
@@ -315,12 +315,12 @@ enumerate_visible:
             int normalizedEmployerId = Math.Max(0, employerId);
             if (normalizedEmployerId > 0
                 && _employerKindHints.TryGetValue(normalizedEmployerId, out SocialRoomKind hintedKind)
-                && IsMerchantKind(hintedKind))
+                && IsEmployeeBackedKind(hintedKind))
             {
                 return hintedKind;
             }
 
-            if (_activeKind.HasValue && IsMerchantKind(_activeKind.Value))
+            if (_activeKind.HasValue && IsEmployeeBackedKind(_activeKind.Value))
             {
                 return _activeKind.Value;
             }
@@ -331,7 +331,7 @@ enumerate_visible:
         private void RememberEmployerKind(int employerId, SocialRoomKind kind)
         {
             int normalizedEmployerId = Math.Max(0, employerId);
-            if (normalizedEmployerId <= 0 || !IsMerchantKind(kind))
+            if (normalizedEmployerId <= 0 || !IsEmployeeBackedKind(kind))
             {
                 return;
             }
@@ -339,28 +339,36 @@ enumerate_visible:
             _employerKindHints[normalizedEmployerId] = kind;
         }
 
-        private static IReadOnlyList<SocialRoomKind> BuildMerchantKindSearchOrder(
+        private static IReadOnlyList<SocialRoomKind> BuildEmployeeBackedKindSearchOrder(
             SocialRoomKind? preferredKind,
             SocialRoomKind? activeKind)
         {
-            return BuildMerchantKindSearchOrderForTesting(preferredKind, activeKind);
+            return BuildEmployeeBackedKindSearchOrderForTesting(preferredKind, activeKind);
         }
 
         internal static IReadOnlyList<SocialRoomKind> BuildMerchantKindSearchOrderForTesting(
             SocialRoomKind? preferredKind,
             SocialRoomKind? activeKind)
         {
-            List<SocialRoomKind> order = new(2);
-            TryAppendMerchantKind(order, preferredKind);
-            TryAppendMerchantKind(order, activeKind);
-            TryAppendMerchantKind(order, SocialRoomKind.EntrustedShop);
-            TryAppendMerchantKind(order, SocialRoomKind.PersonalShop);
+            return BuildEmployeeBackedKindSearchOrderForTesting(preferredKind, activeKind);
+        }
+
+        internal static IReadOnlyList<SocialRoomKind> BuildEmployeeBackedKindSearchOrderForTesting(
+            SocialRoomKind? preferredKind,
+            SocialRoomKind? activeKind)
+        {
+            List<SocialRoomKind> order = new(3);
+            TryAppendEmployeeBackedKind(order, preferredKind);
+            TryAppendEmployeeBackedKind(order, activeKind);
+            TryAppendEmployeeBackedKind(order, SocialRoomKind.EntrustedShop);
+            TryAppendEmployeeBackedKind(order, SocialRoomKind.PersonalShop);
+            TryAppendEmployeeBackedKind(order, SocialRoomKind.MiniRoom);
             return order;
         }
 
-        private static void TryAppendMerchantKind(List<SocialRoomKind> order, SocialRoomKind? kind)
+        private static void TryAppendEmployeeBackedKind(List<SocialRoomKind> order, SocialRoomKind? kind)
         {
-            if (!kind.HasValue || !IsMerchantKind(kind.Value) || order.Contains(kind.Value))
+            if (!kind.HasValue || !IsEmployeeBackedKind(kind.Value) || order.Contains(kind.Value))
             {
                 return;
             }
@@ -368,15 +376,21 @@ enumerate_visible:
             order.Add(kind.Value);
         }
 
-        private static bool IsMerchantKind(SocialRoomKind kind)
+        private static bool IsEmployeeBackedKind(SocialRoomKind kind)
         {
-            return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
+            return kind == SocialRoomKind.PersonalShop
+                || kind == SocialRoomKind.EntrustedShop
+                || kind == SocialRoomKind.MiniRoom;
         }
 
-        private static bool TryResolveMerchantKindFromMiniRoomType(byte miniRoomType, out SocialRoomKind kind)
+        private static bool TryResolveEmployeeBackedKindFromMiniRoomType(byte miniRoomType, out SocialRoomKind kind)
         {
             switch (miniRoomType)
             {
+                case 1:
+                case 2:
+                    kind = SocialRoomKind.MiniRoom;
+                    return true;
                 case 3:
                     kind = SocialRoomKind.PersonalShop;
                     return true;
@@ -398,13 +412,13 @@ enumerate_visible:
                 return;
             }
 
-            if (TryResolveMerchantKindFromMiniRoomType(miniRoomTypeHint, out SocialRoomKind hintedKind))
+            if (TryResolveEmployeeBackedKindFromMiniRoomType(miniRoomTypeHint, out SocialRoomKind hintedKind))
             {
                 _employerKindHints[normalizedEmployerId] = hintedKind;
                 return;
             }
 
-            if (IsMerchantKind(fallbackKind))
+            if (IsEmployeeBackedKind(fallbackKind))
             {
                 _employerKindHints[normalizedEmployerId] = fallbackKind;
             }
@@ -464,10 +478,11 @@ enumerate_visible:
             int Score,
             bool IsVisible);
 
-        private static readonly SocialRoomKind[] MerchantKinds =
+        private static readonly SocialRoomKind[] EmployeeBackedKinds =
         {
             SocialRoomKind.EntrustedShop,
-            SocialRoomKind.PersonalShop
+            SocialRoomKind.PersonalShop,
+            SocialRoomKind.MiniRoom
         };
     }
 }

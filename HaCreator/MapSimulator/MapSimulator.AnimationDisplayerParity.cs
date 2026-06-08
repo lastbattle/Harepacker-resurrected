@@ -594,7 +594,7 @@ namespace HaCreator.MapSimulator
                         args.Length > 2 ? args[2] : null,
                         out DamageColorType colorType))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|violet|0|2]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|blue|violet|0|1|2]");
                 }
 
                 return TryRegisterAnimationDisplayerCombatFeedback(
@@ -1208,7 +1208,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            AnimationDisplayerAreaRegistrationProfile profile = BuildAnimationDisplayerAreaRegistrationProfile(
+            AnimationDisplayerAreaRegistrationProfile profile = BuildAnimationDisplayerExplosionAreaRegistrationProfile(
                 area,
                 ReadAnimationDisplayerIntProperty(property, "x"),
                 ReadAnimationDisplayerIntProperty(property, "y"),
@@ -1307,7 +1307,9 @@ namespace HaCreator.MapSimulator
             string cacheKey = ResolveAnimationDisplayerCombatFeedbackFrameCacheKey(resolvedSpecialTextName, colorType);
             if (string.IsNullOrWhiteSpace(effectUol))
             {
-                message = $"Unsupported combat-feedback color type {(int)colorType}.";
+                message = DamageNumberRenderer.IsSupportedColorType(colorType)
+                    ? $"No authored combat-feedback special-text owner exists for {resolvedSpecialTextName} in color type {(int)colorType}."
+                    : $"Unsupported combat-feedback color type {(int)colorType}.";
                 return false;
             }
 
@@ -3005,6 +3007,12 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                if (encodedColorType == 1)
+                {
+                    colorType = DamageColorType.Blue;
+                    return true;
+                }
+
                 if (encodedColorType == 2)
                 {
                     colorType = DamageColorType.Violet;
@@ -3017,6 +3025,12 @@ namespace HaCreator.MapSimulator
             if (string.Equals(normalized, "red", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Red;
+                return true;
+            }
+
+            if (string.Equals(normalized, "blue", StringComparison.OrdinalIgnoreCase))
+            {
+                colorType = DamageColorType.Blue;
                 return true;
             }
 
@@ -3073,6 +3087,29 @@ namespace HaCreator.MapSimulator
                 updateNextMs,
                 durationMs,
                 layerZ);
+        }
+
+        internal static AnimationDisplayerAreaRegistrationProfile BuildAnimationDisplayerExplosionAreaRegistrationProfile(
+            Rectangle area,
+            int ignoredOffsetX,
+            int ignoredOffsetY,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int? ignoredLayerZ = null)
+        {
+            // Client evidence (`RegisterExplosionAnimation`, 0x45a1d0):
+            // the owner stores the packet rectangle center/size, initializes the current
+            // area to 5/6 of that size, and reads only interval/count/delay/end metadata.
+            return BuildAnimationDisplayerAreaRegistrationProfile(
+                area,
+                offsetX: 0,
+                offsetY: 0,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs);
         }
 
         private static string CombineAnimationDisplayerEffectUol(string baseEffectUol, string childName)
@@ -10113,32 +10150,16 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var pointsByIndex = new List<(int Index, Vector2 Point)>(childCount);
-            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
+            var points = new List<Vector2>(childCount);
             for (int i = 0; i < childCount; i++)
             {
-                WzImageProperty childProperty = children[i];
-                string childName = childProperty?.Name;
-                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
-                    || !seenSegments.Add(childName)
-                    || ResolveAnimationDisplayerLinkedRealProperty(childProperty) is not WzVectorProperty point)
+                WzImageProperty childProperty = resolvedGenerationPointProperty[i.ToString(CultureInfo.InvariantCulture)];
+                if (ResolveAnimationDisplayerLinkedRealProperty(childProperty) is not WzVectorProperty point)
                 {
-                    continue;
+                    break;
                 }
 
-                pointsByIndex.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
-            }
-
-            if (pointsByIndex.Count <= 0)
-            {
-                return null;
-            }
-
-            pointsByIndex.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-            var points = new List<Vector2>(pointsByIndex.Count);
-            for (int i = 0; i < pointsByIndex.Count; i++)
-            {
-                points.Add(pointsByIndex[i].Point);
+                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
             }
 
             return points.Count > 0

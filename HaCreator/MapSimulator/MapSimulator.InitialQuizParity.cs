@@ -422,6 +422,27 @@ namespace HaCreator.MapSimulator
             int BackgroundStringPoolId,
             string BackgroundResourcePath);
 
+        internal readonly record struct InitialQuizOwnerContextPacketLifecycleSnapshot(
+            byte Mode,
+            bool OwnerAlreadyCreated,
+            bool DecodesPayloadStrings,
+            bool DecodesInputLimits,
+            bool UpdatesContextRemainingMilliseconds,
+            int ContextRemainingMilliseconds,
+            bool CreatesOwnerSingleton,
+            bool SeedsOwnerSetValues,
+            bool DestroysExistingOwner,
+            bool ClearsContextRemainingMilliseconds,
+            bool CapturesOwnerWindow,
+            bool FocusesOwnerWindow,
+            bool IgnoresUnsupportedMode,
+            int MinInputByteLength,
+            int MaxInputByteLength)
+        {
+            internal string ClientContextMethodName => "CWvsContext::OnInitialQuiz";
+            internal string ClientOwnerMethodName => "CUIInitialQuiz::SetValues";
+        }
+
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
         {
             bool applied = _initialQuizTimerRuntime.TryApplyPayload(
@@ -2249,6 +2270,37 @@ namespace HaCreator.MapSimulator
                 BackgroundResourcePath: MapleStoryStringPool.GetOrFallback(
                     InitialQuizBackgroundUolStringPoolId,
                     "UI/UIWindow2.img/InitialQuiz/backgrnd"));
+        }
+
+        internal static InitialQuizOwnerContextPacketLifecycleSnapshot BuildInitialQuizOwnerContextPacketLifecycleSnapshot(
+            byte mode,
+            bool ownerAlreadyCreated,
+            int minInputCharacters,
+            int maxInputCharacters,
+            int remainingSeconds)
+        {
+            bool requestMode = mode == 0;
+            bool closeMode = mode == 1;
+            int contextRemainingMilliseconds = requestMode
+                ? Math.Max(0, remainingSeconds) * 1000
+                : 0;
+            bool createsOwnerSingleton = requestMode && !ownerAlreadyCreated;
+            return new InitialQuizOwnerContextPacketLifecycleSnapshot(
+                Mode: mode,
+                OwnerAlreadyCreated: ownerAlreadyCreated,
+                DecodesPayloadStrings: requestMode,
+                DecodesInputLimits: requestMode,
+                UpdatesContextRemainingMilliseconds: requestMode,
+                ContextRemainingMilliseconds: contextRemainingMilliseconds,
+                CreatesOwnerSingleton: createsOwnerSingleton,
+                SeedsOwnerSetValues: createsOwnerSingleton,
+                DestroysExistingOwner: closeMode && ownerAlreadyCreated,
+                ClearsContextRemainingMilliseconds: closeMode,
+                CapturesOwnerWindow: createsOwnerSingleton,
+                FocusesOwnerWindow: createsOwnerSingleton,
+                IgnoresUnsupportedMode: !requestMode && !closeMode,
+                MinInputByteLength: requestMode ? Math.Max(0, minInputCharacters) * 2 : 0,
+                MaxInputByteLength: requestMode ? Math.Max(0, maxInputCharacters) * 2 : 0);
         }
 
         private static int DivideTowardZero(int dividend, int divisor)

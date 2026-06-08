@@ -3596,6 +3596,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedBattleRecordRuntime
     {
+        internal const string ClientOnPacketDispatchSummary = "CBattleRecordMan::OnPacket dispatches packet 421 to OnDotDamageInfo and packet 422 to OnServerOnCalcRequestResult; packet 420/423 are CField-adjacent packet numbers that this v95 manager method ignores.";
         private const long BattleRecordOverflowThreshold = 0xE8D4A50FFF;
         private const uint DamageAverageReuseThresholdMilliseconds = 6500;
         private const uint DamageAverageExtendedThresholdMilliseconds = 7000;
@@ -4181,7 +4182,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case 420:
                     _packetCount420++;
-                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 420 because the v95 decompile only dispatches 421 and 422.";
+                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 420 because the v95 manager decompile only dispatches 421 and 422.";
                     break;
 
                 case 421:
@@ -4220,7 +4221,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 423:
                     _packetCount423++;
-                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 423 because the v95 decompile only dispatches 421 and 422.";
+                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 423 because the v95 manager decompile only dispatches 421 and 422.";
                     break;
 
                 default:
@@ -4237,7 +4238,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             List<string> lines = new()
             {
-                "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
+                $"Packet-owned owner: {ClientOnPacketDispatchSummary}",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
                 $"CUIBattleRecord shell: {(IsExtended ? "extended 450x250" : "compact 200x250")} | Timer: {DescribeTimerState()}",
                 $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, summon={SummonTrackingEnabled}, decode421={IsDotDamageDecodeReady}, mutate421={IsDotDamageMutationReady}",

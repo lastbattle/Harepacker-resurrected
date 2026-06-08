@@ -82,6 +82,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             "premium",
             "fieldEnter",
+            "dayByDay",
+            "weeklyRepeat",
             "worldmin",
             "worldmax",
             "dressChanged",
@@ -333,6 +335,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool HasEquipOnAutoStart { get; init; }
             public bool HasAutoCompleteAlert { get; init; }
             public bool HasAutoPreCompleteAlert { get; init; }
+            public bool HasCompletionDemand { get; init; }
             public int DailyPlayTimeSeconds { get; init; }
             public bool StartDayByDayRepeat { get; init; }
             public bool StartWeeklyRepeat { get; init; }
@@ -989,6 +992,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (IsClientCheckCompleteDemandBypassQuestId(definition.QuestId))
+            {
+                return true;
+            }
+
+            if (HasMissingCompletionDemandForAutoCompletionAlert(definition.HasCompletionDemand))
             {
                 return true;
             }
@@ -1800,10 +1808,22 @@ namespace HaCreator.MapSimulator.Interaction
             return demandKeys != null && demandKeys.Count > 0;
         }
 
+        internal static bool IsConversationReservedPropertyNameForTesting(string propertyName)
+        {
+            return IsConversationReservedPropertyName(propertyName);
+        }
+
         internal static bool IsClientCheckCompleteDemandBypassQuestId(int questId)
         {
             return questId == 0 ||
                    (questId >= DragonQuestIdSkipMin && questId <= DragonQuestIdSkipMax);
+        }
+
+        internal static bool HasMissingCompletionDemandForAutoCompletionAlert(bool hasCompletionDemand)
+        {
+            // CQuestMan::CheckCompleteDemand returns 12 before any field checks when
+            // m_mCompleteDemand has no entry for the quest.
+            return !hasCompletionDemand;
         }
 
         internal static IReadOnlyList<string> ParseUnresolvedCompletionSideChannelDemandKeysForTesting(
@@ -10342,6 +10362,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
                 HasAutoCompleteAlert = ParseTruthyFlag(questInfo["autoComplete"]),
                 HasAutoPreCompleteAlert = ParseTruthyFlag(questInfo["autoPreComplete"]),
+                HasCompletionDemand = endCheck != null,
                 DailyPlayTimeSeconds = ParsePositiveInt(questInfo["dailyPlayTime"]).GetValueOrDefault(),
                 StartDayByDayRepeat = ParseTruthyFlag(startCheck?["dayByDay"]),
                 StartWeeklyRepeat = ParseTruthyFlag(startCheck?["weeklyRepeat"]),
@@ -13716,6 +13737,7 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("info", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("message", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("normalAutoStart", StringComparison.OrdinalIgnoreCase) ||
                    IsConversationVariantMetadataPropertyName(propertyName) ||
                    IsCompletionSideChannelDemandPropertyName(propertyName) ||
                    IsQuestActionDataPropertyName(propertyName);

@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner|owner[\s_\-]*(?:byte|state|flag)|c[\s_\-:>.]*vec[\s_\-:>.]*ctrl[\s_\-:>.]*release|(?:m[\s_\-]*)?pvc(?:[\s_\-]*(?:owner|state|byte|flag|vec[\s_\-]*ctrl|vec[\s_\-]*ctrl[\s_\-]*(?:owner|state|byte|flag)))*)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
-            @"(?<name>[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*\s*[:=])|[;\r\n]|$)",
+            @"(?<name>[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|src|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|dest|dst|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-./\[\]]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|left|lhs|source|src|from|before|old|previous|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|right|rhs|target|destination|dest|dst|to|after|new|current|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-./\[\]]*\s*[:=])|[;\r\n]|$)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -1868,6 +1868,18 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if ((normalized.Contains("mpvc", StringComparison.Ordinal)
+                 || normalized.Contains("pvc", StringComparison.Ordinal))
+                && (normalized.Contains("mpinterface", StringComparison.Ordinal)
+                    || normalized.Contains("pinterface", StringComparison.Ordinal)
+                    || normalized.Contains("iwzvector2d", StringComparison.Ordinal))
+                && (normalized.Contains("release", StringComparison.Ordinal)
+                    || normalized.Contains("vfptr", StringComparison.Ordinal)))
+            {
+                byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
+                return true;
+            }
+
             switch (normalized)
             {
                 case "opcode":
@@ -2320,7 +2332,7 @@ namespace HaCreator.MapSimulator.Managers
             if (markerIndex >= 0)
             {
                 int valueStart = markerIndex + marker.Length;
-                int valueEnd = decodeDetail.IndexOf(']', valueStart);
+                int valueEnd = decodeDetail.LastIndexOf(']');
                 if (valueEnd > valueStart)
                 {
                     rawPairSegment = decodeDetail.Substring(valueStart, valueEnd - valueStart);
@@ -4058,6 +4070,16 @@ namespace HaCreator.MapSimulator.Managers
                 case "sourcepackethex":
                 case "sourcepayload":
                 case "sourcepayloadhex":
+                case "src":
+                case "srcvalue":
+                case "srcbyte":
+                case "srcbytes":
+                case "srcraw":
+                case "srcrawpacket":
+                case "srcpacket":
+                case "srcpackethex":
+                case "srcpayload":
+                case "srcpayloadhex":
                     normalizedName = "observed";
                     return true;
                 case "rebuilt":
@@ -4255,6 +4277,26 @@ namespace HaCreator.MapSimulator.Managers
                 case "destinationpackethex":
                 case "destinationpayload":
                 case "destinationpayloadhex":
+                case "dest":
+                case "destvalue":
+                case "destbyte":
+                case "destbytes":
+                case "destraw":
+                case "destrawpacket":
+                case "destpacket":
+                case "destpackethex":
+                case "destpayload":
+                case "destpayloadhex":
+                case "dst":
+                case "dstvalue":
+                case "dstbyte":
+                case "dstbytes":
+                case "dstraw":
+                case "dstrawpacket":
+                case "dstpacket":
+                case "dstpackethex":
+                case "dstpayload":
+                case "dstpayloadhex":
                     normalizedName = "rebuilt";
                     return true;
                 default:
@@ -4315,6 +4357,7 @@ namespace HaCreator.MapSimulator.Managers
                     "left",
                     "lhs",
                     "source",
+                    "src",
                     "from",
                     "before",
                     "previous"))
@@ -4339,6 +4382,8 @@ namespace HaCreator.MapSimulator.Managers
                     "rhs",
                     "target",
                     "destination",
+                    "dest",
+                    "dst",
                     "after",
                     "current",
                     "mapsim",

@@ -245,7 +245,7 @@ namespace HaCreator.MapSimulator
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
                 ForceFieldFadeOut = ForcePacketOwnedFieldFadeInAnimationsOut,
                 RequestBgm = descriptor => RequestSpecialFieldBgmOverride(ResolvePacketOwnedFieldBgmOverrideName(descriptor)),
-                PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
+                PlayFieldSound = (descriptor, volumePercent) => TryPlayPacketOwnedFieldFeedbackSound(descriptor, volumePercent),
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
                 SetObjectTagStateIndex = (tag, stateIndex, transition, currentTime) => SetDynamicObjectTagState(tag, stateIndex != 0, transition, currentTime, stateIndex),
@@ -394,11 +394,12 @@ namespace HaCreator.MapSimulator
                     Math.Max(0, fadeOutMs)));
         }
 
-        private bool TryPlayPacketOwnedFieldFeedbackSound(string descriptor)
+        private bool TryPlayPacketOwnedFieldFeedbackSound(string descriptor, int volumePercent = 100)
         {
             if (!TryPlayPacketOwnedWzSound(
                     descriptor,
                     "Field.img",
+                    ResolvePacketOwnedFieldSoundVolumeScale(volumePercent),
                     out string resolvedDescriptor,
                     out string error,
                     strictClientSoundFamily: true))
@@ -411,8 +412,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            ShowUtilityFeedbackMessage($"Played packet-owned field sound {resolvedDescriptor}.");
+            ShowUtilityFeedbackMessage($"Played packet-owned field sound {resolvedDescriptor} at client volume {volumePercent}%.");
             return true;
+        }
+
+        private static float ResolvePacketOwnedFieldSoundVolumeScale(int volumePercent)
+        {
+            return Math.Clamp(volumePercent, 0, 100) / 100f;
         }
 
         private void HandleRemoteFieldSoundEffect(RemoteUserActorPool.RemoteFieldSoundPresentation presentation)
@@ -2504,6 +2510,11 @@ namespace HaCreator.MapSimulator
                 descriptor,
                 "Field.img",
                 strictClientSoundFamily: true);
+        }
+
+        internal static float ResolvePacketOwnedFieldSoundVolumeScaleForTest(int volumePercent)
+        {
+            return ResolvePacketOwnedFieldSoundVolumeScale(volumePercent);
         }
 
         internal static string GetPacketOwnedScreenEffectUolForTest(string descriptor)

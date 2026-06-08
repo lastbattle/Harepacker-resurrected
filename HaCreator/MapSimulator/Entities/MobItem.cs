@@ -534,7 +534,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             hitAction ??= ResolveFirstClientHitAction(animationSet);
-            if (string.IsNullOrWhiteSpace(hitAction) || !animationSet.HasAnimation(hitAction))
+            if (!IsClientAuthoredHitAction(hitAction) || !animationSet.HasAnimation(hitAction))
             {
                 return DamagedByMobBlinkDurationMs;
             }
@@ -554,6 +554,13 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0
                 ? (int)Math.Min(duration, int.MaxValue)
                 : DamagedByMobBlinkDurationMs;
+        }
+
+        private static bool IsClientAuthoredHitAction(string action)
+        {
+            return string.Equals(action, AnimationKeys.Hit1, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(action, AnimationKeys.Hit2, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(action, AnimationKeys.Hit, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolveFirstClientHitAction(AnimationSetBase animationSet)

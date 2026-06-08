@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Managers
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
         private short? _currentInitializedSessionVersion;
         private long? _currentInitializedProxySessionId;
+        private long _currentInitializedProxySessionGeneration;
         private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -52,7 +53,8 @@ namespace HaCreator.MapSimulator.Managers
             string RawPacketHex,
             string Source,
             short? SessionVersion,
-            long? ProxySessionId);
+            long? ProxySessionId,
+            long? ProxySessionGeneration = null);
         public readonly record struct OutboundPacketTrace(
             int Opcode,
             int PayloadLength,
@@ -60,7 +62,8 @@ namespace HaCreator.MapSimulator.Managers
             string RawPacketHex,
             string Source,
             short? SessionVersion = null,
-            long? ProxySessionId = null);
+            long? ProxySessionId = null,
+            long? ProxySessionGeneration = null);
         private readonly record struct InitializedProxySessionKey(short SessionVersion, long ProxySessionId);
         public enum LiveOwnershipVerificationState
         {

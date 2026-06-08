@@ -1516,6 +1516,17 @@ namespace HaCreator.MapSimulator
             return writer.ToArray();
         }
 
+        internal static byte[] BuildPacketOwnedAntiMacroAnswerPayloadForTest(string submittedAnswer)
+        {
+            return BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
+        }
+
+        internal static byte[] BuildPacketOwnedAntiMacroAnswerRawPacketForTest(string submittedAnswer)
+        {
+            return BuildPacketOwnedAntiMacroAnswerRawPacket(
+                BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer));
+        }
+
         private static void WritePacketOwnedAntiMacroMapleString(BinaryWriter writer, string text)
         {
             string resolvedText = text ?? string.Empty;

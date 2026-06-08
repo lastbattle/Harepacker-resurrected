@@ -819,6 +819,12 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (ShouldHandleHostedMouseSelectionEndMessage(msg))
+            {
+                HandleHostedMouseSelectionEndMessage();
+                return IntPtr.Zero;
+            }
+
             if (ShouldSuppressClientUnsupportedMouseButtonMessage(msg))
             {
                 return IntPtr.Zero;
@@ -1453,8 +1459,14 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldHandleClientOwnedMouseMessage(uint msg)
         {
             // `CCtrlEdit::OnMouseButton` handles only left-down and double-click,
-            // while `OnMouseMove` owns drag selection. Left-up just ends capture.
-            return msg is WmLButtonDown or WmMouseMove or WmLButtonUp;
+            // while `OnMouseMove` owns drag selection. Left-up is only a hosted
+            // Win32 capture cleanup seam, not a native edit mouse-button branch.
+            return msg is WmLButtonDown or WmMouseMove;
+        }
+
+        internal static bool ShouldHandleHostedMouseSelectionEndMessage(uint msg)
+        {
+            return msg == WmLButtonUp;
         }
 
         internal static bool ShouldApplyClientOwnedMouseMoveSelection(int mouseButtonFlags)
@@ -1781,12 +1793,16 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     break;
-                case WmLButtonUp:
-                    _mouseSelecting = false;
-                    ReleaseCapture();
-                    break;
             }
 
+            UpdateImePlacement();
+            SynchronizeState();
+        }
+
+        private void HandleHostedMouseSelectionEndMessage()
+        {
+            _mouseSelecting = false;
+            ReleaseCapture();
             UpdateImePlacement();
             SynchronizeState();
         }

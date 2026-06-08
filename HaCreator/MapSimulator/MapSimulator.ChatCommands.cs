@@ -1884,7 +1884,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!TrySplitLoginPacketPromptArgument(args[i], out string key, out string initialValue))
                 {
-                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon|enabledisablespw] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>] [trackowner=true|false]";
+                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice|pic|spw|migration|website] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon|enabledisablespw] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>] [trackowner=true|false]";
                     return false;
 
                 }
@@ -1906,9 +1906,33 @@ namespace HaCreator.MapSimulator
                             owner = LoginPacketDialogOwner.LoginUtilityDialog;
                             hasExplicitOwner = true;
                         }
+                        else if (value.Equals("pic", StringComparison.OrdinalIgnoreCase) ||
+                                 value.Equals("pincode", StringComparison.OrdinalIgnoreCase))
+                        {
+                            owner = LoginPacketDialogOwner.PicDialog;
+                            hasExplicitOwner = true;
+                        }
+                        else if (value.Equals("spw", StringComparison.OrdinalIgnoreCase) ||
+                                 value.Equals("secondarypassword", StringComparison.OrdinalIgnoreCase))
+                        {
+                            owner = LoginPacketDialogOwner.SpwDialog;
+                            hasExplicitOwner = true;
+                        }
+                        else if (value.Equals("migration", StringComparison.OrdinalIgnoreCase) ||
+                                 value.Equals("accountmigration", StringComparison.OrdinalIgnoreCase))
+                        {
+                            owner = LoginPacketDialogOwner.AccountMigrationDialog;
+                            hasExplicitOwner = true;
+                        }
+                        else if (value.Equals("website", StringComparison.OrdinalIgnoreCase) ||
+                                 value.Equals("handoff", StringComparison.OrdinalIgnoreCase))
+                        {
+                            owner = LoginPacketDialogOwner.WebsiteHandoffDialog;
+                            hasExplicitOwner = true;
+                        }
                         else
                         {
-                            error = "mode must be utility or notice.";
+                            error = "mode must be utility, notice, pic, spw, migration, or website.";
                             return false;
                         }
                         break;
@@ -11290,7 +11314,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "avatarmegaphone",
                 "Inspect or drive the avatar megaphone sender dialog and presentation owner",
-                "/avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|packetraw <hex>|clear]",
+                "/avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|cashslot <slot>|line <1-4> <text>|whisper <on|off>|channel <id>|sendrequest|send|packetraw <hex>|clear]",
                 args =>
                 {
                     _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -11356,6 +11380,16 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetItem(itemId));
 
+                        case "cashslot":
+                        case "slot":
+                        case "pos":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int cashSlot))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone cashslot <slot>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetInventoryPosition(cashSlot));
+
                         case "line":
                             if (args.Length < 3 || !int.TryParse(args[1], out int lineNumber))
                             {
@@ -11379,6 +11413,13 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetChannel(channelId));
+
+                        case "sendrequest":
+                        case "request":
+                            string requestMessage = MirrorAvatarMegaphoneConsumeCashItemUseRequest();
+                            return requestMessage.Contains("SendConsumeCashItemUseRequest opcode", StringComparison.Ordinal)
+                                ? ChatCommandHandler.CommandResult.Ok(requestMessage)
+                                : ChatCommandHandler.CommandResult.Error(requestMessage);
 
                         case "send":
                         case "publish":
@@ -11406,7 +11447,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.Clear(currTickCount));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|packetraw <hex>|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|cashslot <slot>|line <1-4> <text>|whisper <on|off>|channel <id>|sendrequest|send|packetraw <hex>|clear]");
                     }
                 });
 

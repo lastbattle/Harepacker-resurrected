@@ -1,6 +1,10 @@
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
@@ -9,6 +13,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly ChatBalloonPresentationRuntime _chatBalloonPresentationRuntime = new();
+        private readonly HashSet<string> _missingChatBalloonPresentationCanvasPaths = new(StringComparer.OrdinalIgnoreCase);
 
         private void RegisterChatBalloonPresentationCommand()
         {
@@ -217,17 +222,28 @@ namespace HaCreator.MapSimulator
 
             foreach (ChatBalloonCanvasPasteEntry paste in state.Composition.PastedCanvases)
             {
-                if (paste.Role == "background" || paste.Role == "shopSkin")
+                if (TryResolveChatBalloonPresentationCanvasTexture(paste.SourcePath, out Texture2D texture))
                 {
+                    _spriteBatch.Draw(
+                        texture,
+                        new Rectangle(
+                            x + paste.Destination.X,
+                            y + paste.Destination.Y,
+                            Math.Max(1, paste.SourceSize.X),
+                            Math.Max(1, paste.SourceSize.Y)),
+                        Color.White * (paste.Alpha / 255f));
                     continue;
                 }
 
-                Rectangle pasteBounds = new(
-                    x + paste.Destination.X,
-                    y + paste.Destination.Y,
-                    Math.Max(1, paste.SourceSize.X),
-                    Math.Max(1, paste.SourceSize.Y));
-                DrawFilledBorder(pasteBounds, Color.LightGray * 0.55f, Color.Black * 0.45f);
+                if (paste.Role != "background" && paste.Role != "shopSkin")
+                {
+                    Rectangle pasteBounds = new(
+                        x + paste.Destination.X,
+                        y + paste.Destination.Y,
+                        Math.Max(1, paste.SourceSize.X),
+                        Math.Max(1, paste.SourceSize.Y));
+                    DrawFilledBorder(pasteBounds, Color.LightGray * 0.55f, Color.Black * 0.45f);
+                }
             }
 
             for (int i = 0; i < state.TitleLines.Count && i < state.Composition.TitleLineYOffsets.Count; i++)
@@ -240,6 +256,11 @@ namespace HaCreator.MapSimulator
 
             ChatBalloonCanvasPasteEntry countPaste = state.Composition.PastedCanvases
                 .FirstOrDefault(static paste => paste.Role == "currentCount");
+            if (!string.IsNullOrEmpty(countPaste.SourcePath))
+            {
+                return;
+            }
+
             Point countDestination = countPaste.SourcePath == null
                 ? new Point(8, Math.Max(8, height - 16))
                 : countPaste.Destination;
@@ -247,6 +268,66 @@ namespace HaCreator.MapSimulator
                 $"{state.CurrentUserText}/{state.MaxUserText}",
                 new Vector2(x + countDestination.X, y + countDestination.Y + 13),
                 Color.Black);
+        }
+
+        private bool TryResolveChatBalloonPresentationCanvasTexture(string canvasPath, out Texture2D texture)
+        {
+            texture = null;
+            if (string.IsNullOrWhiteSpace(canvasPath)
+                || GraphicsDevice == null
+                || GraphicsDevice.IsDisposed
+                || _missingChatBalloonPresentationCanvasPaths.Contains(canvasPath))
+            {
+                return false;
+            }
+
+            if (!TryResolveChatBalloonPresentationCanvasProperty(canvasPath, out WzCanvasProperty canvasProperty))
+            {
+                _missingChatBalloonPresentationCanvasPaths.Add(canvasPath);
+                return false;
+            }
+
+            texture = LoadUiCanvasTexture(canvasProperty);
+            if (texture == null || texture.IsDisposed)
+            {
+                _missingChatBalloonPresentationCanvasPaths.Add(canvasPath);
+                texture = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryResolveChatBalloonPresentationCanvasProperty(string canvasPath, out WzCanvasProperty canvasProperty)
+        {
+            canvasProperty = null;
+            string[] pathSegments = canvasPath
+                .Trim()
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (pathSegments.Length < 3)
+            {
+                return false;
+            }
+
+            WzObject current = global::HaCreator.Program.FindWzObject(pathSegments[0], pathSegments[1]);
+            if (current == null)
+            {
+                return false;
+            }
+
+            if (current is WzImage image)
+            {
+                image.ParseImage();
+            }
+
+            for (int i = 2; i < pathSegments.Length && current != null; i++)
+            {
+                current = current[pathSegments[i]];
+            }
+
+            canvasProperty = current as WzCanvasProperty;
+            return canvasProperty != null;
         }
 
         private void DrawFilledBorder(Rectangle bounds, Color fill, Color border)

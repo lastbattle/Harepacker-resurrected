@@ -142,6 +142,10 @@ namespace HaCreator.MapSimulator.UI
         string Title,
         string Body,
         string Footer,
+        SharedFadeYesNoVisualProfile VisualProfile,
+        SharedFadeYesNoPayloadProfile PayloadProfile,
+        SharedFadeYesNoNativeCreateProfile NativeCreateProfile,
+        SharedFadeYesNoNativeCallbackProfile NativeCallbackProfile,
         InGameConfirmDialogPresentation Presentation,
         Action ConfirmAction,
         Action CancelAction);
@@ -355,12 +359,17 @@ namespace HaCreator.MapSimulator.UI
                     string.Empty,
                     string.Empty,
                     string.Empty,
+                    ResolveVisualProfile(SharedFadeYesNoModalType.Generic, quickDelivery: false),
+                    ResolvePayloadProfile(SharedFadeYesNoModalType.Generic),
+                    ResolveNativeCreateProfile(SharedFadeYesNoModalType.Generic, quickDelivery: false),
+                    ResolveNativeCallbackProfile(SharedFadeYesNoModalType.Generic, quickDelivery: false),
                     null,
                     null,
                     null);
             }
 
             SharedFadeYesNoResolvedText resolvedText = ResolveDisplayText(_activeRequest);
+            bool gameOptionEnabled = _activeRequest.PayloadFields?.GameOptionEnabled ?? true;
             return new SharedFadeYesNoModalSnapshot(
                 true,
                 ActiveType,
@@ -377,6 +386,10 @@ namespace HaCreator.MapSimulator.UI
                 resolvedText.Title,
                 resolvedText.Body,
                 resolvedText.Footer,
+                ResolveVisualProfile(ActiveType, _activeRequest.QuickDelivery),
+                ResolvePayloadProfile(ActiveType),
+                ResolveNativeCreateProfile(ActiveType, _activeRequest.QuickDelivery),
+                ResolveNativeCallbackProfile(ActiveType, _activeRequest.QuickDelivery, gameOptionEnabled),
                 _activeRequest.Presentation,
                 _activeRequest.ConfirmAction,
                 _activeRequest.CancelAction);
@@ -696,11 +709,6 @@ namespace HaCreator.MapSimulator.UI
                 return "CFadeWnd/CUIFadeYesNo owner inactive.";
             }
 
-            SharedFadeYesNoVisualProfile visualProfile = ResolveVisualProfile(snapshot.Type, snapshot.QuickDelivery);
-            SharedFadeYesNoPayloadProfile payloadProfile = ResolvePayloadProfile(snapshot.Type);
-            SharedFadeYesNoNativeCreateProfile createProfile = ResolveNativeCreateProfile(snapshot.Type, snapshot.QuickDelivery);
-            SharedFadeYesNoNativeCallbackProfile callbackProfile = ResolveNativeCallbackProfile(snapshot.Type, snapshot.QuickDelivery);
-
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "{0}; create={15}; type={16}; phase={1}; stack={2}; pending={3}; lifetime={4}/native={25}; frame={11}({12}x{13}) string=0x{26:X}; icon={14} string={27}; text=({17},{18})/({19},{20}); strings=0x{21:X}/{22}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}; accept={23}; cancel={24}.",
@@ -715,27 +723,27 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.ButtonLayout.CancelId,
                 snapshot.ButtonLayout.CancelY,
                 snapshot.ButtonLayout.ShowsOkButton,
-                visualProfile.FrameName,
-                visualProfile.NativeWidth,
-                visualProfile.NativeHeight,
-                visualProfile.IconName ?? "none",
-                payloadProfile.CreateFunction,
-                payloadProfile.NativeTypeId,
-                payloadProfile.PrimaryTextX,
-                payloadProfile.PrimaryTextY,
-                payloadProfile.SecondaryTextX,
-                payloadProfile.SecondaryTextY,
-                payloadProfile.PrimaryStringPoolId,
-                payloadProfile.SecondaryStringPoolId < 0
+                snapshot.VisualProfile.FrameName,
+                snapshot.VisualProfile.NativeWidth,
+                snapshot.VisualProfile.NativeHeight,
+                snapshot.VisualProfile.IconName ?? "none",
+                snapshot.PayloadProfile.CreateFunction,
+                snapshot.PayloadProfile.NativeTypeId,
+                snapshot.PayloadProfile.PrimaryTextX,
+                snapshot.PayloadProfile.PrimaryTextY,
+                snapshot.PayloadProfile.SecondaryTextX,
+                snapshot.PayloadProfile.SecondaryTextY,
+                snapshot.PayloadProfile.PrimaryStringPoolId,
+                snapshot.PayloadProfile.SecondaryStringPoolId < 0
                     ? "none"
-                    : "0x" + payloadProfile.SecondaryStringPoolId.ToString("X", CultureInfo.InvariantCulture),
-                callbackProfile.Accept.Route,
-                callbackProfile.Cancel.Route,
-                createProfile.NativeLifetimeMilliseconds,
-                createProfile.FrameStringPoolId,
-                createProfile.IconStringPoolId < 0
+                    : "0x" + snapshot.PayloadProfile.SecondaryStringPoolId.ToString("X", CultureInfo.InvariantCulture),
+                snapshot.NativeCallbackProfile.Accept.Route,
+                snapshot.NativeCallbackProfile.Cancel.Route,
+                snapshot.NativeCreateProfile.NativeLifetimeMilliseconds,
+                snapshot.NativeCreateProfile.FrameStringPoolId,
+                snapshot.NativeCreateProfile.IconStringPoolId < 0
                     ? "none"
-                    : "0x" + createProfile.IconStringPoolId.ToString("X", CultureInfo.InvariantCulture));
+                    : "0x" + snapshot.NativeCreateProfile.IconStringPoolId.ToString("X", CultureInfo.InvariantCulture));
         }
 
         private static SharedFadeYesNoPayloadProfile CenteredInvitePayload(

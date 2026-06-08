@@ -901,8 +901,10 @@ namespace HaCreator.MapSimulator.AI
             if (availableSkillIndex >= 0 &&
                 ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
             {
-                StartSkill(availableSkillIndex, currentTick);
-                return;
+                if (StartAutoSelectedSkill(availableSkillIndex, currentTick))
+                {
+                    return;
+                }
             }
 
             if (availableAttackIndex >= 0)
@@ -2141,6 +2143,22 @@ namespace HaCreator.MapSimulator.AI
             return TryStartSkill(skillIndex, currentTick, requireSelectionGates: false);
         }
 
+        private bool StartAutoSelectedSkill(int skillIndex, int currentTick)
+        {
+            if (skillIndex < 0 || skillIndex >= _skills.Count)
+            {
+                return false;
+            }
+
+            MobSkillEntry skill = _skills[skillIndex];
+            if (!CanStartAutoSelectedSkill(skill, currentTick))
+            {
+                return false;
+            }
+
+            return TryStartSkill(skillIndex, currentTick, requireSelectionGates: false);
+        }
+
         private bool TryStartSkill(int skillIndex, int currentTick, bool requireSelectionGates)
         {
             if (skillIndex < 0 || skillIndex >= _skills.Count)
@@ -2182,6 +2200,26 @@ namespace HaCreator.MapSimulator.AI
             }
 
             return _skillForbidUntil == 0 || HasClientTickReached(currentTick, _skillForbidUntil);
+        }
+
+        private bool CanStartAutoSelectedSkill(MobSkillEntry skill, int currentTick)
+        {
+            if (skill == null ||
+                IsDoomed ||
+                IsSealed ||
+                HasStatusEffect(MobStatusEffect.SealSkill) ||
+                !_target.IsValid ||
+                (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
+            {
+                return false;
+            }
+
+            if (_skillForbidUntil != 0 && !HasClientTickReached(currentTick, _skillForbidUntil))
+            {
+                return false;
+            }
+
+            return CanAutoSelectSkill(skill, currentTick);
         }
 
         private int FindSkillIndex(int skillId, int level)
@@ -2241,7 +2279,10 @@ namespace HaCreator.MapSimulator.AI
             if (availableSkillIndex >= 0 &&
                 ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
             {
-                return StartSkill(availableSkillIndex, currentTick);
+                if (StartAutoSelectedSkill(availableSkillIndex, currentTick))
+                {
+                    return true;
+                }
             }
 
             if (availableAttackIndex >= 0)
@@ -2519,6 +2560,11 @@ namespace HaCreator.MapSimulator.AI
         private int GetStatusPercent(MobStatusEffect effect)
         {
             return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? entry.Value : 0;
+        }
+
+        internal int GetClientStatusPercentForDamageFormula(MobStatusEffect effect)
+        {
+            return GetStatusPercent(effect);
         }
 
         private int GetStatusPercentOrDefault(MobStatusEffect effect, int defaultValue)

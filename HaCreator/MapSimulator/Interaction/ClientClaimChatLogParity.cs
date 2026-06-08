@@ -12,6 +12,65 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal const int ClientClaimChatLogCharacterBudget = 1600;
 
+        internal static bool TryAddCharacterName(
+            IList<string> characterNames,
+            string characterName,
+            string localCharacterName)
+        {
+            if (characterNames == null)
+            {
+                return false;
+            }
+
+            string candidate = characterName ?? string.Empty;
+            if (string.Equals(candidate, localCharacterName ?? string.Empty, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            for (int i = characterNames.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(characterNames[i] ?? string.Empty, candidate, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            characterNames.Add(candidate);
+            return true;
+        }
+
+        internal static IReadOnlyList<string> BuildCharacterNameCandidates(
+            IList<string> storedChatLines,
+            string explicitCharacterName,
+            string localCharacterName)
+        {
+            List<string> characterNames = new List<string>();
+            if (!string.IsNullOrEmpty(explicitCharacterName))
+            {
+                TryAddCharacterName(characterNames, explicitCharacterName, localCharacterName);
+                return characterNames;
+            }
+
+            if (storedChatLines == null || storedChatLines.Count == 0)
+            {
+                return characterNames;
+            }
+
+            for (int i = storedChatLines.Count - 1; i >= 0; i--)
+            {
+                string characterName = ExtractCharacterName(storedChatLines[i] ?? string.Empty);
+                if (string.IsNullOrEmpty(characterName))
+                {
+                    continue;
+                }
+
+                TryAddCharacterName(characterNames, characterName, localCharacterName);
+            }
+
+            return characterNames;
+        }
+
         internal static ClientClaimChatLogResult BuildChatLogOfTwoCharacters(
             IList<string> storedChatLines,
             string targetCharacterName,

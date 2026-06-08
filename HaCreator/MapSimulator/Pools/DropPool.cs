@@ -114,6 +114,14 @@ namespace HaCreator.MapSimulator.Pools
         public bool Success => Drop != null && FailureReason == DropPickupFailureReason.None;
     }
 
+    public readonly record struct PetPickupCapabilities(
+        bool PickupMeso,
+        bool PickupItems,
+        bool PickupOthers)
+    {
+        public static PetPickupCapabilities Full { get; } = new(true, true, true);
+    }
+
     /// <summary>
     /// Drop state for animation
     /// </summary>
@@ -1831,9 +1839,10 @@ namespace HaCreator.MapSimulator.Pools
             int playerId,
             int currentTime,
             float petPickupRange = 0,
-            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
         {
-            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange, pickupValidator).Drop;
+            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange, pickupValidator, capabilities).Drop;
         }
 
         public DropPickupAttemptResult TryPickUpDropByPetDetailed(
@@ -1843,7 +1852,8 @@ namespace HaCreator.MapSimulator.Pools
             int playerId,
             int currentTime,
             float petPickupRange = 0,
-            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
         {
             if (petPickupRange <= 0)
                 petPickupRange = PET_PICKUP_RANGE;
@@ -1852,6 +1862,7 @@ namespace HaCreator.MapSimulator.Pools
             DropItem selectedDrop = null;
             DropItem firstFailureDrop = null;
             DropPickupFailureReason firstFailureReason = DropPickupFailureReason.NoDropInRange;
+            PetPickupCapabilities resolvedCapabilities = capabilities ?? PetPickupCapabilities.Full;
 
             foreach (var drop in _activeDrops)
             {
@@ -1878,7 +1889,7 @@ namespace HaCreator.MapSimulator.Pools
                         ClientPetPickupBottomOffset))
                     continue;
 
-                DropPickupFailureReason petGateFailureReason = ResolvePetPickupFailureReason(drop, playerId, currentTime);
+                DropPickupFailureReason petGateFailureReason = ResolvePetPickupFailureReason(drop, playerId, currentTime, resolvedCapabilities);
                 if (petGateFailureReason != DropPickupFailureReason.None)
                 {
                     if (petGateFailureReason != DropPickupFailureReason.NoDropInRange && firstFailureDrop == null)
@@ -2056,15 +2067,27 @@ namespace HaCreator.MapSimulator.Pools
             float playerY,
             int currentTime,
             float deltaTime,
-            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null,
+            PetPickupCapabilities? capabilities = null)
         {
+            PetPickupCapabilities resolvedCapabilities = capabilities ?? PetPickupCapabilities.Full;
+
             // Check if pet already has a target
             if (_petTargets.TryGetValue(petId, out var existingTarget))
             {
                 var targetDrop = GetDrop(existingTarget.DropId);
 
                 // Validate target still exists and is pickupable
-                if (targetDrop != null && targetDrop.State == DropState.Idle && targetDrop.CanPickup)
+                if (targetDrop != null
+                    && targetDrop.State == DropState.Idle
+                    && targetDrop.CanPickup
+                    && !IsClientPickupBlocked(targetDrop)
+                    && ResolvePetPickupFailureReason(targetDrop, playerId, currentTime, resolvedCapabilities) == DropPickupFailureReason.None
+                    && !IsInExceptionList(targetDrop)
+                    && (pickupValidator?.Invoke(targetDrop)
+                        ?? _petPickupAvailabilityEvaluator?.Invoke(targetDrop)
+                        ?? _pickupAvailabilityEvaluator?.Invoke(targetDrop)
+                        ?? DropPickupFailureReason.None) == DropPickupFailureReason.None)
                 {
                     // Update target position
                     existingTarget.TargetX = targetDrop.X;
@@ -2105,7 +2128,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsClientPickupBlocked(drop))
                     continue;
 
-                if (!CanPetPickup(drop, playerId, currentTime))
+                if (ResolvePetPickupFailureReason(drop, playerId, currentTime, resolvedCapabilities) != DropPickupFailureReason.None)
                     continue;
 
                 // Check exception list
@@ -3157,6 +3180,15 @@ namespace HaCreator.MapSimulator.Pools
 
         internal DropPickupFailureReason ResolvePetPickupFailureReason(DropItem drop, int ownerId, int currentTime)
         {
+            return ResolvePetPickupFailureReason(drop, ownerId, currentTime, PetPickupCapabilities.Full);
+        }
+
+        internal DropPickupFailureReason ResolvePetPickupFailureReason(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            PetPickupCapabilities capabilities)
+        {
             if (drop == null || !drop.IsReal)
             {
                 return DropPickupFailureReason.NoDropInRange;
@@ -3167,9 +3199,101 @@ namespace HaCreator.MapSimulator.Pools
                 return DropPickupFailureReason.PetPickupBlocked;
             }
 
-            return IsPlayerOwnershipBlocked(drop, ownerId, currentTime)
+            DropPickupFailureReason capabilityFailureReason =
+                ResolveClientPetPickupCapabilityFailure(drop, ownerId, currentTime, capabilities);
+            if (capabilityFailureReason != DropPickupFailureReason.None)
+            {
+                return capabilityFailureReason;
+            }
+
+            return IsPetOwnershipBlocked(drop, ownerId, currentTime, capabilities.PickupOthers)
                 ? DropPickupFailureReason.OwnershipRestricted
                 : DropPickupFailureReason.None;
+        }
+
+        internal DropPickupFailureReason ResolveClientPetPickupCapabilityFailure(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            PetPickupCapabilities capabilities)
+        {
+            if (drop == null)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (drop.Type == DropType.Meso)
+            {
+                return capabilities.PickupMeso
+                    ? DropPickupFailureReason.None
+                    : DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!capabilities.PickupItems)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!capabilities.PickupOthers
+                && IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(drop, ownerId, currentTime))
+            {
+                return DropPickupFailureReason.OwnershipRestricted;
+            }
+
+            return DropPickupFailureReason.None;
+        }
+
+        private bool IsPetOwnershipBlocked(
+            DropItem drop,
+            int ownerId,
+            int currentTime,
+            bool canPickupOthers)
+        {
+            bool pastPickupOthersThreshold = IsPastPetPickupOthersThreshold(drop, currentTime);
+            if (canPickupOthers && pastPickupOthersThreshold)
+            {
+                return false;
+            }
+
+            if (!IsOwnershipWindowActive(drop, currentTime)
+                && (drop.SourceId == 0 || drop.OwnerId <= 0 || pastPickupOthersThreshold))
+            {
+                return !canPickupOthers
+                    && IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(drop, ownerId, currentTime);
+            }
+
+            return drop.OwnershipType switch
+            {
+                DropOwnershipType.Character => drop.OwnerId != ownerId,
+                DropOwnershipType.Party => !AreActorsPartyLinked(drop.OwnerId, ownerId),
+                _ => false
+            };
+        }
+
+        private static bool IsPastPetPickupOthersThreshold(DropItem drop, int currentTime)
+        {
+            if (drop == null || drop.SourceId == 0 || drop.OwnerId <= 0)
+            {
+                return false;
+            }
+
+            int thresholdTime = drop.OwnerExpireTime > 0
+                ? drop.OwnerExpireTime
+                : drop.SpawnTime + OWNER_PRIORITY_DURATION;
+            return currentTime - thresholdTime > 0;
+        }
+
+        private static bool IsOtherOwnerSourcedDropPastPetPickupOthersThreshold(
+            DropItem drop,
+            int ownerId,
+            int currentTime)
+        {
+            return drop != null
+                && drop.SourceId != 0
+                && drop.OwnerId > 0
+                && ownerId > 0
+                && drop.OwnerId != ownerId
+                && IsPastPetPickupOthersThreshold(drop, currentTime);
         }
 
         private static bool CanMobPickup(DropItem drop)

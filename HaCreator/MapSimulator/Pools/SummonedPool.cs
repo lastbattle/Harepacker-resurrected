@@ -2274,14 +2274,9 @@ namespace HaCreator.MapSimulator.Pools
 
         private static SummonDamageRuntimeRules.BodyContactDamageResult ResolveSummonBodyContactDamage(MobItem mob)
         {
-            bool currentAttackIsMagic = mob?.AI?.GetCurrentAttack()?.MagicAttack == true;
             return SummonDamageRuntimeRules.ResolveBodyContactClientDamageResult(
-                mob?.MobData?.PADamage ?? 0,
-                mob?.AI?.GetCurrentAttack()?.Damage ?? 0,
-                mob?.MobData?.MADamage ?? 0,
-                currentAttackIsMagic,
-                (baseDamage, damageType) =>
-                    mob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? baseDamage);
+                mob,
+                unchecked((uint)Random.Shared.Next(10_000_000)));
         }
 
         private static void ApplySummonBodyContactDamageMetadata(
@@ -4193,6 +4188,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             PacketOwnedExpiryTargetCandidate firstCandidate = default;
             bool hasFirstCandidate = false;
+            int firstSourceOrder = int.MaxValue;
             foreach (PacketOwnedExpiryTargetCandidate candidate in candidates)
             {
                 if (!hasFirstCandidate)
@@ -4201,6 +4197,7 @@ namespace HaCreator.MapSimulator.Pools
                     hasFirstCandidate = true;
                 }
 
+                firstSourceOrder = Math.Min(firstSourceOrder, candidate.SourceOrder);
                 if (IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
                         candidate,
                         wishMobId,
@@ -4208,11 +4205,13 @@ namespace HaCreator.MapSimulator.Pools
                         includeDazzledMob,
                         includeEscortMob))
                 {
-                    return candidate;
+                    return candidate with { SourceOrder = firstSourceOrder };
                 }
             }
 
-            return hasFirstCandidate ? firstCandidate : default;
+            return hasFirstCandidate
+                ? firstCandidate with { SourceOrder = firstSourceOrder }
+                : default;
         }
 
         private static IReadOnlyList<PacketOwnedExpiryTargetCandidate> CoalescePacketOwnedExpiryCandidatesByMobObjectId(
@@ -7115,19 +7114,23 @@ namespace HaCreator.MapSimulator.Pools
                 "pathData",
                 "pathText",
                 "pathPayload",
+                "pathString",
                 "uolData",
                 "uolValue",
                 "uolValueData",
                 "uolText",
                 "uolPayload",
+                "uolString",
                 "sourceValue",
                 "sourceData",
                 "sourceText",
                 "sourcePayload",
+                "sourceString",
                 "hitValue",
                 "hitData",
                 "hitText",
                 "hitPayload",
+                "hitString",
                 "recordValue",
                 "recordData",
                 "recordValues",
@@ -7188,12 +7191,17 @@ namespace HaCreator.MapSimulator.Pools
                 "targetPath",
                 "sourcePath",
                 "sourceText",
+                "sourceString",
                 "srcPath",
                 "hitPath",
+                "hitString",
                 "sHitPath",
+                "sHitString",
                 "effectPath",
                 "assetPath",
                 "uolPath",
+                "uolString",
+                "pathString",
                 "targetUol",
                 "targetUOL",
                 "targetUolPath",

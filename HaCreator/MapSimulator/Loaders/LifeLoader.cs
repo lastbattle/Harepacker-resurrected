@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.Loaders
             public bool InheritsTemplateSpeakConditions { get; init; }
             public bool InheritsTemplateChatBalloon { get; init; }
             public bool UsesTemplateWidthFallback { get; init; }
+            public bool UsesTemplateOwnedChatBalloonArgument { get; init; }
             public bool AppendsReversePlayback { get; init; }
             public bool UsesClientSlotOwner { get; init; }
             public bool RefreshesLastAccessedOnCacheHit { get; init; }
@@ -1266,6 +1267,7 @@ namespace HaCreator.MapSimulator.Loaders
                    || normalizedName == "sourceuolstring"
                    || normalizedName == "sourcepath"
                    || normalizedName == "sourcevalue"
+                   || normalizedName == "sourcedata"
                    || normalizedName == "shit"
                    || normalizedName == "shituol"
                    || normalizedName == "shituolpath"
@@ -1273,6 +1275,8 @@ namespace HaCreator.MapSimulator.Loaders
                    || normalizedName == "hituolpath"
                    || normalizedName == "clientstring"
                    || normalizedName == "clientstringvalue"
+                   || normalizedName == "clientstringdata"
+                   || normalizedName == "clientstringpayload"
                    || normalizedName == "stringvalue"
                    || normalizedName == "rawstring"
                    || normalizedName == "path"
@@ -1292,8 +1296,11 @@ namespace HaCreator.MapSimulator.Loaders
             return normalizedName == "bstr"
                    || normalizedName == "bstrvalue"
                    || normalizedName == "bstrdata"
+                   || normalizedName == "bstrpayload"
                    || normalizedName == "wstr"
                    || normalizedName == "wstrvalue"
+                   || normalizedName == "wstrdata"
+                   || normalizedName == "wstrpayload"
                    || normalizedName == "mwstr"
                    || normalizedName == "mstr"
                    || normalizedName == "mdata"
@@ -1850,6 +1857,8 @@ namespace HaCreator.MapSimulator.Loaders
                                                actionSpeakMetadata?.ChatBalloon == templateSpeakMetadata.ChatBalloon,
                 UsesTemplateWidthFallback = templateSpeakMetadata.Width > 0 &&
                                             actionSpeakWidth == templateSpeakMetadata.Width,
+                UsesTemplateOwnedChatBalloonArgument = actionSpeakMetadata != null &&
+                                                       actionSpeakMetadata.ChatBalloon == templateSpeakMetadata.ChatBalloon,
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
                 UsesClientSlotOwner = usesClientSlotOwner,
                 RefreshesLastAccessedOnCacheHit = usesClientSlotOwner,
@@ -2324,7 +2333,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
-            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.ChatBalloon ?? 0, "chataBalloon", "chatBalloon"));
+            int parentChatBalloon = Math.Max(0, templateMetadata?.ChatBalloon ?? 0);
             int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
             int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
             int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.Width ?? 0, "width", "nWidth"));
@@ -2378,7 +2387,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
-            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.ChatBalloon ?? 0, "chataBalloon", "chatBalloon"));
+            int parentChatBalloon = Math.Max(0, templateMetadata?.ChatBalloon ?? 0);
             int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
             int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
             int parentWidth = Math.Max(0, ReadOptionalInt(speakNode, templateMetadata?.Width ?? 0, "width", "nWidth"));
@@ -2401,7 +2410,7 @@ namespace HaCreator.MapSimulator.Loaders
                 variants.Add(new MobAnimationSet.ActionSpeakVariant
                 {
                     Probability = Math.Clamp(ReadOptionalInt(variantNode, parentProbability, "prob"), 0, 100),
-                    ChatBalloon = Math.Max(0, ReadOptionalInt(variantNode, parentChatBalloon, "chataBalloon", "chatBalloon")),
+                    ChatBalloon = parentChatBalloon,
                     FloatNotice = Math.Max(0, ReadOptionalInt(variantNode, parentFloatNotice, "floatNotice")),
                     HpThreshold = Math.Max(0, ReadOptionalInt(variantNode, parentHpThreshold, "hp")),
                     Width = Math.Max(0, ReadOptionalInt(variantNode, parentWidth, "width", "nWidth")),

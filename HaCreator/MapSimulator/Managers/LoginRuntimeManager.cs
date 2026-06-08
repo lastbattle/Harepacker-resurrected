@@ -320,6 +320,37 @@ namespace HaCreator.MapSimulator.Managers
             LastEventSummary = "Packet-authored SelectCharacterByVACResult stayed on the active login entry surface.";
         }
 
+        public void ApplySelectCharacterResultProfile(
+            LoginSelectCharacterResultProfile profile,
+            int currentTickCount)
+        {
+            // Client evidence: CLogin::OnSelectCharacterResult clears m_bRequestSent
+            // before branching on success, title-return failures, or local notice failures.
+            RequestSent = false;
+
+            if (profile == null)
+            {
+                LastEventSummary = "Received SelectCharacterResult without a decoded packet profile.";
+                return;
+            }
+
+            if (profile.IsSuccess)
+            {
+                FieldEntryRequested = true;
+                ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterResult");
+                Update(currentTickCount);
+                return;
+            }
+
+            if (profile.ReturnsToTitle)
+            {
+                ForceStep(LoginStep.Title, "Packet-authored SelectCharacterResult returned the login flow to title.");
+                return;
+            }
+
+            LastEventSummary = "Packet-authored SelectCharacterResult stayed on the active character-entry surface.";
+        }
+
         public string DescribeStatus()
         {
             var builder = new StringBuilder();

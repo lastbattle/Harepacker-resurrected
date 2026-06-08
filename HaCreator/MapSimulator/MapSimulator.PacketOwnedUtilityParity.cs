@@ -534,7 +534,13 @@ namespace HaCreator.MapSimulator
             int ComputedTextHeight = 0,
             int TutorFontSlotCount = 0,
             int LayerOriginX = 0,
-            int LayerOriginY = 0);
+            int LayerOriginY = 0,
+            int TextAnalyzerMargin = 0,
+            int TextDrawOffsetX = 0,
+            int TextDrawOffsetY = 0,
+            int TextLineCount = 0,
+            int TextRunCount = 0,
+            bool UsesManagedTextAnalyzerApproximation = false);
 
         internal readonly record struct PacketOwnedTutorBalloonCanvasDrawOperation(
             string PartName,
@@ -11009,6 +11015,15 @@ namespace HaCreator.MapSimulator
                 $"CParcelDlg packet {alarmPrompt.PacketSubtype.ToString(CultureInfo.InvariantCulture)} CUIFadeYesNo parcel alarm.",
                 onConfirm: () =>
                 {
+                    if (alarmPrompt.IsQuickDelivery)
+                    {
+                        string dispatchStatus = DispatchPacketOwnedAccountMoreInfoClientRequest(
+                            70,
+                            new byte[] { 0, 0xFF, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0 },
+                            "CUIFadeYesNo::CreateParcelAlarm quick-delivery accept");
+                        ShowUtilityFeedbackMessage(dispatchStatus);
+                    }
+
                     TryOpenFieldRestrictedWindow(
                         MapSimulatorWindowNames.MemoMailbox,
                         inheritDirectionModeOwner: true,
@@ -11017,7 +11032,13 @@ namespace HaCreator.MapSimulator
                             : ParcelDialogTab.Receive));
                 },
                 onCancel: null,
-                presentation: confirmDialogWindow.CreateParcelAlarmPresentation());
+                presentation: confirmDialogWindow.CreateParcelAlarmPresentation(),
+                fadeYesNoType: SharedFadeYesNoModalType.ParcelAlarm,
+                fadeYesNoLifetimeMilliseconds: alarmPrompt.LifetimeMilliseconds,
+                fadeYesNoQuickDelivery: alarmPrompt.IsQuickDelivery,
+                fadeYesNoPayloadFields: new SharedFadeYesNoPayloadFields(
+                    RequesterName: alarmPrompt.Sender,
+                    Message: body));
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,
                 confirmDialogWindow,
@@ -17132,7 +17153,9 @@ namespace HaCreator.MapSimulator
                         displayVariant,
                         displayMessage,
                         requestedWidth,
-                        contentHeight);
+                        contentHeight,
+                        lines.Length,
+                        lines.Sum(line => line.Runs?.Length ?? 0));
                 return;
             }
 
@@ -17724,7 +17747,9 @@ namespace HaCreator.MapSimulator
             TutorVariantSnapshot displayVariant,
             TutorMessageSnapshot displayMessage,
             int requestedWidth,
-            int computedTextHeight)
+            int computedTextHeight,
+            int textLineCount = 0,
+            int textRunCount = 0)
         {
             int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(displayVariant.SkillId)
                 ? displayVariant.SkillId
@@ -17774,7 +17799,13 @@ namespace HaCreator.MapSimulator
                     TutorRuntime.MinTextWidth,
                     TutorRuntime.MaxTextWidth),
                 ComputedTextHeight: Math.Max(0, computedTextHeight),
-                TutorFontSlotCount: PacketOwnedTutorFontSlotCount);
+                TutorFontSlotCount: PacketOwnedTutorFontSlotCount,
+                TextAnalyzerMargin: 0,
+                TextDrawOffsetX: PacketOwnedTutorBalloonClientLeftInset,
+                TextDrawOffsetY: PacketOwnedTutorBalloonClientTopInset,
+                TextLineCount: Math.Max(0, textLineCount),
+                TextRunCount: Math.Max(0, textRunCount),
+                UsesManagedTextAnalyzerApproximation: !string.IsNullOrEmpty(displayMessage.MessageText));
         }
 
         internal static Point ResolvePacketOwnedTutorTextMessageLayerSize(int requestedWidth, int computedTextHeight)

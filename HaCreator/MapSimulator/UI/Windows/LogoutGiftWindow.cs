@@ -253,7 +253,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawEntry(SpriteBatch sprite, LogoutGiftEntrySnapshot entry, int index)
         {
-            Rectangle slotBounds = GetSlotBounds(index);
             Rectangle iconBounds = GetClientIconBounds(Position, index);
             Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index, _buttonSkin);
             bool selected = index == _pendingSelectionIndex;
@@ -262,13 +261,15 @@ namespace HaCreator.MapSimulator.UI
             Color fill = selected ? new Color(255, 241, 194) : new Color(238, 228, 207);
             Color border = selected ? new Color(198, 142, 76) : new Color(163, 134, 103);
 
-            if (!_hasAuthoredFrameTexture || selected)
+            if (!_hasAuthoredFrameTexture && ShouldDrawFallbackSlotFrame())
             {
-                sprite.Draw(_pixel, slotBounds, selected ? new Color(255, 244, 212, 210) : new Color(238, 228, 207, 110));
-                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, slotBounds.Width, 1), border);
-                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Bottom - 1, slotBounds.Width, 1), border);
-                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, 1, slotBounds.Height), border);
-                sprite.Draw(_pixel, new Rectangle(slotBounds.Right - 1, slotBounds.Y, 1, slotBounds.Height), border);
+                Rectangle slotBounds = GetSlotBounds(index);
+                Color slotBorder = new(163, 134, 103);
+                sprite.Draw(_pixel, slotBounds, new Color(238, 228, 207, 110));
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, slotBounds.Width, 1), slotBorder);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Bottom - 1, slotBounds.Width, 1), slotBorder);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, 1, slotBounds.Height), slotBorder);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.Right - 1, slotBounds.Y, 1, slotBounds.Height), slotBorder);
             }
 
             Texture2D icon = ResolveItemIcon(entry.ItemId);
@@ -660,6 +661,16 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveClientUpdateEnabledChildControlCount()
         {
             return ClientSelectButtonCount;
+        }
+
+        internal static bool ShouldDrawClientSelectionSlotOverlay()
+        {
+            return false;
+        }
+
+        private static bool ShouldDrawFallbackSlotFrame()
+        {
+            return !ShouldDrawClientSelectionSlotOverlay();
         }
 
         internal static bool TryResolveClientSelectButtonIndex(int buttonId, out int index)

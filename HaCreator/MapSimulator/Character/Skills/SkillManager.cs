@@ -145,6 +145,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int TemporaryStatViewParentLayerReferenceCount { get; init; }
             public int TemporaryStatViewMainLayerReferenceCount { get; init; }
             public int TemporaryStatViewShadowLayerReferenceCount { get; init; }
+            public int TemporaryStatViewIconCanvasIdentity { get; init; }
+            public int TemporaryStatViewMainLayerCreateResultIdentity { get; init; }
+            public int TemporaryStatViewMainLayerOriginVectorIdentity { get; init; }
+            public int TemporaryStatViewMainLayerInsertResultVariantIdentity { get; init; }
+            public int TemporaryStatViewShadowLayerCreateResultIdentity { get; init; }
+            public int TemporaryStatViewShadowLayerOriginVectorIdentity { get; init; }
             public string TemporaryStatViewOwnerName { get; init; } = string.Empty;
             public string TemporaryStatViewParentLayerName { get; init; } = string.Empty;
             public string TemporaryStatViewMainLayerName { get; init; } = string.Empty;
@@ -547,6 +553,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int MoveActionRawCode,
             int ActionSpeedDegree,
             int SwallowMobId);
+        internal const int ClientDoActivePreparePacketOpcode = 105;
         public readonly record struct ClientDoActiveTownPortalPacketPayload(
             int RequestTime,
             int SkillId,
@@ -1072,6 +1079,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             (MapleWarriorBuffLabel, new[] { "maple warrior", "echo of hero", "echo of the hero" }),
             (DashBuffLabel, new[] { "dash activation", "temporarily boost speed and jump" }),
             (CombatOrdersBuffLabel, new[] { "combat orders", "bonus skill level", "all skill levels" }),
+            (ElementalResetBuffLabel, new[] { "elemental attributes", "magic attributes", "elemental decrease", "elemental reset" }),
             (InfinityBuffLabel, new[] { "infinity", "use skills without spending mana", "damage of all attack magic" }),
             (FinalCutBuffLabel, new[] { "final cut", "damage bonus for a while", "damage increase" }),
             (ComboDrainBuffLabel, new[] { "combo drain", "restores", "restored hp" }),
@@ -5910,6 +5918,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             int temporaryStatViewShadowLayerParentIdentity = continuesSameObject
                 ? previousState.TemporaryStatViewShadowLayerParentIdentity
                 : temporaryStatViewParentLayerIdentity;
+            int temporaryStatViewIconCanvasIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewIconCanvasIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 1);
+            int temporaryStatViewMainLayerCreateResultIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewMainLayerCreateResultIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 2);
+            int temporaryStatViewMainLayerOriginVectorIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewMainLayerOriginVectorIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 3);
+            int temporaryStatViewMainLayerInsertResultVariantIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewMainLayerInsertResultVariantIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 4);
+            int temporaryStatViewShadowLayerCreateResultIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewShadowLayerCreateResultIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 5);
+            int temporaryStatViewShadowLayerOriginVectorIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewShadowLayerOriginVectorIdentity
+                : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 6);
             int temporaryStatViewListCount = continuesSameObject
                 ? Math.Max(1, previousState.TemporaryStatViewListCount)
                 : 1;
@@ -6026,6 +6052,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewMainLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewShadowLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
+                TemporaryStatViewIconCanvasIdentity = temporaryStatViewIconCanvasIdentity,
+                TemporaryStatViewMainLayerCreateResultIdentity = temporaryStatViewMainLayerCreateResultIdentity,
+                TemporaryStatViewMainLayerOriginVectorIdentity = temporaryStatViewMainLayerOriginVectorIdentity,
+                TemporaryStatViewMainLayerInsertResultVariantIdentity = temporaryStatViewMainLayerInsertResultVariantIdentity,
+                TemporaryStatViewShadowLayerCreateResultIdentity = temporaryStatViewShadowLayerCreateResultIdentity,
+                TemporaryStatViewShadowLayerOriginVectorIdentity = temporaryStatViewShadowLayerOriginVectorIdentity,
                 TemporaryStatViewOwnerName = TemporaryStatViewClientOwnerName,
                 TemporaryStatViewParentLayerName = TemporaryStatViewClientParentLayerName,
                 TemporaryStatViewMainLayerName = TemporaryStatViewClientMainLayerName,
@@ -6160,6 +6192,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        internal static int ResolveTemporaryStatViewNativeLocalIdentityForParity(int ownerIdentity, int localOrdinal)
+        {
+            unchecked
+            {
+                int normalizedOwnerIdentity = Math.Max(1, ownerIdentity);
+                int normalizedLocalOrdinal = Math.Max(1, localOrdinal);
+                int identity = ((normalizedOwnerIdentity * 131) + normalizedLocalOrdinal) & 0x7FFFFFFF;
+                return identity == 0 ? normalizedLocalOrdinal : identity;
+            }
+        }
+
         internal static string ResolveTemporaryStatViewShadowCanvasPathForParity(int shadowIndex)
         {
             // WZ v95 authors only TemporaryStatView/1. Keep the recovered
@@ -6267,6 +6310,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewParentLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
                 TemporaryStatViewMainLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewMainLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
                 TemporaryStatViewShadowLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewShadowLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
+                TemporaryStatViewIconCanvasIdentity = (passiveState?.TemporaryStatViewIconCanvasIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewIconCanvasIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 1),
+                TemporaryStatViewMainLayerCreateResultIdentity = (passiveState?.TemporaryStatViewMainLayerCreateResultIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewMainLayerCreateResultIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 2),
+                TemporaryStatViewMainLayerOriginVectorIdentity = (passiveState?.TemporaryStatViewMainLayerOriginVectorIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewMainLayerOriginVectorIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 3),
+                TemporaryStatViewMainLayerInsertResultVariantIdentity = (passiveState?.TemporaryStatViewMainLayerInsertResultVariantIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewMainLayerInsertResultVariantIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 4),
+                TemporaryStatViewShadowLayerCreateResultIdentity = (passiveState?.TemporaryStatViewShadowLayerCreateResultIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewShadowLayerCreateResultIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 5),
+                TemporaryStatViewShadowLayerOriginVectorIdentity = (passiveState?.TemporaryStatViewShadowLayerOriginVectorIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewShadowLayerOriginVectorIdentity
+                    : ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 6),
                 TemporaryStatViewOwnerName = passiveState?.TemporaryStatViewOwnerName ?? TemporaryStatViewClientOwnerName,
                 TemporaryStatViewParentLayerName = passiveState?.TemporaryStatViewParentLayerName ?? TemporaryStatViewClientParentLayerName,
                 TemporaryStatViewMainLayerName = passiveState?.TemporaryStatViewMainLayerName ?? TemporaryStatViewClientMainLayerName,
@@ -6603,6 +6664,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerReferenceCount = 0,
                 TemporaryStatViewMainLayerReferenceCount = 0,
                 TemporaryStatViewShadowLayerReferenceCount = 0,
+                TemporaryStatViewIconCanvasIdentity = previousState.TemporaryStatViewIconCanvasIdentity,
+                TemporaryStatViewMainLayerCreateResultIdentity = previousState.TemporaryStatViewMainLayerCreateResultIdentity,
+                TemporaryStatViewMainLayerOriginVectorIdentity = previousState.TemporaryStatViewMainLayerOriginVectorIdentity,
+                TemporaryStatViewMainLayerInsertResultVariantIdentity = previousState.TemporaryStatViewMainLayerInsertResultVariantIdentity,
+                TemporaryStatViewShadowLayerCreateResultIdentity = previousState.TemporaryStatViewShadowLayerCreateResultIdentity,
+                TemporaryStatViewShadowLayerOriginVectorIdentity = previousState.TemporaryStatViewShadowLayerOriginVectorIdentity,
                 TemporaryStatViewOwnerName = previousState.TemporaryStatViewOwnerName,
                 TemporaryStatViewParentLayerName = previousState.TemporaryStatViewParentLayerName,
                 TemporaryStatViewMainLayerName = previousState.TemporaryStatViewMainLayerName,
@@ -6973,6 +7040,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewMainLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewShadowLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
+                TemporaryStatViewIconCanvasIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 1),
+                TemporaryStatViewMainLayerCreateResultIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 2),
+                TemporaryStatViewMainLayerOriginVectorIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 3),
+                TemporaryStatViewMainLayerInsertResultVariantIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 4),
+                TemporaryStatViewShadowLayerCreateResultIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 5),
+                TemporaryStatViewShadowLayerOriginVectorIdentity =
+                    ResolveTemporaryStatViewNativeLocalIdentityForParity(temporaryStatViewOwnerIdentity, 6),
                 TemporaryStatViewOwnerName = TemporaryStatViewClientOwnerName,
                 TemporaryStatViewParentLayerName = TemporaryStatViewClientParentLayerName,
                 TemporaryStatViewMainLayerName = TemporaryStatViewClientMainLayerName,
@@ -8589,6 +8668,125 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FollowOwnerPosition = true,
                 FollowOwnerFacing = true,
                 DelayRateOverride = 1000
+            };
+        }
+
+        internal static bool TryCreateShowRideVehicleEffectRequest(
+            int oldMountItemId,
+            int vehicleItemId,
+            int ownerJobId,
+            int currentTime,
+            out SkillUseEffectRequest request)
+        {
+            request = null;
+            if (vehicleItemId <= 0)
+            {
+                return false;
+            }
+
+            if (TryCreateRideVehicleTemporaryStatSetSkillUseEffectRequest(
+                    oldMountItemId,
+                    vehicleItemId,
+                    currentTime,
+                    out request))
+            {
+                return true;
+            }
+
+            int effectSkillId = ResolveShowRideVehicleEffectSkillId(vehicleItemId, ownerJobId);
+            if (effectSkillId <= 0)
+            {
+                return false;
+            }
+
+            request = new SkillUseEffectRequest
+            {
+                EffectSkillId = effectSkillId,
+                SourceSkillId = effectSkillId,
+                RequestTime = currentTime,
+                BranchNames = ResolveShowRideVehicleEffectBranchNames(vehicleItemId),
+                FollowOwnerPosition = true,
+                FollowOwnerFacing = true,
+                DelayRateOverride = 1000
+            };
+            return true;
+        }
+
+        internal static int ResolveShowRideVehicleEffectSkillId(int vehicleItemId, int ownerJobId)
+        {
+            if (vehicleItemId / 10000 == 190)
+            {
+                return ResolveNoviceSkillAsRace(1004, ownerJobId);
+            }
+
+            if (vehicleItemId == BATTLESHIP_TAMING_MOB_ID)
+            {
+                return BATTLESHIP_SKILL_ID;
+            }
+
+            if (ClientOwnedVehicleSkillClassifier.IsEventVehicleType2TamingMobItemId(vehicleItemId))
+            {
+                int vehicleSkillId = ResolveEventVehicleType2SkillId(vehicleItemId);
+                return vehicleSkillId > 0
+                    ? ResolveNoviceSkillAsRace(vehicleSkillId, ownerJobId)
+                    : 0;
+            }
+
+            return 0;
+        }
+
+        private static IReadOnlyList<string> ResolveShowRideVehicleEffectBranchNames(int vehicleItemId)
+        {
+            return vehicleItemId / 10000 == 193
+                ? new[] { "effect", "effect0" }
+                : new[] { "effect" };
+        }
+
+        internal static int ResolveNoviceSkillAsRace(int skillId, int ownerJobId)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            return ownerJobId / 100 == 22 || ownerJobId == 2001
+                ? skillId + 20010000
+                : skillId + 10000000 * (ownerJobId / 1000);
+        }
+
+        internal static int ResolveEventVehicleType2SkillId(int vehicleItemId)
+        {
+            return vehicleItemId switch
+            {
+                1932004 => 1050,
+                1932006 => 1025,
+                1932007 => 1027,
+                1932008 => 1028,
+                1932009 => 1029,
+                1932010 => 1031,
+                1932011 => 1030,
+                1932012 => 1035,
+                1932013 => 1033,
+                1932014 => 1034,
+                1932017 => 1036,
+                1932018 => 1037,
+                1932019 => 1038,
+                1932020 => 1039,
+                1932021 => 1040,
+                1932022 => 1042,
+                1932023 => 1044,
+                1932025 => 1049,
+                1932026 => 1051,
+                1932027 => 1052,
+                1932028 => 1053,
+                1932029 => 1054,
+                1932034 => 1063,
+                1932035 => 1064,
+                1932037 => 1065,
+                1932038 => 1069,
+                1932039 => 1070,
+                1932040 => 1071,
+                _ => 0
             };
         }
 
@@ -12506,7 +12704,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static byte[] EncodeClientDoActivePreparePacketPayloadForTesting(
             ClientDoActivePreparePacketPayload payload)
         {
-            using var stream = new MemoryStream(capacity: payload.SwallowMobId > 0 ? 16 : 12);
+            bool encodeSwallowMobId = payload.SkillId == ClientPrepareSwallowTargetAdmissionSkillId;
+            using var stream = new MemoryStream(capacity: encodeSwallowMobId ? 12 : 8);
             using var writer = new BinaryWriter(stream);
             writer.Write(payload.SkillId);
             writer.Write(unchecked((byte)payload.SkillLevel));
@@ -12514,7 +12713,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 payload.OneTimeAction & 0x7FFF
                 | ((payload.MoveActionRawCode & 1) << 15))));
             writer.Write(unchecked((byte)payload.ActionSpeedDegree));
-            if (payload.SwallowMobId > 0)
+            if (encodeSwallowMobId)
             {
                 writer.Write(payload.SwallowMobId);
             }
@@ -17879,10 +18078,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             // WZ: Skill/3510.img/skill/35101004/info/landingEffect = areaAttack.
-            // Keep sparse runtime metadata on the recovered client landing branch,
-            // but do not let unrelated landing-effect text use Rocket Booster end.
-            return string.IsNullOrWhiteSpace(skill.LandingEffectName)
-                   || string.Equals(skill.LandingEffectName, "areaAttack", StringComparison.OrdinalIgnoreCase);
+            // Keep Rocket Booster end on the explicit recovered landing-effect
+            // owner, and reject sparse/wrong text rows instead of borrowing this
+            // local landing branch for unrelated movement skills.
+            return string.Equals(skill.LandingEffectName, "areaAttack", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool ShouldRequestRocketBoosterRecoveryEffect(SkillData skill)
@@ -20030,7 +20229,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesClientDamageInfoRawDelayedProcess(int skillId)
         {
-            return skillId == 5121007
+            return skillId == 5121004
+                   || skillId == 5121007
                    || skillId == 15111004
                    || skillId == 4221001
                    || skillId == 4221007
@@ -23005,6 +23205,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolveBulletAfterimageRegisterArgumentLayerReleaseCount(repeatLayerObjectId);
             int listNodeObjectId = ResolveBulletAfterimageListNodeObjectId(repeatLayerObjectId);
             int listNodeRefCount = ResolveBulletAfterimageListNodeRefCount(listNodeObjectId);
+            int sourceOriginVectorObjectId = ResolveBulletAfterimageSourceOriginVectorObjectId(sourceLayerObjectId);
             int originVectorObjectId = ResolveBulletAfterimageOriginVectorObjectId(repeatLayerObjectId);
             int alphaVectorObjectId = ResolveBulletAfterimageAlphaVectorObjectId(repeatLayerObjectId);
             int sourceAlphaVectorObjectId = ResolveBulletAfterimageSourceAlphaVectorObjectId(
@@ -23030,6 +23231,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ParentRepeatLayerObjectId = parentRepeatLayerObjectId,
                 SourceLayerObjectId = sourceLayerObjectId,
                 SimulatedListNodeObjectId = listNodeObjectId,
+                SimulatedSourceOriginVectorObjectId = sourceOriginVectorObjectId,
+                SimulatedSourceOriginVectorTemporaryAddRefCount =
+                    ResolveBulletAfterimageSourceOriginVectorTemporaryAddRefCount(sourceOriginVectorObjectId),
+                SimulatedSourceOriginVectorTemporaryReleaseCount =
+                    ResolveBulletAfterimageSourceOriginVectorTemporaryReleaseCount(sourceOriginVectorObjectId),
                 SimulatedOriginVectorObjectId = originVectorObjectId,
                 SimulatedAlphaVectorObjectId = alphaVectorObjectId,
                 SimulatedSourceCanvasObjectId = sourceCanvasObjectId,
@@ -23099,6 +23305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 NativeUpdateOperations = ResolveBulletAfterimageNativeUpdateOperations(
                     sourceLayerObjectId,
                     repeatLayerObjectId,
+                    sourceOriginVectorObjectId,
                     originVectorObjectId,
                     alphaVectorObjectId,
                     sourceAlphaVectorObjectId,
@@ -23553,6 +23760,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return listNodeObjectId > 0 ? 1 : 0;
         }
 
+        internal static int ResolveBulletAfterimageSourceOriginVectorObjectId(int sourceLayerObjectId)
+        {
+            return sourceLayerObjectId > 0
+                ? sourceLayerObjectId + 55000
+                : 0;
+        }
+
         internal static int ResolveBulletAfterimageOriginVectorObjectId(int repeatLayerObjectId)
         {
             return repeatLayerObjectId > 0
@@ -23602,6 +23816,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static int ResolveBulletAfterimageVectorLocalReleaseCount(int vectorObjectId)
         {
             return vectorObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceOriginVectorTemporaryAddRefCount(int sourceOriginVectorObjectId)
+        {
+            return sourceOriginVectorObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceOriginVectorTemporaryReleaseCount(int sourceOriginVectorObjectId)
+        {
+            return sourceOriginVectorObjectId > 0 ? 1 : 0;
         }
 
         internal static int ResolveBulletAfterimageRepeatAnimateMode(int repeatLayerObjectId)
@@ -23672,6 +23896,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static IReadOnlyList<BulletAfterimageNativeUpdateOperation> ResolveBulletAfterimageNativeUpdateOperations(
             int sourceLayerObjectId,
             int repeatLayerObjectId,
+            int sourceOriginVectorObjectId,
             int originVectorObjectId,
             int alphaVectorObjectId,
             int sourceAlphaVectorObjectId,
@@ -23692,10 +23917,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 new(BulletAfterimageNativeUpdateOperationKind.RetainSourceLayer, sourceLayerObjectId, RefCountDelta: 1),
                 new(BulletAfterimageNativeUpdateOperationKind.CreateRepeatLayer, repeatLayerObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: 1),
+                new(BulletAfterimageNativeUpdateOperationKind.RetainSourceOriginVectorTemporary, sourceOriginVectorObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: ResolveBulletAfterimageSourceOriginVectorTemporaryAddRefCount(sourceOriginVectorObjectId)),
                 new(BulletAfterimageNativeUpdateOperationKind.CreateOriginVector, originVectorObjectId, RefCountDelta: originVectorObjectId > 0 ? 1 : 0),
-                new(BulletAfterimageNativeUpdateOperationKind.CopySourceOrigin, originVectorObjectId, RelatedObjectId: sourceLayerObjectId),
-                new(BulletAfterimageNativeUpdateOperationKind.MoveOriginBySourceOffset, originVectorObjectId, RelatedObjectId: sourceLayerObjectId),
+                new(BulletAfterimageNativeUpdateOperationKind.CopySourceOrigin, originVectorObjectId, RelatedObjectId: sourceOriginVectorObjectId),
+                new(BulletAfterimageNativeUpdateOperationKind.MoveOriginBySourceOffset, originVectorObjectId, RelatedObjectId: sourceOriginVectorObjectId),
                 new(BulletAfterimageNativeUpdateOperationKind.AttachOriginVector, repeatLayerObjectId, RelatedObjectId: originVectorObjectId),
+                new(BulletAfterimageNativeUpdateOperationKind.ReleaseSourceOriginVectorTemporary, sourceOriginVectorObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: -ResolveBulletAfterimageSourceOriginVectorTemporaryReleaseCount(sourceOriginVectorObjectId)),
                 new(BulletAfterimageNativeUpdateOperationKind.CopyLayerOverlay, repeatLayerObjectId, RelatedObjectId: sourceLayerObjectId),
                 new(BulletAfterimageNativeUpdateOperationKind.CreateAlphaVector, alphaVectorObjectId, RefCountDelta: alphaVectorObjectId > 0 ? 1 : 0),
                 new(BulletAfterimageNativeUpdateOperationKind.RetainSourceAlphaVectorTemporary, sourceAlphaVectorObjectId, RelatedObjectId: sourceLayerObjectId, RefCountDelta: ResolveBulletAfterimageSourceAlphaVectorTemporaryAddRefCount(sourceAlphaVectorObjectId)),
@@ -25654,14 +25881,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static SummonDamageRuntimeRules.BodyContactDamageResult ResolveSummonBodyContactDamage(MobItem mob)
         {
-            bool currentAttackIsMagic = mob?.AI?.GetCurrentAttack()?.MagicAttack == true;
             return SummonDamageRuntimeRules.ResolveBodyContactClientDamageResult(
-                mob?.MobData?.PADamage ?? 0,
-                mob?.AI?.GetCurrentAttack()?.Damage ?? 0,
-                mob?.MobData?.MADamage ?? 0,
-                currentAttackIsMagic,
-                (baseDamage, damageType) =>
-                    mob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? baseDamage);
+                mob,
+                unchecked((uint)Random.Shared.Next(10_000_000)));
         }
 
         private static void ApplySummonBodyContactDamageMetadata(
@@ -29870,12 +30092,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // WZ: Skill/311.img/skill/3111003/info/rectBasedOnTarget = 1.
             // WZ: Skill/3212.img/skill/32121003/info/rectBasedOnTarget = 1.
+            // IDA: TryDoingBodyAttack also resolves teleport mastery hit points from the
+            // authored affected-area rect before writing ATTACKINFO.ptHit.
             // IDA: TryDoingShootAttack relocates 3111003's rcAffectedArea to the hit point
             // before RegisterFootHoldAnimation instead of replacing it with mob bounds.
             // Keep the target-bound shape scoped to recovered explicit local owner branches.
-            return rectBasedOnTarget
-                   && ((ownerLane == LocalAttackAreaOwnerLane.TryDoingShootAttack && skillId == 3111003)
-                       || (ownerLane == LocalAttackAreaOwnerLane.TryDoingBodyAttack && skillId == 32121003));
+            return (rectBasedOnTarget
+                    && ((ownerLane == LocalAttackAreaOwnerLane.TryDoingShootAttack && skillId == 3111003)
+                        || (ownerLane == LocalAttackAreaOwnerLane.TryDoingBodyAttack && skillId == 32121003)))
+                   || (ownerLane == LocalAttackAreaOwnerLane.TryDoingBodyAttack
+                       && IsClientTeleportMasterySkillId(skillId));
         }
 
         private void TryRegisterSecondaryFootholdOwner(Rectangle worldHitbox, int currentTime, int skillId)
@@ -33898,6 +34124,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(contextualFamilyOwnerLabel, MesoGuardBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, AuraBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, CombatOrdersBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contextualFamilyOwnerLabel, ElementalResetBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, InfinityBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, FinalCutBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contextualFamilyOwnerLabel, ComboDrainBuffLabel, StringComparison.OrdinalIgnoreCase)

@@ -2519,15 +2519,39 @@ namespace HaCreator.MapSimulator
             }
 
             InventoryType decodedInventoryType = (InventoryType)inventoryType;
-            if (decodedInventoryType == expectedScrollInventoryType && fromPosition == currentScrollPosition)
+            if (decodedInventoryType == expectedScrollInventoryType)
             {
-                currentScrollPosition = toPosition;
+                currentScrollPosition = TrackVegaClientInventoryOperationSwappedPosition(
+                    currentScrollPosition,
+                    fromPosition,
+                    toPosition);
             }
 
-            if (decodedInventoryType == expectedModifierInventoryType && fromPosition == currentModifierPosition)
+            if (decodedInventoryType == expectedModifierInventoryType)
             {
-                currentModifierPosition = toPosition;
+                currentModifierPosition = TrackVegaClientInventoryOperationSwappedPosition(
+                    currentModifierPosition,
+                    fromPosition,
+                    toPosition);
             }
+        }
+
+        private static short TrackVegaClientInventoryOperationSwappedPosition(
+            short currentPosition,
+            short fromPosition,
+            short toPosition)
+        {
+            if (currentPosition == fromPosition)
+            {
+                return toPosition;
+            }
+
+            if (currentPosition == toPosition)
+            {
+                return fromPosition;
+            }
+
+            return currentPosition;
         }
 
         private static bool TryReadVegaClientInventoryOperationEquipAddEntry(

@@ -2701,6 +2701,16 @@ namespace HaCreator.MapSimulator.Character
                 : weaponSfx;
         }
 
+        public string GetAfterimageSfxUol()
+        {
+            string weaponSfx = GetWeapon()?.Sfx;
+            string subWeaponSfx = GetSubWeapon()?.Sfx;
+
+            return !string.IsNullOrWhiteSpace(subWeaponSfx)
+                ? subWeaponSfx
+                : weaponSfx;
+        }
+
         public int GetEffectiveWeaponAttackSpeed()
         {
             int weaponAttackSpeed = GetWeapon()?.AttackSpeed ?? 6;
