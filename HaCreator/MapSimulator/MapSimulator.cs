@@ -512,7 +512,7 @@ namespace HaCreator.MapSimulator
             if (Program.InfoManager.BGMs.ContainsKey(_mapBoard.MapInfo.bgm))
             {
                 _currentBgmName = _mapBoard.MapInfo.bgm;
-                _audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[_mapBoard.MapInfo.bgm], true);
+                _audio = new WzSoundResourceStreamer(Program.InfoManager.GetBgm(_mapBoard.MapInfo.bgm), true);
                 if (_audio != null)
                 {
                     _audio.Play();
@@ -1222,7 +1222,7 @@ namespace HaCreator.MapSimulator
                 if (Program.InfoManager.BGMs.ContainsKey(newBgmName))
                 {
                     _currentBgmName = newBgmName;
-                    _audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[newBgmName], true);
+                    _audio = new WzSoundResourceStreamer(Program.InfoManager.GetBgm(newBgmName), true);
                     _audio?.Play();
                 }
                 else
