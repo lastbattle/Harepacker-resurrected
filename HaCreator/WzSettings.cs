@@ -83,6 +83,7 @@ namespace HaCreator
         public static int lastRadioIndex = 3;
         public static bool randomTiles = true;
         public static bool InfoMode = false;
+        public static bool AnimateMapObjectPreviews = true;
         public static int lastDefaultLayer = 0;
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";

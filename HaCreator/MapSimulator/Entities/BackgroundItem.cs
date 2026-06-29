@@ -147,74 +147,80 @@ namespace HaCreator.MapSimulator.Entities
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHorizontalCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simWidth, int x, int y, int _cx, IDXObject frame)
+            int simWidth, int x, int y, int _cx, IDXObject frame, Color color)
         {
             int width = frame.Width;
-            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame, color);
 
             // Draw left copies using bounded for loop
             int copyX = x - _cx;
             for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= _cx)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame, color);
             }
 
             // Draw right copies using bounded for loop
             copyX = x + _cx;
             for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += _cx)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame, color);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawVerticalCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simHeight, int x, int y, int _cy, IDXObject frame)
+            int simHeight, int x, int y, int _cy, IDXObject frame, Color color)
         {
             int height = frame.Height;
-            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame, color);
 
             // Draw top copies using bounded for loop
             int copyY = y - _cy;
             for (int i = 0; i < _cachedMaxVerticalTiles && copyY + height > 0; i++, copyY -= _cy)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame, color);
             }
 
             // Draw bottom copies using bounded for loop
             copyY = y + _cy;
             for (int i = 0; i < _cachedMaxVerticalTiles && copyY < simHeight; i++, copyY += _cy)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame, color);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHVCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simWidth, int simHeight, int x, int y, int _cx, int _cy, IDXObject frame)
+            int simWidth, int simHeight, int x, int y, int _cx, int _cy, IDXObject frame, Color color)
         {
             int width = frame.Width;
-            DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, x, y, _cy, frame);
+            DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, x, y, _cy, frame, color);
 
             // Draw left column copies using bounded for loop
             int copyX = x - _cx;
             for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= _cx)
             {
-                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame);
+                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame, color);
             }
 
             // Draw right column copies using bounded for loop
             copyX = x + _cx;
             for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += _cx)
             {
-                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame);
+                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame, color);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Draw2D(SpriteBatch sprite, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int x, int y, IDXObject frame)
         {
-            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, Color, flip, null);
+            Draw2D(sprite, skeletonRenderer, gameTime, x, y, frame, Color);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Draw2D(SpriteBatch sprite, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int x, int y, IDXObject frame, Color color)
+        {
+            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, color, flip, null);
         }
 
         private int LastShiftIncreaseX = 0;
@@ -242,6 +248,25 @@ namespace HaCreator.MapSimulator.Entities
             RenderParameters renderParameters,
             int TickCount)
         {
+            DrawInternal(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, renderParameters, TickCount, Color);
+        }
+
+        public void DrawPreview(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            RenderParameters renderParameters,
+            int TickCount,
+            Color color)
+        {
+            Color previewColor = new Color(color.R, color.G, color.B, (byte)(color.A * _color.A / byte.MaxValue));
+            DrawInternal(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, renderParameters, TickCount, previewColor);
+        }
+
+        private void DrawInternal(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            RenderParameters renderParameters,
+            int TickCount,
+            Color color)
+        {
             if (((int)renderParameters.Resolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this
                 return;
 
@@ -257,31 +282,31 @@ namespace HaCreator.MapSimulator.Entities
             switch (_type)
             {
                 case BackgroundType.Regular:
-                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, drawFrame);
+                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, drawFrame, color);
                     break;
                 case BackgroundType.HorizontalTiling:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X, Y, cx, drawFrame);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X, Y, cx, drawFrame, color);
                     break;
                 case BackgroundType.VerticalTiling:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y, cy, drawFrame);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y, cy, drawFrame, color);
                     break;
                 case BackgroundType.HVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y, cx, cy, drawFrame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y, cx, cy, drawFrame, color);
                     break;
                 case BackgroundType.HorizontalMoving:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X + (int)bgMoveShiftX, Y, cx, drawFrame);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X + (int)bgMoveShiftX, Y, cx, drawFrame, color);
                     IncreaseShiftX(cx, TickCount);
                     break;
                 case BackgroundType.VerticalMoving:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cy, drawFrame);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cy, drawFrame, color);
                     IncreaseShiftY(cy, TickCount);
                     break;
                 case BackgroundType.HorizontalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X + (int)bgMoveShiftX, Y, cx, cy, drawFrame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X + (int)bgMoveShiftX, Y, cx, cy, drawFrame, color);
                     IncreaseShiftX(cx, TickCount);
                     break;
                 case BackgroundType.VerticalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cx, cy, drawFrame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cx, cy, drawFrame, color);
                     IncreaseShiftX(cy, TickCount);
                     break;
                 default:

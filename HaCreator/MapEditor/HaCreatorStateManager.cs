@@ -96,6 +96,7 @@ namespace HaCreator.MapEditor
             this.ribbon.SnappingToggled += Ribbon_SnappingToggled;
             this.ribbon.RandomTilesToggled += Ribbon_RandomTilesToggled;
             this.ribbon.InfoModeToggled += Ribbon_InfoModeToggled;
+            this.ribbon.MapObjectPreviewAnimationToggled += Ribbon_MapObjectPreviewAnimationToggled;
             this.ribbon.HaRepackerClicked += Ribbon_HaRepackerClicked;
             this.ribbon.FinalizeClicked += Ribbon_FinalizeClicked;
             this.ribbon.NewPlatformClicked += ribbon_NewPlatformClicked;
@@ -686,6 +687,11 @@ namespace HaCreator.MapEditor
         void Ribbon_InfoModeToggled(bool pressed)
         {
             ApplicationSettings.InfoMode = pressed;
+        }
+
+        void Ribbon_MapObjectPreviewAnimationToggled(bool pressed)
+        {
+            ApplicationSettings.AnimateMapObjectPreviews = pressed;
         }
 
         void Ribbon_RegenerateMinimapClicked()
