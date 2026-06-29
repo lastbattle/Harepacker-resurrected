@@ -303,6 +303,11 @@ public long ReadOffset()
 
 Canvas data can be in two formats:
 
+The canvas format id describes the pixel/block layout after zlib decompression. Modern files may
+use format `4098` (`0x1002`), which is BC7/BPTC at 16 bytes per 4x4 block. MapleLib decodes this
+layout to BGRA32 on the CPU because MonoGame's `SurfaceFormat` does not expose BC7. A confirmed
+example is map `993296000`, asset `Map/Back/2603nightmareForest.img/spine/nightmare2.png`.
+
 **Standard zlib format** (header `0x789C`, `0x78DA`, etc.):
 - Data is directly zlib-compressed, no additional encryption
 

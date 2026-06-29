@@ -1,10 +1,12 @@
 using MapleLib.Helpers;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 
 namespace UnitTest_WzFile
@@ -884,6 +886,41 @@ namespace UnitTest_WzFile
 
             var (fmt4, _) = PngUtility.CompressImageToPngFormat(bmp, SurfaceFormat.Dxt5);
             Assert.AreEqual(MapleLib.WzLib.WzProperties.WzPngFormat.Format2050, fmt4);
+        }
+        #endregion
+
+        #region BC7 Tests
+        [TestMethod]
+        public void DecompressImageBC7_KnownMapBlock_ReturnsExpectedBgraPixels()
+        {
+            // Block sampled from map 993296000's map/Back/2603nightmareForest.img
+            // spine/nightmare2.png texture atlas.
+            byte[] rawBlock = Convert.FromHexString("C04181F15034CA7FA1FEA0FEA0FEA0FE");
+            byte[] expectedRow = Convert.FromHexString("141806CA191D09EE1B1F0BFC1B1F0BFF");
+
+            byte[] decoded = PngUtility.DecompressImageBC7(rawBlock, 4, 4);
+
+            Assert.AreEqual(64, decoded.Length);
+            for (int row = 0; row < 4; row++)
+                CollectionAssert.AreEqual(expectedRow, decoded.AsSpan(row * 16, 16).ToArray());
+        }
+
+        [TestMethod]
+        public void WzPngProperty_Format4098_DecodesKnownMapBlock()
+        {
+            byte[] rawBlock = Convert.FromHexString("C04181F15034CA7FA1FEA0FEA0FEA0FE");
+            using var compressedStream = new MemoryStream();
+            using (var zlib = new ZLibStream(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+                zlib.Write(rawBlock);
+
+            var png = new WzPngProperty();
+            png.SetCompressedBytes(compressedStream.ToArray(), 4, 4, WzPngFormat.Format4098);
+
+            using Bitmap bitmap = png.GetImage(false);
+
+            Assert.IsNotNull(bitmap);
+            Assert.AreEqual(Color.FromArgb(202, 6, 24, 20), bitmap.GetPixel(0, 0));
+            Assert.AreEqual(Color.FromArgb(255, 11, 31, 27), bitmap.GetPixel(3, 3));
         }
         #endregion
 
