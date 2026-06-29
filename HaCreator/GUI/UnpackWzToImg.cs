@@ -519,7 +519,7 @@ namespace HaCreator.GUI
                     _mapleStoryPath,
                     versionOutputPath,
                     versionName,
-                    $"{versionName} (Extracted {DateTime.Now:yyyy-MM-dd})",
+                    versionName,
                     mapleVer,
                     selectedCategories,
                     resolveLinks: true,
