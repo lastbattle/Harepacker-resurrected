@@ -439,7 +439,9 @@ namespace HaCreator.MapEditor
             Point centerPoint)
         {
             if (!ApplicationSettings.AnimateMapObjectPreviews || item?.BaseInfo == null)
+            {
                 return false;
+            }
 
             int stateHash = GetPreviewStateHash(item);
             if (nonLivePreviewItems.TryGetValue(item, out int nonLivePreviewStateHash))
@@ -453,7 +455,6 @@ namespace HaCreator.MapEditor
             if (!previewDrawables.TryGetValue(item, out PreviewDrawableEntry entry) || entry.StateHash != stateHash)
             {
                 WzImageProperty source = GetPreviewSource(item);
-
                 if (!CanUseLivePreview(source, item))
                 {
                     nonLivePreviewItems[item] = stateHash;
@@ -473,9 +474,8 @@ namespace HaCreator.MapEditor
                     entry = new PreviewDrawableEntry(createdDrawable, stateHash);
                     previewDrawables[item] = entry;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Debug.WriteLine($"Unable to load live editor preview for {source?.FullPath}: {ex.Message}");
                     nonLivePreviewItems[item] = stateHash;
                     return false;
                 }
@@ -615,6 +615,11 @@ namespace HaCreator.MapEditor
                 return background.type != BackgroundType.Regular ||
                     info.Type == Info.BackgroundInfoType.Animation ||
                     info.Type == Info.BackgroundInfoType.Spine;
+            }
+
+            if (source is WzRawDataProperty rawProperty && rawProperty.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
             }
 
             return source is WzSubProperty &&

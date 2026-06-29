@@ -59,7 +59,7 @@ namespace HaCreator.MapEditor.Info
             {
                 try
                 {
-                    objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
+                    objInfoProp.HCTag = ObjectInfo.Load(objInfoProp, oS, l0, l1, l2);
                 }
                 catch (KeyNotFoundException)
                 {
@@ -106,9 +106,34 @@ namespace HaCreator.MapEditor.Info
             return result;
         }
 
-        private static ObjectInfo Load(WzSubProperty parentObject, string oS, string l0, string l1, string l2)
+        private static ObjectInfo Load(WzImageProperty parentObject, string oS, string l0, string l1, string l2)
         {
+            if (parentObject is WzRawDataProperty && parentObject.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                WzCanvasProperty previewCanvas = GetSpinePreviewCanvas(parentObject);
+                Bitmap previewBitmap = previewCanvas?.GetLinkedWzCanvasBitmap() ?? Properties.Resources.placeholder;
+                System.Drawing.Point previewOrigin = previewCanvas == null
+                    ? System.Drawing.Point.Empty
+                    : WzInfoTools.PointFToSystemPoint(previewCanvas.GetCanvasOriginPosition());
+
+                return new ObjectInfo(
+                    previewBitmap,
+                    previewOrigin,
+                    oS,
+                    l0,
+                    l1,
+                    l2,
+                    parentObject);
+            }
+
             WzCanvasProperty frame1 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
+            if (frame1 == null)
+            {
+                string logError = string.Format("Background object Map.wz/Obj/{0}/{1}/{2}/{3} has no renderable frame 0.", oS, l0, l1, l2);
+                MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, logError);
+                return null;
+            }
+
             ObjectInfo result = new ObjectInfo(
                 frame1.GetLinkedWzCanvasBitmap(),
                 WzInfoTools.PointFToSystemPoint(frame1.GetCanvasOriginPosition()),
@@ -127,6 +152,24 @@ namespace HaCreator.MapEditor.Info
             if (chairs != null)
                 result.chairOffsets = ParsePropToOffsetList(chairs);
             return result;
+        }
+
+        private static WzCanvasProperty GetSpinePreviewCanvas(WzImageProperty skeletonProperty)
+        {
+            if (skeletonProperty.Parent is not WzImageProperty parentProperty)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty sibling in parentProperty.WzProperties)
+            {
+                WzImageProperty realProperty = WzInfoTools.GetRealProperty(sibling);
+                if (realProperty is WzCanvasProperty canvas)
+                {
+                    return canvas;
+                }
+            }
+            return null;
         }
 
         private void CreateFootholdsFromAnchorList(Board board, List<FootholdAnchor> anchors)

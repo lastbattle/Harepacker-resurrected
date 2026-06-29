@@ -113,6 +113,23 @@ namespace HaCreator.MapSimulator {
                 source = property1.WzProperties[0];
             }
 
+            if (source is WzRawDataProperty rawProperty && rawProperty.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                // Map 993296000 contains raw Spine 4.1 skeleton objects; retain the 2.1 fallback for older maps.
+                if (DXSpine41Object.TryLoadRawSkeleton(rawProperty, device, spineAni, out DXSpine41Object.Spine41Object spine41Object))
+                {
+                    usedProps.Add(source);
+                    frames.Add(new DXSpine41Object(spine41Object, x, y));
+                }
+                else if (LoadSpineMapObjectItem(source, source, device, spineAni))
+                {
+                    usedProps.Add(source);
+                    WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
+                    frames.Add(new DXSpineObject(spineObject, x, y, System.Drawing.PointF.Empty));
+                }
+                return frames;
+            }
+
             if (source is WzCanvasProperty property) //one-frame
             {
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, spineAni);
@@ -287,7 +304,14 @@ namespace HaCreator.MapSimulator {
             WzImageProperty spineAtlas = null;
 
             bool bIsObjectLayer = source.Parent.Name == "spine";
-            if (bIsObjectLayer) // load spine if the source is already the directory we need
+            if (source is WzRawDataProperty && source.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                spineAtlas = source.Parent is WzImageProperty parentProperty
+                    ? parentProperty.WzProperties.FirstOrDefault(wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources)
+                    : null;
+                bIsObjectLayer = true;
+            }
+            else if (bIsObjectLayer) // load spine if the source is already the directory we need
             {
                 string spineAtlasPath = ((WzStringProperty)source["spine"])?.GetString();
                 if (spineAtlasPath != null) {
@@ -314,11 +338,19 @@ namespace HaCreator.MapSimulator {
             if (spineAtlas != null) {
                 if (spineAtlas is WzStringProperty stringObj) {
                     if (!stringObj.IsSpineAtlasResources)
+                    {
                         return false;
+                    }
 
-                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
+                    string skeletonPropertyName = source is WzRawDataProperty ? source.Name : null;
+                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj, skeletonPropertyName));
 
                     spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
+                    if (spineObject.spineAnimationItem.SkeletonData == null)
+                    {
+                        return false;
+                    }
+
                     spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
                     //spineObject.skeleton.R =153;
                     //spineObject.skeleton.G = 255;

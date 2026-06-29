@@ -38,6 +38,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\MapleLib\spine-runtimes-4.1-ns\spine-csharp\spine-csharp-4.1-ns.csproj" />
     <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />
   </ItemGroup>
   <ItemGroup>
