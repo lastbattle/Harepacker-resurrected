@@ -1019,6 +1019,7 @@ namespace HaCreator.GUI
         private void UpdateImgButtonStates()
         {
             bool hasSelection = listBox_imgVersions.SelectedItem != null;
+            button_renameVersion.Enabled = hasSelection;
             button_deleteVersion.Enabled = hasSelection;
         }
 
@@ -1145,6 +1146,55 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
+        /// Rename selected version
+        /// </summary>
+        private void button_renameVersion_Click(object sender, EventArgs e)
+        {
+            if (listBox_imgVersions.SelectedItem is not VersionListItem item)
+                return;
+
+            string oldPath = item.Version.DirectoryPath;
+            string currentName = item.Version.DisplayName ?? item.Version.Version;
+
+            if (!PromptForVersionName(currentName, out string newName))
+                return;
+
+            if (string.Equals(Path.GetFileName(oldPath), newName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(currentName, newName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (Program.StartupManager?.VersionManager?.RenameVersion(
+                item.Version.Version,
+                newName,
+                newName,
+                out VersionInfo renamedVersion) == true)
+            {
+                ReplaceVersionPathInConfig(oldPath, renamedVersion.DirectoryPath);
+                RefreshVersionList();
+
+                for (int i = 0; i < listBox_imgVersions.Items.Count; i++)
+                {
+                    if (listBox_imgVersions.Items[i] is VersionListItem versionItem &&
+                        versionItem.Version.DirectoryPath.Equals(renamedVersion.DirectoryPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        listBox_imgVersions.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                MessageBox.Show(
+                    "Failed to rename version. The target folder may already exist or the files may be in use.",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
         /// Refresh versions list
         /// </summary>
         private void button_refreshVersions_Click(object sender, EventArgs e)
@@ -1161,6 +1211,75 @@ namespace HaCreator.GUI
             {
                 button_initialise_Click(sender, e);
             }
+        }
+
+        /// <summary>
+        /// Prompts for a folder-safe IMG version name
+        /// </summary>
+        private bool PromptForVersionName(string currentName, out string newName)
+        {
+            newName = null;
+
+            using Form prompt = new Form();
+            using Label label = new Label();
+            using TextBox textBox = new TextBox();
+            using Button okButton = new Button();
+            using Button cancelButton = new Button();
+
+            prompt.Text = "Rename IMG Version";
+            prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
+            prompt.StartPosition = FormStartPosition.CenterParent;
+            prompt.MinimizeBox = false;
+            prompt.MaximizeBox = false;
+            prompt.ClientSize = new Size(360, 116);
+            prompt.ShowInTaskbar = false;
+
+            label.AutoSize = true;
+            label.Location = new Point(12, 12);
+            label.Text = "New version name:";
+
+            textBox.Location = new Point(12, 34);
+            textBox.Size = new Size(336, 22);
+            textBox.Text = currentName;
+            textBox.SelectAll();
+
+            okButton.Text = "OK";
+            okButton.DialogResult = DialogResult.OK;
+            okButton.Location = new Point(192, 76);
+            okButton.Size = new Size(75, 28);
+
+            cancelButton.Text = "Cancel";
+            cancelButton.DialogResult = DialogResult.Cancel;
+            cancelButton.Location = new Point(273, 76);
+            cancelButton.Size = new Size(75, 28);
+
+            prompt.Controls.Add(label);
+            prompt.Controls.Add(textBox);
+            prompt.Controls.Add(okButton);
+            prompt.Controls.Add(cancelButton);
+            prompt.AcceptButton = okButton;
+            prompt.CancelButton = cancelButton;
+
+            while (prompt.ShowDialog(this) == DialogResult.OK)
+            {
+                string value = textBox.Text.Trim();
+                if (string.IsNullOrEmpty(value))
+                {
+                    MessageBox.Show("Version name cannot be empty.", "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    continue;
+                }
+
+                if (value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                {
+                    MessageBox.Show("Version name contains characters that cannot be used in a folder name.", "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    continue;
+                }
+
+                newName = value;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -1189,6 +1308,41 @@ namespace HaCreator.GUI
             {
                 config.RecentVersionPaths.Remove(toRemoveRecent);
                 changed = true;
+            }
+
+            if (changed)
+            {
+                config.Save();
+            }
+        }
+
+        /// <summary>
+        /// Replaces a version path in all config lists after renaming its folder
+        /// </summary>
+        private void ReplaceVersionPathInConfig(string oldPath, string newPath)
+        {
+            var config = Program.StartupManager?.Config;
+            if (config == null) return;
+
+            string normalizedOldPath = Path.GetFullPath(oldPath);
+            bool changed = false;
+
+            for (int i = 0; i < config.AdditionalVersionPaths.Count; i++)
+            {
+                if (Path.GetFullPath(config.AdditionalVersionPaths[i]).Equals(normalizedOldPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    config.AdditionalVersionPaths[i] = newPath;
+                    changed = true;
+                }
+            }
+
+            for (int i = 0; i < config.RecentVersionPaths.Count; i++)
+            {
+                if (Path.GetFullPath(config.RecentVersionPaths[i]).Equals(normalizedOldPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    config.RecentVersionPaths[i] = newPath;
+                    changed = true;
+                }
             }
 
             if (changed)
