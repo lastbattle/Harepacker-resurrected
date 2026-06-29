@@ -130,6 +130,11 @@ namespace HaCreator.MapSimulator {
                 return frames;
             }
 
+            if (TryLoadDirectSpine41Frames(source, x, y, device, spineAni, ref usedProps, frames))
+            {
+                return frames;
+            }
+
             if (source is WzCanvasProperty property) //one-frame
             {
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, spineAni);
@@ -383,6 +388,42 @@ namespace HaCreator.MapSimulator {
                 }
             }
             return false;
+        }
+
+        private static bool TryLoadDirectSpine41Frames(WzImageProperty source, int x, int y, GraphicsDevice device, string spineAniPath, ref List<WzObject> usedProps, List<IDXObject> frames)
+        {
+            if (source is not WzSubProperty spineContainer)
+                return false;
+
+            if (!spineContainer.WzProperties.Any(wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources))
+                return false;
+
+            WzRawDataProperty skeletonProperty = SelectDirectSpineSkeleton(spineContainer, spineAniPath);
+            if (skeletonProperty == null)
+                return false;
+
+            if (!DXSpine41Object.TryLoadRawSkeleton(skeletonProperty, device, spineAniPath, out DXSpine41Object.Spine41Object spine41Object))
+                return false;
+
+            usedProps.Add(skeletonProperty);
+            frames.Add(new DXSpine41Object(spine41Object, x, y));
+            return true;
+        }
+
+        private static WzRawDataProperty SelectDirectSpineSkeleton(WzImageProperty spineContainer, string spineAniPath)
+        {
+            if (!string.IsNullOrWhiteSpace(spineAniPath))
+            {
+                WzRawDataProperty namedSkeleton = spineContainer.WzProperties
+                    .OfType<WzRawDataProperty>()
+                    .FirstOrDefault(property => property.Name.Equals(spineAniPath, StringComparison.OrdinalIgnoreCase));
+                if (namedSkeleton != null)
+                    return namedSkeleton;
+            }
+
+            return spineContainer.WzProperties
+                .OfType<WzRawDataProperty>()
+                .FirstOrDefault(property => property.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase));
         }
         #endregion
 

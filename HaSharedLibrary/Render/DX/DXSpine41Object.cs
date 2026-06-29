@@ -3,6 +3,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -97,6 +98,64 @@ namespace HaSharedLibrary.Render.DX
             }
         }
 
+        public static bool TryReadAnimationNames(WzImageProperty spineContainer, string skeletonPropertyName, out List<string> animationNames)
+        {
+            animationNames = null;
+            if (spineContainer == null)
+                return false;
+
+            WzStringProperty atlasProperty = spineContainer.WzProperties
+                .OfType<WzStringProperty>()
+                .FirstOrDefault(property => property.IsSpineAtlasResources);
+            if (atlasProperty == null)
+                return false;
+
+            WzRawDataProperty skeletonProperty = SelectSkeletonProperty(spineContainer, skeletonPropertyName);
+            if (skeletonProperty == null)
+                return false;
+
+            string atlasData = atlasProperty.GetString();
+            byte[] skeletonBytes = skeletonProperty.GetBytes(false);
+            if (string.IsNullOrWhiteSpace(atlasData) || skeletonBytes == null || skeletonBytes.Length == 0)
+                return false;
+
+            try
+            {
+                using StringReader atlasReader = new StringReader(atlasData);
+                S41Atlas atlas = new S41Atlas(atlasReader, string.Empty, NoOpTextureLoader.Instance);
+
+                using MemoryStream skeletonStream = new MemoryStream(skeletonBytes);
+                S41SkeletonBinary skeletonBinary = new S41SkeletonBinary(atlas);
+                S41SkeletonData skeletonData = skeletonBinary.ReadSkeletonData(skeletonStream);
+                if (skeletonData == null)
+                    return false;
+
+                animationNames = skeletonData.Animations.Select(animation => animation.Name).ToList();
+                return animationNames.Count > 0;
+            }
+            catch (Exception)
+            {
+                animationNames = null;
+                return false;
+            }
+        }
+
+        private static WzRawDataProperty SelectSkeletonProperty(WzImageProperty spineContainer, string skeletonPropertyName)
+        {
+            if (!string.IsNullOrWhiteSpace(skeletonPropertyName))
+            {
+                WzRawDataProperty namedProperty = spineContainer.WzProperties
+                    .OfType<WzRawDataProperty>()
+                    .FirstOrDefault(property => property.Name.Equals(skeletonPropertyName, StringComparison.OrdinalIgnoreCase));
+                if (namedProperty != null)
+                    return namedProperty;
+            }
+
+            return spineContainer.WzProperties
+                .OfType<WzRawDataProperty>()
+                .FirstOrDefault(property => property.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase));
+        }
+
         private static bool IsPremultipliedAlpha(string atlasData, WzImageProperty parentProperty)
         {
             if (atlasData.IndexOf("pma:true", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -164,6 +223,23 @@ namespace HaSharedLibrary.Render.DX
             public bool PremultipliedAlpha { get; }
             public int Width => Math.Max(1, (int)Math.Ceiling(SkeletonData.Width));
             public int Height => Math.Max(1, (int)Math.Ceiling(SkeletonData.Height));
+        }
+
+        private sealed class NoOpTextureLoader : Spine41.TextureLoader
+        {
+            public static readonly NoOpTextureLoader Instance = new NoOpTextureLoader();
+
+            private NoOpTextureLoader()
+            {
+            }
+
+            public void Load(Spine41.AtlasPage page, string path)
+            {
+            }
+
+            public void Unload(object texture)
+            {
+            }
         }
     }
 }
