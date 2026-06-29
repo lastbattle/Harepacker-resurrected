@@ -59,6 +59,16 @@ namespace HaCreator.MapEditor.Info
                 return null;
             WzImageProperty bgInfoProp = bsImg[type.ToPropertyString()]?[no];
 
+            // Newer WZ versions can store a single Spine background directly under
+            // the "spine" node instead of under the legacy numeric "spine/0" node.
+            if (bgInfoProp == null && no == "0" && bsImg["spine"] is WzSubProperty spineRoot &&
+                spineRoot.WzProperties.Any(prop =>
+                    prop is WzStringProperty stringProperty && stringProperty.IsSpineAtlasResources))
+            {
+                bgInfoProp = spineRoot;
+                type = BackgroundInfoType.Spine;
+            }
+
             if (bgInfoProp == null)
             {
                 string logError = string.Format("Background image {0}/{1} is null, {2}", bS, no, bsImg.ToString());
@@ -104,25 +114,26 @@ namespace HaCreator.MapEditor.Info
             }
             else if (type == BackgroundInfoType.Spine)
             {
-                // TODO: make a preview of the spine image ffs
-                WzCanvasProperty spineCanvas = (WzCanvasProperty)parentObject["0"];
+                WzCanvasProperty spineCanvas = parentObject["0"] as WzCanvasProperty ??
+                    parentObject.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+
+                // Load Spine resources even when this background has no numeric preview
+                // canvas. Direct Spine containers name the texture after the atlas page.
+                WzSpineAnimationItem wzSpineAnimationItem = null;
+                if (graphicsDevice != null)
+                {
+                    WzImageProperty spineAtlasProp = parentObject.WzProperties.FirstOrDefault(
+                        wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources);
+                    if (spineAtlasProp != null)
+                    {
+                        WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
+                        wzSpineAnimationItem = new WzSpineAnimationItem(stringObj);
+                        wzSpineAnimationItem.LoadResources(graphicsDevice);
+                    }
+                }
+
                 if (spineCanvas != null)
                 {
-                    // Load spine
-                    WzSpineAnimationItem wzSpineAnimationItem = null;
-                    if (graphicsDevice != null) // graphicsdevice needed to work.. assuming that it is loaded by now before BackgroundPanel
-                    {
-                        WzImageProperty spineAtlasProp = ((WzSubProperty)parentObject).WzProperties.FirstOrDefault(
-                            wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources);
-                        if (spineAtlasProp != null)
-                        {
-                            WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
-                            wzSpineAnimationItem = new WzSpineAnimationItem(stringObj);
-
-                            wzSpineAnimationItem.LoadResources(graphicsDevice);
-                        }
-                    }
-
                     // Preview Image
                     Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
 
