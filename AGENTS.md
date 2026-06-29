@@ -77,7 +77,7 @@ Notes:
   - Name filtering: `Get-ChildItem -Recurse -File -Filter <name> | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' }`
   - Text search: `Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' } | Select-String -Pattern <text>`
 - Do not change framework/runtime targets or package baselines unless requested.
-- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes; include a short commit message description/body of what changed in addition to the title/subject line.
+- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes. Every commit must include a detailed commit message body in addition to the title/subject line. The body should explain what changed, why it changed, important implementation details or tradeoffs, validation performed, and any relevant manual verification notes for UI/behavior changes.
 - For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
 - For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
 - For UI behavior changes, include manual verification steps in your summary.
