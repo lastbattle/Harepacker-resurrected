@@ -337,7 +337,7 @@ namespace HaCreator.MapEditor
             TimeSpan previewTime = previewClock.Elapsed;
             TimeSpan previewElapsed = previewTime - previousPreviewTime;
             previousPreviewTime = previewTime;
-            previewGameTime = new GameTime(previewTime, previewElapsed);
+            previewGameTime = selectedBoard?.AdvanceLivePreviewTime(previewElapsed) ?? new GameTime();
 
             float zoom = selectedBoard?.Zoom ?? 1.0f;
 
@@ -486,11 +486,12 @@ namespace HaCreator.MapEditor
             }
 
             BaseDXDrawableItem drawable = entry.Drawable;
-            int tickCount = (int)(previewGameTime.TotalGameTime.TotalMilliseconds % int.MaxValue);
+            GameTime livePreviewGameTime = item.Board?.LivePreviewGameTime ?? previewGameTime;
+            int tickCount = (int)(livePreviewGameTime.TotalGameTime.TotalMilliseconds % int.MaxValue);
             RenderParameters renderParameters = CreatePreviewRenderParameters();
             if (drawable is BackgroundItem backgroundDrawable)
             {
-                backgroundDrawable.DrawPreview(sprite, previewSkeletonRenderer, previewGameTime,
+                backgroundDrawable.DrawPreview(sprite, previewSkeletonRenderer, livePreviewGameTime,
                     hScroll, vScroll, centerPoint.X, centerPoint.Y,
                     renderParameters,
                     tickCount,
@@ -498,11 +499,11 @@ namespace HaCreator.MapEditor
             }
             else if (drawable is EditorPreviewDrawable previewDrawable)
             {
-                previewDrawable.DrawPreview(sprite, previewSkeletonRenderer, previewGameTime, tickCount, item.X + xShift, item.Y + yShift, color);
+                previewDrawable.DrawPreview(sprite, previewSkeletonRenderer, livePreviewGameTime, tickCount, item.X + xShift, item.Y + yShift, color);
             }
             else
             {
-                drawable.Draw(sprite, previewSkeletonRenderer, previewGameTime,
+                drawable.Draw(sprite, previewSkeletonRenderer, livePreviewGameTime,
                     hScroll, vScroll, centerPoint.X, centerPoint.Y,
                     null,
                     renderParameters,
@@ -701,6 +702,9 @@ namespace HaCreator.MapEditor
             {
                 lock (this)
                 {
+                    if (selectedBoard != value)
+                        selectedBoard?.PauseLivePreviewTime();
+
                     selectedBoard = value;
                     if (value != null)
                     {

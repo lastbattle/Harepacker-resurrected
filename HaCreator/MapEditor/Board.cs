@@ -60,6 +60,8 @@ namespace HaCreator.MapEditor
         private System.Windows.Controls.TabItem page = null;
         private bool dirty;
         private readonly int uid;
+        private TimeSpan livePreviewTotalTime = TimeSpan.Zero;
+        private GameTime livePreviewGameTime = new GameTime();
 
         private static int uidCounter = 0;
 
@@ -771,6 +773,26 @@ namespace HaCreator.MapEditor
         public SerializationManager SerializationManager
         {
             get { return serMan; }
+        }
+
+        internal GameTime LivePreviewGameTime
+        {
+            get { return livePreviewGameTime; }
+        }
+
+        internal GameTime AdvanceLivePreviewTime(TimeSpan elapsed)
+        {
+            if (elapsed < TimeSpan.Zero)
+                elapsed = TimeSpan.Zero;
+
+            livePreviewTotalTime += elapsed;
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, elapsed);
+            return livePreviewGameTime;
+        }
+
+        internal void PauseLivePreviewTime()
+        {
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, TimeSpan.Zero);
         }
 
         public System.Windows.Controls.TabItem TabPage
