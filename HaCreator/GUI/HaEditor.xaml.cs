@@ -9,6 +9,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI
 {
@@ -20,6 +21,8 @@ namespace HaCreator.GUI
         private InputHandler handler;
         public HaCreatorStateManager hcsm;
         private bool _isObjectViewerInitialized;
+        private bool _isMapExplorerInitialized;
+        private bool _isMapExplorerHistoryInitialized;
         private string _mapLoadErrorsLogFilePath;
 
         public HaEditor()
@@ -62,6 +65,7 @@ namespace HaCreator.GUI
             bgPanelHost.Height = newHeight;
             bgBlackBorderPanelHost.Height = Math.Min(250, newHeight);
             commonPanelHost.Height = newHeight;
+
         }
 
         private void HaEditor2_Loaded(object sender, RoutedEventArgs e)
@@ -81,14 +85,14 @@ namespace HaCreator.GUI
             bgPanel.Initialize(hcsm);
             bgBlackBorderPanel.Initialize(hcsm);
             commonPanel.Initialize(hcsm);
+            InitializeMapExplorer();
 
             // Initialize hot swap after all panels are registered
             hcsm.InitializeHotSwap();
 
             if (!hcsm.backupMan.AttemptRestore())
             {
-                FieldSelector selector = new FieldSelector(multiBoard, tabControl1, hcsm.MakeRightClickHandler(), true); // first load of a map, get the user to select a map first.
-                hcsm.LoadMap(selector);
+                ShowMapExplorer();
             }
         }
 
@@ -127,8 +131,6 @@ namespace HaCreator.GUI
 
         void Hcsm_FirstMapLoaded()
         {
-            WindowState = WindowState.Maximized;
-
             // Auto-show Object Viewer if setting is enabled
             if (ApplicationSettings.ShowObjectViewerOnLoad)
             {
@@ -185,9 +187,358 @@ namespace HaCreator.GUI
                 return;
             }
 
+            if (Equals(toolWindowsTabControl.SelectedItem, mapExplorerTabItem))
+            {
+                InitializeMapExplorer();
+            }
+
             if (Equals(toolWindowsTabControl.SelectedItem, objectViewerTabItem))
             {
                 ShowObjectViewerDocked(isManualOpen: false);
+            }
+        }
+
+        private void InitializeMapExplorer()
+        {
+            if (_isMapExplorerInitialized)
+            {
+                return;
+            }
+
+            mapExplorerBrowser.InitializeMapsListboxItem(true);
+            mapExplorerBrowser.SelectionChanged += MapExplorerBrowser_SelectionChanged;
+            mapExplorerHamPathTextBox.Text = ApplicationSettings.LastHamPath ?? string.Empty;
+            mapExplorerXmlPathTextBox.Text = ApplicationSettings.LastXmlPath ?? string.Empty;
+            _isMapExplorerInitialized = true;
+            InitializeMapExplorerHistory();
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void InitializeMapExplorerHistory()
+        {
+            if (_isMapExplorerHistoryInitialized)
+            {
+                return;
+            }
+
+            mapExplorerHistoryBrowser.IsHistoryMapBrowser = true;
+            mapExplorerHistoryBrowser.PreviewPanelVisible = false;
+            mapExplorerHistoryBrowser.InitialiseHistoryListboxItem();
+            mapExplorerHistoryBrowser.SelectionChanged += MapExplorerHistoryBrowser_SelectionChanged;
+            _isMapExplorerHistoryInitialized = true;
+            UpdateMapExplorerSelectionState();
+        }
+
+        public void ShowMapExplorer(string mapNameFilter = null)
+        {
+            InitializeMapExplorer();
+            toolWindowsTabControl.SelectedItem = mapExplorerTabItem;
+            mapExplorerSourceTabControl.SelectedItem = mapExplorerWzTabItem;
+
+            if (mapNameFilter != null)
+            {
+                mapExplorerSearchTextBox.Focus();
+                mapExplorerSearchTextBox.Text = mapNameFilter;
+                mapExplorerSearchTextBox.SelectAll();
+            }
+        }
+
+        private void MapExplorerBrowser_SelectionChanged()
+        {
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerHistoryBrowser_SelectionChanged()
+        {
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void UpdateMapExplorerSelectionState()
+        {
+            if (!_isMapExplorerInitialized)
+            {
+                mapExplorerLoadButton.IsEnabled = false;
+                mapExplorerSelectionTextBlock.Text = string.Empty;
+                return;
+            }
+
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem))
+            {
+                string selectedItem = _isMapExplorerHistoryInitialized ? mapExplorerHistoryBrowser.SelectedItem : null;
+                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerLoadButton.IsEnabled = _isMapExplorerHistoryInitialized && mapExplorerHistoryBrowser.LoadMapEnabled;
+                mapExplorerDeleteHistoryButton.IsEnabled = !string.IsNullOrEmpty(selectedItem);
+                mapExplorerReloadButton.IsEnabled = true;
+                mapExplorerSelectionTextBlock.Text = selectedItem ??
+                    (_isMapExplorerHistoryInitialized ? $"History: {mapExplorerHistoryBrowser.ItemCount} map(s)" : string.Empty);
+                return;
+            }
+
+            mapExplorerDeleteHistoryButton.IsEnabled = false;
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
+            {
+                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerHamPathTextBox.Text);
+                mapExplorerReloadButton.IsEnabled = false;
+                mapExplorerSelectionTextBlock.Text = mapExplorerHamPathTextBox.Text;
+                return;
+            }
+
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
+            {
+                mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerXmlPathTextBox.Text);
+                mapExplorerReloadButton.IsEnabled = false;
+                mapExplorerSelectionTextBlock.Text = mapExplorerXmlPathTextBox.Text;
+                return;
+            }
+
+            string wzSelectedItem = mapExplorerBrowser.SelectedItem;
+            mapExplorerResolveMissingButton.Visibility = Visibility.Visible;
+            mapExplorerLoadButton.IsEnabled = mapExplorerBrowser.LoadMapEnabled;
+            mapExplorerReloadButton.IsEnabled = true;
+            mapExplorerSelectionTextBlock.Text = wzSelectedItem ?? string.Empty;
+        }
+
+        private void MapExplorerSourceTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!ReferenceEquals(e.OriginalSource, mapExplorerSourceTabControl))
+            {
+                return;
+            }
+
+            if (!IsLoaded || !_isMapExplorerInitialized)
+            {
+                return;
+            }
+
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem))
+            {
+                InitializeMapExplorerHistory();
+                mapExplorerHistoryBrowser.ReloadHistoryListboxItem();
+            }
+
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!_isMapExplorerInitialized)
+            {
+                return;
+            }
+
+            mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+        }
+
+        private void MapExplorerTownOnlyCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_isMapExplorerInitialized)
+            {
+                return;
+            }
+
+            mapExplorerBrowser.TownOnlyFilter = mapExplorerTownOnlyCheckBox.IsChecked == true;
+            mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+        }
+
+        private void MapExplorerReloadButton_Click(object sender, RoutedEventArgs e)
+        {
+            InitializeMapExplorer();
+
+            if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem))
+            {
+                InitializeMapExplorerHistory();
+                mapExplorerHistoryBrowser.ReloadHistoryListboxItem();
+            }
+            else
+            {
+                mapExplorerBrowser.ReloadMapsListboxItem(true);
+                mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+            }
+
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerLoadButton_Click(object sender, RoutedEventArgs e)
+        {
+            InitializeMapExplorer();
+
+            if (hcsm == null)
+            {
+                return;
+            }
+
+            WaitWindow waitWindow = new WaitWindow("Loading...");
+            waitWindow.Show();
+            Forms.Application.DoEvents();
+
+            try
+            {
+                string errorMessage = null;
+                bool loaded;
+
+                if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
+                {
+                    loaded = hcsm.LoadHamMap(mapExplorerHamPathTextBox.Text, out errorMessage);
+                }
+                else if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
+                {
+                    loaded = hcsm.LoadXmlMap(mapExplorerXmlPathTextBox.Text, out errorMessage);
+                }
+                else
+                {
+                    bool fromHistory = Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHistoryTabItem);
+                    string selectedItem = fromHistory
+                        ? mapExplorerHistoryBrowser.SelectedItem
+                        : mapExplorerBrowser.SelectedItem;
+
+                    if (string.IsNullOrEmpty(selectedItem))
+                    {
+                        return;
+                    }
+
+                    loaded = hcsm.LoadWzMapSelection(selectedItem, out errorMessage);
+                    if (loaded && !fromHistory)
+                    {
+                        InitializeMapExplorerHistory();
+                        mapExplorerHistoryBrowser.AddLoadedMapToHistory(selectedItem);
+                    }
+                }
+
+                if (!loaded)
+                {
+                    System.Windows.MessageBox.Show(errorMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            finally
+            {
+                waitWindow.EndWait();
+            }
+        }
+
+        private void MapExplorerBrowseHamButton_Click(object sender, RoutedEventArgs e)
+        {
+            using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
+            {
+                dialog.Title = "Select Map to load...";
+                dialog.Filter = "HaCreator Map File (*.ham)|*.ham";
+                if (!string.IsNullOrEmpty(mapExplorerHamPathTextBox.Text))
+                {
+                    dialog.FileName = mapExplorerHamPathTextBox.Text;
+                }
+
+                if (dialog.ShowDialog() != Forms.DialogResult.OK)
+                {
+                    return;
+                }
+
+                mapExplorerHamPathTextBox.Text = dialog.FileName;
+            }
+        }
+
+        private void MapExplorerBrowseXmlButton_Click(object sender, RoutedEventArgs e)
+        {
+            using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
+            {
+                dialog.Title = "Select XML to load...";
+                dialog.Filter = "eXtensible Markup Language file (*.xml)|*.xml";
+                if (!string.IsNullOrEmpty(mapExplorerXmlPathTextBox.Text))
+                {
+                    dialog.FileName = mapExplorerXmlPathTextBox.Text;
+                }
+
+                if (dialog.ShowDialog() != Forms.DialogResult.OK)
+                {
+                    return;
+                }
+
+                mapExplorerXmlPathTextBox.Text = dialog.FileName;
+            }
+        }
+
+        private void MapExplorerHamPathTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ApplicationSettings.LastHamPath = mapExplorerHamPathTextBox.Text;
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerXmlPathTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ApplicationSettings.LastXmlPath = mapExplorerXmlPathTextBox.Text;
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerClearHistoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            InitializeMapExplorerHistory();
+            mapExplorerHistoryBrowser.ClearLoadedMapHistory();
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerDeleteHistoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            InitializeMapExplorerHistory();
+            mapExplorerHistoryBrowser.RemoveSelectedMapFromHistory();
+            UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerResolveMissingButton_Click(object sender, RoutedEventArgs e)
+        {
+            WaitWindow waitWindow = new WaitWindow("Resolving missing map strings...");
+            waitWindow.Show();
+            Forms.Application.DoEvents();
+
+            try
+            {
+                MapLoadService.MissingMapResolutionResult result = MapLoadService.ResolveMissingMapStringEntries();
+
+                mapExplorerBrowser.ReloadMapsListboxItem(true);
+                mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+                UpdateMapExplorerSelectionState();
+
+                ShowScrollableMessage("Resolve Missing Maps", MapLoadService.BuildResolutionSummaryMessage(result));
+            }
+            catch (Exception ex)
+            {
+                ShowScrollableMessage("Resolve Missing Maps", $"Failed to resolve missing map strings.\r\n\r\n{ex}");
+            }
+            finally
+            {
+                waitWindow.EndWait();
+            }
+        }
+
+        private void ShowScrollableMessage(string title, string message)
+        {
+            using (Forms.Form dialog = new Forms.Form())
+            using (Forms.TextBox messageBox = new Forms.TextBox())
+            using (Forms.Button okButton = new Forms.Button())
+            {
+                dialog.Text = title;
+                dialog.StartPosition = Forms.FormStartPosition.CenterParent;
+                dialog.Size = new System.Drawing.Size(720, 520);
+                dialog.MinimumSize = new System.Drawing.Size(500, 320);
+                dialog.FormBorderStyle = Forms.FormBorderStyle.SizableToolWindow;
+
+                messageBox.Multiline = true;
+                messageBox.ReadOnly = true;
+                messageBox.ScrollBars = Forms.ScrollBars.Both;
+                messageBox.WordWrap = false;
+                messageBox.Dock = Forms.DockStyle.Fill;
+                messageBox.Font = new System.Drawing.Font("Consolas", 9F);
+                messageBox.Text = message;
+
+                okButton.Text = "OK";
+                okButton.Dock = Forms.DockStyle.Bottom;
+                okButton.Height = 30;
+                okButton.DialogResult = Forms.DialogResult.OK;
+
+                dialog.Controls.Add(messageBox);
+                dialog.Controls.Add(okButton);
+                dialog.AcceptButton = okButton;
+
+                dialog.ShowDialog();
             }
         }
 

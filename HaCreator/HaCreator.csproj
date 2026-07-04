@@ -92,9 +92,6 @@
     <Compile Update="CustomControls\WatermarkTextBox.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Update="CustomControls\MapBrowser.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
     <Compile Update="CustomControls\ScrollablePictureBox.cs">
       <SubType>UserControl</SubType>
     </Compile>

@@ -1037,9 +1037,8 @@ namespace HaCreator.MapEditor
             {
                 mapNameFilter = ( currentSelectedBoard.MapInfo.id / 10000).ToString(); // shows near-by maps relative to the current map opened in the Board
             }
-            
-            FieldSelector fieldSelector = new FieldSelector(multiBoard, tabs, MakeRightClickHandler(), false, mapNameFilter); // allow this selector to float above the editor UI.
-            LoadMap(fieldSelector);
+
+            Program.HaEditorWindow?.ShowMapExplorer(mapNameFilter);
         }
 
         /// <summary>
@@ -1048,9 +1047,7 @@ namespace HaCreator.MapEditor
         /// <param name="tm">To map</param>
         public void LoadMap(int tm)
         {
-            FieldSelector fieldSelector = new FieldSelector(multiBoard, tabs, MakeRightClickHandler(), false, tm.ToString());
-
-            LoadMap(fieldSelector);
+            Program.HaEditorWindow?.ShowMapExplorer(tm.ToString());
         }
 
         /// <summary>
@@ -1061,39 +1058,103 @@ namespace HaCreator.MapEditor
         {
             lock (multiBoard)
             {
-                bool deviceLoadedThisTime = false;
-
-                // load multiboard early before map
-                if (!multiBoard.DeviceReady)
-                {
-                    ribbon.SetEnabled(true);
-                    ribbon.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
-                    multiBoard.Start();
-                    backupMan.Start();
-
-                    deviceLoadedThisTime = true;
-                }
+                bool deviceLoadedThisTime = EnsureDeviceLoaded();
 
                 if (loader == null || loader.ShowDialog() == DialogResult.OK)
                 {
-                    if (deviceLoadedThisTime)
-                    {
-                        FirstMapLoaded?.Invoke();
-                    }
-                    multiBoard.SelectedBoard.SelectedPlatform = multiBoard.SelectedBoard.SelectedLayerIndex == -1 ? -1 : multiBoard.SelectedBoard.Layers[multiBoard.SelectedBoard.SelectedLayerIndex].zMList.ElementAt(0);
-                    ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
-                    ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
-                    ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
-                    multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
-                    multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
-                    ParseVisibleEditedTypes();
-
-                    // Notify object viewer of new board
-                    objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
-
-                    multiBoard.Focus();
+                    FinishLoadedMap(deviceLoadedThisTime);
                 }
             }
+        }
+
+        public bool LoadWzMapSelection(string selectedItem, out string errorMessage)
+        {
+            lock (multiBoard)
+            {
+                bool deviceLoadedThisTime = EnsureDeviceLoaded();
+
+                if (!MapLoadService.TryLoadWzMapSelection(selectedItem, tabs, multiBoard, MakeRightClickHandler(), out errorMessage))
+                {
+                    return false;
+                }
+
+                FinishLoadedMap(deviceLoadedThisTime);
+                return true;
+            }
+        }
+
+        public bool LoadHamMap(string filePath, out string errorMessage)
+        {
+            lock (multiBoard)
+            {
+                errorMessage = null;
+                bool deviceLoadedThisTime = EnsureDeviceLoaded();
+
+                try
+                {
+                    MapLoadService.LoadHamMap(filePath, multiBoard, tabs, MakeRightClickHandler());
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = $"Failed to load HAM map.\r\n\r\n{ex.Message}";
+                    return false;
+                }
+
+                FinishLoadedMap(deviceLoadedThisTime);
+                return true;
+            }
+        }
+
+        public bool LoadXmlMap(string filePath, out string errorMessage)
+        {
+            lock (multiBoard)
+            {
+                bool deviceLoadedThisTime = EnsureDeviceLoaded();
+
+                if (!MapLoadService.TryLoadXmlMap(filePath, tabs, multiBoard, MakeRightClickHandler(), out errorMessage))
+                {
+                    return false;
+                }
+
+                FinishLoadedMap(deviceLoadedThisTime);
+                return true;
+            }
+        }
+
+        private bool EnsureDeviceLoaded()
+        {
+            // load multiboard early before map
+            if (multiBoard.DeviceReady)
+            {
+                return false;
+            }
+
+            ribbon.SetEnabled(true);
+            ribbon.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
+            multiBoard.Start();
+            backupMan.Start();
+
+            return true;
+        }
+
+        private void FinishLoadedMap(bool deviceLoadedThisTime)
+        {
+            if (deviceLoadedThisTime)
+            {
+                FirstMapLoaded?.Invoke();
+            }
+            multiBoard.SelectedBoard.SelectedPlatform = multiBoard.SelectedBoard.SelectedLayerIndex == -1 ? -1 : multiBoard.SelectedBoard.Layers[multiBoard.SelectedBoard.SelectedLayerIndex].zMList.ElementAt(0);
+            ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
+            ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
+            ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+            multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
+            multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
+            ParseVisibleEditedTypes();
+
+            // Notify object viewer of new board
+            objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
+
+            multiBoard.Focus();
         }
 
         void ribbon_NewPlatformClicked()

@@ -120,14 +120,36 @@ namespace HaCreator.MapEditor
 
         public void UpdateWindowSize(System.Windows.Size CurrentWindowSize)
         {
-            _CurrentDXWindowSize = DxContainer.ClientSize;
-
-            needsReset = true;
+            UpdateDxWindowSize(resetDevice: true);
         }
 
         private void MultiBoard2_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            _CurrentDXWindowSize = DxContainer.ClientSize;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                UpdateDxWindowSize(resetDevice: true);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void DxContainer_Resize(object sender, EventArgs e)
+        {
+            UpdateDxWindowSize(resetDevice: true);
+        }
+
+        private void UpdateDxWindowSize(bool resetDevice)
+        {
+            System.Drawing.Size newSize = DxContainer.ClientSize;
+            if (newSize.Width <= 0 || newSize.Height <= 0)
+                return;
+
+            if (_CurrentDXWindowSize == newSize)
+                return;
+
+            _CurrentDXWindowSize = newSize;
+            if (resetDevice)
+            {
+                needsReset = true;
+            }
         }
 
         #endregion 
@@ -165,6 +187,7 @@ namespace HaCreator.MapEditor
             this.dxHandle = DxContainer.Handle;
             this.userObjs = new UserObjectsManager(this);
             this.SizeChanged += MultiBoard2_SizeChanged;
+            this.DxContainer.Resize += DxContainer_Resize;
         }
 
         /// <summary>
@@ -179,6 +202,7 @@ namespace HaCreator.MapEditor
             //    throw new Exception("Cannot start without a selected board");
             Visibility = Visibility.Visible;
 
+            UpdateDxWindowSize(resetDevice: false);
             AdjustScrollBars();
             renderer = new Thread(new ThreadStart(RenderLoop));
             renderer.Start();

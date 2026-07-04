@@ -20,18 +20,25 @@ namespace HaCreator.GUI.InstanceEditor
         private readonly List<string> _itemNames;
         private readonly ListBox _listBox;
         private readonly Dispatcher _dispatcher;
+        private readonly Func<string, bool> _itemFilter;
 
         /// <summary>
         /// Constructor for the search helper
         /// </summary>
         /// <param name="listBox"></param>
         /// <param name="itemNames"></param>
-        public LoadSearchHelper(ListBox listBox, List<string> itemNames)
+        public LoadSearchHelper(ListBox listBox, List<string> itemNames, Func<string, bool> itemFilter = null)
         {
             _listBox = listBox;
             _itemNames = itemNames;
+            _itemFilter = itemFilter;
             _dispatcher = Dispatcher.CurrentDispatcher;
             _bItemsLoaded = true;
+        }
+
+        public void InvalidateFilter()
+        {
+            _previousSearchText = null;
         }
 
         /// <summary>
@@ -66,7 +73,10 @@ namespace HaCreator.GUI.InstanceEditor
 
             if (string.IsNullOrEmpty(searchText))
             {
-                var filteredItems = _itemNames.Cast<object>().ToArray();
+                var filteredItems = _itemNames
+                    .Where(ShouldShowItem)
+                    .Cast<object>()
+                    .ToArray();
                 _listBox.Items.AddRange(filteredItems);
                 OnListBoxSelectionChanged();
             }
@@ -81,7 +91,7 @@ namespace HaCreator.GUI.InstanceEditor
                     await Task.Delay(100, cancellationToken); // Delay until cancelled
 
                     List<string> itemsFiltered = _itemNames
-                        .Where(item => item.ToLower().Contains(searchText))
+                        .Where(item => item.ToLower().Contains(searchText) && ShouldShowItem(item))
                         .ToList();
 
                     await _dispatcher.InvokeAsync(() =>
@@ -113,6 +123,11 @@ namespace HaCreator.GUI.InstanceEditor
         {
             // Implement the logic for listBox_itemList_SelectedIndexChanged here
             // or provide a way to set an external event handler
+        }
+
+        private bool ShouldShowItem(string item)
+        {
+            return _itemFilter == null || _itemFilter(item);
         }
     }
 }

@@ -1,0 +1,62 @@
+<UserControl x:Class="HaCreator.CustomControls.MapBrowserWpf"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="1"
+             MinHeight="1">
+    <Grid x:Name="layoutRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition x:Name="previewRow" Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border x:Name="previewPanel"
+                Grid.Row="0"
+                MinHeight="96"
+                MaxHeight="180"
+                Margin="0,0,0,6"
+                BorderBrush="#FFD0D0D0"
+                BorderThickness="1"
+                ClipToBounds="True">
+            <Grid>
+                <Image x:Name="minimapBox"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch"/>
+
+                <Border x:Name="panel_linkWarning"
+                        Visibility="Collapsed"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Margin="8"
+                        Padding="6"
+                        Background="#EFFFFFFF"
+                        BorderBrush="#FFFFA0A0"
+                        BorderThickness="1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="Red" Text="This map is linked to: "/>
+                        <TextBlock x:Name="label_linkMapId"/>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="panel_mapExistWarning"
+                        Visibility="Collapsed"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Padding="6"
+                        Background="#EFFFFFFF"
+                        BorderBrush="#FFFFA0A0"
+                        BorderThickness="1">
+                    <TextBlock Foreground="Red" Text="Map does not actually exist"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <ListBox x:Name="mapNamesBox"
+                 Grid.Row="1"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 SelectionChanged="MapNamesBox_SelectionChanged"/>
+    </Grid>
+</UserControl>
