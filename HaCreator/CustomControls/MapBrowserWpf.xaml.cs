@@ -80,11 +80,6 @@ namespace HaCreator.CustomControls
             set
             {
                 _bIsHistoryMapBrowser = value;
-                if (_bIsHistoryMapBrowser)
-                {
-                    _previewPanelVisible = false;
-                }
-
                 UpdatePreviewVisibility();
             }
         }
@@ -458,20 +453,16 @@ namespace HaCreator.CustomControls
             {
                 string mapid = selectedName.Substring(0, 9);
 
-                if (_bIsHistoryMapBrowser)
-                {
-                    panel_linkWarning.Visibility = Visibility.Collapsed;
-                    panel_mapExistWarning.Visibility = Visibility.Collapsed;
-                    ClearPreview();
-                    bLoadMapEnabled = Program.InfoManager.MapsCache.ContainsKey(mapid);
-                    SelectionChanged?.Invoke();
-                    return;
-                }
-
                 Tuple<WzImage, MapInfo> mapTupleInfo = null;
                 if (mapsMapInfo.ContainsKey(selectedName))
                 {
                     mapTupleInfo = mapsMapInfo[selectedName];
+                }
+                else if (_bIsHistoryMapBrowser &&
+                         TryGetCachedMapInfo(selectedName, out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
+                {
+                    mapTupleInfo = new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5);
+                    mapsMapInfo[selectedName] = mapTupleInfo;
                 }
 
                 if (mapTupleInfo == null)
@@ -479,7 +470,7 @@ namespace HaCreator.CustomControls
                     panel_linkWarning.Visibility = Visibility.Collapsed;
                     panel_mapExistWarning.Visibility = Visibility.Visible;
                     ClearPreview();
-                    bLoadMapEnabled = _bIsHistoryMapBrowser && IsRegularMapSelection(selectedName);
+                    bLoadMapEnabled = _bIsHistoryMapBrowser && Program.InfoManager.MapsCache.ContainsKey(mapid);
                 }
                 else
                 {

@@ -222,7 +222,7 @@ namespace HaCreator.GUI
             }
 
             mapExplorerHistoryBrowser.IsHistoryMapBrowser = true;
-            mapExplorerHistoryBrowser.PreviewPanelVisible = false;
+            mapExplorerHistoryBrowser.PreviewPanelVisible = true;
             mapExplorerHistoryBrowser.InitialiseHistoryListboxItem();
             mapExplorerHistoryBrowser.SelectionChanged += MapExplorerHistoryBrowser_SelectionChanged;
             _isMapExplorerHistoryInitialized = true;

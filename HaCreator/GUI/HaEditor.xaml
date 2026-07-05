@@ -77,6 +77,12 @@
                             <Setter Property="MinWidth" Value="72"/>
                             <Setter Property="Padding" Value="8,2"/>
                         </Style>
+                        <Style x:Key="MapExplorerPrimaryButton"
+                               TargetType="{x:Type Button}"
+                               BasedOn="{StaticResource MapExplorerButton}">
+                            <Setter Property="MinWidth" Value="78"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Style>
                         <Style x:Key="MapExplorerTextBox" TargetType="{x:Type TextBox}">
                             <Setter Property="Height" Value="26"/>
                             <Setter Property="Padding" Value="4,2"/>
@@ -86,18 +92,75 @@
                             <Setter Property="TextWrapping" Value="Wrap"/>
                             <Setter Property="MaxHeight" Value="48"/>
                         </Style>
+                        <Style x:Key="MapExplorerSelectionText"
+                               TargetType="{x:Type TextBlock}"
+                               BasedOn="{StaticResource MapExplorerStatusText}">
+                            <Setter Property="Height" Value="34"/>
+                            <Setter Property="MaxHeight" Value="34"/>
+                            <Setter Property="LineHeight" Value="15"/>
+                            <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                            <Setter Property="ClipToBounds" Value="True"/>
+                        </Style>
+                        <Style x:Key="MapExplorerLabelText" TargetType="{x:Type TextBlock}">
+                            <Setter Property="Foreground" Value="#FF666666"/>
+                            <Setter Property="FontSize" Value="11"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Style>
                     </TabItem.Resources>
                     <Grid x:Name="mapExplorerLayoutGrid"
                           Margin="8"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
+                        <Border x:Name="mapExplorerSelectionBorder"
+                                Grid.Row="0"
+                                Padding="8"
+                                BorderBrush="#FFD0D0D0"
+                                BorderThickness="1"
+                                Background="#FFF8F8F8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Row="0"
+                                           Grid.ColumnSpan="2"
+                                           Style="{StaticResource MapExplorerLabelText}"
+                                           Text="Selection"/>
+                                <TextBlock x:Name="mapExplorerSelectionTextBlock"
+                                           Grid.Row="1"
+                                           Grid.Column="0"
+                                           Margin="0,3,8,0"
+                                           Style="{StaticResource MapExplorerSelectionText}"
+                                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                <Button x:Name="mapExplorerLoadButton"
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Width="78"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource MapExplorerPrimaryButton}"
+                                        Click="MapExplorerLoadButton_Click"
+                                        Content="Load"
+                                        ToolTip="Load selected map or file"
+                                        IsEnabled="False"/>
+                            </Grid>
+                        </Border>
+
                         <TabControl x:Name="mapExplorerSourceTabControl"
-                                    Grid.Row="0"
+                                    Grid.Row="1"
+                                    Margin="0,8,0,0"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Stretch"
                                     VerticalAlignment="Stretch"
@@ -107,45 +170,65 @@
                                      Header="WZ"
                                      HorizontalContentAlignment="Stretch"
                                      VerticalContentAlignment="Stretch">
-                                <DockPanel Margin="0,8,0,0"
-                                           HorizontalAlignment="Stretch"
-                                           VerticalAlignment="Stretch"
-                                           LastChildFill="True">
-                                    <TextBox x:Name="mapExplorerSearchTextBox"
-                                             DockPanel.Dock="Top"
-                                             Margin="0,0,0,6"
-                                             Style="{StaticResource MapExplorerTextBox}"
-                                             TextChanged="MapExplorerSearchTextBox_TextChanged"
-                                             ToolTip="Search maps"/>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
 
-                                    <DockPanel x:Name="mapExplorerFilterPanel"
-                                               DockPanel.Dock="Top"
-                                               Margin="0,0,0,6"
-                                               LastChildFill="False">
+                                    <TextBlock Grid.Row="0"
+                                               Style="{StaticResource MapExplorerLabelText}"
+                                               Text="Find maps"/>
+
+                                    <Grid Grid.Row="1"
+                                          x:Name="mapExplorerFilterPanel"
+                                          Margin="0,4,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBox x:Name="mapExplorerSearchTextBox"
+                                                 Grid.Column="0"
+                                                 Margin="0,0,8,0"
+                                                 Style="{StaticResource MapExplorerTextBox}"
+                                                 TextChanged="MapExplorerSearchTextBox_TextChanged"
+                                                 ToolTip="Search maps"/>
                                         <CheckBox x:Name="mapExplorerTownOnlyCheckBox"
+                                                  Grid.Column="1"
                                                   VerticalAlignment="Center"
-                                                  DockPanel.Dock="Left"
                                                   Content="Town only"
                                                   Checked="MapExplorerTownOnlyCheckBox_Changed"
                                                   Unchecked="MapExplorerTownOnlyCheckBox_Changed"/>
-                                    </DockPanel>
+                                    </Grid>
 
                                     <customControls:MapBrowserWpf x:Name="mapExplorerBrowser"
+                                                                  Grid.Row="2"
                                                                   HorizontalAlignment="Stretch"
                                                                   VerticalAlignment="Stretch"/>
-                                </DockPanel>
+                                </Grid>
                             </TabItem>
 
                             <TabItem x:Name="mapExplorerHistoryTabItem"
                                      Header="History"
                                      HorizontalContentAlignment="Stretch"
                                      VerticalContentAlignment="Stretch">
-                                <DockPanel Margin="0,8,0,0"
-                                           HorizontalAlignment="Stretch"
-                                           VerticalAlignment="Stretch"
-                                           LastChildFill="True">
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <customControls:MapBrowserWpf x:Name="mapExplorerHistoryBrowser"
+                                                                  Grid.Row="0"
+                                                                  HorizontalAlignment="Stretch"
+                                                                  VerticalAlignment="Stretch"
+                                                                  IsHistoryMapBrowser="True"
+                                                                  PreviewPanelVisible="True"/>
+
                                     <Grid x:Name="mapExplorerHistoryButtonsGrid"
-                                          DockPanel.Dock="Bottom"
+                                          Grid.Row="1"
                                           Margin="0,8,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -168,13 +251,7 @@
                                                 Content="Delete"
                                                 IsEnabled="False"/>
                                     </Grid>
-
-                                    <customControls:MapBrowserWpf x:Name="mapExplorerHistoryBrowser"
-                                                                  HorizontalAlignment="Stretch"
-                                                                  VerticalAlignment="Stretch"
-                                                                  IsHistoryMapBrowser="True"
-                                                                  PreviewPanelVisible="False"/>
-                                </DockPanel>
+                                </Grid>
                             </TabItem>
 
                             <TabItem x:Name="mapExplorerHamTabItem" Header="HAM">
@@ -182,10 +259,16 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
 
-                                    <Grid Grid.Row="0">
+                                    <TextBlock Grid.Row="0"
+                                               Style="{StaticResource MapExplorerLabelText}"
+                                               Text="Map file"/>
+
+                                    <Grid Grid.Row="1"
+                                          Margin="0,4,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
@@ -204,7 +287,7 @@
                                                 Content="Browse"/>
                                     </Grid>
 
-                                    <Border Grid.Row="1"
+                                    <Border Grid.Row="2"
                                             Margin="0,8,0,0"
                                             Padding="8"
                                             BorderBrush="#FFD0D0D0"
@@ -222,10 +305,16 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
 
-                                    <Grid Grid.Row="0">
+                                    <TextBlock Grid.Row="0"
+                                               Style="{StaticResource MapExplorerLabelText}"
+                                               Text="Map XML"/>
+
+                                    <Grid Grid.Row="1"
+                                          Margin="0,4,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
@@ -244,7 +333,7 @@
                                                 Content="Browse"/>
                                     </Grid>
 
-                                    <Border Grid.Row="1"
+                                    <Border Grid.Row="2"
                                             Margin="0,8,0,0"
                                             Padding="8"
                                             BorderBrush="#FFD0D0D0"
@@ -258,55 +347,39 @@
                             </TabItem>
                         </TabControl>
 
-                        <Border x:Name="mapExplorerSelectionBorder"
-                                Grid.Row="1"
+                        <Border x:Name="mapExplorerSourceActionsBorder"
+                                Grid.Row="2"
                                 Margin="0,8,0,0"
                                 Padding="8"
                                 BorderBrush="#FFD0D0D0"
                                 BorderThickness="1"
-                                Background="#FFF8F8F8">
+                                Background="#FFFCFCFC">
                             <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="mapExplorerSelectionTextBlock"
-                                       Grid.Row="0"
-                                       Grid.ColumnSpan="4"
-                                       Margin="0,0,0,6"
-                                       Style="{StaticResource MapExplorerStatusText}"
-                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-                            <Button x:Name="mapExplorerResolveMissingButton"
-                                    Grid.Row="1"
-                                    Grid.Column="1"
-                                    Width="112"
-                                    Margin="0,0,8,0"
-                                    Style="{StaticResource MapExplorerButton}"
-                                    Click="MapExplorerResolveMissingButton_Click"
-                                    Content="Resolve Missing"/>
-                            <Button x:Name="mapExplorerReloadButton"
-                                    Grid.Row="1"
-                                    Grid.Column="2"
-                                    Width="72"
-                                    Style="{StaticResource MapExplorerButton}"
-                                    Click="MapExplorerReloadButton_Click"
-                                    Content="Reload"/>
-                            <Button x:Name="mapExplorerLoadButton"
-                                    Grid.Row="1"
-                                    Grid.Column="3"
-                                    Width="72"
-                                    Margin="8,0,0,0"
-                                    Style="{StaticResource MapExplorerButton}"
-                                    Click="MapExplorerLoadButton_Click"
-                                    Content="Load"
-                                    IsEnabled="False"/>
+                                <TextBlock Grid.Column="0"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource MapExplorerLabelText}"
+                                           Text="Source tools"/>
+                                <Button x:Name="mapExplorerResolveMissingButton"
+                                        Grid.Column="1"
+                                        Width="112"
+                                        Margin="0,0,8,0"
+                                        Style="{StaticResource MapExplorerButton}"
+                                        Click="MapExplorerResolveMissingButton_Click"
+                                        Content="Resolve Missing"
+                                        ToolTip="Resolve missing map names from WZ data"/>
+                                <Button x:Name="mapExplorerReloadButton"
+                                        Grid.Column="2"
+                                        Width="72"
+                                        Style="{StaticResource MapExplorerButton}"
+                                        Click="MapExplorerReloadButton_Click"
+                                        Content="Reload"
+                                        ToolTip="Reload the current map source"/>
                             </Grid>
                         </Border>
                         </Grid>
