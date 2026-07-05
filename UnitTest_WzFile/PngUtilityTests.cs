@@ -826,6 +826,37 @@ namespace UnitTest_WzFile
 
         #region Edge Cases and Error Handling
         [TestMethod]
+        public void Packed16BitFormats_AllChannelValuesAndScalarTail_AreExact()
+        {
+            const int width = 257;
+            using var bmp = new Bitmap(width, 1, PixelFormat.Format32bppArgb);
+            for (int x = 0; x < width; x++)
+            {
+                int value = x & 0xFF;
+                bmp.SetPixel(x, 0, Color.FromArgb(value, value, 255 - value, value * 7 & 0xFF));
+            }
+
+            var (format1, bgra4444) = PngUtility.CompressImageToPngFormat(bmp, SurfaceFormat.Bgra4444);
+            var (format257, bgra5551) = PngUtility.CompressImageToPngFormat(bmp, SurfaceFormat.Bgra5551);
+            var (format513, bgr565) = PngUtility.CompressImageToPngFormat(bmp, SurfaceFormat.Bgr565);
+
+            Assert.AreEqual(WzPngFormat.Format1, format1);
+            Assert.AreEqual(WzPngFormat.Format257, format257);
+            Assert.AreEqual(WzPngFormat.Format513, format513);
+            for (int x = 0; x < width; x++)
+            {
+                Color pixel = bmp.GetPixel(x, 0);
+                ushort expected4444 = (ushort)((pixel.B >> 4) | ((pixel.G >> 4) << 4) | ((pixel.R >> 4) << 8) | ((pixel.A >> 4) << 12));
+                ushort expected5551 = (ushort)(((pixel.A >= 128 ? 1 : 0) << 15) | (pixel.R * 31 / 255 << 10) | (pixel.G * 31 / 255 << 5) | pixel.B * 31 / 255);
+                ushort expected565 = (ushort)((pixel.R * 31 / 255 << 11) | (pixel.G * 63 / 255 << 5) | pixel.B * 31 / 255);
+
+                Assert.AreEqual(expected4444, BitConverter.ToUInt16(bgra4444, x * 2));
+                Assert.AreEqual(expected5551, BitConverter.ToUInt16(bgra5551, x * 2));
+                Assert.AreEqual(expected565, BitConverter.ToUInt16(bgr565, x * 2));
+            }
+        }
+
+        [TestMethod]
         public void CompressImageToPngFormat_Dxt3_NonMultipleOf4_ThrowsException()
         {
             // DXT3 requires dimensions to be multiples of 4
