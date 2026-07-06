@@ -370,14 +370,20 @@ namespace HaCreator.MapEditor
             {
                 previewSkeletonRenderer.Effect.World = Matrix.Identity;
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderBackgrounds(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderBackgrounds(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
 
 #if UseXNAZorder
@@ -387,56 +393,74 @@ namespace HaCreator.MapEditor
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(zoom));
 #endif
 
-            if (selectedBoard != null) // No map selected to draw on
+            try
             {
-                lock (this)
+                if (selectedBoard != null) // No map selected to draw on
                 {
-                    if (selectedBoard != null) // check again
+                    lock (this)
                     {
-                        selectedBoard.RenderBoard(sprite);
-                        if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                        if (selectedBoard != null) // check again
                         {
-                            DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
-                        }
-                        if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
-                        {
-                            DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                            selectedBoard.RenderBoard(sprite);
+                            if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                            {
+                                DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
+                            }
+                            if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
+                            {
+                                DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                            }
                         }
                     }
                 }
-            }
 #if FPS_TEST
-            fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
+                fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
 #endif
-            sprite.End();
+            }
+            finally
+            {
+                sprite.End();
+            }
 
             // Render front backgrounds without zoom transform (after other items but before minimap)
             if (selectedBoard != null)
             {
                 previewSkeletonRenderer.Effect.World = Matrix.Identity;
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderFrontBackgrounds(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderFrontBackgrounds(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
 
             // Render minimap as a UI overlay (without zoom transform so it stays at fixed screen size)
             if (selectedBoard != null)
             {
                 sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
-                lock (this)
+                try
                 {
-                    if (selectedBoard != null)
+                    lock (this)
                     {
-                        selectedBoard.RenderMinimap(sprite);
+                        if (selectedBoard != null)
+                        {
+                            selectedBoard.RenderMinimap(sprite);
+                        }
                     }
                 }
-                sprite.End();
+                finally
+                {
+                    sprite.End();
+                }
             }
             try
             {

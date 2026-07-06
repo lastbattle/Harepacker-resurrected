@@ -4162,82 +4162,87 @@ namespace HaCreator.MapSimulator
                 effectMatrix);
             //_skeletonMeshRenderer.Begin();
 
-            // Create render context for RenderingManager
-            var renderContext = new Managers.RenderContext(
-                _spriteBatch, _skeletonMeshRenderer, gameTime,
-                mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                _renderParams, TickCount, _debugBoundaryTexture);
-
-            // World rendering via RenderingManager
-            _renderingManager.DrawBackgrounds(in renderContext, false); // back background
-            _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
-            _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
-            DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
-            _renderingManager.DrawDrops(in renderContext); // item/meso drops
-            _renderingManager.DrawPortals(in renderContext); // portals
-            _renderingManager.DrawReactors(in renderContext); // reactors
-            _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
-            _renderingManager.DrawTransportation(in renderContext); // ship/balrog
-            _renderingManager.DrawBackgrounds(in renderContext, true); // front background
-
-            // Borders
-            _renderingManager.DrawVRFieldBorder(in renderContext);
-            _renderingManager.DrawLBFieldBorder(in renderContext);
-
-            // Debug overlays (separate pass - only runs when debug mode is on)
-            _renderingManager.DrawDebugOverlays(in renderContext);
-
-            // Screen effects (fade, flash, explosion, motion blur) and animation effects
-            _renderingManager.DrawScreenEffects(in renderContext);
-
-            // Limited view field (fog of war) - draws after world, before UI
-            _renderingManager.DrawLimitedView(in renderContext);
-
-            //////////////////// UI related here ////////////////////
-            _renderingManager.DrawTooltips(in renderContext, mouseState); 
-
-            // Status bar [layer below minimap]
-            if (!_gameState.HideUIMode) {
-                DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
-            }
-
-            if (gameTime.TotalGameTime.TotalSeconds < 5)
-                _spriteBatch.DrawString(_fontNavigationKeysHelper,
-                    _gameState.MobMovementEnabled ? _navHelpTextMobOn : _navHelpTextMobOff,
-                    new Vector2(20, Height - 190), Color.White);
-            
-            if (!_screenshotManager.TakeScreenshot && _gameState.ShowDebugMode)
+            try
             {
-                _debugStringBuilder.Clear();
-                _debugStringBuilder.Append("FPS: ").Append(frameRate).Append('\n');
-                _debugStringBuilder.Append("Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append('\n');
-                _debugStringBuilder.Append("Relative cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
+                // Create render context for RenderingManager
+                var renderContext = new Managers.RenderContext(
+                    _spriteBatch, _skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    _renderParams, TickCount, _debugBoundaryTexture);
 
-                _spriteBatch.DrawString(_fontDebugValues, _debugStringBuilder,
-                    new Vector2(Width - 270, 10), Color.White); // use the original width to render text
+                // World rendering via RenderingManager
+                _renderingManager.DrawBackgrounds(in renderContext, false); // back background
+                _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
+                _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
+                DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
+                _renderingManager.DrawDrops(in renderContext); // item/meso drops
+                _renderingManager.DrawPortals(in renderContext); // portals
+                _renderingManager.DrawReactors(in renderContext); // reactors
+                _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
+                _renderingManager.DrawTransportation(in renderContext); // ship/balrog
+                _renderingManager.DrawBackgrounds(in renderContext, true); // front background
+
+                // Borders
+                _renderingManager.DrawVRFieldBorder(in renderContext);
+                _renderingManager.DrawLBFieldBorder(in renderContext);
+
+                // Debug overlays (separate pass - only runs when debug mode is on)
+                _renderingManager.DrawDebugOverlays(in renderContext);
+
+                // Screen effects (fade, flash, explosion, motion blur) and animation effects
+                _renderingManager.DrawScreenEffects(in renderContext);
+
+                // Limited view field (fog of war) - draws after world, before UI
+                _renderingManager.DrawLimitedView(in renderContext);
+
+                //////////////////// UI related here ////////////////////
+                _renderingManager.DrawTooltips(in renderContext, mouseState); 
+
+                // Status bar [layer below minimap]
+                if (!_gameState.HideUIMode) {
+                    DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
+                }
+
+                if (gameTime.TotalGameTime.TotalSeconds < 5)
+                    _spriteBatch.DrawString(_fontNavigationKeysHelper,
+                        _gameState.MobMovementEnabled ? _navHelpTextMobOn : _navHelpTextMobOff,
+                        new Vector2(20, Height - 190), Color.White);
+                
+                if (!_screenshotManager.TakeScreenshot && _gameState.ShowDebugMode)
+                {
+                    _debugStringBuilder.Clear();
+                    _debugStringBuilder.Append("FPS: ").Append(frameRate).Append('\n');
+                    _debugStringBuilder.Append("Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append('\n');
+                    _debugStringBuilder.Append("Relative cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
+
+                    _spriteBatch.DrawString(_fontDebugValues, _debugStringBuilder,
+                        new Vector2(Width - 270, 10), Color.White); // use the original width to render text
+                }
+
+                // Draw chat messages and input box
+                if (!_gameState.HideUIMode)
+                {
+                    _chat.Draw(_spriteBatch, TickCount);
+
+                    // Draw pickup notices (meso/item gain messages at bottom right)
+                    _pickupNoticeUI?.Draw(_spriteBatch);
+                }
+
+                // Draw portal fade overlay AFTER all UI elements (covers everything like official client)
+                // This is separate from DrawScreenEffects which handles other effects drawn before UI
+                _renderingManager.DrawPortalFadeOverlay(in renderContext);
+
+                // Cursor [this is in front of everything else]
+                mouseCursor.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
+                    0, 0, 0, 0, // pos determined in the class
+                    null,
+                    _renderParams,
+                    TickCount);
             }
-
-            // Draw chat messages and input box
-            if (!_gameState.HideUIMode)
+            finally
             {
-                _chat.Draw(_spriteBatch, TickCount);
-
-                // Draw pickup notices (meso/item gain messages at bottom right)
-                _pickupNoticeUI?.Draw(_spriteBatch);
+                _spriteBatch.End();
             }
-
-            // Draw portal fade overlay AFTER all UI elements (covers everything like official client)
-            // This is separate from DrawScreenEffects which handles other effects drawn before UI
-            _renderingManager.DrawPortalFadeOverlay(in renderContext);
-
-            // Cursor [this is in front of everything else]
-            mouseCursor.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
-                0, 0, 0, 0, // pos determined in the class
-                null,
-                _renderParams,
-                TickCount);
-
-            _spriteBatch.End();
             //_skeletonMeshRenderer.End();
 
             // Save screenshot if render is activated
