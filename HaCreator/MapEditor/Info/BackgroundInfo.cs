@@ -1,5 +1,6 @@
 ﻿using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
@@ -21,6 +22,7 @@ namespace HaCreator.MapEditor.Info
         private readonly WzImageProperty imageProperty;
 
         private WzSpineAnimationItem wzSpineAnimationItem; // only applicable if its a spine item, otherwise null.
+        private string[] spine41AnimationNames;
 
         /// <summary>
         /// Constructor
@@ -34,7 +36,7 @@ namespace HaCreator.MapEditor.Info
         /// <param name="parentObject"></param>
         /// <param name="wzSpineAnimationItem"></param>
         public BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject,
-            WzSpineAnimationItem wzSpineAnimationItem)
+            WzSpineAnimationItem wzSpineAnimationItem, string[] spine41AnimationNames = null)
             : base(image, origin, parentObject)
         {
             this.imageProperty = imageProperty;
@@ -42,6 +44,7 @@ namespace HaCreator.MapEditor.Info
             this._type = _type;
             this._no = no;
             this.wzSpineAnimationItem = wzSpineAnimationItem;
+            this.spine41AnimationNames = spine41AnimationNames;
         }
 
         /// <summary>
@@ -58,6 +61,16 @@ namespace HaCreator.MapEditor.Info
             if (bsImg == null)
                 return null;
             WzImageProperty bgInfoProp = bsImg[type.ToPropertyString()]?[no];
+
+            // Newer WZ versions can store a single Spine background directly under
+            // the "spine" node instead of under the legacy numeric "spine/0" node.
+            if (bgInfoProp == null && no == "0" && bsImg["spine"] is WzSubProperty spineRoot &&
+                spineRoot.WzProperties.Any(prop =>
+                    prop is WzStringProperty stringProperty && stringProperty.IsSpineAtlasResources))
+            {
+                bgInfoProp = spineRoot;
+                type = BackgroundInfoType.Spine;
+            }
 
             if (bgInfoProp == null)
             {
@@ -104,37 +117,46 @@ namespace HaCreator.MapEditor.Info
             }
             else if (type == BackgroundInfoType.Spine)
             {
-                // TODO: make a preview of the spine image ffs
-                WzCanvasProperty spineCanvas = (WzCanvasProperty)parentObject["0"];
-                if (spineCanvas != null)
+                WzCanvasProperty spineCanvas = parentObject["0"] as WzCanvasProperty ??
+                    parentObject.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+
+                // Load Spine resources even when this background has no numeric preview
+                // canvas. Direct Spine containers name the texture after the atlas page.
+                WzSpineAnimationItem wzSpineAnimationItem = null;
+                string[] spine41AnimationNames = null;
+                if (graphicsDevice != null)
                 {
-                    // Load spine
-                    WzSpineAnimationItem wzSpineAnimationItem = null;
-                    if (graphicsDevice != null) // graphicsdevice needed to work.. assuming that it is loaded by now before BackgroundPanel
+                    WzImageProperty spineAtlasProp = parentObject.WzProperties.FirstOrDefault(
+                        wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources);
+                    if (spineAtlasProp != null)
                     {
-                        WzImageProperty spineAtlasProp = ((WzSubProperty)parentObject).WzProperties.FirstOrDefault(
-                            wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources);
-                        if (spineAtlasProp != null)
+                        if (DXSpine41Object.TryReadAnimationNames(parentObject, null, out var animationNames))
+                        {
+                            spine41AnimationNames = animationNames.ToArray();
+                        }
+                        else
                         {
                             WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
                             wzSpineAnimationItem = new WzSpineAnimationItem(stringObj);
-
                             wzSpineAnimationItem.LoadResources(graphicsDevice);
                         }
                     }
+                }
 
+                if (spineCanvas != null)
+                {
                     // Preview Image
                     Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
 
                     // Origin
                     PointF origin__ = spineCanvas.GetCanvasOriginPosition();
 
-                    return new BackgroundInfo(parentObject, bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject, wzSpineAnimationItem);
+                    return new BackgroundInfo(parentObject, bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject, wzSpineAnimationItem, spine41AnimationNames);
                 }
                 else
                 {
                     PointF origin_ = new PointF();
-                    return new BackgroundInfo(parentObject, Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject, null);
+                    return new BackgroundInfo(parentObject, Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject, null, spine41AnimationNames);
                 }
             }
             else
@@ -160,7 +182,7 @@ namespace HaCreator.MapEditor.Info
         {
             const int DEFAULT_RX = -5;
             const int DEFAULT_RY = -5;
-            return CreateInstance(board, x, y, z, DEFAULT_RX, DEFAULT_RY, 0, 0, 0, 255, false, flip, 0, null, false);
+            return CreateInstance(board, x, y, z, DEFAULT_RX, DEFAULT_RY, 0, 0, 0, 255, false, flip, 0, 0, null, false);
         }
 
         /// <summary>
@@ -182,7 +204,7 @@ namespace HaCreator.MapEditor.Info
         /// <param name="spineAni"></param>
         /// <param name="spineRandomStart"></param>
         /// <returns></returns>
-        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode, 
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int page, int screenMode, 
             string spineAni, bool spineRandomStart)
         {
             if (spineAni == null) // if one isnt set already, via pre-existing object in map. It probably means its created via BackgroundPanel
@@ -192,9 +214,19 @@ namespace HaCreator.MapEditor.Info
                 {
                     spineAni = wzSpineAnimationItem.SkeletonData.Animations[0].Name; // actually we should allow the user to select, but nexon only places 1 animation for now
                 }
+                else if (spine41AnimationNames != null && spine41AnimationNames.Length > 0)
+                {
+                    spineAni = spine41AnimationNames[0];
+                }
             }
-            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode, 
+            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, page, screenMode, 
                 spineAni, spineRandomStart);
+        }
+
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int page,
+            string spineAni, bool spineRandomStart)
+        {
+            return CreateInstance(board, x, y, z, rx, ry, cx, cy, type, a, front, flip, page, 0, spineAni, spineRandomStart);
         }
 
 
@@ -238,6 +270,12 @@ namespace HaCreator.MapEditor.Info
         {
             get { return wzSpineAnimationItem; }
             set { this.wzSpineAnimationItem = value; }
+        }
+
+        public string[] Spine41AnimationNames
+        {
+            get { return spine41AnimationNames; }
+            set { spine41AnimationNames = value; }
         }
         #endregion
     }

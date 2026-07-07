@@ -46,6 +46,11 @@ namespace HaCreator.GUI
         /// <param name="isManualOpen">True if user manually opened via button (updates preference)</param>
         public static void ShowWindow(HaCreatorStateManager hcsm, Window owner, bool isManualOpen = true)
         {
+            if (TryShowDocked(owner, isManualOpen))
+            {
+                return;
+            }
+
             var window = Instance;
 
             // If manually opened, remember to show on next load
@@ -138,6 +143,18 @@ namespace HaCreator.GUI
             {
                 objectViewerPanel.OnBoardChanged(_hcsm.MultiBoard.SelectedBoard);
             }
+        }
+
+        private static bool TryShowDocked(Window owner, bool isManualOpen)
+        {
+            HaEditor editor = owner as HaEditor ?? Program.HaEditorWindow;
+            if (editor == null || !editor.IsLoaded)
+            {
+                return false;
+            }
+
+            editor.ShowObjectViewerDocked(isManualOpen);
+            return true;
         }
     }
 }

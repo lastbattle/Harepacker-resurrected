@@ -211,6 +211,7 @@ public void LoadPacksFiles()
 
 **MS Files (64-bit MapleStory):**
 - Found in `Data/Packs/*.ms`
+- Supports version 2 packs encrypted with SNOW2 and version 4 packs encrypted with ChaCha20
 - Loaded as `WzMsFile` instances
 - Converted to `WzFile` via `msFile.LoadAsWzFile()`
 - Added to standard WZ lookup dictionaries

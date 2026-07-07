@@ -29,6 +29,7 @@
                 <CommandBinding Command="ns:HaRibbon.Snapping"  CanExecute="AlwaysExecute" Executed="Snapping_Executed" />
                 <CommandBinding Command="ns:HaRibbon.Random"  CanExecute="AlwaysExecute" Executed="Random_Executed" />
                 <CommandBinding Command="ns:HaRibbon.InfoMode"  CanExecute="AlwaysExecute" Executed="InfoMode_Executed" />
+                <CommandBinding Command="ns:HaRibbon.AnimateMapObjectPreviews"  CanExecute="AlwaysExecute" Executed="AnimateMapObjectPreviews_Executed" />
                 <CommandBinding Command="ns:HaRibbon.HaRepacker"  CanExecute="AlwaysExecute" Executed="HaRepacker_Executed" />
                 <CommandBinding Command="ns:HaRibbon.LayerUp"  CanExecute="AlwaysExecute" Executed="LayerUp_Executed" />
                 <CommandBinding Command="ns:HaRibbon.LayerDown"  CanExecute="AlwaysExecute" Executed="LayerDown_Executed" />
@@ -108,6 +109,7 @@
 
                         <StackPanel Grid.Column="3">
                             <CheckBox x:Name="mirrorFieldDataCheck" Content="Mirror field" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                            <CheckBox x:Name="animateMapObjectPreviewsCheck" Content="Animate previews" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="False" IsChecked="True" Command="ns:HaRibbon.AnimateMapObjectPreviews" Focusable="False"/>
                         </StackPanel>
 
                         <StackPanel Grid.Column="4">

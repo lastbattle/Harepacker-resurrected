@@ -91,6 +91,8 @@ namespace HaCreator.GUI
                 }
                 i++;
             }
+
+            animateMapObjectPreviewsCheck.IsChecked = ApplicationSettings.AnimateMapObjectPreviews;
         }
 
         public static readonly RoutedUICommand New = new RoutedUICommand("New", "New", typeof(HaRibbon),
@@ -128,6 +130,8 @@ namespace HaCreator.GUI
         public static readonly RoutedUICommand Random = new RoutedUICommand("Random", "Random", typeof(HaRibbon),
             new InputGestureCollection() { });
         public static readonly RoutedUICommand InfoMode = new RoutedUICommand("InfoMode", "InfoMode", typeof(HaRibbon),
+            new InputGestureCollection() { });
+        public static readonly RoutedUICommand AnimateMapObjectPreviews = new RoutedUICommand("AnimateMapObjectPreviews", "AnimateMapObjectPreviews", typeof(HaRibbon),
             new InputGestureCollection() { });
         public static readonly RoutedUICommand HaRepacker = new RoutedUICommand("HaRepacker", "HaRepacker", typeof(HaRibbon),
             new InputGestureCollection() { });
@@ -300,6 +304,12 @@ namespace HaCreator.GUI
         {
             if (InfoModeToggled != null)
                 InfoModeToggled.Invoke(((RibbonToggleButton)e.OriginalSource).IsChecked.Value);
+        }
+
+        private void AnimateMapObjectPreviews_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (MapObjectPreviewAnimationToggled != null)
+                MapObjectPreviewAnimationToggled.Invoke(animateMapObjectPreviewsCheck.IsChecked == true);
         }
 
         private void HaRepacker_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -541,6 +551,7 @@ namespace HaCreator.GUI
         public event ToggleEvent SnappingToggled;
         public event ToggleEvent RandomTilesToggled;
         public event ToggleEvent InfoModeToggled;
+        public event ToggleEvent MapObjectPreviewAnimationToggled;
         public event EmptyEvent HaRepackerClicked;
         public event EmptyEvent ExportClicked;
         public event EmptyEvent NewPlatformClicked;

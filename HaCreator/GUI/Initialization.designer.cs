@@ -55,6 +55,7 @@ namespace HaCreator.GUI
             button_extractNew = new System.Windows.Forms.Button();
             button_browseVersion = new System.Windows.Forms.Button();
             button_refreshVersions = new System.Windows.Forms.Button();
+            button_renameVersion = new System.Windows.Forms.Button();
             button_deleteVersion = new System.Windows.Forms.Button();
             button_initialise = new System.Windows.Forms.Button();
             toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
@@ -182,6 +183,7 @@ namespace HaCreator.GUI
             tabPage_imgVersions.Controls.Add(button_extractNew);
             tabPage_imgVersions.Controls.Add(button_browseVersion);
             tabPage_imgVersions.Controls.Add(button_refreshVersions);
+            tabPage_imgVersions.Controls.Add(button_renameVersion);
             tabPage_imgVersions.Controls.Add(button_deleteVersion);
             tabPage_imgVersions.Location = new System.Drawing.Point(4, 22);
             tabPage_imgVersions.Name = "tabPage_imgVersions";
@@ -341,13 +343,25 @@ namespace HaCreator.GUI
             button_refreshVersions.UseVisualStyleBackColor = true;
             button_refreshVersions.Click += button_refreshVersions_Click;
             // 
+            // button_renameVersion
+            // 
+            button_renameVersion.Enabled = false;
+            button_renameVersion.Location = new System.Drawing.Point(395, 256);
+            button_renameVersion.Name = "button_renameVersion";
+            button_renameVersion.Size = new System.Drawing.Size(82, 40);
+            button_renameVersion.TabIndex = 5;
+            button_renameVersion.Text = "Rename";
+            toolTip.SetToolTip(button_renameVersion, "Rename the selected version folder and manifest");
+            button_renameVersion.UseVisualStyleBackColor = true;
+            button_renameVersion.Click += button_renameVersion_Click;
+            // 
             // button_deleteVersion
             // 
             button_deleteVersion.Enabled = false;
             button_deleteVersion.Location = new System.Drawing.Point(483, 256);
             button_deleteVersion.Name = "button_deleteVersion";
             button_deleteVersion.Size = new System.Drawing.Size(82, 40);
-            button_deleteVersion.TabIndex = 5;
+            button_deleteVersion.TabIndex = 6;
             button_deleteVersion.Text = "Delete";
             toolTip.SetToolTip(button_deleteVersion, "Delete the selected version from disk");
             button_deleteVersion.UseVisualStyleBackColor = true;
@@ -465,6 +479,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Button button_extractNew;
         private System.Windows.Forms.Button button_browseVersion;
         private System.Windows.Forms.Button button_refreshVersions;
+        private System.Windows.Forms.Button button_renameVersion;
         private System.Windows.Forms.Button button_deleteVersion;
         private System.Windows.Forms.Label label_noVersions;
     }

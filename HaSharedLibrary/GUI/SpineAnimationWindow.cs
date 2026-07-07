@@ -99,6 +99,7 @@ namespace HaSharedLibrary.GUI
 			// to build your own font: /MonoGame Font Builder/game.mgcb
 			// build -> obj -> copy it over to HaRepacker-resurrected [Content]
 			font = Content.Load<SpriteFont>("XnaDefaultFont");  
+			font.DefaultCharacter = '?';
 
 			base.Initialize();
 		}

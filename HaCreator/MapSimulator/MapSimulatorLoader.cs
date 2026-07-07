@@ -113,22 +113,45 @@ namespace HaCreator.MapSimulator {
                 source = property1.WzProperties[0];
             }
 
+            if (source is WzRawDataProperty rawProperty && rawProperty.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                // Map 993296000 contains raw Spine 4.1 skeleton objects; retain the 2.1 fallback for older maps.
+                if (DXSpine41Object.TryLoadRawSkeleton(rawProperty, device, spineAni, out DXSpine41Object.Spine41Object spine41Object))
+                {
+                    usedProps.Add(source);
+                    frames.Add(new DXSpine41Object(spine41Object, x, y));
+                }
+                else if (LoadSpineMapObjectItem(source, source, device, spineAni))
+                {
+                    usedProps.Add(source);
+                    WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
+                    frames.Add(new DXSpineObject(spineObject, x, y, System.Drawing.PointF.Empty));
+                }
+                return frames;
+            }
+
+            if (TryLoadDirectSpine41Frames(source, x, y, device, spineAni, ref usedProps, frames))
+            {
+                return frames;
+            }
+
             if (source is WzCanvasProperty property) //one-frame
             {
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, spineAni);
+                Texture2D texture = null;
                 if (!bLoadedSpine) {
                     string canvasBitmapPath = property.FullPath;
                     Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
                     if (textureFromCache != null) {
-                        source.MSTag = textureFromCache;
+                        texture = textureFromCache;
                     }
                     else {
                         var bitmap = property.GetLinkedWzCanvasBitmap();
                         if (bitmap != null)
                         {
-                            source.MSTag = bitmap.ToTexture2D(device);
+                            texture = bitmap.ToTexture2D(device);
                             // add to cache
-                            texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                            texturePool.AddTextureToPool(canvasBitmapPath, texture);
                         }
                     }
                 }
@@ -140,18 +163,17 @@ namespace HaCreator.MapSimulator {
 
                     frames.Add(new DXSpineObject(spineObject, x, y, origin));
                 }
-                else if (source.MSTag != null) {
-                    Texture2D texture = (Texture2D)source.MSTag;
+                else if (texture != null) {
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
                     frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
                 }
                 else // fallback
                 {
-                    Texture2D texture = GetTransparentTexture(device);
+                    Texture2D fallbackTexture = GetTransparentTexture(device);
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
-                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
+                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, fallbackTexture));
                 }
             }
             else if (source is WzSubProperty) // animated
@@ -183,23 +205,22 @@ namespace HaCreator.MapSimulator {
                         int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
 
                         bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
+                        Texture2D frameTexture = null;
                         if (!bLoadedSpine) {
-                            if (frameProp.MSTag == null) {
-                                string canvasBitmapPath = frameProp.FullPath;
-                                Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
-                                if (textureFromCache != null) {
-                                    frameProp.MSTag = textureFromCache;
+                            string canvasBitmapPath = frameProp.FullPath;
+                            Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+                            if (textureFromCache != null) {
+                                frameTexture = textureFromCache;
+                            }
+                            else {
+                                var bitmap = frameProp.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    frameTexture = bitmap.ToTexture2D(device);
                                 }
-                                else {
-                                    var bitmap = frameProp.GetLinkedWzCanvasBitmap();
-                                    if (bitmap != null) {
-                                        frameProp.MSTag = bitmap.ToTexture2D(device);
-                                    }
 
-                                    // add to cache
-                                    if (frameProp.MSTag != null) {
-                                        texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
-                                    }
+                                // add to cache
+                                if (frameTexture != null) {
+                                    texturePool.AddTextureToPool(canvasBitmapPath, frameTexture);
                                 }
                             }
                         }
@@ -211,11 +232,10 @@ namespace HaCreator.MapSimulator {
 
                             frames.Add(new DXSpineObject(spineObject, x, y, origin, delay));
                         }
-                        else if (frameProp.MSTag != null) {
-                            Texture2D texture = (Texture2D)frameProp.MSTag;
+                        else if (frameTexture != null) {
                             System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
+                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, frameTexture, delay));
                         }
                         else {
                             Texture2D texture = GetTransparentTexture(device);
@@ -289,7 +309,14 @@ namespace HaCreator.MapSimulator {
             WzImageProperty spineAtlas = null;
 
             bool bIsObjectLayer = source.Parent.Name == "spine";
-            if (bIsObjectLayer) // load spine if the source is already the directory we need
+            if (source is WzRawDataProperty && source.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase))
+            {
+                spineAtlas = source.Parent is WzImageProperty parentProperty
+                    ? parentProperty.WzProperties.FirstOrDefault(wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources)
+                    : null;
+                bIsObjectLayer = true;
+            }
+            else if (bIsObjectLayer) // load spine if the source is already the directory we need
             {
                 string spineAtlasPath = ((WzStringProperty)source["spine"])?.GetString();
                 if (spineAtlasPath != null) {
@@ -316,11 +343,19 @@ namespace HaCreator.MapSimulator {
             if (spineAtlas != null) {
                 if (spineAtlas is WzStringProperty stringObj) {
                     if (!stringObj.IsSpineAtlasResources)
+                    {
                         return false;
+                    }
 
-                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
+                    string skeletonPropertyName = source is WzRawDataProperty ? source.Name : null;
+                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj, skeletonPropertyName));
 
                     spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
+                    if (spineObject.spineAnimationItem.SkeletonData == null)
+                    {
+                        return false;
+                    }
+
                     spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
                     //spineObject.skeleton.R =153;
                     //spineObject.skeleton.G = 255;
@@ -353,6 +388,42 @@ namespace HaCreator.MapSimulator {
                 }
             }
             return false;
+        }
+
+        private static bool TryLoadDirectSpine41Frames(WzImageProperty source, int x, int y, GraphicsDevice device, string spineAniPath, ref List<WzObject> usedProps, List<IDXObject> frames)
+        {
+            if (source is not WzSubProperty spineContainer)
+                return false;
+
+            if (!spineContainer.WzProperties.Any(wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources))
+                return false;
+
+            WzRawDataProperty skeletonProperty = SelectDirectSpineSkeleton(spineContainer, spineAniPath);
+            if (skeletonProperty == null)
+                return false;
+
+            if (!DXSpine41Object.TryLoadRawSkeleton(skeletonProperty, device, spineAniPath, out DXSpine41Object.Spine41Object spine41Object))
+                return false;
+
+            usedProps.Add(skeletonProperty);
+            frames.Add(new DXSpine41Object(spine41Object, x, y));
+            return true;
+        }
+
+        private static WzRawDataProperty SelectDirectSpineSkeleton(WzImageProperty spineContainer, string spineAniPath)
+        {
+            if (!string.IsNullOrWhiteSpace(spineAniPath))
+            {
+                WzRawDataProperty namedSkeleton = spineContainer.WzProperties
+                    .OfType<WzRawDataProperty>()
+                    .FirstOrDefault(property => property.Name.Equals(spineAniPath, StringComparison.OrdinalIgnoreCase));
+                if (namedSkeleton != null)
+                    return namedSkeleton;
+            }
+
+            return spineContainer.WzProperties
+                .OfType<WzRawDataProperty>()
+                .FirstOrDefault(property => property.Name.EndsWith(".skel", StringComparison.OrdinalIgnoreCase));
         }
         #endregion
 

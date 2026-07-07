@@ -678,7 +678,7 @@ namespace HaCreator.MapEditor.AI
             if (info.VRLimit) enabledOptions.Add("VRLimit");
             if (info.mirror_Bottom) enabledOptions.Add("mirror_Bottom");
             if (info.reactorShuffle) enabledOptions.Add("reactorShuffle");
-            if (info.consumeItemCoolTime) enabledOptions.Add("consumeItemCoolTime");
+            if ((info.consumeItemCoolTime ?? 0) > 0) enabledOptions.Add($"consumeItemCoolTime={info.consumeItemCoolTime}");
             if (info.zeroSideOnly) enabledOptions.Add("zeroSideOnly");
 
             if (enabledOptions.Count > 0)

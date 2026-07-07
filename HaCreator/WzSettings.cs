@@ -40,6 +40,7 @@ namespace HaCreator
         public static int Npcrx1Offset = 20;
         public static int defaultMobTime = 0;
         public static int defaultReactorTime = 0;
+        public static int AntiMacroScreenshotSaveLocation = 0;
         public static float SnapDistance = 10;
         public static float SignificantDistance = 10;
         public static int ScrollDistance = 90;
@@ -82,6 +83,7 @@ namespace HaCreator
         public static int lastRadioIndex = 3;
         public static bool randomTiles = true;
         public static bool InfoMode = false;
+        public static bool AnimateMapObjectPreviews = true;
         public static int lastDefaultLayer = 0;
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";

@@ -24,6 +24,7 @@ Use it to make focused, low-risk changes that match this codebase.
 - Visual Studio 2022 (Desktop development with C++)
 - .NET SDK supporting `net10.0-windows`
 - Git with submodule support
+- In the current Codex desktop environment for this repo, `rg` may be present on `PATH` but fail to execute. Prefer PowerShell-based file and text searches unless `rg` is confirmed to work in the current session.
 
 ## Setup
 ```powershell
@@ -69,11 +70,16 @@ Notes:
 - Do not refactor unrelated files in the same pass.
 - Avoid broad formatting-only edits.
 - Preserve existing WinForms/WPF patterns and project structure.
+- Use PowerShell-based searches by default in this repository unless you have already confirmed `rg` executes successfully in the current session.
+- When using PowerShell-based search commands, exclude compiled outputs such as `bin/`, `obj/`, and compiled binary files (`.dll`, `.exe`, `.pdb`, `.cache`, `.resources`).
+- Preferred PowerShell equivalents:
+  - File discovery: `Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' }`
+  - Name filtering: `Get-ChildItem -Recurse -File -Filter <name> | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' }`
+  - Text search: `Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Extension -notin '.dll', '.exe', '.pdb', '.cache', '.resources' } | Select-String -Pattern <text>`
 - Do not change framework/runtime targets or package baselines unless requested.
-- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes; include a short commit message description/body of what changed in addition to the title/subject line.
+- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes. Every commit must include a detailed commit message body in addition to the title/subject line. The body should explain what changed, why it changed, and important implementation details or tradeoffs. Mention validation or manual verification only when it adds useful context; do not add boilerplate lines such as a build command succeeding with existing warnings or manual UI verification not being run.
 - For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
 - For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
-- When changing packing/extraction/parsing logic, prefer adding or updating tests in related test projects.
 - For UI behavior changes, include manual verification steps in your summary.
 
 ## High-Risk Areas (Extra Caution)

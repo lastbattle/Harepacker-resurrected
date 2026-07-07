@@ -60,6 +60,8 @@ namespace HaCreator.MapEditor
         private System.Windows.Controls.TabItem page = null;
         private bool dirty;
         private readonly int uid;
+        private TimeSpan livePreviewTotalTime = TimeSpan.Zero;
+        private GameTime livePreviewGameTime = new GameTime();
 
         private static int uidCounter = 0;
 
@@ -236,7 +238,7 @@ namespace HaCreator.MapEditor
             {
                 foreach (BackgroundInstance bg in boardItems.BackBackgrounds)
                 {
-                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                    DrawItem(bg, sprite, xShift, yShift, sel);
                 }
             }
         }
@@ -259,7 +261,7 @@ namespace HaCreator.MapEditor
             {
                 foreach (BackgroundInstance bg in boardItems.FrontBackgrounds)
                 {
-                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                    DrawItem(bg, sprite, xShift, yShift, sel);
                 }
             }
         }
@@ -316,7 +318,7 @@ namespace HaCreator.MapEditor
                 foreach (BoardItem item in list)
                 {
                     if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
-                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                        DrawItem(item, sprite, xShift, yShift, sel);
                 }
             }
             else if ((sel.visibleTypes & list.ListType) != 0)
@@ -327,7 +329,7 @@ namespace HaCreator.MapEditor
                     {
                         if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
                         {
-                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                            DrawItem(item, sprite, xShift, yShift, sel);
                         }
                     }
 
@@ -361,6 +363,46 @@ namespace HaCreator.MapEditor
                     }
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawItem(BoardItem item, SpriteBatch sprite, int xShift, int yShift, SelectionInfo selection)
+        {
+            Color color = item.GetColor(selection, item.Selected);
+            if (parent.DrawLivePreview(item, sprite, color, xShift, yShift, hScroll, vScroll, centerPoint))
+            {
+                // Preserve editor-only overlays from the normal draw path without redrawing frame zero.
+                item.Draw(sprite, Color.Transparent, xShift, yShift);
+                DrawLivePreviewEditorMarker(item, sprite, xShift, yShift, selection);
+                return;
+            }
+
+            item.Draw(sprite, color, xShift, yShift);
+        }
+
+        private void DrawLivePreviewEditorMarker(BoardItem item, SpriteBatch sprite, int xShift, int yShift, SelectionInfo selection)
+        {
+            if (item is not BackgroundInstance background || background.type == BackgroundType.Regular)
+                return;
+
+            bool backgroundEditable = (selection.editedTypes & ItemTypes.Backgrounds) == ItemTypes.Backgrounds;
+            if (!backgroundEditable && !background.Selected)
+                return;
+
+            Color markerColor = background.Selected ? UserSettings.SelectedColor : UserSettings.OriginColor;
+            Rectangle sourceFrame = new Rectangle(
+                background.X + xShift - background.Origin.X,
+                background.Y + yShift - background.Origin.Y,
+                Math.Max(1, background.Width),
+                Math.Max(1, background.Height));
+
+            parent.DrawRectangle(sprite, sourceFrame, markerColor);
+
+            int originX = background.X + xShift;
+            int originY = background.Y + yShift;
+            parent.DrawLine(sprite, new Vector2(originX - 8, originY), new Vector2(originX + 8, originY), markerColor);
+            parent.DrawLine(sprite, new Vector2(originX, originY - 8), new Vector2(originX, originY + 8), markerColor);
+            parent.DrawDot(sprite, originX, originY, markerColor, 1);
         }
 
         /// <summary>
@@ -731,6 +773,26 @@ namespace HaCreator.MapEditor
         public SerializationManager SerializationManager
         {
             get { return serMan; }
+        }
+
+        internal GameTime LivePreviewGameTime
+        {
+            get { return livePreviewGameTime; }
+        }
+
+        internal GameTime AdvanceLivePreviewTime(TimeSpan elapsed)
+        {
+            if (elapsed < TimeSpan.Zero)
+                elapsed = TimeSpan.Zero;
+
+            livePreviewTotalTime += elapsed;
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, elapsed);
+            return livePreviewGameTime;
+        }
+
+        internal void PauseLivePreviewTime()
+        {
+            livePreviewGameTime = new GameTime(livePreviewTotalTime, TimeSpan.Zero);
         }
 
         public System.Windows.Controls.TabItem TabPage

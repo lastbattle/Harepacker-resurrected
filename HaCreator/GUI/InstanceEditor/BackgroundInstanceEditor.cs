@@ -93,26 +93,41 @@ namespace HaCreator.GUI.InstanceEditor
 
             // Spine
             BackgroundInfo baseInfo = (BackgroundInfo)item.BaseInfo;
-            if (baseInfo.WzSpineAnimationItem == null)
+            if (baseInfo.WzSpineAnimationItem == null && (baseInfo.Spine41AnimationNames == null || baseInfo.Spine41AnimationNames.Length == 0))
                 groupBox_spine.Enabled = false;
             else
             {
                 groupBox_spine.Enabled = true;
-                foreach (Animation ani in baseInfo.WzSpineAnimationItem.SkeletonData.Animations)
+                if (baseInfo.WzSpineAnimationItem != null)
                 {
-                    ComboBoxItem comboBoxItem = new ComboBoxItem
+                    foreach (Animation ani in baseInfo.WzSpineAnimationItem.SkeletonData.Animations)
                     {
-                        Tag = ani,
-                        Content = ani.Name
-                    };
-                    comboBox_spineAnimation.Items.Add(comboBoxItem);
+                        ComboBoxItem comboBoxItem = new ComboBoxItem
+                        {
+                            Tag = ani,
+                            Content = ani.Name
+                        };
+                        comboBox_spineAnimation.Items.Add(comboBoxItem);
+                    }
+                }
+                else
+                {
+                    foreach (string animationName in baseInfo.Spine41AnimationNames)
+                    {
+                        ComboBoxItem comboBoxItem = new ComboBoxItem
+                        {
+                            Tag = animationName,
+                            Content = animationName
+                        };
+                        comboBox_spineAnimation.Items.Add(comboBoxItem);
+                    }
                 }
                 comboBox_spineAnimation.DisplayMember = "Content";
 
                 int i_animation = 0;
                 foreach (ComboBoxItem citem in comboBox_spineAnimation.Items)
                 {
-                    if (((Animation)citem.Tag).Name == item.SpineAni)
+                    if (GetSpineAnimationName(citem) == item.SpineAni)
                     {
                         comboBox_spineAnimation.SelectedIndex = i_animation;
                         break;
@@ -357,7 +372,7 @@ namespace HaCreator.GUI.InstanceEditor
                 {
                     item.SpineRandomStart = checkBox_spineRandomStart.Checked;
                     item.SpineAni = comboBox_spineAnimation.SelectedItem != null
-                        ? ((comboBox_spineAnimation.SelectedItem as ComboBoxItem).Tag as Animation).Name
+                        ? GetSpineAnimationName(comboBox_spineAnimation.SelectedItem as ComboBoxItem)
                         : null;
                 }
                 else
@@ -405,6 +420,16 @@ namespace HaCreator.GUI.InstanceEditor
                 item.SpineAni = state.SpineAni;
                 item.SpineRandomStart = state.SpineRandomStart;
             }
+        }
+
+        private static string GetSpineAnimationName(ComboBoxItem item)
+        {
+            return item?.Tag switch
+            {
+                Animation animation => animation.Name,
+                string animationName => animationName,
+                _ => null
+            };
         }
         #endregion
     }

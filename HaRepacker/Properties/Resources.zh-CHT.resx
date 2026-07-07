@@ -135,16 +135,9 @@
   <data name="ApngFilter" xml:space="preserve">
     <value>動畫可攜式網路圖形 (*.png)</value>
   </data>
-  <data name="EncTypeGMS" xml:space="preserve">
-    <value>全球楓之谷 (舊)</value>
-  </data>
-  <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA/ EMS/ 台灣 (舊)</value>
-  </data>
-  <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
-  </data>
-  <data name="EnterValidInput" xml:space="preserve">
+
+
+<data name="EnterValidInput" xml:space="preserve">
     <value>請輸入有效的內容</value>
   </data>
   <data name="Error" xml:space="preserve">
@@ -369,13 +362,8 @@
   <data name="ExecutingAssemblyError" xml:space="preserve">
     <value>這只在HaRepacker的x86版本下可用，請獲取替代版本。</value>
   </data>
-  <data name="EncTypeCustom" xml:space="preserve">
-    <value>使用自定義加密（{0}）</value>
-  </data>
-  <data name="EncTypeGenerate" xml:space="preserve">
-    <value>暴力破解AES金鑰（生成）</value>
-  </data>
-  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+
+<data name="RelativeTime_DaysAgo" xml:space="preserve">
     <value>{0} 天前</value>
   </data>
   <data name="RelativeTime_HoursAgo" xml:space="preserve">

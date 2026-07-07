@@ -26,6 +26,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
+using System.IO;
 
 namespace HaCreator.Wz
 {
@@ -114,6 +115,9 @@ namespace HaCreator.Wz
                     case "fishingZone":
                     case "remoteCharacterEffect":
                     case "publicTaggedObjectVisible":
+                    case "pulbicTaggedObjectVisible":
+                        copyPropNames.Add(prop.Name);
+                        continue;
                     case "MirrorFieldData":
                     case "defenseMob":
                     case "randomMobGen":
@@ -201,6 +205,8 @@ namespace HaCreator.Wz
 
         public static void LoadLayers(WzImage mapImage, Board mapBoard)
         {
+            var missingTileAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = (WzSubProperty)mapImage[layer.ToString()];
@@ -213,49 +219,58 @@ namespace HaCreator.Wz
                     tS = InfoTool.GetString(tSprop);
 
                 // Load objects
-                foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
+                WzImageProperty objectParent = layerProp["obj"];
+                if (objectParent != null)
                 {
-                    int x = InfoTool.GetInt(obj["x"]);
-                    int y = InfoTool.GetInt(obj["y"]);
-                    int z = InfoTool.GetInt(obj["z"]);
-                    int zM = InfoTool.GetInt(obj["zM"]);
-                    string oS = InfoTool.GetString(obj["oS"]);
-                    string l0 = InfoTool.GetString(obj["l0"]);
-                    string l1 = InfoTool.GetString(obj["l1"]);
-                    string l2 = InfoTool.GetString(obj["l2"]);
-                    string name = InfoTool.GetOptionalString(obj["name"]);
-                    MapleBool r = InfoTool.GetOptionalBool(obj["r"]);
-                    MapleBool hide = InfoTool.GetOptionalBool(obj["hide"]);
-                    MapleBool reactor = InfoTool.GetOptionalBool(obj["reactor"]);
-                    MapleBool flow = InfoTool.GetOptionalBool(obj["flow"]);
-                    int? rx = InfoTool.GetOptionalTranslatedInt(obj["rx"]);
-                    int? ry = InfoTool.GetOptionalTranslatedInt(obj["ry"]);
-                    int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
-                    int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
-                    string tags = InfoTool.GetOptionalString(obj["tags"]);
-
-                    WzImageProperty questParent = obj["quest"];
-                    List<ObjectInstanceQuest> questInfo = null;
-                    if (questParent != null)
+                    foreach (WzImageProperty obj in objectParent.WzProperties)
                     {
-                        questInfo = new List<ObjectInstanceQuest>();
-                        foreach (WzIntProperty info in questParent.WzProperties)
-                        {
-                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
-                        }
-                    }
-                    bool flip = InfoTool.GetBool(obj["f"]);
-                    ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
-                    if (objInfo == null)
-                        continue;
+                        int x = InfoTool.GetInt(obj["x"]);
+                        int y = InfoTool.GetInt(obj["y"]);
+                        int z = InfoTool.GetInt(obj["z"]);
+                        int zM = InfoTool.GetInt(obj["zM"]);
+                        string oS = InfoTool.GetString(obj["oS"]);
+                        string l0 = InfoTool.GetString(obj["l0"]);
+                        string l1 = InfoTool.GetString(obj["l1"]);
+                        string l2 = InfoTool.GetString(obj["l2"]);
+                        string name = InfoTool.GetOptionalString(obj["name"]);
+                        MapleBool r = InfoTool.GetOptionalBool(obj["r"]);
+                        MapleBool hide = InfoTool.GetOptionalBool(obj["hide"]);
+                        MapleBool reactor = InfoTool.GetOptionalBool(obj["reactor"]);
+                        MapleBool dynamicObject = InfoTool.GetOptionalBool(obj["dynamic"]);
+                        MapleBool flow = InfoTool.GetOptionalBool(obj["flow"]);
+                        int? rx = InfoTool.GetOptionalTranslatedInt(obj["rx"]);
+                        int? ry = InfoTool.GetOptionalTranslatedInt(obj["ry"]);
+                        int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
+                        int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
+                        string tags = InfoTool.GetOptionalString(obj["tags"]);
 
-                    Layer l = mapBoard.Layers[layer];
-                    mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
-                    l.zMList.Add(zM);
+                        WzImageProperty questParent = obj["quest"];
+                        List<ObjectInstanceQuest> questInfo = null;
+                        if (questParent != null)
+                        {
+                            questInfo = new List<ObjectInstanceQuest>();
+                            foreach (WzIntProperty info in questParent.WzProperties)
+                            {
+                                questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
+                            }
+                        }
+
+                        bool flip = InfoTool.GetBool(obj["f"]);
+                        ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
+                        if (objInfo == null)
+                            continue;
+
+                        Layer l = mapBoard.Layers[layer];
+                        mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false, dynamicObject));
+                        l.zMList.Add(zM);
+                    }
                 }
 
                 // Load tiles
                 WzImageProperty tileParent = layerProp["tile"];
+                if (tileParent == null)
+                    continue;
+
                 foreach (WzImageProperty tile in tileParent.WzProperties)
                 {
                     int x = InfoTool.GetInt(tile["x"]);
@@ -266,6 +281,20 @@ namespace HaCreator.Wz
                     Layer l = mapBoard.Layers[layer];
 
                     TileInfo tileInfo = TileInfo.Get(tS, u, no.ToString());
+                    if (tileInfo == null)
+                    {
+                        string tileAssetPath = string.Format("Map.wz/Tile/{0}/{1}/{2}", tS, u, no);
+                        if (missingTileAssets.Add(tileAssetPath))
+                        {
+                            string error = string.Format(
+                                "Tile asset {0} not found for map {1}.",
+                                tileAssetPath,
+                                mapBoard.MapInfo.id);
+                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                        }
+                        continue;
+                    }
+
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)tileInfo.CreateInstance(l, mapBoard, x, y, int.Parse(tile.Name), zM, false, false));
                     l.zMList.Add(zM);
                 }
@@ -293,6 +322,9 @@ namespace HaCreator.Wz
                 return;
             }
 
+            var missingMobAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var missingNpcAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (WzSubProperty life in lifeParent.WzProperties)
             {
                 string id = InfoTool.GetString(life["id"]);
@@ -312,12 +344,40 @@ namespace HaCreator.Wz
                 switch (type)
                 {
                     case "m":
+                        string mobImgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                        if (Program.FindImage("Mob", mobImgName) == null)
+                        {
+                            if (missingMobAssets.Add(mobImgName))
+                            {
+                                string error = string.Format(
+                                    "Monster asset Mob.img/{0} not found for map {1}.",
+                                    mobImgName,
+                                    mapBoard.MapInfo.id);
+                                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                            }
+                            continue;
+                        }
+
                         MobInfo mobInfo = MobInfo.Get(id);
                         if (mobInfo == null)
                             continue;
                         mapBoard.BoardItems.Mobs.Add((MobInstance)mobInfo.CreateInstance(mapBoard, x, cy, x - rx0, rx1 - x, cy - y, limitedname, mobTime, flip, hide, info, team));
                         break;
                     case "n":
+                        string npcImgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                        if (Program.FindImage("Npc", npcImgName) == null)
+                        {
+                            if (missingNpcAssets.Add(npcImgName))
+                            {
+                                string error = string.Format(
+                                    "NPC asset Npc.img/{0} not found for map {1}.",
+                                    npcImgName,
+                                    mapBoard.MapInfo.id);
+                                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                            }
+                            continue;
+                        }
+
                         NpcInfo npcInfo = NpcInfo.Get(id);
                         if (npcInfo == null)
                             continue;
@@ -558,11 +618,32 @@ namespace HaCreator.Wz
                 int? hRange = InfoTool.GetOptionalInt(portal["hRange"]);
                 int? vRange = InfoTool.GetOptionalInt(portal["vRange"]);
                 int? delay = InfoTool.GetOptionalInt(portal["delay"]);
+                string reactorName = InfoTool.GetOptionalString(portal["reactorName"]);
+                string sessionValueKey = InfoTool.GetOptionalString(portal["sessionValueKey"]);
+                string sessionValue = InfoTool.GetOptionalString(portal["sessionValue"]);
                 MapleBool hideTooltip = InfoTool.GetOptionalBool(portal["hideTooltip"]);
                 MapleBool onlyOnce = InfoTool.GetOptionalBool(portal["onlyOnce"]);
 
                 mapBoard.BoardItems.Portals.Add(
-                    PortalInfo.GetPortalInfoByType(pt).CreateInstance(mapBoard, x, y, pn, tn, tm, script, delay, hideTooltip, onlyOnce, horizontalImpact, verticalImpact, image, hRange, vRange));
+                    PortalInfo.GetPortalInfoByType(pt).CreateInstance(
+                        mapBoard,
+                        x,
+                        y,
+                        pn,
+                        tn,
+                        tm,
+                        script,
+                        delay,
+                        hideTooltip,
+                        onlyOnce,
+                        horizontalImpact,
+                        verticalImpact,
+                        image,
+                        hRange,
+                        vRange,
+                        reactorName,
+                        sessionValueKey,
+                        sessionValue));
             }
         }
 
@@ -648,6 +729,7 @@ namespace HaCreator.Wz
                 int a = InfoTool.GetInt(bgProp["a"]);
                 BackgroundType type = (BackgroundType)InfoTool.GetInt(bgProp["type"]);
                 bool front = InfoTool.GetBool(bgProp["front"]);
+                int page = InfoTool.GetInt(bgProp["page"]);
                 int screenMode = InfoTool.GetInt(bgProp["screenMode"], (int)RenderResolution.Res_All);
                 string spineAni = InfoTool.GetString(bgProp["spineAni"]);
                 bool spineRandomStart = InfoTool.GetBool(bgProp["spineRandomStart"]);
@@ -670,7 +752,7 @@ namespace HaCreator.Wz
                     continue;
 
                 IList list = front ? mapBoard.BoardItems.FrontBackgrounds : mapBoard.BoardItems.BackBackgrounds;
-                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, screenMode,
+                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, page, screenMode,
                     spineAni, spineRandomStart));
             }
         }
@@ -985,6 +1067,15 @@ namespace HaCreator.Wz
                 info.id = int.Parse(WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)));
             info.mapType = type;
 
+            if (!string.IsNullOrWhiteSpace(info.bgm) && Program.InfoManager.GetBgm(info.bgm) == null)
+            {
+                string error = string.Format(
+                    "BGM Sound.wz/{0} not found for map {1}.",
+                    info.bgm,
+                    info.id);
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
+
             Rectangle VR = new Rectangle();
             Point center = new Point();
             Point size = new Point();
@@ -1045,10 +1136,26 @@ namespace HaCreator.Wz
             }
 
             const string OUTPUT_ERROR_FILENAME = "Errors_MapLoader.txt";
-            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
-            if (UserSettings.ShowErrorsMessage)
+            var errorSnapshot = ErrorLogger.GetErrorSnapshot();
+            string logFilePath = Path.GetFullPath(OUTPUT_ERROR_FILENAME);
+            ErrorLogger.SaveToFile(logFilePath);
+            if (UserSettings.ShowErrorsMessage && errorSnapshot.Count > 0)
             {
-                // MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                string mapIdentifier = info != null
+                    ? $"map {info.id}"
+                    : mapImage?.Name;
+
+                if (Program.HaEditorWindow != null)
+                {
+                    Program.HaEditorWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        MapLoadErrorsWindow.ShowWindow(Program.HaEditorWindow, mapIdentifier, errorSnapshot, logFilePath);
+                    }));
+                }
+                else
+                {
+                    MapLoadErrorsWindow.ShowWindow(null, mapIdentifier, errorSnapshot, logFilePath);
+                }
             }
         }
 

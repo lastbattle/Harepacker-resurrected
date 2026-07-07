@@ -32,9 +32,10 @@ namespace HaCreator.GUI.InstanceEditor
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LoadMapSelector));
             this.loadButton = new System.Windows.Forms.Button();
-            this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
             this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
             this.fontDialog1 = new System.Windows.Forms.FontDialog();
+            this.mapBrowserHost = new System.Windows.Forms.Integration.ElementHost();
+            this.mapBrowser = new HaCreator.CustomControls.MapBrowserWpf();
             this.SuspendLayout();
             // 
             // loadButton
@@ -48,18 +49,8 @@ namespace HaCreator.GUI.InstanceEditor
             this.loadButton.Text = "Select";
             this.loadButton.Click += new System.EventHandler(this.loadButton_Click);
             // 
-            // mapBrowser
-            // 
-            this.mapBrowser.Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            this.mapBrowser.Location = new System.Drawing.Point(0, 30);
-            this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
-            this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(813, 468);
-            this.mapBrowser.TabIndex = 8;
-            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
-            // 
             // searchBox
-            // 
+            //
             this.searchBox.Dock = System.Windows.Forms.DockStyle.Top;
             this.searchBox.ForeColor = System.Drawing.Color.Gray;
             this.searchBox.Location = new System.Drawing.Point(0, 0);
@@ -69,13 +60,27 @@ namespace HaCreator.GUI.InstanceEditor
             this.searchBox.Text = "Type here to search";
             this.searchBox.WatermarkActive = true;
             this.searchBox.WatermarkText = "Type here";
-            // 
+            //
+            // mapBrowserHost
+            //
+            this.mapBrowserHost.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.mapBrowserHost.Location = new System.Drawing.Point(0, 22);
+            this.mapBrowserHost.Name = "mapBrowserHost";
+            this.mapBrowserHost.Size = new System.Drawing.Size(813, 475);
+            this.mapBrowserHost.TabIndex = 8;
+            this.mapBrowserHost.Text = "mapBrowserHost";
+            this.mapBrowserHost.Child = this.mapBrowser;
+            //
+            // mapBrowser
+            //
+            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowserWpf.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
+            //
             // LoadMapSelector
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(813, 523);
-            this.Controls.Add(this.mapBrowser);
+            this.Controls.Add(this.mapBrowserHost);
             this.Controls.Add(this.searchBox);
             this.Controls.Add(this.loadButton);
             this.DoubleBuffered = true;
@@ -98,7 +103,8 @@ namespace HaCreator.GUI.InstanceEditor
 
         private System.Windows.Forms.Button loadButton;
         private WatermarkTextBox searchBox;
-        private CustomControls.MapBrowser mapBrowser;
+        private System.Windows.Forms.Integration.ElementHost mapBrowserHost;
+        private CustomControls.MapBrowserWpf mapBrowser;
         private System.Windows.Forms.FontDialog fontDialog1;
     }
 }

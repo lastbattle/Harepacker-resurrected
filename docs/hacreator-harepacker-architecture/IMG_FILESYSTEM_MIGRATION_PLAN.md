@@ -104,7 +104,7 @@
   - **NPC data**: No longer preloaded, loaded when user views NPC selector
   - Reduced parallel extraction degree to prevent memory spikes
 - `HaCreator/CustomControls/MapBrowser.cs` - Added `LoadMapImageOnDemand()` for lazy map loading
-- `HaCreator/GUI/Load.cs` - Added on-demand map loading and MapInfo creation
+- `HaCreator/GUI/MapLoadService.cs` - Handles on-demand map loading and MapInfo creation from the docked map explorer
 - `HaCreator/MapEditor/HaCreatorStateManager.cs` - Added on-demand map loading for simulator and MapInfo creation
 - `HaCreator/GUI/InstanceEditor/LoadNpcSelector.cs` - NPCs now load on-demand when viewed
 - `HaCreator/Wz/MapLoader.cs` - Added defensive null check for MapInfo with on-demand creation
@@ -130,7 +130,7 @@
 **Key Implementation Details**:
 - **freeResources=true**: IMG files are fully parsed and file handles closed immediately. Lazy loading (freeResources=false) doesn't work for IMG files because each file has its own reader that gets into a bad state after structure parsing.
 - **No disposal on LRU eviction**: When images are evicted from the LRU cache, they are NOT disposed because other caches (MobIconCache, ItemIconCache, etc.) hold references to WzImageProperty objects inside the WzImages. Disposing would invalidate these references.
-- **MapInfo on-demand**: MapInfo is created lazily when a map is actually opened, not during ExtractMaps. This is handled in `Load.cs`, `HaCreatorStateManager.cs`, and `MapLoader.CreateMapFromImage`.
+- **MapInfo on-demand**: MapInfo is created lazily when a map is actually opened, not during ExtractMaps. This is handled in `MapLoadService.cs`, `HaCreatorStateManager.cs`, and `MapLoader.CreateMapFromImage`.
 
 ### Phase 8 Completed Files
 - `MapleLib/MapleLib/Img/BatchConverter.cs` - Batch conversion tool for multiple versions:

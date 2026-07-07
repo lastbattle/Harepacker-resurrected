@@ -1,5 +1,6 @@
 ﻿using MapleLib.Img;
 using MapleLib.WzLib;
+using MapleLib.Configuration;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.GUI
 {
@@ -145,6 +147,11 @@ namespace HaCreator.GUI
             comboBox_encryption.Items.Clear();
 
             WzMapleVersion manifestEncryption = GetRecommendedEncryption();
+            var configManager = new ConfigurationManager();
+            configManager.Load();
+            string customName = configManager.ApplicationSettings?.MapleVersion_CustomEncryptionName ?? "Default";
+            var sharedKeys = WzEncryptionOptionsFactory.CreateEncryptionKeys(customName)
+                .ToDictionary(k => k.MapleVersion, k => k.Name);
 
             // Add encryption options with recommended marker
             var encryptionOptions = new[]
@@ -152,14 +159,17 @@ namespace HaCreator.GUI
                 WzMapleVersion.BMS,
                 WzMapleVersion.GMS,
                 WzMapleVersion.EMS,
-                WzMapleVersion.CLASSIC
+                WzMapleVersion.CLASSIC,
+                WzMapleVersion.CUSTOM
             };
 
             int selectedIndex = 0;
             for (int i = 0; i < encryptionOptions.Length; i++)
             {
                 var enc = encryptionOptions[i];
-                string displayName = enc.ToString();
+                string displayName = sharedKeys.TryGetValue(enc, out var sharedName)
+                    ? sharedName
+                    : enc.ToString();
 
                 // Mark the manifest encryption as recommended
                 if (enc == manifestEncryption)
@@ -183,6 +193,7 @@ namespace HaCreator.GUI
             {
                 return item.Encryption;
             }
+            // Default to BMS (IV {0,0,0,0}) so IMG/WZ workflows stay consistent across versions/localizations.
             return WzMapleVersion.BMS;
         }
 
@@ -214,6 +225,7 @@ namespace HaCreator.GUI
                 }
             }
 
+            // Default recommendation is BMS (IV {0,0,0,0}) for cross-version/localization compatibility.
             return WzMapleVersion.BMS;
         }
 

@@ -28,7 +28,7 @@ namespace HaCreator.GUI.InstanceEditor
 
             DialogResult = DialogResult.Cancel;
 
-            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
+            this.searchBox.TextChanged += SearchBox_TextChanged;
         }
 
         /// <summary>
@@ -43,7 +43,7 @@ namespace HaCreator.GUI.InstanceEditor
             
             this.numericUpDown = numericUpDown;
 
-            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
+            this.searchBox.TextChanged += SearchBox_TextChanged;
         }
 
         /// <summary>
@@ -56,7 +56,7 @@ namespace HaCreator.GUI.InstanceEditor
             DialogResult = DialogResult.Cancel;
 
             this.textBox = textbox;
-            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
+            this.searchBox.TextChanged += SearchBox_TextChanged;
         }
 
         /// <summary>
@@ -106,6 +106,11 @@ namespace HaCreator.GUI.InstanceEditor
 
         private void mapBrowser_SelectionChanged()
         {
+        }
+
+        private void SearchBox_TextChanged(object sender, EventArgs e)
+        {
+            mapBrowser.ApplySearch(searchBox.WatermarkActive ? string.Empty : searchBox.Text);
         }
 
         #region Window

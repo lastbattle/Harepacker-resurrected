@@ -135,16 +135,9 @@
   <data name="ApngFilter" xml:space="preserve">
     <value>アニメーション付きポータブルネットワークグラフィックス (*.png)</value>
   </data>
-  <data name="EncTypeGMS" xml:space="preserve">
-    <value>グローバルメイプルストーリー (旧)</value>
-  </data>
-  <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA/ EMS/ 台湾 (旧)</value>
-  </data>
-  <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
-  </data>
-  <data name="EnterValidInput" xml:space="preserve">
+
+
+<data name="EnterValidInput" xml:space="preserve">
     <value>有効な入力を入力してください</value>
   </data>
   <data name="Error" xml:space="preserve">
@@ -369,13 +362,8 @@
   <data name="ExecutingAssemblyError" xml:space="preserve">
     <value>これはHaRepackerのx86バージョンでのみ利用可能です。別のバージョンを入手してください。</value>
   </data>
-  <data name="EncTypeCustom" xml:space="preserve">
-    <value>カスタム暗号化を使用する（{0}）</value>
-  </data>
-  <data name="EncTypeGenerate" xml:space="preserve">
-    <value>Bruteforce AESキー（生成）</value>
-  </data>
-  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+
+<data name="RelativeTime_DaysAgo" xml:space="preserve">
     <value>{0} 日前</value>
   </data>
   <data name="RelativeTime_HoursAgo" xml:space="preserve">
