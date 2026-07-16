@@ -44,6 +44,7 @@ namespace HaCreator.MapEditor
         private int _vScroll = 0;
         private int _mag = 16;
         private float _zoom = 1.0f;
+        private bool initialViewPending = true;
 
         // Zoom limits
         public const float MinZoom = 0.1f;
@@ -769,6 +770,16 @@ namespace HaCreator.MapEditor
         }
 
         public bool Loading { get { return loading; } set { loading = value; } }
+
+        internal bool InitialViewPending
+        {
+            get { return initialViewPending; }
+        }
+
+        internal void MarkInitialViewInitialized()
+        {
+            initialViewPending = false;
+        }
 
         public SerializationManager SerializationManager
         {

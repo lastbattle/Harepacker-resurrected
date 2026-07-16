@@ -1270,6 +1270,12 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
+                bool centerInitialView = selectedBoard != null
+                    && selectedBoard.InitialViewPending
+                    && _CurrentDXWindowSize.Width > 0
+                    && _CurrentDXWindowSize.Height > 0
+                    && (MapSize.X > 0 || MapSize.Y > 0);
+
                 // Get zoom factor - when zoomed out, viewport covers more virtual space
                 float zoom = selectedBoard?.Zoom ?? 1.0f;
                 float viewportWidth = _CurrentDXWindowSize.Width / zoom;
@@ -1317,6 +1323,13 @@ namespace HaCreator.MapEditor
                     vScrollBar.IsEnabled = false;
                     vScrollBar.Value = 0;
                     vScrollBar.Maximum = 0;
+                }
+
+                if (centerInitialView)
+                {
+                    selectedBoard.hScroll = (int)Math.Round(hScrollBar.Maximum / 2.0);
+                    selectedBoard.vScroll = (int)vScrollBar.Maximum;
+                    selectedBoard.MarkInitialViewInitialized();
                 }
             }
         }
