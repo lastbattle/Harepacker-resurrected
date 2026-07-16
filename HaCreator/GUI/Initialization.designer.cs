@@ -60,7 +60,6 @@ namespace HaCreator.GUI
             button_initialise = new System.Windows.Forms.Button();
             toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
             textBox2 = new System.Windows.Forms.TextBox();
-            button_checkMapErrors = new System.Windows.Forms.Button();
             button_settings = new System.Windows.Forms.Button();
             toolTip = new System.Windows.Forms.ToolTip(components);
             tabControl_dataSource.SuspendLayout();
@@ -392,16 +391,6 @@ namespace HaCreator.GUI
             textBox2.Size = new System.Drawing.Size(582, 22);
             textBox2.TabIndex = 2;
             // 
-            // button_checkMapErrors
-            // 
-            button_checkMapErrors.Location = new System.Drawing.Point(489, 348);
-            button_checkMapErrors.Name = "button_checkMapErrors";
-            button_checkMapErrors.Size = new System.Drawing.Size(97, 22);
-            button_checkMapErrors.TabIndex = 15;
-            button_checkMapErrors.Text = "Check map errors";
-            button_checkMapErrors.UseVisualStyleBackColor = true;
-            button_checkMapErrors.Click += debugButton_Click;
-            // 
             // button_settings
             // 
             button_settings.Location = new System.Drawing.Point(388, 348);
@@ -420,7 +409,6 @@ namespace HaCreator.GUI
             Controls.Add(tabControl_dataSource);
             Controls.Add(button_initialise);
             Controls.Add(button_settings);
-            Controls.Add(button_checkMapErrors);
             Controls.Add(textBox2);
             Font = new System.Drawing.Font("Segoe UI", 8.25F);
             FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
@@ -458,7 +446,6 @@ namespace HaCreator.GUI
         private System.Windows.Forms.TextBox textBox2;
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button_browse;
-        private System.Windows.Forms.Button button_checkMapErrors;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox comboBox_localisation;
         private System.Windows.Forms.Label label4;

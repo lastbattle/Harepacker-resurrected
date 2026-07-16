@@ -258,6 +258,8 @@ namespace HaCreator.GUI
             if (!_isMapExplorerInitialized)
             {
                 mapExplorerLoadButton.IsEnabled = false;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = string.Empty;
                 return;
             }
@@ -266,6 +268,8 @@ namespace HaCreator.GUI
             {
                 string selectedItem = _isMapExplorerHistoryInitialized ? mapExplorerHistoryBrowser.SelectedItem : null;
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = _isMapExplorerHistoryInitialized && mapExplorerHistoryBrowser.LoadMapEnabled;
                 mapExplorerDeleteHistoryButton.IsEnabled = !string.IsNullOrEmpty(selectedItem);
                 mapExplorerReloadButton.IsEnabled = true;
@@ -278,6 +282,8 @@ namespace HaCreator.GUI
             if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
             {
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerHamPathTextBox.Text);
                 mapExplorerReloadButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = mapExplorerHamPathTextBox.Text;
@@ -287,6 +293,8 @@ namespace HaCreator.GUI
             if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
             {
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerXmlPathTextBox.Text);
                 mapExplorerReloadButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = mapExplorerXmlPathTextBox.Text;
@@ -295,6 +303,9 @@ namespace HaCreator.GUI
 
             string wzSelectedItem = mapExplorerBrowser.SelectedItem;
             mapExplorerResolveMissingButton.Visibility = Visibility.Visible;
+            mapExplorerCheckMapButton.Visibility = Visibility.Visible;
+            mapExplorerCheckMapButton.IsEnabled = Program.InfoManager != null &&
+                (Program.DataSource != null || Program.WzManager != null);
             mapExplorerLoadButton.IsEnabled = mapExplorerBrowser.LoadMapEnabled;
             mapExplorerReloadButton.IsEnabled = true;
             mapExplorerSelectionTextBlock.Text = wzSelectedItem ?? string.Empty;
@@ -358,6 +369,35 @@ namespace HaCreator.GUI
             }
 
             UpdateMapExplorerSelectionState();
+        }
+
+        private void MapExplorerCheckMapButton_Click(object sender, RoutedEventArgs e)
+        {
+            WaitWindow waitWindow = new WaitWindow("Checking maps...");
+            waitWindow.Show();
+            Forms.Application.DoEvents();
+
+            try
+            {
+                MapCheckService.CheckLoadedMaps();
+                System.Windows.MessageBox.Show(
+                    "Check for map errors completed. See 'Errors_MapDebug.txt' for more information.",
+                    "Check map",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception exception)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Unable to check maps.\r\n\r\n{exception.Message}",
+                    "Check map",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                waitWindow.EndWait();
+            }
         }
 
         private void MapExplorerLoadButton_Click(object sender, RoutedEventArgs e)

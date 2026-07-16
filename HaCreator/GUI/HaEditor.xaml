@@ -350,37 +350,34 @@
                         <Border x:Name="mapExplorerSourceActionsBorder"
                                 Grid.Row="2"
                                 Margin="0,8,0,0"
-                                Padding="8"
+                                Padding="8,6"
                                 BorderBrush="#FFD0D0D0"
                                 BorderThickness="1"
                                 Background="#FFFCFCFC">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0"
-                                           VerticalAlignment="Center"
-                                           Style="{StaticResource MapExplorerLabelText}"
-                                           Text="Source tools"/>
-                                <Button x:Name="mapExplorerResolveMissingButton"
-                                        Grid.Column="1"
-                                        Width="112"
-                                        Margin="0,0,8,0"
-                                        Style="{StaticResource MapExplorerButton}"
-                                        Click="MapExplorerResolveMissingButton_Click"
-                                        Content="Resolve Missing"
-                                        ToolTip="Resolve missing map names from WZ data"/>
-                                <Button x:Name="mapExplorerReloadButton"
-                                        Grid.Column="2"
-                                        Width="72"
-                                        Style="{StaticResource MapExplorerButton}"
-                                        Click="MapExplorerReloadButton_Click"
-                                        Content="Reload"
-                                        ToolTip="Reload the current map source"/>
-                            </Grid>
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource MapExplorerLabelText}"
+                                           Text="Bulk source tools"/>
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,4,0,0">
+                                    <Button x:Name="mapExplorerResolveMissingButton"
+                                            Margin="0,0,8,0"
+                                            Style="{StaticResource MapExplorerButton}"
+                                            Click="MapExplorerResolveMissingButton_Click"
+                                            Content="Resolve Missing"
+                                            ToolTip="Resolve missing map names from WZ data"/>
+                                    <Button x:Name="mapExplorerCheckMapButton"
+                                            Margin="0,0,8,0"
+                                            Style="{StaticResource MapExplorerButton}"
+                                            Click="MapExplorerCheckMapButton_Click"
+                                            Content="Check maps"
+                                            ToolTip="Check all loaded maps for loading errors"/>
+                                    <Button x:Name="mapExplorerReloadButton"
+                                            Style="{StaticResource MapExplorerButton}"
+                                            Click="MapExplorerReloadButton_Click"
+                                            Content="Reload all"
+                                            ToolTip="Reload the current map source"/>
+                                </StackPanel>
+                            </StackPanel>
                         </Border>
                         </Grid>
                 </TabItem>
