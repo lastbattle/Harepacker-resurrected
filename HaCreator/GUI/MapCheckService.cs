@@ -14,9 +14,9 @@ namespace HaCreator.GUI
 {
     internal static class MapCheckService
     {
-        private const string OutputErrorFilename = "Errors_MapDebug.txt";
+        internal const string OutputErrorFilename = "Errors_MapDebug.txt";
 
-        public static void CheckLoadedMaps()
+        public static IReadOnlyDictionary<ErrorLevel, List<Error>> CheckLoadedMaps()
         {
             if (Program.InfoManager == null ||
                 (Program.DataSource == null && Program.WzManager == null))
@@ -33,6 +33,11 @@ namespace HaCreator.GUI
                 null,
                 ItemTypes.None,
                 ItemTypes.None);
+
+            HashSet<Error> existingErrors = ErrorLogger.GetErrorSnapshot()
+                .SelectMany(group => group.Value)
+                .ToHashSet();
+            Dictionary<ErrorLevel, List<Error>> checkErrors = new Dictionary<ErrorLevel, List<Error>>();
 
             foreach (string mapId in Program.InfoManager.MapsNameCache.Keys.ToList())
             {
@@ -114,11 +119,42 @@ namespace HaCreator.GUI
 
                 if (ErrorLogger.NumberOfErrorsPresent() > 200)
                 {
+                    AddNewErrors(checkErrors, ErrorLogger.GetErrorSnapshot(), existingErrors);
                     ErrorLogger.SaveToFile(OutputErrorFilename);
                 }
             }
 
+            AddNewErrors(checkErrors, ErrorLogger.GetErrorSnapshot(), existingErrors);
             ErrorLogger.SaveToFile(OutputErrorFilename);
+            return checkErrors;
+        }
+
+        private static void AddNewErrors(
+            Dictionary<ErrorLevel, List<Error>> target,
+            IReadOnlyDictionary<ErrorLevel, List<Error>> snapshot,
+            ISet<Error> existingErrors)
+        {
+            foreach (KeyValuePair<ErrorLevel, List<Error>> group in snapshot)
+            {
+                foreach (Error error in group.Value)
+                {
+                    if (existingErrors.Contains(error))
+                    {
+                        continue;
+                    }
+
+                    if (!target.TryGetValue(group.Key, out List<Error> errors))
+                    {
+                        errors = new List<Error>();
+                        target[group.Key] = errors;
+                    }
+
+                    if (!errors.Contains(error))
+                    {
+                        errors.Add(error);
+                    }
+                }
+            }
         }
 
         private static WzImage FindMapImage(string mapId)

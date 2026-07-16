@@ -379,9 +379,26 @@ namespace HaCreator.GUI
 
             try
             {
-                MapCheckService.CheckLoadedMaps();
+                IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot = MapCheckService.CheckLoadedMaps();
+                int errorCount = 0;
+                foreach (List<Error> errors in errorSnapshot.Values)
+                {
+                    errorCount += errors.Count;
+                }
+
+                if (errorCount > 0)
+                {
+                    ShowMapLoadErrors(
+                        "all maps",
+                        errorSnapshot,
+                        Path.GetFullPath(MapCheckService.OutputErrorFilename));
+                    toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
+                }
+
                 System.Windows.MessageBox.Show(
-                    "Check for map errors completed. See 'Errors_MapDebug.txt' for more information.",
+                    errorCount > 0
+                        ? $"Check for map errors completed. Found {errorCount} issue(s). Details are available in Map Load Errors. See '{MapCheckService.OutputErrorFilename}' for more information."
+                        : "Check for map errors completed. No errors were reported.",
                     "Check map",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
