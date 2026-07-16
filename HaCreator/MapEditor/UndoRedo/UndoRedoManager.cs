@@ -30,6 +30,29 @@ namespace HaCreator.MapEditor.UndoRedo
             parentBoard.ParentControl.RedoListChanged();
         }
 
+        /// <summary>
+        /// Collapse all undo batches created after <paramref name="firstBatchIndex"/>
+        /// into one user-visible operation. AI command batches use this so an
+        /// autonomous map edit can be reverted with a single Undo action.
+        /// </summary>
+        public void CollapseUndoBatches(int firstBatchIndex)
+        {
+            lock (parentBoard.ParentControl)
+            {
+                if (firstBatchIndex < 0 || firstBatchIndex >= UndoList.Count - 1)
+                    return;
+
+                var mergedActions = new List<UndoRedoAction>();
+                for (var batchIndex = UndoList.Count - 1; batchIndex >= firstBatchIndex; batchIndex--)
+                    mergedActions.AddRange(UndoList[batchIndex].Actions);
+
+                UndoList.RemoveRange(firstBatchIndex, UndoList.Count - firstBatchIndex);
+                UndoList.Add(new UndoRedoBatch { Actions = mergedActions });
+                parentBoard.ParentControl.UndoListChanged();
+                parentBoard.ParentControl.RedoListChanged();
+            }
+        }
+
         #region Undo Actions Creation
         public static UndoRedoAction ItemAdded(BoardItem item)
         {

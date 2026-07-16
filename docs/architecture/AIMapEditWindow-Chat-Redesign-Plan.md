@@ -60,7 +60,7 @@ public class ChatSession : INotifyPropertyChanged
 
     public ChatMessage AddUserMessage(string content);
     public ChatMessage AddAssistantMessage(string content = "");
-    public JArray ToApiMessages();  // Convert to OpenRouter format
+    public JArray ToApiMessages();  // Convert to OpenAI-compatible chat format
     public void Clear();
     public string GetLatestCommands();
 }
@@ -288,13 +288,13 @@ public async Task<string> ProcessWithConversationAsync(
 
 ## Dependencies
 
-- Existing: `AgentOrchestrator`, `OpenRouterClient`, `MapAISerializer`, `MapAIExecutor`
+- Existing: `AgentOrchestrator`, `OpenAICompatibleClient`, `MapMcpToolServer`, `MapAISerializer`, `MapAIExecutor`
 - Patterns: `INotifyPropertyChanged` (used in HaList.xaml.cs), `ObservableCollection`
 - May need: `BoolToVisibilityConverter`, `InverseBoolToVisibilityConverter`
 
 ## Backward Compatibility
 
 - Left panel (Map Context) unchanged
-- Execute flow unchanged (parse → execute → refresh)
-- Settings menu unchanged
+- Execute flow remains parse → execute → refresh, with automatic application configurable in AI Settings
+- Settings menu preserves the existing entry and adds MCP connection details
 - Run Tests functionality preserved (sends test prompt to chat)

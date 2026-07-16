@@ -289,7 +289,9 @@
         <Menu Grid.Row="0" Background="White">
             <MenuItem Header="_Tools">
                 <MenuItem x:Name="menuSettings" Header="_Settings" Click="BtnSettings_Click"
-                          ToolTip="Configure OpenRouter API key and model"/>
+                    ToolTip="Configure the OpenAI-compatible API endpoint, key, and model"/>
+                <MenuItem x:Name="menuMcpConnection" Header="_MCP Connection" Click="BtnMcpConnection_Click"
+                    ToolTip="Show the local MCP endpoint and authorization token for external clients"/>
                 <Separator/>
                 <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
                           ToolTip="Run automated tests to verify AI agent capabilities"/>
@@ -395,17 +397,17 @@
                     </Border>
 
                     <Button x:Name="btnSend" Grid.Column="1"
-                            Content="Send"
+                            Content="Ask"
                             Style="{StaticResource PrimaryButtonStyle}"
                             Width="70"
                             Margin="8,0,0,0"
                             Click="BtnSend_Click"
-                            ToolTip="Send message (Enter)"/>
+                            ToolTip="Ask message (Enter)"/>
                 </Grid>
 
                 <!-- Execute Commands Button -->
                 <Button x:Name="btnExecute" Grid.Row="3"
-                        Content="Execute Latest Commands"
+                        Content="Apply Latest Commands"
                         Style="{StaticResource SuccessButtonStyle}"
                         Margin="0,8,0,0"
                         Click="BtnExecute_Click"

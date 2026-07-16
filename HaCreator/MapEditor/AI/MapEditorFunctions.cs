@@ -13,7 +13,7 @@ namespace HaCreator.MapEditor.AI
     public static class MapEditorFunctions
     {
         /// <summary>
-        /// Get all available tool definitions for OpenRouter function calling
+        /// Get all available tool definitions for OpenAI-compatible function calling
         /// </summary>
         public static JArray GetToolDefinitions()
         {

@@ -4,7 +4,7 @@ using System.ComponentModel;
 namespace HaCreator.MapEditor.AI
 {
     /// <summary>
-    /// Role enum matching OpenRouter API message roles
+    /// Role enum matching OpenAI-compatible API message roles
     /// </summary>
     public enum ChatRole
     {
