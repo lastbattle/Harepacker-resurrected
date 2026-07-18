@@ -88,7 +88,7 @@ namespace HaSharedLibrary.GUI
                     currAudio.Pause();
                 }
 
-                PauseButton.Content = "Play";
+                PauseButton.Content = SharedUiText.Get("Sound_Play");
             } else
             {
                 if (soundProp == null)
@@ -100,7 +100,7 @@ namespace HaSharedLibrary.GUI
                 currAudio.Play();
                 timer.Start();
 
-                PauseButton.Content = "Pause";
+                PauseButton.Content = SharedUiText.Get("Sound_Pause");
             }
             isPlaying = !isPlaying;
         }
@@ -187,7 +187,7 @@ namespace HaSharedLibrary.GUI
                 }
                 isPlaying = false;
                 currAudio = null;
-                PauseButton.Content = "Play";
+                PauseButton.Content = SharedUiText.Get("Sound_Play");
 
                 if (soundProp != null)
                 {

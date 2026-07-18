@@ -1,438 +1,238 @@
 using System;
 using System.ComponentModel;
-using System.Windows.Forms;
-using MapleLib.PacketLib;
-using MapleLib.MapleCryptoLib;
+using System.Globalization;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
 using MapleLib.Configuration;
+using MapleLib.MapleCryptoLib;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 
 namespace HaSharedLibrary.GUI
 {
-    public partial class SharedCustomWzEncryptionInputBox : Form
+    public partial class SharedCustomWzEncryptionInputBox : Window, IDisposable
     {
         private readonly ConfigurationManager _configurationManager;
+        private readonly BindingList<EncryptionKey> _encryptionKeys;
+        private readonly TextBox[] _ivBoxes;
+        private readonly TextBox[] _userKeyBoxes;
         private EncryptionKey _currentSelectedEncryptionKey;
-        private BindingList<EncryptionKey> _encryptionKeys;
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="panel"></param>
         public SharedCustomWzEncryptionInputBox()
         {
             InitializeComponent();
+            _ivBoxes = new[] { textBox_byte0, textBox_byte1, textBox_byte2, textBox_byte3 };
+            _userKeyBoxes = new[]
+            {
+                textBox_AESUserKey1, textBox_AESUserKey2, textBox_AESUserKey3, textBox_AESUserKey4,
+                textBox_AESUserKey5, textBox_AESUserKey6, textBox_AESUserKey7, textBox_AESUserKey8,
+                textBox_AESUserKey9, textBox_AESUserKey10, textBox_AESUserKey11, textBox_AESUserKey12,
+                textBox_AESUserKey13, textBox_AESUserKey14, textBox_AESUserKey15, textBox_AESUserKey16,
+                textBox_AESUserKey17, textBox_AESUserKey18, textBox_AESUserKey19, textBox_AESUserKey20,
+                textBox_AESUserKey21, textBox_AESUserKey22, textBox_AESUserKey23, textBox_AESUserKey24,
+                textBox_AESUserKey25, textBox_AESUserKey26, textBox_AESUserKey27, textBox_AESUserKey28,
+                textBox_AESUserKey29, textBox_AESUserKey30, textBox_AESUserKey31, textBox_AESUserKey32
+            };
+
             _configurationManager = new ConfigurationManager();
             _configurationManager.Load();
-
             _encryptionKeys = new BindingList<EncryptionKey>(_configurationManager.CustomKeys);
-
-            nameBox.DataSource = _encryptionKeys;
-            nameBox.DisplayMember = "Name";
+            nameBox.ItemsSource = _encryptionKeys;
         }
 
-
-        /// <summary>
-        /// Form load
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void SaveForm_Load(object sender, EventArgs e)
+        public new System.Windows.Forms.DialogResult ShowDialog()
         {
-            ApplicationSettings appSettings = _configurationManager.ApplicationSettings;
+            return base.ShowDialog() == true
+                ? System.Windows.Forms.DialogResult.OK
+                : System.Windows.Forms.DialogResult.Cancel;
+        }
 
-            // AES IV
-            string storedCustomEnc = appSettings.MapleVersion_CustomEncryptionBytes;
-            string[] splitBytes = storedCustomEnc.Split(' ');
+        public System.Windows.Forms.DialogResult ShowDialog(System.Windows.Forms.IWin32Window owner)
+        {
+            if (owner != null)
+                new WindowInteropHelper(this).Owner = owner.Handle;
+            return ShowDialog();
+        }
 
-            bool parsed = true;
-            if (splitBytes.Length == 4)
-            {
-                foreach (string byte_ in splitBytes)
-                {
-                    if (!CheckHexDigits(byte_))
-                    {
-                        parsed = false;
-                        break;
-                    }
-                }
-            }
+        public void Dispose()
+        {
+            if (IsVisible)
+                Close();
+        }
+
+        private void SaveForm_Load(object sender, RoutedEventArgs e)
+        {
+            ApplicationSettings settings = _configurationManager.ApplicationSettings;
+            string[] ivBytes = settings.MapleVersion_CustomEncryptionBytes.Split(' ');
+            if (ivBytes.Length == 4 && Array.TrueForAll(ivBytes, CheckHexDigits))
+                SetTextBoxes(_ivBoxes, ivBytes);
             else
-                parsed = false;
-
-            if (!parsed)
             {
-                // do nothing.. default, could be corrupted anyway
-                appSettings.MapleVersion_CustomEncryptionBytes = "00 00 00 00";
+                settings.MapleVersion_CustomEncryptionBytes = "00 00 00 00";
                 _configurationManager.Save();
-            }
-            else
-            {
-                textBox_byte0.Text = splitBytes[0];
-                textBox_byte1.Text = splitBytes[1];
-                textBox_byte2.Text = splitBytes[2];
-                textBox_byte3.Text = splitBytes[3];
+                SetDefaultTextBoxIV();
             }
 
-            // AES User key
-            if (appSettings.MapleVersion_CustomAESUserKey == string.Empty)  // set default if there's none
-            {
-                SetDefaultTextBoxAESUserKey();
-            } 
+            string[] userKey = settings.MapleVersion_CustomAESUserKey.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (userKey.Length == 32 && Array.TrueForAll(userKey, CheckHexDigits))
+                SetTextBoxes(_userKeyBoxes, userKey);
             else
             {
-                string storedCustomAESKey = appSettings.MapleVersion_CustomAESUserKey;
-                string[] splitAESKeyBytes = storedCustomAESKey.Split(' ');
-
-                bool parsed2 = true;
-                if (splitAESKeyBytes.Length == 32)
+                if (settings.MapleVersion_CustomAESUserKey != string.Empty)
                 {
-                    foreach (string byte_ in splitAESKeyBytes)
-                    {
-                        if (!CheckHexDigits(byte_))
-                        {
-                            parsed2 = false;
-                            break;
-                        }
-                    }
-                }
-                else
-                    parsed2 = false;
-
-                if (!parsed2)
-                {
-                    // do nothing.. default, could be corrupted anyway
-                    appSettings.MapleVersion_CustomAESUserKey = string.Empty;
+                    settings.MapleVersion_CustomAESUserKey = string.Empty;
                     _configurationManager.Save();
                 }
-                else
-                {
-                   UserKey2TextBoxes(splitAESKeyBytes);
-                }
+                SetDefaultTextBoxAESUserKey();
             }
-            
-            // load the custom user key from ApplicationSettings.txt
+
             var iv = _configurationManager.GetCusomWzIVEncryption();
             _configurationManager.SetCustomWzUserKeyFromConfig();
             var currentLoadedKey = WzKeyGenerator.GenerateWzKey(iv, MapleCryptoConstants.UserKey_WzLib);
-            
-            // find the matched one
-            var matchedIndex = _configurationManager.CustomKeys.FindIndex(k => k.WzKey == currentLoadedKey);
-
-            if (matchedIndex != -1) {
+            int matchedIndex = _configurationManager.CustomKeys.FindIndex(key => key.WzKey == currentLoadedKey);
+            if (matchedIndex >= 0)
                 nameBox.SelectedIndex = matchedIndex;
-            }
-            else {
+            else
                 DefaultData();
-            }   
         }
 
-        private void DefaultData() {
+        private void DefaultData()
+        {
             _currentSelectedEncryptionKey = null;
-            nameBox.Text = "Custom Key " + (_configurationManager.CustomKeys.Count + 1);
+            nameBox.SelectedItem = null;
+            nameBox.Text = string.Format(
+                CultureInfo.CurrentCulture,
+                SharedUiText.Get("Encryption_DefaultKeyName", "Custom Key {0}"),
+                _configurationManager.CustomKeys.Count + 1);
             SetDefaultTextBoxIV();
             SetDefaultTextBoxAESUserKey();
         }
 
-        private void nameBox_SelectedIndexChanged(object sender, EventArgs e) {
-            if (nameBox.SelectedItem is null)
+        private void nameBox_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (nameBox.SelectedItem is not EncryptionKey selected)
                 return;
 
-            _currentSelectedEncryptionKey = (EncryptionKey)nameBox.SelectedItem;
-
-            FillBoxesWithSelectedKey();
+            _currentSelectedEncryptionKey = selected;
+            SetTextBoxes(_ivBoxes, selected.Iv.Split(' '));
+            SetTextBoxes(_userKeyBoxes, selected.AesUserKey.Split(' '));
         }
 
-        private void FillBoxesWithSelectedKey() {
+        private void createButton_Click(object sender, RoutedEventArgs e) => DefaultData();
 
-            if (_currentSelectedEncryptionKey == null) {
-                SetDefaultTextBoxIV();
-                SetDefaultTextBoxAESUserKey();
-                return;
-            }
-
-            // IV
-            var iv = _currentSelectedEncryptionKey.Iv.Split(' ');
-            textBox_byte0.Text = iv[0];
-            textBox_byte1.Text = iv[1];
-            textBox_byte2.Text = iv[2];
-            textBox_byte3.Text = iv[3];
-
-            // AES User Key
-            var aesUserKey = _currentSelectedEncryptionKey.AesUserKey.Split(' ');
-            UserKey2TextBoxes(aesUserKey);
-        }
-
-        private void createButton_Click(object sender, EventArgs e) {
-            DefaultData();
-        }
-
-        private void deleteButton_Click(object sender, EventArgs e) {
-            if (nameBox.Items.Count <= 1) {
-                MessageBox.Show("Can't delete. Must have at least one Custom Key.", "Error");
-                return;
-            }
-
-            if (_currentSelectedEncryptionKey == null) // "Create New" button is just clicked, not a valid selection
+        private void deleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (nameBox.Items.Count <= 1)
             {
-                MessageBox.Show("Nothing to delete.", "Error");
+                MessageBox.Show(SharedUiText.Get("Encryption_DeleteLastError"), SharedUiText.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            if (DialogResult.Yes != MessageBox.Show($"Are you sure you want to delete [{_currentSelectedEncryptionKey.Name}]?", "Warning", MessageBoxButtons.YesNo))
+            if (_currentSelectedEncryptionKey == null)
+            {
+                MessageBox.Show(SharedUiText.Get("Encryption_NothingToDelete"), SharedUiText.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (MessageBox.Show(string.Format(CultureInfo.CurrentCulture, SharedUiText.Get("Encryption_DeleteConfirm"), _currentSelectedEncryptionKey.Name), SharedUiText.Get("Common_Warning"),
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
 
             int removeIndex = nameBox.SelectedIndex;
             _encryptionKeys.RemoveAt(removeIndex);
-
-            if (removeIndex == _encryptionKeys.Count)
-            {
-                // If the last item is removed, nameBox.SelectedItem automatically becomes the previous item (index - 1).
-                // The SelectedIndexChanged event will be triggered, causing all boxes to update accordingly.
-            }
-            else
-            {
-                // Otherwise we need to manually update the selected key
-                nameBox_SelectedIndexChanged(null, null);
-            }
-
+            if (_encryptionKeys.Count > 0)
+                nameBox.SelectedIndex = Math.Min(removeIndex, _encryptionKeys.Count - 1);
             _configurationManager.Save();
         }
 
-        /// <summary>
-        /// On save button
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void SaveButton_Click(object sender, EventArgs e)
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(nameBox.Text)) {
-                MessageBox.Show("Please enter a name.", "Error");
+            if (string.IsNullOrWhiteSpace(nameBox.Text))
+            {
+                MessageBox.Show(SharedUiText.Get("Encryption_NameRequired"), SharedUiText.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            // IV 
-            string[] ivBytes = new string[4]
+            string[] ivBytes = GetTextBoxes(_ivBoxes);
+            if (!Array.TrueForAll(ivBytes, CheckHexDigits))
             {
-                textBox_byte0.Text,
-                textBox_byte1.Text,
-                textBox_byte2.Text,
-                textBox_byte3.Text
-            };
-
-            if (!CheckHexDigits(ivBytes[0]) || !CheckHexDigits(ivBytes[1]) || !CheckHexDigits(ivBytes[2]) || !CheckHexDigits(ivBytes[3]))
-            {
-                MessageBox.Show("Wrong format for AES IV. Please check the input bytes.", "Error");
+                MessageBox.Show(SharedUiText.Get("Encryption_InvalidIv"), SharedUiText.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            // AES User Key
-            // AES User Key (using the new TextBoxes2UserKey method)
-            string[] userKeys = TextBoxes2UserKey();
-
-            for (int i = 0; i < userKeys.Length; i++)
+            string[] userKey = GetTextBoxes(_userKeyBoxes);
+            if (!Array.TrueForAll(userKey, CheckHexDigits))
             {
-                if (!CheckHexDigits(userKeys[i]))
-                {
-                    MessageBox.Show("Wrong format for AES User Key. Please check the input bytes.", "Error");
-                    return;
-                }
+                MessageBox.Show(SharedUiText.Get("Encryption_InvalidUserKey"), SharedUiText.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
 
-            // Save
-            _configurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName = nameBox.Text;
-            _configurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes = string.Join(" ", ivBytes);
-            _configurationManager.ApplicationSettings.MapleVersion_CustomAESUserKey = string.Join(" ", userKeys);
-
-            // Set the UserKey in memory.
+            ApplicationSettings settings = _configurationManager.ApplicationSettings;
+            settings.MapleVersion_CustomEncryptionName = nameBox.Text;
+            settings.MapleVersion_CustomEncryptionBytes = string.Join(" ", ivBytes);
+            settings.MapleVersion_CustomAESUserKey = string.Join(" ", userKey);
             _configurationManager.SetCustomWzUserKeyFromConfig();
 
-            if (_currentSelectedEncryptionKey == null) {
-                // add
-                _currentSelectedEncryptionKey = new EncryptionKey {
+            if (_currentSelectedEncryptionKey == null)
+            {
+                _currentSelectedEncryptionKey = new EncryptionKey
+                {
                     Name = nameBox.Text,
-                    Iv = _configurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes,
-                    AesUserKey = _configurationManager.ApplicationSettings.MapleVersion_CustomAESUserKey,
-                    MapleVersion = WzMapleVersion.CUSTOM,
+                    Iv = settings.MapleVersion_CustomEncryptionBytes,
+                    AesUserKey = settings.MapleVersion_CustomAESUserKey,
+                    MapleVersion = WzMapleVersion.CUSTOM
                 };
                 _configurationManager.CustomKeys.Add(_currentSelectedEncryptionKey);
             }
-            else {
-                //update
+            else
+            {
                 _currentSelectedEncryptionKey.Name = nameBox.Text;
-                _currentSelectedEncryptionKey.Iv = _configurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes;
-                _currentSelectedEncryptionKey.AesUserKey = _configurationManager.ApplicationSettings.MapleVersion_CustomAESUserKey;
+                _currentSelectedEncryptionKey.Iv = settings.MapleVersion_CustomEncryptionBytes;
+                _currentSelectedEncryptionKey.AesUserKey = settings.MapleVersion_CustomAESUserKey;
             }
 
             _configurationManager.Save();
-
-            Close();
+            DialogResult = true;
         }
 
-        /// <summary>
-        /// Checks the input hex string i.e "0x5E" if its valid or not.
-        /// </summary>
-        /// <param name="input"></param>
-        /// <returns></returns>
-        private bool CheckHexDigits(string input)
+        private static bool CheckHexDigits(string input)
         {
-            if (input.Length >= 1 && input.Length <= 2)
-            {
-                for (int i = 0; i < input.Length; i++)
-                {
-                    if (!HexEncoding.IsHexDigit(input[i]))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else
+            if (input is not { Length: >= 1 and <= 2 })
                 return false;
+            foreach (char character in input)
+                if (!HexEncoding.IsHexDigit(character))
+                    return false;
             return true;
         }
 
-        /// <summary>
-        /// On clicked reset AES User Key
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Button_resetAESUserKey_Click(object sender, EventArgs e)
-        {
-            SetDefaultTextBoxAESUserKey();
-        }
-
-        private void SetDefaultTextBoxIV() {
-            textBox_byte0.Text = "00";
-            textBox_byte1.Text = "00";
-            textBox_byte2.Text = "00";
-            textBox_byte3.Text = "00";
-        }
+        private void Button_resetAESUserKey_Click(object sender, RoutedEventArgs e) => SetDefaultTextBoxAESUserKey();
+        private void SetDefaultTextBoxIV() => SetTextBoxes(_ivBoxes, new[] { "00", "00", "00", "00" });
 
         private void SetDefaultTextBoxAESUserKey()
         {
-            byte[] AESUserKey = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT;
-
-            textBox_AESUserKey1.Text = HexTool.ToString(AESUserKey[0 * 4]);
-            textBox_AESUserKey2.Text = HexTool.ToString(AESUserKey[1 * 4]);
-            textBox_AESUserKey3.Text = HexTool.ToString(AESUserKey[2 * 4]);
-            textBox_AESUserKey4.Text = HexTool.ToString(AESUserKey[3 * 4]);
-            textBox_AESUserKey5.Text = HexTool.ToString(AESUserKey[4 * 4]);
-            textBox_AESUserKey6.Text = HexTool.ToString(AESUserKey[5 * 4]);
-            textBox_AESUserKey7.Text = HexTool.ToString(AESUserKey[6 * 4]);
-            textBox_AESUserKey8.Text = HexTool.ToString(AESUserKey[7 * 4]);
-            textBox_AESUserKey9.Text = HexTool.ToString(AESUserKey[8 * 4]);
-            textBox_AESUserKey10.Text = HexTool.ToString(AESUserKey[9 * 4]);
-            textBox_AESUserKey11.Text = HexTool.ToString(AESUserKey[10 * 4]);
-            textBox_AESUserKey12.Text = HexTool.ToString(AESUserKey[11 * 4]);
-            textBox_AESUserKey13.Text = HexTool.ToString(AESUserKey[12 * 4]);
-            textBox_AESUserKey14.Text = HexTool.ToString(AESUserKey[13 * 4]);
-            textBox_AESUserKey15.Text = HexTool.ToString(AESUserKey[14 * 4]);
-            textBox_AESUserKey16.Text = HexTool.ToString(AESUserKey[15 * 4]);
-            textBox_AESUserKey17.Text = HexTool.ToString(AESUserKey[16 * 4]);
-            textBox_AESUserKey18.Text = HexTool.ToString(AESUserKey[17 * 4]);
-            textBox_AESUserKey19.Text = HexTool.ToString(AESUserKey[18 * 4]);
-            textBox_AESUserKey20.Text = HexTool.ToString(AESUserKey[19 * 4]);
-            textBox_AESUserKey21.Text = HexTool.ToString(AESUserKey[20 * 4]);
-            textBox_AESUserKey22.Text = HexTool.ToString(AESUserKey[21 * 4]);
-            textBox_AESUserKey23.Text = HexTool.ToString(AESUserKey[22 * 4]);
-            textBox_AESUserKey24.Text = HexTool.ToString(AESUserKey[23 * 4]);
-            textBox_AESUserKey25.Text = HexTool.ToString(AESUserKey[24 * 4]);
-            textBox_AESUserKey26.Text = HexTool.ToString(AESUserKey[25 * 4]);
-            textBox_AESUserKey27.Text = HexTool.ToString(AESUserKey[26 * 4]);
-            textBox_AESUserKey28.Text = HexTool.ToString(AESUserKey[27 * 4]);
-            textBox_AESUserKey29.Text = HexTool.ToString(AESUserKey[28 * 4]);
-            textBox_AESUserKey30.Text = HexTool.ToString(AESUserKey[29 * 4]);
-            textBox_AESUserKey31.Text = HexTool.ToString(AESUserKey[30 * 4]);
-            textBox_AESUserKey32.Text = HexTool.ToString(AESUserKey[31 * 4]);
+            byte[] defaultKey = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT;
+            for (int index = 0; index < _userKeyBoxes.Length; index++)
+                _userKeyBoxes[index].Text = HexTool.ToString(defaultKey[index * 4]);
         }
 
-        private void UserKey2TextBoxes(string[] aesUserKey)
+        private static void SetTextBoxes(TextBox[] boxes, string[] values)
         {
-            textBox_AESUserKey1.Text = aesUserKey[0];
-            textBox_AESUserKey2.Text = aesUserKey[1];
-            textBox_AESUserKey3.Text = aesUserKey[2];
-            textBox_AESUserKey4.Text = aesUserKey[3];
-            textBox_AESUserKey5.Text = aesUserKey[4];
-            textBox_AESUserKey6.Text = aesUserKey[5];
-            textBox_AESUserKey7.Text = aesUserKey[6];
-            textBox_AESUserKey8.Text = aesUserKey[7];
-            textBox_AESUserKey9.Text = aesUserKey[8];
-            textBox_AESUserKey10.Text = aesUserKey[9];
-            textBox_AESUserKey11.Text = aesUserKey[10];
-            textBox_AESUserKey12.Text = aesUserKey[11];
-            textBox_AESUserKey13.Text = aesUserKey[12];
-            textBox_AESUserKey14.Text = aesUserKey[13];
-            textBox_AESUserKey15.Text = aesUserKey[14];
-            textBox_AESUserKey16.Text = aesUserKey[15];
-            textBox_AESUserKey17.Text = aesUserKey[16];
-            textBox_AESUserKey18.Text = aesUserKey[17];
-            textBox_AESUserKey19.Text = aesUserKey[18];
-            textBox_AESUserKey20.Text = aesUserKey[19];
-            textBox_AESUserKey21.Text = aesUserKey[20];
-            textBox_AESUserKey22.Text = aesUserKey[21];
-            textBox_AESUserKey23.Text = aesUserKey[22];
-            textBox_AESUserKey24.Text = aesUserKey[23];
-            textBox_AESUserKey25.Text = aesUserKey[24];
-            textBox_AESUserKey26.Text = aesUserKey[25];
-            textBox_AESUserKey27.Text = aesUserKey[26];
-            textBox_AESUserKey28.Text = aesUserKey[27];
-            textBox_AESUserKey29.Text = aesUserKey[28];
-            textBox_AESUserKey30.Text = aesUserKey[29];
-            textBox_AESUserKey31.Text = aesUserKey[30];
-            textBox_AESUserKey32.Text = aesUserKey[31];
-        }
-        
-        private string[] TextBoxes2UserKey()
-        {
-            string[] aesUserKey = new string[32];
-    
-            aesUserKey[0] = textBox_AESUserKey1.Text;
-            aesUserKey[1] = textBox_AESUserKey2.Text;
-            aesUserKey[2] = textBox_AESUserKey3.Text;
-            aesUserKey[3] = textBox_AESUserKey4.Text;
-            aesUserKey[4] = textBox_AESUserKey5.Text;
-            aesUserKey[5] = textBox_AESUserKey6.Text;
-            aesUserKey[6] = textBox_AESUserKey7.Text;
-            aesUserKey[7] = textBox_AESUserKey8.Text;
-            aesUserKey[8] = textBox_AESUserKey9.Text;
-            aesUserKey[9] = textBox_AESUserKey10.Text;
-            aesUserKey[10] = textBox_AESUserKey11.Text;
-            aesUserKey[11] = textBox_AESUserKey12.Text;
-            aesUserKey[12] = textBox_AESUserKey13.Text;
-            aesUserKey[13] = textBox_AESUserKey14.Text;
-            aesUserKey[14] = textBox_AESUserKey15.Text;
-            aesUserKey[15] = textBox_AESUserKey16.Text;
-            aesUserKey[16] = textBox_AESUserKey17.Text;
-            aesUserKey[17] = textBox_AESUserKey18.Text;
-            aesUserKey[18] = textBox_AESUserKey19.Text;
-            aesUserKey[19] = textBox_AESUserKey20.Text;
-            aesUserKey[20] = textBox_AESUserKey21.Text;
-            aesUserKey[21] = textBox_AESUserKey22.Text;
-            aesUserKey[22] = textBox_AESUserKey23.Text;
-            aesUserKey[23] = textBox_AESUserKey24.Text;
-            aesUserKey[24] = textBox_AESUserKey25.Text;
-            aesUserKey[25] = textBox_AESUserKey26.Text;
-            aesUserKey[26] = textBox_AESUserKey27.Text;
-            aesUserKey[27] = textBox_AESUserKey28.Text;
-            aesUserKey[28] = textBox_AESUserKey29.Text;
-            aesUserKey[29] = textBox_AESUserKey30.Text;
-            aesUserKey[30] = textBox_AESUserKey31.Text;
-            aesUserKey[31] = textBox_AESUserKey32.Text;
-
-            return aesUserKey;
+            for (int index = 0; index < boxes.Length && index < values.Length; index++)
+                boxes[index].Text = values[index];
         }
 
-        /// <summary>
-        /// On hyperlink click
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-            const string link = "http://forum.ragezone.com/f921/maplestorys-aes-userkey-1116849/";
+        private static string[] GetTextBoxes(TextBox[] boxes) => Array.ConvertAll(boxes, box => box.Text);
 
-            System.Diagnostics.Process.Start(link);
+        private void linkLabel1_LinkClicked(object sender, RoutedEventArgs e)
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "http://forum.ragezone.com/f921/maplestorys-aes-userkey-1116849/",
+                UseShellExecute = true
+            });
         }
     }
 }
-

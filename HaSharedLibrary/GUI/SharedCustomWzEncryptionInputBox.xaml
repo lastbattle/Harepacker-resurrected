@@ -1,0 +1,159 @@
+<Window x:Class="HaSharedLibrary.GUI.SharedCustomWzEncryptionInputBox"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HaSharedLibrary.GUI"
+        Title="{local:SharedText Encryption_Title}"
+        Width="650" Height="590" MinWidth="580" MinHeight="540"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
+        Background="{DynamicResource HareCanvasBrush}"
+        Foreground="{DynamicResource HareTextBrush}"
+        FontFamily="Segoe UI" FontSize="13"
+        Loaded="SaveForm_Load">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,16">
+            <TextBlock Text="{local:SharedText Encryption_Heading}" Style="{StaticResource HarePageTitleStyle}"/>
+            <TextBlock Text="{local:SharedText Encryption_Description}"
+                       Style="{StaticResource HareMutedTextStyle}" Margin="0,3,0,0"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource HareCardStyle}" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="nameHeader" Text="{local:SharedText Common_Name}" Style="{StaticResource HareSectionTitleStyle}"/>
+                <ComboBox x:Name="nameBox" Grid.Row="1" Margin="0,8,0,10"
+                          IsEditable="True" DisplayMemberPath="Name"
+                          SelectionChanged="nameBox_SelectedIndexChanged"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <Button x:Name="createButton" Content="{local:SharedText Common_CreateNew}" Width="120"
+                            Click="createButton_Click"/>
+                    <Button x:Name="deleteButton" Content="{local:SharedText Common_Delete}" Width="100" Margin="8,0,0,0"
+                            Style="{StaticResource HareDangerButtonStyle}" Click="deleteButton_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource HareCardStyle}" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="ivHeader" Text="{local:SharedText Encryption_IvHeading}" Style="{StaticResource HareSectionTitleStyle}"/>
+                <UniformGrid Grid.Row="1" Columns="4" Margin="0,9,0,0">
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock x:Name="ivLabel0" Text="{local:SharedText Encryption_Byte0}" Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBox x:Name="textBox_byte0" MaxLength="2" Text="00" TextAlignment="Center" CharacterCasing="Upper"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock x:Name="ivLabel1" Text="{local:SharedText Encryption_Byte1}" Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBox x:Name="textBox_byte1" MaxLength="2" Text="00" TextAlignment="Center" CharacterCasing="Upper"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock x:Name="ivLabel2" Text="{local:SharedText Encryption_Byte2}" Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBox x:Name="textBox_byte2" MaxLength="2" Text="00" TextAlignment="Center" CharacterCasing="Upper"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock x:Name="ivLabel3" Text="{local:SharedText Encryption_Byte3}" Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBox x:Name="textBox_byte3" MaxLength="2" Text="00" TextAlignment="Center" CharacterCasing="Upper"/>
+                    </StackPanel>
+                </UniformGrid>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3" Style="{StaticResource HareCardStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock x:Name="userKeyHeader" Text="{local:SharedText Encryption_UserKeyHeading}" Style="{StaticResource HareSectionTitleStyle}"/>
+                        <TextBlock x:Name="warningText" Text="{local:SharedText Encryption_DefaultWarning}"
+                                   Style="{StaticResource HareMutedTextStyle}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <Button x:Name="resetButton" Grid.Column="1" Content="{local:SharedText Encryption_ResetDefault}" Margin="10,0,0,0"
+                            VerticalAlignment="Center" Click="Button_resetAESUserKey_Click"/>
+                </Grid>
+                <TextBlock x:Name="userKeyUsageText" Grid.Row="1"
+                           Text="{local:SharedText Encryption_UserKeyUsage}"
+                           Foreground="{StaticResource HareWarningBrush}" Margin="0,10,0,4"/>
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <UniformGrid Columns="8" Margin="-3,2">
+                        <TextBox x:Name="textBox_AESUserKey1" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey2" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey3" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey4" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey5" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey6" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey7" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey8" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey9" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey10" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey11" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey12" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey13" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey14" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey15" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey16" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey17" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey18" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey19" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey20" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey21" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey22" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey23" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey24" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey25" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey26" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey27" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey28" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey29" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey30" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey31" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                        <TextBox x:Name="textBox_AESUserKey32" MaxLength="2" Width="50" Margin="3" TextAlignment="Center" CharacterCasing="Upper"/>
+                    </UniformGrid>
+                </ScrollViewer>
+                <Button x:Name="learnMoreLink" Grid.Row="3"
+                        Content="{local:SharedText Encryption_LearnMore}"
+                        HorizontalAlignment="Left" Margin="0,8,0,0"
+                        Foreground="{StaticResource HareAccentBrush}" BorderThickness="0"
+                        Background="Transparent" Padding="0"
+                        Click="linkLabel1_LinkClicked"/>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="cancelButton" Content="{local:SharedText Common_Cancel}" Width="100" IsCancel="True"/>
+            <Button x:Name="saveButton" Content="{local:SharedText Common_Save}" Width="120" Margin="8,0,0,0"
+                    IsDefault="True" Style="{StaticResource HarePrimaryButtonStyle}"
+                    Click="SaveButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

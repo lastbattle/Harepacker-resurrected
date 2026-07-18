@@ -1,157 +1,128 @@
-﻿/* Copyright (C) 2018 LastBattle
+/* Copyright (C) 2018 LastBattle
 https://github.com/lastbattle/Harepacker-resurrected
 */
 
 using System;
-using System.Windows.Forms;
-using MapleLib.WzLib.WzStructure.Data;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaSharedLibrary.GUI
 {
-
     public partial class FieldLimitPanel : UserControl
     {
-        // Event handler
         public event EventHandler<FieldLimitChangedEventArgs> FieldLimitChanged;
 
-        // misc
-        private bool initializingListViewForFieldLimit = false;
-
+        private readonly ObservableCollection<FieldLimitOption> _options = new();
+        private bool _initializing;
+        private ulong _fieldLimit;
 
         public FieldLimitPanel()
         {
             InitializeComponent();
-
-            Load += FieldLimitPanel_Load;
+            fieldLimitList.ItemsSource = _options;
+            Loaded += FieldLimitPanel_Loaded;
         }
 
-        #region Events
-        /// <summary>
-        /// Loaded
-        /// Note: This doesnt seems to get called automatically on WinForm.. 
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void FieldLimitPanel_Load(object sender, EventArgs e)
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public ulong FieldLimit
+        {
+            get => _fieldLimit;
+            set => _fieldLimit = value;
+        }
+
+        private void FieldLimitPanel_Loaded(object sender, RoutedEventArgs e)
         {
             PopulateDefaultListView();
         }
 
-
-        /// <summary>
-        /// Update the checkboxes upon selection of a 'fieldLimit' WzIntProperty
-        /// </summary>
-        public void UpdateFieldLimitCheckboxes(ulong propertyValue)
-        {
-            initializingListViewForFieldLimit = true;
-
-            _fieldLimit = propertyValue;
-
-            // Fill checkboxes
-            //int maxFieldLimitType = FieldLimitTypeExtension.GetMaxFieldLimitType();
-            foreach (ListViewItem item in listView_fieldLimitType.Items)
-            {
-                item.Checked = FieldLimitTypeExtension.Check((int)item.Tag, (long)propertyValue);
-            }
-            initializingListViewForFieldLimit = false;
-            ListView_fieldLimitType_ItemChecked(listView_fieldLimitType, null);
-        }
-
-        /// <summary>
-        /// Populates the default values based upon hard coded WzFieldLimitType list
-        /// </summary>
         public void PopulateDefaultListView()
         {
-            initializingListViewForFieldLimit = true;
+            if (_options.Count != 0)
+                return;
 
-            // Populate FieldLimitType
-            if (listView_fieldLimitType.Items.Count == 0)
+            _initializing = true;
+            int index = 0;
+            foreach (FieldLimitType limitType in Enum.GetValues(typeof(FieldLimitType)))
             {
-                // dummy column
-                listView_fieldLimitType.Columns.Add(new ColumnHeader()
-                {
-                    Text = "",
-                    Name = "col1",
-                    Width = 550,
-                });
+                string fallback = limitType.ToString().Replace("_", " ");
+                string label = SharedUiText.Get($"FieldLimit_{limitType}", fallback);
+                _options.Add(new FieldLimitOption(index, $"{index} - {label}", Option_CheckedChanged));
+                index++;
+            }
 
-                int i_index = 0;
-                foreach (FieldLimitType limitType in Enum.GetValues(typeof(FieldLimitType)))
-                {
-                    ListViewItem item1 = new ListViewItem(
-                        string.Format("{0} - {1}", (i_index).ToString(), limitType.ToString().Replace("_", " ")));
-                    item1.Tag = limitType; // starts from 0
-                    listView_fieldLimitType.Items.Add(item1);
+            for (int i = index; i < index + 30; i++)
+                _options.Add(new FieldLimitOption(i, $"{i} - {SharedUiText.Get("FieldLimit_Unknown")}", Option_CheckedChanged));
 
-                    i_index++;
-                }
-                for (int i = i_index; i < i_index + 30; i++) // add 30 dummy values, we really dont have the field properties of future MS versions :( 
+            _initializing = false;
+        }
+
+        public void UpdateFieldLimitCheckboxes(ulong propertyValue)
+        {
+            PopulateDefaultListView();
+            _initializing = true;
+            _fieldLimit = propertyValue;
+
+            foreach (FieldLimitOption option in _options)
+                option.IsChecked = option.BitIndex < 64 && FieldLimitTypeExtension.Check(option.BitIndex, (long)propertyValue);
+
+            _initializing = false;
+            RaiseFieldLimitChanged();
+        }
+
+        private void Option_CheckedChanged()
+        {
+            if (_initializing)
+                return;
+
+            ulong value = 0;
+            foreach (FieldLimitOption option in _options)
+            {
+                if (option.IsChecked && option.BitIndex < 64)
+                    value |= 1UL << option.BitIndex;
+            }
+
+            _fieldLimit = value;
+            RaiseFieldLimitChanged();
+        }
+
+        private void RaiseFieldLimitChanged()
+        {
+            FieldLimitChanged?.Invoke(this, new FieldLimitChangedEventArgs(_fieldLimit));
+        }
+
+        private sealed class FieldLimitOption : INotifyPropertyChanged
+        {
+            private readonly Action _changed;
+            private bool _isChecked;
+
+            public FieldLimitOption(int bitIndex, string label, Action changed)
+            {
+                BitIndex = bitIndex;
+                Label = label;
+                _changed = changed;
+            }
+
+            public int BitIndex { get; }
+            public string Label { get; }
+
+            public bool IsChecked
+            {
+                get => _isChecked;
+                set
                 {
-                    ListViewItem item1 = new ListViewItem(string.Format("{0} - UNKNOWN", (i).ToString()));
-                    item1.Tag = i;
-                    listView_fieldLimitType.Items.Add(item1);
+                    if (_isChecked == value)
+                        return;
+
+                    _isChecked = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChecked)));
+                    _changed();
                 }
             }
 
-            initializingListViewForFieldLimit = false;
+            public event PropertyChangedEventHandler PropertyChanged;
         }
-
-        /// <summary>
-        /// On WzFieldLimitType listview item checked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ListView_fieldLimitType_ItemCheck(object sender, ItemCheckEventArgs e)
-        {
-            if (initializingListViewForFieldLimit)
-                return;
-
-            //System.Diagnostics.Debug.WriteLine("Set index at  " + e.Index + " to " + listView_fieldLimitType.Items[e.Index].Checked);
-        }
-
-        /// <summary>
-        /// On WzFieldLimitType listview item checked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ListView_fieldLimitType_ItemChecked(object sender, ItemCheckedEventArgs e)
-        {
-            if (initializingListViewForFieldLimit)
-                return;
-
-            ulong fieldLimit = 0;
-            foreach (ListViewItem item in listView_fieldLimitType.Items)
-            {
-                if (item.Checked)
-                {
-                    int numShift = ((int)item.Tag);
-
-                    //System.Diagnostics.Debug.WriteLine("Selected " + numShift + ", " + (long)(1L << numShift));
-                    fieldLimit |= (ulong)(1L << numShift);
-                }
-            }
-            //System.Diagnostics.Debug.WriteLine("Result " + fieldLimit);
-        /*    if (setTextboxOnFieldLimitChange != null)
-                setTextboxOnFieldLimitChange.Text = fieldLimit.ToString();
-            if (setTextboxOnFieldLimitChange_wpf != null)
-                setTextboxOnFieldLimitChange_wpf.Text = fieldLimit.ToString();
-        */
-            // set value
-            this._fieldLimit = fieldLimit;
-
-            FieldLimitChanged?.Invoke(this, new FieldLimitChangedEventArgs(this._fieldLimit));
-        }
-        #endregion
-
-        #region Member Values
-        private ulong _fieldLimit = 0;
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public ulong FieldLimit
-        {
-            get { return this._fieldLimit; }
-            set { this._fieldLimit = value; }
-        }
-        #endregion
     }
 }

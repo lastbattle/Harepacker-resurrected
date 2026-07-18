@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Common_Apply" xml:space="preserve"><value>Apply</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Common_CreateNew" xml:space="preserve"><value>Create New</value></data>
+  <data name="Common_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Common_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="Common_Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Common_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Common_Warning" xml:space="preserve"><value>Warning</value></data>
+  <data name="Encryption_Title" xml:space="preserve"><value>Custom .WZ encryption keys</value></data>
+  <data name="Encryption_Heading" xml:space="preserve"><value>Custom encryption</value></data>
+  <data name="Encryption_Description" xml:space="preserve"><value>Manage the IV and AES user key used for custom WZ encryption.</value></data>
+  <data name="Encryption_IvHeading" xml:space="preserve"><value>AES 4-byte IV</value></data>
+  <data name="Encryption_Byte0" xml:space="preserve"><value>Byte 0</value></data>
+  <data name="Encryption_Byte1" xml:space="preserve"><value>Byte 1</value></data>
+  <data name="Encryption_Byte2" xml:space="preserve"><value>Byte 2</value></data>
+  <data name="Encryption_Byte3" xml:space="preserve"><value>Byte 3</value></data>
+  <data name="Encryption_UserKeyHeading" xml:space="preserve"><value>AES User Key (32 bytes)</value></data>
+  <data name="Encryption_DefaultWarning" xml:space="preserve"><value>Leave this at its default value if you are unsure.</value></data>
+  <data name="Encryption_ResetDefault" xml:space="preserve"><value>Reset default</value></data>
+  <data name="Encryption_UserKeyUsage" xml:space="preserve"><value>The custom user key is used only when the IV is not '00 00 00 00'.</value></data>
+  <data name="Encryption_LearnMore" xml:space="preserve"><value>Why is only the first byte of each int32 used?</value></data>
+  <data name="Encryption_DefaultKeyName" xml:space="preserve"><value>Custom Key {0}</value></data>
+  <data name="Encryption_DeleteLastError" xml:space="preserve"><value>At least one custom key must remain.</value></data>
+  <data name="Encryption_NothingToDelete" xml:space="preserve"><value>There is no selected key to delete.</value></data>
+  <data name="Encryption_DeleteConfirm" xml:space="preserve"><value>Delete the custom key [{0}]?</value></data>
+  <data name="Encryption_NameRequired" xml:space="preserve"><value>Enter a name for the custom key.</value></data>
+  <data name="Encryption_InvalidIv" xml:space="preserve"><value>The AES IV is invalid. Check the input bytes.</value></data>
+  <data name="Encryption_InvalidUserKey" xml:space="preserve"><value>The AES user key is invalid. Check the input bytes.</value></data>
+  <data name="Sound_Play" xml:space="preserve"><value>Play</value></data>
+  <data name="Sound_Pause" xml:space="preserve"><value>Pause</value></data>
+  <data name="Sound_Loop" xml:space="preserve"><value>Loop</value></data>
+  <data name="Sound_Volume" xml:space="preserve"><value>Volume:</value></data>
+  <data name="FieldLimit_Heading" xml:space="preserve"><value>Field restrictions</value></data>
+  <data name="FieldLimit_Description" xml:space="preserve"><value>Select the client actions disabled on this map.</value></data>
+  <data name="FieldLimit_Unable_To_Jump" xml:space="preserve"><value>Unable to jump</value></data>
+  <data name="FieldLimit_Unable_To_Use_Skill" xml:space="preserve"><value>Unable to use skills</value></data>
+  <data name="FieldLimit_Unable_To_Use_Summon_Item" xml:space="preserve"><value>Unable to use summon items</value></data>
+  <data name="FieldLimit_Unable_To_Use_Mystic_Door" xml:space="preserve"><value>Unable to use Mystic Door</value></data>
+  <data name="FieldLimit_Unable_To_Migrate" xml:space="preserve"><value>Unable to change channel</value></data>
+  <data name="FieldLimit_Unable_To_Use_Portal_Scroll" xml:space="preserve"><value>Unable to use portal scrolls</value></data>
+  <data name="FieldLimit_Unable_To_Use_Teleport_Item" xml:space="preserve"><value>Unable to use teleport items</value></data>
+  <data name="FieldLimit_Unable_To_Open_Mini_Game" xml:space="preserve"><value>Unable to open mini-games</value></data>
+  <data name="FieldLimit_Unable_To_Use_Specific_Portal_Scroll" xml:space="preserve"><value>Unable to use specific portal scrolls</value></data>
+  <data name="FieldLimit_Unable_To_Use_Taming_Mob" xml:space="preserve"><value>Unable to use mounts</value></data>
+  <data name="FieldLimit_Unable_To_Consume_Stat_Change_Item" xml:space="preserve"><value>Unable to consume stat-change items</value></data>
+  <data name="FieldLimit_Unable_To_Change_Party_Boss" xml:space="preserve"><value>Unable to change party leader</value></data>
+  <data name="FieldLimit_No_Monster_Capacity_Limit" xml:space="preserve"><value>No monster capacity limit</value></data>
+  <data name="FieldLimit_Unable_To_Use_Wedding_Invitation_Item" xml:space="preserve"><value>Unable to use wedding invitations</value></data>
+  <data name="FieldLimit_Unable_To_Use_Cash_Weather" xml:space="preserve"><value>Unable to use Cash weather items</value></data>
+  <data name="FieldLimit_Unable_To_Use_Pet" xml:space="preserve"><value>Unable to use pets</value></data>
+  <data name="FieldLimit_Unable_To_Use_AntiMacro_Item" xml:space="preserve"><value>Unable to use anti-macro items</value></data>
+  <data name="FieldLimit_Unable_To_Fall_Down" xml:space="preserve"><value>Unable to fall down</value></data>
+  <data name="FieldLimit_Unable_To_Summon_NPC" xml:space="preserve"><value>Unable to summon NPCs</value></data>
+  <data name="FieldLimit_No_EXP_Decrease" xml:space="preserve"><value>No EXP decrease</value></data>
+  <data name="FieldLimit_No_Damage_On_Falling" xml:space="preserve"><value>No falling damage</value></data>
+  <data name="FieldLimit_Parcel_Open_Limit" xml:space="preserve"><value>Parcel opening restricted</value></data>
+  <data name="FieldLimit_Drop_Limit" xml:space="preserve"><value>Item dropping restricted</value></data>
+  <data name="FieldLimit_Unable_To_Use_Rocket_Boost" xml:space="preserve"><value>Unable to use Rocket Boost</value></data>
+  <data name="FieldLimit_No_Item_Option_Limit" xml:space="preserve"><value>No item-option limit</value></data>
+  <data name="FieldLimit_No_Quest_Alert" xml:space="preserve"><value>No quest alerts</value></data>
+  <data name="FieldLimit_No_Android" xml:space="preserve"><value>Androids disabled</value></data>
+  <data name="FieldLimit_Auto_Expand_Minimap" xml:space="preserve"><value>Automatically expand minimap</value></data>
+  <data name="FieldLimit_Move_Skill_Only" xml:space="preserve"><value>Movement skills only</value></data>
+  <data name="FieldLimit_Unknown" xml:space="preserve"><value>Unknown</value></data>
+</root>
