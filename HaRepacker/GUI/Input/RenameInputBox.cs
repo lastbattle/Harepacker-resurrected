@@ -1,52 +1,40 @@
-﻿using System;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Input;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class RenameInputBox : Form
+    public partial class RenameInputBox : Window
     {
+        private string newNameResult;
+
         public static bool Show(string title, string previousItemName, out string newName)
         {
-            RenameInputBox form = new RenameInputBox(title);
-            form.nameBox.Text = previousItemName; // set previous name
-
-            bool result = form.ShowDialog() == DialogResult.OK;
-
+            RenameInputBox form = new(title);
+            form.nameBox.Text = previousItemName;
+            form.nameBox.SelectAll();
+            bool accepted = form.ShowDialog() == true;
             newName = form.newNameResult;
-            return result;
+            return accepted;
         }
-
-        private string newNameResult = null;
 
         public RenameInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "New name:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-        private void okButton_Click(object sender, EventArgs e)
+        private void Accept()
         {
-            if (nameBox.Text != "" && nameBox.Text != null)
-            {
-                newNameResult = nameBox.Text;
-
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            if (string.IsNullOrEmpty(nameBox.Text)) { InputDialogSupport.WarnInvalidInput(); return; }
+            newNameResult = nameBox.Text;
+            DialogResult = true;
         }
     }
 }

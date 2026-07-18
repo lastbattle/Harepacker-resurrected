@@ -20,7 +20,7 @@ using MapleLib.Helpers;
 
 namespace HaRepacker.GUI
 {
-    public partial class WzKeyBruteforceForm : Form
+    public partial class WzKeyBruteforceForm : ThemedDialogWindow
     {
 
         private bool bIsLoaded = false;
@@ -34,12 +34,15 @@ namespace HaRepacker.GUI
         {
             InitializeComponent();
 
-            FormClosed += WzKeyBruteforceForm_FormClosed;
+            Closed += WzKeyBruteforceForm_FormClosed;
+
+            Title = WpfDialogSupport.Text(typeof(WzKeyBruteforceForm), "$this.Text", "Brute-force WZ key");
+            button_startStop.Content = WpfDialogSupport.Text(typeof(WzKeyBruteforceForm), "button_startStop.Text", "Start brute-forcing");
 
             bIsLoaded = true;
         }
 
-        private void WzKeyBruteforceForm_FormClosed(object sender, FormClosedEventArgs e)
+        private void WzKeyBruteforceForm_FormClosed(object sender, EventArgs e)
         {
             if (t_runningTask != null)
             {
@@ -54,17 +57,6 @@ namespace HaRepacker.GUI
         /// <param name="msg"></param>
         /// <param name="keyData"></param>
         /// <returns></returns>
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            // ...
-            if (keyData == (Keys.Escape))
-            {
-                Close(); // exit window
-                return true;
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
-
         private void button_startStop_Click(object sender, EventArgs e)
         {
             StartWzKeyBruteforcing(Dispatcher.CurrentDispatcher);
@@ -94,12 +86,12 @@ namespace HaRepacker.GUI
                 Multiselect = false
             })
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
 
                 // Show splash screen
-                button_startStop.Enabled = false;
-                button_startStop.Text = "Brute-forcing...";
+                button_startStop.IsEnabled = false;
+            button_startStop.Content = UiLocalization.Translate("Brute-forcing...");
 
 
                 // Reset variables
@@ -159,7 +151,7 @@ namespace HaRepacker.GUI
                 aTimer_wzKeyBruteforce = null;
             }
 
-            this.BeginInvoke(() =>
+            Dispatcher.BeginInvoke(() =>
             {
                 TicksToRelativeTimeConverter ticksToRelativeTimeConverter = new TicksToRelativeTimeConverter();
                 label_duration.Text = ticksToRelativeTimeConverter.Convert(DateTime.Now.Ticks - wzKeyBruteforceStartTime.Ticks, null, null, CultureInfo.CurrentCulture) as string;
@@ -217,7 +209,8 @@ namespace HaRepacker.GUI
 
                     string hexStr = HexTool.ToString(writer.ToArray());
 
-                    MessageBox.Show("Found the encryption key to the WZ file:\r\n" + HexTool.ToString(writer.ToArray()), "Success");
+                    MessageBox.Show(UiLocalization.Translate("Found the encryption key to the WZ file:") + "\r\n" +
+                        HexTool.ToString(writer.ToArray()), UiLocalization.Translate("Success"));
                     Debug.WriteLine("Found key. Key = " + hexStr);
 
                     string error = string.Format("[WzKeyBruteforceForm] WzKey found: {0}", hexStr);
@@ -227,8 +220,8 @@ namespace HaRepacker.GUI
                     // Hide panel splash sdcreen
                     Action action = () =>
                     {
-                        button_startStop.Enabled = true;
-                        button_startStop.Text = "Start brute-forcing";
+                        button_startStop.IsEnabled = true;
+            button_startStop.Content = UiLocalization.Translate("Start brute-forcing");
 
                         label_key.Text = hexStr;
                     };

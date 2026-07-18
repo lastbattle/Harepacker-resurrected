@@ -13,7 +13,7 @@ using System.Windows.Forms;
 
 namespace HaRepacker.GUI
 {
-    public partial class SaveForm : Form
+    public partial class SaveForm : ThemedDialogWindow
     {
         private readonly WzNode wzNode;
 
@@ -36,6 +36,7 @@ namespace HaRepacker.GUI
         public SaveForm(MainPanel panel, WzNode wzNode)
         {
             InitializeComponent();
+            ApplyLocalizedText();
 
             WzEncryptionUiShared.Populate(encryptionBox);
 
@@ -48,8 +49,8 @@ namespace HaRepacker.GUI
                 // Data.wz uses BMS encryption... no sepcific version indicated
                 SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion.BMS);
 
-                versionBox.Enabled = false; // disable, not necessary
-                checkBox_64BitFile.Enabled = false; // disable, not necessary
+                versionBox.IsEnabled = false; // disable, not necessary
+                checkBox_64BitFile.IsEnabled = false; // disable, not necessary
             }
             else
             {
@@ -58,9 +59,9 @@ namespace HaRepacker.GUI
 
                 SetWzEncryptionBoxSelectionByWzMapleVersion(wzf.MapleVersion);
 
-                versionBox.Value = wzf.Version;
-                versionBox.Enabled = wzf.Is64BitWzFile ? false : true; // disable checkbox if its checked as 64-bit, since the version will always be 777
-                checkBox_64BitFile.Checked = wzf.Is64BitWzFile;
+                versionBox.Text = wzf.Version.ToString();
+                versionBox.IsEnabled = !wzf.Is64BitWzFile;
+                checkBox_64BitFile.IsChecked = wzf.Is64BitWzFile;
             }
             this._mainPanel = panel;
 
@@ -70,32 +71,32 @@ namespace HaRepacker.GUI
             bIsLoaded = true;
         }
 
+        private string LocalizedText(string key, string fallback) => WpfDialogSupport.Text(typeof(SaveForm), key, fallback);
+
+        private void ApplyLocalizedText()
+        {
+            Title = LocalizedText("$this.Text", "Save");
+            formatHeader.Text = LocalizedText("groupBox1.Text", "File format selection:");
+            radioButton_wzFile.Content = LocalizedText("radioButton_wzFile.Text", "Save as .wz file");
+            radioButton1.Content = LocalizedText("radioButton1.Text", "Save as .ms file (encrypted. v220++)");
+            versionLabel.Text = LocalizedText("label1.Text", "Version");
+            encryptionLabel.Text = LocalizedText("label2.Text", "Encryption");
+            checkBox_64BitFile.Content = LocalizedText("checkBox_64BitFile.Text", "No version number");
+            saveButton.Content = LocalizedText("saveButton.Text", "Save");
+        }
+
         /// <summary>
         /// --- Helper function to keep UI synchronized ---
         /// </summary>
         private void UpdateUIState()
         {
+            if (groupBox_wzSaveSelection == null || versionBox == null)
+                return;
+
             // The WZ Options group box is only enabled if the WZ Radio button is checked.
-            groupBox_wzSaveSelection.Enabled = radioButton_wzFile.Checked;
+            groupBox_wzSaveSelection.IsEnabled = radioButton_wzFile.IsChecked == true;
 
-            versionBox.Enabled = checkBox_64BitFile.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
-        }
-
-        /// <summary>
-        /// Process command key on the form
-        /// </summary>
-        /// <param name="msg"></param>
-        /// <param name="keyData"></param>
-        /// <returns></returns>
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            // ...
-            if (keyData == (Keys.Escape))
-            {
-                Close(); // exit window
-                return true;
-            }
-            return base.ProcessCmdKey(ref msg, keyData);
+            versionBox.IsEnabled = checkBox_64BitFile.IsChecked != true;
         }
 
 
@@ -136,13 +137,14 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void SaveButton_Click(object sender, EventArgs e)
         {
-            if (versionBox.Value < 0)
+            int version = WpfDialogSupport.ParseInteger(versionBox.Text, -1);
+            if (version < 0)
             {
                 Warning.Error(Properties.Resources.SaveVersionError);
                 return;
             }
 
-            bool bSaveAsWzFile = radioButton_wzFile.Checked;
+            bool bSaveAsWzFile = radioButton_wzFile.IsChecked == true;
 
             if (bSaveAsWzFile)
             {
@@ -154,10 +156,10 @@ namespace HaRepacker.GUI
                     Properties.Resources.WzFilter)
                 })
                 {
-                    if (dialog.ShowDialog() != DialogResult.OK)
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                         return;
 
-                    bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
+                    bool bSaveAs64BitWzFile = checkBox_64BitFile.IsChecked == true; // no version number
                     WzMapleVersion wzMapleVersionSelected = ((EncryptionKey)encryptionBox.SelectedItem).MapleVersion; // new encryption selected
                     if (this.IsRegularWzFile)
                     {
@@ -166,7 +168,7 @@ namespace HaRepacker.GUI
                         {
                             PrepareAllImgs(wzf.WzDirectory);
                         }
-                        wzf.Version = (short)versionBox.Value;
+                        wzf.Version = (short)version;
                         wzf.MapleVersion = wzMapleVersionSelected;
 
                         if (string.Equals(wzf.FilePath, dialog.FileName, StringComparison.OrdinalIgnoreCase))
@@ -180,7 +182,7 @@ namespace HaRepacker.GUI
                             }
                             catch (IOException ex)
                             {
-                                MessageBox.Show("Handle error overwriting WZ file: " + ex.Message, Properties.Resources.Error);
+                                MessageBox.Show(string.Format(UiLocalization.Translate("Error overwriting WZ file: {0}"), ex.Message), Properties.Resources.Error);
                             }
                         }
                         else
@@ -251,7 +253,7 @@ namespace HaRepacker.GUI
                     Properties.Resources.MsFilter)
                 })
                 {
-                    if (dialog.ShowDialog() != DialogResult.OK)
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                         return;
 
                     using (var memoryStream = new MemoryStream())

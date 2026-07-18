@@ -1,0 +1,1399 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="-" xml:space="preserve">
+    <value>-</value>
+  </data>
+  <data name="&amp;#xE711;" xml:space="preserve">
+    <value>&amp;#xE711;</value>
+  </data>
+  <data name="&amp;#xE71D;" xml:space="preserve">
+    <value>&amp;#xE71D;</value>
+  </data>
+  <data name="&amp;#xE721;" xml:space="preserve">
+    <value>&amp;#xE721;</value>
+  </data>
+  <data name="*" xml:space="preserve">
+    <value>*</value>
+  </data>
+  <data name="," xml:space="preserve">
+    <value>,</value>
+  </data>
+  <data name="..." xml:space="preserve">
+    <value>...</value>
+  </data>
+  <data name=".wz" xml:space="preserve">
+    <value>.wz</value>
+  </data>
+  <data name="_Add" xml:space="preserve">
+    <value>_追加</value>
+  </data>
+  <data name="_Copy" xml:space="preserve">
+    <value>_コピー</value>
+  </data>
+  <data name="_Edit" xml:space="preserve">
+    <value>_編集</value>
+  </data>
+  <data name="_File" xml:space="preserve">
+    <value>_ファイル</value>
+  </data>
+  <data name="_Help" xml:space="preserve">
+    <value>_ヘルプ</value>
+  </data>
+  <data name="_New" xml:space="preserve">
+    <value>_新規</value>
+  </data>
+  <data name="_Open…" xml:space="preserve">
+    <value>_開く…</value>
+  </data>
+  <data name="_Paste" xml:space="preserve">
+    <value>_貼り付け</value>
+  </data>
+  <data name="_Redo" xml:space="preserve">
+    <value>_やり直す</value>
+  </data>
+  <data name="_Remove" xml:space="preserve">
+    <value>_削除</value>
+  </data>
+  <data name="_Save" xml:space="preserve">
+    <value>_保存</value>
+  </data>
+  <data name="_Tools" xml:space="preserve">
+    <value>_ツール</value>
+  </data>
+  <data name="_Undo" xml:space="preserve">
+    <value>_元に戻す</value>
+  </data>
+  <data name="{0} files (*.{0})|*.{0}|All files (*.*)|*.*" xml:space="preserve">
+    <value>{0} files (*.{0})|*.{0}|すべて files (*.*)|*.*</value>
+  </data>
+  <data name="0" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="0xFF" xml:space="preserve">
+    <value>0xFF</value>
+  </data>
+  <data name="1" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="1.0" xml:space="preserve">
+    <value>1.0</value>
+  </data>
+  <data name="A fork~ " xml:space="preserve">
+    <value>A fork~ </value>
+  </data>
+  <data name="Abort" xml:space="preserve">
+    <value>中止</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>バージョン情報</value>
+  </data>
+  <data name="About HaRepacker" xml:space="preserve">
+    <value>バージョン情報 HaRepacker</value>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>追加</value>
+  </data>
+  <data name="Add new tab (Ctl + T)" xml:space="preserve">
+    <value>新しいタブを追加 (Ctl + T)</value>
+  </data>
+  <data name="AES Keys (MapleShark):" xml:space="preserve">
+    <value>AES キー (MapleShark):</value>
+  </data>
+  <data name="AES Keys (Odin):" xml:space="preserve">
+    <value>AES キー (Odin):</value>
+  </data>
+  <data name="All WZ files|*.wz" xml:space="preserve">
+    <value>すべての WZ ファイル|*.wz</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>適用</value>
+  </data>
+  <data name="Are you sure you want to close this file?" xml:space="preserve">
+    <value>このファイルを閉じてもよろしいですか?</value>
+  </data>
+  <data name="Auto-load related Wz (Map.wz, Map001.wz, Map002.wz)" xml:space="preserve">
+    <value>関連 WZ を自動読み込み（Map.wz、Map001.wz、Map002.wz）</value>
+  </data>
+  <data name="Automatically associate WZ files with HaRepacker" xml:space="preserve">
+    <value>自動 関連付け WZ files with HaRepacker</value>
+  </data>
+  <data name="Binary (mp3, bin)" xml:space="preserve">
+    <value>バイナリ (mp3, bin)</value>
+  </data>
+  <data name="Browse..." xml:space="preserve">
+    <value>参照...</value>
+  </data>
+  <data name="Browse…" xml:space="preserve">
+    <value>参照…</value>
+  </data>
+  <data name="Brute-force WZ key" xml:space="preserve">
+    <value>WZ キーを総当たり解析</value>
+  </data>
+  <data name="Brute-forcing..." xml:space="preserve">
+    <value>総当たり解析中…</value>
+  </data>
+  <data name="BSON" xml:space="preserve">
+    <value>BSON</value>
+  </data>
+  <data name="Byte or Float" xml:space="preserve">
+    <value>Byte or 浮動小数</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Cancel operation" xml:space="preserve">
+    <value>キャンセル 操作</value>
+  </data>
+  <data name="Canvas / Image" xml:space="preserve">
+    <value>キャンバス / 画像</value>
+  </data>
+  <data name="Canvas property" xml:space="preserve">
+    <value>キャンバス プロパティ</value>
+  </data>
+  <data name="CASH" xml:space="preserve">
+    <value>CASH</value>
+  </data>
+  <data name="Categories to pack:" xml:space="preserve">
+    <value>パックするカテゴリ：</value>
+  </data>
+  <data name="Change Image" xml:space="preserve">
+    <value>画像を変更</value>
+  </data>
+  <data name="Change Sound" xml:space="preserve">
+    <value>サウンドを変更</value>
+  </data>
+  <data name="Choose the archive type and encoding options." xml:space="preserve">
+    <value>アーカイブの種類とエンコード設定を選択してください。</value>
+  </data>
+  <data name="Choose the MapleStory encryption version for this import." xml:space="preserve">
+    <value>このインポートに使用する MapleStory の暗号化バージョンを選択してください。</value>
+  </data>
+  <data name="Choose the output format and WZ encoding options." xml:space="preserve">
+    <value>出力形式と WZ エンコード設定を選択してください。</value>
+  </data>
+  <data name="Choose the startup integration you want to enable." xml:space="preserve">
+    <value>有効にする起動時の統合を選択してください。</value>
+  </data>
+  <data name="Classic" xml:space="preserve">
+    <value>クラシック</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+  <data name="Collapse all" xml:space="preserve">
+    <value>折りたたむ すべて</value>
+  </data>
+  <data name="Configure archive loading, export formatting, and application behavior." xml:space="preserve">
+    <value>アーカイブの読み込み、エクスポート形式、アプリケーション動作を設定します。</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="Convex" xml:space="preserve">
+    <value>凸形</value>
+  </data>
+  <data name="Convex property" xml:space="preserve">
+    <value>Convex プロパティ</value>
+  </data>
+  <data name="Copy (Ctrl+C)" xml:space="preserve">
+    <value>コピー (Ctrl+C)</value>
+  </data>
+  <data name="Copyright" xml:space="preserve">
+    <value>著作権</value>
+  </data>
+  <data name="Create WZ content" xml:space="preserve">
+    <value>作成 WZ コンテンツ</value>
+  </data>
+  <data name="Ctrl+C" xml:space="preserve">
+    <value>Ctrl+C</value>
+  </data>
+  <data name="Ctrl+I" xml:space="preserve">
+    <value>Ctrl+I</value>
+  </data>
+  <data name="Ctrl+N" xml:space="preserve">
+    <value>Ctrl+N</value>
+  </data>
+  <data name="Ctrl+O" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="Ctrl+S" xml:space="preserve">
+    <value>Ctrl+S</value>
+  </data>
+  <data name="Ctrl+V" xml:space="preserve">
+    <value>Ctrl+V</value>
+  </data>
+  <data name="Current force value:" xml:space="preserve">
+    <value>現在の 力 値:</value>
+  </data>
+  <data name="Current next value:" xml:space="preserve">
+    <value>現在の 次 値:</value>
+  </data>
+  <data name="Current prev value:" xml:space="preserve">
+    <value>現在の prev 値:</value>
+  </data>
+  <data name="DEBUG MODE" xml:space="preserve">
+    <value>DEBUG MODE</value>
+  </data>
+  <data name="Default filepath" xml:space="preserve">
+    <value>既定のファイルパス</value>
+  </data>
+  <data name="Default filepath:" xml:space="preserve">
+    <value>既定のファイルパス：</value>
+  </data>
+  <data name="Default force value" xml:space="preserve">
+    <value>既定 力 値</value>
+  </data>
+  <data name="Default force value:" xml:space="preserve">
+    <value>既定 力 値:</value>
+  </data>
+  <data name="Default next value" xml:space="preserve">
+    <value>既定 次 値</value>
+  </data>
+  <data name="Default next value:" xml:space="preserve">
+    <value>既定 次 値:</value>
+  </data>
+  <data name="Default portal type" xml:space="preserve">
+    <value>既定 ポータル 種類</value>
+  </data>
+  <data name="Default prev value" xml:space="preserve">
+    <value>既定 prev 値</value>
+  </data>
+  <data name="Default prev value:" xml:space="preserve">
+    <value>既定 prev 値:</value>
+  </data>
+  <data name="Default render size" xml:space="preserve">
+    <value>既定の描画サイズ</value>
+  </data>
+  <data name="Default render size:" xml:space="preserve">
+    <value>既定の描画サイズ：</value>
+  </data>
+  <data name="Default type:" xml:space="preserve">
+    <value>既定 種類:</value>
+  </data>
+  <data name="Default X coord:" xml:space="preserve">
+    <value>既定 X coord:</value>
+  </data>
+  <data name="Default X coordinate" xml:space="preserve">
+    <value>既定 X 座標</value>
+  </data>
+  <data name="Default XML Folder:" xml:space="preserve">
+    <value>既定 XML フォルダー:</value>
+  </data>
+  <data name="Default Y coord:" xml:space="preserve">
+    <value>既定 Y coord:</value>
+  </data>
+  <data name="Default Y coordinate" xml:space="preserve">
+    <value>既定 Y 座標</value>
+  </data>
+  <data name="Destination" xml:space="preserve">
+    <value>出力先</value>
+  </data>
+  <data name="Destination:" xml:space="preserve">
+    <value>出力先:</value>
+  </data>
+  <data name="Developed by haha01haha01" xml:space="preserve">
+    <value>開発者 haha01haha01</value>
+  </data>
+  <data name="Directory" xml:space="preserve">
+    <value>ディレクトリ</value>
+  </data>
+  <data name="Double" xml:space="preserve">
+    <value>倍精度</value>
+  </data>
+  <data name="Double property" xml:space="preserve">
+    <value>倍精度 プロパティ</value>
+  </data>
+  <data name="Duration:" xml:space="preserve">
+    <value>長さ:</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>編集</value>
+  </data>
+  <data name="Edit foothold" xml:space="preserve">
+    <value>編集 足場</value>
+  </data>
+  <data name="Edit one encrypted list entry per line." xml:space="preserve">
+    <value>編集 1 行につき 1 つの暗号化リスト項目.</value>
+  </data>
+  <data name="Edit portal" xml:space="preserve">
+    <value>編集 ポータル</value>
+  </data>
+  <data name="Encryption" xml:space="preserve">
+    <value>暗号化</value>
+  </data>
+  <data name="Encryption:" xml:space="preserve">
+    <value>暗号化:</value>
+  </data>
+  <data name="EQ" xml:space="preserve">
+    <value>EQ</value>
+  </data>
+  <data name="ETC" xml:space="preserve">
+    <value>ETC</value>
+  </data>
+  <data name="Expand all" xml:space="preserve">
+    <value>展開 すべて</value>
+  </data>
+  <data name="Export data" xml:space="preserve">
+    <value>エクスポート データ</value>
+  </data>
+  <data name="Export file" xml:space="preserve">
+    <value>エクスポート ファイル</value>
+  </data>
+  <data name="Export File(s) to" xml:space="preserve">
+    <value>エクスポート ファイル(s) へ</value>
+  </data>
+  <data name="Export files" xml:space="preserve">
+    <value>ファイルをエクスポート</value>
+  </data>
+  <data name="Export Selection" xml:space="preserve">
+    <value>エクスポート Selection</value>
+  </data>
+  <data name="Extracted AES key formats for use with Odin and MapleShark tooling." xml:space="preserve">
+    <value>Odin および MapleShark ツール用に抽出した AES キー形式です。</value>
+  </data>
+  <data name="False" xml:space="preserve">
+    <value>偽</value>
+  </data>
+  <data name="FH Mapping" xml:space="preserve">
+    <value>足場マッピング</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>ファイル</value>
+  </data>
+  <data name="File format selection:" xml:space="preserve">
+    <value>ファイル形式の選択：</value>
+  </data>
+  <data name="First Run" xml:space="preserve">
+    <value>初回起動</value>
+  </data>
+  <data name="Float property" xml:space="preserve">
+    <value>浮動小数 プロパティ</value>
+  </data>
+  <data name="Foothold ID" xml:space="preserve">
+    <value>足場 ID</value>
+  </data>
+  <data name="Foothold ID:" xml:space="preserve">
+    <value>足場 ID:</value>
+  </data>
+  <data name="Foothold mapping" xml:space="preserve">
+    <value>足場マッピング</value>
+  </data>
+  <data name="Footholds" xml:space="preserve">
+    <value>足場</value>
+  </data>
+  <data name="Force" xml:space="preserve">
+    <value>力</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="HaRepacker" xml:space="preserve">
+    <value>HaRepacker</value>
+  </data>
+  <data name="HaRepacker - WZ extractor and repacker&#xA;Copyright (C) 2009-2015 haha01haha01" xml:space="preserve">
+    <value>HaRepacker - WZ extractor and repacker
+著作権 (C) 2009-2015 haha01haha01</value>
+  </data>
+  <data name="Harepacker resurrected ~ Fork of HaRepacker ;)" xml:space="preserve">
+    <value>Harepacker resurrected ～ HaRepacker のフォーク ;)</value>
+  </data>
+  <data name="Height" xml:space="preserve">
+    <value>高さ</value>
+  </data>
+  <data name="Help" xml:space="preserve">
+    <value>ヘルプ</value>
+  </data>
+  <data name="Hex:" xml:space="preserve">
+    <value>16 進数:</value>
+  </data>
+  <data name="Hotfix Data.wz" xml:space="preserve">
+    <value>Hotfix データ.wz</value>
+  </data>
+  <data name="https://github.com/lastbattle/Harepacker-resurrected" xml:space="preserve">
+    <value>https://github.com/lastbattle/Harepacker-resurrected</value>
+  </data>
+  <data name="Image" xml:space="preserve">
+    <value>画像</value>
+  </data>
+  <data name="Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff" xml:space="preserve">
+    <value>画像 files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff</value>
+  </data>
+  <data name="Image files|*.png;*.gif;*.bmp;*.jpg;*.tif" xml:space="preserve">
+    <value>画像 files|*.png;*.gif;*.bmp;*.jpg;*.tif</value>
+  </data>
+  <data name="IMG" xml:space="preserve">
+    <value>IMG</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>インポート</value>
+  </data>
+  <data name="Indentation" xml:space="preserve">
+    <value>インデント</value>
+  </data>
+  <data name="Int" xml:space="preserve">
+    <value>整数</value>
+  </data>
+  <data name="Integer" xml:space="preserve">
+    <value>整数</value>
+  </data>
+  <data name="Integer property" xml:space="preserve">
+    <value>整数 プロパティ</value>
+  </data>
+  <data name="JOBS" xml:space="preserve">
+    <value>JOBS</value>
+  </data>
+  <data name="JSON" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="Key:" xml:space="preserve">
+    <value>キー:</value>
+  </data>
+  <data name="Line break" xml:space="preserve">
+    <value>改行</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>リスト</value>
+  </data>
+  <data name="List file" xml:space="preserve">
+    <value>リストファイル</value>
+  </data>
+  <data name="List WZ File (*.wz)|*.wz" xml:space="preserve">
+    <value>List WZ ファイル (*.wz)|*.wz</value>
+  </data>
+  <data name="List.wz Editor" xml:space="preserve">
+    <value>リスト.wz エディター</value>
+  </data>
+  <data name="Loading…" xml:space="preserve">
+    <value>読み込み中…</value>
+  </data>
+  <data name="Long" xml:space="preserve">
+    <value>長整数</value>
+  </data>
+  <data name="Long property" xml:space="preserve">
+    <value>長整数 プロパティ</value>
+  </data>
+  <data name="Lua property" xml:space="preserve">
+    <value>Lua プロパティ</value>
+  </data>
+  <data name="Lua Script" xml:space="preserve">
+    <value>Lua スクリプト</value>
+  </data>
+  <data name="Map" xml:space="preserve">
+    <value>マップ</value>
+  </data>
+  <data name="MapleStory Base.wz|Base.wz" xml:space="preserve">
+    <value>MapleStory Base.wz|Base.wz</value>
+  </data>
+  <data name="MAPS" xml:space="preserve">
+    <value>MAPS</value>
+  </data>
+  <data name="menuStrip1" xml:space="preserve">
+    <value>menuStrip1</value>
+  </data>
+  <data name="Mob ID" xml:space="preserve">
+    <value>モンスター ID</value>
+  </data>
+  <data name="Mob ID:" xml:space="preserve">
+    <value>モンスター ID:</value>
+  </data>
+  <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
+    <value>MP3 audio (*.mp3)|*.mp3</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>名前</value>
+  </data>
+  <data name="Name:" xml:space="preserve">
+    <value>名前:</value>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>新規</value>
+  </data>
+  <data name="New (Ctl + T)" xml:space="preserve">
+    <value>新規 (Ctl + T)</value>
+  </data>
+  <data name="New force value:" xml:space="preserve">
+    <value>新規 力 値:</value>
+  </data>
+  <data name="New name:" xml:space="preserve">
+    <value>新規 名前:</value>
+  </data>
+  <data name="New next value:" xml:space="preserve">
+    <value>新規 次 値:</value>
+  </data>
+  <data name="New prev value:" xml:space="preserve">
+    <value>新規 prev 値:</value>
+  </data>
+  <data name="New tab" xml:space="preserve">
+    <value>新しいタブ</value>
+  </data>
+  <data name="New type value:" xml:space="preserve">
+    <value>新規 種類 値:</value>
+  </data>
+  <data name="New X value:" xml:space="preserve">
+    <value>新規 X 値:</value>
+  </data>
+  <data name="New Y value:" xml:space="preserve">
+    <value>新規 Y 値:</value>
+  </data>
+  <data name="New..." xml:space="preserve">
+    <value>新規...</value>
+  </data>
+  <data name="Next foothold" xml:space="preserve">
+    <value>次 足場</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>いいえ</value>
+  </data>
+  <data name="No to all" xml:space="preserve">
+    <value>いいえ へ すべて</value>
+  </data>
+  <data name="No version number" xml:space="preserve">
+    <value>バージョン番号なし</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>なし</value>
+  </data>
+  <data name="NPC" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Null" xml:space="preserve">
+    <value>ヌル</value>
+  </data>
+  <data name="Null property" xml:space="preserve">
+    <value>Null プロパティ</value>
+  </data>
+  <data name="NX" xml:space="preserve">
+    <value>NX</value>
+  </data>
+  <data name="NXFormat" xml:space="preserve">
+    <value>NXFormat</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Open _Version Directory…" xml:space="preserve">
+    <value>開く _バージョン ディレクトリ…</value>
+  </data>
+  <data name="Open 64-bit WZ folder  (Ctl + I)" xml:space="preserve">
+    <value>開く 64-bit WZ フォルダー  (Ctl + I)</value>
+  </data>
+  <data name="Open New WZ _Format…" xml:space="preserve">
+    <value>開く 新規 WZ _形式…</value>
+  </data>
+  <data name="Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)" xml:space="preserve">
+    <value>開く WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>オプション</value>
+  </data>
+  <data name="Options..." xml:space="preserve">
+    <value>オプション...</value>
+  </data>
+  <data name="Options…" xml:space="preserve">
+    <value>オプション…</value>
+  </data>
+  <data name="Other" xml:space="preserve">
+    <value>その他</value>
+  </data>
+  <data name="Output" xml:space="preserve">
+    <value>出力</value>
+  </data>
+  <data name="Output Item Name" xml:space="preserve">
+    <value>出力項目名</value>
+  </data>
+  <data name="Output path:" xml:space="preserve">
+    <value>出力 パス:</value>
+  </data>
+  <data name="Override" xml:space="preserve">
+    <value>上書き</value>
+  </data>
+  <data name="Pack" xml:space="preserve">
+    <value>パック</value>
+  </data>
+  <data name="Pack as Beta Data.wz" xml:space="preserve">
+    <value>Beta Data.wz としてパック</value>
+  </data>
+  <data name="Pack IMG Files to WZ" xml:space="preserve">
+    <value>IMG ファイルを WZ にパック</value>
+  </data>
+  <data name="Pack IMG filesystem" xml:space="preserve">
+    <value>IMG ファイルシステムをパック</value>
+  </data>
+  <data name="Pack IMG to WZ…" xml:space="preserve">
+    <value>IMG を WZ にパック…</value>
+  </data>
+  <data name="Package file v1.0 Copyright 2002 Wizet, ZMS" xml:space="preserve">
+    <value>Package ファイル v1.0 Copyright 2002 Wizet, ZMS</value>
+  </data>
+  <data name="Packet encryption keys" xml:space="preserve">
+    <value>パケット暗号化キー</value>
+  </data>
+  <data name="Parse images while searching" xml:space="preserve">
+    <value>検索中に画像を解析</value>
+  </data>
+  <data name="Parse images while searching (warning - can take a lot of time)" xml:space="preserve">
+    <value>検索中に画像を解析（警告：時間がかかる場合があります）</value>
+  </data>
+  <data name="Paste (Ctrl+V)" xml:space="preserve">
+    <value>貼り付け (Ctrl+V)</value>
+  </data>
+  <data name="Patch Version (0=auto):" xml:space="preserve">
+    <value>Patch バージョン (0=auto):</value>
+  </data>
+  <data name="Path:" xml:space="preserve">
+    <value>パス:</value>
+  </data>
+  <data name="PNG\MP3" xml:space="preserve">
+    <value>PNG\MP3</value>
+  </data>
+  <data name="PNGs" xml:space="preserve">
+    <value>PNGs</value>
+  </data>
+  <data name="Portal" xml:space="preserve">
+    <value>ポータル</value>
+  </data>
+  <data name="Portal type" xml:space="preserve">
+    <value>ポータル 種類</value>
+  </data>
+  <data name="Portal type:" xml:space="preserve">
+    <value>ポータル 種類:</value>
+  </data>
+  <data name="Portals" xml:space="preserve">
+    <value>ポータル</value>
+  </data>
+  <data name="Preferences" xml:space="preserve">
+    <value>環境設定</value>
+  </data>
+  <data name="Previous foothold" xml:space="preserve">
+    <value>前 足場</value>
+  </data>
+  <data name="Private server" xml:space="preserve">
+    <value>プライベートサーバー</value>
+  </data>
+  <data name="Private Server XML" xml:space="preserve">
+    <value>プライベートサーバー XML</value>
+  </data>
+  <data name="Query:" xml:space="preserve">
+    <value>クエリ:</value>
+  </data>
+  <data name="QUEST" xml:space="preserve">
+    <value>QUEST</value>
+  </data>
+  <data name="Raw data" xml:space="preserve">
+    <value>Raw データ</value>
+  </data>
+  <data name="ReadMe.txt" xml:space="preserve">
+    <value>ReadMe.txt</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>準備完了</value>
+  </data>
+  <data name="Redo" xml:space="preserve">
+    <value>やり直す</value>
+  </data>
+  <data name="Regular" xml:space="preserve">
+    <value>通常</value>
+  </data>
+  <data name="Reload all" xml:space="preserve">
+    <value>再読み込み すべて</value>
+  </data>
+  <data name="Remove (Del)" xml:space="preserve">
+    <value>削除 (Del)</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>名前を変更する</value>
+  </data>
+  <data name="Render map" xml:space="preserve">
+    <value>描画 マップ</value>
+  </data>
+  <data name="Render Map (Ctl + R)" xml:space="preserve">
+    <value>描画 マップ (Ctl + R)</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>置換</value>
+  </data>
+  <data name="Repository" xml:space="preserve">
+    <value>リポジトリ</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>リセット</value>
+  </data>
+  <data name="Results" xml:space="preserve">
+    <value>結果</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Save archive" xml:space="preserve">
+    <value>保存 アーカイブ</value>
+  </data>
+  <data name="Save as .ms file" xml:space="preserve">
+    <value>保存 as .ms ファイル</value>
+  </data>
+  <data name="Save as .ms file (encrypted. v220++)" xml:space="preserve">
+    <value>保存 as .ms ファイル (encrypted. v220++)</value>
+  </data>
+  <data name="Save as .wz file" xml:space="preserve">
+    <value>保存 as .wz ファイル</value>
+  </data>
+  <data name="Save as 64-bit WZ format" xml:space="preserve">
+    <value>保存 as 64-bit WZ 形式</value>
+  </data>
+  <data name="Save Image" xml:space="preserve">
+    <value>保存 画像</value>
+  </data>
+  <data name="Save Sound" xml:space="preserve">
+    <value>保存 サウンド</value>
+  </data>
+  <data name="Save..." xml:space="preserve">
+    <value>保存...</value>
+  </data>
+  <data name="Schedule.xls" xml:space="preserve">
+    <value>Schedule.xls</value>
+  </data>
+  <data name="Search (Ctrl+F)" xml:space="preserve">
+    <value>検索 (Ctrl+F)</value>
+  </data>
+  <data name="Search behavior" xml:space="preserve">
+    <value>検索 動作</value>
+  </data>
+  <data name="Search names and descriptions across loaded WZ data, then copy the matching ID bytes." xml:space="preserve">
+    <value>読み込んだ WZ データの名前と説明を検索し、一致した ID バイトをコピーします。</value>
+  </data>
+  <data name="Search Options" xml:space="preserve">
+    <value>検索 オプション</value>
+  </data>
+  <data name="Search results" xml:space="preserve">
+    <value>検索 結果</value>
+  </data>
+  <data name="Search string values" xml:space="preserve">
+    <value>文字列値を検索</value>
+  </data>
+  <data name="Search WZ strings" xml:space="preserve">
+    <value>WZ 文字列を検索</value>
+  </data>
+  <data name="Search WZ strings…" xml:space="preserve">
+    <value>WZ 文字列を検索…</value>
+  </data>
+  <data name="Search…" xml:space="preserve">
+    <value>検索…</value>
+  </data>
+  <data name="Select a result to navigate to it." xml:space="preserve">
+    <value>移動する結果を選択してください.</value>
+  </data>
+  <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
+    <value>小さい WZ ファイルを選択し、IV キー空間を並列検索します。</value>
+  </data>
+  <data name="Select All" xml:space="preserve">
+    <value>選択 すべて</value>
+  </data>
+  <data name="Select an image" xml:space="preserve">
+    <value>選択 an 画像</value>
+  </data>
+  <data name="Select None" xml:space="preserve">
+    <value>選択 なし</value>
+  </data>
+  <data name="Select the sound" xml:space="preserve">
+    <value>選択 the サウンド</value>
+  </data>
+  <data name="Select the version you're importing from:" xml:space="preserve">
+    <value>インポート元のバージョンを選択してください：</value>
+  </data>
+  <data name="Select where to save the file" xml:space="preserve">
+    <value>ファイルの保存先を選択</value>
+  </data>
+  <data name="Select where to save the image" xml:space="preserve">
+    <value>選択 where へ 保存 the 画像</value>
+  </data>
+  <data name="Select where to save the MP3 file" xml:space="preserve">
+    <value>選択 where へ 保存 the MP3 ファイル</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Settings..." xml:space="preserve">
+    <value>設定...</value>
+  </data>
+  <data name="SETUP" xml:space="preserve">
+    <value>SETUP</value>
+  </data>
+  <data name="Short" xml:space="preserve">
+    <value>短整数</value>
+  </data>
+  <data name="SKILLS" xml:space="preserve">
+    <value>SKILLS</value>
+  </data>
+  <data name="Sort TreeView by default (slow!)" xml:space="preserve">
+    <value>既定でツリービューを並べ替える（低速）</value>
+  </data>
+  <data name="Sound property" xml:space="preserve">
+    <value>サウンド プロパティ</value>
+  </data>
+  <data name="Source: Standard" xml:space="preserve">
+    <value>ソース: Standard</value>
+  </data>
+  <data name="Spawnpoint" xml:space="preserve">
+    <value>出現地点</value>
+  </data>
+  <data name="Spawnpoint details" xml:space="preserve">
+    <value>出現地点 詳細</value>
+  </data>
+  <data name="Start brute-forcing" xml:space="preserve">
+    <value>総当たり解析を開始</value>
+  </data>
+  <data name="String" xml:space="preserve">
+    <value>文字列</value>
+  </data>
+  <data name="String property" xml:space="preserve">
+    <value>文字列 プロパティ</value>
+  </data>
+  <data name="Sub" xml:space="preserve">
+    <value>サブ</value>
+  </data>
+  <data name="Sub property" xml:space="preserve">
+    <value>Sub プロパティ</value>
+  </data>
+  <data name="Sword" xml:space="preserve">
+    <value>Sword</value>
+  </data>
+  <data name="Syntax highlighting: " xml:space="preserve">
+    <value>構文の強調表示: </value>
+  </data>
+  <data name="Thanks to Snow for MapleLib&#xA;&#xA;" xml:space="preserve">
+    <value>Thanks へ Snow for MapleLib
+
+</value>
+  </data>
+  <data name="Theme Color:" xml:space="preserve">
+    <value>テーマ色:</value>
+  </data>
+  <data name="Tools" xml:space="preserve">
+    <value>ツール</value>
+  </data>
+  <data name="toolStrip1" xml:space="preserve">
+    <value>toolStrip1</value>
+  </data>
+  <data name="toolStripButton1" xml:space="preserve">
+    <value>toolStripButton1</value>
+  </data>
+  <data name="Tries:" xml:space="preserve">
+    <value>試行回数:</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>種類</value>
+  </data>
+  <data name="Undo" xml:space="preserve">
+    <value>元に戻す</value>
+  </data>
+  <data name="Unload all" xml:space="preserve">
+    <value>アンロード すべて</value>
+  </data>
+  <data name="Unsigned short property" xml:space="preserve">
+    <value>符号なし短整数 プロパティ</value>
+  </data>
+  <data name="Uol" xml:space="preserve">
+    <value>Uol</value>
+  </data>
+  <data name="UOL property" xml:space="preserve">
+    <value>UOL プロパティ</value>
+  </data>
+  <data name="USE" xml:space="preserve">
+    <value>使用</value>
+  </data>
+  <data name="Use APNG incompatibility frame" xml:space="preserve">
+    <value>使用 APNG 非互換フレーム</value>
+  </data>
+  <data name="Utilities" xml:space="preserve">
+    <value>ユーティリティ</value>
+  </data>
+  <data name="Value:" xml:space="preserve">
+    <value>値:</value>
+  </data>
+  <data name="Vector (x, y)" xml:space="preserve">
+    <value>ベクトル (x, y)</value>
+  </data>
+  <data name="Vector property" xml:space="preserve">
+    <value>ベクトル プロパティ</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>バージョン</value>
+  </data>
+  <data name="Version: Unknown" xml:space="preserve">
+    <value>バージョン：不明</value>
+  </data>
+  <data name="View help" xml:space="preserve">
+    <value>表示 ヘルプ</value>
+  </data>
+  <data name="Welcome to HaRepacker" xml:space="preserve">
+    <value>HaRepacker へようこそ</value>
+  </data>
+  <data name="WZ directory" xml:space="preserve">
+    <value>WZ ディレクトリ</value>
+  </data>
+  <data name="WZ editor and archive toolkit" xml:space="preserve">
+    <value>WZ エディターおよびアーカイブツールキット</value>
+  </data>
+  <data name="WZ encryption" xml:space="preserve">
+    <value>WZ暗号化</value>
+  </data>
+  <data name="WZ image" xml:space="preserve">
+    <value>WZ 画像</value>
+  </data>
+  <data name="WZ key brute force" xml:space="preserve">
+    <value>WZ キー総当たり解析</value>
+  </data>
+  <data name="WZ String searcher" xml:space="preserve">
+    <value>WZ 文字列検索</value>
+  </data>
+  <data name="X coord:" xml:space="preserve">
+    <value>X 座標:</value>
+  </data>
+  <data name="X coordinate" xml:space="preserve">
+    <value>X 座標</value>
+  </data>
+  <data name="X position" xml:space="preserve">
+    <value>X 位置</value>
+  </data>
+  <data name="X position:" xml:space="preserve">
+    <value>X 位置:</value>
+  </data>
+  <data name="X:" xml:space="preserve">
+    <value>X:</value>
+  </data>
+  <data name="X: " xml:space="preserve">
+    <value>X: </value>
+  </data>
+  <data name="XML" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Y coord:" xml:space="preserve">
+    <value>Y 座標:</value>
+  </data>
+  <data name="Y coordinate" xml:space="preserve">
+    <value>Y 座標</value>
+  </data>
+  <data name="Y position" xml:space="preserve">
+    <value>Y 位置</value>
+  </data>
+  <data name="Y position:" xml:space="preserve">
+    <value>Y 位置:</value>
+  </data>
+  <data name="Y:" xml:space="preserve">
+    <value>Y:</value>
+  </data>
+  <data name="Y: " xml:space="preserve">
+    <value>Y: </value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>はい</value>
+  </data>
+  <data name="Yes to all" xml:space="preserve">
+    <value>はい へ すべて</value>
+  </data>
+  <data name="ZLZ AES Encryption keys" xml:space="preserve">
+    <value>ZLZ AES 暗号化キー</value>
+  </data>
+  <data name="Error">
+    <value>エラー</value>
+  </data>
+  <data name="Warning">
+    <value>警告</value>
+  </data>
+  <data name="Success">
+    <value>成功</value>
+  </data>
+  <data name="Cancelled">
+    <value>キャンセル済み</value>
+  </data>
+  <data name="Reload">
+    <value>再読み込み</value>
+  </data>
+  <data name="Unload">
+    <value>アンロード</value>
+  </data>
+  <data name="Remove">
+    <value>削除</value>
+  </data>
+  <data name="Save to IMG">
+    <value>IMG に保存</value>
+  </data>
+  <data name="Create New IMG File">
+    <value>新しい IMG ファイルを作成</value>
+  </data>
+  <data name="Delete IMG File">
+    <value>IMG ファイルを削除</value>
+  </data>
+  <data name="Please select only one node.">
+    <value>ノードを 1 つだけ選択してください。</value>
+  </data>
+  <data name="Are you sure you want to unload this?">
+    <value>これをアンロードしてもよろしいですか？</value>
+  </data>
+  <data name="Are you sure you want to reload this file?">
+    <value>このファイルを再読み込みしてもよろしいですか？</value>
+  </data>
+  <data name="Sort child nodes view">
+    <value>子ノード表示を並べ替え</value>
+  </data>
+  <data name="Sort properties by name">
+    <value>プロパティを名前順に並べ替え</value>
+  </data>
+  <data name="Cannot Save">
+    <value>保存できません</value>
+  </data>
+  <data name="This item is not from an IMG filesystem directory.">
+    <value>この項目は IMG ファイルシステムのディレクトリにありません。</value>
+  </data>
+  <data name="Saved {0} successfully.">
+    <value>{0} を保存しました。</value>
+  </data>
+  <data name="Failed to save {0}.">
+    <value>{0} を保存できませんでした。</value>
+  </data>
+  <data name="Saved {0} changed image(s) successfully.">
+    <value>変更された画像 {0} 件を保存しました。</value>
+  </data>
+  <data name="No changed images to save.">
+    <value>保存する変更済み画像はありません。</value>
+  </data>
+  <data name="Save Complete">
+    <value>保存完了</value>
+  </data>
+  <data name="Save Failed">
+    <value>保存失敗</value>
+  </data>
+  <data name="Save Error">
+    <value>保存エラー</value>
+  </data>
+  <data name="Error saving: {0}">
+    <value>保存中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Please select a directory from an IMG filesystem.">
+    <value>IMG ファイルシステムからディレクトリを選択してください。</value>
+  </data>
+  <data name="Cannot Create File">
+    <value>ファイルを作成できません</value>
+  </data>
+  <data name="A file named '{0}' already exists in this directory.">
+    <value>このディレクトリには「{0}」というファイルが既にあります。</value>
+  </data>
+  <data name="File Exists">
+    <value>ファイルが存在します</value>
+  </data>
+  <data name="Created '{0}' successfully.">
+    <value>「{0}」を作成しました。</value>
+  </data>
+  <data name="Failed to create '{0}'.">
+    <value>「{0}」を作成できませんでした。</value>
+  </data>
+  <data name="File Created">
+    <value>ファイル作成完了</value>
+  </data>
+  <data name="Creation Failed">
+    <value>作成失敗</value>
+  </data>
+  <data name="Error creating file: {0}">
+    <value>ファイル作成中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Please select an IMG file to delete.">
+    <value>削除する IMG ファイルを選択してください。</value>
+  </data>
+  <data name="Cannot Delete">
+    <value>削除できません</value>
+  </data>
+  <data name="This file is not from an IMG filesystem directory.">
+    <value>このファイルは IMG ファイルシステムのディレクトリにありません。</value>
+  </data>
+  <data name="Are you sure you want to delete '{0}'?&#xA;&#xA;This will permanently delete the file from disk.">
+    <value>「{0}」を削除してもよろしいですか？
+
+ファイルはディスクから完全に削除されます。</value>
+  </data>
+  <data name="Confirm Delete">
+    <value>削除の確認</value>
+  </data>
+  <data name="Deleted '{0}' successfully.">
+    <value>「{0}」を削除しました。</value>
+  </data>
+  <data name="Failed to delete '{0}'.">
+    <value>「{0}」を削除できませんでした。</value>
+  </data>
+  <data name="File Deleted">
+    <value>ファイル削除完了</value>
+  </data>
+  <data name="Deletion Failed">
+    <value>削除失敗</value>
+  </data>
+  <data name="Error deleting file: {0}">
+    <value>ファイル削除中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Version: {0}">
+    <value>バージョン：{0}</value>
+  </data>
+  <data name="Source: Beta (single Data.wz)">
+    <value>ソース：Beta（単一 Data.wz）</value>
+  </data>
+  <data name="Source: 64-bit (Data folder)">
+    <value>ソース：64 ビット（Data フォルダー）</value>
+  </data>
+  <data name="Source: Pre-Big Bang">
+    <value>ソース：Big Bang 以前</value>
+  </data>
+  <data name="Source: Unknown">
+    <value>ソース：不明</value>
+  </data>
+  <data name="Version: Unknown (no manifest.json)">
+    <value>バージョン：不明（manifest.json なし）</value>
+  </data>
+  <data name="Please select at least one category to pack.">
+    <value>パックするカテゴリを 1 つ以上選択してください。</value>
+  </data>
+  <data name="No Categories Selected">
+    <value>カテゴリが未選択です</value>
+  </data>
+  <data name="Please specify an output path.">
+    <value>出力パスを指定してください。</value>
+  </data>
+  <data name="Output Path Required">
+    <value>出力パスが必要です</value>
+  </data>
+  <data name="Completed! Packed {0} images.">
+    <value>完了しました。画像 {0} 件をパックしました。</value>
+  </data>
+  <data name="Failed: {0}">
+    <value>失敗：{0}</value>
+  </data>
+  <data name="Error: {0}">
+    <value>エラー：{0}</value>
+  </data>
+  <data name="Packing was cancelled.">
+    <value>パックをキャンセルしました。</value>
+  </data>
+  <data name="Error during packing: {0}">
+    <value>パック中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Please wait for packing to complete or cancel it first.">
+    <value>パックの完了を待つか、先にキャンセルしてください。</value>
+  </data>
+  <data name="Packing in Progress">
+    <value>パック処理中</value>
+  </data>
+  <data name="Unable to load DLL library. Kernel32 GetLastError(): {0}">
+    <value>DLL ライブラリを読み込めません。Kernel32 GetLastError()：{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;{0}">
+    <value>KeyGen の位置が無効です。この MapleStory バージョンは未対応の可能性があります。
+{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;func_setEncryptionKey = {0}, encryptionKeyLoc = {1}">
+    <value>KeyGen の位置が無効です。この MapleStory バージョンは未対応の可能性があります。
+func_setEncryptionKey = {0}、encryptionKeyLoc = {1}</value>
+  </data>
+  <data name="An error occurred: {0}">
+    <value>エラーが発生しました：{0}</value>
+  </data>
+  <data name="Found the encryption key to the WZ file:">
+    <value>WZ ファイルの暗号化キーが見つかりました：</value>
+  </data>
+  <data name="Please select one or more canvas nodes.">
+    <value>キャンバスノードを 1 つ以上選択してください。</value>
+  </data>
+  <data name="Error previewing animation: {0}">
+    <value>アニメーションのプレビュー中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Error rendering map">
+    <value>マップ描画エラー</value>
+  </data>
+  <data name="Failed to load settings.">
+    <value>設定を読み込めませんでした。</value>
+  </data>
+  <data name="You must set the render scale to a valid number.">
+    <value>描画倍率には有効な数値を設定してください。</value>
+  </data>
+  <data name="Saved {0} changed image(s).">
+    <value>変更された画像 {0} 件を保存しました。</value>
+  </data>
+  <data name="No changes to save.">
+    <value>保存する変更はありません。</value>
+  </data>
+  <data name="Could not insert property; make sure all types are correct.">
+    <value>プロパティを挿入できませんでした。すべての型が正しいことを確認してください。</value>
+  </data>
+  <data name="Canvas">
+    <value>キャンバス</value>
+  </data>
+  <data name="Float">
+    <value>浮動小数</value>
+  </data>
+  <data name="Sound">
+    <value>サウンド</value>
+  </data>
+  <data name="Vector">
+    <value>ベクトル</value>
+  </data>
+  <data name="Sort">
+    <value>並べ替え</value>
+  </data>
+  <data name="Cannot insert node &quot;{0}&quot; because a node with the same name already exists. Skipping.">
+    <value>同じ名前のノードが既にあるため、ノード「{0}」を挿入できません。スキップします。</value>
+  </data>
+  <data name="Cannot insert object &quot;{0}&quot; because an object with the same name already exists. Skipping.">
+    <value>同じ名前のオブジェクトが既にあるため、オブジェクト「{0}」を挿入できません。スキップします。</value>
+  </data>
+  <data name="Skipping Node">
+    <value>ノードをスキップ</value>
+  </data>
+  <data name="Skipping Object">
+    <value>オブジェクトをスキップ</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} ms (average: {1})">
+    <value>完了しました。
+経過時間：{0} ミリ秒（平均：{1}）</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} seconds (average: {1})">
+    <value>完了しました。
+経過時間：{0} 秒（平均：{1}）</value>
+  </data>
+  <data name="Error initializing or rendering Spine object: {0}">
+    <value>Spine オブジェクトの初期化または描画中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="Unable to upscale image:&#xA;{0}">
+    <value>画像を拡大できません：
+{0}</value>
+  </data>
+  <data name="The selected directory does not appear to be a valid IMG filesystem.&#xA;&#xA;Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc.">
+    <value>選択したディレクトリは有効な IMG ファイルシステムではないようです。
+
+展開済み IMG ファイルと String、Map、Mob、Npc などのカテゴリフォルダーを含むディレクトリを選択してください。</value>
+  </data>
+  <data name="Not found">
+    <value>見つかりません</value>
+  </data>
+  <data name="Map X: {0} Y: {1}">
+    <value>マップ X：{0} Y：{1}</value>
+  </data>
+  <data name="Error overwriting WZ file: {0}">
+    <value>WZ ファイルの上書き中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="More actions" xml:space="preserve">
+    <value>その他の操作</value>
+  </data>
+</root>

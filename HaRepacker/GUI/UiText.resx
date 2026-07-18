@@ -1,0 +1,1399 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="-" xml:space="preserve">
+    <value>-</value>
+  </data>
+  <data name="&amp;#xE711;" xml:space="preserve">
+    <value>&amp;#xE711;</value>
+  </data>
+  <data name="&amp;#xE71D;" xml:space="preserve">
+    <value>&amp;#xE71D;</value>
+  </data>
+  <data name="&amp;#xE721;" xml:space="preserve">
+    <value>&amp;#xE721;</value>
+  </data>
+  <data name="*" xml:space="preserve">
+    <value>*</value>
+  </data>
+  <data name="," xml:space="preserve">
+    <value>,</value>
+  </data>
+  <data name="..." xml:space="preserve">
+    <value>...</value>
+  </data>
+  <data name=".wz" xml:space="preserve">
+    <value>.wz</value>
+  </data>
+  <data name="_Add" xml:space="preserve">
+    <value>_Add</value>
+  </data>
+  <data name="_Copy" xml:space="preserve">
+    <value>_Copy</value>
+  </data>
+  <data name="_Edit" xml:space="preserve">
+    <value>_Edit</value>
+  </data>
+  <data name="_File" xml:space="preserve">
+    <value>_File</value>
+  </data>
+  <data name="_Help" xml:space="preserve">
+    <value>_Help</value>
+  </data>
+  <data name="_New" xml:space="preserve">
+    <value>_New</value>
+  </data>
+  <data name="_Open…" xml:space="preserve">
+    <value>_Open…</value>
+  </data>
+  <data name="_Paste" xml:space="preserve">
+    <value>_Paste</value>
+  </data>
+  <data name="_Redo" xml:space="preserve">
+    <value>_Redo</value>
+  </data>
+  <data name="_Remove" xml:space="preserve">
+    <value>_Remove</value>
+  </data>
+  <data name="_Save" xml:space="preserve">
+    <value>_Save</value>
+  </data>
+  <data name="_Tools" xml:space="preserve">
+    <value>_Tools</value>
+  </data>
+  <data name="_Undo" xml:space="preserve">
+    <value>_Undo</value>
+  </data>
+  <data name="{0} files (*.{0})|*.{0}|All files (*.*)|*.*" xml:space="preserve">
+    <value>{0} files (*.{0})|*.{0}|All files (*.*)|*.*</value>
+  </data>
+  <data name="0" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="0xFF" xml:space="preserve">
+    <value>0xFF</value>
+  </data>
+  <data name="1" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="1.0" xml:space="preserve">
+    <value>1.0</value>
+  </data>
+  <data name="A fork~ " xml:space="preserve">
+    <value>A fork~ </value>
+  </data>
+  <data name="Abort" xml:space="preserve">
+    <value>Abort</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="About HaRepacker" xml:space="preserve">
+    <value>About HaRepacker</value>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="Add new tab (Ctl + T)" xml:space="preserve">
+    <value>Add new tab (Ctl + T)</value>
+  </data>
+  <data name="AES Keys (MapleShark):" xml:space="preserve">
+    <value>AES Keys (MapleShark):</value>
+  </data>
+  <data name="AES Keys (Odin):" xml:space="preserve">
+    <value>AES Keys (Odin):</value>
+  </data>
+  <data name="All WZ files|*.wz" xml:space="preserve">
+    <value>All WZ files|*.wz</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="Are you sure you want to close this file?" xml:space="preserve">
+    <value>Are you sure you want to close this file?</value>
+  </data>
+  <data name="Auto-load related Wz (Map.wz, Map001.wz, Map002.wz)" xml:space="preserve">
+    <value>Auto-load related Wz (Map.wz, Map001.wz, Map002.wz)</value>
+  </data>
+  <data name="Automatically associate WZ files with HaRepacker" xml:space="preserve">
+    <value>Automatically associate WZ files with HaRepacker</value>
+  </data>
+  <data name="Binary (mp3, bin)" xml:space="preserve">
+    <value>Binary (mp3, bin)</value>
+  </data>
+  <data name="Browse..." xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="Browse…" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="Brute-force WZ key" xml:space="preserve">
+    <value>Brute-force WZ key</value>
+  </data>
+  <data name="Brute-forcing..." xml:space="preserve">
+    <value>Brute-forcing...</value>
+  </data>
+  <data name="BSON" xml:space="preserve">
+    <value>BSON</value>
+  </data>
+  <data name="Byte or Float" xml:space="preserve">
+    <value>Byte or Float</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Cancel operation" xml:space="preserve">
+    <value>Cancel operation</value>
+  </data>
+  <data name="Canvas / Image" xml:space="preserve">
+    <value>Canvas / Image</value>
+  </data>
+  <data name="Canvas property" xml:space="preserve">
+    <value>Canvas property</value>
+  </data>
+  <data name="CASH" xml:space="preserve">
+    <value>CASH</value>
+  </data>
+  <data name="Categories to pack:" xml:space="preserve">
+    <value>Categories to pack:</value>
+  </data>
+  <data name="Change Image" xml:space="preserve">
+    <value>Change Image</value>
+  </data>
+  <data name="Change Sound" xml:space="preserve">
+    <value>Change Sound</value>
+  </data>
+  <data name="Choose the archive type and encoding options." xml:space="preserve">
+    <value>Choose the archive type and encoding options.</value>
+  </data>
+  <data name="Choose the MapleStory encryption version for this import." xml:space="preserve">
+    <value>Choose the MapleStory encryption version for this import.</value>
+  </data>
+  <data name="Choose the output format and WZ encoding options." xml:space="preserve">
+    <value>Choose the output format and WZ encoding options.</value>
+  </data>
+  <data name="Choose the startup integration you want to enable." xml:space="preserve">
+    <value>Choose the startup integration you want to enable.</value>
+  </data>
+  <data name="Classic" xml:space="preserve">
+    <value>Classic</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Collapse all" xml:space="preserve">
+    <value>Collapse all</value>
+  </data>
+  <data name="Configure archive loading, export formatting, and application behavior." xml:space="preserve">
+    <value>Configure archive loading, export formatting, and application behavior.</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="Convex" xml:space="preserve">
+    <value>Convex</value>
+  </data>
+  <data name="Convex property" xml:space="preserve">
+    <value>Convex property</value>
+  </data>
+  <data name="Copy (Ctrl+C)" xml:space="preserve">
+    <value>Copy (Ctrl+C)</value>
+  </data>
+  <data name="Copyright" xml:space="preserve">
+    <value>Copyright</value>
+  </data>
+  <data name="Create WZ content" xml:space="preserve">
+    <value>Create WZ content</value>
+  </data>
+  <data name="Ctrl+C" xml:space="preserve">
+    <value>Ctrl+C</value>
+  </data>
+  <data name="Ctrl+I" xml:space="preserve">
+    <value>Ctrl+I</value>
+  </data>
+  <data name="Ctrl+N" xml:space="preserve">
+    <value>Ctrl+N</value>
+  </data>
+  <data name="Ctrl+O" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="Ctrl+S" xml:space="preserve">
+    <value>Ctrl+S</value>
+  </data>
+  <data name="Ctrl+V" xml:space="preserve">
+    <value>Ctrl+V</value>
+  </data>
+  <data name="Current force value:" xml:space="preserve">
+    <value>Current force value:</value>
+  </data>
+  <data name="Current next value:" xml:space="preserve">
+    <value>Current next value:</value>
+  </data>
+  <data name="Current prev value:" xml:space="preserve">
+    <value>Current prev value:</value>
+  </data>
+  <data name="DEBUG MODE" xml:space="preserve">
+    <value>DEBUG MODE</value>
+  </data>
+  <data name="Default filepath" xml:space="preserve">
+    <value>Default filepath</value>
+  </data>
+  <data name="Default filepath:" xml:space="preserve">
+    <value>Default filepath:</value>
+  </data>
+  <data name="Default force value" xml:space="preserve">
+    <value>Default force value</value>
+  </data>
+  <data name="Default force value:" xml:space="preserve">
+    <value>Default force value:</value>
+  </data>
+  <data name="Default next value" xml:space="preserve">
+    <value>Default next value</value>
+  </data>
+  <data name="Default next value:" xml:space="preserve">
+    <value>Default next value:</value>
+  </data>
+  <data name="Default portal type" xml:space="preserve">
+    <value>Default portal type</value>
+  </data>
+  <data name="Default prev value" xml:space="preserve">
+    <value>Default prev value</value>
+  </data>
+  <data name="Default prev value:" xml:space="preserve">
+    <value>Default prev value:</value>
+  </data>
+  <data name="Default render size" xml:space="preserve">
+    <value>Default render size</value>
+  </data>
+  <data name="Default render size:" xml:space="preserve">
+    <value>Default render size:</value>
+  </data>
+  <data name="Default type:" xml:space="preserve">
+    <value>Default type:</value>
+  </data>
+  <data name="Default X coord:" xml:space="preserve">
+    <value>Default X coord:</value>
+  </data>
+  <data name="Default X coordinate" xml:space="preserve">
+    <value>Default X coordinate</value>
+  </data>
+  <data name="Default XML Folder:" xml:space="preserve">
+    <value>Default XML Folder:</value>
+  </data>
+  <data name="Default Y coord:" xml:space="preserve">
+    <value>Default Y coord:</value>
+  </data>
+  <data name="Default Y coordinate" xml:space="preserve">
+    <value>Default Y coordinate</value>
+  </data>
+  <data name="Destination" xml:space="preserve">
+    <value>Destination</value>
+  </data>
+  <data name="Destination:" xml:space="preserve">
+    <value>Destination:</value>
+  </data>
+  <data name="Developed by haha01haha01" xml:space="preserve">
+    <value>Developed by haha01haha01</value>
+  </data>
+  <data name="Directory" xml:space="preserve">
+    <value>Directory</value>
+  </data>
+  <data name="Double" xml:space="preserve">
+    <value>Double</value>
+  </data>
+  <data name="Double property" xml:space="preserve">
+    <value>Double property</value>
+  </data>
+  <data name="Duration:" xml:space="preserve">
+    <value>Duration:</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Edit foothold" xml:space="preserve">
+    <value>Edit foothold</value>
+  </data>
+  <data name="Edit one encrypted list entry per line." xml:space="preserve">
+    <value>Edit one encrypted list entry per line.</value>
+  </data>
+  <data name="Edit portal" xml:space="preserve">
+    <value>Edit portal</value>
+  </data>
+  <data name="Encryption" xml:space="preserve">
+    <value>Encryption</value>
+  </data>
+  <data name="Encryption:" xml:space="preserve">
+    <value>Encryption:</value>
+  </data>
+  <data name="EQ" xml:space="preserve">
+    <value>EQ</value>
+  </data>
+  <data name="ETC" xml:space="preserve">
+    <value>ETC</value>
+  </data>
+  <data name="Expand all" xml:space="preserve">
+    <value>Expand all</value>
+  </data>
+  <data name="Export data" xml:space="preserve">
+    <value>Export data</value>
+  </data>
+  <data name="Export file" xml:space="preserve">
+    <value>Export file</value>
+  </data>
+  <data name="Export File(s) to" xml:space="preserve">
+    <value>Export File(s) to</value>
+  </data>
+  <data name="Export files" xml:space="preserve">
+    <value>Export files</value>
+  </data>
+  <data name="Export Selection" xml:space="preserve">
+    <value>Export Selection</value>
+  </data>
+  <data name="Extracted AES key formats for use with Odin and MapleShark tooling." xml:space="preserve">
+    <value>Extracted AES key formats for use with Odin and MapleShark tooling.</value>
+  </data>
+  <data name="False" xml:space="preserve">
+    <value>False</value>
+  </data>
+  <data name="FH Mapping" xml:space="preserve">
+    <value>FH Mapping</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="File format selection:" xml:space="preserve">
+    <value>File format selection:</value>
+  </data>
+  <data name="First Run" xml:space="preserve">
+    <value>First Run</value>
+  </data>
+  <data name="Float property" xml:space="preserve">
+    <value>Float property</value>
+  </data>
+  <data name="Foothold ID" xml:space="preserve">
+    <value>Foothold ID</value>
+  </data>
+  <data name="Foothold ID:" xml:space="preserve">
+    <value>Foothold ID:</value>
+  </data>
+  <data name="Foothold mapping" xml:space="preserve">
+    <value>Foothold mapping</value>
+  </data>
+  <data name="Footholds" xml:space="preserve">
+    <value>Footholds</value>
+  </data>
+  <data name="Force" xml:space="preserve">
+    <value>Force</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="HaRepacker" xml:space="preserve">
+    <value>HaRepacker</value>
+  </data>
+  <data name="HaRepacker - WZ extractor and repacker&#xA;Copyright (C) 2009-2015 haha01haha01" xml:space="preserve">
+    <value>HaRepacker - WZ extractor and repacker
+Copyright (C) 2009-2015 haha01haha01</value>
+  </data>
+  <data name="Harepacker resurrected ~ Fork of HaRepacker ;)" xml:space="preserve">
+    <value>Harepacker resurrected ~ Fork of HaRepacker ;)</value>
+  </data>
+  <data name="Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Help" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="Hex:" xml:space="preserve">
+    <value>Hex:</value>
+  </data>
+  <data name="Hotfix Data.wz" xml:space="preserve">
+    <value>Hotfix Data.wz</value>
+  </data>
+  <data name="https://github.com/lastbattle/Harepacker-resurrected" xml:space="preserve">
+    <value>https://github.com/lastbattle/Harepacker-resurrected</value>
+  </data>
+  <data name="Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff" xml:space="preserve">
+    <value>Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff</value>
+  </data>
+  <data name="Image files|*.png;*.gif;*.bmp;*.jpg;*.tif" xml:space="preserve">
+    <value>Image files|*.png;*.gif;*.bmp;*.jpg;*.tif</value>
+  </data>
+  <data name="IMG" xml:space="preserve">
+    <value>IMG</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="Indentation" xml:space="preserve">
+    <value>Indentation</value>
+  </data>
+  <data name="Int" xml:space="preserve">
+    <value>Int</value>
+  </data>
+  <data name="Integer" xml:space="preserve">
+    <value>Integer</value>
+  </data>
+  <data name="Integer property" xml:space="preserve">
+    <value>Integer property</value>
+  </data>
+  <data name="JOBS" xml:space="preserve">
+    <value>JOBS</value>
+  </data>
+  <data name="JSON" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="Key:" xml:space="preserve">
+    <value>Key:</value>
+  </data>
+  <data name="Line break" xml:space="preserve">
+    <value>Line break</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="List file" xml:space="preserve">
+    <value>List file</value>
+  </data>
+  <data name="List WZ File (*.wz)|*.wz" xml:space="preserve">
+    <value>List WZ File (*.wz)|*.wz</value>
+  </data>
+  <data name="List.wz Editor" xml:space="preserve">
+    <value>List.wz Editor</value>
+  </data>
+  <data name="Loading…" xml:space="preserve">
+    <value>Loading…</value>
+  </data>
+  <data name="Long" xml:space="preserve">
+    <value>Long</value>
+  </data>
+  <data name="Long property" xml:space="preserve">
+    <value>Long property</value>
+  </data>
+  <data name="Lua property" xml:space="preserve">
+    <value>Lua property</value>
+  </data>
+  <data name="Lua Script" xml:space="preserve">
+    <value>Lua Script</value>
+  </data>
+  <data name="Map" xml:space="preserve">
+    <value>Map</value>
+  </data>
+  <data name="MapleStory Base.wz|Base.wz" xml:space="preserve">
+    <value>MapleStory Base.wz|Base.wz</value>
+  </data>
+  <data name="MAPS" xml:space="preserve">
+    <value>MAPS</value>
+  </data>
+  <data name="menuStrip1" xml:space="preserve">
+    <value>menuStrip1</value>
+  </data>
+  <data name="Mob ID" xml:space="preserve">
+    <value>Mob ID</value>
+  </data>
+  <data name="Mob ID:" xml:space="preserve">
+    <value>Mob ID:</value>
+  </data>
+  <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
+    <value>MP3 audio (*.mp3)|*.mp3</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Name:" xml:space="preserve">
+    <value>Name:</value>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="New (Ctl + T)" xml:space="preserve">
+    <value>New (Ctl + T)</value>
+  </data>
+  <data name="New force value:" xml:space="preserve">
+    <value>New force value:</value>
+  </data>
+  <data name="New name:" xml:space="preserve">
+    <value>New name:</value>
+  </data>
+  <data name="New next value:" xml:space="preserve">
+    <value>New next value:</value>
+  </data>
+  <data name="New prev value:" xml:space="preserve">
+    <value>New prev value:</value>
+  </data>
+  <data name="New tab" xml:space="preserve">
+    <value>New tab</value>
+  </data>
+  <data name="New type value:" xml:space="preserve">
+    <value>New type value:</value>
+  </data>
+  <data name="New X value:" xml:space="preserve">
+    <value>New X value:</value>
+  </data>
+  <data name="New Y value:" xml:space="preserve">
+    <value>New Y value:</value>
+  </data>
+  <data name="New..." xml:space="preserve">
+    <value>New...</value>
+  </data>
+  <data name="Next foothold" xml:space="preserve">
+    <value>Next foothold</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="No to all" xml:space="preserve">
+    <value>No to all</value>
+  </data>
+  <data name="No version number" xml:space="preserve">
+    <value>No version number</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="NPC" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Null" xml:space="preserve">
+    <value>Null</value>
+  </data>
+  <data name="Null property" xml:space="preserve">
+    <value>Null property</value>
+  </data>
+  <data name="NX" xml:space="preserve">
+    <value>NX</value>
+  </data>
+  <data name="NXFormat" xml:space="preserve">
+    <value>NXFormat</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Open _Version Directory…" xml:space="preserve">
+    <value>Open _Version Directory…</value>
+  </data>
+  <data name="Open 64-bit WZ folder  (Ctl + I)" xml:space="preserve">
+    <value>Open 64-bit WZ folder  (Ctl + I)</value>
+  </data>
+  <data name="Open New WZ _Format…" xml:space="preserve">
+    <value>Open New WZ _Format…</value>
+  </data>
+  <data name="Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)" xml:space="preserve">
+    <value>Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="Options..." xml:space="preserve">
+    <value>Options...</value>
+  </data>
+  <data name="Options…" xml:space="preserve">
+    <value>Options…</value>
+  </data>
+  <data name="Other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="Output" xml:space="preserve">
+    <value>Output</value>
+  </data>
+  <data name="Output Item Name" xml:space="preserve">
+    <value>Output Item Name</value>
+  </data>
+  <data name="Output path:" xml:space="preserve">
+    <value>Output path:</value>
+  </data>
+  <data name="Override" xml:space="preserve">
+    <value>Override</value>
+  </data>
+  <data name="Pack" xml:space="preserve">
+    <value>Pack</value>
+  </data>
+  <data name="Pack as Beta Data.wz" xml:space="preserve">
+    <value>Pack as Beta Data.wz</value>
+  </data>
+  <data name="Pack IMG Files to WZ" xml:space="preserve">
+    <value>Pack IMG Files to WZ</value>
+  </data>
+  <data name="Pack IMG filesystem" xml:space="preserve">
+    <value>Pack IMG filesystem</value>
+  </data>
+  <data name="Pack IMG to WZ…" xml:space="preserve">
+    <value>Pack IMG to WZ…</value>
+  </data>
+  <data name="Package file v1.0 Copyright 2002 Wizet, ZMS" xml:space="preserve">
+    <value>Package file v1.0 Copyright 2002 Wizet, ZMS</value>
+  </data>
+  <data name="Packet encryption keys" xml:space="preserve">
+    <value>Packet encryption keys</value>
+  </data>
+  <data name="Parse images while searching" xml:space="preserve">
+    <value>Parse images while searching</value>
+  </data>
+  <data name="Parse images while searching (warning - can take a lot of time)" xml:space="preserve">
+    <value>Parse images while searching (warning - can take a lot of time)</value>
+  </data>
+  <data name="Paste (Ctrl+V)" xml:space="preserve">
+    <value>Paste (Ctrl+V)</value>
+  </data>
+  <data name="Patch Version (0=auto):" xml:space="preserve">
+    <value>Patch Version (0=auto):</value>
+  </data>
+  <data name="Path:" xml:space="preserve">
+    <value>Path:</value>
+  </data>
+  <data name="PNG\MP3" xml:space="preserve">
+    <value>PNG\MP3</value>
+  </data>
+  <data name="PNGs" xml:space="preserve">
+    <value>PNGs</value>
+  </data>
+  <data name="Portal" xml:space="preserve">
+    <value>Portal</value>
+  </data>
+  <data name="Portal type" xml:space="preserve">
+    <value>Portal type</value>
+  </data>
+  <data name="Portal type:" xml:space="preserve">
+    <value>Portal type:</value>
+  </data>
+  <data name="Portals" xml:space="preserve">
+    <value>Portals</value>
+  </data>
+  <data name="Preferences" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Previous foothold" xml:space="preserve">
+    <value>Previous foothold</value>
+  </data>
+  <data name="Private server" xml:space="preserve">
+    <value>Private server</value>
+  </data>
+  <data name="Private Server XML" xml:space="preserve">
+    <value>Private Server XML</value>
+  </data>
+  <data name="Query:" xml:space="preserve">
+    <value>Query:</value>
+  </data>
+  <data name="QUEST" xml:space="preserve">
+    <value>QUEST</value>
+  </data>
+  <data name="Raw data" xml:space="preserve">
+    <value>Raw data</value>
+  </data>
+  <data name="ReadMe.txt" xml:space="preserve">
+    <value>ReadMe.txt</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Redo" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="Regular" xml:space="preserve">
+    <value>Regular</value>
+  </data>
+  <data name="Reload all" xml:space="preserve">
+    <value>Reload all</value>
+  </data>
+  <data name="Remove (Del)" xml:space="preserve">
+    <value>Remove (Del)</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Render map" xml:space="preserve">
+    <value>Render map</value>
+  </data>
+  <data name="Render Map (Ctl + R)" xml:space="preserve">
+    <value>Render Map (Ctl + R)</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="Repository" xml:space="preserve">
+    <value>Repository</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="Results" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Save archive" xml:space="preserve">
+    <value>Save archive</value>
+  </data>
+  <data name="Save as .ms file" xml:space="preserve">
+    <value>Save as .ms file</value>
+  </data>
+  <data name="Save as .ms file (encrypted. v220++)" xml:space="preserve">
+    <value>Save as .ms file (encrypted. v220++)</value>
+  </data>
+  <data name="Save as .wz file" xml:space="preserve">
+    <value>Save as .wz file</value>
+  </data>
+  <data name="Save as 64-bit WZ format" xml:space="preserve">
+    <value>Save as 64-bit WZ format</value>
+  </data>
+  <data name="Save Image" xml:space="preserve">
+    <value>Save Image</value>
+  </data>
+  <data name="Save Sound" xml:space="preserve">
+    <value>Save Sound</value>
+  </data>
+  <data name="Save..." xml:space="preserve">
+    <value>Save...</value>
+  </data>
+  <data name="Schedule.xls" xml:space="preserve">
+    <value>Schedule.xls</value>
+  </data>
+  <data name="Search (Ctrl+F)" xml:space="preserve">
+    <value>Search (Ctrl+F)</value>
+  </data>
+  <data name="Search behavior" xml:space="preserve">
+    <value>Search behavior</value>
+  </data>
+  <data name="Search names and descriptions across loaded WZ data, then copy the matching ID bytes." xml:space="preserve">
+    <value>Search names and descriptions across loaded WZ data, then copy the matching ID bytes.</value>
+  </data>
+  <data name="Search Options" xml:space="preserve">
+    <value>Search Options</value>
+  </data>
+  <data name="Search results" xml:space="preserve">
+    <value>Search results</value>
+  </data>
+  <data name="Search string values" xml:space="preserve">
+    <value>Search string values</value>
+  </data>
+  <data name="Search WZ strings" xml:space="preserve">
+    <value>Search WZ strings</value>
+  </data>
+  <data name="Search WZ strings…" xml:space="preserve">
+    <value>Search WZ strings…</value>
+  </data>
+  <data name="Search…" xml:space="preserve">
+    <value>Search…</value>
+  </data>
+  <data name="Select a result to navigate to it." xml:space="preserve">
+    <value>Select a result to navigate to it.</value>
+  </data>
+  <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
+    <value>Select a small WZ file and search the IV key space in parallel.</value>
+  </data>
+  <data name="Select All" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+  <data name="Select an image" xml:space="preserve">
+    <value>Select an image</value>
+  </data>
+  <data name="Select None" xml:space="preserve">
+    <value>Select None</value>
+  </data>
+  <data name="Select the sound" xml:space="preserve">
+    <value>Select the sound</value>
+  </data>
+  <data name="Select the version you're importing from:" xml:space="preserve">
+    <value>Select the version you're importing from:</value>
+  </data>
+  <data name="Select where to save the file" xml:space="preserve">
+    <value>Select where to save the file</value>
+  </data>
+  <data name="Select where to save the image" xml:space="preserve">
+    <value>Select where to save the image</value>
+  </data>
+  <data name="Select where to save the MP3 file" xml:space="preserve">
+    <value>Select where to save the MP3 file</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Settings..." xml:space="preserve">
+    <value>Settings...</value>
+  </data>
+  <data name="SETUP" xml:space="preserve">
+    <value>SETUP</value>
+  </data>
+  <data name="Short" xml:space="preserve">
+    <value>Short</value>
+  </data>
+  <data name="SKILLS" xml:space="preserve">
+    <value>SKILLS</value>
+  </data>
+  <data name="Sort TreeView by default (slow!)" xml:space="preserve">
+    <value>Sort TreeView by default (slow!)</value>
+  </data>
+  <data name="Sound property" xml:space="preserve">
+    <value>Sound property</value>
+  </data>
+  <data name="Source: Standard" xml:space="preserve">
+    <value>Source: Standard</value>
+  </data>
+  <data name="Spawnpoint" xml:space="preserve">
+    <value>Spawnpoint</value>
+  </data>
+  <data name="Spawnpoint details" xml:space="preserve">
+    <value>Spawnpoint details</value>
+  </data>
+  <data name="Start brute-forcing" xml:space="preserve">
+    <value>Start brute-forcing</value>
+  </data>
+  <data name="String" xml:space="preserve">
+    <value>String</value>
+  </data>
+  <data name="String property" xml:space="preserve">
+    <value>String property</value>
+  </data>
+  <data name="Sub" xml:space="preserve">
+    <value>Sub</value>
+  </data>
+  <data name="Sub property" xml:space="preserve">
+    <value>Sub property</value>
+  </data>
+  <data name="Sword" xml:space="preserve">
+    <value>Sword</value>
+  </data>
+  <data name="Syntax highlighting: " xml:space="preserve">
+    <value>Syntax highlighting: </value>
+  </data>
+  <data name="Thanks to Snow for MapleLib&#xA;&#xA;" xml:space="preserve">
+    <value>Thanks to Snow for MapleLib
+
+</value>
+  </data>
+  <data name="Theme Color:" xml:space="preserve">
+    <value>Theme Color:</value>
+  </data>
+  <data name="Tools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="toolStrip1" xml:space="preserve">
+    <value>toolStrip1</value>
+  </data>
+  <data name="toolStripButton1" xml:space="preserve">
+    <value>toolStripButton1</value>
+  </data>
+  <data name="Tries:" xml:space="preserve">
+    <value>Tries:</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Undo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="Unload all" xml:space="preserve">
+    <value>Unload all</value>
+  </data>
+  <data name="Unsigned short property" xml:space="preserve">
+    <value>Unsigned short property</value>
+  </data>
+  <data name="Uol" xml:space="preserve">
+    <value>Uol</value>
+  </data>
+  <data name="UOL property" xml:space="preserve">
+    <value>UOL property</value>
+  </data>
+  <data name="USE" xml:space="preserve">
+    <value>USE</value>
+  </data>
+  <data name="Use APNG incompatibility frame" xml:space="preserve">
+    <value>Use APNG incompatibility frame</value>
+  </data>
+  <data name="Utilities" xml:space="preserve">
+    <value>Utilities</value>
+  </data>
+  <data name="Value:" xml:space="preserve">
+    <value>Value:</value>
+  </data>
+  <data name="Vector (x, y)" xml:space="preserve">
+    <value>Vector (x, y)</value>
+  </data>
+  <data name="Vector property" xml:space="preserve">
+    <value>Vector property</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Version: Unknown" xml:space="preserve">
+    <value>Version: Unknown</value>
+  </data>
+  <data name="View help" xml:space="preserve">
+    <value>View help</value>
+  </data>
+  <data name="Welcome to HaRepacker" xml:space="preserve">
+    <value>Welcome to HaRepacker</value>
+  </data>
+  <data name="WZ directory" xml:space="preserve">
+    <value>WZ directory</value>
+  </data>
+  <data name="WZ editor and archive toolkit" xml:space="preserve">
+    <value>WZ editor and archive toolkit</value>
+  </data>
+  <data name="WZ encryption" xml:space="preserve">
+    <value>WZ encryption</value>
+  </data>
+  <data name="WZ image" xml:space="preserve">
+    <value>WZ image</value>
+  </data>
+  <data name="WZ key brute force" xml:space="preserve">
+    <value>WZ key brute force</value>
+  </data>
+  <data name="WZ String searcher" xml:space="preserve">
+    <value>WZ String searcher</value>
+  </data>
+  <data name="X coord:" xml:space="preserve">
+    <value>X coord:</value>
+  </data>
+  <data name="X coordinate" xml:space="preserve">
+    <value>X coordinate</value>
+  </data>
+  <data name="X position" xml:space="preserve">
+    <value>X position</value>
+  </data>
+  <data name="X position:" xml:space="preserve">
+    <value>X position:</value>
+  </data>
+  <data name="X:" xml:space="preserve">
+    <value>X:</value>
+  </data>
+  <data name="X: " xml:space="preserve">
+    <value>X: </value>
+  </data>
+  <data name="XML" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Y coord:" xml:space="preserve">
+    <value>Y coord:</value>
+  </data>
+  <data name="Y coordinate" xml:space="preserve">
+    <value>Y coordinate</value>
+  </data>
+  <data name="Y position" xml:space="preserve">
+    <value>Y position</value>
+  </data>
+  <data name="Y position:" xml:space="preserve">
+    <value>Y position:</value>
+  </data>
+  <data name="Y:" xml:space="preserve">
+    <value>Y:</value>
+  </data>
+  <data name="Y: " xml:space="preserve">
+    <value>Y: </value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Yes to all" xml:space="preserve">
+    <value>Yes to all</value>
+  </data>
+  <data name="ZLZ AES Encryption keys" xml:space="preserve">
+    <value>ZLZ AES Encryption keys</value>
+  </data>
+  <data name="Error">
+    <value>Error</value>
+  </data>
+  <data name="Warning">
+    <value>Warning</value>
+  </data>
+  <data name="Success">
+    <value>Success</value>
+  </data>
+  <data name="Cancelled">
+    <value>Cancelled</value>
+  </data>
+  <data name="Reload">
+    <value>Reload</value>
+  </data>
+  <data name="Unload">
+    <value>Unload</value>
+  </data>
+  <data name="Remove">
+    <value>Remove</value>
+  </data>
+  <data name="Save to IMG">
+    <value>Save to IMG</value>
+  </data>
+  <data name="Create New IMG File">
+    <value>Create New IMG File</value>
+  </data>
+  <data name="Delete IMG File">
+    <value>Delete IMG File</value>
+  </data>
+  <data name="Please select only one node.">
+    <value>Please select only one node.</value>
+  </data>
+  <data name="Are you sure you want to unload this?">
+    <value>Are you sure you want to unload this?</value>
+  </data>
+  <data name="Are you sure you want to reload this file?">
+    <value>Are you sure you want to reload this file?</value>
+  </data>
+  <data name="Sort child nodes view">
+    <value>Sort child nodes view</value>
+  </data>
+  <data name="Sort properties by name">
+    <value>Sort properties by name</value>
+  </data>
+  <data name="Cannot Save">
+    <value>Cannot Save</value>
+  </data>
+  <data name="This item is not from an IMG filesystem directory.">
+    <value>This item is not from an IMG filesystem directory.</value>
+  </data>
+  <data name="Saved {0} successfully.">
+    <value>Saved {0} successfully.</value>
+  </data>
+  <data name="Failed to save {0}.">
+    <value>Failed to save {0}.</value>
+  </data>
+  <data name="Saved {0} changed image(s) successfully.">
+    <value>Saved {0} changed image(s) successfully.</value>
+  </data>
+  <data name="No changed images to save.">
+    <value>No changed images to save.</value>
+  </data>
+  <data name="Save Complete">
+    <value>Save Complete</value>
+  </data>
+  <data name="Save Failed">
+    <value>Save Failed</value>
+  </data>
+  <data name="Save Error">
+    <value>Save Error</value>
+  </data>
+  <data name="Error saving: {0}">
+    <value>Error saving: {0}</value>
+  </data>
+  <data name="Please select a directory from an IMG filesystem.">
+    <value>Please select a directory from an IMG filesystem.</value>
+  </data>
+  <data name="Cannot Create File">
+    <value>Cannot Create File</value>
+  </data>
+  <data name="A file named '{0}' already exists in this directory.">
+    <value>A file named '{0}' already exists in this directory.</value>
+  </data>
+  <data name="File Exists">
+    <value>File Exists</value>
+  </data>
+  <data name="Created '{0}' successfully.">
+    <value>Created '{0}' successfully.</value>
+  </data>
+  <data name="Failed to create '{0}'.">
+    <value>Failed to create '{0}'.</value>
+  </data>
+  <data name="File Created">
+    <value>File Created</value>
+  </data>
+  <data name="Creation Failed">
+    <value>Creation Failed</value>
+  </data>
+  <data name="Error creating file: {0}">
+    <value>Error creating file: {0}</value>
+  </data>
+  <data name="Please select an IMG file to delete.">
+    <value>Please select an IMG file to delete.</value>
+  </data>
+  <data name="Cannot Delete">
+    <value>Cannot Delete</value>
+  </data>
+  <data name="This file is not from an IMG filesystem directory.">
+    <value>This file is not from an IMG filesystem directory.</value>
+  </data>
+  <data name="Are you sure you want to delete '{0}'?&#xA;&#xA;This will permanently delete the file from disk.">
+    <value>Are you sure you want to delete '{0}'?
+
+This will permanently delete the file from disk.</value>
+  </data>
+  <data name="Confirm Delete">
+    <value>Confirm Delete</value>
+  </data>
+  <data name="Deleted '{0}' successfully.">
+    <value>Deleted '{0}' successfully.</value>
+  </data>
+  <data name="Failed to delete '{0}'.">
+    <value>Failed to delete '{0}'.</value>
+  </data>
+  <data name="File Deleted">
+    <value>File Deleted</value>
+  </data>
+  <data name="Deletion Failed">
+    <value>Deletion Failed</value>
+  </data>
+  <data name="Error deleting file: {0}">
+    <value>Error deleting file: {0}</value>
+  </data>
+  <data name="Version: {0}">
+    <value>Version: {0}</value>
+  </data>
+  <data name="Source: Beta (single Data.wz)">
+    <value>Source: Beta (single Data.wz)</value>
+  </data>
+  <data name="Source: 64-bit (Data folder)">
+    <value>Source: 64-bit (Data folder)</value>
+  </data>
+  <data name="Source: Pre-Big Bang">
+    <value>Source: Pre-Big Bang</value>
+  </data>
+  <data name="Source: Unknown">
+    <value>Source: Unknown</value>
+  </data>
+  <data name="Version: Unknown (no manifest.json)">
+    <value>Version: Unknown (no manifest.json)</value>
+  </data>
+  <data name="Please select at least one category to pack.">
+    <value>Please select at least one category to pack.</value>
+  </data>
+  <data name="No Categories Selected">
+    <value>No Categories Selected</value>
+  </data>
+  <data name="Please specify an output path.">
+    <value>Please specify an output path.</value>
+  </data>
+  <data name="Output Path Required">
+    <value>Output Path Required</value>
+  </data>
+  <data name="Completed! Packed {0} images.">
+    <value>Completed! Packed {0} images.</value>
+  </data>
+  <data name="Failed: {0}">
+    <value>Failed: {0}</value>
+  </data>
+  <data name="Error: {0}">
+    <value>Error: {0}</value>
+  </data>
+  <data name="Packing was cancelled.">
+    <value>Packing was cancelled.</value>
+  </data>
+  <data name="Error during packing: {0}">
+    <value>Error during packing: {0}</value>
+  </data>
+  <data name="Please wait for packing to complete or cancel it first.">
+    <value>Please wait for packing to complete or cancel it first.</value>
+  </data>
+  <data name="Packing in Progress">
+    <value>Packing in Progress</value>
+  </data>
+  <data name="Unable to load DLL library. Kernel32 GetLastError(): {0}">
+    <value>Unable to load DLL library. Kernel32 GetLastError(): {0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;{0}">
+    <value>Invalid KeyGen position. This version of MapleStory may be unsupported.
+{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;func_setEncryptionKey = {0}, encryptionKeyLoc = {1}">
+    <value>Invalid KeyGen position. This version of MapleStory may be unsupported.
+func_setEncryptionKey = {0}, encryptionKeyLoc = {1}</value>
+  </data>
+  <data name="An error occurred: {0}">
+    <value>An error occurred: {0}</value>
+  </data>
+  <data name="Found the encryption key to the WZ file:">
+    <value>Found the encryption key to the WZ file:</value>
+  </data>
+  <data name="Please select one or more canvas nodes.">
+    <value>Please select one or more canvas nodes.</value>
+  </data>
+  <data name="Error previewing animation: {0}">
+    <value>Error previewing animation: {0}</value>
+  </data>
+  <data name="Error rendering map">
+    <value>Error rendering map</value>
+  </data>
+  <data name="Failed to load settings.">
+    <value>Failed to load settings.</value>
+  </data>
+  <data name="You must set the render scale to a valid number.">
+    <value>You must set the render scale to a valid number.</value>
+  </data>
+  <data name="Saved {0} changed image(s).">
+    <value>Saved {0} changed image(s).</value>
+  </data>
+  <data name="No changes to save.">
+    <value>No changes to save.</value>
+  </data>
+  <data name="Could not insert property; make sure all types are correct.">
+    <value>Could not insert property; make sure all types are correct.</value>
+  </data>
+  <data name="Canvas">
+    <value>Canvas</value>
+  </data>
+  <data name="Float">
+    <value>Float</value>
+  </data>
+  <data name="Sound">
+    <value>Sound</value>
+  </data>
+  <data name="Vector">
+    <value>Vector</value>
+  </data>
+  <data name="Sort">
+    <value>Sort</value>
+  </data>
+  <data name="Cannot insert node &quot;{0}&quot; because a node with the same name already exists. Skipping.">
+    <value>Cannot insert node "{0}" because a node with the same name already exists. Skipping.</value>
+  </data>
+  <data name="Cannot insert object &quot;{0}&quot; because an object with the same name already exists. Skipping.">
+    <value>Cannot insert object "{0}" because an object with the same name already exists. Skipping.</value>
+  </data>
+  <data name="Skipping Node">
+    <value>Skipping Node</value>
+  </data>
+  <data name="Skipping Object">
+    <value>Skipping Object</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} ms (average: {1})">
+    <value>Completed.
+Elapsed time: {0} ms (average: {1})</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} seconds (average: {1})">
+    <value>Completed.
+Elapsed time: {0} seconds (average: {1})</value>
+  </data>
+  <data name="Error initializing or rendering Spine object: {0}">
+    <value>Error initializing or rendering Spine object: {0}</value>
+  </data>
+  <data name="Unable to upscale image:&#xA;{0}">
+    <value>Unable to upscale image:
+{0}</value>
+  </data>
+  <data name="The selected directory does not appear to be a valid IMG filesystem.&#xA;&#xA;Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc.">
+    <value>The selected directory does not appear to be a valid IMG filesystem.
+
+Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc.</value>
+  </data>
+  <data name="Not found">
+    <value>Not found</value>
+  </data>
+  <data name="Map X: {0} Y: {1}">
+    <value>Map X: {0} Y: {1}</value>
+  </data>
+  <data name="Error overwriting WZ file: {0}">
+    <value>Error overwriting WZ file: {0}</value>
+  </data>
+  <data name="More actions" xml:space="preserve">
+    <value>More actions</value>
+  </data>
+</root>

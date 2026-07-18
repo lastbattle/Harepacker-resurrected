@@ -309,7 +309,7 @@ namespace HaRepacker.GUI
 
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
-                ofd.Filter = "MapleStory Base.wz | Base.wz";
+            ofd.Filter = UiLocalization.Translate("MapleStory Base.wz|Base.wz");
                 if (ofd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     string Dir = ofd.FileName.Replace("\\Base.wz", "");

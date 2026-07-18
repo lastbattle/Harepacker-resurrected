@@ -14,6 +14,8 @@ namespace HaRepacker
 {
     public class ContextMenuManager
     {
+        private static string T(string text) => UiLocalization.Translate(text);
+        private static string TF(string text, params object[] args) => string.Format(T(text), args);
         private MainPanel parentPanel;
 
         private ToolStripMenuItem SaveFile;
@@ -71,7 +73,7 @@ namespace HaRepacker
         {
             this.parentPanel = haRepackerMainPanel;
 
-            SaveFile = new ToolStripMenuItem("Save", Properties.Resources.disk, new EventHandler(
+            SaveFile = new ToolStripMenuItem(UiLocalization.Translate("Save"), Properties.Resources.disk, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender))
@@ -79,7 +81,7 @@ namespace HaRepacker
                         new SaveForm(parentPanel, node).ShowDialog();
                     }
                 }));
-            SaveImg = new ToolStripMenuItem("Save to IMG", Properties.Resources.disk, new EventHandler(
+            SaveImg = new ToolStripMenuItem(UiLocalization.Translate("Save to IMG"), Properties.Resources.disk, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender))
@@ -87,45 +89,45 @@ namespace HaRepacker
                         SaveImgNode(node);
                     }
                 }));
-            CreateNewImgFile = new ToolStripMenuItem("Create New IMG File", Properties.Resources.add, new EventHandler(
+            CreateNewImgFile = new ToolStripMenuItem(UiLocalization.Translate("Create New IMG File"), Properties.Resources.add, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     CreateNewImgFileInDirectory(nodes[0]);
                 }));
-            DeleteImgFile = new ToolStripMenuItem("Delete IMG File", Properties.Resources.delete, new EventHandler(
+            DeleteImgFile = new ToolStripMenuItem(UiLocalization.Translate("Delete IMG File"), Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     DeleteImgFileFromDirectory(nodes[0]);
                 }));
-            Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
+            Rename = new ToolStripMenuItem(UiLocalization.Translate("Rename"), Properties.Resources.rename, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode currentNode = currNode;
 
                     haRepackerMainPanel.PromptRenameWzTreeNode(currentNode);
                 }));
-            Remove = new ToolStripMenuItem("Remove", Properties.Resources.delete, new EventHandler(
+            Remove = new ToolStripMenuItem(UiLocalization.Translate("Remove"), Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     haRepackerMainPanel.PromptRemoveSelectedTreeNodes();
                 }));
 
-            Unload = new ToolStripMenuItem("Unload", Properties.Resources.delete, new EventHandler(
+            Unload = new ToolStripMenuItem(UiLocalization.Translate("Unload"), Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
-                    if (!Warning.Warn("Are you sure you want to unload this?"))
+                    if (!Warning.Warn(UiLocalization.Translate("Are you sure you want to unload this?")))
                         return;
 
                     var nodesSelected = GetNodes(sender);
@@ -147,10 +149,10 @@ namespace HaRepacker
                         }
                     }
                 }));
-            Reload = new ToolStripMenuItem("Reload", Properties.Resources.arrow_refresh, new EventHandler(
+            Reload = new ToolStripMenuItem(UiLocalization.Translate("Reload"), Properties.Resources.arrow_refresh, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
-                    if (!Warning.Warn("Are you sure you want to reload this file?"))
+                    if (!Warning.Warn(UiLocalization.Translate("Are you sure you want to reload this file?")))
                         return;
 
                     var nodesSelected = GetNodes(sender);
@@ -159,7 +161,7 @@ namespace HaRepacker
                         parentPanel.MainForm.ReloadWzFile(node.Tag as WzFile);
                     }
                 }));
-            CollapseAllChildNode = new ToolStripMenuItem("Collapse All", Properties.Resources.collapse, new EventHandler(
+            CollapseAllChildNode = new ToolStripMenuItem(UiLocalization.Translate("Collapse All"), Properties.Resources.collapse, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender))
@@ -167,7 +169,7 @@ namespace HaRepacker
                         node.Collapse();
                     }
                 }));
-            ExpandAllChildNode = new ToolStripMenuItem("Expand all", Properties.Resources.expand, new EventHandler(
+            ExpandAllChildNode = new ToolStripMenuItem(UiLocalization.Translate("Expand all"), Properties.Resources.expand, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender))
@@ -178,33 +180,33 @@ namespace HaRepacker
 
             // This only sorts the view, does not affect the actual order of the 
             // wz properties
-            SortAllChildViewNode = new ToolStripMenuItem("Sort child nodes view", null, new EventHandler( // SortAllChildViewNode cant be in 2 place at once, gotta make copies
+            SortAllChildViewNode = new ToolStripMenuItem(UiLocalization.Translate("Sort child nodes view"), null, new EventHandler( // SortAllChildViewNode cant be in 2 place at once, gotta make copies
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender)) {
                         parentPanel.MainForm.SortNodesRecursively(node, true);
                     }
                 }));
-            SortAllChildViewNode2 = new ToolStripMenuItem("Sort child nodes view", null, new EventHandler( // SortAllChildViewNode cant be in 2 place at once, gotta make copies
+            SortAllChildViewNode2 = new ToolStripMenuItem(UiLocalization.Translate("Sort child nodes view"), null, new EventHandler( // SortAllChildViewNode cant be in 2 place at once, gotta make copies
                 delegate (object sender, EventArgs e) {
                     foreach (WzNode node in GetNodes(sender)) {
                         parentPanel.MainForm.SortNodesRecursively(node, true);
                     }
                 }));
-            SortPropertiesByName = new ToolStripMenuItem("Sort properties by name", null, new EventHandler(
+            SortPropertiesByName = new ToolStripMenuItem(UiLocalization.Translate("Sort properties by name"), null, new EventHandler(
                 delegate (object sender, EventArgs e) {
                     foreach (WzNode node in GetNodes(sender)) {
                         parentPanel.MainForm.SortNodeProperties(node);
                     }
                 }));
 
-            AddImage = new ToolStripMenuItem("Image", null, new EventHandler(
+            AddImage = new ToolStripMenuItem(UiLocalization.Translate("Image"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
@@ -212,167 +214,167 @@ namespace HaRepacker
                     if (NameInputBox.Show("Add Image", 0, out name))
                         nodes[0].AddObject(new WzImage(name) { Changed = true }, undoMan);
                 }));
-            AddDirectory = new ToolStripMenuItem("Directory", null, new EventHandler(
+            AddDirectory = new ToolStripMenuItem(UiLocalization.Translate("Directory"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzDirectoryToSelectedNode(nodes[0]);
 
                 }));
-            AddByteFloat = new ToolStripMenuItem("Float", null, new EventHandler(
+            AddByteFloat = new ToolStripMenuItem(UiLocalization.Translate("Float"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzByteFloatToSelectedNode(nodes[0]);
                 }));
-            AddCanvas = new ToolStripMenuItem("Canvas", null, new EventHandler(
+            AddCanvas = new ToolStripMenuItem(UiLocalization.Translate("Canvas"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzCanvasToSelectedNode(nodes[0]);
                 }));
-            AddLong = new ToolStripMenuItem("Long", null, new EventHandler(
+            AddLong = new ToolStripMenuItem(UiLocalization.Translate("Long"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzLongToSelectedNode(nodes[0]);
                 }));
-            AddInt = new ToolStripMenuItem("Int", null, new EventHandler(
+            AddInt = new ToolStripMenuItem(UiLocalization.Translate("Int"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzCompressedIntToSelectedNode(nodes[0]);
 
                 }));
-            AddConvex = new ToolStripMenuItem("Convex", null, new EventHandler(
+            AddConvex = new ToolStripMenuItem(UiLocalization.Translate("Convex"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzConvexPropertyToSelectedNode(nodes[0]);
                 }));
-            AddDouble = new ToolStripMenuItem("Double", null, new EventHandler(
+            AddDouble = new ToolStripMenuItem(UiLocalization.Translate("Double"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzDoublePropertyToSelectedNode(nodes[0]);
                 }));
-            AddNull = new ToolStripMenuItem("Null", null, new EventHandler(
+            AddNull = new ToolStripMenuItem(UiLocalization.Translate("Null"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzNullPropertyToSelectedNode(nodes[0]);
                 }));
-            AddSound = new ToolStripMenuItem("Sound", null, new EventHandler(
+            AddSound = new ToolStripMenuItem(UiLocalization.Translate("Sound"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzSoundPropertyToSelectedNode(nodes[0]);
                 }));
-            AddString = new ToolStripMenuItem("String", null, new EventHandler(
+            AddString = new ToolStripMenuItem(UiLocalization.Translate("String"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzStringPropertyToSelectedIndex(nodes[0]);
                 }));
-            AddSub = new ToolStripMenuItem("Sub", null, new EventHandler(
+            AddSub = new ToolStripMenuItem(UiLocalization.Translate("Sub"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzSubPropertyToSelectedIndex(nodes[0]);
                 }));
-            AddUshort = new ToolStripMenuItem("Short", null, new EventHandler(
+            AddUshort = new ToolStripMenuItem(UiLocalization.Translate("Short"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
 
                     haRepackerMainPanel.AddWzUnsignedShortPropertyToSelectedIndex(nodes[0]);
 
                 }));
-            AddUOL = new ToolStripMenuItem("UOL", null, new EventHandler(
+            AddUOL = new ToolStripMenuItem(UiLocalization.Translate("UOL"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzUOLPropertyToSelectedIndex(nodes[0]);
                 }));
-            AddVector = new ToolStripMenuItem("Vector", null, new EventHandler(
+            AddVector = new ToolStripMenuItem(UiLocalization.Translate("Vector"), null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
                     if (nodes.Length != 1)
                     {
-                        MessageBox.Show("Please select only ONE node");
+                        MessageBox.Show(UiLocalization.Translate("Please select only one node."));
                         return;
                     }
                     haRepackerMainPanel.AddWzVectorPropertyToSelectedIndex(nodes[0]);
@@ -417,19 +419,19 @@ namespace HaRepacker
 
 
             // Menu
-            AddDirsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 
+            AddDirsSubMenu = new ToolStripMenuItem(UiLocalization.Translate("Add"), Properties.Resources.add,
                 AddDirectory, AddImage);
 
-            AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 
+            AddPropsSubMenu = new ToolStripMenuItem(UiLocalization.Translate("Add"), Properties.Resources.add,
                 AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
 
             AddBatchMenu = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch, Properties.Resources.batch_edit, 
                 FixInlink, AiUpscaleImage);
 
-            AddSortMenu = new ToolStripMenuItem("Sort", Properties.Resources.sort, SortAllChildViewNode, SortPropertiesByName);
+            AddSortMenu = new ToolStripMenuItem(UiLocalization.Translate("Sort"), Properties.Resources.sort, SortAllChildViewNode, SortPropertiesByName);
 
             Debug.WriteLine(AddSortMenu.DropDown.Items.Count.ToString());
-            AddSortMenu_WithoutPropSort = new ToolStripMenuItem("Sort", Properties.Resources.sort, SortAllChildViewNode2);
+            AddSortMenu_WithoutPropSort = new ToolStripMenuItem(UiLocalization.Translate("Sort"), Properties.Resources.sort, SortAllChildViewNode2);
         }
 
         /// <summary>
@@ -563,8 +565,8 @@ namespace HaRepacker
 
             if (virtualDir == null)
             {
-                MessageBox.Show("This item is not from an IMG filesystem directory.",
-                    "Cannot Save", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(T("This item is not from an IMG filesystem directory."),
+                    T("Cannot Save"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -588,14 +590,14 @@ namespace HaRepacker
                     // Save single image
                     if (virtualDir.SaveImage(image))
                     {
-                        MessageBox.Show($"Saved {image.Name} successfully.",
-                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(TF("Saved {0} successfully.", image.Name),
+                            T("Save Complete"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                         node.ForeColor = System.Drawing.Color.Black; // Reset color
                     }
                     else
                     {
-                        MessageBox.Show($"Failed to save {image.Name}.",
-                            "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(TF("Failed to save {0}.", image.Name),
+                            T("Save Failed"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
                 else if (tag is VirtualWzDirectory vDir)
@@ -604,13 +606,13 @@ namespace HaRepacker
                     int savedCount = vDir.SaveAllChangedImages();
                     if (savedCount > 0)
                     {
-                        MessageBox.Show($"Saved {savedCount} changed image(s) successfully.",
-                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(TF("Saved {0} changed image(s) successfully.", savedCount),
+                            T("Save Complete"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
                     {
-                        MessageBox.Show("No changed images to save.",
-                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(T("No changed images to save."),
+                            T("Save Complete"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
                 else if (tag is WzImageProperty prop)
@@ -620,21 +622,21 @@ namespace HaRepacker
                     {
                         if (virtualDir.SaveImage(prop.ParentImage))
                         {
-                            MessageBox.Show($"Saved {prop.ParentImage.Name} successfully.",
-                                "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            MessageBox.Show(TF("Saved {0} successfully.", prop.ParentImage.Name),
+                                T("Save Complete"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
                         else
                         {
-                            MessageBox.Show($"Failed to save {prop.ParentImage.Name}.",
-                                "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBox.Show(TF("Failed to save {0}.", prop.ParentImage.Name),
+                                T("Save Failed"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error saving: {ex.Message}",
-                    "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(TF("Error saving: {0}", ex.Message),
+                    T("Save Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -666,14 +668,14 @@ namespace HaRepacker
             VirtualWzDirectory virtualDir = tag as VirtualWzDirectory;
             if (virtualDir == null)
             {
-                MessageBox.Show("Please select a directory from an IMG filesystem.",
-                    "Cannot Create File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(T("Please select a directory from an IMG filesystem."),
+                    T("Cannot Create File"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             // Prompt for new file name
             string name;
-            if (!NameInputBox.Show("Create New IMG File", 0, out name))
+            if (!NameInputBox.Show(T("Create New IMG File"), 0, out name))
                 return;
 
             // Ensure .img extension
@@ -683,8 +685,8 @@ namespace HaRepacker
             // Check if file already exists
             if (virtualDir.ImageExists(name))
             {
-                MessageBox.Show($"A file named '{name}' already exists in this directory.",
-                    "File Exists", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(TF("A file named '{0}' already exists in this directory.", name),
+                    T("File Exists"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -705,19 +707,19 @@ namespace HaRepacker
                     node.Nodes.Add(newNode);
                     newNode.EnsureVisible();
 
-                    MessageBox.Show($"Created '{name}' successfully.",
-                        "File Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(TF("Created '{0}' successfully.", name),
+                        T("File Created"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    MessageBox.Show($"Failed to create '{name}'.",
-                        "Creation Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(TF("Failed to create '{0}'.", name),
+                        T("Creation Failed"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error creating file: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(TF("Error creating file: {0}", ex.Message),
+                    T("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -737,8 +739,8 @@ namespace HaRepacker
 
             if (image == null)
             {
-                MessageBox.Show("Please select an IMG file to delete.",
-                    "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(T("Please select an IMG file to delete."),
+                    T("Cannot Delete"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -757,16 +759,15 @@ namespace HaRepacker
 
             if (virtualDir == null)
             {
-                MessageBox.Show("This file is not from an IMG filesystem directory.",
-                    "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(T("This file is not from an IMG filesystem directory."),
+                    T("Cannot Delete"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             // Confirm deletion
             DialogResult result = MessageBox.Show(
-                $"Are you sure you want to delete '{image.Name}'?\n\n" +
-                "This will permanently delete the file from disk.",
-                "Confirm Delete",
+                TF("Are you sure you want to delete '{0}'?\n\nThis will permanently delete the file from disk.", image.Name),
+                T("Confirm Delete"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
@@ -787,19 +788,19 @@ namespace HaRepacker
                     // Remove from tree
                     node.Remove();
 
-                    MessageBox.Show($"Deleted '{image.Name}' successfully.",
-                        "File Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(TF("Deleted '{0}' successfully.", image.Name),
+                        T("File Deleted"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    MessageBox.Show($"Failed to delete '{image.Name}'.",
-                        "Deletion Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(TF("Failed to delete '{0}'.", image.Name),
+                        T("Deletion Failed"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error deleting file: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(TF("Error deleting file: {0}", ex.Message),
+                    T("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

@@ -71,6 +71,7 @@ namespace HaRepacker.GUI.HotSwap
     /// <summary>
     /// A subtle notification bar that briefly shows hot-swap status messages
     /// </summary>
+    #if false
     public class HotSwapNotificationBar : UserControl
     {
         private Label _messageLabel;
@@ -175,5 +176,41 @@ namespace HaRepacker.GUI.HotSwap
             }
             base.Dispose(disposing);
         }
+    }
+    #endif
+
+    public partial class HotSwapNotificationBar : System.Windows.Controls.UserControl, IDisposable
+    {
+        private readonly System.Windows.Threading.DispatcherTimer _hideTimer;
+        private const int DisplayDurationMs = 3000;
+
+        public event EventHandler<NotificationResponseEventArgs> UserResponse;
+
+        public HotSwapNotificationBar()
+        {
+            InitializeComponent();
+            _hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DisplayDurationMs) };
+            _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); Visibility = System.Windows.Visibility.Collapsed; };
+        }
+
+        public void ShowMessage(string message, bool isError = false)
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => ShowMessage(message, isError)); return; }
+            messageText.Text = message;
+            statusBorder.Background = (System.Windows.Media.Brush)FindResource(isError ? "HareDangerBrush" : "HareSurfaceAltBrush");
+            Visibility = System.Windows.Visibility.Visible;
+            _hideTimer.Stop();
+            _hideTimer.Start();
+        }
+
+        public void QueueNotification(FileModificationInfo modification)
+        {
+            if (modification != null) ShowMessage(modification.DisplayMessage);
+        }
+
+        public void ClearAll() { _hideTimer.Stop(); Visibility = System.Windows.Visibility.Collapsed; }
+        public void ResetIgnoreAllSession() { }
+        public int PendingCount => 0;
+        public void Dispose() => _hideTimer.Stop();
     }
 }

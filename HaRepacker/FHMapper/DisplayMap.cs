@@ -1,28 +1,22 @@
-﻿// Note - Foothold mapper code originally by Odecey
-
+// Note - Foothold mapper code originally by Odecey
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
-using System.Windows.Forms;
-using MapleLib.WzLib;
+using System.IO;
+using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using MapleLib.WzLib.WzProperties;
 
 namespace Footholds
 {
-    public partial class DisplayMap : Form
+    public partial class DisplayMap : HaRepacker.GUI.ThemedDialogWindow
     {
-        /*bool sSwitch = true;
-          private bool isDown = false;
-          private int mouseXOffsset = 0;
-          private int mouseYOffset = 0;*/
-
-
-        public List<Object> settings;
-        public int xOffset = 0;
-        public int yOffset = 0;
+        public List<object> settings;
+        public int xOffset;
+        public int yOffset;
         public double scale = 1;
         public Image map;
-
         public List<SpawnPoint.Spawnpoint> MobSpawnPoints;
         public List<FootHold.Foothold> Footholds;
         public List<Portals.Portal> thePortals;
@@ -30,150 +24,90 @@ namespace Footholds
         public DisplayMap()
         {
             InitializeComponent();
-
-            this.FormClosing += DisplayMap_FormClosing;
         }
 
-        private void DisplayMap_FormClosing(object sender, FormClosingEventArgs e)
+        private void DisplayMap_FormClosing(object sender, CancelEventArgs e)
         {
-            if (map != null)
-                map.Dispose();
-
-            if (MapPBox.Image != null)
-                MapPBox.Image.Dispose();
-
-            if (MobSpawnPoints != null)
-                MobSpawnPoints.Clear();
-            if (Footholds != null)
-                Footholds.Clear();
-            if (thePortals != null)
-                thePortals.Clear();
-
+            map?.Dispose();
+            MapPBox.Source = null;
+            MobSpawnPoints?.Clear();
+            Footholds?.Clear();
+            thePortals?.Clear();
         }
 
         private void DisplayMap_Load(object sender, EventArgs e)
         {
-            this.AutoScroll = true;
-            Bitmap theMap = ResizeBitMap(new Bitmap(map), (int)(map.Width * scale), (int)(map.Height * scale));
+            if (map == null)
+                return;
+            using Bitmap resized = ResizeBitMap(new Bitmap(map), Math.Max(1, (int)(map.Width * scale)), Math.Max(1, (int)(map.Height * scale)));
+            MapPBox.Source = BitmapToSource(resized);
+            MapPBox.Width = resized.Width;
+            MapPBox.Height = resized.Height;
 
-            MapPBox.Size = theMap.Size;
-            MapPBox.Image = theMap;
-
-            xOffset = (int)((((thePortals.ToArray()[0].Shape.X) + 20) - ((WzIntProperty)thePortals.ToArray()[0].Data["x"]).Value) * -1);
-            yOffset = (int)((((thePortals.ToArray()[0].Shape.Y) + 20) - ((WzIntProperty)thePortals.ToArray()[0].Data["y"]).Value) * -1);
+            if (thePortals is { Count: > 0 })
+            {
+                Portals.Portal portal = thePortals[0];
+                xOffset = (int)(((portal.Shape.X + 20) - ((WzIntProperty)portal.Data["x"]).Value) * -1);
+                yOffset = (int)(((portal.Shape.Y + 20) - ((WzIntProperty)portal.Data["y"]).Value) * -1);
+            }
         }
 
-        public Bitmap ResizeBitMap(Bitmap img, int nWidth, int nHeight)
+        public Bitmap ResizeBitMap(Bitmap image, int width, int height)
         {
-            Bitmap result = new Bitmap(nWidth, nHeight);
-            using (Graphics g = Graphics.FromImage((Image)result))
-                g.DrawImage(img, 0, 0, nWidth, nHeight);
+            Bitmap result = new(width, height);
+            using Graphics graphics = Graphics.FromImage(result);
+            graphics.DrawImage(image, 0, 0, width, height);
+            image.Dispose();
             return result;
         }
 
-
-
-        private void MapPBox_MouseClick(object sender, MouseEventArgs e)
+        private static BitmapSource BitmapToSource(Bitmap bitmap)
         {
-
-            int index = 0;
-            int tempX;
-            int tempY;
-            Rectangle tempRect = new Rectangle();
-            foreach (FootHold.Foothold foothold in Footholds)
-            {
-                tempX = (int)(Footholds.ToArray()[index].Shape.X * scale);
-                tempY = (int)(Footholds.ToArray()[index].Shape.Y * scale);
-                tempRect = new Rectangle(tempX, tempY, (int)(foothold.Shape.Width * scale), (int)(foothold.Shape.Height * scale));
-                if (tempRect.IntersectsWith(new Rectangle(e.X, e.Y, 1, 1)))
-                {
-                    Edit editFoothold = new Edit();
-                    editFoothold.Text = string.Format("{0}: {1}", HaRepacker.Properties.Resources.EditFoothold, foothold.Data.Name);
-                    editFoothold.fh = Footholds.ToArray()[index];
-                    editFoothold.settings = settings;
-                    editFoothold.ShowDialog();
-                }
-                index++;
-            }
-            index = 0;
-            foreach (Portals.Portal portal in thePortals)
-            {
-                tempX = (int)(thePortals.ToArray()[index].Shape.X * scale);
-                tempY = (int)(thePortals.ToArray()[index].Shape.Y * scale);
-                tempRect = new Rectangle(tempX, tempY, (int)(portal.Shape.Width * scale), (int)(portal.Shape.Height * scale));
-                if (tempRect.IntersectsWith(new Rectangle(e.X, e.Y, 1, 1)))
-                {
-                    EditPortals editPortals = new EditPortals();
-                    editPortals.Text = string.Format("{0}: {1}", HaRepacker.Properties.Resources.EditPortal, portal.Data.Name);
-                    editPortals.portal = thePortals.ToArray()[index];
-                    editPortals.Settings = settings;
-                    editPortals.ShowDialog();
-                }
-                index++;
-            }
-            index = 0;
-            foreach (SpawnPoint.Spawnpoint spawnpoint in MobSpawnPoints)
-            {
-                tempX = (int)(MobSpawnPoints.ToArray()[index].Shape.X * scale);
-                tempY = (int)(MobSpawnPoints.ToArray()[index].Shape.Y * scale);
-                tempRect = new Rectangle(tempX, tempY, (int)(spawnpoint.Shape.Width * scale), (int)(spawnpoint.Shape.Height * scale));
-                if (tempRect.IntersectsWith(new Rectangle(e.X, e.Y, 1, 1)))
-                {
-                    SpawnpointInfo spawnInfo = new SpawnpointInfo();
-                    spawnInfo.spawnpoint = spawnpoint;
-                    spawnInfo.Text = string.Format("{0}: {1}", HaRepacker.Properties.Resources.EditSP, spawnpoint.Data.Name);
-                    spawnInfo.ShowDialog();
-                }
-                index++;
-            }
+            using MemoryStream stream = new();
+            bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+            stream.Position = 0;
+            BitmapImage source = new();
+            source.BeginInit();
+            source.CacheOption = BitmapCacheOption.OnLoad;
+            source.StreamSource = stream;
+            source.EndInit();
+            source.Freeze();
+            return source;
         }
 
-        private void DisplayMap_Resize(object sender, EventArgs e)
+        private void MapPBox_MouseClick(object sender, MouseButtonEventArgs e)
         {
-            if (this.WindowState == FormWindowState.Maximized)
-                this.Size = MapPBox.Size;
-        }
+            System.Windows.Point point = e.GetPosition(MapPBox);
+            Rectangle hit = new((int)point.X, (int)point.Y, 1, 1);
 
-        private void DisplayMap_MouseMove(object sender, MouseEventArgs e)
-        {
-
-
+            foreach (FootHold.Foothold foothold in Footholds ?? new List<FootHold.Foothold>())
+            {
+                Rectangle bounds = new((int)(foothold.Shape.X * scale), (int)(foothold.Shape.Y * scale), (int)(foothold.Shape.Width * scale), (int)(foothold.Shape.Height * scale));
+                if (!bounds.IntersectsWith(hit)) continue;
+                Edit editor = new() { Text = $"{HaRepacker.Properties.Resources.EditFoothold}: {foothold.Data.Name}", fh = foothold, settings = settings };
+                editor.ShowDialog();
+            }
+            foreach (Portals.Portal portal in thePortals ?? new List<Portals.Portal>())
+            {
+                Rectangle bounds = new((int)(portal.Shape.X * scale), (int)(portal.Shape.Y * scale), (int)(portal.Shape.Width * scale), (int)(portal.Shape.Height * scale));
+                if (!bounds.IntersectsWith(hit)) continue;
+                EditPortals editor = new() { Text = $"{HaRepacker.Properties.Resources.EditPortal}: {portal.Data.Name}", portal = portal, Settings = settings };
+                editor.ShowDialog();
+            }
+            foreach (SpawnPoint.Spawnpoint spawnpoint in MobSpawnPoints ?? new List<SpawnPoint.Spawnpoint>())
+            {
+                Rectangle bounds = new((int)(spawnpoint.Shape.X * scale), (int)(spawnpoint.Shape.Y * scale), (int)(spawnpoint.Shape.Width * scale), (int)(spawnpoint.Shape.Height * scale));
+                if (!bounds.IntersectsWith(hit)) continue;
+                SpawnpointInfo info = new() { spawnpoint = spawnpoint, Text = $"{HaRepacker.Properties.Resources.EditSP}: {spawnpoint.Data.Name}" };
+                info.ShowDialog();
+            }
         }
 
         private void MapPBox_MouseMove(object sender, MouseEventArgs e)
         {
-            // The commented code was an attempt to use the mouse to navigate around the map
-            // with the mouse. Unfortunately I did not get it to work properly.
-            //  if (!isDown)
-            this.Text = "Map X: " + ((int)(xOffset + (e.X / scale))).ToString() + " Y: " + ((int)(yOffset + (e.Y / scale))).ToString();
-            /*  else
-              {
-                  if (sSwitch)
-                  {
-                      this.AutoScrollPosition = new Point((mouseXOffset - e.X), (mouseYOffset - e.Y));
-                  }
-                      mouseXBuffer = e.X;
-                      mouseYBuffer = e.Y;
-
-                  sSwitch = !sSwitch;
-              }*/
-
+            System.Windows.Point point = e.GetPosition(MapPBox);
+            Title = string.Format(HaRepacker.GUI.UiLocalization.Translate("Map X: {0} Y: {1}"),
+                (int)(xOffset + point.X / scale), (int)(yOffset + point.Y / scale));
         }
-
-        private void MapPBox_MouseDown(object sender, MouseEventArgs e)
-        {
-            /*  isDown = true;
-              mouseXOffsset = e.X;
-              mouseYOffset = e.Y;*/
-
-
-        }
-
-        private void MapPBox_MouseUp(object sender, MouseEventArgs e)
-        {
-            //    isDown = false;
-        }
-
-
     }
 }

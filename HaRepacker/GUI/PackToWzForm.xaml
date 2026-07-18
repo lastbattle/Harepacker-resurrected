@@ -1,0 +1,89 @@
+<gui:ThemedDialogWindow x:Class="HaRepacker.GUI.PackToWzForm"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gui="clr-namespace:HaRepacker.GUI" Title="Pack IMG Files to WZ" Width="680" Height="720" MinHeight="620" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource HareCanvasBrush}" Foreground="{DynamicResource HareTextBrush}" FontFamily="Segoe UI" FontSize="13" Closing="PackToWzForm_FormClosing">
+    <gui:ThemedDialogWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </gui:ThemedDialogWindow.Resources>
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock x:Name="label_versionInfo" Text="Version: Unknown" Style="{StaticResource HareMutedTextStyle}" Margin="0,4,0,0"/>
+            <TextBlock x:Name="label_format" Text="Source: Standard" Margin="0,3,0,0"/>
+        </StackPanel>
+        <Border Grid.Row="1" Style="{StaticResource HareCardStyle}" Margin="0,18,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="label_categories" Text="Categories to pack:" Style="{StaticResource HareSectionTitleStyle}"/>
+                <gui:WpfCheckedListBox x:Name="checkedListBox_categories" Grid.Row="1" Margin="0,10,0,0"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <Button x:Name="button_selectAll" Content="Select All" Width="100" Click="button_selectAll_Click"/>
+                    <Button x:Name="button_selectNone" Content="Select None" Width="110" Margin="8,0,0,0" Click="button_selectNone_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Border Grid.Row="2" Style="{StaticResource HareCardStyle}" Margin="0,12,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="label_outputPath" Text="Output path:"/>
+                <Grid Grid.Row="1" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="textBox_outputPath"/>
+                    <Button x:Name="button_browse" Grid.Column="1" Content="Browse..." Width="100" Margin="8,0,0,0" Click="button_browse_Click"/>
+                </Grid>
+                <Grid Grid.Row="2" Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <CheckBox x:Name="checkBox_64bit" Content="Save as 64-bit WZ format" Checked="checkBox_64bit_CheckedChanged" Unchecked="checkBox_64bit_CheckedChanged"/>
+                        <CheckBox x:Name="checkBox_betaFormat" Content="Pack as Beta Data.wz" Margin="0,8,0,0" Checked="checkBox_betaFormat_CheckedChanged" Unchecked="checkBox_betaFormat_CheckedChanged"/>
+                    </StackPanel>
+                    <Grid Grid.Column="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="label_patchVersion" Text="Patch Version (0=auto):" VerticalAlignment="Center"/>
+                        <gui:WpfNumericInput x:Name="numericUpDown_patchVersion" Grid.Column="1" Minimum="0" Maximum="32767" Width="100" Margin="8,0,0,0"/>
+                        <TextBlock x:Name="label_encryption" Grid.Row="1" Text="Encryption:" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                        <ComboBox x:Name="comboBox_encryption" Grid.Row="1" Grid.Column="1" Margin="8,10,0,0"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+        <StackPanel Grid.Row="3" Margin="0,14,0,0">
+            <ProgressBar x:Name="progressBar" Height="8" Minimum="0" Maximum="100"/>
+            <TextBlock x:Name="label_status" Text="Ready" Style="{StaticResource HareMutedTextStyle}" TextTrimming="CharacterEllipsis" Margin="0,7,0,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <Button x:Name="button_cancel" Content="Close" Width="100" Click="button_cancel_Click"/>
+                <Button x:Name="button_pack" Content="Pack" Width="120" Margin="8,0,0,0" Style="{StaticResource HarePrimaryButtonStyle}" Click="button_pack_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</gui:ThemedDialogWindow>
