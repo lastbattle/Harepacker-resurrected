@@ -29,6 +29,11 @@
                     <RadioButton x:Name="reactorRButton" Margin="16,2,0,2" Content="Reactors"
                                  GroupName="LifeMode" Checked="LifeModeChanged"/>
                 </StackPanel>
+                <CheckBox x:Name="hideEntriesWithoutImagesCheckBox"
+                          Margin="0,9,0,0"
+                          Content="Hide entries without images"
+                          Checked="ImageFilterChanged"
+                          Unchecked="ImageFilterChanged"/>
             </StackPanel>
         </Border>
 

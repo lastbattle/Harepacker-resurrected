@@ -72,6 +72,7 @@
   <data name="Internal street name" xml:space="preserve"><value>内部街道名称</value></data>
   <data name="Level limit" xml:space="preserve"><value>等级限制</value></data>
   <data name="Life type" xml:space="preserve"><value>生命类型</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>隐藏无图像的条目</value></data>
   <data name="Manage…" xml:space="preserve"><value>管理…</value></data>
   <data name="Map context" xml:space="preserve"><value>地图上下文</value></data>
   <data name="Map description" xml:space="preserve"><value>地图说明</value></data>

@@ -72,6 +72,7 @@
   <data name="Internal street name" xml:space="preserve"><value>Internal street name</value></data>
   <data name="Level limit" xml:space="preserve"><value>Level limit</value></data>
   <data name="Life type" xml:space="preserve"><value>Life type</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>Hide entries without images</value></data>
   <data name="Manage…" xml:space="preserve"><value>Manage…</value></data>
   <data name="Map context" xml:space="preserve"><value>Map context</value></data>
   <data name="Map description" xml:space="preserve"><value>Map description</value></data>

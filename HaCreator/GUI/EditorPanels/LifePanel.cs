@@ -31,13 +31,20 @@ namespace HaCreator.GUI.EditorPanels
 
         private HaCreatorStateManager hcsm;
         private HotSwapRefreshService hotSwapService;
+        private readonly Bitmap placeholderBitmap;
         private readonly BitmapSource placeholderSource;
+        private int thumbnailLoadVersion;
+        private bool initializingImageFilter;
 
         public LifePanel()
         {
             InitializeComponent();
             EditorPanelLocalizer.Attach(this);
-            placeholderSource = ConvertBitmap(global::HaCreator.Properties.Resources.placeholder);
+            placeholderBitmap = global::HaCreator.Properties.Resources.placeholder;
+            placeholderSource = ConvertBitmap(placeholderBitmap);
+            initializingImageFilter = true;
+            hideEntriesWithoutImagesCheckBox.IsChecked = ApplicationSettings.HideLifeEntriesWithoutImages;
+            initializingImageFilter = false;
         }
 
         public void Initialize(HaCreatorStateManager stateManager)
@@ -63,15 +70,98 @@ namespace HaCreator.GUI.EditorPanels
 
         private void ReloadLifeList()
         {
+            int loadVersion = ++thumbnailLoadVersion;
             lifeGallery.Clear();
 
             IEnumerable<LifeEntry> entries = reactorRButton.IsChecked == true
                 ? reactors
                 : npcRButton.IsChecked == true ? npcs : mobs;
 
+            List<(LifeEntry Entry, AssetGalleryItem Item)> pendingThumbnails = new();
             foreach (LifeEntry entry in entries.OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase))
-                lifeGallery.Add(placeholderSource, entry.DisplayName, entry);
+                pendingThumbnails.Add((entry, lifeGallery.Add(placeholderSource, entry.DisplayName, entry)));
             lifePreview.Source = null;
+            _ = LoadThumbnailsAsync(pendingThumbnails, loadVersion);
+        }
+
+        private async System.Threading.Tasks.Task LoadThumbnailsAsync(
+            IReadOnlyList<(LifeEntry Entry, AssetGalleryItem Item)> pendingThumbnails, int loadVersion)
+        {
+            for (int index = 0; index < pendingThumbnails.Count; index++)
+            {
+                if (loadVersion != thumbnailLoadVersion)
+                    return;
+
+                (LifeEntry entry, AssetGalleryItem item) = pendingThumbnails[index];
+                bool hasImage = TryLoadThumbnail(entry, out BitmapSource thumbnail);
+                if (loadVersion != thumbnailLoadVersion)
+                    return;
+
+                if (!hasImage && ApplicationSettings.HideLifeEntriesWithoutImages)
+                    lifeGallery.Remove(item);
+                else
+                    item.Image = thumbnail;
+
+                if ((index + 1) % 8 == 0)
+                    await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+            }
+        }
+
+        private bool TryLoadThumbnail(LifeEntry entry, out BitmapSource thumbnail)
+        {
+            try
+            {
+                MapleExtractableInfo info = entry.Type switch
+                {
+                    LifeEntryType.Reactor => Program.InfoManager.Reactors.TryGetValue(entry.Id, out ReactorInfo reactorInfo)
+                        ? reactorInfo
+                        : null,
+                    LifeEntryType.Npc => NpcInfo.Get(entry.Id),
+                    LifeEntryType.Mob => MobInfo.Get(entry.Id),
+                    _ => null
+                };
+
+                Bitmap image = info?.Image;
+                bool hasImage = image != null && info.Width > 1 && info.Height > 1 &&
+                    !BitmapsMatch(image, placeholderBitmap);
+                thumbnail = hasImage ? ConvertBitmap(image) : placeholderSource;
+                return hasImage;
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine($"Unable to load life thumbnail {entry.Id}: {exception.Message}");
+                thumbnail = placeholderSource;
+                return false;
+            }
+        }
+
+        private static bool BitmapsMatch(Bitmap left, Bitmap right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null || left.Width != right.Width || left.Height != right.Height)
+                return false;
+
+            for (int y = 0; y < left.Height; y++)
+            {
+                for (int x = 0; x < left.Width; x++)
+                {
+                    if (left.GetPixel(x, y).ToArgb() != right.GetPixel(x, y).ToArgb())
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        private void ImageFilterChanged(object sender, RoutedEventArgs e)
+        {
+            if (initializingImageFilter)
+                return;
+
+            ApplicationSettings.HideLifeEntriesWithoutImages = hideEntriesWithoutImagesCheckBox.IsChecked == true;
+            Program.SettingsManager?.SaveSettings();
+            if (hcsm != null)
+                ReloadLifeList();
         }
 
         private void LifeGallery_SelectionChanged(object sender, AssetGalleryItemEventArgs e)

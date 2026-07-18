@@ -710,10 +710,10 @@
     <value>NPC</value>
   </data>
   <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
-    <value>NPC とモンスター</value>
+    <value>NPC、モンスター、リアクター</value>
   </data>
   <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
-    <value>NPC とモンスター (N)</value>
+    <value>NPC、モンスター、リアクター (N)</value>
   </data>
   <data name="Editor_Objects_DE5236" xml:space="preserve">
     <value>オブジェクト</value>

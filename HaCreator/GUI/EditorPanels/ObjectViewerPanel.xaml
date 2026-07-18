@@ -32,15 +32,62 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBox x:Name="searchBox" ToolTip="Search by type, asset path, name, or coordinates"
                      TextChanged="SearchBox_TextChanged"/>
             <Button Grid.Column="1" Content="Refresh" Margin="8,0,0,0" MinWidth="76"
                     Click="Refresh_Click"/>
+            <Button Grid.Column="2" Content="Expand" Margin="8,0,0,0" MinWidth="68"
+                    Click="ExpandAll_Click"/>
+            <Button Grid.Column="3" Content="Collapse" Margin="8,0,0,0" MinWidth="68"
+                    Click="CollapseAll_Click"/>
         </Grid>
 
         <Border Grid.Row="2" Style="{StaticResource HareCardStyle}" Padding="0" ClipToBounds="True">
-            <local:AssetGallery x:Name="objectGallery"/>
+            <TreeView x:Name="objectTreeView" Padding="4"
+                      Background="{StaticResource HareSurfaceBrush}"
+                      BorderThickness="0"
+                      ItemsSource="{Binding RootNodes}"
+                      SelectedItemChanged="ObjectTreeView_SelectedItemChanged"
+                      MouseDoubleClick="ObjectTreeView_MouseDoubleClick"
+                      PreviewMouseRightButtonDown="ObjectTreeView_PreviewMouseRightButtonDown">
+                <TreeView.Resources>
+                    <HierarchicalDataTemplate DataType="{x:Type local:ObjectHierarchyNode}"
+                                              ItemsSource="{Binding Children}">
+                        <Border Padding="3,1" CornerRadius="3">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBoardSelected}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource HareAccentSoftBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding Label}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{StaticResource HareTextBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsVisible}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource HareMutedTextBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                    </HierarchicalDataTemplate>
+                </TreeView.Resources>
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                    </Style>
+                </TreeView.ItemContainerStyle>
+            </TreeView>
         </Border>
 
         <Border Grid.Row="3" Margin="0,9,0,0" Padding="10,7"

@@ -392,10 +392,10 @@ This will permanently delete all extracted IMG files.</value></data>
     <value>NPCs</value>
   </data>
   <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
-    <value>NPCs &amp; Mobs</value>
+    <value>NPCs, Mobs &amp; Reactors</value>
   </data>
   <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
-    <value>NPCs and mobs (N)</value>
+    <value>NPCs, mobs and reactors (N)</value>
   </data>
   <data name="Editor_Objects_DE5236" xml:space="preserve">
     <value>Objects</value>

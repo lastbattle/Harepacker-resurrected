@@ -72,6 +72,7 @@
   <data name="Internal street name" xml:space="preserve"><value>内部ストリート名</value></data>
   <data name="Level limit" xml:space="preserve"><value>レベル制限</value></data>
   <data name="Life type" xml:space="preserve"><value>ライフタイプ</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>画像のない項目を非表示</value></data>
   <data name="Manage…" xml:space="preserve"><value>管理…</value></data>
   <data name="Map context" xml:space="preserve"><value>マップコンテキスト</value></data>
   <data name="Map description" xml:space="preserve"><value>マップ説明</value></data>

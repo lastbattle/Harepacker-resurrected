@@ -710,10 +710,10 @@
     <value>NPC</value>
   </data>
   <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
-    <value>NPC 与怪物</value>
+    <value>NPC、怪物与反应堆</value>
   </data>
   <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
-    <value>NPC 与怪物 (N)</value>
+    <value>NPC、怪物与反应堆 (N)</value>
   </data>
   <data name="Editor_Objects_DE5236" xml:space="preserve">
     <value>对象</value>
