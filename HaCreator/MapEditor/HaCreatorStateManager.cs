@@ -1,6 +1,7 @@
 ﻿using HaCreator.CustomControls;
 using HaCreator.Exceptions;
 using HaCreator.GUI;
+using HaCreator.GUI.Localization;
 using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.GUI.Quest;
@@ -35,7 +36,7 @@ namespace HaCreator.MapEditor
     public class HaCreatorStateManager
     {
         private readonly MultiBoard multiBoard;
-        private readonly HaRibbon ribbon;
+        private readonly HaEditor editorShell;
         private readonly System.Windows.Controls.TabControl tabs;
 
         // StatusBar (bottom)
@@ -59,13 +60,13 @@ namespace HaCreator.MapEditor
         private HotSwapRefreshService _hotSwapService;
         private AssetUsageTracker _assetUsageTracker;
 
-        public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input, System.Windows.Controls.ScrollViewer editorPanel,
+        public HaCreatorStateManager(MultiBoard multiBoard, HaEditor editorShell, System.Windows.Controls.TabControl tabs, InputHandler input, System.Windows.Controls.ScrollViewer editorPanel,
             SystemWinCtl.TextBlock textblock_CursorX, SystemWinCtl.TextBlock textblock_CursorY, SystemWinCtl.TextBlock textblock_RCursorX, SystemWinCtl.TextBlock textblock_RCursorY, SystemWinCtl.TextBlock textblock_selectedItem)
         {
             this.multiBoard = multiBoard;
             multiBoard.HaCreatorStateManager = this;
 
-            this.ribbon = ribbon;
+            this.editorShell = editorShell;
             this.tabs = tabs;
             this.input = input;
             this.editorPanel = editorPanel;
@@ -79,38 +80,37 @@ namespace HaCreator.MapEditor
 
             this.backupMan = new BackupManager(multiBoard, input, this, tabs);
 
-            this.ribbon.NewClicked += Ribbon_NewClicked;
-            this.ribbon.OpenClicked += Ribbon_OpenClicked;
-            this.ribbon.SaveClicked += Ribbon_SaveClicked;
-            this.ribbon.RepackClicked += Ribbon_RepackClicked;
-            this.ribbon.AboutClicked += Ribbon_AboutClicked;
-            this.ribbon.HelpClicked += Ribbon_HelpClicked;
-            this.ribbon.SettingsClicked += Ribbon_SettingsClicked;
-            this.ribbon.ExitClicked += Ribbon_ExitClicked;
-            this.ribbon.ViewToggled += Ribbon_ViewToggled;
-            this.ribbon.ShowMinimapToggled += Ribbon_ShowMinimapToggled;
-            this.ribbon.ParallaxToggled += Ribbon_ParallaxToggled;
-            this.ribbon.LayerViewChanged += ribbon_LayerViewChanged;
-            this.ribbon.MapSimulationClicked += Ribbon_MapSimulationClicked;
-            this.ribbon.RegenerateMinimapClicked += Ribbon_RegenerateMinimapClicked;
-            this.ribbon.SnappingToggled += Ribbon_SnappingToggled;
-            this.ribbon.RandomTilesToggled += Ribbon_RandomTilesToggled;
-            this.ribbon.InfoModeToggled += Ribbon_InfoModeToggled;
-            this.ribbon.MapObjectPreviewAnimationToggled += Ribbon_MapObjectPreviewAnimationToggled;
-            this.ribbon.HaRepackerClicked += Ribbon_HaRepackerClicked;
-            this.ribbon.FinalizeClicked += Ribbon_FinalizeClicked;
-            this.ribbon.NewPlatformClicked += ribbon_NewPlatformClicked;
-            this.ribbon.UserObjsClicked += Ribbon_UserObjsClicked;
-            this.ribbon.ExportClicked += Ribbon_ExportClicked;
-            this.ribbon.RibbonKeyDown += multiBoard.DxContainer_KeyDown;
-            this.ribbon.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
+            this.editorShell.NewClicked += Ribbon_NewClicked;
+            this.editorShell.OpenClicked += Ribbon_OpenClicked;
+            this.editorShell.SaveClicked += Ribbon_SaveClicked;
+            this.editorShell.RepackClicked += Ribbon_RepackClicked;
+            this.editorShell.AboutClicked += Ribbon_AboutClicked;
+            this.editorShell.HelpClicked += Ribbon_HelpClicked;
+            this.editorShell.SettingsClicked += Ribbon_SettingsClicked;
+            this.editorShell.ExitClicked += Ribbon_ExitClicked;
+            this.editorShell.ViewToggled += Ribbon_ViewToggled;
+            this.editorShell.ShowMinimapToggled += Ribbon_ShowMinimapToggled;
+            this.editorShell.ParallaxToggled += Ribbon_ParallaxToggled;
+            this.editorShell.LayerViewChanged += ribbon_LayerViewChanged;
+            this.editorShell.MapSimulationClicked += Ribbon_MapSimulationClicked;
+            this.editorShell.RegenerateMinimapClicked += Ribbon_RegenerateMinimapClicked;
+            this.editorShell.SnappingToggled += Ribbon_SnappingToggled;
+            this.editorShell.RandomTilesToggled += Ribbon_RandomTilesToggled;
+            this.editorShell.InfoModeToggled += Ribbon_InfoModeToggled;
+            this.editorShell.MapObjectPreviewAnimationToggled += Ribbon_MapObjectPreviewAnimationToggled;
+            this.editorShell.HaRepackerClicked += Ribbon_HaRepackerClicked;
+            this.editorShell.FinalizeClicked += Ribbon_FinalizeClicked;
+            this.editorShell.NewPlatformClicked += ribbon_NewPlatformClicked;
+            this.editorShell.UserObjsClicked += Ribbon_UserObjsClicked;
+            this.editorShell.ExportClicked += Ribbon_ExportClicked;
+            this.editorShell.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
 
             // Etc
-            this.ribbon.ShowQuestEditorWindowClicked += Ribbon_ShowQuestEditorWindowClicked;
+            this.editorShell.ShowQuestEditorWindowClicked += Ribbon_ShowQuestEditorWindowClicked;
             //
 
             // Debug
-            this.ribbon.ShowMapPropertiesClicked += Ribbon_ShowMapPropertiesClicked;
+            this.editorShell.ShowMapPropertiesClicked += Ribbon_ShowMapPropertiesClicked;
             //
 
             this.tabs.SelectionChanged += Tabs_SelectionChanged;
@@ -133,7 +133,7 @@ namespace HaCreator.MapEditor
             this.multiBoard.MinimapStateChanged += MultiBoard_MinimapStateChanged;
 
             multiBoard.Visibility = System.Windows.Visibility.Collapsed;
-            ribbon.SetEnabled(false);
+            editorShell.SetEnabled(false);
         }
 
         public static int PositiveMod(int x, int m)
@@ -155,7 +155,7 @@ namespace HaCreator.MapEditor
         #region MultiBoard Events
         void MultiBoard_MinimapStateChanged(object sender, bool hasMm)
         {
-            ribbon.SetHasMinimap(hasMm);
+            editorShell.SetHasMinimap(hasMm);
         }
 
         void MultiBoard_BoardRemoved(object sender, EventArgs e)
@@ -172,7 +172,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("Backup failed! Error:{0}\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(MapEditorText.Format("BackupFailed", e.Message, e.StackTrace));
             }
         }
 
@@ -188,7 +188,7 @@ namespace HaCreator.MapEditor
             }
             catch (NameAlreadyUsedException)
             {
-                MessageBox.Show("\"" + name + "\" could not be added because an object with the same name already exists.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(MapEditorText.Format("DuplicateObjectName", name), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             finally
@@ -261,7 +261,7 @@ namespace HaCreator.MapEditor
 
         void MultiBoard_OnLayerTSChanged(Layer layer)
         {
-            ribbon.SetLayer(layer);
+            editorShell.SetLayer(layer);
         }
 
         void MultiBoard_OnEditInstanceClicked(BoardItem item)
@@ -326,7 +326,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("An error occurred while presenting the instance editor for {0}:\r\n{1}", item.GetType().Name, e.ToString()));
+                MessageBox.Show(MapEditorText.Format("InstanceEditorError", item.GetType().Name, e));
             }
         }
 
@@ -465,7 +465,7 @@ namespace HaCreator.MapEditor
             {
                 return;
             }
-            if (MessageBox.Show("Are you sure you want to close this map?", "Close", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            if (MessageBox.Show(MapEditorText.Get("CloseMapConfirm"), MapEditorText.Get("CloseTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
             System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
@@ -512,9 +512,9 @@ namespace HaCreator.MapEditor
 
                     ApplicationSettings.lastDefaultLayer = multiBoard.SelectedBoard.SelectedLayerIndex;
 
-                    ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
-                    ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
-                    ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+                    editorShell.SetLayers(multiBoard.SelectedBoard.Layers);
+                    editorShell.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
+                    editorShell.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
 
                     // LBTop LBBottom LBSide
                     blackBorderPanel.UpdateBoardData();
@@ -566,7 +566,7 @@ namespace HaCreator.MapEditor
             }
             sb.Append(Environment.NewLine).Append("Fix it under MapInfo.cs");
 
-            MessageBox.Show(sb.ToString(), "List of unsupported properties.");
+            MessageBox.Show(sb.ToString(), MapEditorText.Get("UnsupportedPropertiesTitle"));
         }
         #endregion
 
@@ -576,7 +576,7 @@ namespace HaCreator.MapEditor
 
         public void Ribbon_ExportClicked()
         {
-            SaveFileDialog ofd = new SaveFileDialog() { Title = "Select export location", Filter = "HaCreator Map File (*.ham)|*.ham" };
+            SaveFileDialog ofd = new SaveFileDialog() { Title = MapEditorText.Get("SelectExportLocation"), Filter = MapEditorText.Get("HaCreatorMapFilter") };
             if (lastSaveLoc != null)
                 ofd.FileName = lastSaveLoc;
             if (ofd.ShowDialog() != DialogResult.OK)
@@ -589,7 +589,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("Could not save: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(MapEditorText.Format("CouldNotSave", e.Message, e.StackTrace));
             }
         }
 
@@ -604,7 +604,7 @@ namespace HaCreator.MapEditor
 
         void Ribbon_FinalizeClicked()
         {
-            if (MessageBox.Show("This will finalize all footholds, removing their Tile bindings and clearing the Undo/Redo list in the process.\r\nContinue?", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            if (MessageBox.Show(MapEditorText.Get("FinalizeFootholdsConfirm"), MapEditorText.Get("WarningTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
             {
                 lock (multiBoard)
                 {
@@ -622,8 +622,8 @@ namespace HaCreator.MapEditor
             HaRepacker.Program.WzFileManager = new WzFileManager(); // this will be over-written later at Initialization.cs. just temporary placeholder
             bool firstRun = HaRepacker.Program.PrepareApplication(false);
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
-            mf.unloadAllToolStripMenuItem.Visible = false;
-            mf.reloadAllToolStripMenuItem.Visible = false;
+            mf.unloadAllToolStripMenuItem.Visibility = System.Windows.Visibility.Collapsed;
+            mf.reloadAllToolStripMenuItem.Visibility = System.Windows.Visibility.Collapsed;
             foreach (WzFile entry in Program.WzManager.WzFileList)
             {
                 mf.Interop_AddLoadedWzFileToManager(entry);
@@ -656,7 +656,7 @@ namespace HaCreator.MapEditor
         {
             ItemTypes visibleTypes = ApplicationSettings.theoreticalVisibleTypes = multiBoard.SelectedBoard.VisibleTypes;
             ItemTypes editedTypes = ApplicationSettings.theoreticalEditedTypes = multiBoard.SelectedBoard.EditedTypes;
-            ribbon.SetVisibilityCheckboxes(getTypes(visibleTypes, editedTypes, ItemTypes.Tiles),
+            editorShell.SetVisibilityCheckboxes(getTypes(visibleTypes, editedTypes, ItemTypes.Tiles),
                                             getTypes(visibleTypes, editedTypes, ItemTypes.Objects),
                                             getTypes(visibleTypes, editedTypes, ItemTypes.NPCs),
                                             getTypes(visibleTypes, editedTypes, ItemTypes.Mobs),
@@ -697,10 +697,10 @@ namespace HaCreator.MapEditor
         void Ribbon_RegenerateMinimapClicked()
         {
             if (multiBoard.SelectedBoard.RegenerateMinimap())
-                MessageBox.Show("Minimap regenerated successfully", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(MapEditorText.Get("MinimapRegenerated"), MapEditorText.Get("SuccessTitle"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
             {
-                MessageBox.Show("An error occured during minimap regeneration. The error has been logged. If possible, save the map report it via github.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(MapEditorText.Get("MinimapRegenerationError"), MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ErrorLogger.Log(ErrorLevel.Critical, "error regenning minimap for map " + multiBoard.SelectedBoard.MapInfo.id.ToString());
             }
         }
@@ -943,7 +943,7 @@ namespace HaCreator.MapEditor
             if (File.Exists(helpPath))
                 Process.Start(helpPath);
             else
-                MessageBox.Show("Help could not be shown because the help file (HRHelp.htm) was not found");
+                MessageBox.Show(MapEditorText.Get("HelpFileMissing"));
         }
 
         void Ribbon_AboutClicked()
@@ -987,9 +987,8 @@ namespace HaCreator.MapEditor
                 }
 
                 MessageBox.Show(
-                    "Unable to determine the IMG filesystem path.\n\n" +
-                    "Please use HaRepacker to pack IMG files to WZ.",
-                    "IMG Filesystem Mode",
+                    MapEditorText.Get("ImgFilesystemPathUnknown"),
+                    MapEditorText.Get("ImgFilesystemModeTitle"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 return;
@@ -1067,6 +1066,16 @@ namespace HaCreator.MapEditor
             }
         }
 
+        public void LoadMap(System.Windows.Window loader)
+        {
+            lock (multiBoard)
+            {
+                bool deviceLoadedThisTime = EnsureDeviceLoaded();
+                if (loader == null || loader.ShowDialog() == true)
+                    FinishLoadedMap(deviceLoadedThisTime);
+            }
+        }
+
         public bool LoadWzMapSelection(string selectedItem, out string errorMessage)
         {
             lock (multiBoard)
@@ -1129,8 +1138,8 @@ namespace HaCreator.MapEditor
                 return false;
             }
 
-            ribbon.SetEnabled(true);
-            ribbon.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
+            editorShell.SetEnabled(true);
+            editorShell.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
             multiBoard.Start();
             backupMan.Start();
 
@@ -1144,9 +1153,9 @@ namespace HaCreator.MapEditor
                 FirstMapLoaded?.Invoke();
             }
             multiBoard.SelectedBoard.SelectedPlatform = multiBoard.SelectedBoard.SelectedLayerIndex == -1 ? -1 : multiBoard.SelectedBoard.Layers[multiBoard.SelectedBoard.SelectedLayerIndex].zMList.ElementAt(0);
-            ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
-            ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
-            ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+            editorShell.SetLayers(multiBoard.SelectedBoard.Layers);
+            editorShell.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
+            editorShell.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
             multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
             multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
             ParseVisibleEditedTypes();
@@ -1162,13 +1171,13 @@ namespace HaCreator.MapEditor
             lock (multiBoard)
             {
                 NewPlatform dlg = new NewPlatform(new SortedSet<int>(multiBoard.SelectedBoard.Layers.Select(x => (IEnumerable<int>)x.zMList).Aggregate((x, y) => Enumerable.Concat(x, y))));
-                if (dlg.ShowDialog() != DialogResult.OK)
+                if (dlg.ShowDialog() != true)
                     return;
                 int zm = dlg.result;
                 multiBoard.SelectedBoard.SelectedLayer.zMList.Add(zm);
                 multiBoard.SelectedBoard.SelectedPlatform = zm;
-                ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
-                ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
+                editorShell.SetLayers(multiBoard.SelectedBoard.Layers);
+                editorShell.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
             }
         }
 
@@ -1214,7 +1223,7 @@ namespace HaCreator.MapEditor
         public event EmptyDelegate FirstMapLoaded;
 
         /// <summary>
-        /// Creates the description of the selected item to be displayed on the top right corner of HaRibbon
+        /// Creates the description of the selected item for the editor status display.
         /// </summary>
         /// <param name="item"></param>
         /// <returns></returns>
@@ -1440,14 +1449,14 @@ namespace HaCreator.MapEditor
         {
             multiBoard.SelectedBoard.EditedTypes = type;
             multiBoard.SelectedBoard.VisibleTypes |= type;
-            ribbon.SetEnabled(false);
+            editorShell.SetEnabled(false);
         }
 
         public void ExitEditMode()
         {
             multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
             multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
-            ribbon.SetEnabled(true);
+            editorShell.SetEnabled(true);
         }
 
         public MultiBoard MultiBoard
@@ -1458,12 +1467,5 @@ namespace HaCreator.MapEditor
             }
         }
 
-        public HaRibbon Ribbon
-        {
-            get
-            {
-                return ribbon;
-            }
-        }
     }
 }

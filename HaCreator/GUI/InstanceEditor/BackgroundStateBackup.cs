@@ -14,6 +14,8 @@ namespace HaCreator.GUI.InstanceEditor
         public int BaseY { get; set; }
         public int Z { get; set; }
         public bool Front { get; set; }
+        public bool Flip { get; set; }
+        public int Page { get; set; }
         public BackgroundType Type { get; set; }
         public int A { get; set; }
         public int Rx { get; set; }
@@ -30,6 +32,8 @@ namespace HaCreator.GUI.InstanceEditor
             this.BaseY = item.BaseY;
             this.Z = item.Z;
             this.Front = item.front;
+            this.Flip = item.Flip;
+            this.Page = item.Page;
             this.Type = item.type;
             this.A = item.a;
             this.Rx = item.rx;

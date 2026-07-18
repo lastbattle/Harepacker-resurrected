@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="BackupFailed" xml:space="preserve"><value>バックアップに失敗しました。エラー: {0}\r\n{1}</value></data>
+  <data name="DuplicateObjectName" xml:space="preserve"><value>同じ名前のオブジェクトが存在するため「{0}」を追加できません。</value></data>
+  <data name="ErrorTitle" xml:space="preserve"><value>エラー</value></data>
+  <data name="InstanceEditorError" xml:space="preserve"><value>{0} のインスタンスエディター表示中にエラーが発生しました:\r\n{1}</value></data>
+  <data name="CloseMapConfirm" xml:space="preserve"><value>このマップを閉じますか？</value></data>
+  <data name="CloseTitle" xml:space="preserve"><value>閉じる</value></data>
+  <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>未対応プロパティ一覧</value></data>
+  <data name="SelectExportLocation" xml:space="preserve"><value>エクスポート先を選択</value></data>
+  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator マップファイル (*.ham)|*.ham</value></data>
+  <data name="CouldNotSave" xml:space="preserve"><value>保存できませんでした: {0}\r\n\r\n{1}</value></data>
+  <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>すべての足場を確定し、タイルとの関連付けと元に戻す/やり直す履歴を削除します。\r\n続行しますか？</value></data>
+  <data name="WarningTitle" xml:space="preserve"><value>警告</value></data>
+  <data name="MinimapRegenerated" xml:space="preserve"><value>ミニマップを再生成しました。</value></data>
+  <data name="SuccessTitle" xml:space="preserve"><value>成功</value></data>
+  <data name="MinimapRegenerationError" xml:space="preserve"><value>ミニマップの再生成中にエラーが発生し、ログに記録されました。可能ならマップを保存して GitHub で報告してください。</value></data>
+  <data name="HelpFileMissing" xml:space="preserve"><value>HRHelp.htm が見つからないためヘルプを表示できません。</value></data>
+  <data name="ImgFilesystemPathUnknown" xml:space="preserve"><value>IMG ファイルシステムのパスを特定できません。\n\nHaRepacker で IMG ファイルを WZ にパックしてください。</value></data>
+  <data name="ImgFilesystemModeTitle" xml:space="preserve"><value>IMG ファイルシステムモード</value></data>
+  <data name="ConfirmTitle" xml:space="preserve"><value>確認</value></data>
+  <data name="RemoveVrConfirm" xml:space="preserve"><value>マップの VR を削除します。この操作は元に戻せず、マップメニューから再追加する必要があります。続行しますか？</value></data>
+  <data name="RemoveMinimapConfirm" xml:space="preserve"><value>マップのミニマップを削除します。この操作は元に戻せず、マップメニューから再追加する必要があります。続行しますか？</value></data>
+  <data name="ClipboardInvalid" xml:space="preserve"><value>クリップボードのデータが利用できないか無効です。</value></data>
+  <data name="GenericError" xml:space="preserve"><value>エラーが発生しました: {0}</value></data>
+  <data name="ClipboardDifferentTileSets" xml:space="preserve"><value>クリップボードに異なるタイルセットのタイルが含まれているため貼り付けできません。</value></data>
+  <data name="ClipboardNoLayerSelected" xml:space="preserve"><value>クリップボードにレイヤー項目がありますが、レイヤーまたは足場が選択されていません。</value></data>
+  <data name="ClipboardTileSetMismatch" xml:space="preserve"><value>クリップボードのタイルセットが選択レイヤーと異なります。</value></data>
+  <data name="GraphicsAdapterUnsupported" xml:space="preserve"><value>グラフィックスアダプターはサポートされていません: {0}\r\n\r\n{1}</value></data>
+  <data name="SelectRealLayer" xml:space="preserve"><value>実レイヤーを選択してください。</value></data>
+  <data name="RecoveryPrompt" xml:space="preserve"><value>HaCreator が予期せず終了しました。バックアップから自動復元しますか？\r\n\r\n（最初から開始する場合は「いいえ」を選択してください。）</value></data>
+  <data name="RecoveryTitle" xml:space="preserve"><value>復元</value></data>
+  <data name="UnsupportedMapFeature" xml:space="preserve"><value>このマップには未対応機能「{0}」があります。HaCreator は元データをバイト単位で保持しますが、編集された足場やモンスターなどに依存する場合は動作しなくなる可能性があります。</value></data>
+  <data name="AddVr" xml:space="preserve"><value>VR を追加</value></data>
+  <data name="AddMinimap" xml:space="preserve"><value>ミニマップを追加</value></data>
+  <data name="MapSizeMissing" xml:space="preserve"><value>マップにサイズ情報がなく、HaCreator でも生成できませんでした。エラーはログに記録されました。</value></data>
+  <data name="CurrentMapLabel" xml:space="preserve"><value>現在のマップ</value></data>
+  <data name="EditMapInfo" xml:space="preserve"><value>マップ情報を編集…</value></data>
+  <data name="Context_EditInstance" xml:space="preserve"><value>このインスタンスを編集…</value></data>
+  <data name="Context_LoadTargetMap" xml:space="preserve"><value>対象マップを新しいタブで開く</value></data>
+  <data name="Context_AddCharacterTooltip" xml:space="preserve"><value>キャラクターツールチップを追加</value></data>
+  <data name="Context_BringToFront" xml:space="preserve"><value>最前面へ移動</value></data>
+  <data name="Context_SendToBack" xml:space="preserve"><value>最背面へ移動</value></data>
+  <data name="Context_SelectConnected" xml:space="preserve"><value>接続項目を選択</value></data>
+  <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>レイヤー/足場を変更…</value></data>
+  <data name="Context_SelectPlatform" xml:space="preserve"><value>足場を選択</value></data>
+</root>

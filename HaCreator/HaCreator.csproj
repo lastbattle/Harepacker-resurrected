@@ -92,9 +92,6 @@
     <Compile Update="CustomControls\WatermarkTextBox.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Update="CustomControls\ScrollablePictureBox.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
     <Compile Update="GUI\EditorPanels\BlackBorderPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -119,23 +116,11 @@
     <Compile Update="GUI\Input\IntegerInput.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Update="CustomControls\ImageViewer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="CustomControls\AlphaColorPicker.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
     <Compile Update="CustomControls\BetterCheckedListBox.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="CustomControls\ThumbnailFlowLayoutPanel.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Update="CustomControls\DirectXHolder.cs">
       <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="GUI\InstanceEditor\LoadMobSelector.cs">
-      <SubType>Form</SubType>
     </Compile>
   </ItemGroup>
   <ItemGroup>
@@ -310,5 +295,163 @@
     <Resource Include="Images\Quest\summary_icon.summary.png" />
     <Resource Include="Images\Quest\questIcon_0.png" />
     <Resource Include="Images\box_edit-big.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="GUI\About.cs">
+      <DependentUpon>About.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\CancelableWaitWindow.cs">
+      <DependentUpon>CancelableWaitWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\DataSourceSettings.cs">
+      <DependentUpon>DataSourceSettings.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\ExceptionHandler.cs">
+      <DependentUpon>ExceptionHandler.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InfoEditor.cs">
+      <DependentUpon>InfoEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Initialization.cs">
+      <DependentUpon>Initialization.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\LayerChange.cs">
+      <DependentUpon>LayerChange.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\ManageUserObjects.cs">
+      <DependentUpon>ManageUserObjects.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\MapPhysicsEditor.cs">
+      <DependentUpon>MapPhysicsEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\MigrationWizard.cs">
+      <DependentUpon>MigrationWizard.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\New.cs">
+      <DependentUpon>New.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\NewPlatform.cs">
+      <DependentUpon>NewPlatform.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\PackToWz.cs">
+      <DependentUpon>PackToWz.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Repack.cs">
+      <DependentUpon>Repack.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Save.cs">
+      <DependentUpon>Save.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\TileSetBrowser.cs">
+      <DependentUpon>TileSetBrowser.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\UnpackWzToImg.cs">
+      <DependentUpon>UnpackWzToImg.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\UserSettingsForm.cs">
+      <DependentUpon>UserSettingsForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\WaitWindow.cs">
+      <DependentUpon>WaitWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\AISettingsDialog.cs">
+      <DependentUpon>AISettingsDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\BackgroundPanel.cs">
+      <DependentUpon>BackgroundPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\BlackBorderPanel.cs">
+      <DependentUpon>BlackBorderPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\CommonPanel.cs">
+      <DependentUpon>CommonPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\LifePanel.cs">
+      <DependentUpon>LifePanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\ObjectViewerPanel.cs">
+      <DependentUpon>ObjectViewerPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\ObjPanel.cs">
+      <DependentUpon>ObjPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\PortalPanel.cs">
+      <DependentUpon>PortalPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\TilePanel.cs">
+      <DependentUpon>TilePanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\UpscaleImageForm.cs">
+      <DependentUpon>UpscaleImageForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\IntInputBox.cs">
+      <DependentUpon>IntInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\NameValueInput.cs">
+      <DependentUpon>NameValueInput.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\BackgroundInstanceEditor.cs">
+      <DependentUpon>BackgroundInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\FootholdEditor.cs">
+      <DependentUpon>FootholdEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\GeneralInstanceEditor.cs">
+      <DependentUpon>GeneralInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LifeInstanceEditor.cs">
+      <DependentUpon>LifeInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadItemSelector.cs">
+      <DependentUpon>LoadItemSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadJobSelector.cs">
+      <DependentUpon>LoadJobSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadMapSelector.cs">
+      <DependentUpon>LoadMapSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadMobSelector.cs">
+      <DependentUpon>LoadMobSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadNpcSelector.cs">
+      <DependentUpon>LoadNpcSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadQuestSelector.cs">
+      <DependentUpon>LoadQuestSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadSkillSelector.cs">
+      <DependentUpon>LoadSkillSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\MassZmEditor.cs">
+      <DependentUpon>MassZmEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\MirrorFieldDataEditor.cs">
+      <DependentUpon>MirrorFieldDataEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\ObjectInstanceEditor.cs">
+      <DependentUpon>ObjectInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\ObjQuestInput.cs">
+      <DependentUpon>ObjQuestInput.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\PnSelector.cs">
+      <DependentUpon>PnSelector.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\PortalInstanceEditor.cs">
+      <DependentUpon>PortalInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\ReactorInstanceEditor.cs">
+      <DependentUpon>ReactorInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\RopeInstanceEditor.cs">
+      <DependentUpon>RopeInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\TileInstanceEditor.cs">
+      <DependentUpon>TileInstanceEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\TooltipInstanceEditor.cs">
+      <DependentUpon>TooltipInstanceEditor.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
 </Project>

@@ -1,156 +1,96 @@
-﻿using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator;
+using HaCreator.MapEditor.Instance.Shapes;
 using HaSharedLibrary.Render.DX;
+using HaCreator.GUI.Localization;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Diagnostics;
-using System.Drawing;
-using System.Linq;
-using System.Text;
+using System.Globalization;
+using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Forms;
+using System.Windows.Media;
+using Forms = System.Windows.Forms;
+using DrawingColor = System.Drawing.Color;
+using HaSharedLibrary.GUI;
 
 namespace HaCreator.GUI
 {
-    public partial class UserSettingsForm : EditorBase
+    public partial class UserSettingsForm : Window
     {
+        private readonly Dictionary<string, TextBox> values = new();
+        private readonly Dictionary<string, Button> colors = new();
+
         public UserSettingsForm()
         {
             InitializeComponent();
-            errorsCheckBox.Checked = UserSettings.ShowErrorsMessage;
-            linewBox.Value = UserSettings.LineWidth;
-            dotwBox.Value = UserSettings.DotWidth;
-            inactiveaBox.Value = UserSettings.NonActiveAlpha;
-            clipBox.Checked = UserSettings.ClipText;
-            fixFh.Checked = UserSettings.FixFootholdMispositions;
-            invertUpDownBox.Checked = UserSettings.InverseUpDown;
-            autoBackupBox.Checked = UserSettings.BackupEnabled;
-
-            tabColorPicker.Color = UserSettings.TabColor;
-            dragColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquare);
-            dragFillColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquareFill);
-            selectedColorPicker.Color = XNAToSystemColor(UserSettings.SelectedColor);
-            vrColorPicker.Color = XNAToSystemColor(UserSettings.VRColor);
-            fhColorPicker.Color = XNAToSystemColor(UserSettings.FootholdColor);
-            rlColorPicker.Color = XNAToSystemColor(UserSettings.RopeColor);
-            seatColorPicker.Color = XNAToSystemColor(UserSettings.ChairColor);
-            ttColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipColor);
-            ttFillColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipFill);
-            ttSelectColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipSelectedFill);
-            ttcColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipCharFill);
-            ttcSelectColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipCharSelectedFill);
-            ttLineColorPicker.Color = XNAToSystemColor(UserSettings.ToolTipBindingLine);
-            miscColorPicker.Color = XNAToSystemColor(UserSettings.MiscColor);
-            miscFillColorPicker.Color = XNAToSystemColor(UserSettings.MiscFill);
-            miscSelectedColorPicker.Color = XNAToSystemColor(UserSettings.MiscSelectedFill);
-            originColorPicker.Color = XNAToSystemColor(UserSettings.OriginColor);
-            minimapColorPicker.Color = XNAToSystemColor(UserSettings.MinimapBoundColor);
-            rInput.Value = UserSettings.HiddenLifeR;
-            fontName.Text = UserSettings.FontName;
-            fontSize.Value = UserSettings.FontSize;
-
-            mobrx0Box.Value = UserSettings.Mobrx0Offset;
-            mobrx1Box.Value = UserSettings.Mobrx1Offset;
-            npcrx0Box.Value = UserSettings.Npcrx0Offset;
-            npcrx1Box.Value = UserSettings.Npcrx1Offset;
-            mobtimeBox.Value = UserSettings.defaultMobTime;
-            reacttimeBox.Value = UserSettings.defaultReactorTime;
-            zShiftBox.Value = UserSettings.zShift;
-            snapdistBox.Value = (decimal)UserSettings.SnapDistance;
-            scrolldistBox.Value = UserSettings.ScrollDistance;
-            scrollbaseBox.Value = (decimal)UserSettings.ScrollBase;
-            scrollexpBox.Value = (decimal)UserSettings.ScrollExponentFactor;
-            scrollfactBox.Value = (decimal)UserSettings.ScrollFactor;
-            movementBox.Value = (decimal)UserSettings.SignificantDistance;
+            if (Program.HaEditorWindow?.IsVisible == true) Owner = Program.HaEditorWindow;
+            AddValue(generalValues, "Line width", "line", UserSettings.LineWidth); AddValue(generalValues, "Dot width", "dot", UserSettings.DotWidth);
+            AddValue(generalValues, "Inactive alpha", "alpha", UserSettings.NonActiveAlpha); AddValue(generalValues, "Font size", "fontSize", UserSettings.FontSize);
+            AddValue(behaviorValues, "Hidden life radius", "lifeR", UserSettings.HiddenLifeR); AddValue(behaviorValues, "Mob rx0 offset", "mob0", UserSettings.Mobrx0Offset);
+            AddValue(behaviorValues, "Mob rx1 offset", "mob1", UserSettings.Mobrx1Offset); AddValue(behaviorValues, "NPC rx0 offset", "npc0", UserSettings.Npcrx0Offset);
+            AddValue(behaviorValues, "NPC rx1 offset", "npc1", UserSettings.Npcrx1Offset); AddValue(behaviorValues, "Default mob time", "mobTime", UserSettings.defaultMobTime);
+            AddValue(behaviorValues, "Default reactor time", "reactTime", UserSettings.defaultReactorTime); AddValue(behaviorValues, "Z shift", "zShift", UserSettings.zShift);
+            AddValue(behaviorValues, "Snap distance", "snap", UserSettings.SnapDistance); AddValue(behaviorValues, "Scroll distance", "scrollDist", UserSettings.ScrollDistance);
+            AddValue(behaviorValues, "Scroll base", "scrollBase", UserSettings.ScrollBase); AddValue(behaviorValues, "Scroll exponent", "scrollExp", UserSettings.ScrollExponentFactor);
+            AddValue(behaviorValues, "Scroll factor", "scrollFactor", UserSettings.ScrollFactor); AddValue(behaviorValues, "Significant movement", "movement", UserSettings.SignificantDistance);
+            fontName.Text = UserSettings.FontName; errors.IsChecked = UserSettings.ShowErrorsMessage; clip.IsChecked = UserSettings.ClipText;
+            fixFootholds.IsChecked = UserSettings.FixFootholdMispositions; invertLayers.IsChecked = UserSettings.InverseUpDown; backups.IsChecked = UserSettings.BackupEnabled;
+            AddColor("Tab", "tab", UserSettings.TabColor); AddColor("Selection outline", "select", XNAToSystemColor(UserSettings.SelectSquare));
+            AddColor("Selection fill", "selectFill", XNAToSystemColor(UserSettings.SelectSquareFill)); AddColor("Selected item", "selected", XNAToSystemColor(UserSettings.SelectedColor));
+            AddColor("VR bounds", "vr", XNAToSystemColor(UserSettings.VRColor)); AddColor("Footholds", "fh", XNAToSystemColor(UserSettings.FootholdColor));
+            AddColor("Ropes", "rope", XNAToSystemColor(UserSettings.RopeColor)); AddColor("Seats", "seat", XNAToSystemColor(UserSettings.ChairColor));
+            AddColor("Tooltip", "tt", XNAToSystemColor(UserSettings.ToolTipColor)); AddColor("Tooltip fill", "ttFill", XNAToSystemColor(UserSettings.ToolTipFill));
+            AddColor("Tooltip selected", "ttSelected", XNAToSystemColor(UserSettings.ToolTipSelectedFill)); AddColor("Tooltip character", "ttChar", XNAToSystemColor(UserSettings.ToolTipCharFill));
+            AddColor("Tooltip character selected", "ttCharSelected", XNAToSystemColor(UserSettings.ToolTipCharSelectedFill)); AddColor("Tooltip binding", "ttLine", XNAToSystemColor(UserSettings.ToolTipBindingLine));
+            AddColor("Miscellaneous", "misc", XNAToSystemColor(UserSettings.MiscColor)); AddColor("Miscellaneous fill", "miscFill", XNAToSystemColor(UserSettings.MiscFill));
+            AddColor("Miscellaneous selected", "miscSelected", XNAToSystemColor(UserSettings.MiscSelectedFill)); AddColor("Origin", "origin", XNAToSystemColor(UserSettings.OriginColor));
+            AddColor("Minimap bounds", "minimap", XNAToSystemColor(UserSettings.MinimapBoundColor));
         }
 
-        public static Color XNAToSystemColor(Microsoft.Xna.Framework.Color color)
+        private void AddValue(Panel panel, string label, string key, object value)
         {
-            return Color.FromArgb(color.A, color.R, color.G, color.B);
+            Grid row = new Grid { Margin = new Thickness(0,0,0,8) }; row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
+            row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            TextBox box = new NumericTextBox { AllowDecimal = true, UseInvariantCulture = true, Text = Convert.ToString(value, CultureInfo.InvariantCulture) };
+            Grid.SetColumn(box, 1); row.Children.Add(box); panel.Children.Add(row); values[key] = box;
         }
 
-        public static Microsoft.Xna.Framework.Color SystemToXNAColor(Color color)
+        private void AddColor(string label, string key, DrawingColor color)
         {
-            return new Microsoft.Xna.Framework.Color(color.R, color.G, color.B, color.A);
+            Button button = new Button { Content = label, Tag = color, Margin = new Thickness(0,0,8,8), MinWidth = 150, Background = ToBrush(color) };
+            button.Click += Color_Click; colorsPanel.Children.Add(button); colors[key] = button;
         }
 
-        protected override void cancelButton_Click(object sender, EventArgs e)
+        private void Color_Click(object sender, RoutedEventArgs e)
         {
-            Close();
+            Button button = (Button)sender; using Forms.ColorDialog dialog = new Forms.ColorDialog { Color = (DrawingColor)button.Tag, FullOpen = true };
+            if (dialog.ShowDialog() == Forms.DialogResult.OK) { button.Tag = dialog.Color; button.Background = ToBrush(dialog.Color); }
         }
 
-        protected override void okButton_Click(object sender, EventArgs e)
+        private static SolidColorBrush ToBrush(DrawingColor color) => new SolidColorBrush(System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B));
+        private decimal Number(string key) => decimal.Parse(values[key].Text, NumberStyles.Float, CultureInfo.InvariantCulture);
+        private DrawingColor Pick(string key) => (DrawingColor)colors[key].Tag;
+
+        private void Save_Click(object sender, RoutedEventArgs e)
         {
-
-            UserSettings.ShowErrorsMessage = errorsCheckBox.Checked;
-            UserSettings.LineWidth = (int)linewBox.Value;
-            UserSettings.DotWidth = (int)dotwBox.Value;
-            MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
-            UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.ClipText = clipBox.Checked;
-            UserSettings.FixFootholdMispositions = fixFh.Checked;
-            UserSettings.InverseUpDown = invertUpDownBox.Checked;
-            UserSettings.BackupEnabled = autoBackupBox.Checked;
-
-            UserSettings.TabColor = tabColorPicker.Color;
-            UserSettings.SelectSquare = SystemToXNAColor(dragColorPicker.Color);
-            UserSettings.SelectSquareFill = SystemToXNAColor(dragFillColorPicker.Color);
-            UserSettings.SelectedColor = SystemToXNAColor(selectedColorPicker.Color);
-            UserSettings.VRColor = SystemToXNAColor(vrColorPicker.Color);
-            UserSettings.FootholdColor = SystemToXNAColor(fhColorPicker.Color);
-            UserSettings.RopeColor = SystemToXNAColor(rlColorPicker.Color);
-            UserSettings.ChairColor = SystemToXNAColor(seatColorPicker.Color);
-            UserSettings.ToolTipColor = SystemToXNAColor(ttColorPicker.Color);
-            UserSettings.ToolTipFill = SystemToXNAColor(ttFillColorPicker.Color);
-            UserSettings.ToolTipSelectedFill = SystemToXNAColor(ttSelectColorPicker.Color);
-            UserSettings.ToolTipCharFill = SystemToXNAColor(ttcColorPicker.Color);
-            UserSettings.ToolTipCharSelectedFill = SystemToXNAColor(ttcSelectColorPicker.Color);
-            UserSettings.ToolTipBindingLine = SystemToXNAColor(ttLineColorPicker.Color);
-            UserSettings.MiscColor = SystemToXNAColor(miscColorPicker.Color);
-            UserSettings.MiscFill = SystemToXNAColor(miscFillColorPicker.Color);
-            UserSettings.MiscSelectedFill = SystemToXNAColor(miscSelectedColorPicker.Color);
-            UserSettings.OriginColor = SystemToXNAColor(originColorPicker.Color);
-            UserSettings.MinimapBoundColor = SystemToXNAColor(minimapColorPicker.Color);
-
-            UserSettings.FontName = fontName.Text;
-            UserSettings.FontSize = (int) fontSize.Value;
-            UserSettings.HiddenLifeR = (int)rInput.Value;
-            UserSettings.Mobrx0Offset = (int)mobrx0Box.Value;
-            UserSettings.Mobrx1Offset = (int)mobrx1Box.Value;
-            UserSettings.Npcrx0Offset = (int)npcrx0Box.Value;
-            UserSettings.Npcrx1Offset = (int)npcrx1Box.Value;
-            UserSettings.defaultMobTime = (int)mobtimeBox.Value;
-            UserSettings.defaultReactorTime = (int)reacttimeBox.Value;
-            UserSettings.zShift = (int)zShiftBox.Value;
-            UserSettings.SnapDistance = (float)snapdistBox.Value;
-            UserSettings.ScrollDistance = (int)scrolldistBox.Value;
-            UserSettings.ScrollBase = (double)scrollbaseBox.Value;
-            UserSettings.ScrollExponentFactor = (double)scrollexpBox.Value;
-            UserSettings.ScrollFactor = (double)scrollfactBox.Value;
-            UserSettings.SignificantDistance = (float)movementBox.Value;
-
-            Close();
-        }
-
-        /// <summary>
-        /// OpenAI API Link label
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
-            Process myProcess = new Process();
-
-            try {
-                // true is the default, but it is important not to set it to false
-                myProcess.StartInfo.UseShellExecute = true;
-                myProcess.StartInfo.FileName = ((LinkLabel)sender).Text;
-                myProcess.Start();
+            try
+            {
+                UserSettings.ShowErrorsMessage = errors.IsChecked == true; UserSettings.LineWidth = (int)Number("line"); UserSettings.DotWidth = (int)Number("dot"); MapleDot.OnDotWidthChanged();
+                UserSettings.NonActiveAlpha = (int)Number("alpha"); UserSettings.ClipText = clip.IsChecked == true; UserSettings.FixFootholdMispositions = fixFootholds.IsChecked == true;
+                UserSettings.InverseUpDown = invertLayers.IsChecked == true; UserSettings.BackupEnabled = backups.IsChecked == true; UserSettings.TabColor = Pick("tab");
+                UserSettings.SelectSquare = SystemToXNAColor(Pick("select")); UserSettings.SelectSquareFill = SystemToXNAColor(Pick("selectFill")); UserSettings.SelectedColor = SystemToXNAColor(Pick("selected"));
+                UserSettings.VRColor = SystemToXNAColor(Pick("vr")); UserSettings.FootholdColor = SystemToXNAColor(Pick("fh")); UserSettings.RopeColor = SystemToXNAColor(Pick("rope")); UserSettings.ChairColor = SystemToXNAColor(Pick("seat"));
+                UserSettings.ToolTipColor = SystemToXNAColor(Pick("tt")); UserSettings.ToolTipFill = SystemToXNAColor(Pick("ttFill")); UserSettings.ToolTipSelectedFill = SystemToXNAColor(Pick("ttSelected"));
+                UserSettings.ToolTipCharFill = SystemToXNAColor(Pick("ttChar")); UserSettings.ToolTipCharSelectedFill = SystemToXNAColor(Pick("ttCharSelected")); UserSettings.ToolTipBindingLine = SystemToXNAColor(Pick("ttLine"));
+                UserSettings.MiscColor = SystemToXNAColor(Pick("misc")); UserSettings.MiscFill = SystemToXNAColor(Pick("miscFill")); UserSettings.MiscSelectedFill = SystemToXNAColor(Pick("miscSelected"));
+                UserSettings.OriginColor = SystemToXNAColor(Pick("origin")); UserSettings.MinimapBoundColor = SystemToXNAColor(Pick("minimap")); UserSettings.FontName = fontName.Text; UserSettings.FontSize = (int)Number("fontSize");
+                UserSettings.HiddenLifeR = (int)Number("lifeR"); UserSettings.Mobrx0Offset = (int)Number("mob0"); UserSettings.Mobrx1Offset = (int)Number("mob1"); UserSettings.Npcrx0Offset = (int)Number("npc0"); UserSettings.Npcrx1Offset = (int)Number("npc1");
+                UserSettings.defaultMobTime = (int)Number("mobTime"); UserSettings.defaultReactorTime = (int)Number("reactTime"); UserSettings.zShift = (int)Number("zShift"); UserSettings.SnapDistance = (float)Number("snap");
+                UserSettings.ScrollDistance = (int)Number("scrollDist"); UserSettings.ScrollBase = (double)Number("scrollBase"); UserSettings.ScrollExponentFactor = (double)Number("scrollExp"); UserSettings.ScrollFactor = (double)Number("scrollFactor"); UserSettings.SignificantDistance = (float)Number("movement");
+                DialogResult = true;
             }
-            catch (Exception ex) {
-                Console.WriteLine(ex.Message);
-            }
+            catch (Exception ex) { MessageBox.Show(this, DialogTextExtension.Format("Dialog_InvalidSettingValue", ex.Message), DialogTextExtension.Get("Dialog_InvalidSettings"), MessageBoxButton.OK, MessageBoxImage.Warning); }
         }
+
+        public static DrawingColor XNAToSystemColor(Microsoft.Xna.Framework.Color color) => DrawingColor.FromArgb(color.A, color.R, color.G, color.B);
+        public static Microsoft.Xna.Framework.Color SystemToXNAColor(DrawingColor color) => new Microsoft.Xna.Framework.Color(color.R, color.G, color.B, color.A);
     }
 }

@@ -49,6 +49,7 @@ namespace HaCreator.GUI.EditorPanels
             mapMcpServer.CommandExecutor = ApplyMcpCommand;
 
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
 
             // Bind chat messages to ItemsControl
             chatItemsControl.ItemsSource = _chatSession.Messages;
@@ -65,7 +66,7 @@ namespace HaCreator.GUI.EditorPanels
 
         private void UpdateTitle()
         {
-            string mapName = "Unknown";
+            string mapName = EditorPanelLocalizer.Text("AI_UnknownMap", "Unknown");
             int mapId = 0;
 
             if (board?.MapInfo != null)
@@ -73,10 +74,10 @@ namespace HaCreator.GUI.EditorPanels
                 mapId = board.MapInfo.id;
                 mapName = !string.IsNullOrEmpty(board.MapInfo.strMapName)
                     ? board.MapInfo.strMapName
-                    : $"Map {mapId}";
+                    : EditorPanelLocalizer.Format("AI_DefaultMapName", mapId);
             }
 
-            this.Title = $"AI Map Editor - {mapName} ({mapId})";
+            this.Title = EditorPanelLocalizer.Format("AI_WindowTitle", mapName, mapId);
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)
@@ -117,7 +118,7 @@ namespace HaCreator.GUI.EditorPanels
             var window = GetOrCreate(board);
             if (window == null)
             {
-                MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI Map Editor"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -201,7 +202,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (board == null)
             {
-                txtMapContext.Text = "# No map loaded";
+                txtMapContext.Text = EditorPanelLocalizer.Text("AI_NoMapContext", "# No map loaded");
                 return;
             }
 
@@ -216,7 +217,7 @@ namespace HaCreator.GUI.EditorPanels
             }
             catch (Exception ex)
             {
-                txtMapContext.Text = $"# Error loading map: {ex.Message}";
+                txtMapContext.Text = EditorPanelLocalizer.Format("AI_MapLoadError", ex.Message);
             }
         }
 
@@ -282,7 +283,7 @@ namespace HaCreator.GUI.EditorPanels
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI Map Editor"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -408,8 +409,8 @@ namespace HaCreator.GUI.EditorPanels
             if (_chatSession.HasMessages)
             {
                 var result = MessageBox.Show(
-                    "Start a new conversation? Current chat history will be cleared.",
-                    "New Chat",
+                    EditorPanelLocalizer.Text("AI_ClearChatConfirm", "Start a new conversation? Current chat history will be cleared."),
+                    EditorPanelLocalizer.Text("New Chat"),
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
 
@@ -434,7 +435,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Execute Commands",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -442,8 +443,8 @@ namespace HaCreator.GUI.EditorPanels
             var commandText = _chatSession.GetLatestCommands();
             if (string.IsNullOrWhiteSpace(commandText))
             {
-                MessageBox.Show("No commands to execute. Send a message to generate commands first.",
-                    "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoCommands", "No commands to execute. Send a message to generate commands first."),
+                    EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -452,13 +453,13 @@ namespace HaCreator.GUI.EditorPanels
                 var result = ExecuteCommandText(commandText);
                 if (result == null)
                 {
-                    MessageBox.Show("No valid commands found in the generated output.",
-                        "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(EditorPanelLocalizer.Text("AI_NoValidCommands", "No valid commands found in the generated output."),
+                        EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
                 // Show execution summary
-                string summary = $"Execution complete: {result.SuccessCount} succeeded, {result.FailCount} failed";
+                string summary = EditorPanelLocalizer.Format("AI_ExecutionSummary", result.SuccessCount, result.FailCount);
 
                 if (result.FailCount > 0 && result.Log.Count > 0)
                 {
@@ -471,14 +472,14 @@ namespace HaCreator.GUI.EditorPanels
                     }
                 }
 
-                MessageBox.Show(summary, "Execution Result",
+                MessageBox.Show(summary, EditorPanelLocalizer.Text("AI_ExecutionResultTitle", "Execution Result"),
                     MessageBoxButton.OK,
                     result.FailCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error executing commands: {ex.Message}", "Execution Error",
+                MessageBox.Show(EditorPanelLocalizer.Format("AI_ExecutionError", ex.Message), EditorPanelLocalizer.Text("AI_ExecutionErrorTitle", "Execution Error"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -542,8 +543,8 @@ namespace HaCreator.GUI.EditorPanels
         private void BtnMcpConnection_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show(
-                $"MCP endpoint:\n{McpEndpoint}\n\nAuthorization header:\nBearer {McpAuthorizationToken}\n\nThe endpoint is active while this map window is open.",
-                "MCP Connection",
+                EditorPanelLocalizer.Format("AI_McpConnectionDetails", McpEndpoint, McpAuthorizationToken),
+                EditorPanelLocalizer.Text("AI_McpConnectionTitle", "MCP Connection"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -569,7 +570,7 @@ namespace HaCreator.GUI.EditorPanels
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Run Tests",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_RunTestsTitle", "Run Tests"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }

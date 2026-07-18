@@ -1,5 +1,6 @@
 ﻿using MapleLib.Img;
 using MapleLib.WzLib;
+using HaCreator.GUI.Localization;
 using MapleLib.Configuration;
 using System;
 using System.Collections.Generic;
@@ -7,18 +8,21 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using HaSharedLibrary.Util;
+using System.Windows;
+using System.Windows.Controls;
+using Forms = System.Windows.Forms;
+using CheckBox = HaCreator.GUI.InfoEditorControls.CheckBox;
+using NumericUpDown = HaCreator.GUI.InfoEditorControls.NumericUpDown;
 
 namespace HaCreator.GUI
 {
-    public partial class PackToWz : Form
+    public partial class PackToWz : Window
     {
         private readonly string _versionPath;
         private readonly VersionInfo _versionInfo;
         private readonly ImgFileSystemDataSource _imgDataSource;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private GroupBox groupBox1;
         private bool _isPacking = false;
 
         /// <summary>
@@ -58,30 +62,26 @@ namespace HaCreator.GUI
             if (_versionInfo != null)
             {
                 label_versionInfo.Text = $"{_versionInfo.DisplayName ?? _versionInfo.Version}";
-                checkBox_64bit.Checked = _versionInfo.Is64Bit;
+                checkBox_64bit.IsChecked = _versionInfo.Is64Bit;
 
                 // Set format label based on detected format and pre-select beta checkbox if applicable
                 if (_versionInfo.IsBetaMs)
                 {
-                    label_format.Text = "Source: Beta (Single Data.wz)";
-                    label_format.ForeColor = System.Drawing.Color.DarkGreen;
+                    label_format.Text = DialogTextExtension.Get("Dialog_SourceBeta");
                     // Pre-select beta format checkbox (user can uncheck if desired)
-                    checkBox_betaFormat.Checked = true;
+                    checkBox_betaFormat.IsChecked = true;
                 }
                 else if (_versionInfo.Is64Bit)
                 {
-                    label_format.Text = "Source: 64-bit (Data folder)";
-                    label_format.ForeColor = System.Drawing.Color.DarkBlue;
+                    label_format.Text = DialogTextExtension.Get("Dialog_Source64Bit");
                 }
                 else if (_versionInfo.IsPreBB)
                 {
-                    label_format.Text = "Source: Pre-Big Bang";
-                    label_format.ForeColor = System.Drawing.Color.DarkOrange;
+                    label_format.Text = DialogTextExtension.Get("Dialog_SourcePreBigBang");
                 }
                 else
                 {
-                    label_format.Text = "Source: Standard";
-                    label_format.ForeColor = System.Drawing.Color.Black;
+                    label_format.Text = DialogTextExtension.Get("Dialog_SourceStandard");
                 }
 
                 // Respect manifest patchVersion verbatim so "0 = auto" persists across sessions.
@@ -94,9 +94,8 @@ namespace HaCreator.GUI
             }
             else
             {
-                label_versionInfo.Text = "Version: Unknown (no manifest.json)";
-                label_format.Text = "Source: Unknown";
-                label_format.ForeColor = System.Drawing.Color.Gray;
+                label_versionInfo.Text = DialogTextExtension.Get("Dialog_VersionUnknownManifest");
+                label_format.Text = DialogTextExtension.Get("Dialog_SourceUnknown");
             }
 
             // Populate encryption dropdown
@@ -107,6 +106,12 @@ namespace HaCreator.GUI
 
             // Update changed images count
             UpdateChangedImagesCount();
+        }
+
+        public bool? ShowDialog(Forms.IWin32Window owner)
+        {
+            if (owner != null) new System.Windows.Interop.WindowInteropHelper(this).Owner = owner.Handle;
+            return ShowDialog();
         }
 
         /// <summary>
@@ -120,21 +125,21 @@ namespace HaCreator.GUI
                 if (changedCount > 0)
                 {
                     checkBox_saveChangedImages.Enabled = true;
-                    checkBox_saveChangedImages.Checked = true;
-                    checkBox_saveChangedImages.Text = $"Save {changedCount} changed image(s) to source before packing";
+                    checkBox_saveChangedImages.IsChecked = true;
+                    checkBox_saveChangedImages.Content = DialogTextExtension.Format("Dialog_SaveChangedBeforePacking", changedCount);
                 }
                 else
                 {
                     checkBox_saveChangedImages.Enabled = false;
-                    checkBox_saveChangedImages.Checked = false;
-                    checkBox_saveChangedImages.Text = "No changed images to save";
+                    checkBox_saveChangedImages.IsChecked = false;
+            checkBox_saveChangedImages.Content = DialogTextExtension.Get("Dialog_NoChangedImages");
                 }
             }
             else
             {
                 checkBox_saveChangedImages.Enabled = false;
-                checkBox_saveChangedImages.Checked = false;
-                checkBox_saveChangedImages.Text = "No data source available";
+                checkBox_saveChangedImages.IsChecked = false;
+            checkBox_saveChangedImages.Content = DialogTextExtension.Get("Dialog_NoDataSource");
             }
         }
 
@@ -174,7 +179,7 @@ namespace HaCreator.GUI
                 // Mark the manifest encryption as recommended
                 if (enc == manifestEncryption)
                 {
-                    displayName += " (Recommended)";
+                    displayName += DialogTextExtension.Get("Dialog_RecommendedSuffix");
                     selectedIndex = i;
                 }
 
@@ -254,7 +259,8 @@ namespace HaCreator.GUI
             return 0;
         }
 
-        private void InitializeComponent()
+        #if false
+        private void InitializeLegacyComponent()
         {
             checkedListBox_categories = new CheckedListBox();
             label_outputPath = new Label();
@@ -298,7 +304,7 @@ namespace HaCreator.GUI
             label_outputPath.Name = "label_outputPath";
             label_outputPath.Size = new System.Drawing.Size(75, 15);
             label_outputPath.TabIndex = 5;
-            label_outputPath.Text = "Output path:";
+            label_outputPath.Text = DialogTextExtension.Get("Dialog_OutputPathLabel");
             // 
             // textBox_outputPath
             // 
@@ -315,7 +321,7 @@ namespace HaCreator.GUI
             button_browse.Name = "button_browse";
             button_browse.Size = new System.Drawing.Size(75, 23);
             button_browse.TabIndex = 7;
-            button_browse.Text = "Browse...";
+            button_browse.Text = DialogTextExtension.Get("Dialog_Browse_93C6B6");
             button_browse.UseVisualStyleBackColor = true;
             button_browse.Click += button_browse_Click;
             // 
@@ -326,7 +332,7 @@ namespace HaCreator.GUI
             button_pack.Name = "button_pack";
             button_pack.Size = new System.Drawing.Size(75, 23);
             button_pack.TabIndex = 11;
-            button_pack.Text = "Pack";
+            button_pack.Text = DialogTextExtension.Get("Dialog_Pack_80DC21");
             button_pack.UseVisualStyleBackColor = true;
             button_pack.Click += button_pack_Click;
             // 
@@ -337,7 +343,7 @@ namespace HaCreator.GUI
             button_cancel.Name = "button_cancel";
             button_cancel.Size = new System.Drawing.Size(75, 23);
             button_cancel.TabIndex = 12;
-            button_cancel.Text = "Close";
+            button_cancel.Text = DialogTextExtension.Get("Dialog_Close_7D9EB7");
             button_cancel.UseVisualStyleBackColor = true;
             button_cancel.Click += button_cancel_Click;
             // 
@@ -356,7 +362,7 @@ namespace HaCreator.GUI
             label_status.Name = "label_status";
             label_status.Size = new System.Drawing.Size(360, 15);
             label_status.TabIndex = 10;
-            label_status.Text = "Ready";
+            label_status.Text = DialogTextExtension.Get("Dialog_Ready_5FA7AA");
             // 
             // checkBox_64bit
             // 
@@ -365,7 +371,7 @@ namespace HaCreator.GUI
             checkBox_64bit.Name = "checkBox_64bit";
             checkBox_64bit.Size = new System.Drawing.Size(158, 19);
             checkBox_64bit.TabIndex = 8;
-            checkBox_64bit.Text = "Save as 64-bit WZ format";
+            checkBox_64bit.Text = DialogTextExtension.Get("Dialog_Save_as_64_bit_WZ_format_4BC4B4");
             checkBox_64bit.UseVisualStyleBackColor = true;
             checkBox_64bit.CheckedChanged += checkBox_64bit_CheckedChanged;
             // 
@@ -377,7 +383,7 @@ namespace HaCreator.GUI
             checkBox_separateCanvas.Name = "checkBox_separateCanvas";
             checkBox_separateCanvas.Size = new System.Drawing.Size(231, 19);
             checkBox_separateCanvas.TabIndex = 15;
-            checkBox_separateCanvas.Text = "Save images in separate _Canvas folder";
+            checkBox_separateCanvas.Text = DialogTextExtension.Get("Dialog_Save_images_in_a_separate_Canvas_folder_0133B6");
             checkBox_separateCanvas.UseVisualStyleBackColor = true;
             // 
             // label_versionInfo
@@ -387,7 +393,7 @@ namespace HaCreator.GUI
             label_versionInfo.Name = "label_versionInfo";
             label_versionInfo.Size = new System.Drawing.Size(58, 15);
             label_versionInfo.TabIndex = 0;
-            label_versionInfo.Text = "Unknown";
+            label_versionInfo.Text = DialogTextExtension.Get("Dialog_Unknown_B764CD");
             // 
             // button_selectAll
             // 
@@ -396,7 +402,7 @@ namespace HaCreator.GUI
             button_selectAll.Name = "button_selectAll";
             button_selectAll.Size = new System.Drawing.Size(75, 23);
             button_selectAll.TabIndex = 3;
-            button_selectAll.Text = "Select All";
+            button_selectAll.Text = DialogTextExtension.Get("Dialog_Select_all_1FC9A3");
             button_selectAll.UseVisualStyleBackColor = true;
             button_selectAll.Click += button_selectAll_Click;
             // 
@@ -407,7 +413,7 @@ namespace HaCreator.GUI
             button_selectNone.Name = "button_selectNone";
             button_selectNone.Size = new System.Drawing.Size(75, 23);
             button_selectNone.TabIndex = 4;
-            button_selectNone.Text = "Select None";
+            button_selectNone.Text = DialogTextExtension.Get("Dialog_Select_none_41AFE0");
             button_selectNone.UseVisualStyleBackColor = true;
             button_selectNone.Click += button_selectNone_Click;
             // 
@@ -418,7 +424,7 @@ namespace HaCreator.GUI
             label_patchVersion.Name = "label_patchVersion";
             label_patchVersion.Size = new System.Drawing.Size(122, 15);
             label_patchVersion.TabIndex = 13;
-            label_patchVersion.Text = "Patch Version (0=auto):";
+            label_patchVersion.Text = DialogTextExtension.Get("Dialog_PatchVersionLabel");
             // 
             // numericUpDown_patchVersion
             // 
@@ -440,7 +446,7 @@ namespace HaCreator.GUI
             groupBox1.Size = new System.Drawing.Size(378, 271);
             groupBox1.TabIndex = 16;
             groupBox1.TabStop = false;
-            groupBox1.Text = "Categories to pack:";
+            groupBox1.Text = DialogTextExtension.Get("Dialog_Categories_to_pack_28422D");
             // 
             // label_format
             // 
@@ -450,7 +456,7 @@ namespace HaCreator.GUI
             label_format.Name = "label_format";
             label_format.Size = new System.Drawing.Size(98, 15);
             label_format.TabIndex = 18;
-            label_format.Text = "Format: Standard";
+            label_format.Text = DialogTextExtension.Get("Dialog_FormatStandard");
             // 
             // checkBox_betaFormat
             // 
@@ -459,7 +465,7 @@ namespace HaCreator.GUI
             checkBox_betaFormat.Name = "checkBox_betaFormat";
             checkBox_betaFormat.Size = new System.Drawing.Size(135, 19);
             checkBox_betaFormat.TabIndex = 17;
-            checkBox_betaFormat.Text = "Pack as Beta Data.wz";
+            checkBox_betaFormat.Text = DialogTextExtension.Get("Dialog_Pack_as_Beta_Data_wz_D2F012");
             checkBox_betaFormat.UseVisualStyleBackColor = true;
             checkBox_betaFormat.CheckedChanged += checkBox_betaFormat_CheckedChanged;
             // 
@@ -470,7 +476,7 @@ namespace HaCreator.GUI
             label_encryption.Name = "label_encryption";
             label_encryption.Size = new System.Drawing.Size(67, 15);
             label_encryption.TabIndex = 19;
-            label_encryption.Text = "Encryption:";
+            label_encryption.Text = DialogTextExtension.Get("Dialog_Encryption_82F4E7");
             //
             // comboBox_encryption
             //
@@ -488,7 +494,7 @@ namespace HaCreator.GUI
             checkBox_saveChangedImages.Name = "checkBox_saveChangedImages";
             checkBox_saveChangedImages.Size = new System.Drawing.Size(200, 19);
             checkBox_saveChangedImages.TabIndex = 21;
-            checkBox_saveChangedImages.Text = "Save changed images to source";
+            checkBox_saveChangedImages.Text = DialogTextExtension.Get("Dialog_Save_changed_images_to_source_3FCA18");
             checkBox_saveChangedImages.UseVisualStyleBackColor = true;
             //
             // PackToWz
@@ -519,7 +525,7 @@ namespace HaCreator.GUI
             MinimizeBox = false;
             Name = "PackToWz";
             StartPosition = FormStartPosition.CenterParent;
-            Text = "Pack IMG Files to WZ";
+            Text = DialogTextExtension.Get("Dialog_Pack_IMG_files_to_WZ_11907C");
             FormClosing += PackToWz_FormClosing;
             ((System.ComponentModel.ISupportInitialize)numericUpDown_patchVersion).EndInit();
             groupBox1.ResumeLayout(false);
@@ -547,6 +553,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Label label_encryption;
         private System.Windows.Forms.ComboBox comboBox_encryption;
         private System.Windows.Forms.CheckBox checkBox_saveChangedImages;
+        #endif
 
         private void PopulateCategoriesList()
         {
@@ -581,7 +588,7 @@ namespace HaCreator.GUI
                             displayName = $"{category} (directory structure)";
                         }
 
-                        checkedListBox_categories.Items.Add(displayName, true);
+                        AddCategory(displayName, true);
                         addedCategories.Add(category);
                     }
                 }
@@ -619,47 +626,57 @@ namespace HaCreator.GUI
                         displayName = $"{dirName} (directory structure)";
                     }
 
-                    checkedListBox_categories.Items.Add(displayName, true);
+                    AddCategory(displayName, true);
                 }
             }
         }
 
-        private void button_selectAll_Click(object sender, EventArgs e)
+        private void AddCategory(string displayName, bool isChecked)
+        {
+            checkedListBox_categories.Items.Add(new CheckBox
+            {
+                Content = displayName,
+                IsChecked = isChecked,
+                Margin = new Thickness(2)
+            });
+        }
+
+        private void button_selectAll_Click(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i < checkedListBox_categories.Items.Count; i++)
             {
-                checkedListBox_categories.SetItemChecked(i, true);
+                if (checkedListBox_categories.Items[i] is CheckBox checkBox) checkBox.IsChecked = true;
             }
         }
 
-        private void button_selectNone_Click(object sender, EventArgs e)
+        private void button_selectNone_Click(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i < checkedListBox_categories.Items.Count; i++)
             {
-                checkedListBox_categories.SetItemChecked(i, false);
+                if (checkedListBox_categories.Items[i] is CheckBox checkBox) checkBox.IsChecked = false;
             }
         }
 
-        private void button_browse_Click(object sender, EventArgs e)
+        private void button_browse_Click(object sender, RoutedEventArgs e)
         {
-            using (var dialog = new FolderBrowserDialog())
+            using (var dialog = new Forms.FolderBrowserDialog())
             {
-                dialog.Description = "Select output folder for WZ files";
+                dialog.Description = DialogTextExtension.Get("Dialog_SelectWzOutputFolder");
                 dialog.SelectedPath = textBox_outputPath.Text;
 
-                if (dialog.ShowDialog() == DialogResult.OK)
+                if (dialog.ShowDialog() == Forms.DialogResult.OK)
                 {
                     textBox_outputPath.Text = dialog.SelectedPath;
                 }
             }
         }
 
-        private void checkBox_64bit_CheckedChanged(object sender, EventArgs e)
+        private void checkBox_64bit_CheckedChanged(object sender, RoutedEventArgs e)
         {
             UpdateFormatOptionsState();
         }
 
-        private void checkBox_betaFormat_CheckedChanged(object sender, EventArgs e)
+        private void checkBox_betaFormat_CheckedChanged(object sender, RoutedEventArgs e)
         {
             UpdateFormatOptionsState();
         }
@@ -670,22 +687,22 @@ namespace HaCreator.GUI
         /// </summary>
         private void UpdateFormatOptionsState()
         {
-            if (checkBox_betaFormat.Checked)
+            if (checkBox_betaFormat.IsChecked == true)
             {
                 // Beta format - disable 64-bit options
-                checkBox_64bit.Checked = false;
+                checkBox_64bit.IsChecked = false;
                 checkBox_64bit.Enabled = false;
-                checkBox_separateCanvas.Checked = false;
+                checkBox_separateCanvas.IsChecked = false;
                 checkBox_separateCanvas.Enabled = false;
             }
             else
             {
                 // Standard/64-bit format
                 checkBox_64bit.Enabled = true;
-                checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
-                if (!checkBox_64bit.Checked)
+                checkBox_separateCanvas.Enabled = checkBox_64bit.IsChecked == true;
+                if (checkBox_64bit.IsChecked != true)
                 {
-                    checkBox_separateCanvas.Checked = false;
+                    checkBox_separateCanvas.IsChecked = false;
                 }
             }
         }
@@ -710,8 +727,8 @@ namespace HaCreator.GUI
             try
             {
                 _versionInfo.Encryption = GetSelectedEncryption().ToString();
-                _versionInfo.Is64Bit = checkBox_64bit.Checked;
-                _versionInfo.IsBetaMs = checkBox_betaFormat.Checked;
+                _versionInfo.Is64Bit = checkBox_64bit.IsChecked == true;
+                _versionInfo.IsBetaMs = checkBox_betaFormat.IsChecked == true;
 
                 _versionInfo.PatchVersion = (short)numericUpDown_patchVersion.Value;
 
@@ -724,7 +741,7 @@ namespace HaCreator.GUI
             }
         }
 
-        private async void button_pack_Click(object sender, EventArgs e)
+        private async void button_pack_Click(object sender, RoutedEventArgs e)
         {
             if (_isPacking)
             {
@@ -735,50 +752,49 @@ namespace HaCreator.GUI
 
             // Get selected categories
             var selectedCategories = new List<string>();
-            foreach (var item in checkedListBox_categories.CheckedItems)
+            foreach (var item in checkedListBox_categories.Items.OfType<CheckBox>().Where(checkBox => checkBox.IsChecked == true))
             {
                 // Extract category name from display string (e.g., "String (15 images)" -> "String")
-                string displayName = item.ToString();
+                string displayName = item.Content?.ToString() ?? string.Empty;
                 string categoryName = displayName.Split(' ')[0];
                 selectedCategories.Add(categoryName);
             }
 
             if (selectedCategories.Count == 0)
             {
-                MessageBox.Show("Please select at least one category to pack.", "No Categories Selected",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(DialogTextExtension.Get("Dialog_SelectPackCategory"), DialogTextExtension.Get("Dialog_NoCategoriesSelected"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             string outputPath = textBox_outputPath.Text;
             if (string.IsNullOrWhiteSpace(outputPath))
             {
-                MessageBox.Show("Please specify an output path.", "Output Path Required",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(DialogTextExtension.Get("Dialog_SpecifyOutputPath"), DialogTextExtension.Get("Dialog_OutputPathRequired"),
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             // Save changed images to source if requested
-            if (checkBox_saveChangedImages.Checked && checkBox_saveChangedImages.Enabled && _imgDataSource != null)
+            if (checkBox_saveChangedImages.IsChecked == true && checkBox_saveChangedImages.Enabled && _imgDataSource != null)
             {
                 int changedCount = _imgDataSource.GetChangedImagesCount();
                 if (changedCount > 0)
                 {
-                    label_status.Text = $"Saving {changedCount} changed image(s) to source...";
-                    Application.DoEvents();
+                    label_status.Text = DialogTextExtension.Format("Dialog_SavingChangedImages", changedCount);
 
                     int savedCount = _imgDataSource.SaveAllChangedImages();
                     if (savedCount > 0)
                     {
-                        label_status.Text = $"Saved {savedCount} image(s) to source.";
+                        label_status.Text = DialogTextExtension.Format("Dialog_SavedChangedImages", savedCount);
                     }
                     else if (savedCount < changedCount)
                     {
                         MessageBox.Show(
-                            $"Warning: Only {savedCount} of {changedCount} changed images were saved successfully.",
-                            "Partial Save",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
+                            DialogTextExtension.Format("Dialog_PartialImageSave", savedCount, changedCount),
+                            DialogTextExtension.Get("Dialog_PartialSave"),
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
                     }
 
                     // Update the checkbox to reflect current state
@@ -790,15 +806,15 @@ namespace HaCreator.GUI
 
             // Start packing
             _isPacking = true;
-            button_pack.Text = "Cancel";
-            checkedListBox_categories.Enabled = false;
-            textBox_outputPath.Enabled = false;
-            button_browse.Enabled = false;
+            button_pack.Content = DialogTextExtension.Get("Dialog_Cancel_19766E");
+            checkedListBox_categories.IsEnabled = false;
+            textBox_outputPath.IsEnabled = false;
+            button_browse.IsEnabled = false;
             checkBox_64bit.Enabled = false;
             checkBox_separateCanvas.Enabled = false;
             checkBox_betaFormat.Enabled = false;
             checkBox_saveChangedImages.Enabled = false;
-            numericUpDown_patchVersion.Enabled = false;
+            numericUpDown_patchVersion.IsEnabled = false;
 
             try
             {
@@ -806,21 +822,14 @@ namespace HaCreator.GUI
 
                 var progress = new Progress<PackingProgress>(p =>
                 {
-                    if (InvokeRequired)
-                    {
-                        Invoke(() => UpdateProgress(p));
-                    }
-                    else
-                    {
-                        UpdateProgress(p);
-                    }
+                    UpdateProgress(p);
                 });
 
                 // Get selected encryption
                 WzMapleVersion selectedEncryption = GetSelectedEncryption();
 
                 PackingResult result;
-                if (checkBox_betaFormat.Checked)
+                if (checkBox_betaFormat.IsChecked == true)
                 {
                     // Use beta packing for single Data.wz format
                     result = await packingService.PackBetaDataWzAsync(
@@ -839,55 +848,53 @@ namespace HaCreator.GUI
                         _versionPath,
                         outputPath,
                         selectedCategories,
-                        checkBox_64bit.Checked,
+                        checkBox_64bit.IsChecked == true,
                         _cancellationTokenSource.Token,
                         progress,
                         (short)numericUpDown_patchVersion.Value,
-                        checkBox_separateCanvas.Checked,
+                        checkBox_separateCanvas.IsChecked == true,
                         selectedEncryption);
                 }
 
                 if (result.Success)
                 {
-                    label_status.Text = $"Completed! Packed {result.TotalImagesPacked} images.";
+                    label_status.Text = DialogTextExtension.Format("Dialog_PackCompletedStatus", result.TotalImagesPacked);
                     MessageBox.Show(
-                        $"Successfully packed {result.TotalImagesPacked} images into {result.CategoriesPacked.Count} WZ files.\n\n" +
-                        $"Output: {outputPath}\n" +
-                        $"Total size: {FormatFileSize(result.TotalOutputSize)}\n" +
-                        $"Duration: {result.Duration.TotalSeconds:F1} seconds",
-                        "Packing Complete",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                        DialogTextExtension.Format("Dialog_PackSuccessSummary", result.TotalImagesPacked,
+                            result.CategoriesPacked.Count, outputPath, FormatFileSize(result.TotalOutputSize), result.Duration.TotalSeconds),
+                        DialogTextExtension.Get("Dialog_PackingComplete"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
                 }
                 else
                 {
-                    label_status.Text = $"Failed: {result.ErrorMessage}";
+                    label_status.Text = DialogTextExtension.Format("Dialog_FailedWithMessage", result.ErrorMessage);
                     MessageBox.Show(
-                        $"Packing failed: {result.ErrorMessage}",
-                        "Packing Failed",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                        DialogTextExtension.Format("Dialog_PackingFailedMessage", result.ErrorMessage),
+                        DialogTextExtension.Get("Dialog_PackingFailed"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
                 }
             }
             catch (OperationCanceledException)
             {
-                label_status.Text = "Cancelled";
-                MessageBox.Show("Packing was cancelled.", "Cancelled", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                label_status.Text = DialogTextExtension.Get("Dialog_Cancelled");
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_PackingCancelled"), DialogTextExtension.Get("Dialog_Cancelled"), MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                label_status.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error during packing: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                label_status.Text = DialogTextExtension.Format("Dialog_ErrorWithMessage", ex.Message);
+                MessageBox.Show(this, DialogTextExtension.Format("Dialog_PackingException", ex.Message), DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 _isPacking = false;
-                button_pack.Text = "Pack";
-                checkedListBox_categories.Enabled = true;
-                textBox_outputPath.Enabled = true;
-                button_browse.Enabled = true;
+            button_pack.Content = DialogTextExtension.Get("Dialog_Pack_80DC21");
+                checkedListBox_categories.IsEnabled = true;
+                textBox_outputPath.IsEnabled = true;
+                button_browse.IsEnabled = true;
                 checkBox_betaFormat.Enabled = true;
-                numericUpDown_patchVersion.Enabled = true;
+                numericUpDown_patchVersion.IsEnabled = true;
                 // Re-enable format options based on current checkbox state
                 UpdateFormatOptionsState();
                 // Update changed images count after packing
@@ -901,7 +908,7 @@ namespace HaCreator.GUI
             label_status.Text = $"{progress.CurrentPhase}: {progress.CurrentFile ?? ""} ({progress.ProcessedFiles}/{progress.TotalFiles})";
         }
 
-        private void button_cancel_Click(object sender, EventArgs e)
+        private void button_cancel_Click(object sender, RoutedEventArgs e)
         {
             if (_isPacking)
             {
@@ -913,13 +920,13 @@ namespace HaCreator.GUI
             }
         }
 
-        private void PackToWz_FormClosing(object sender, FormClosingEventArgs e)
+        private void PackToWz_FormClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (_isPacking)
             {
                 e.Cancel = true;
-                MessageBox.Show("Please wait for packing to complete or cancel it first.",
-                    "Packing in Progress", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(DialogTextExtension.Get("Dialog_WaitForPacking"),
+                    DialogTextExtension.Get("Dialog_PackingInProgress"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             else
             {

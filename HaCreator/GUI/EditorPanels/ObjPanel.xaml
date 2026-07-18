@@ -1,0 +1,59 @@
+<UserControl x:Class="HaCreator.GUI.EditorPanels.ObjPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:HaCreator.GUI.EditorPanels">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="210"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid Margin="8,8,8,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="Object set"/>
+            <ListBox x:Name="objSetListBox" Grid.Row="1" Margin="0,5,0,8"
+                     SelectionChanged="ObjSetListBox_SelectionChanged"/>
+            <TextBlock Grid.Row="2" Style="{StaticResource HareSectionTitleStyle}" Text="Variant"/>
+            <ListBox x:Name="objL1ListBox" Grid.Row="3" Margin="0,5,0,0"
+                     SelectionChanged="ObjL1ListBox_SelectionChanged"/>
+
+            <TextBlock Grid.Column="2" Style="{StaticResource HareSectionTitleStyle}" Text="Category"/>
+            <ListBox x:Name="objL0ListBox" Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Margin="0,5,0,0"
+                     SelectionChanged="ObjL0ListBox_SelectionChanged"/>
+        </Grid>
+
+        <local:AssetGallery x:Name="objImagesContainer" Grid.Row="1"
+                            ItemActivated="ObjImagesContainer_ItemActivated">
+            <local:AssetGallery.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Click="SaveItem_Click" Header="Save image…"/>
+                    <MenuItem Click="UpscaleItem_Click" Header="AI upscale…"/>
+                    <Separator/>
+                    <MenuItem Click="DeleteItem_Click" Header="Delete object"
+                              Foreground="{StaticResource HareDangerBrush}"/>
+                </ContextMenu>
+            </local:AssetGallery.ContextMenu>
+        </local:AssetGallery>
+
+        <Button x:Name="button_addImage" Grid.Row="2" Margin="8"
+                Style="{StaticResource HarePrimaryButtonStyle}"
+                IsEnabled="False" Click="ButtonAddImage_Click" Content="Add custom object…"/>
+    </Grid>
+</UserControl>

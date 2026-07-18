@@ -1,5 +1,6 @@
 using Footholds;
 using HaSharedLibrary.GUI;
+using HaCreator.GUI.Localization;
 using HaSharedLibrary.Util;
 using MapleLib;
 using MapleLib.Configuration;
@@ -11,17 +12,19 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI
 {
-    public partial class UnpackWzToImg : Form
+    public partial class UnpackWzToImg : Window
     {
         private const int AutoDetectEncryptionSelection = -1;
         private CancellationTokenSource _cancellationTokenSource;
@@ -46,8 +49,18 @@ namespace HaCreator.GUI
             // Setup log listbox for copy functionality
             SetupLogListBoxCopySupport();
 
-            versionBox.SelectedIndexChanged += VersionBox_SelectedIndexChanged;
-            comboBox_writeEncryption.SelectedIndexChanged += ComboBox_writeEncryption_SelectedIndexChanged;
+            versionBox.SelectionChanged += VersionBox_SelectedIndexChanged;
+            comboBox_writeEncryption.SelectionChanged += ComboBox_writeEncryption_SelectedIndexChanged;
+            Initialization_Load(this, EventArgs.Empty);
+        }
+
+        public bool? ShowDialog(Forms.IWin32Window owner)
+        {
+            if (owner != null)
+            {
+                new System.Windows.Interop.WindowInteropHelper(this).Owner = owner.Handle;
+            }
+            return ShowDialog();
         }
 
         /// <summary>
@@ -56,35 +69,32 @@ namespace HaCreator.GUI
         private void SetupLogListBoxCopySupport()
         {
             // Enable multi-select for copying multiple lines
-            listBox_log.SelectionMode = SelectionMode.MultiExtended;
+            listBox_log.SelectionMode = SelectionMode.Extended;
 
             // Add keyboard shortcuts (Ctrl+C, Ctrl+A)
             listBox_log.KeyDown += ListBox_log_KeyDown;
 
             // Add context menu for copy
-            var contextMenu = new ContextMenuStrip();
-            var copyItem = new ToolStripMenuItem("Copy", null, (s, e) => CopySelectedLogItems());
-            copyItem.ShortcutKeys = Keys.Control | Keys.C;
-            var selectAllItem = new ToolStripMenuItem("Select All", null, (s, e) => SelectAllLogItems());
-            selectAllItem.ShortcutKeys = Keys.Control | Keys.A;
-            var copyAllItem = new ToolStripMenuItem("Copy All", null, (s, e) => CopyAllLogItems());
-
-            contextMenu.Items.Add(copyItem);
-            contextMenu.Items.Add(selectAllItem);
-            contextMenu.Items.Add(new ToolStripSeparator());
+            var contextMenu = new ContextMenu();
+            contextMenu.Items.Add(new MenuItem { Header = DialogTextExtension.Get("Dialog_Copy"), Command = ApplicationCommands.Copy });
+            contextMenu.Items.Add(new MenuItem { Header = DialogTextExtension.Get("Dialog_SelectAll"), Command = ApplicationCommands.SelectAll });
+            contextMenu.Items.Add(new Separator());
+            var copyAllItem = new MenuItem { Header = DialogTextExtension.Get("Dialog_CopyAll") };
+            copyAllItem.Click += (_, _) => CopyAllLogItems();
             contextMenu.Items.Add(copyAllItem);
-
-            listBox_log.ContextMenuStrip = contextMenu;
+            listBox_log.ContextMenu = contextMenu;
+            listBox_log.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, _) => CopySelectedLogItems()));
+            listBox_log.CommandBindings.Add(new CommandBinding(ApplicationCommands.SelectAll, (_, _) => SelectAllLogItems()));
         }
 
-        private void ListBox_log_KeyDown(object sender, KeyEventArgs e)
+        private void ListBox_log_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (e.Control && e.KeyCode == Keys.C)
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.C)
             {
                 CopySelectedLogItems();
                 e.Handled = true;
             }
-            else if (e.Control && e.KeyCode == Keys.A)
+            else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.A)
             {
                 SelectAllLogItems();
                 e.Handled = true;
@@ -108,7 +118,7 @@ namespace HaCreator.GUI
         {
             for (int i = 0; i < listBox_log.Items.Count; i++)
             {
-                listBox_log.SetSelected(i, true);
+                listBox_log.SelectedItems.Add(listBox_log.Items[i]);
             }
         }
 
@@ -158,9 +168,9 @@ namespace HaCreator.GUI
                     })
                     .ToList();
 
-            comboBox_localisation.DataSource = values;
-            comboBox_localisation.DisplayMember = "Text";
-            comboBox_localisation.ValueMember = "Value";
+            comboBox_localisation.ItemsSource = values;
+            comboBox_localisation.DisplayMemberPath = "Text";
+            comboBox_localisation.SelectedValuePath = "Value";
 
             var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault();
             comboBox_localisation.SelectedItem = savedLocaliation ?? values[0];
@@ -174,15 +184,15 @@ namespace HaCreator.GUI
         /// <summary>
         /// On select path button click
         /// </summary>
-        private void button_pathSelect_Click(object sender, EventArgs e)
+        private void button_pathSelect_Click(object sender, RoutedEventArgs e)
         {
-            using (var dialog = new FolderBrowserDialog())
+            using (var dialog = new Forms.FolderBrowserDialog())
             {
-                dialog.Description = "Select export folder";
+                dialog.Description = DialogTextExtension.Get("Dialog_SelectExportFolder");
                 dialog.ShowNewFolderButton = true;
                 dialog.RootFolder = Environment.SpecialFolder.ProgramFiles;
 
-                if (dialog.ShowDialog() == DialogResult.OK)
+                if (dialog.ShowDialog() == Forms.DialogResult.OK)
                 {
                     string selectedPath = dialog.SelectedPath;
                     textBox_path.Text = selectedPath;
@@ -194,12 +204,12 @@ namespace HaCreator.GUI
         /// <summary>
         /// On path text changed
         /// </summary>
-        private void textBox_path_TextChanged(object sender, EventArgs e)
+        private void textBox_path_TextChanged(object sender, TextChangedEventArgs e)
         {
             UpdateButtonState();
         }
 
-        private void textBox_versionName_TextChanged(object sender, EventArgs e)
+        private void textBox_versionName_TextChanged(object sender, TextChangedEventArgs e)
         {
             UpdateButtonState();
         }
@@ -208,25 +218,25 @@ namespace HaCreator.GUI
         {
             if (_isExtracting)
             {
-                button_unpack.Text = "Cancel";
-                button_unpack.Enabled = true;
-                button_scanWzFiles.Enabled = false;
-                button_selectAll.Enabled = false;
-                button_selectNone.Enabled = false;
+            button_unpack.Content = DialogTextExtension.Get("Dialog_Cancel");
+                button_unpack.IsEnabled = true;
+                button_scanWzFiles.IsEnabled = false;
+                button_selectAll.IsEnabled = false;
+                button_selectNone.IsEnabled = false;
                 return;
             }
 
-            button_unpack.Text = "Extract";
-            button_scanWzFiles.Enabled = true;
-            button_selectAll.Enabled = checkedListBox_wzFiles.Items.Count > 0;
-            button_selectNone.Enabled = checkedListBox_wzFiles.Items.Count > 0;
+            button_unpack.Content = DialogTextExtension.Get("Dialog_Extract");
+            button_scanWzFiles.IsEnabled = true;
+            button_selectAll.IsEnabled = checkedListBox_wzFiles.Items.Count > 0;
+            button_selectNone.IsEnabled = checkedListBox_wzFiles.Items.Count > 0;
 
             bool pathValid = !string.IsNullOrEmpty(textBox_path.Text) && Directory.Exists(textBox_path.Text);
             bool versionValid = !string.IsNullOrEmpty(textBox_versionName.Text);
-            bool hasSelectedFiles = checkedListBox_wzFiles.CheckedItems.Count > 0;
+            bool hasSelectedFiles = GetCheckedFiles().Any();
             bool hasMapleStoryPath = !string.IsNullOrEmpty(_mapleStoryPath) && Directory.Exists(_mapleStoryPath);
 
-            button_unpack.Enabled = pathValid && versionValid && hasSelectedFiles && hasMapleStoryPath;
+            button_unpack.IsEnabled = pathValid && versionValid && hasSelectedFiles && hasMapleStoryPath;
         }
 
         private static List<EncryptionSelectionItem> BuildEncryptionOptions(bool includeAutoDetect)
@@ -240,7 +250,7 @@ namespace HaCreator.GUI
 
             if (includeAutoDetect)
             {
-                options.Add(new EncryptionSelectionItem("Auto-Detect", AutoDetectEncryptionSelection));
+            options.Add(new EncryptionSelectionItem(DialogTextExtension.Get("Dialog_AutoDetect"), AutoDetectEncryptionSelection));
             }
 
             return options;
@@ -249,13 +259,13 @@ namespace HaCreator.GUI
         private void PopulateReadEncryptionOptions()
         {
             versionBox.Items.Clear();
-            versionBox.Items.AddRange(BuildEncryptionOptions(includeAutoDetect: true).ToArray());
+            foreach (var option in BuildEncryptionOptions(includeAutoDetect: true)) versionBox.Items.Add(option);
         }
 
         private void PopulateWriteEncryptionOptions()
         {
             comboBox_writeEncryption.Items.Clear();
-            comboBox_writeEncryption.Items.AddRange(BuildEncryptionOptions(includeAutoDetect: false).ToArray());
+            foreach (var option in BuildEncryptionOptions(includeAutoDetect: false)) comboBox_writeEncryption.Items.Add(option);
         }
 
         private void VersionBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -289,7 +299,7 @@ namespace HaCreator.GUI
         private void ShowCustomEncryptionEditor()
         {
             using var customWzInputBox = new SharedCustomWzEncryptionInputBox();
-            customWzInputBox.ShowDialog(this);
+            customWzInputBox.ShowDialog();
             ConfigureCustomEncryptionFromSettings();
         }
 
@@ -365,7 +375,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// On unpack/cancel button click
         /// </summary>
-        private async void button_unpack_Click(object sender, EventArgs e)
+        private async void button_unpack_Click(object sender, RoutedEventArgs e)
         {
             if (_isExtracting)
             {
@@ -435,13 +445,13 @@ namespace HaCreator.GUI
                     if (!string.IsNullOrEmpty(baseWzPath) && File.Exists(baseWzPath))
                     {
                         mapleVer = MapleLib.WzLib.Util.WzTool.DetectMapleVersion(baseWzPath, out _);
-                        listBox_log.Items.Add($"Auto-detected encryption: {mapleVer} (64-bit: {is64Bit})");
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_AutoDetectedEncryption", mapleVer, is64Bit));
                     }
                     else
                     {
                         // Default to BMS (IV {0,0,0,0}) for consistent cross-version IMG filesystem data.
                         mapleVer = WzMapleVersion.BMS;
-                        listBox_log.Items.Add($"Could not auto-detect, defaulting to: {mapleVer}");
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_AutoDetectDefault", mapleVer));
                     }
                 }
                 else
@@ -462,23 +472,20 @@ namespace HaCreator.GUI
 
                 if (string.IsNullOrEmpty(outputFolder) || !Directory.Exists(outputFolder))
                 {
-                    MessageBox.Show("Please select a valid output folder.", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_SelectValidOutputFolder"), DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
                 if (string.IsNullOrEmpty(_mapleStoryPath) || !Directory.Exists(_mapleStoryPath))
                 {
-                    MessageBox.Show("Please scan WZ files first.", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_ScanWzFirst"), DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
                 var selectedCategories = GetSelectedCategories();
                 if (selectedCategories.Count == 0)
                 {
-                    MessageBox.Show("Please select at least one WZ file to extract.", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_SelectWzToExtract"), DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
@@ -487,13 +494,13 @@ namespace HaCreator.GUI
                 // Check if version already exists
                 if (Directory.Exists(versionOutputPath))
                 {
-                    var result = MessageBox.Show(
-                        $"A version folder '{versionName}' already exists. Do you want to overwrite it?",
-                        "Confirm Overwrite",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
+                    var result = MessageBox.Show(this,
+                DialogTextExtension.Format("Dialog_VersionFolderExists", versionName),
+                DialogTextExtension.Get("Dialog_ConfirmOverwrite"),
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
 
-                    if (result != DialogResult.Yes)
+                    if (result != MessageBoxResult.Yes)
                         return;
 
                     // Delete existing folder
@@ -502,11 +509,11 @@ namespace HaCreator.GUI
 
                 // Reset progress
                 progressBar.Value = 0;
-                progressBar.Style = ProgressBarStyle.Continuous;
-                textBox_status.Text = $"Starting extraction of {selectedCategories.Count} WZ files...";
+                progressBar.IsIndeterminate = false;
+                textBox_status.Text = DialogTextExtension.Format("Dialog_StartingWzExtraction", selectedCategories.Count);
                 listBox_log.Items.Clear();
-                listBox_log.Items.Add($"Selected {selectedCategories.Count} categories: {string.Join(", ", selectedCategories.Take(5))}{(selectedCategories.Count > 5 ? "..." : "")}");
-                Application.DoEvents();
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_SelectedCategories", selectedCategories.Count,
+                    string.Join(", ", selectedCategories.Take(5)) + (selectedCategories.Count > 5 ? "..." : string.Empty)));
 
                 // Create progress reporter
                 var progress = new Progress<ExtractionProgress>(p =>
@@ -531,59 +538,51 @@ namespace HaCreator.GUI
                 if (extractionResult.Success)
                 {
                     progressBar.Value = 100;
-                    textBox_status.Text = $"Extraction complete! {extractionResult.TotalImagesExtracted} images extracted.";
-                    listBox_log.Items.Add($"=== Extraction Complete ===");
-                    listBox_log.Items.Add($"Total images: {extractionResult.TotalImagesExtracted}");
-                    listBox_log.Items.Add($"Total size: {FormatBytes(extractionResult.TotalSize)}");
-                    listBox_log.Items.Add($"Links resolved: {extractionResult.TotalLinksResolved}");
+                    textBox_status.Text = DialogTextExtension.Format("Dialog_ExtractionCompleteStatus", extractionResult.TotalImagesExtracted);
+                    listBox_log.Items.Add(DialogTextExtension.Get("Dialog_ExtractionCompleteLog"));
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_TotalImages", extractionResult.TotalImagesExtracted));
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_TotalSize", FormatBytes(extractionResult.TotalSize)));
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_LinksResolved", extractionResult.TotalLinksResolved));
                     if (extractionResult.TotalLinksFailed > 0)
                     {
-                        listBox_log.Items.Add($"Links failed: {extractionResult.TotalLinksFailed} (missing in original WZ)");
+                        listBox_log.Items.Add(DialogTextExtension.Format("Dialog_LinksFailed", extractionResult.TotalLinksFailed));
                     }
-                    listBox_log.Items.Add($"Duration: {extractionResult.Duration.TotalSeconds:F1}s");
-                    listBox_log.Items.Add($"Output: {versionOutputPath}");
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_DurationSeconds", extractionResult.Duration.TotalSeconds));
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_OutputPath", versionOutputPath));
 
                     // Automatically add the extracted version to the version selector
                     AddExtractedVersionToSelector(versionOutputPath);
 
-                    string linksInfo = $"Links resolved: {extractionResult.TotalLinksResolved}" +
-                        (extractionResult.TotalLinksFailed > 0 ? $" (missing in original WZ: {extractionResult.TotalLinksFailed})" : "") + "\n";
-
-                    MessageBox.Show(
-                        $"Extraction complete!\n\n" +
-                        $"Images extracted: {extractionResult.TotalImagesExtracted}\n" +
-                        $"Total size: {FormatBytes(extractionResult.TotalSize)}\n" +
-                        linksInfo +
-                        $"Duration: {extractionResult.Duration.TotalSeconds:F1} seconds\n" +
-                        $"Output: {versionOutputPath}\n\n" +
-                        $"The version has been added to HaCreator's version selector.",
-                        "Success",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    MessageBox.Show(this,
+                        DialogTextExtension.Format("Dialog_UnpackSuccessSummary", extractionResult.TotalImagesExtracted,
+                            FormatBytes(extractionResult.TotalSize), extractionResult.TotalLinksResolved,
+                            extractionResult.TotalLinksFailed, extractionResult.Duration.TotalSeconds, versionOutputPath),
+                        DialogTextExtension.Get("Dialog_Success"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
                 }
                 else
                 {
-                    textBox_status.Text = $"Extraction failed: {extractionResult.ErrorMessage}";
-                    listBox_log.Items.Add($"ERROR: {extractionResult.ErrorMessage}");
+                    textBox_status.Text = DialogTextExtension.Format("Dialog_ExtractionFailedStatus", extractionResult.ErrorMessage);
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_ErrorLog", extractionResult.ErrorMessage));
 
-                    MessageBox.Show(
-                        $"Extraction failed:\n{extractionResult.ErrorMessage}",
-                        "Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    MessageBox.Show(this,
+                        DialogTextExtension.Format("Dialog_ExtractionFailedMessage", extractionResult.ErrorMessage),
+                        DialogTextExtension.Get("Dialog_Error"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
                 }
             }
             catch (OperationCanceledException)
             {
-                textBox_status.Text = "Extraction cancelled.";
-                listBox_log.Items.Add("Extraction was cancelled by user.");
+                textBox_status.Text = DialogTextExtension.Get("Dialog_ExtractionCancelled");
+                listBox_log.Items.Add(DialogTextExtension.Get("Dialog_ExtractionCancelledByUser"));
             }
             catch (Exception ex)
             {
-                textBox_status.Text = $"Error: {ex.Message}";
-                listBox_log.Items.Add($"ERROR: {ex.Message}");
-                MessageBox.Show($"An error occurred:\n{ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                textBox_status.Text = DialogTextExtension.Format("Dialog_ErrorWithMessage", ex.Message);
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_ErrorLog", ex.Message));
+                MessageBox.Show(this, DialogTextExtension.Format("Dialog_ErrorOccurred", ex.Message), DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -598,13 +597,13 @@ namespace HaCreator.GUI
         #region Progress Updates
         private void UpdateProgress(ExtractionProgress progress)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                Invoke(new Action(() => UpdateProgress(progress)));
+                Dispatcher.Invoke(() => UpdateProgress(progress));
                 return;
             }
 
-            textBox_status.Text = $"{progress.CurrentPhase}: {progress.CurrentFile}";
+            textBox_status.Text = DialogTextExtension.Format("Dialog_ProgressPhaseFile", progress.CurrentPhase, progress.CurrentFile);
 
             if (progress.TotalFiles > 0)
             {
@@ -620,73 +619,74 @@ namespace HaCreator.GUI
 
         private void OnCategoryStarted(object sender, CategoryExtractionEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                Invoke(new Action(() => OnCategoryStarted(sender, e)));
+                Dispatcher.Invoke(() => OnCategoryStarted(sender, e));
                 return;
             }
 
-            listBox_log.Items.Add($"Starting: {e.Category}");
-            listBox_log.TopIndex = listBox_log.Items.Count - 1;
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_StartingCategory", e.Category));
+            listBox_log.ScrollIntoView(listBox_log.Items[^1]);
         }
 
         private void OnCategoryCompleted(object sender, CategoryExtractionEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                Invoke(new Action(() => OnCategoryCompleted(sender, e)));
+                Dispatcher.Invoke(() => OnCategoryCompleted(sender, e));
                 return;
             }
 
             if (e.Result != null)
             {
                 string linksInfo = e.Result.LinksResolved > 0
-                    ? $", {e.Result.LinksResolved} links resolved"
+                    ? DialogTextExtension.Format("Dialog_LinksResolvedSuffix", e.Result.LinksResolved)
                     : "";
-                listBox_log.Items.Add($"  Completed: {e.Category} - {e.Result.ImagesExtracted} images ({FormatBytes(e.Result.TotalSize)}{linksInfo})");
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_CategoryCompleted", e.Category,
+                    e.Result.ImagesExtracted, FormatBytes(e.Result.TotalSize), linksInfo));
 
                 if (e.Result.Errors.Count > 0)
                 {
                     foreach (var error in e.Result.Errors.Take(3))
                     {
-                        listBox_log.Items.Add($"    Warning: {error}");
+                        listBox_log.Items.Add(DialogTextExtension.Format("Dialog_WarningLog", error));
                     }
                     if (e.Result.Errors.Count > 3)
                     {
-                        listBox_log.Items.Add($"    ... and {e.Result.Errors.Count - 3} more warnings");
+                        listBox_log.Items.Add(DialogTextExtension.Format("Dialog_MoreWarnings", e.Result.Errors.Count - 3));
                     }
                 }
             }
-            listBox_log.TopIndex = listBox_log.Items.Count - 1;
+            if (listBox_log.Items.Count > 0) listBox_log.ScrollIntoView(listBox_log.Items[^1]);
         }
 
         private void OnExtractionError(object sender, ExtractionErrorEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                Invoke(new Action(() => OnExtractionError(sender, e)));
+                Dispatcher.Invoke(() => OnExtractionError(sender, e));
                 return;
             }
 
-            listBox_log.Items.Add($"ERROR: {e.Exception.Message}");
-            listBox_log.TopIndex = listBox_log.Items.Count - 1;
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_ErrorLog", e.Exception.Message));
+            listBox_log.ScrollIntoView(listBox_log.Items[^1]);
         }
         #endregion
 
         #region WZ File Selection
         private string _mapleStoryPath;
 
-        private void button_scanWzFiles_Click(object sender, EventArgs e)
+        private void button_scanWzFiles_Click(object sender, RoutedEventArgs e)
         {
-            using (OpenFileDialog baseWzSelect = new()
+            using (Forms.OpenFileDialog baseWzSelect = new()
             {
-                Filter = "MapleStory WZ|Base.wz;Base_000.wz;Data.wz|All WZ files (*.wz)|*.wz|All files (*.*)|*.*",
-                Title = "Select Base.wz, Data.wz (beta), or Base_000.wz (64-bit) from MapleStory installation",
+                Filter = DialogTextExtension.Get("Dialog_WzFileFilter"),
+                Title = DialogTextExtension.Get("Dialog_SelectBaseWzTitle"),
                 CheckFileExists = true,
                 CheckPathExists = true
             })
             {
-                if (baseWzSelect.ShowDialog() != DialogResult.OK)
+                if (baseWzSelect.ShowDialog() != Forms.DialogResult.OK)
                     return;
 
                 string wzFullPath = Path.GetFullPath(baseWzSelect.FileName);
@@ -705,9 +705,8 @@ namespace HaCreator.GUI
                     if (File.Exists(skillWzPath) || File.Exists(stringWzPath) || File.Exists(characterWzPath))
                     {
                         // This is likely a hotfix Data.wz, not beta - treat as standard installation
-                        MessageBox.Show("This appears to be a hotfix Data.wz file, not a beta MapleStory installation.\n" +
-                            "Please select Base.wz for standard installations.",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_HotfixDataWzSelected"),
+                    DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
                 }
@@ -728,9 +727,8 @@ namespace HaCreator.GUI
                     // Verify this looks like a valid 64-bit installation
                     if (!Directory.Exists(Path.Combine(_mapleStoryPath, "Data")))
                     {
-                        MessageBox.Show("Could not detect MapleStory installation directory from the selected file.\n" +
-                            "Please select Base.wz from a standard installation or Base_000.wz from a 64-bit installation (in Data/Base folder).",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, DialogTextExtension.Get("Dialog_CannotDetectFromSelectedWz"),
+                        DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
                 }
@@ -752,16 +750,15 @@ namespace HaCreator.GUI
 
                     if (string.IsNullOrEmpty(_mapleStoryPath) || !Directory.Exists(Path.Combine(_mapleStoryPath, "Data")))
                     {
-                        MessageBox.Show("Could not detect MapleStory installation directory.\n" +
-                            "Please select Base.wz from a standard installation or any .wz file from a 64-bit installation's Data folder.",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, DialogTextExtension.Get("Dialog_CannotDetectMapleDirectory"),
+                        DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
                 }
                 else
                 {
-                    MessageBox.Show("Please select Base.wz (standard), Data.wz (beta), or Base_000.wz (64-bit from Data/Base folder).",
-                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, DialogTextExtension.Get("Dialog_SelectSupportedBaseWz"),
+                    DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
@@ -815,7 +812,7 @@ namespace HaCreator.GUI
                                 int imageCount = dir.CountImages();
 
                                 bool isStandard = WzExtractionService.STANDARD_WZ_FILES.Contains(dirName, StringComparer.OrdinalIgnoreCase);
-                                string displayText = $"{dirName} ({imageCount} images) [from Data.wz]";
+                    string displayText = DialogTextExtension.Format("Dialog_DataWzCategoryDisplay", dirName, imageCount);
                                 wzFiles.Add(new WzFileInfo(dirName, displayText, isStandard));
                             }
 
@@ -823,24 +820,24 @@ namespace HaCreator.GUI
                             if (wzFile.WzDirectory.WzImages != null && wzFile.WzDirectory.WzImages.Count > 0)
                             {
                                 int rootImageCount = wzFile.WzDirectory.WzImages.Count;
-                                wzFiles.Add(new WzFileInfo("_Root", $"_Root ({rootImageCount} images) [from Data.wz]", false));
+                wzFiles.Add(new WzFileInfo("_Root", DialogTextExtension.Format("Dialog_DataWzCategoryDisplay", "_Root", rootImageCount), false));
                             }
 
-                            listBox_log.Items.Add($"Detected beta Data.wz format ({FormatBytes(dataWzSize)}, encryption: {encryption})");
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_DetectedBetaDataWz", FormatBytes(dataWzSize), encryption));
                         }
                         else
                         {
-                            listBox_log.Items.Add($"Failed to parse Data.wz: {parseStatus}");
-                            MessageBox.Show($"Failed to parse Data.wz: {parseStatus}\n\nTry selecting a different encryption version.",
-                                "Parse Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    listBox_log.Items.Add(DialogTextExtension.Format("Dialog_DataWzParseFailed", parseStatus));
+                    MessageBox.Show(this, DialogTextExtension.Format("Dialog_DataWzParseFailedTryEncryption", parseStatus),
+                        DialogTextExtension.Get("Dialog_ParseError"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    listBox_log.Items.Add($"Error reading Data.wz: {ex.Message}");
-                    MessageBox.Show($"Error reading Data.wz: {ex.Message}\n\nTry selecting a different encryption version.",
-                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_DataWzReadError", ex.Message));
+                MessageBox.Show(this, DialogTextExtension.Format("Dialog_DataWzReadErrorTryEncryption", ex.Message),
+                    DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             else if (is64Bit)
@@ -887,11 +884,12 @@ namespace HaCreator.GUI
                             string displayText;
                             if (canvasWzCount > 0)
                             {
-                                displayText = $"{dirName} ({FormatBytes(totalSize)}, {mainWzCount} + {canvasWzCount} canvas files)";
+                    displayText = DialogTextExtension.Format("Dialog_WzCategoryCanvasDisplay", dirName,
+                        FormatBytes(totalSize), mainWzCount, canvasWzCount);
                             }
                             else
                             {
-                                displayText = $"{dirName} ({FormatBytes(totalSize)}, {mainWzCount} files)";
+                    displayText = DialogTextExtension.Format("Dialog_WzCategoryDisplay", dirName, FormatBytes(totalSize), mainWzCount);
                             }
 
                             bool isStandard = WzExtractionService.STANDARD_WZ_FILES.Contains(dirName, StringComparer.OrdinalIgnoreCase);
@@ -907,7 +905,7 @@ namespace HaCreator.GUI
                         if (allMsFiles.Count > 0)
                         {
                             long totalSize = allMsFiles.Sum(f => new FileInfo(f).Length);
-                            string displayText = $"Packs ({FormatBytes(totalSize)}, {allMsFiles.Count} .ms files)";
+                string displayText = DialogTextExtension.Format("Dialog_PacksDisplay", FormatBytes(totalSize), allMsFiles.Count);
                             // Mark as standard so it's checked by default
                             wzFiles.Add(new WzFileInfo("Packs", displayText, true));
                         }
@@ -938,12 +936,10 @@ namespace HaCreator.GUI
 
             foreach (var file in sorted)
             {
-                checkedListBox_wzFiles.Items.Add(file);
-                // Auto-check standard files
-                if (file.IsStandard)
-                {
-                    checkedListBox_wzFiles.SetItemChecked(checkedListBox_wzFiles.Items.Count - 1, true);
-                }
+                var checkBox = new CheckBox { Content = file, IsChecked = file.IsStandard, Margin = new Thickness(2) };
+                checkBox.Checked += (_, _) => UpdateButtonState();
+                checkBox.Unchecked += (_, _) => UpdateButtonState();
+                checkedListBox_wzFiles.Items.Add(checkBox);
             }
 
             UpdateButtonState();
@@ -964,34 +960,37 @@ namespace HaCreator.GUI
             return false;
         }
 
-        private void button_selectAll_Click(object sender, EventArgs e)
+        private void button_selectAll_Click(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i < checkedListBox_wzFiles.Items.Count; i++)
             {
-                checkedListBox_wzFiles.SetItemChecked(i, true);
+                if (checkedListBox_wzFiles.Items[i] is CheckBox checkBox) checkBox.IsChecked = true;
             }
         }
 
-        private void button_selectNone_Click(object sender, EventArgs e)
+        private void button_selectNone_Click(object sender, RoutedEventArgs e)
         {
             for (int i = 0; i < checkedListBox_wzFiles.Items.Count; i++)
             {
-                checkedListBox_wzFiles.SetItemChecked(i, false);
+                if (checkedListBox_wzFiles.Items[i] is CheckBox checkBox) checkBox.IsChecked = false;
             }
         }
 
         private List<string> GetSelectedCategories()
         {
             var selected = new List<string>();
-            foreach (var item in checkedListBox_wzFiles.CheckedItems)
+            foreach (var item in GetCheckedFiles())
             {
-                if (item is WzFileInfo fileInfo)
-                {
-                    selected.Add(fileInfo.Category);
-                }
+                selected.Add(item.Category);
             }
             return selected;
         }
+
+        private IEnumerable<WzFileInfo> GetCheckedFiles() => checkedListBox_wzFiles.Items
+            .OfType<CheckBox>()
+            .Where(checkBox => checkBox.IsChecked == true)
+            .Select(checkBox => checkBox.Content)
+            .OfType<WzFileInfo>();
 
         /// <summary>
         /// Helper class to store WZ file info in the checkedListBox
@@ -1063,11 +1062,11 @@ namespace HaCreator.GUI
                 var versionInfo = Program.StartupManager.VersionManager.AddExternalVersion(versionPath);
                 if (versionInfo != null)
                 {
-                    listBox_log.Items.Add($"Added version '{versionInfo.DisplayName}' to version selector");
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_VersionAdded", versionInfo.DisplayName));
                 }
                 else
                 {
-                    listBox_log.Items.Add($"Version already exists in selector");
+                listBox_log.Items.Add(DialogTextExtension.Get("Dialog_VersionAlreadyInSelector"));
                 }
 
                 // Add to recent version paths in config for persistence
@@ -1077,22 +1076,21 @@ namespace HaCreator.GUI
             }
             catch (Exception ex)
             {
-                listBox_log.Items.Add($"Warning: Could not add to version selector: {ex.Message}");
+                listBox_log.Items.Add(DialogTextExtension.Format("Dialog_VersionAddWarning", ex.Message));
             }
         }
         #endregion
 
-        #region Cleanup
-        protected override void Dispose(bool disposing)
+        protected override void OnClosed(EventArgs e)
         {
-            if (disposing)
-            {
-                _cancellationTokenSource?.Dispose();
-                components?.Dispose();
-            }
-            base.Dispose(disposing);
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            _extractionService.ProgressChanged -= OnExtractionProgressChanged;
+            _extractionService.CategoryStarted -= OnCategoryStarted;
+            _extractionService.CategoryCompleted -= OnCategoryCompleted;
+            _extractionService.ErrorOccurred -= OnExtractionError;
+            base.OnClosed(e);
         }
-        #endregion
     }
 }
 

@@ -1,6 +1,23 @@
 using System;
 using System.Linq;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using Forms = System.Windows.Forms;
+using MessageBox = System.Windows.Forms.MessageBox;
+using MessageBoxButtons = System.Windows.Forms.MessageBoxButtons;
+using MessageBoxIcon = System.Windows.Forms.MessageBoxIcon;
+using DialogResult = System.Windows.Forms.DialogResult;
+using FolderBrowserDialog = System.Windows.Forms.FolderBrowserDialog;
+using Form = System.Windows.Forms.Form;
+using Label = System.Windows.Forms.Label;
+using WinFormsTextBox = System.Windows.Forms.TextBox;
+using WinFormsButton = System.Windows.Forms.Button;
+using FormBorderStyle = System.Windows.Forms.FormBorderStyle;
+using FormStartPosition = System.Windows.Forms.FormStartPosition;
+using Loc = HaCreator.GUI.Localization.LocExtension;
 using System.Collections.Generic;
 using System.IO;
 using MapleLib.WzLib;
@@ -22,7 +39,7 @@ using MapleLib.Img;
 
 namespace HaCreator.GUI
 {
-    public partial class Initialization : System.Windows.Forms.Form
+    public partial class Initialization : Window
     {
         public HaEditor editor = null;
 
@@ -59,7 +76,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Unified Initialize button - works based on active tab
         /// </summary>
-        private void button_initialise_Click(object sender, EventArgs e)
+        private void button_initialise_Click(object sender, RoutedEventArgs e)
         {
             if (_bIsInitialising)
             {
@@ -69,12 +86,12 @@ namespace HaCreator.GUI
 
             try
             {
-                if (tabControl_dataSource.SelectedTab == tabPage_wzFiles)
+                if (tabControl_dataSource.SelectedItem == tabPage_wzFiles)
                 {
                     // WZ Files initialization
                     InitializeFromWzFiles();
                 }
-                else if (tabControl_dataSource.SelectedTab == tabPage_imgVersions)
+                else if (tabControl_dataSource.SelectedItem == tabPage_imgVersions)
                 {
                     // IMG version initialization
                     InitializeFromSelectedImgVersion();
@@ -100,7 +117,7 @@ namespace HaCreator.GUI
             // MapleStoryDataFolder
             if (wzPath == "Select MapleStory Folder")
             {
-                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(Loc.Get("Init_SelectMapleFolderMessage"), Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
@@ -117,11 +134,9 @@ namespace HaCreator.GUI
             if (InitializeWzFilesInternal(wzPath, fileVersion, false))
             {
                 Hide();
-                Application.DoEvents();
                 editor = new HaEditor();
                 editor.ShowDialog();
-
-                Application.Exit();
+                Close();
             }
         }
 
@@ -144,7 +159,6 @@ namespace HaCreator.GUI
                 if (InitializeFromImgFileSystem(selectedVersion))
                 {
                     Hide();
-                    Application.DoEvents();
                     try
                     {
                         editor = new HaEditor();
@@ -152,15 +166,15 @@ namespace HaCreator.GUI
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error showing editor:\n{ex.Message}\n\n{ex.StackTrace}",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(Loc.Format("Init_ShowEditorError", ex.Message, ex.StackTrace),
+                            Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
-                    Application.Exit();
+                    Close();
                 }
             }
             else
             {
-                MessageBox.Show("Please select a version from the list.", "No Version Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(Loc.Get("Init_SelectVersionMessage"), Loc.Get("Init_NoVersionSelectedTitle"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -171,7 +185,7 @@ namespace HaCreator.GUI
         {
             try
             {
-                UpdateUI_CurrentLoadingWzFile("Creating data source...", false);
+                UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_CreatingDataSource"), false);
 
                 // Dispose old managers
                 if (Program.WzManager != null)
@@ -198,7 +212,7 @@ namespace HaCreator.GUI
                     _wzMapleVersion = mapleVersion;
                 }
 
-                UpdateUI_CurrentLoadingWzFile("Extracting game data...", false);
+                UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_ExtractingGameData"), false);
 
                 // Use ImgDataExtractor to populate InfoManager
                 var extractor = new ImgDataExtractor(Program.DataSource, Program.InfoManager);
@@ -213,13 +227,13 @@ namespace HaCreator.GUI
                 // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
                 ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
 
-                UpdateUI_CurrentLoadingWzFile("Initialization complete.", false);
+                UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_Complete"), false);
                 return true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error initializing from IMG filesystem:\n{ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(Loc.Format("Init_ImgInitializationError", ex.Message),
+                    Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
         }
@@ -232,7 +246,7 @@ namespace HaCreator.GUI
             // Check if directory exist
             if (!Directory.Exists(wzPath))
             {
-                MessageBox.Show(string.Format(Properties.Resources.Initialization_Error_MSDirectoryNotExist, wzPath), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(string.Format(Properties.Resources.Initialization_Error_MSDirectoryNotExist, wzPath), Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
 
@@ -254,7 +268,7 @@ namespace HaCreator.GUI
             // for old maplestory with only Data.wz
             if (Program.WzManager.IsPreBBDataWzFormat) //currently always false
             {
-                UpdateUI_CurrentLoadingWzFile("Data.wz", true);
+                UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_DataArchive"), true);
 
                 try
                 {
@@ -262,7 +276,7 @@ namespace HaCreator.GUI
                 }
                 catch (Exception e)
                 {
-                    MessageBox.Show("Error initializing data.wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
+                    MessageBox.Show(Loc.Format("Init_DataWzError", e.Message), Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
@@ -289,7 +303,7 @@ namespace HaCreator.GUI
             {
                 Program.WzManager.LoadListWzFile(_wzMapleVersion);
 
-                UpdateUI_CurrentLoadingWzFile("encrypted .ms file(s).", false);
+                UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_EncryptedMsFiles"), false);
                 Program.WzManager.LoadPacksFiles();
 
                 // String.wz
@@ -472,14 +486,14 @@ namespace HaCreator.GUI
 
         private void UpdateUI_CurrentLoadingWzFile(string fileName, bool isWzFile)
         {
-            textBox2.Text = string.Format("Initializing {0}{1}...", fileName, isWzFile ? ".wz" : "");
-            Application.DoEvents();
+            textBox2.Text = Loc.Format("Init_InitializingFormat", fileName, isWzFile ? ".wz" : "");
+            Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
         }
 
         /// <summary>
         /// On loading initialization.cs
         /// </summary>
-        private void Initialization_Load(object sender, EventArgs e)
+        private void Initialization_Load(object sender, RoutedEventArgs e)
         {
             // WZ Tab initialization
             versionBox.SelectedIndex = 0;
@@ -524,9 +538,7 @@ namespace HaCreator.GUI
                         Value = (int)v
                     })
                     .ToList();
-            comboBox_localisation.DataSource = values;
-            comboBox_localisation.DisplayMember = "Text";
-            comboBox_localisation.ValueMember = "Value";
+            comboBox_localisation.ItemsSource = values;
 
             var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault();
             comboBox_localisation.SelectedItem = savedLocaliation ?? values[0];
@@ -564,26 +576,26 @@ namespace HaCreator.GUI
             // Select appropriate default tab based on config
             if (config.DataSourceMode == DataSourceMode.ImgFileSystem && listBox_imgVersions.Items.Count > 0)
             {
-                tabControl_dataSource.SelectedTab = tabPage_imgVersions;
+                tabControl_dataSource.SelectedItem = tabPage_imgVersions;
             }
             else
             {
-                tabControl_dataSource.SelectedTab = tabPage_wzFiles;
+                tabControl_dataSource.SelectedItem = tabPage_wzFiles;
             }
         }
 
         /// <summary>
         /// Browse for WZ folder
         /// </summary>
-        private void button_browseWz_Click(object sender, EventArgs e)
+        private void button_browseWz_Click(object sender, RoutedEventArgs e)
         {
-            using (FolderBrowserDialog mapleSelect = new()
+            using (Forms.FolderBrowserDialog mapleSelect = new()
             {
                 ShowNewFolderButton = true,
-                Description = "Select the MapleStory folder."
+                Description = Loc.Get("Init_SelectMapleFolderDialog")
             })
             {
-                if (mapleSelect.ShowDialog() != DialogResult.OK)
+                if (mapleSelect.ShowDialog() != Forms.DialogResult.OK)
                     return;
 
                 pathBox.Items.Add(mapleSelect.SelectedPath);
@@ -594,13 +606,13 @@ namespace HaCreator.GUI
         /// <summary>
         /// Keyboard navigation
         /// </summary>
-        private void Initialization_KeyDown(object sender, KeyEventArgs e)
+        private void Initialization_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Enter)
+            if (e.Key == Key.Enter)
             {
                 button_initialise_Click(null, null);
             }
-            else if (e.KeyCode == Keys.Escape)
+            else if (e.Key == Key.Escape)
             {
                 Close();
             }
@@ -609,10 +621,10 @@ namespace HaCreator.GUI
         /// <summary>
         /// Tab selection changed
         /// </summary>
-        private void tabControl_dataSource_SelectedIndexChanged(object sender, EventArgs e)
+        private void tabControl_dataSource_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
         {
             // Update button states when switching tabs
-            if (tabControl_dataSource.SelectedTab == tabPage_imgVersions)
+            if (tabControl_dataSource.SelectedItem == tabPage_imgVersions)
             {
                 UpdateImgButtonStates();
             }
@@ -636,9 +648,9 @@ namespace HaCreator.GUI
         /// </summary>
         private void OnVersionsChanged(object sender, VersionsChangedEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action(() => HandleVersionChange(e)));
+                Dispatcher.BeginInvoke(new Action(() => HandleVersionChange(e)));
             }
             else
             {
@@ -658,7 +670,7 @@ namespace HaCreator.GUI
                     {
                         var newItem = new VersionListItem(e.AffectedVersion);
                         listBox_imgVersions.Items.Add(newItem);
-                        label_noVersions.Visible = false;
+                        label_noVersions.Visibility = Visibility.Collapsed;
                         SortVersionList();
                     }
                     break;
@@ -684,8 +696,8 @@ namespace HaCreator.GUI
 
                         if (listBox_imgVersions.Items.Count == 0)
                         {
-                            label_noVersions.Visible = true;
-                            panel_versionDetails.Visible = false;
+                            label_noVersions.Visibility = Visibility.Visible;
+                            panel_versionDetails.Visibility = Visibility.Collapsed;
                         }
                     }
                     break;
@@ -810,12 +822,12 @@ namespace HaCreator.GUI
 
             if (listBox_imgVersions.Items.Count == 0)
             {
-                label_noVersions.Visible = true;
-                panel_versionDetails.Visible = false;
+                label_noVersions.Visibility = Visibility.Visible;
+                panel_versionDetails.Visibility = Visibility.Collapsed;
             }
             else
             {
-                label_noVersions.Visible = false;
+                label_noVersions.Visibility = Visibility.Collapsed;
             }
 
             UpdateImgButtonStates();
@@ -824,7 +836,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Version list selection changed
         /// </summary>
-        private void listBox_imgVersions_SelectedIndexChanged(object sender, EventArgs e)
+        private void listBox_imgVersions_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateVersionDetails();
             UpdateImgButtonStates();
@@ -837,39 +849,39 @@ namespace HaCreator.GUI
         {
             if (listBox_imgVersions.SelectedItem is VersionListItem item)
             {
-                panel_versionDetails.Visible = true;
+                panel_versionDetails.Visibility = Visibility.Visible;
 
                 var v = item.Version;
                 label_versionName.Text = v.DisplayName ?? v.Version;
-                label_extractedDate.Text = $"Extracted: {v.ExtractedDate:yyyy-MM-dd HH:mm}";
-                label_encryptionInfo.Text = $"Encryption: {v.Encryption}";
+                label_extractedDate.Text = Loc.Format("Init_ExtractedFormat", v.ExtractedDate);
+                label_encryptionInfo.Text = Loc.Format("Init_EncryptionFormat", v.Encryption);
 
                 // Build detailed format string
                 string formatDetails = GetVersionFormatDetails(v);
-                label_format.Text = $"Format: {formatDetails}";
+                label_format.Text = Loc.Format("Init_FormatFormat", formatDetails);
 
                 int totalImages = v.Categories.Values.Sum(c => c.FileCount);
-                label_imageCount.Text = $"Total Images: {totalImages:N0}";
-                label_categoryCount.Text = $"Categories: {v.Categories.Count}";
+                label_imageCount.Text = Loc.Format("Init_TotalImagesFormat", totalImages);
+                label_categoryCount.Text = Loc.Format("Init_CategoriesFormat", v.Categories.Count);
 
                 // Build features string
                 string features = GetVersionFeatures(v);
-                label_features.Text = $"Info: {features}";
+                label_features.Text = Loc.Format("Init_InfoFormat", features);
 
                 if (!v.IsValid && v.ValidationErrors.Count > 0)
                 {
-                    label_validationStatus.Text = $"Warning: {v.ValidationErrors.First()}";
-                    label_validationStatus.ForeColor = Color.OrangeRed;
+                    label_validationStatus.Text = Loc.Format("Init_WarningFormat", v.ValidationErrors.First());
+                    label_validationStatus.Foreground = System.Windows.Media.Brushes.OrangeRed;
                 }
                 else
                 {
-                    label_validationStatus.Text = "Status: Valid";
-                    label_validationStatus.ForeColor = Color.Green;
+                    label_validationStatus.Text = Loc.Get("Init_StatusValid");
+                    label_validationStatus.Foreground = System.Windows.Media.Brushes.Green;
                 }
             }
             else
             {
-                panel_versionDetails.Visible = false;
+                panel_versionDetails.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -923,18 +935,18 @@ namespace HaCreator.GUI
         private void UpdateImgButtonStates()
         {
             bool hasSelection = listBox_imgVersions.SelectedItem != null;
-            button_renameVersion.Enabled = hasSelection;
-            button_deleteVersion.Enabled = hasSelection;
+            button_renameVersion.IsEnabled = hasSelection;
+            button_deleteVersion.IsEnabled = hasSelection;
         }
 
         /// <summary>
         /// Extract new version button click
         /// </summary>
-        private void button_extractNew_Click(object sender, EventArgs e)
+        private void button_extractNew_Click(object sender, RoutedEventArgs e)
         {
             UnpackWzToImg unpacker = new UnpackWzToImg();
-            unpacker.ShowDialog(this);
-            unpacker.Close();
+            unpacker.Owner = this;
+            unpacker.ShowDialog();
 
             // After extraction, refresh and try to select the new version
             Program.StartupManager?.ScanVersions();
@@ -950,14 +962,14 @@ namespace HaCreator.GUI
         /// <summary>
         /// Browse for existing IMG version folder
         /// </summary>
-        private void button_browseVersion_Click(object sender, EventArgs e)
+        private void button_browseVersion_Click(object sender, RoutedEventArgs e)
         {
             using (var folderBrowser = new FolderBrowserDialog())
             {
-                folderBrowser.Description = "Select a folder containing extracted IMG files";
+                folderBrowser.Description = Loc.Get("Init_SelectImgFolderDialog");
                 folderBrowser.ShowNewFolderButton = false;
 
-                if (folderBrowser.ShowDialog() == DialogResult.OK)
+                if (folderBrowser.ShowDialog() == Forms.DialogResult.OK)
                 {
                     string selectedPath = folderBrowser.SelectedPath;
 
@@ -968,11 +980,8 @@ namespace HaCreator.GUI
                     if (!hasManifest && !hasStringFolder && !hasMapFolder)
                     {
                         MessageBox.Show(
-                            "The selected folder doesn't appear to contain extracted IMG files.\n\n" +
-                            "A valid version folder should contain:\n" +
-                            "- A manifest.json file, OR\n" +
-                            "- String/ and Map/ folders with .img files",
-                            "Invalid Folder",
+                            Loc.Get("Init_InvalidImgFolderMessage"),
+                            Loc.Get("Init_InvalidFolderTitle"),
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Warning);
                         return;
@@ -1000,7 +1009,7 @@ namespace HaCreator.GUI
                             listBox_imgVersions.Items.Add(newItem);
                             listBox_imgVersions.SelectedItem = newItem;
 
-                            label_noVersions.Visible = false;
+                            label_noVersions.Visibility = Visibility.Collapsed;
 
                             UpdateVersionDetails();
                             UpdateImgButtonStates();
@@ -1008,8 +1017,8 @@ namespace HaCreator.GUI
                         else
                         {
                             MessageBox.Show(
-                                "Failed to add the version. It may already be in the list.",
-                                "Error",
+                                Loc.Get("Init_AddVersionFailed"),
+                                Loc.Get("Common_Error"),
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);
                         }
@@ -1021,17 +1030,17 @@ namespace HaCreator.GUI
         /// <summary>
         /// Delete selected version
         /// </summary>
-        private void button_deleteVersion_Click(object sender, EventArgs e)
+        private void button_deleteVersion_Click(object sender, RoutedEventArgs e)
         {
             if (listBox_imgVersions.SelectedItem is VersionListItem item)
             {
                 var result = MessageBox.Show(
-                    $"Are you sure you want to delete version '{item.Version.DisplayName}'?\n\nThis will permanently delete all extracted IMG files.",
-                    "Confirm Delete",
+                    Loc.Format("Init_ConfirmDeleteVersion", item.Version.DisplayName),
+                    Loc.Get("Init_ConfirmDeleteTitle"),
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
-                if (result == DialogResult.Yes)
+                if (result == Forms.DialogResult.Yes)
                 {
                     string versionPath = item.Version.DirectoryPath;
 
@@ -1042,8 +1051,8 @@ namespace HaCreator.GUI
                     }
                     else
                     {
-                        MessageBox.Show("Failed to delete version. The files may be in use.",
-                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(Loc.Get("Init_DeleteVersionFailed"),
+                            Loc.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
@@ -1052,7 +1061,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Rename selected version
         /// </summary>
-        private void button_renameVersion_Click(object sender, EventArgs e)
+        private void button_renameVersion_Click(object sender, RoutedEventArgs e)
         {
             if (listBox_imgVersions.SelectedItem is not VersionListItem item)
                 return;
@@ -1091,8 +1100,8 @@ namespace HaCreator.GUI
             else
             {
                 MessageBox.Show(
-                    "Failed to rename version. The target folder may already exist or the files may be in use.",
-                    "Error",
+                    Loc.Get("Init_RenameVersionFailed"),
+                    Loc.Get("Common_Error"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -1101,7 +1110,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Refresh versions list
         /// </summary>
-        private void button_refreshVersions_Click(object sender, EventArgs e)
+        private void button_refreshVersions_Click(object sender, RoutedEventArgs e)
         {
             RefreshVersionList();
         }
@@ -1109,7 +1118,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Double-click on version list to initialize
         /// </summary>
-        private void listBox_imgVersions_DoubleClick(object sender, EventArgs e)
+        private void listBox_imgVersions_DoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (listBox_imgVersions.SelectedItem != null)
             {
@@ -1126,36 +1135,36 @@ namespace HaCreator.GUI
 
             using Form prompt = new Form();
             using Label label = new Label();
-            using TextBox textBox = new TextBox();
-            using Button okButton = new Button();
-            using Button cancelButton = new Button();
+            using WinFormsTextBox textBox = new WinFormsTextBox();
+            using WinFormsButton okButton = new WinFormsButton();
+            using WinFormsButton cancelButton = new WinFormsButton();
 
-            prompt.Text = "Rename IMG Version";
+            prompt.Text = Loc.Get("Init_RenameVersionTitle");
             prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
             prompt.StartPosition = FormStartPosition.CenterParent;
             prompt.MinimizeBox = false;
             prompt.MaximizeBox = false;
-            prompt.ClientSize = new Size(360, 116);
+            prompt.ClientSize = new System.Drawing.Size(360, 116);
             prompt.ShowInTaskbar = false;
 
             label.AutoSize = true;
-            label.Location = new Point(12, 12);
-            label.Text = "New version name:";
+            label.Location = new System.Drawing.Point(12, 12);
+            label.Text = Loc.Get("Init_NewVersionName");
 
-            textBox.Location = new Point(12, 34);
-            textBox.Size = new Size(336, 22);
+            textBox.Location = new System.Drawing.Point(12, 34);
+            textBox.Size = new System.Drawing.Size(336, 22);
             textBox.Text = currentName;
             textBox.SelectAll();
 
-            okButton.Text = "OK";
-            okButton.DialogResult = DialogResult.OK;
-            okButton.Location = new Point(192, 76);
-            okButton.Size = new Size(75, 28);
+            okButton.Text = Loc.Get("IE_OK");
+            okButton.DialogResult = Forms.DialogResult.OK;
+            okButton.Location = new System.Drawing.Point(192, 76);
+            okButton.Size = new System.Drawing.Size(75, 28);
 
-            cancelButton.Text = "Cancel";
-            cancelButton.DialogResult = DialogResult.Cancel;
-            cancelButton.Location = new Point(273, 76);
-            cancelButton.Size = new Size(75, 28);
+            cancelButton.Text = Loc.Get("IE_Cancel");
+            cancelButton.DialogResult = Forms.DialogResult.Cancel;
+            cancelButton.Location = new System.Drawing.Point(273, 76);
+            cancelButton.Size = new System.Drawing.Size(75, 28);
 
             prompt.Controls.Add(label);
             prompt.Controls.Add(textBox);
@@ -1164,18 +1173,18 @@ namespace HaCreator.GUI
             prompt.AcceptButton = okButton;
             prompt.CancelButton = cancelButton;
 
-            while (prompt.ShowDialog(this) == DialogResult.OK)
+            while (prompt.ShowDialog() == Forms.DialogResult.OK)
             {
                 string value = textBox.Text.Trim();
                 if (string.IsNullOrEmpty(value))
                 {
-                    MessageBox.Show("Version name cannot be empty.", "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(Loc.Get("Init_EmptyVersionName"), Loc.Get("Init_InvalidNameTitle"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     continue;
                 }
 
                 if (value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
                 {
-                    MessageBox.Show("Version name contains characters that cannot be used in a folder name.", "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(Loc.Get("Init_InvalidVersionCharacters"), Loc.Get("Init_InvalidNameTitle"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     continue;
                 }
 
@@ -2179,18 +2188,18 @@ namespace HaCreator.GUI
         private void button_unpack_Click(object sender, EventArgs e)
         {
             UnpackWzToImg unpacker = new UnpackWzToImg();
-            unpacker.ShowDialog(this);
-            unpacker.Close();
+            unpacker.Owner = this;
+            unpacker.ShowDialog();
         }
 
         /// <summary>
         /// Opens the data source settings dialog
         /// </summary>
-        private void button_settings_Click(object sender, EventArgs e)
+        private void button_settings_Click(object sender, RoutedEventArgs e)
         {
             using (var settingsForm = new DataSourceSettings())
             {
-                if (settingsForm.ShowDialog(this) == DialogResult.OK)
+                if (settingsForm.ShowDialog() == Forms.DialogResult.OK)
                 {
                     if (settingsForm.ConfigChanged)
                     {

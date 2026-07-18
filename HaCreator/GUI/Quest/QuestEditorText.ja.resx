@@ -1,0 +1,534 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="QuestEditor_Title" xml:space="preserve">
+    <value>クエストエディター</value>
+  </data>
+  <data name="QuestEditor_Subtitle" xml:space="preserve">
+    <value>QuestInfo、Say、Check、Act のクエストデータを参照、設定、検証します。</value>
+  </data>
+  <data name="QuestEditor_Eyebrow" xml:space="preserve">
+    <value>WZ クエストデータ</value>
+  </data>
+  <data name="QuestEditor_QuestLibrary" xml:space="preserve">
+    <value>クエストライブラリ</value>
+  </data>
+  <data name="QuestEditor_QuestDetails" xml:space="preserve">
+    <value>クエスト詳細</value>
+  </data>
+  <data name="QuestEditor_Area" xml:space="preserve">
+    <value>エリア</value>
+  </data>
+  <data name="QuestEditor_FilterTooltip" xml:space="preserve">
+    <value>ID または名前でクエストを絞り込み</value>
+  </data>
+  <data name="QuestEditor_NewQuest" xml:space="preserve">
+    <value>新規クエスト</value>
+  </data>
+  <data name="QuestEditor_Import" xml:space="preserve">
+    <value>インポート</value>
+  </data>
+  <data name="QuestEditor_Export" xml:space="preserve">
+    <value>エクスポート</value>
+  </data>
+  <data name="QuestEditor_Delete" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="QuestEditor_SaveChanges" xml:space="preserve">
+    <value>変更を保存</value>
+  </data>
+  <data name="QuestEditor_Select" xml:space="preserve">
+    <value>選択</value>
+  </data>
+  <data name="QuestEditor_Type" xml:space="preserve">
+    <value>タイプ</value>
+  </data>
+  <data name="QuestEditor_Text" xml:space="preserve">
+    <value>テキスト</value>
+  </data>
+  <data name="QuestEditor_Responses" xml:space="preserve">
+    <value>応答</value>
+  </data>
+  <data name="QuestEditor_YesResponses" xml:space="preserve">
+    <value>「はい」の応答</value>
+  </data>
+  <data name="QuestEditor_NoResponses" xml:space="preserve">
+    <value>「いいえ」の応答</value>
+  </data>
+  <data name="QuestEditor_AddResponse" xml:space="preserve">
+    <value>応答を追加</value>
+  </data>
+  <data name="QuestEditor_QuestInfoTab" xml:space="preserve">
+    <value>クエスト情報 (QuestInfo.img)</value>
+  </data>
+  <data name="QuestEditor_SayInfoTab" xml:space="preserve">
+    <value>会話情報 (SayInfo.img)</value>
+  </data>
+  <data name="QuestEditor_CheckConditionsTab" xml:space="preserve">
+    <value>チェック条件 (Check.img)</value>
+  </data>
+  <data name="QuestEditor_ActRequirementsTab" xml:space="preserve">
+    <value>実行要件 (Act.img)</value>
+  </data>
+  <data name="QuestEditor_StartConversation" xml:space="preserve">
+    <value>開始クエスト会話</value>
+  </data>
+  <data name="QuestEditor_EndConversation" xml:space="preserve">
+    <value>完了クエスト会話</value>
+  </data>
+  <data name="QuestEditor_StartCheck" xml:space="preserve">
+    <value>開始クエストチェック (0)</value>
+  </data>
+  <data name="QuestEditor_EndCheck" xml:space="preserve">
+    <value>完了クエストチェック (1)</value>
+  </data>
+  <data name="QuestEditor_StartAction" xml:space="preserve">
+    <value>開始クエスト動作 (0)</value>
+  </data>
+  <data name="QuestEditor_EndAction" xml:space="preserve">
+    <value>完了クエスト動作 (1)</value>
+  </data>
+  <data name="QuestEditor_Name" xml:space="preserve">
+    <value>名前：</value>
+  </data>
+  <data name="QuestEditor_ParentQuest" xml:space="preserve">
+    <value>親クエスト：</value>
+  </data>
+  <data name="QuestEditor_QuestAreaCode" xml:space="preserve">
+    <value>クエストエリアコード：</value>
+  </data>
+  <data name="QuestEditor_Order" xml:space="preserve">
+    <value>順序：</value>
+  </data>
+  <data name="QuestEditor_Blocked" xml:space="preserve">
+    <value>ブロック</value>
+  </data>
+  <data name="QuestEditor_AutoStart" xml:space="preserve">
+    <value>自動開始</value>
+  </data>
+  <data name="QuestEditor_AutoComplete" xml:space="preserve">
+    <value>自動完了</value>
+  </data>
+  <data name="QuestEditor_AutoAccept" xml:space="preserve">
+    <value>自動受諾</value>
+  </data>
+  <data name="QuestEditor_AutoCancel" xml:space="preserve">
+    <value>自動取消</value>
+  </data>
+  <data name="QuestEditor_Summary" xml:space="preserve">
+    <value>概要：</value>
+  </data>
+  <data name="QuestEditor_DemandSummary" xml:space="preserve">
+    <value>要求概要：</value>
+  </data>
+  <data name="QuestEditor_RewardSummary" xml:space="preserve">
+    <value>報酬概要：</value>
+  </data>
+  <data name="QuestEditor_GenerateFromCheck" xml:space="preserve">
+    <value>「Check」から生成</value>
+  </data>
+  <data name="QuestEditor_GenerateFromAct" xml:space="preserve">
+    <value>「Act」から生成</value>
+  </data>
+  <data name="QuestEditor_UnsavedPrompt" xml:space="preserve">
+    <value>未保存の変更があります。閉じる前に Quest.wz ファイルを保存しますか？</value>
+  </data>
+  <data name="QuestEditor_UnsavedTitle" xml:space="preserve">
+    <value>未保存の変更</value>
+  </data>
+  <data name="QuestEditor_WzImportFilter" xml:space="preserve">
+    <value>WZ ファイル (*.wz)|*.wz|すべてのファイル (*.*)|*.*</value>
+  </data>
+  <data name="QuestEditor_WzExportFilter" xml:space="preserve">
+    <value>WZ ファイル (*.wz)|*.wz</value>
+  </data>
+  <data name="QuestEditor_ImportDialogTitle" xml:space="preserve">
+    <value>インポートするクエスト WZ ファイルを選択</value>
+  </data>
+  <data name="QuestEditor_ImportError" xml:space="preserve">
+    <value>インポートエラー</value>
+  </data>
+  <data name="QuestEditor_InvalidImportFormat" xml:space="preserve">
+    <value>クエスト WZ 形式が無効です：{0} に QuestInfo.img がありません。</value>
+  </data>
+  <data name="QuestEditor_ImportException" xml:space="preserve">
+    <value>{0} からのインポート中にエラーが発生しました：{1}</value>
+  </data>
+  <data name="QuestEditor_OverwritePrompt" xml:space="preserve">
+    <value>次のクエスト ID はすでに存在します：
+{0}
+
+上書きしますか？</value>
+  </data>
+  <data name="QuestEditor_OverwriteTitle" xml:space="preserve">
+    <value>クエストはすでに存在します</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessMessage" xml:space="preserve">
+    <value>{0} 件のクエストをインポートしました。</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessTitle" xml:space="preserve">
+    <value>インポート完了</value>
+  </data>
+  <data name="QuestEditor_NameTooLong" xml:space="preserve">
+    <value>クエスト名が長すぎます。</value>
+  </data>
+  <data name="QuestEditor_QuestName" xml:space="preserve">
+    <value>クエスト名</value>
+  </data>
+  <data name="QuestEditor_QuestId" xml:space="preserve">
+    <value>クエスト ID</value>
+  </data>
+  <data name="QuestEditor_AddNewQuestPrompt" xml:space="preserve">
+    <value>新しいクエストを追加：</value>
+  </data>
+  <data name="QuestEditor_SaveParentError" xml:space="preserve">
+    <value>クエスト {0} の保存中に 1 つ以上の親画像を解決できませんでした。破損を防ぐため保存を中止しました。</value>
+  </data>
+  <data name="QuestEditor_SaveError" xml:space="preserve">
+    <value>保存エラー</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessMessage" xml:space="preserve">
+    <value>クエスト {0} を {1} にエクスポートしました。</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessTitle" xml:space="preserve">
+    <value>エクスポート完了</value>
+  </data>
+  <data name="QuestEditor_ExportErrorMessage" xml:space="preserve">
+    <value>クエストのエクスポート中にエラーが発生しました：{0}</value>
+  </data>
+  <data name="QuestEditor_ExportErrorTitle" xml:space="preserve">
+    <value>エクスポートエラー</value>
+  </data>
+  <data name="QuestEditor_RequiredAmount" xml:space="preserve">
+    <value> 必要数：</value>
+  </data>
+  <data name="QuestEditor_RequiredMesoAmount" xml:space="preserve">
+    <value> 必要メル：</value>
+  </data>
+  <data name="QuestEditor_RewardAmount" xml:space="preserve">
+    <value> 報酬数：</value>
+  </data>
+  <data name="QuestEditor_RequiredCharismaAmount" xml:space="preserve">
+    <value>（カリスマ）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardCharismaAmount" xml:space="preserve">
+    <value>（カリスマ）報酬量：</value>
+  </data>
+  <data name="QuestEditor_RequiredCharmAmount" xml:space="preserve">
+    <value>（魅力）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardCharmAmount" xml:space="preserve">
+    <value>（魅力）報酬量：</value>
+  </data>
+  <data name="QuestEditor_RequiredCraftAmount" xml:space="preserve">
+    <value>（器用さ）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardCraftAmount" xml:space="preserve">
+    <value>（器用さ）報酬量：</value>
+  </data>
+  <data name="QuestEditor_RequiredInsightAmount" xml:space="preserve">
+    <value>（洞察力）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardInsightAmount" xml:space="preserve">
+    <value>（洞察力）報酬量：</value>
+  </data>
+  <data name="QuestEditor_RequiredSenseAmount" xml:space="preserve">
+    <value>（感性）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardSenseAmount" xml:space="preserve">
+    <value>（感性）報酬量：</value>
+  </data>
+  <data name="QuestEditor_RequiredWillAmount" xml:space="preserve">
+    <value>（意志）必要量：</value>
+  </data>
+  <data name="QuestEditor_RewardWillAmount" xml:space="preserve">
+    <value>（意志）報酬量：</value>
+  </data>
+  <data name="QuestEditor_AcquireSkillRegardlessLevel" xml:space="preserve">
+    <value>取得（skillLevel に関係なくプレイヤーがスキルを所持する場合）</value>
+  </data>
+  <data name="QuestEditor_AcquireRemoveSkill" xml:space="preserve">
+    <value>取得（スキル削除）</value>
+  </data>
+  <data name="QuestEditor_ActiveQuestDescription" xml:space="preserve">
+    <value>進行中クエストの説明：(1)</value>
+  </data>
+  <data name="QuestEditor_AddEquip" xml:space="preserve">
+    <value>装備を追加</value>
+  </data>
+  <data name="QuestEditor_AddInfo" xml:space="preserve">
+    <value>情報を追加</value>
+  </data>
+  <data name="QuestEditor_AddItem" xml:space="preserve">
+    <value>アイテムを追加</value>
+  </data>
+  <data name="QuestEditor_AddJob" xml:space="preserve">
+    <value>職業を追加</value>
+  </data>
+  <data name="QuestEditor_AddMonster" xml:space="preserve">
+    <value>モンスターを追加</value>
+  </data>
+  <data name="QuestEditor_AddQuest" xml:space="preserve">
+    <value>クエストを追加</value>
+  </data>
+  <data name="QuestEditor_AddSkill" xml:space="preserve">
+    <value>スキルを追加</value>
+  </data>
+  <data name="QuestEditor_AddSp" xml:space="preserve">
+    <value>SP を追加</value>
+  </data>
+  <data name="QuestEditor_AnimationAction" xml:space="preserve">
+    <value>アニメーション動作：</value>
+  </data>
+  <data name="QuestEditor_AutoCompleteAction" xml:space="preserve">
+    <value>自動完了アクション</value>
+  </data>
+  <data name="QuestEditor_AutoPreComplete" xml:space="preserve">
+    <value>自動事前完了</value>
+  </data>
+  <data name="QuestEditor_BuffReward" xml:space="preserve">
+    <value>バフ報酬：</value>
+  </data>
+  <data name="QuestEditor_Classes" xml:space="preserve">
+    <value>クラス：</value>
+  </data>
+  <data name="QuestEditor_Condition" xml:space="preserve">
+    <value>条件：</value>
+  </data>
+  <data name="QuestEditor_DailyRepeatable" xml:space="preserve">
+    <value>毎日（毎日繰り返し可能）：</value>
+  </data>
+  <data name="QuestEditor_DisableCompleteTab" xml:space="preserve">
+    <value>完了タブで無効</value>
+  </data>
+  <data name="QuestEditor_DisablePerformTab" xml:space="preserve">
+    <value>実行タブで無効</value>
+  </data>
+  <data name="QuestEditor_DisableStartTab" xml:space="preserve">
+    <value>開始タブで無効</value>
+  </data>
+  <data name="QuestEditor_EndDate" xml:space="preserve">
+    <value>終了日：</value>
+  </data>
+  <data name="QuestEditor_EndQuestDescription" xml:space="preserve">
+    <value>終了クエストの説明：(2)</value>
+  </data>
+  <data name="QuestEditor_EndScript" xml:space="preserve">
+    <value>クエスト終了時に実行するスクリプト：</value>
+  </data>
+  <data name="QuestEditor_EndTimeDate" xml:space="preserve">
+    <value>End_t 日付：</value>
+  </data>
+  <data name="QuestEditor_ExceptBuff" xml:space="preserve">
+    <value>除外バフ：</value>
+  </data>
+  <data name="QuestEditor_Expiry" xml:space="preserve">
+    <value>有効期限：</value>
+  </data>
+  <data name="QuestEditor_Gender" xml:space="preserve">
+    <value>性別：</value>
+  </data>
+  <data name="QuestEditor_GivenToJobs" xml:space="preserve">
+    <value>対象職業：</value>
+  </data>
+  <data name="QuestEditor_InfoLabel" xml:space="preserve">
+    <value>情報：</value>
+  </data>
+  <data name="QuestEditor_InfoExString" xml:space="preserve">
+    <value>InfoEx 文字列：</value>
+  </data>
+  <data name="QuestEditor_IntervalMinutes" xml:space="preserve">
+    <value>間隔（分）：</value>
+  </data>
+  <data name="QuestEditor_RepeatInterval" xml:space="preserve">
+    <value>間隔（x 分後に再実行可能）：</value>
+  </data>
+  <data name="QuestEditor_IsMarried" xml:space="preserve">
+    <value>既婚 💘：</value>
+  </data>
+  <data name="QuestEditor_NormalAutoStart" xml:space="preserve">
+    <value>通常の自動開始クエスト：</value>
+  </data>
+  <data name="QuestEditor_IsPremium" xml:space="preserve">
+    <value>プレミアム：</value>
+  </data>
+  <data name="QuestEditor_WeeklyRepeat" xml:space="preserve">
+    <value>週間繰り返しクエスト：</value>
+  </data>
+  <data name="QuestEditor_JobFlags" xml:space="preserve">
+    <value>職業フラグ：</value>
+  </data>
+  <data name="QuestEditor_JobId" xml:space="preserve">
+    <value>職業 ID：</value>
+  </data>
+  <data name="QuestEditor_JobEx" xml:space="preserve">
+    <value>JobEx：</value>
+  </data>
+  <data name="QuestEditor_LevelMax" xml:space="preserve">
+    <value>最大レベル：</value>
+  </data>
+  <data name="QuestEditor_LevelMin" xml:space="preserve">
+    <value>最小レベル：</value>
+  </data>
+  <data name="QuestEditor_MapsToEnter" xml:space="preserve">
+    <value>入場可能マップ：</value>
+  </data>
+  <data name="QuestEditor_MapsToShowIn" xml:space="preserve">
+    <value>表示するマップ：</value>
+  </data>
+  <data name="QuestEditor_MasterLevel" xml:space="preserve">
+    <value>マスターレベル：</value>
+  </data>
+  <data name="QuestEditor_Medal" xml:space="preserve">
+    <value>勲章</value>
+  </data>
+  <data name="QuestEditor_MedalCategory" xml:space="preserve">
+    <value>勲章カテゴリ：</value>
+  </data>
+  <data name="QuestEditor_MessageNotice" xml:space="preserve">
+    <value>メッセージ通知：</value>
+  </data>
+  <data name="QuestEditor_MiscProperties" xml:space="preserve">
+    <value>その他のプロパティ：</value>
+  </data>
+  <data name="QuestEditor_NextQuest" xml:space="preserve">
+    <value>次のクエスト：</value>
+  </data>
+  <data name="QuestEditor_NpcId" xml:space="preserve">
+    <value>NPC ID：</value>
+  </data>
+  <data name="QuestEditor_OneShot" xml:space="preserve">
+    <value>1回のみ</value>
+  </data>
+  <data name="QuestEditor_OnlyMasterLevel" xml:space="preserve">
+    <value>マスターレベルのみ</value>
+  </data>
+  <data name="QuestEditor_PeriodMinutes" xml:space="preserve">
+    <value>期間（分）：</value>
+  </data>
+  <data name="QuestEditor_PetAutoSpeakingLimit" xml:space="preserve">
+    <value>ペット自動発言制限：</value>
+  </data>
+  <data name="QuestEditor_PetRecallLimit" xml:space="preserve">
+    <value>ペット呼び戻し制限：</value>
+  </data>
+  <data name="QuestEditor_PetSpeed" xml:space="preserve">
+    <value>ペット速度：</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMax" xml:space="preserve">
+    <value>ペット親密度最大：</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMin" xml:space="preserve">
+    <value>ペット親密度最小：</value>
+  </data>
+  <data name="QuestEditor_PetTameness" xml:space="preserve">
+    <value>ペット親密度：</value>
+  </data>
+  <data name="QuestEditor_Potential" xml:space="preserve">
+    <value>潜在能力：</value>
+  </data>
+  <data name="QuestEditor_PropType" xml:space="preserve">
+    <value>プロパティ種別：</value>
+  </data>
+  <data name="QuestEditor_Quantity" xml:space="preserve">
+    <value>数量：</value>
+  </data>
+  <data name="QuestEditor_QuestIdLabel" xml:space="preserve">
+    <value>クエスト ID：</value>
+  </data>
+  <data name="QuestEditor_Rewards" xml:space="preserve">
+    <value>報酬</value>
+  </data>
+  <data name="QuestEditor_SelectSkill" xml:space="preserve">
+    <value>スキルを選択：</value>
+  </data>
+  <data name="QuestEditor_SelectBuff" xml:space="preserve">
+    <value>バフを選択</value>
+  </data>
+  <data name="QuestEditor_SelectClass" xml:space="preserve">
+    <value>クラスを選択</value>
+  </data>
+  <data name="QuestEditor_SelectJobs" xml:space="preserve">
+    <value>職業を選択</value>
+  </data>
+  <data name="QuestEditor_SelectMaps" xml:space="preserve">
+    <value>マップを選択</value>
+  </data>
+  <data name="QuestEditor_SelectNpc" xml:space="preserve">
+    <value>NPC を選択</value>
+  </data>
+  <data name="QuestEditor_SelectQuest" xml:space="preserve">
+    <value>クエストを選択</value>
+  </data>
+  <data name="QuestEditor_SelectedMob" xml:space="preserve">
+    <value>選択中のモンスター</value>
+  </data>
+  <data name="QuestEditor_ShowLayerTag" xml:space="preserve">
+    <value>レイヤータグを表示：</value>
+  </data>
+  <data name="QuestEditor_SkillId" xml:space="preserve">
+    <value>スキル ID：</value>
+  </data>
+  <data name="QuestEditor_SkillLevel" xml:space="preserve">
+    <value>スキルレベル：</value>
+  </data>
+  <data name="QuestEditor_SpAmount" xml:space="preserve">
+    <value>SP 数：</value>
+  </data>
+  <data name="QuestEditor_Start" xml:space="preserve">
+    <value>開始</value>
+  </data>
+  <data name="QuestEditor_StartDate" xml:space="preserve">
+    <value>開始日：</value>
+  </data>
+  <data name="QuestEditor_StartQuestDescription" xml:space="preserve">
+    <value>開始クエストの説明：(0)</value>
+  </data>
+  <data name="QuestEditor_StartScript" xml:space="preserve">
+    <value>クエスト開始時に実行するスクリプト：</value>
+  </data>
+  <data name="QuestEditor_StartTimeDate" xml:space="preserve">
+    <value>Start_t 日付：</value>
+  </data>
+  <data name="QuestEditor_State" xml:space="preserve">
+    <value>状態：</value>
+  </data>
+  <data name="QuestEditor_Stop" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="QuestEditor_StopEndConversation" xml:space="preserve">
+    <value>「停止」終了クエスト会話</value>
+  </data>
+  <data name="QuestEditor_StopStartConversation" xml:space="preserve">
+    <value>「停止」開始クエスト会話</value>
+  </data>
+  <data name="QuestEditor_SubJobFlag" xml:space="preserve">
+    <value>サブ職業フラグ：</value>
+  </data>
+  <data name="QuestEditor_TamingMobLevelMin" xml:space="preserve">
+    <value>ライディングモンスター最小レベル：</value>
+  </data>
+  <data name="QuestEditor_PreBigBangUnavailable" xml:space="preserve">
+    <value>この機能はビッグバン前のメイプルストーリーでは使用できません。</value>
+  </data>
+  <data name="QuestEditor_Value" xml:space="preserve">
+    <value>値：</value>
+  </data>
+  <data name="QuestEditor_Var" xml:space="preserve">
+    <value>変数：</value>
+  </data>
+  <data name="QuestEditor_ViewMedalItem" xml:space="preserve">
+    <value>勲章アイテムを表示：</value>
+  </data>
+  <data name="QuestEditor_ConversationHelp" xml:space="preserve">
+    <value>クエスト開始時または完了時の NPC の会話内容です。「はい」または「いいえ」のテキストがない場合、Next() または NextPrev() の NPC 会話になります。</value>
+  </data>
+  <data name="QuestEditor_ConditionHelp" xml:space="preserve">
+    <value>クエストの開始条件または終了条件を満たしていない場合の NPC の会話内容です。</value>
+  </data>
+  <data name="QuestEditor_WorldMax" xml:space="preserve">
+    <value>最大ワールド：</value>
+  </data>
+  <data name="QuestEditor_WorldMin" xml:space="preserve">
+    <value>最小ワールド：</value>
+  </data>
+</root>

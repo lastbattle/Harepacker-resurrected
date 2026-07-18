@@ -1,4 +1,4 @@
-﻿<Window x:Class="HaCreator.GUI.Quest.QuestEditor"
+<Window x:Class="HaCreator.GUI.Quest.QuestEditor"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -11,12 +11,22 @@
         xmlns:mapleLibCharStruct="clr-namespace:MapleLib.WzLib.WzStructure.Data.CharacterStructure;assembly=MapleLib"
         xmlns:mapleLibQuestStruct="clr-namespace:MapleLib.WzLib.WzStructure.Data.QuestStructure;assembly=MapleLib"
         mc:Ignorable="d" 
-        Title="Quest editor"
-        
+        Title="{local:QuestText QuestEditor_Title}"
+        Background="#F4F6F8"
+        Foreground="#1F2937"
+        FontFamily="Segoe UI"
+        FontSize="13"
+        MinHeight="640"
+        MinWidth="1040"
+        WindowStartupLocation="CenterOwner"
         d:DesignHeight="768" d:DesignWidth="1366"
         Height="768" Width="1366">
 
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
         <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
         <haSharedLibConverter:MultiBooleanToVisibility2Converter x:Key="multiBooleanToVisibility2Converter"/>
         <converter:PetSkillFlagConverter x:Key="petSkillFlagConverter"/>
@@ -43,29 +53,38 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <SolidColorBrush x:Key="Button.Static.Background" Color="#FFDDDDDD"/>
-        <SolidColorBrush x:Key="Button.Static.Border" Color="#FF707070"/>
-        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#FFBEE6FD"/>
-        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#FF3C7FB1"/>
-        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#FFC4E5F6"/>
-        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#FF2C628B"/>
-        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
-        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
-        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+        <SolidColorBrush x:Key="QuestAccentBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="QuestAccentHoverBrush" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="QuestDangerBrush" Color="#DC2626"/>
+        <SolidColorBrush x:Key="QuestDangerHoverBrush" Color="#B91C1C"/>
+        <SolidColorBrush x:Key="QuestSurfaceBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="QuestSubtleSurfaceBrush" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="QuestBorderBrush" Color="#D8DEE8"/>
+        <SolidColorBrush x:Key="QuestTextBrush" Color="#1F2937"/>
+        <SolidColorBrush x:Key="QuestMutedTextBrush" Color="#667085"/>
+        <SolidColorBrush x:Key="Button.Static.Background" Color="#2563EB"/>
+        <SolidColorBrush x:Key="Button.Static.Border" Color="#2563EB"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#1E40AF"/>
+        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#1E40AF"/>
+        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#E5E7EB"/>
+        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#E5E7EB"/>
+        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#9CA3AF"/>
 
         <Style x:Key="ButtonStyle_DeleteQuest" TargetType="{x:Type Button}">
             <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
-            <Setter Property="Background" Value="Gray"/>
+            <Setter Property="Background" Value="{StaticResource QuestDangerBrush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" SnapsToDevicePixels="true">
                             <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -73,10 +92,10 @@
                                 <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="true">
-                                <Setter Property="Background" TargetName="border" Value="#FFA0A0A0"/>
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource QuestDangerHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="true">
-                                <Setter Property="Background" TargetName="border" Value="Gainsboro"/>
+                                <Setter Property="Background" TargetName="border" Value="#991B1B"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="false">
                                 <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
@@ -89,19 +108,55 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ButtonStyle_Black" TargetType="{x:Type Button}">
+        <Style x:Key="ButtonStyle_ExportQuest" TargetType="{x:Type Button}">
+                <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+                <Setter Property="Background" Value="Gray"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Padding" Value="12,6"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" SnapsToDevicePixels="true">
+                                <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsDefaulted" Value="true">
+                                    <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="true">
+                                    <Setter Property="Background" TargetName="border" Value="{StaticResource QuestDangerHoverBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="true">
+                                    <Setter Property="Background" TargetName="border" Value="#991B1B"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="false">
+                                    <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                    <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                    <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ButtonStyle_Black" TargetType="{x:Type Button}">
             <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
-            <Setter Property="Background" Value="Black"/>
+            <Setter Property="Background" Value="{StaticResource QuestAccentBrush}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" SnapsToDevicePixels="true">
                             <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -109,10 +164,10 @@
                                 <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="true">
-                                <Setter Property="Background" TargetName="border" Value="#FF464545"/>
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource QuestAccentHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="true">
-                                <Setter Property="Background" TargetName="border" Value="#FFA29C9C"/>
+                                <Setter Property="Background" TargetName="border" Value="#1E40AF"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="false">
                                 <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
@@ -123,6 +178,143 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Local quest-editor design system. Kept here so embedded data templates inherit it. -->
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{StaticResource QuestTextBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style TargetType="{x:Type TextBox}">
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Margin" Value="0,2,0,6"/>
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource QuestTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="{x:Type ComboBox}">
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Margin" Value="0,2,0,6"/>
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource QuestTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="{x:Type CheckBox}">
+            <Setter Property="Margin" Value="0,4,12,4"/>
+            <Setter Property="Foreground" Value="{StaticResource QuestTextBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource ButtonStyle_Black}">
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style TargetType="{x:Type GroupBox}">
+            <Setter Property="Foreground" Value="{StaticResource QuestTextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type GroupBox}">
+                        <Grid>
+                            <Border Margin="0,11,0,0" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7"/>
+                            <Border Margin="14,0,0,0" Padding="7,2" HorizontalAlignment="Left"
+                                    Background="#F4F6F8" CornerRadius="3">
+                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                  TextElement.FontSize="12" TextElement.FontWeight="SemiBold"
+                                                  TextElement.Foreground="{StaticResource QuestMutedTextBrush}"/>
+                            </Border>
+                            <ContentPresenter Margin="14,30,14,14"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ListBox}">
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="3"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        </Style>
+
+        <Style TargetType="{x:Type ListBoxItem}">
+            <Setter Property="Padding" Value="9,7"/>
+            <Setter Property="Margin" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="ItemBorder" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#EFF6FF"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#DBEAFE"/>
+                                <Setter Property="Foreground" Value="#1D4ED8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type TabControl}">
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+
+        <Style TargetType="{x:Type TabItem}">
+            <Setter Property="Foreground" Value="{StaticResource QuestMutedTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource QuestAccentBrush}"/>
+                    <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="{x:Type DataGrid}">
+            <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#E8ECF2"/>
+            <Setter Property="RowBackground" Value="White"/>
+            <Setter Property="AlternatingRowBackground" Value="#FAFBFC"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="ColumnHeaderHeight" Value="34"/>
+            <Setter Property="RowHeight" Value="34"/>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridColumnHeader}">
+            <Setter Property="Background" Value="#F1F4F8"/>
+            <Setter Property="Foreground" Value="{StaticResource QuestMutedTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
         </Style>
 
         <!-- DataTemplate for NPC conversation type enum -->
@@ -260,7 +452,7 @@
                 <DataGrid.Columns>
 
                     <!-- Conversation Type Column -->
-                    <DataGridTemplateColumn Header="Type" Width="80">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -272,16 +464,16 @@
                     </DataGridTemplateColumn>
 
                     <!-- Conversation Text Column -->
-                    <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+                <DataGridTextColumn Header="{local:QuestText QuestEditor_Text}" Binding="{Binding NpcConversation}" Width="4*"/>
 
                     <!-- Yes Responses Column -->
-                    <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_YesResponses}" Width="3*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
                                     <ItemsControl ItemsSource="{Binding YesResponses}"
                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
-                                    <Button x:Name="button_addResponse" Content="Add response"
+                                            <Button x:Name="button_addResponse" Content="{local:QuestText QuestEditor_AddResponse}"
                                         Style="{DynamicResource ButtonStyle_Black}" Width="100"
                                         HorizontalAlignment="Right"
                                         IsEnabled="{Binding IsYesNoConversation}"
@@ -298,13 +490,13 @@
                     </DataGridTemplateColumn>
 
                     <!-- No Responses Column -->
-                    <DataGridTemplateColumn Header="No Responses" Width="3*">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_NoResponses}" Width="3*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
                                     <ItemsControl ItemsSource="{Binding NoResponses}"
                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
-                                    <Button x:Name="button_addNoResponse" Content="Add response"
+                                            <Button x:Name="button_addNoResponse" Content="{local:QuestText QuestEditor_AddResponse}"
                                         Style="{DynamicResource ButtonStyle_Black}" Width="100"
                                         HorizontalAlignment="Right"
                                         IsEnabled="{Binding IsYesNoConversation}"
@@ -329,7 +521,7 @@
                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                 <DataGrid.Columns>
                     <!-- Conversation Type Column -->
-                    <DataGridTemplateColumn Header="Type" Width="80">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -341,13 +533,13 @@
                     </DataGridTemplateColumn>
 
                     <!-- Responses Column -->
-                    <DataGridTemplateColumn Header="Responses" Width="3*">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Responses}" Width="3*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel>
                                     <ItemsControl ItemsSource="{Binding Responses}"
                                                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
-                                    <Button Content="Add response" 
+                                            <Button Content="{local:QuestText QuestEditor_AddResponse}"
                                                                         Style="{DynamicResource ButtonStyle_Black}" Width="100" 
                                                                         HorizontalAlignment="Right"
                                                                         Click="button_addResponse_stopQuest_Click"/>
@@ -387,7 +579,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20"  Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.8.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" reward amount:" />
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardAmount}" />
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -398,7 +590,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.7.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -410,7 +602,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.6.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -421,11 +613,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(sense) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardSenseAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -436,11 +628,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(will) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardWillAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -451,11 +643,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(insight) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardInsightAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -466,11 +658,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(charisma) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardCharismaAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -481,11 +673,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(charm) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardCharmAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -496,11 +688,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(craft) reward amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RewardCraftAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -512,7 +704,7 @@
         <DataTemplate x:Key="ActInfoExTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="InfoEx string:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_InfoExString}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -537,12 +729,12 @@
 
                                 <!-- Skill level-->
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="0" Margin="2,0,10,5" Height="25">
-                                    <TextBlock Text="SP amount:" Width="100"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_SpAmount}" Width="100"/>
                                     <TextBox Text="{Binding SPValue, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100" />
                                 </StackPanel>
 
                                 <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="1">
-                                    <TextBlock Text="Given to jobs:" Margin="0,0,10,5"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_GivenToJobs}" Margin="0,0,10,5"/>
 
                                     <ListBox ItemsSource="{Binding Jobs, Mode=TwoWay}" 
                                                  MinHeight="30" >
@@ -576,7 +768,7 @@
 
                                         </ListBox.ItemTemplate>
                                     </ListBox>
-                                    <Button x:Name="button_addSPJob" Content="Add job"
+                                    <Button x:Name="button_addSPJob" Content="{local:QuestText QuestEditor_AddJob}"
                                             Width="100" Height="20" 
                                             VerticalAlignment="Bottom" HorizontalAlignment="Right"
                                             Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
@@ -599,7 +791,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddSP" Content="Add SP" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddSP" Content="{local:QuestText QuestEditor_AddSp}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddSP_Click"/>
             </StackPanel>
@@ -628,7 +820,7 @@
 
                                 <!-- Skill Id-->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,10,5" Grid.Row="0" Grid.Column="0">
-                                        <TextBlock Text="Skill Id:" Width="100"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_SkillId}" Width="100"/>
                                         <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,5" Width="100"/>
@@ -644,26 +836,26 @@
 
                                 <!-- Skill level-->
                                 <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" Margin="0,0,10,5">
-                                    <TextBlock Text="Skill Level:" Width="100"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_SkillLevel}" Width="100"/>
                                     <TextBox Text="{Binding SkillLevel, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100"/>
                                 </StackPanel>
 
                                 <!-- Master level-->
                                 <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="2" Margin="0,0,10,5">
-                                    <TextBlock Text="Master Level:" Width="100"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_MasterLevel}" Width="100"/>
                                     <TextBox Text="{Binding MasterLevel, UpdateSourceTrigger=PropertyChanged}"  InputScope="Number" Margin="5,0,0,5" Width="100"/>
                                 </StackPanel>
 
                                 <!-- Only master level-->
-                                <CheckBox Content="Only Master Level" IsChecked="{Binding OnlyMasterLevel, UpdateSourceTrigger=PropertyChanged}" 
+                                <CheckBox Content="{local:QuestText QuestEditor_OnlyMasterLevel}" IsChecked="{Binding OnlyMasterLevel, UpdateSourceTrigger=PropertyChanged}"
                                           Grid.Row="2" Grid.Column="1" Margin="0,0,0,5"/>
 
                                 <!-- Acquire -->
                                 <CheckBox MinWidth="100" IsChecked="{Binding Acquire, Converter={StaticResource negativeOneToTrueConverter}, UpdateSourceTrigger=PropertyChanged}"
-                                              Content="Acquire (remove skill)"
+                                              Content="{local:QuestText QuestEditor_AcquireRemoveSkill}"
                                               Grid.Row="2" Grid.Column="2" Margin="0,0,10,5"/>
 
-                                <TextBlock Text="Given to jobs:" Grid.Row="3" Grid.Column="0" Margin="0,0,10,5"/>
+                                <TextBlock Text="{local:QuestText QuestEditor_GivenToJobs}" Grid.Row="3" Grid.Column="0" Margin="0,0,10,5"/>
                                 <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="20">
                                     <ListBox ItemsSource="{Binding JobIds, Mode=TwoWay}" 
                                           MinHeight="30" >
@@ -697,7 +889,7 @@
 
                                         </ListBox.ItemTemplate>
                                     </ListBox>
-                                    <Button x:Name="button_addJob" Content="Add job"
+                                    <Button x:Name="button_addJob" Content="{local:QuestText QuestEditor_AddJob}"
                                         Width="100" Height="20" 
                                             VerticalAlignment="Bottom" HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
@@ -719,7 +911,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddSkill" Content="Add skill" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddSkill_Click"/>
             </StackPanel>
@@ -737,7 +929,7 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="Job Id:" Width="60"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_JobId}" Width="60"/>
                                         <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,0" Width="100"/>
@@ -760,7 +952,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddJob" Content="Add job" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddJob_Click"/>
             </StackPanel>
@@ -770,7 +962,7 @@
         <DataTemplate x:Key="ActLvMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level min:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_LevelMin}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -778,7 +970,7 @@
         <DataTemplate x:Key="ActLvMaxTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level max:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_LevelMax}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -791,7 +983,7 @@
                     <ColumnDefinition MinWidth="150" Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
+                <TextBlock Text="{local:QuestText QuestEditor_MapsToEnter}" Grid.Column="0" Margin="4,0,0,0"/>
                 <Grid Grid.Column="1">
                     <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}" MinHeight="30">
                         <ListBox.ItemTemplate>
@@ -815,7 +1007,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_selectMaps_Click"/>
                 </Grid>
@@ -827,7 +1019,7 @@
         <DataTemplate x:Key="ActIntervalTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Interval (minutes):" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_IntervalMinutes}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -836,7 +1028,7 @@
         <DataTemplate x:Key="ActStartTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Start date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_StartDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -848,7 +1040,7 @@
         <DataTemplate x:Key="ActEndTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="End date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_EndDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -859,13 +1051,13 @@
         <!-- Conversation "0", "1", "2", "3" -->
         <DataTemplate x:Key="ActSayConversationTemplate">
             <StackPanel>
-                <TextBlock Text="Start" Margin="4,4,0,4" FontWeight="Bold"/>
+                <TextBlock Text="{local:QuestText QuestEditor_Start}" Margin="4,4,0,4" FontWeight="Bold"/>
                 <ContentControl x:Name="dataGrid_ConversationStart" Grid.Row="1" 
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
                                 Content="{Binding ActConversationStart, Mode=OneWay}">
                 </ContentControl>
 
-                <TextBlock Text="Stop" Margin="4,4,0,4" FontWeight="Bold"/>
+                <TextBlock Text="{local:QuestText QuestEditor_Stop}" Margin="4,4,0,4" FontWeight="Bold"/>
                 <ContentControl x:Name="dataGrid_ConversationStop" Grid.Row="1" 
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
                                 Content="{Binding ActConversationStop, Mode=OneWay}">
@@ -877,7 +1069,7 @@
         <DataTemplate x:Key="ActPetSpeedTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet speed:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetSpeed}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -886,7 +1078,7 @@
         <DataTemplate x:Key="ActPetTamenessTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet tameness:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetTameness}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -895,7 +1087,7 @@
         <DataTemplate x:Key="ActPetSkillTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Select a skill:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_SelectSkill}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <ComboBox x:Name="comboBox_petSkill" 
                           ItemsSource="{Binding Source={StaticResource PetSkillTypeEnum}}"  
@@ -917,7 +1109,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/2022240_buff_icon.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="Buff reward:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_BuffReward}" Margin="4,0,0,0"/>
                     <TextBlock Text="[" Margin="4,0,0,0"/>
                     <TextBlock Text="{Binding Amount, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
                     <TextBlock Text="]"/>
@@ -931,7 +1123,7 @@
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_selectBuff" Content="Select Buff" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                    <Button x:Name="botton_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_selectBuff_Click"/>
                 </Grid>
@@ -949,12 +1141,12 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Vertical">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="Quest Id:" Width="70"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_QuestIdLabel}" Width="70"/>
                                         <TextBox Text="{Binding QuestId, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,0" Width="100"/>
 
-                                        <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_State}" Width="70" Margin="10,0,0,0"/>
                                         <ComboBox x:Name="comboBox_questState" 
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
                                                   SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -985,7 +1177,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddQuest" Content="Add quest" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddQuest_Click"/>
             </StackPanel>
@@ -996,7 +1188,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.0.5.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="Next quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_NextQuest}" Margin="4,0,0,0"/>
                     <TextBlock Text="["  Margin="10,0,0,0"/>
                     <TextBlock Text="{Binding Amount, Converter={StaticResource questIdToQuestNameConverter}}"  FontWeight="Bold"/>
                     <TextBlock Text="]"/>
@@ -1010,7 +1202,7 @@
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                    <Button x:Name="botton_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_selectQuest_Click"/>
                 </Grid>
@@ -1027,10 +1219,10 @@
                     <ColumnDefinition MinWidth="150" Width="2*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Message notice:" Grid.Column="0" Margin="4,0,0,0"/>
+                <TextBlock Text="{local:QuestText QuestEditor_MessageNotice}" Grid.Column="0" Margin="4,0,0,0"/>
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" Grid.Column="1"/>
 
-                <TextBlock Text="Maps to show in:" Grid.Column="2" Margin="4,0,0,0"/>
+                <TextBlock Text="{local:QuestText QuestEditor_MapsToShowIn}" Grid.Column="2" Margin="4,0,0,0"/>
                 <StackPanel Orientation="Vertical" Grid.Column="3">
                     <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}"  MinHeight="30">
                         <ListBox.ItemTemplate>
@@ -1048,7 +1240,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_selectMaps_Click"/>
                 </StackPanel>
@@ -1065,7 +1257,7 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="NPC ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="{local:QuestText QuestEditor_NpcId}" Margin="2,0,0,0"/>
                         <TextBlock Text="["  Margin="10,0,0,0"/>
                         <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
                         <TextBlock Text="]"/>
@@ -1073,7 +1265,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_selectNPC" Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_selectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
                         Click="button_selectNPC_Click"/>
             </Grid>
         </DataTemplate>
@@ -1081,7 +1273,7 @@
         <DataTemplate x:Key="ActNpcActTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Animation action:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_AnimationAction}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -1121,7 +1313,7 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="0"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Quantity}" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              InputScope="Number"
@@ -1132,7 +1324,7 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="1"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="Prop type:" Margin="0,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_PropType}" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <ComboBox x:Name="comboBox_itemPropType" 
                                               ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"  
@@ -1147,7 +1339,7 @@
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
 
-                                    <TextBlock Text="Gender:" Margin="20,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Gender}" Margin="20,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <ComboBox x:Name="comboBox_itemGenderType" 
                                               ItemsSource="{Binding Source={StaticResource RewardGenderTypeEnum}}"  
@@ -1170,7 +1362,7 @@
                                             </MultiBinding>
                                         </StackPanel.Visibility>
                                         
-                                        <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
+                                        <TextBlock Text="{local:QuestText QuestEditor_Potential}" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
                                                />
                                         <ComboBox x:Name="comboBox_potentialGrade" 
                                               ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
@@ -1191,20 +1383,20 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="2"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="Period (minutes):" Margin="0,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_PeriodMinutes}" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Period, UpdateSourceTrigger=PropertyChanged}" Width="60" 
                                              InputScope="Number" TextAlignment="Center"
                                              />
 
-                                    <TextBlock Text="Expiry:" Margin="20,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Expiry}" Margin="20,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <DatePicker Name="datePicker_itemExpiry" Text="" 
                                                 DisplayDate="01/01/2020 00:00:00"
                                                 SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
                                                 />
 
-                                    <TextBlock Text="Var: " Margin="20,0,0,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Var}" Margin="20,0,0,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Var, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              Margin="5,0,0,0"
@@ -1217,7 +1409,7 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="4"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="JobEx: " VerticalAlignment="Center"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_JobEx}" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding JobEx, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              Margin="5,0,0,0"
                                              InputScope="Number"
@@ -1228,12 +1420,12 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="4"
                                             HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <TextBlock Text="Classes: "/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_Classes}"/>
                                     <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 
                                                Margin="5,0,5,0"
                                              TextAlignment="Center"
                                              />
-                                    <Button x:Name="button_selectClasses" Content="Select class"
+                                    <Button x:Name="button_selectClasses" Content="{local:QuestText QuestEditor_SelectClass}"
                                             Style="{StaticResource ButtonStyle_Black}" Background="Gray"
                                             Width="100" Height="20" VerticalAlignment="Bottom"
                                             Click="button_selectClasses_Click"/>
@@ -1251,7 +1443,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectItem_Click"/>
             </StackPanel>
@@ -1377,7 +1569,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.7.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" required meso amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredMesoAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1388,7 +1580,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.6.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text=" required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1398,7 +1590,7 @@
         <DataTemplate x:Key="CheckIntervalTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Interval (repeatable after x minutes):" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RepeatInterval}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1442,7 +1634,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectEquip" Content="Add equip" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectEquip_Click"/>
             </StackPanel>
@@ -1484,7 +1676,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectEquip" Content="Add equip" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectEquip_Click"
                         />
@@ -1496,11 +1688,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(sense) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredSenseAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1511,11 +1703,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(will) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredWillAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1526,11 +1718,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(insight) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredInsightAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1541,11 +1733,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(charisma) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredCharismaAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1556,11 +1748,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(charm) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredCharmAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1571,11 +1763,11 @@
             <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="(craft) required amount:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_RequiredCraftAmount}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
 
-                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                <TextBlock Text="{local:QuestText QuestEditor_PreBigBangUnavailable}"
                            FontStyle="Italic"
                            Margin="10,0,0,0"
                            Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
@@ -1586,7 +1778,7 @@
         <DataTemplate x:Key="CheckLvMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level min:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_LevelMin}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1594,7 +1786,7 @@
         <DataTemplate x:Key="CheckLvMaxTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level max:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_LevelMax}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1605,7 +1797,7 @@
         <DataTemplate x:Key="CheckWorldMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="World min:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_WorldMin}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1614,7 +1806,7 @@
         <DataTemplate x:Key="CheckWorldMaxTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="World max:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_WorldMax}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1624,7 +1816,7 @@
         <DataTemplate x:Key="CheckSubJobFlagsTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Sub job flag:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_SubJobFlag}" Margin="2,0,0,0"/>
                 </StackPanel>
                 
                 <ComboBox 
@@ -1645,7 +1837,7 @@
         <DataTemplate x:Key="CheckTamingMobLevelMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Taming mob level min:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_TamingMobLevelMin}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1655,7 +1847,7 @@
         <DataTemplate x:Key="CheckPetTamenessMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet tameness min:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetTamenessMin}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1663,7 +1855,7 @@
         <DataTemplate x:Key="CheckPetTamenessMaxTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet tameness max:" Margin="2,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetTamenessMax}" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -1673,7 +1865,7 @@
         <DataTemplate x:Key="CheckPetRecallLimitTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet recall limit:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetRecallLimit}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -1681,7 +1873,7 @@
         <DataTemplate x:Key="CheckPetAutoSpeakingLimitTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Pet auto speaking limit:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_PetAutoSpeakingLimit}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -1695,7 +1887,7 @@
                     <ColumnDefinition MinWidth="150" Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
+                <TextBlock Text="{local:QuestText QuestEditor_MapsToEnter}" Grid.Column="0" Margin="4,0,0,0"/>
                 <Grid Grid.Column="1">
                     <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}" MinHeight="30">
                         <ListBox.ItemTemplate>
@@ -1720,7 +1912,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_check_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_check_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_check_selectMaps_Click"
                             />
@@ -1767,7 +1959,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectPetItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectPetItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectPetItem_Click"
                         />
@@ -1805,7 +1997,7 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="0"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Quantity}" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              InputScope="Number"
@@ -1824,7 +2016,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectItem_Click"/>
             </StackPanel>
@@ -1861,7 +2053,7 @@
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="0"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Quantity}" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Count, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              InputScope="Number"
@@ -1880,7 +2072,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_addMob" Content="Add monster" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_addMob" Content="{local:QuestText QuestEditor_AddMonster}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_addMob_Click"/>
             </StackPanel>
@@ -1897,7 +2089,7 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="Job Id:" Width="60"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_JobId}" Width="60"/>
                                         <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,0" Width="100"/>
@@ -1921,7 +2113,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddJob" Content="Add job" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddJob_Click"/>
             </StackPanel>
@@ -1935,7 +2127,7 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Text="Job flags:" Margin="2,0,0,0"/>
+                        <TextBlock Text="{local:QuestText QuestEditor_JobFlags}" Margin="2,0,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="5,0,0,0">
                             <TextBlock Text="[" Margin="0,0,0,0"/>
                             <!-- Added MaxWidth and proper text wrapping -->
@@ -1951,7 +2143,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" IsEnabled="False" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_check_jobCLassFlags" Content="Select jobs" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_check_jobCLassFlags" Content="{local:QuestText QuestEditor_SelectJobs}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
                         Click="button_check_jobCLassFlags_Click"/>
             </Grid>
         </DataTemplate>
@@ -1968,12 +2160,12 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Vertical">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="Quest Id:" Width="70"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_QuestIdLabel}" Width="70"/>
                                         <TextBox Text="{Binding QuestId, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,0" Width="100"/>
 
-                                        <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_State}" Width="70" Margin="10,0,0,0"/>
                                         <ComboBox x:Name="comboBox_questState" 
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
                                                   SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -2004,7 +2196,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddQuest" Content="Add quest" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddQuest_Click"/>
             </StackPanel>
@@ -2021,7 +2213,7 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Vertical">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="info:" Width="70"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_InfoLabel}" Width="70"/>
                                         <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" InputScope="Number"
                                              Margin="5,0,0,0" Width="100"/>
                                     </StackPanel>
@@ -2038,7 +2230,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_info_addQuest" Content="Add info" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_info_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_info_addQuest_Click"/>
             </StackPanel>
@@ -2055,13 +2247,13 @@
                                 <!-- Quest Id-->
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                                        <TextBlock Text="Value:" Width="70"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_Value}" Width="70"/>
                                         <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" InputScope="Number"
                                              Margin="5,0,0,0" Width="100"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Condition:" Width="70" Margin="10,0,0,0"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_Condition}" Width="70" Margin="10,0,0,0"/>
                                         <TextBox Text="{Binding Condition}" InputScope="Default" Width="70" Margin="10,0,0,0"/>
                                     </StackPanel>
                                     <!--<ComboBox x:Name="comboBox_questInfoEx_Condition" 
@@ -2087,7 +2279,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_infoEx_addQuest" Content="Add info" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_infoEx_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_infoEx_addQuest_Click"/>
             </StackPanel>
@@ -2103,7 +2295,7 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Quest ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="{local:QuestText QuestEditor_QuestIdLabel}" Margin="2,0,0,0"/>
                         <TextBlock Text="["  Margin="10,0,0,0"/>
                         <TextBlock Text="{Binding Amount, Converter={StaticResource questIdToQuestNameConverter}}" FontWeight="Bold"/>
                         <TextBlock Text="]"/>
@@ -2114,7 +2306,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_check_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_check_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
                         Click="button_check_selectQuest_Click"/>
             </Grid>
         </DataTemplate>
@@ -2162,7 +2354,7 @@
 
                                 <!-- Skill Id-->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,10,5" Grid.Row="0" Grid.Column="0">
-                                    <TextBlock Text="Skill Id:" Width="80"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_SkillId}" Width="80"/>
                                     <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  
                                              InputScope="Number" IsReadOnly="True"
                                              Margin="5,0,0,5" Width="100"/>
@@ -2178,13 +2370,13 @@
 
                                 <!-- Skill level-->
                                 <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" Margin="0,0,10,5">
-                                    <TextBlock Text="Skill Level:" Width="80"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_SkillLevel}" Width="80"/>
                                     <TextBox Text="{Binding SkillLevel, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100"/>
                                 </StackPanel>
                                 
                                 <!-- Condition -->
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="2">
-                                    <TextBlock Text="Condition:" Margin="0,0,5,0" Width="80"
+                                    <TextBlock Text="{local:QuestText QuestEditor_Condition}" Margin="0,0,5,0" Width="80"
                                                />
                                     <ComboBox x:Name="comboBox_skillCond" MinWidth="100"
                                               ItemsSource="{Binding Source={StaticResource SkillCondTypeEnum}}"  
@@ -2201,7 +2393,7 @@
 
                                 <!-- Acquire -->
                                 <CheckBox MinWidth="100" IsChecked="{Binding Acquire, UpdateSourceTrigger=PropertyChanged}"
-                                          Content="Acquire (if the player should 'have' the skill regardless of skillLevel.)"
+                                          Content="{local:QuestText QuestEditor_AcquireSkillRegardlessLevel}"
                                           Grid.Row="1" Grid.Column="1" Margin="0,0,10,5"/>
 
                                 <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
@@ -2218,7 +2410,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddSkill" Content="Add skill" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddSkill_Click"
                         />
@@ -2236,7 +2428,7 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="NPC ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="{local:QuestText QuestEditor_NpcId}" Margin="2,0,0,0"/>
                         <TextBlock Text="["  Margin="10,0,0,0"/>
                         <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
                         <TextBlock Text="]"/>
@@ -2244,7 +2436,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_checkSelectNPC" Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_checkSelectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
                         Click="button_checkSelectNPC_Click"/>
             </Grid>
         </DataTemplate>
@@ -2253,7 +2445,7 @@
         <DataTemplate x:Key="CheckNpcStartScriptTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Start script to execute upon starting the quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_StartScript}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2261,7 +2453,7 @@
         <DataTemplate x:Key="CheckNpcEndScriptTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="End script to execute upon ending the quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_EndScript}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2272,7 +2464,7 @@
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/2022240_buff_icon.png" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Text="Except Buff:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_ExceptBuff}" Margin="4,0,0,0"/>
                     <TextBlock Text="[" Margin="4,0,0,0"/>
                     <TextBlock Text="{Binding Amount, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
                     <TextBlock Text="]"/>
@@ -2286,7 +2478,7 @@
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_Check_selectBuff" Content="Select Buff" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                    <Button x:Name="botton_Check_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_Check_selectBuff_Click"/>
                 </Grid>
@@ -2297,7 +2489,7 @@
         <DataTemplate x:Key="CheckMarriedTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Is married 💘:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_IsMarried}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2307,7 +2499,7 @@
         <DataTemplate x:Key="CheckPremiumTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Is premium:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_IsPremium}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2317,7 +2509,7 @@
         <DataTemplate x:Key="CheckWeeklyRepeatTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Is weekly repeat quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_WeeklyRepeat}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2327,7 +2519,7 @@
         <DataTemplate x:Key="CheckDayByDayTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Day by day (Repeatable everyday quest):" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_DailyRepeatable}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2337,7 +2529,7 @@
         <DataTemplate x:Key="CheckNormalAutoStartTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Is normal auto start quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_NormalAutoStart}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
@@ -2347,7 +2539,7 @@
         <DataTemplate x:Key="CheckStartTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Start_t date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_StartTimeDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -2359,7 +2551,7 @@
         <DataTemplate x:Key="CheckEndTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="End_t date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_EndTimeDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -2372,7 +2564,7 @@
         <DataTemplate x:Key="CheckStart_TTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Start_t date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_StartTimeDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -2384,7 +2576,7 @@
         <DataTemplate x:Key="CheckEnd_TTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="End_t date:" Margin="4,0,0,0"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_EndTimeDate}" Margin="4,0,0,0"/>
                 </StackPanel>
                 <DatePicker Name="datePicker_date" Text="" 
                             DisplayDate="01/01/2020 00:00:00"
@@ -2552,22 +2744,41 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+        </ResourceDictionary>
     </Window.Resources>
 
-    <Grid>
+    <DockPanel Margin="16">
+        <Border DockPanel.Dock="Top" Background="Transparent" Padding="2,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+            <TextBlock Text="{local:QuestText QuestEditor_Subtitle}"
+                               Foreground="{StaticResource QuestMutedTextBrush}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="1" Background="#E8F0FE" CornerRadius="12" Padding="10,5" VerticalAlignment="Center">
+            <TextBlock Text="{local:QuestText QuestEditor_Eyebrow}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource QuestAccentBrush}"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="12"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- Quest List -->
-        <GroupBox Header="Quest List" Grid.Column="0" Margin="10" FontWeight="Bold">
+            <GroupBox Header="{local:QuestText QuestEditor_QuestLibrary}" Grid.Column="0" Margin="0" FontWeight="Bold">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="30"/>
-                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="38"/>
+                    <RowDefinition Height="38"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="38"/>
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0">
@@ -2576,14 +2787,14 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="Area code:" 
+                            <TextBlock Text="{local:QuestText QuestEditor_Area}"
                                Grid.Column="0" Margin="5,0,0,0"
                                FontWeight="Normal" 
                                VerticalAlignment="Center"/>
 
                     <ComboBox x:Name="comboBox_questAreaSort" 
                               Grid.Column="1"
-                              Margin="10,0,0,0" Height="20"
+                              Margin="10,0,0,4"
                               ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"  
                               SelectedItem="{Binding SortQuestAreaCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                               SelectionChanged="comboBox_questAreaSort_SelectionChanged">
@@ -2596,7 +2807,8 @@
                 </Grid>
                 
 
-                <TextBox x:Name="searchBox" Grid.Row="1" Margin="0,0,0,5" 
+                <TextBox x:Name="searchBox" Grid.Row="1" Margin="0,0,0,7"
+                                 ToolTip="{local:QuestText QuestEditor_FilterTooltip}"
                          TextChanged="SearchBox_TextChanged"/>
                 <ListBox x:Name="listbox_Quest" Grid.Row="2" ItemsSource="{Binding FilteredQuests}" Margin="0,0,0,5"
                          SelectionChanged="QuestListBox_SelectionChanged">
@@ -2618,10 +2830,10 @@
                         <ColumnDefinition Width="5*"/>
                     </Grid.ColumnDefinitions>
                     
-                    <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30"
+                        <Button x:Name="button_addNewQuest" Content="{local:QuestText QuestEditor_NewQuest}" Margin="0,4,4,0"
                         Style="{DynamicResource ButtonStyle_Black}"
                         Click="button_addNewQuest_Click"/>
-                    <Button x:Name="button_importNewQuest" Content="Import Quest" Height="30" Grid.Column="1"
+                        <Button x:Name="button_importNewQuest" Content="{local:QuestText QuestEditor_Import}" Margin="4,4,0,0" Grid.Column="1"
                         Style="{DynamicResource ButtonStyle_Black}"
                             Click="button_importNewQuest_Click"/>
                 </Grid>
@@ -2629,16 +2841,16 @@
         </GroupBox>
 
         <!-- Quest Editor -->
-        <GroupBox Header="Quest Editor" Grid.Column="1" Margin="10" FontWeight="Bold">
+            <GroupBox Header="{local:QuestText QuestEditor_QuestDetails}" Grid.Column="2" Margin="0" FontWeight="Bold">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="20"/>
+                    <RowDefinition Height="46"/>
                 </Grid.RowDefinitions>
 
-                <TabControl Grid.Row="0">
+                <TabControl Grid.Row="0" Margin="0,0,0,10">
                     <!-- Quest Info Tab -->
-                    <TabItem Header="Quest Info (QuestInfo.img)" FontWeight="Normal">
+                        <TabItem Header="{local:QuestText QuestEditor_QuestInfoTab}" FontWeight="Normal">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="25"/>
@@ -2647,14 +2859,14 @@
 
                             <TextBlock Grid.Row="0" Foreground="Gray" Margin="0,0,0,10">The quest <Bold>information</Bold>, such as quest name, parent name.</TextBlock>
 
-                            <ScrollViewer Grid.Row="1">
-                                <StackPanel>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="14,10,14,18">
                                     <!-- Quest name -->
-                                    <TextBlock Text="Name:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_Name}" FontWeight="Bold"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Name}"/>
 
                                     <!-- Parent quest-->
-                                    <TextBlock Text="Parent quest:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_ParentQuest}" FontWeight="Bold"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="7*"/>
@@ -2662,7 +2874,7 @@
                                             <ColumnDefinition Width="120"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Parent}" Grid.Column="0"/>
-                                        <Button x:Name="button_selectParentFromList" Content="Select" 
+                                                <Button x:Name="button_selectParentFromList" Content="{local:QuestText QuestEditor_Select}"
                                                 Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
                                                 Style="{DynamicResource ButtonStyle_Black}"
                                                 Click="button_selectParentFromList_Click"
@@ -2670,7 +2882,7 @@
                                     </Grid>
 
                                     <!-- Quest area -->
-                                    <TextBlock Text="Quest area code:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_QuestAreaCode}" FontWeight="Bold"/>
                                     <ComboBox x:Name="comboBox_questArea" 
                                               Width="200" HorizontalAlignment="Left"
                                               ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"  
@@ -2684,46 +2896,46 @@
                                     </ComboBox>
 
                                     <!-- Quest order -->
-                                    <TextBlock Text="Order:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_Order}" FontWeight="Bold"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Order}"/>
 
                                     <!-- Other boolean properties-->
-                                    <CheckBox x:Name="checkbox_blocked" Content="Blocked" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
-                                    <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
-                                    <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
-                                    <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
-                                    <CheckBox x:Name="checkbox_autoCompleteAction" Content="Auto complete action" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCompleteAction}"/>
-                                    <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
-                                    <CheckBox x:Name="checkbox_autoAccept" Content="Auto accept" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoAccept}"/>
-                                    <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
-                                    <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
+                                        <CheckBox x:Name="checkbox_blocked" Content="{local:QuestText QuestEditor_Blocked}" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
+                                        <CheckBox x:Name="checkbox_autoStart" Content="{local:QuestText QuestEditor_AutoStart}" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
+                                    <CheckBox x:Name="checkbox_autoPreComplete" Content="{local:QuestText QuestEditor_AutoPreComplete}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
+                                        <CheckBox x:Name="checkbox_autoComplete" Content="{local:QuestText QuestEditor_AutoComplete}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+                                    <CheckBox x:Name="checkbox_autoCompleteAction" Content="{local:QuestText QuestEditor_AutoCompleteAction}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCompleteAction}"/>
+                                    <CheckBox x:Name="checkbox_selectedMob" Content="{local:QuestText QuestEditor_SelectedMob}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                                        <CheckBox x:Name="checkbox_autoAccept" Content="{local:QuestText QuestEditor_AutoAccept}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoAccept}"/>
+                                        <CheckBox x:Name="checkbox_autoCancel" Content="{local:QuestText QuestEditor_AutoCancel}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
+                                    <CheckBox x:Name="checkbox_oneShot" Content="{local:QuestText QuestEditor_OneShot}" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
 
-                                    <TextBlock Text="Show layer tag:" FontWeight="Bold" Margin="0,5,0,0"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_ShowLayerTag}" FontWeight="Bold" Margin="0,5,0,0"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
 
                                     <!-- paddings -->
                                     <Grid Margin="0,0,0,10"/>
 
                                     <!-- For quest descriptions -->
-                                    <TextBlock Text="Summary:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_Summary}" FontWeight="Bold"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Summary}" AcceptsReturn="True" />
 
-                                    <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
-                                    <CheckBox x:Name="checkbox_disableAtStartTab" Content="Disable at start tab" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_StartQuestDescription}" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtStartTab" Content="{local:QuestText QuestEditor_DisableStartTab}" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
 
-                                    <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
-                                    <CheckBox x:Name="checkbox_disableAtPerformTab" Content="Disable at perform tab" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_ActiveQuestDescription}" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtPerformTab" Content="{local:QuestText QuestEditor_DisablePerformTab}" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
 
-                                    <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
-                                    <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="Disable at complete tab"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_EndQuestDescription}" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="{local:QuestText QuestEditor_DisableCompleteTab}"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
 
                                     <!-- paddings -->
                                     <Grid Margin="0,0,0,10"/>
 
-                                    <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_DemandSummary}" FontWeight="Bold"/>
                                     <Image Source="/Images/Quest/summary_icon.summary.png" Height="15" Stretch="Uniform"  HorizontalAlignment="Left"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -2731,14 +2943,14 @@
                                             <ColumnDefinition Width="170"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBox Margin="0,0,0,5" Grid.Column="0" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
-                                        <Button x:Name="button_generateDemandSummary" Grid.Column="1" Content="Generate from 'Check'" Margin="5,0,0,0" 
+                                                <Button x:Name="button_generateDemandSummary" Grid.Column="1" Content="{local:QuestText QuestEditor_GenerateFromCheck}" Margin="5,0,0,0"
                                                 Height="25" VerticalAlignment="Bottom"
                                                 Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateDemandSummary_Click"
                                                 />
                                     </Grid>
 
 
-                                    <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
+                                        <TextBlock Text="{local:QuestText QuestEditor_RewardSummary}" FontWeight="Bold"/>
                                     <Image Source="/Images/Quest/QuestIcon.4.0.png" Height="15" Stretch="Uniform" HorizontalAlignment="Left"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -2746,7 +2958,7 @@
                                             <ColumnDefinition Width="170"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
-                                        <Button x:Name="button_generateRewardSummary" Grid.Column="1" Content="Generate from 'Act'" Margin="5,0,0,0" 
+                                                <Button x:Name="button_generateRewardSummary" Grid.Column="1" Content="{local:QuestText QuestEditor_GenerateFromAct}" Margin="5,0,0,0"
                                                 Height="25" VerticalAlignment="Bottom"
                                                 Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateRewardSummary_Click"
                                                 />
@@ -2756,12 +2968,12 @@
                                     <Grid Margin="0,0,0,10"/>
 
                                     <!-- For medals -->
-                                    <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
-                                    <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
+                                    <TextBlock Text="{local:QuestText QuestEditor_MiscProperties}" TextDecorations="Underline" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_isMedal" Content="{local:QuestText QuestEditor_Medal}" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
                                     <StackPanel Margin="20,0,0,0" 
                                                 Visibility="{Binding SelectedQuest.IsMedal, Mode=TwoWay, Converter={StaticResource booleanToVisibility2Converter}}">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Medal category:"/>
+                                            <TextBlock Text="{local:QuestText QuestEditor_MedalCategory}"/>
                                             <ComboBox 
                                                 ItemsSource="{Binding Source={StaticResource QuestMedalTypeEnum}}"  
                                                 SelectedValue="{Binding SelectedQuest.MedalCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -2776,7 +2988,7 @@
                                         </StackPanel>
 
                                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                            <TextBlock Text="View medal Item:"/>
+                                            <TextBlock Text="{local:QuestText QuestEditor_ViewMedalItem}"/>
                                             <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Top">
                                                 <TextBlock Text="["/>
                                                 <TextBlock Text="{Binding SelectedQuest.ViewMedalItem, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
@@ -2791,7 +3003,7 @@
                                             </Grid.ColumnDefinitions>
                                             
                                             <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ViewMedalItem}" Grid.Column="0"/>
-                                            <Button x:Name="button_selectmedalItem" Content="Select" 
+                            <Button x:Name="button_selectmedalItem" Content="{local:QuestText QuestEditor_Select}"
                                                 Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
                                                 Style="{DynamicResource ButtonStyle_Black}"
                                                     Click="button_selectmedalItem_Click"
@@ -2808,7 +3020,7 @@
                     </TabItem>
 
                     <!-- Say Info Tab -->
-                    <TabItem Header="Say Info (SayInfo.img)"  FontWeight="Normal">
+                        <TabItem Header="{local:QuestText QuestEditor_SayInfoTab}"  FontWeight="Normal">
                         <ScrollViewer>
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -2817,14 +3029,14 @@
 
                                 <TabControl Grid.Row="1">
                                     <!-- Start quest-->
-                                    <TabItem Header="Start quest conversation" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_StartConversation}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConversationHelp}" Foreground="Gray"/>
 
                                             <ContentControl x:Name="dataGrid_ConversationStart" Grid.Row="1" 
                                                             ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
@@ -2834,14 +3046,14 @@
                                     </TabItem>
 
                                     <!-- End quest-->
-                                    <TabItem Header="End quest conversation" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_EndConversation}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConversationHelp}" Foreground="Gray"/>
 
                                             <ContentControl x:Name="DataGrid_conversationEndQuest" Grid.Row="3" 
                                                             ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
@@ -2851,14 +3063,14 @@
                                     </TabItem>
 
                                     <!-- "stop", start quest info -->
-                                    <TabItem Header="'Stop' start quest conversation" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_StopStartConversation}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say when certain conditions to start, or to end the quest is not met." Foreground="Gray"/>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConditionHelp}" Foreground="Gray"/>
 
                                             <ContentControl x:Name="DataGrid_conversationStopStartQuest" Grid.Row="3" 
                                                             ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
@@ -2868,14 +3080,14 @@
                                     </TabItem>
 
                                     <!-- "stop", start quest info -->
-                                    <TabItem Header="'Stop' end quest conversation" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_StopEndConversation}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say when certain conditions to start, or to end the quest is not met." Foreground="Gray"/>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConditionHelp}" Foreground="Gray"/>
 
                                             <ContentControl x:Name="DataGrid_conversationStopEndQuest" Grid.Row="3" 
                                                             ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
@@ -2889,12 +3101,12 @@
                     </TabItem>
 
                     <!-- Check Conditions Tab -->
-                    <TabItem Header="Check Conditions (Check.img)" FontWeight="Normal" >
+                        <TabItem Header="{local:QuestText QuestEditor_CheckConditionsTab}" FontWeight="Normal" >
                         <Grid>
                             <ScrollViewer>
                                 <TabControl Grid.Row="1">
                                     <!-- Start quest-->
-                                    <TabItem Header="Start quest check (0)" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_StartCheck}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
@@ -2908,7 +3120,7 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                                    <DataGridTemplateColumn Header="Type" Width="85">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="85">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
                                                                 <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -2920,7 +3132,7 @@
                                                     </DataGridTemplateColumn>
 
                                                     <!-- Rewards Column -->
-                                                    <DataGridTemplateColumn Header="Rewards" Width="*">
+                                                    <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Rewards}" Width="*">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <StaticResource ResourceKey="CheckRewardsColumnTemplate"/>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -2931,7 +3143,7 @@
                                     </TabItem>
 
                                     <!-- End quest-->
-                                    <TabItem Header="End quest check (1)" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_EndCheck}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
@@ -2944,7 +3156,7 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                                    <DataGridTemplateColumn Header="Type" Width="80">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
                                                                 <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -2956,7 +3168,7 @@
                                                     </DataGridTemplateColumn>
 
                                                     <!-- Rewards Column -->
-                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                    <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Rewards}" Width="3*">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <StaticResource ResourceKey="CheckRewardsColumnTemplate"/>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -2972,13 +3184,13 @@
                     </TabItem>
 
                     <!-- Act Requirements Tab -->
-                    <TabItem Header="Act Requirements (Act.img)" FontWeight="Normal">
+                        <TabItem Header="{local:QuestText QuestEditor_ActRequirementsTab}" FontWeight="Normal">
                         <Grid>
                             <ScrollViewer>
 
                                 <TabControl Grid.Row="1">
                                     <!-- Start quest-->
-                                    <TabItem Header="Start quest action (0)" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_StartAction}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
@@ -2991,7 +3203,7 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                                    <DataGridTemplateColumn Header="Type" Width="85">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="85">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
                                                                 <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3003,7 +3215,7 @@
                                                     </DataGridTemplateColumn>
 
                                                     <!-- Rewards Column -->
-                                                    <DataGridTemplateColumn Header="Rewards" Width="*">
+                                                    <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Rewards}" Width="*">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <StaticResource ResourceKey="ActRewardsColumnTemplate"/>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3014,7 +3226,7 @@
                                     </TabItem>
 
                                     <!-- End quest-->
-                                    <TabItem Header="End quest action (1)" FontWeight="Normal">
+                                    <TabItem Header="{local:QuestText QuestEditor_EndAction}" FontWeight="Normal">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="24"/>
@@ -3027,7 +3239,7 @@
                                                           AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                                    <DataGridTemplateColumn Header="Type" Width="80">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
                                                                 <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -3039,7 +3251,7 @@
                                                     </DataGridTemplateColumn>
 
                                                     <!-- Rewards Column -->
-                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                    <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Rewards}" Width="3*">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <StaticResource ResourceKey="ActRewardsColumnTemplate"/>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3055,18 +3267,19 @@
                     </TabItem>
                 </TabControl>
 
-                <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right">
-                    <Button x:Name="button_exportQuest" Content="Export quest" Margin="5,0,0,0" Width="120"
-                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
+                <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                    <Button x:Name="button_exportQuest" Content="{local:QuestText QuestEditor_Export}" Margin="5,0,0,0" Width="110"
+                                    Style="{DynamicResource ButtonStyle_ExportQuest}"
                                     Click="button_exportQuest_Click"/>
-                    <Button x:Name="button_deleteQuest" Content="Delete quest" Margin="5,0,0,0" Width="120"
+                    <Button x:Name="button_deleteQuest" Content="{local:QuestText QuestEditor_Delete}" Margin="8,0,0,0" Width="110"
                                     Style="{DynamicResource ButtonStyle_DeleteQuest}"
                                     Click="button_deleteQuest_Click"/>
-                    <Button x:Name="button_saveQuest" Content="Save quest" Margin="5,0,0,0"  Width="120"
+                    <Button x:Name="button_saveQuest" Content="{local:QuestText QuestEditor_SaveChanges}" Margin="8,0,0,0" Width="130"
                                     Style="{DynamicResource ButtonStyle_Black}"
                                     Click="button_saveQuest_Click"/>
                 </StackPanel>
             </Grid>
         </GroupBox>
-    </Grid>
+        </Grid>
+    </DockPanel>
 </Window>

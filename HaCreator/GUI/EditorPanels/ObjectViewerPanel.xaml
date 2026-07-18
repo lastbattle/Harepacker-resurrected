@@ -1,0 +1,57 @@
+<UserControl x:Class="HaCreator.GUI.EditorPanels.ObjectViewerPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:HaCreator.GUI.EditorPanels"
+             MinWidth="240" MinHeight="300"
+             Background="{DynamicResource HareCanvasBrush}"
+             Foreground="{DynamicResource HareTextBrush}"
+             PreviewKeyDown="Viewer_PreviewKeyDown">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="2,0,2,9">
+            <TextBlock Text="Map hierarchy" Style="{StaticResource HareSectionTitleStyle}"/>
+            <TextBlock Text="Search and select objects currently placed on the active map."
+                       Style="{StaticResource HareMutedTextStyle}" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,9">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="searchBox" ToolTip="Search by type, asset path, name, or coordinates"
+                     TextChanged="SearchBox_TextChanged"/>
+            <Button Grid.Column="1" Content="Refresh" Margin="8,0,0,0" MinWidth="76"
+                    Click="Refresh_Click"/>
+        </Grid>
+
+        <Border Grid.Row="2" Style="{StaticResource HareCardStyle}" Padding="0" ClipToBounds="True">
+            <local:AssetGallery x:Name="objectGallery"/>
+        </Border>
+
+        <Border Grid.Row="3" Margin="0,9,0,0" Padding="10,7"
+                Background="{StaticResource HareSurfaceBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="6">
+            <Grid>
+                <TextBlock x:Name="totalCountText" Text="Total 0"
+                           Foreground="{StaticResource HareMutedTextBrush}"/>
+                <TextBlock x:Name="selectedCountText" Text="Selected 0" HorizontalAlignment="Right"
+                           FontWeight="SemiBold" Foreground="{StaticResource HareAccentBrush}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="BackupFailed" xml:space="preserve"><value>Backup failed! Error: {0}\r\n{1}</value></data>
+  <data name="DuplicateObjectName" xml:space="preserve"><value>"{0}" could not be added because an object with the same name already exists.</value></data>
+  <data name="ErrorTitle" xml:space="preserve"><value>Error</value></data>
+  <data name="InstanceEditorError" xml:space="preserve"><value>An error occurred while presenting the instance editor for {0}:\r\n{1}</value></data>
+  <data name="CloseMapConfirm" xml:space="preserve"><value>Are you sure you want to close this map?</value></data>
+  <data name="CloseTitle" xml:space="preserve"><value>Close</value></data>
+  <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>List of unsupported properties</value></data>
+  <data name="SelectExportLocation" xml:space="preserve"><value>Select export location</value></data>
+  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator Map File (*.ham)|*.ham</value></data>
+  <data name="CouldNotSave" xml:space="preserve"><value>Could not save: {0}\r\n\r\n{1}</value></data>
+  <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>This will finalize all footholds, remove their tile bindings, and clear the Undo/Redo list.\r\nContinue?</value></data>
+  <data name="WarningTitle" xml:space="preserve"><value>Warning</value></data>
+  <data name="MinimapRegenerated" xml:space="preserve"><value>Minimap regenerated successfully.</value></data>
+  <data name="SuccessTitle" xml:space="preserve"><value>Success</value></data>
+  <data name="MinimapRegenerationError" xml:space="preserve"><value>An error occurred while regenerating the minimap. The error was logged. If possible, save the map and report it on GitHub.</value></data>
+  <data name="HelpFileMissing" xml:space="preserve"><value>Help could not be shown because HRHelp.htm was not found.</value></data>
+  <data name="ImgFilesystemPathUnknown" xml:space="preserve"><value>Unable to determine the IMG filesystem path.\n\nUse HaRepacker to pack IMG files into WZ.</value></data>
+  <data name="ImgFilesystemModeTitle" xml:space="preserve"><value>IMG Filesystem Mode</value></data>
+  <data name="ConfirmTitle" xml:space="preserve"><value>Confirm</value></data>
+  <data name="RemoveVrConfirm" xml:space="preserve"><value>This will remove the map's VR. This cannot be undone; VR must be re-added from the map menu. Continue?</value></data>
+  <data name="RemoveMinimapConfirm" xml:space="preserve"><value>This will remove the map's minimap. This cannot be undone; the minimap must be re-added from the map menu. Continue?</value></data>
+  <data name="ClipboardInvalid" xml:space="preserve"><value>Clipboard data is unavailable or invalid.</value></data>
+  <data name="GenericError" xml:space="preserve"><value>An error occurred: {0}</value></data>
+  <data name="ClipboardDifferentTileSets" xml:space="preserve"><value>The clipboard contains tiles from different tile sets and cannot be pasted.</value></data>
+  <data name="ClipboardNoLayerSelected" xml:space="preserve"><value>The clipboard contains layered items, but no layer or platform is selected.</value></data>
+  <data name="ClipboardTileSetMismatch" xml:space="preserve"><value>The clipboard tile uses a different tile set than the selected layer.</value></data>
+  <data name="GraphicsAdapterUnsupported" xml:space="preserve"><value>Graphics adapter is not supported: {0}\r\n\r\n{1}</value></data>
+  <data name="SelectRealLayer" xml:space="preserve"><value>Select a real layer.</value></data>
+  <data name="RecoveryPrompt" xml:space="preserve"><value>HaCreator shut down unexpectedly and can recover automatically from a backup. Proceed?\r\n\r\n(To start from scratch, select No.)</value></data>
+  <data name="RecoveryTitle" xml:space="preserve"><value>Recovery</value></data>
+  <data name="UnsupportedMapFeature" xml:space="preserve"><value>This map contains the unsupported feature "{0}". HaCreator will preserve its original data byte-for-byte, but it may stop working if it depends on edited map objects such as footholds or mobs.</value></data>
+  <data name="AddVr" xml:space="preserve"><value>Add VR</value></data>
+  <data name="AddMinimap" xml:space="preserve"><value>Add Minimap</value></data>
+  <data name="MapSizeMissing" xml:space="preserve"><value>The map has no size information, and HaCreator could not generate it. The error was logged.</value></data>
+  <data name="CurrentMapLabel" xml:space="preserve"><value>the current map</value></data>
+  <data name="EditMapInfo" xml:space="preserve"><value>Edit map info...</value></data>
+  <data name="Context_EditInstance" xml:space="preserve"><value>Edit this instance...</value></data>
+  <data name="Context_LoadTargetMap" xml:space="preserve"><value>Load target map in a new tab</value></data>
+  <data name="Context_AddCharacterTooltip" xml:space="preserve"><value>Add Character Tooltip</value></data>
+  <data name="Context_BringToFront" xml:space="preserve"><value>Bring to Front</value></data>
+  <data name="Context_SendToBack" xml:space="preserve"><value>Send to Back</value></data>
+  <data name="Context_SelectConnected" xml:space="preserve"><value>Select Connected</value></data>
+  <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>Change Layer/Platform...</value></data>
+  <data name="Context_SelectPlatform" xml:space="preserve"><value>Select Platform</value></data>
+</root>

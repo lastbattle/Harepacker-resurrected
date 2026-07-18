@@ -1,10 +1,11 @@
-﻿<Window x:Class="HaCreator.GUI.HaEditor"
+<Window x:Class="HaCreator.GUI.HaEditor"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
         
         xmlns:local="clr-namespace:HaCreator.GUI"
+        xmlns:loc="clr-namespace:HaCreator.GUI.Localization"
         xmlns:customControls="clr-namespace:HaCreator.CustomControls"
         xmlns:editorItems="clr-namespace:HaCreator.GUI.EditorPanels"
         xmlns:mapEditor="clr-namespace:HaCreator.MapEditor"
@@ -14,34 +15,497 @@
         
         MouseWheel="OnMouseWheel" 
         Closing="HaEditor2_Closing" 
-        SizeChanged="WindowSizeChanged" Title="HaCreator resurrected">
+        SizeChanged="WindowSizeChanged" Title="{loc:Loc Editor_HaCreator_resurrected_8AD585}">
 
-    <Grid>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:HaEditor.New}" CanExecute="AlwaysExecute" Executed="New_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Open}" CanExecute="AlwaysExecute" Executed="Open_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Export}" CanExecute="AlwaysExecute" Executed="Export_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Save}" CanExecute="AlwaysExecute" Executed="Save_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Repack}" CanExecute="AlwaysExecute" Executed="Repack_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.About}" CanExecute="AlwaysExecute" Executed="About_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Help}" CanExecute="AlwaysExecute" Executed="Help_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Settings}" CanExecute="AlwaysExecute" Executed="Settings_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Exit}" CanExecute="AlwaysExecute" Executed="Exit_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Minimap}" CanExecute="AlwaysExecute" Executed="Minimap_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Parallax}" CanExecute="AlwaysExecute" Executed="Parallax_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Finalize}" CanExecute="AlwaysExecute" Executed="Finalize_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.MapSim}" CanExecute="AlwaysExecute" Executed="MapSim_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.RegenMinimap}" CanExecute="HasMinimap" Executed="RegenMinimap_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Snapping}" CanExecute="AlwaysExecute" Executed="Snapping_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.Random}" CanExecute="AlwaysExecute" Executed="Random_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.InfoMode}" CanExecute="AlwaysExecute" Executed="InfoMode_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.AnimateMapObjectPreviews}" CanExecute="AlwaysExecute" Executed="AnimateMapObjectPreviews_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.HaRepacker}" CanExecute="AlwaysExecute" Executed="HaRepacker_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.NewPlatform}" CanExecute="AlwaysExecute" Executed="NewPlatform_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.UserObjs}" CanExecute="AlwaysExecute" Executed="UserObjs_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.PhysicsEdit}" CanExecute="AlwaysExecute" Executed="PhysicsEdit_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.ShowQuestEditorWindow}" CanExecute="AlwaysExecute" Executed="ShowQuestEditorWindow_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.ShowMapProperties}" CanExecute="AlwaysExecute" Executed="ShowMapProperties_Executed"/>
+    </Window.CommandBindings>
+
+    <Window.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#DBEAFE"/>
+        <SolidColorBrush x:Key="ChromeBrush" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="DividerBrush" Color="#DCE3EC"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#64748B"/>
+
+        <Style x:Key="CommandButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="34"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                CornerRadius="5"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#EEF2F7"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#D7DEE8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryCommandButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource CommandButtonStyle}">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="5"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding Background}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1D4ED8"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1D4ED8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1E40AF"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1E40AF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ToolRailButtonStyle" TargetType="RadioButton">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Margin" Value="5,2"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" CornerRadius="6" Background="{TemplateBinding Background}">
+                            <Grid>
+                                <Border x:Name="SelectionMarker"
+                                        Width="3" Height="22"
+                                        Margin="0,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="0,2,2,0"
+                                        Background="Transparent"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#EEF2F7"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+                                <Setter TargetName="SelectionMarker" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DocumentTabItemStyle" TargetType="TabItem">
+            <Setter Property="MinHeight" Value="38"/>
+            <Setter Property="MinWidth" Value="150"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Chrome" Margin="0,4,3,0" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1,1,1,0"
+                                CornerRadius="6,6,0,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="#0F172A"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter TargetName="Chrome" Property="Background" Value="White"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#CBD5E1"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SidebarTabItemStyle" TargetType="TabItem">
+            <Setter Property="MinHeight" Value="42"/>
+            <Setter Property="Padding" Value="7,8"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Grid Background="{TemplateBinding Background}">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" ContentSource="Header"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border x:Name="Marker" Height="3" Margin="7,0" VerticalAlignment="Bottom"
+                                    Background="Transparent" CornerRadius="2,2,0,0"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F1F5F9"/>
+                                <Setter Property="Foreground" Value="#334155"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter TargetName="Marker" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SubTabItemStyle" TargetType="TabItem">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Chrome" Margin="1" Padding="{TemplateBinding Padding}"
+                                CornerRadius="5" Background="{TemplateBinding Background}">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#F1F5F9"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter TargetName="Chrome" Property="Background" Value="#EFF6FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AssetExpanderStyle" TargetType="Expander">
+            <Setter Property="Margin" Value="8,4"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="40"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <ToggleButton x:Name="HeaderSite" Padding="10,0" HorizontalContentAlignment="Stretch"
+                                              Background="Transparent" BorderThickness="0"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ContentPresenter ContentSource="Content" RecognizesAccessKey="True"
+                                                          Content="{TemplateBinding Header}" VerticalAlignment="Center"/>
+                                        <Path x:Name="Chevron" Grid.Column="1" Width="10" Height="6" Stretch="Fill"
+                                              Stroke="#64748B" StrokeThickness="1.6" Data="M1,1 L5,5 L9,1"/>
+                                    </Grid>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="ExpandSite" Grid.Row="1" Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="Chevron" Property="Data" Value="M1,5 L5,1 L9,5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Background="{StaticResource HareCanvasBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="52"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="20"/>
+            <RowDefinition Height="28"/>
         </Grid.RowDefinitions>
 
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="52"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="5"/>
-            <ColumnDefinition Width="350"/>
+            <ColumnDefinition Width="330"/>
         </Grid.ColumnDefinitions>
 
-        <local:HaRibbon x:Name="ribbon"
-                        Grid.Row="0" Grid.ColumnSpan="3"/>
+        <!-- Compact command bar -->
+        <Border Grid.Row="0" Grid.ColumnSpan="4"
+                Background="{StaticResource ChromeBrush}"
+                BorderBrush="{StaticResource DividerBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid Margin="8,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Menu Grid.Column="0" Background="Transparent" VerticalAlignment="Center">
+                    <MenuItem Header="{loc:Loc Editor_File_50009C}">
+                        <MenuItem Header="{loc:Loc Editor_New_18FDD5}" Command="{x:Static local:HaEditor.New}" InputGestureText="Ctrl+N"/>
+                        <MenuItem Header="{loc:Loc Editor_Open_map_03863A}" Command="{x:Static local:HaEditor.Open}" InputGestureText="Ctrl+O"/>
+                        <MenuItem Header="{loc:Loc Editor_Save_map_1EA04E}" Command="{x:Static local:HaEditor.Export}" InputGestureText="Ctrl+S"/>
+                        <Separator/>
+                        <MenuItem Header="{loc:Loc Editor_Save_to_WZ_CDEA60}" Command="{x:Static local:HaEditor.Save}"/>
+                        <MenuItem Header="{loc:Loc Editor_Repack_WZ_files_90BFA4}" Command="{x:Static local:HaEditor.Repack}"/>
+                        <MenuItem Header="{loc:Loc Editor_Open_HaRepacker_09E8F1}" Command="{x:Static local:HaEditor.HaRepacker}"/>
+                        <Separator/>
+                        <MenuItem Header="{loc:Loc Editor_Exit_D17D84}" Command="{x:Static local:HaEditor.Exit}"/>
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc Editor_View_DCC839}">
+                        <MenuItem Header="{loc:Loc Editor_Map_browser_5ADA56}" Click="ShowMapBrowser_Click"/>
+                        <MenuItem Header="{loc:Loc Editor_Assets_BD1273}" Click="ShowAssets_Click"/>
+                        <MenuItem Header="{loc:Loc Editor_Hierarchy_23BE56}" Click="ShowHierarchy_Click"/>
+                        <Separator/>
+                        <MenuItem Header="{loc:Loc Editor_Toggle_minimap_357182}" Command="{x:Static local:HaEditor.Minimap}"/>
+                        <MenuItem Header="{loc:Loc Editor_Toggle_snapping_13C561}" Command="{x:Static local:HaEditor.Snapping}"/>
+                        <MenuItem Header="{loc:Loc Editor_Random_Tiles_1ED7F5}" Command="{x:Static local:HaEditor.Random}"/>
+                        <MenuItem Header="{loc:Loc Editor_Parallax_backgrounds_69E70D}" Command="{x:Static local:HaEditor.Parallax}"/>
+                        <MenuItem Header="{loc:Loc Editor_Information_overlays_1CC00F}" Command="{x:Static local:HaEditor.InfoMode}"/>
+                        <MenuItem Header="{loc:Loc Editor_Animate_asset_previews_E74DF1}" Command="{x:Static local:HaEditor.AnimateMapObjectPreviews}"/>
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc Editor_Map_BE176B}">
+                        <MenuItem Header="{loc:Loc Editor_Preview_324B13}" Command="{x:Static local:HaEditor.MapSim}"/>
+                        <MenuItem Header="{loc:Loc Editor_Validate_current_map_3137EC}" Click="ValidateCurrentMap_Click"/>
+                        <MenuItem Header="{loc:Loc Editor_Validate_all_maps_7F88A7}" Click="MapExplorerCheckMapButton_Click"/>
+                        <MenuItem Header="{loc:Loc Editor_Finalize_Footholds_68717E}" Command="{x:Static local:HaEditor.Finalize}"/>
+                        <MenuItem Header="{loc:Loc Editor_Regenerate_Minimap_CD2C30}" Command="{x:Static local:HaEditor.RegenMinimap}"/>
+                        <Separator/>
+                        <MenuItem Header="{loc:Loc Editor_Map_properties_EC4B13}" Command="{x:Static local:HaEditor.ShowMapProperties}"/>
+                        <MenuItem Header="{loc:Loc Editor_New_platform_D53525}" Command="{x:Static local:HaEditor.NewPlatform}"/>
+                        <MenuItem Header="{loc:Loc Editor_Quest_editor_A8BFA2}" Command="{x:Static local:HaEditor.ShowQuestEditorWindow}"/>
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc Editor_Tools_EA93D6}">
+                        <MenuItem Header="{loc:Loc Editor_Settings_74A883}" Command="{x:Static local:HaEditor.Settings}"/>
+                        <MenuItem Header="{loc:Loc Editor_Map_Physics_61AD90}" Command="{x:Static local:HaEditor.PhysicsEdit}"/>
+                        <MenuItem Header="{loc:Loc Editor_Manage_User_Objects_455E55}" Command="{x:Static local:HaEditor.UserObjs}"/>
+                        <MenuItem Header="{loc:Loc Editor_Quest_editor_B81784}" Command="{x:Static local:HaEditor.ShowQuestEditorWindow}"/>
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc Editor_Help_B79CAC}">
+                        <MenuItem Header="{loc:Loc Editor_Help_B79CAC}" Command="{x:Static local:HaEditor.Help}"/>
+                        <MenuItem Header="{loc:Loc Editor_About_HaCreator_D7275A}" Command="{x:Static local:HaEditor.About}"/>
+                    </MenuItem>
+                </Menu>
+
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource CommandButtonStyle}" Click="Undo_Click" ToolTip="{loc:Loc Editor_Undo_Ctrl_Z_A67232}" AutomationProperties.Name="Undo">
+                        <TextBlock FontFamily="Segoe UI Symbol" FontSize="18" Text="↶"/>
+                    </Button>
+                    <Button Style="{StaticResource CommandButtonStyle}" Click="Redo_Click" ToolTip="{loc:Loc Editor_Redo_Ctrl_Y_323109}" AutomationProperties.Name="Redo">
+                        <TextBlock FontFamily="Segoe UI Symbol" FontSize="18" Text="↷"/>
+                    </Button>
+                    <Button Style="{StaticResource CommandButtonStyle}"
+                            Command="{x:Static local:HaEditor.Export}"
+                            ToolTip="{loc:Loc Editor_Save_map_Ctrl_S_1E254B}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe UI Symbol" FontSize="16" Text="▣"/>
+                            <TextBlock Margin="7,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Editor_Save_1509F5}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <Border Grid.Column="2" Margin="18,0" VerticalAlignment="Center" Background="#EEF2F7" CornerRadius="5" Padding="12,6">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Current_map_A6E14D}"/>
+                        <TextBlock Margin="8,0,0,0" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding SelectedItem.Header, ElementName=tabControl1, FallbackValue=No map loaded}"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource CommandButtonStyle}"
+                            Command="{x:Static local:HaEditor.ShowQuestEditorWindow}"
+                            ToolTip="{loc:Loc Editor_Open_Quest_Editor_C0AFD3}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="15" Text="▤"/>
+                            <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Quests_60D40D}"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource CommandButtonStyle}" Click="ShowMapBrowser_Click" ToolTip="{loc:Loc Editor_Search_maps_and_commands_FF74F6}">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE721;"/>
+                    </Button>
+                    <Button Style="{StaticResource CommandButtonStyle}" Click="ValidateCurrentMap_Click" ToolTip="{loc:Loc Editor_Validate_the_active_map_only_07B633}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE73E;"/>
+                            <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Validate_40611A}"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource PrimaryCommandButtonStyle}"
+                            Command="{x:Static local:HaEditor.MapSim}"
+                            ToolTip="{loc:Loc Editor_Preview_map_E19CEF}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="14" Text="▶"/>
+                            <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Preview_324B13}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Editing tool rail -->
+        <Border Grid.Row="1" Grid.Column="0"
+                Background="#F8FAFC"
+                BorderBrush="{StaticResource DividerBrush}"
+                BorderThickness="0,0,1,0">
+            <StackPanel Margin="0,6">
+                <RadioButton x:Name="selectionToolRadioButton" GroupName="EditorTools" IsChecked="True" Tag="Select" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Select_S_B368AF}">
+                    <Path Width="17" Height="20" Stretch="Fill" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                          Data="M2,1 L2,17 L6.4,13.2 L9.5,20 L12.1,18.8 L9,12.2 L15,12 Z"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Tile" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Tiles_T_FE4E53}">
+                    <Grid Width="19" Height="19">
+                        <Rectangle Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7"/>
+                        <Rectangle Width="1.7" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                        <Rectangle Height="1.7" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                    </Grid>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Object" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Objects_O_F1F32A}">
+                    <Path Width="20" Height="20" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7"
+                          Data="M10,1 L19,6 L19,15 L10,20 L1,15 L1,6 Z M1,6 L10,11 L19,6 M10,11 L10,20"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Life" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_NPCs_and_mobs_N_9A06FB}">
+                    <Path Width="18" Height="20" Stretch="Fill" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                          Data="M9,1 A4,4 0 1 1 8.9,1 M2,20 C2,14 4.5,11 9,11 C13.5,11 16,14 16,20 Z"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Portal" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Portals_P_67398E}">
+                    <Path Width="20" Height="20" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="2"
+                          Data="M10,1 A9,9 0 1 1 9.9,1 M10,6 A4,4 0 1 1 9.9,6"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Foothold" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Draw_footholds_91FC09}">
+                    <Path Width="21" Height="18" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="2"
+                          Data="M1,15 L6,9 L11,13 L20,3 M4,17 L18,17"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Rope" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Place_ropes_and_ladders_8D6DF5}">
+                    <Path Width="18" Height="20" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7"
+                          Data="M4,1 L4,19 M14,1 L14,19 M4,5 L14,5 M4,10 L14,10 M4,15 L14,15"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Region" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Draw_map_regions_A876F1}">
+                    <Path Width="20" Height="18" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7" StrokeDashArray="2,1"
+                          Data="M1,1 L19,1 L19,17 L1,17 Z"/>
+                </RadioButton>
+                <Separator Margin="8,5"/>
+                <RadioButton GroupName="EditorTools" Tag="Background" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Backgrounds_B_65E4C7}">
+                    <Path Width="21" Height="18" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.7"
+                          Data="M1,1 L20,1 L20,17 L1,17 Z M2,14 L7,9 L11,13 L14,10 L20,16 M15,4 A2,2 0 1 1 14.9,4"/>
+                </RadioButton>
+                <RadioButton GroupName="EditorTools" Tag="Eraser" Checked="EditorTool_Checked"
+                             Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Erase_items_each_click_is_undoable_256689}">
+                    <Path Width="20" Height="19" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8"
+                          Data="M3,13 L12,3 L18,9 L9,18 L4,18 L1,15 Z M8,18 L14,12"/>
+                </RadioButton>
+            </StackPanel>
+        </Border>
 
         <!-- editor board-->
-        <Grid Grid.Row="1" Grid.Column="0">
+        <Grid Grid.Row="1" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             
             <TabControl x:Name="tabControl1" Grid.Row="0"
-                       SelectionChanged="tabControl1_SelectionChanged"
-                        >
+                        Background="#F8FAFC"
+                        BorderBrush="{StaticResource DividerBrush}"
+                        BorderThickness="0,0,0,1"
+                        ItemContainerStyle="{StaticResource DocumentTabItemStyle}"
+                        SelectionChanged="tabControl1_SelectionChanged">
 
             </TabControl>
             <mapEditor:MultiBoard x:Name="multiBoard" Grid.Row="1"/>
@@ -50,7 +514,7 @@
 
         <!-- Side panel -->
         <GridSplitter Grid.Row="1"
-                      Grid.Column="1"
+                      Grid.Column="2"
                       Width="5"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch"
@@ -60,32 +524,176 @@
 
         <Grid x:Name="toolWindowsPanel"
               Grid.Row="1"
-              Grid.Column="2">
+              Grid.Column="3"
+              Background="#F8FAFC">
             <TabControl x:Name="toolWindowsTabControl"
+                        Background="#F8FAFC"
+                        BorderBrush="{StaticResource DividerBrush}"
+                        BorderThickness="1,0,0,0"
+                        ItemContainerStyle="{StaticResource SidebarTabItemStyle}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         VerticalAlignment="Stretch"
                         VerticalContentAlignment="Stretch"
                         SelectionChanged="ToolWindowsTabControl_SelectionChanged">
+
+                <TabItem x:Name="inspectorTabItem"
+                         Header="{loc:Loc Editor_Inspector_DA188E}"
+                         HorizontalContentAlignment="Stretch"
+                         VerticalContentAlignment="Stretch">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="14">
+                            <TextBlock FontSize="16" FontWeight="SemiBold" Text="{loc:Loc Editor_Selection_CA4067}"/>
+                            <TextBlock Margin="0,5,0,14"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="{loc:Loc Editor_Inspect_the_current_selection_Double_click_an_item_on_t_0FAC6F}"/>
+
+                            <Border Padding="12" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="6">
+                                <StackPanel>
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="11" FontWeight="SemiBold" Text="{loc:Loc Editor_Selected_Item_2DE33D}"/>
+                                    <TextBlock Margin="0,5,0,0" TextWrapping="Wrap"
+                                               Text="{Binding Text, ElementName=textblock_selectedItem, FallbackValue=Nothing selected}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Margin="0,18,0,8" FontSize="14" FontWeight="SemiBold" Text="{loc:Loc Editor_Position_6D031A}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Padding="10" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="X"/>
+                                        <TextBlock Margin="0,3,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding Text, ElementName=textblock_CursorX}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Padding="10" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Y"/>
+                                        <TextBlock Margin="0,3,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding Text, ElementName=textblock_CursorY}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <TextBlock Margin="0,18,0,8" FontSize="14" FontWeight="SemiBold" Text="{loc:Loc Editor_Canvas_3824A9}"/>
+                            <Border Padding="12" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="6">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Zoom_509C51}"/>
+                                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding Text, ElementName=txtZoomLevel}"/>
+
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,5"
+                                               Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Active_layer_BF7C5A}"/>
+                                    <ComboBox x:Name="inspectorLayerComboBox" Grid.Row="2" Grid.ColumnSpan="2"
+                                              Height="32" Padding="7,3" SelectionChanged="InspectorLayerComboBox_SelectionChanged"/>
+
+                                    <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,12,0,5"
+                                               Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Active_platform_4B8392}"/>
+                                    <ComboBox x:Name="inspectorPlatformComboBox" Grid.Row="4" Grid.ColumnSpan="2"
+                                              Height="32" Padding="7,3" SelectionChanged="InspectorPlatformComboBox_SelectionChanged"/>
+
+                                    <WrapPanel Grid.Row="5" Grid.ColumnSpan="2" Margin="0,10,0,0">
+                                        <CheckBox x:Name="inspectorAllLayersCheckBox" Margin="0,0,14,0"
+                                                  VerticalAlignment="Center" Content="{loc:Loc Editor_Show_all_layers_B7053C}"
+                                                  Checked="InspectorAllLayersCheckBox_Changed"
+                                                  Unchecked="InspectorAllLayersCheckBox_Changed"/>
+                                        <CheckBox x:Name="inspectorAllPlatformsCheckBox" Margin="0,0,14,0"
+                                                  VerticalAlignment="Center" Content="{loc:Loc Editor_Show_all_platforms_8B719C}"
+                                                  Checked="InspectorAllPlatformsCheckBox_Changed"
+                                                  Unchecked="InspectorAllPlatformsCheckBox_Changed"/>
+                                        <CheckBox x:Name="inspectorSnapCheckBox" Margin="0,0,8,0" VerticalAlignment="Center" Content="{loc:Loc Editor_Snap_98DF9A}"
+                                                  Checked="InspectorSnapCheckBox_Changed"
+                                                  Unchecked="InspectorSnapCheckBox_Changed"/>
+                                    </WrapPanel>
+                                </Grid>
+                            </Border>
+
+                            <Expander Margin="0,14,0,0" IsExpanded="True" Style="{StaticResource AssetExpanderStyle}">
+                                <Expander.Header>
+                                    <StackPanel>
+                                        <TextBlock FontSize="14" FontWeight="SemiBold" Text="{loc:Loc Editor_Item_visibility_D68C83}"/>
+                                        <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{loc:Loc Editor_Checked_edit_Mixed_view_only_Off_hidden_16154D}"/>
+                                    </StackPanel>
+                                </Expander.Header>
+                                <Border Margin="0,6,0,0" Padding="12" Background="White"
+                                        BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="6">
+                                    <StackPanel>
+                                        <UniformGrid x:Name="visibilityFiltersPanel" Columns="2">
+                                            <CheckBox Tag="Tiles" Content="{loc:Loc Editor_Tiles_4DA22A}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Objects" Content="{loc:Loc Editor_Objects_DE5236}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="NPCs" Content="{loc:Loc Editor_NPCs_32DFCB}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Mobs" Content="{loc:Loc Editor_Mobs_083013}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Reactors" Content="{loc:Loc Editor_Reactors_347F20}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Portals" Content="{loc:Loc Editor_Portals_B4A3DA}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Footholds" Content="{loc:Loc Editor_Footholds_7BE0B3}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Ropes" Content="{loc:Loc Editor_Ropes_6BB426}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Chairs" Content="{loc:Loc Editor_Chairs_09E99D}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Tooltips" Content="{loc:Loc Editor_Tooltips_1CFB0B}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Backgrounds" Content="{loc:Loc Editor_Backgrounds_16A0B5}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Other" Content="{loc:Loc Editor_Other_F97E9D}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                            <CheckBox Tag="Mirror field" Content="{loc:Loc Editor_Mirror_field_A21F74}" IsThreeState="True" Margin="0,5" Checked="VisibilityFilter_Changed" Unchecked="VisibilityFilter_Changed" Indeterminate="VisibilityFilter_Changed"/>
+                                        </UniformGrid>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Margin="0,0,4,0" Tag="Visible" Style="{StaticResource CommandButtonStyle}" Click="VisibilityPreset_Click" Content="{loc:Loc Editor_Show_All_E1C326}"/>
+                                            <Button Grid.Column="1" Margin="2,0" Tag="Locked" Style="{StaticResource CommandButtonStyle}" Click="VisibilityPreset_Click" Content="{loc:Loc Editor_Lock_all_AC5BB7}"/>
+                                            <Button Grid.Column="2" Margin="4,0,0,0" Tag="Hidden" Style="{StaticResource CommandButtonStyle}" Click="VisibilityPreset_Click" Content="{loc:Loc Editor_Hide_all_6BAD68}"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
                 <TabItem x:Name="mapExplorerTabItem"
-                         Header="Map Explorer"
+                         Header="{loc:Loc Editor_Maps_119E66}"
+                         Visibility="Collapsed"
                          HorizontalContentAlignment="Stretch"
                          VerticalContentAlignment="Stretch">
                     <TabItem.Resources>
                         <Style x:Key="MapExplorerButton" TargetType="{x:Type Button}">
-                            <Setter Property="Height" Value="26"/>
+                            <Setter Property="Height" Value="34"/>
                             <Setter Property="MinWidth" Value="72"/>
-                            <Setter Property="Padding" Value="8,2"/>
+                            <Setter Property="Padding" Value="10,0"/>
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="Cursor" Value="Hand"/>
                         </Style>
                         <Style x:Key="MapExplorerPrimaryButton"
                                TargetType="{x:Type Button}"
                                BasedOn="{StaticResource MapExplorerButton}">
                             <Setter Property="MinWidth" Value="78"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                         </Style>
                         <Style x:Key="MapExplorerTextBox" TargetType="{x:Type TextBox}">
-                            <Setter Property="Height" Value="26"/>
-                            <Setter Property="Padding" Value="4,2"/>
+                            <Setter Property="Height" Value="34"/>
+                            <Setter Property="Padding" Value="9,4"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
                             <Setter Property="VerticalContentAlignment" Value="Center"/>
                         </Style>
                         <Style x:Key="MapExplorerStatusText" TargetType="{x:Type TextBlock}">
@@ -104,7 +712,7 @@
                             <Setter Property="ClipToBounds" Value="True"/>
                         </Style>
                         <Style x:Key="MapExplorerLabelText" TargetType="{x:Type TextBlock}">
-                            <Setter Property="Foreground" Value="#FF666666"/>
+                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
                             <Setter Property="FontSize" Value="11"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Style>
@@ -121,39 +729,47 @@
 
                         <Border x:Name="mapExplorerSelectionBorder"
                                 Grid.Row="0"
-                                Padding="8"
-                                BorderBrush="#FFD0D0D0"
+                                Padding="12"
+                                BorderBrush="{StaticResource DividerBrush}"
                                 BorderThickness="1"
-                                Background="#FFF8F8F8">
+                                Background="White"
+                                CornerRadius="7">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Row="0"
+                                           Grid.Column="1"
                                            Grid.ColumnSpan="2"
                                            Style="{StaticResource MapExplorerLabelText}"
-                                           Text="Selection"/>
+                                           Text="{loc:Loc Editor_SELECTED_MAP_F1ABF7}"/>
+                                <Border Grid.RowSpan="2" Width="22" Height="22" VerticalAlignment="Center"
+                                        Background="#EFF6FF" CornerRadius="5">
+                                    <Path Width="12" Height="14" Stretch="Fill" Fill="{StaticResource AccentBrush}"
+                                          Data="M2,1 L9,1 L12,4 L12,14 L2,14 Z M9,1 L9,4 L12,4 M4,8 L10,8 M4,11 L9,11"/>
+                                </Border>
                                 <TextBlock x:Name="mapExplorerSelectionTextBlock"
                                            Grid.Row="1"
-                                           Grid.Column="0"
+                                           Grid.Column="1"
                                            Margin="0,3,8,0"
                                            Style="{StaticResource MapExplorerSelectionText}"
                                            ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                                 <Button x:Name="mapExplorerLoadButton"
                                         Grid.Row="1"
-                                        Grid.Column="1"
-                                        Width="78"
+                                        Grid.Column="2"
+                                        Width="82"
                                         VerticalAlignment="Center"
                                         Style="{StaticResource MapExplorerPrimaryButton}"
                                         Click="MapExplorerLoadButton_Click"
-                                        Content="Load"
-                                        ToolTip="Load selected map or file"
+                                        Content="{loc:Loc Editor_Open_ED077F}"
+                                        ToolTip="{loc:Loc Editor_Load_selected_map_or_file_1920CB}"
                                         IsEnabled="False"/>
                             </Grid>
                         </Border>
@@ -165,9 +781,10 @@
                                     HorizontalContentAlignment="Stretch"
                                     VerticalAlignment="Stretch"
                                     VerticalContentAlignment="Stretch"
+                                    ItemContainerStyle="{StaticResource SubTabItemStyle}"
                                     SelectionChanged="MapExplorerSourceTabControl_SelectionChanged">
                             <TabItem x:Name="mapExplorerWzTabItem"
-                                     Header="WZ"
+                                     Header="{loc:Loc Editor_All_maps_D292E9}"
                                      HorizontalContentAlignment="Stretch"
                                      VerticalContentAlignment="Stretch">
                                 <Grid Margin="0,8,0,0">
@@ -177,10 +794,6 @@
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Row="0"
-                                               Style="{StaticResource MapExplorerLabelText}"
-                                               Text="Find maps"/>
-
                                     <Grid Grid.Row="1"
                                           x:Name="mapExplorerFilterPanel"
                                           Margin="0,4,0,6">
@@ -189,16 +802,20 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBox x:Name="mapExplorerSearchTextBox"
-                                                 Grid.Column="0"
-                                                 Margin="0,0,8,0"
-                                                 Style="{StaticResource MapExplorerTextBox}"
-                                                 TextChanged="MapExplorerSearchTextBox_TextChanged"
-                                                 ToolTip="Search maps"/>
+                                        <Grid Grid.Column="0" Margin="0,0,8,0">
+                                            <TextBox x:Name="mapExplorerSearchTextBox"
+                                                     Style="{StaticResource MapExplorerTextBox}"
+                                                     Padding="30,4,9,4"
+                                                     TextChanged="MapExplorerSearchTextBox_TextChanged"
+                                                     ToolTip="{loc:Loc Editor_Search_by_map_ID_or_name_9D3E57}"/>
+                                            <Path Width="13" Height="13" Margin="10,0,0,0" HorizontalAlignment="Left"
+                                                  VerticalAlignment="Center" Stretch="Fill" Stroke="#64748B" StrokeThickness="1.6"
+                                                  IsHitTestVisible="False" Data="M6,1 A5,5 0 1 1 5.9,1 M10,10 L14,14"/>
+                                        </Grid>
                                         <CheckBox x:Name="mapExplorerTownOnlyCheckBox"
                                                   Grid.Column="1"
                                                   VerticalAlignment="Center"
-                                                  Content="Town only"
+                                                  Content="{loc:Loc Editor_Town_only_CB37A6}"
                                                   Checked="MapExplorerTownOnlyCheckBox_Changed"
                                                   Unchecked="MapExplorerTownOnlyCheckBox_Changed"/>
                                     </Grid>
@@ -211,7 +828,7 @@
                             </TabItem>
 
                             <TabItem x:Name="mapExplorerHistoryTabItem"
-                                     Header="History"
+                                     Header="{loc:Loc Editor_History_0E7696}"
                                      HorizontalContentAlignment="Stretch"
                                      VerticalContentAlignment="Stretch">
                                 <Grid Margin="0,8,0,0">
@@ -241,20 +858,20 @@
                                                 Width="88"
                                                 Style="{StaticResource MapExplorerButton}"
                                                 Click="MapExplorerClearHistoryButton_Click"
-                                                Content="Clear"/>
+                                                Content="{loc:Loc Editor_Clear_83B12C}"/>
                                         <Button x:Name="mapExplorerDeleteHistoryButton"
                                                 Grid.Column="2"
                                                 Width="88"
                                                 Margin="8,0,0,0"
                                                 Style="{StaticResource MapExplorerButton}"
                                                 Click="MapExplorerDeleteHistoryButton_Click"
-                                                Content="Delete"
+                                                Content="{loc:Loc Editor_Delete_E2D0A5}"
                                                 IsEnabled="False"/>
                                     </Grid>
                                 </Grid>
                             </TabItem>
 
-                            <TabItem x:Name="mapExplorerHamTabItem" Header="HAM">
+                            <TabItem x:Name="mapExplorerHamTabItem" Header="{loc:Loc Editor_HAM_4FAE66}">
                                 <Grid Margin="0,8,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -265,7 +882,7 @@
 
                                     <TextBlock Grid.Row="0"
                                                Style="{StaticResource MapExplorerLabelText}"
-                                               Text="Map file"/>
+                                               Text="{loc:Loc Editor_Map_file_1C2EF1}"/>
 
                                     <Grid Grid.Row="1"
                                           Margin="0,4,0,0">
@@ -284,7 +901,7 @@
                                                 Width="72"
                                                 Style="{StaticResource MapExplorerButton}"
                                                 Click="MapExplorerBrowseHamButton_Click"
-                                                Content="Browse"/>
+                                                Content="{loc:Loc Editor_Browse_3227AA}"/>
                                     </Grid>
 
                                     <Border Grid.Row="2"
@@ -300,7 +917,7 @@
                                 </Grid>
                             </TabItem>
 
-                            <TabItem x:Name="mapExplorerXmlTabItem" Header="XML">
+                            <TabItem x:Name="mapExplorerXmlTabItem" Header="{loc:Loc Editor_XML_40658E}">
                                 <Grid Margin="0,8,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -311,7 +928,7 @@
 
                                     <TextBlock Grid.Row="0"
                                                Style="{StaticResource MapExplorerLabelText}"
-                                               Text="Map XML"/>
+                                               Text="{loc:Loc Editor_Map_XML_B46847}"/>
 
                                     <Grid Grid.Row="1"
                                           Margin="0,4,0,0">
@@ -330,7 +947,7 @@
                                                 Width="72"
                                                 Style="{StaticResource MapExplorerButton}"
                                                 Click="MapExplorerBrowseXmlButton_Click"
-                                                Content="Browse"/>
+                                                Content="{loc:Loc Editor_Browse_3227AA}"/>
                                     </Grid>
 
                                     <Border Grid.Row="2"
@@ -347,136 +964,160 @@
                             </TabItem>
                         </TabControl>
 
-                        <Border x:Name="mapExplorerSourceActionsBorder"
-                                Grid.Row="2"
-                                Margin="0,8,0,0"
-                                Padding="8,6"
-                                BorderBrush="#FFD0D0D0"
-                                BorderThickness="1"
-                                Background="#FFFCFCFC">
+                        <Expander x:Name="mapExplorerSourceActionsBorder"
+                                  Grid.Row="2"
+                                  Margin="0,8,0,0"
+                                  Header="{loc:Loc Editor_Developer_map_tools_BE410C}"
+                                  Style="{StaticResource AssetExpanderStyle}">
                             <StackPanel>
-                                <TextBlock Style="{StaticResource MapExplorerLabelText}"
-                                           Text="Bulk source tools"/>
                                 <StackPanel Orientation="Horizontal"
-                                            Margin="0,4,0,0">
+                                            Margin="8,0,8,8">
                                     <Button x:Name="mapExplorerResolveMissingButton"
                                             Margin="0,0,8,0"
                                             Style="{StaticResource MapExplorerButton}"
                                             Click="MapExplorerResolveMissingButton_Click"
-                                            Content="Resolve Missing"
-                                            ToolTip="Resolve missing map names from WZ data"/>
+                                            Content="{loc:Loc Editor_Resolve_Missing_4C66E8}"
+                                            ToolTip="{loc:Loc Editor_Resolve_missing_map_names_from_WZ_data_74AB22}"/>
                                     <Button x:Name="mapExplorerCheckMapButton"
                                             Margin="0,0,8,0"
                                             Style="{StaticResource MapExplorerButton}"
                                             Click="MapExplorerCheckMapButton_Click"
-                                            Content="Check maps"
-                                            ToolTip="Check all loaded maps for loading errors"/>
+                                            Content="{loc:Loc Editor_Validate_all_maps_7F88A7}"
+                                            ToolTip="{loc:Loc Editor_Validate_every_map_in_the_loaded_source_6F7C90}"/>
                                     <Button x:Name="mapExplorerReloadButton"
                                             Style="{StaticResource MapExplorerButton}"
                                             Click="MapExplorerReloadButton_Click"
-                                            Content="Reload all"
-                                            ToolTip="Reload the current map source"/>
+                                            Content="{loc:Loc Editor_Reload_all_F4A8C4}"
+                                            ToolTip="{loc:Loc Editor_Reload_the_current_map_source_901FA7}"/>
                                 </StackPanel>
                             </StackPanel>
-                        </Border>
+                        </Expander>
                         </Grid>
                 </TabItem>
 
-                <TabItem x:Name="toolboxTabItem" Header="Toolbox">
+                <TabItem x:Name="toolboxTabItem" Header="{loc:Loc Editor_Assets_BD1273}">
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Visible"
                                   x:Name="editorPanel">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="Expander" BasedOn="{StaticResource AssetExpanderStyle}"/>
+                        </ScrollViewer.Resources>
                         <StackPanel Orientation="Vertical">
 
-                            <Expander Header="Tile"
+                            <Expander x:Name="tileExpander" Header="{loc:Loc Editor_Tiles_4DA22A}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
+                                <Border x:Name="tilePanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:TilePanel x:Name="tilePanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
-                            <Expander Header="Object"
+                            <Expander x:Name="objectExpander" Header="{loc:Loc Editor_Objects_DE5236}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="objPanelHost" Visibility="Collapsed">
+                                <Border x:Name="objPanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1">
                                     <editorItems:ObjPanel x:Name="objPanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
-                            <Expander Header="Life"
+                            <Expander x:Name="lifeExpander" Header="{loc:Loc Editor_NPCs_Mobs_1C7EF3}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="lifePanelHost" Visibility="Collapsed">
+                                <Border x:Name="lifePanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:LifePanel x:Name="lifePanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
-                            <Expander Header="Portal"
+                            <Expander x:Name="portalExpander" Header="{loc:Loc Editor_Portals_B4A3DA}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="portalPanelHost" Visibility="Collapsed">
+                                <Border x:Name="portalPanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:PortalPanel x:Name="portalPanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
-                            <Expander Header="Background"
+                            <Expander x:Name="backgroundExpander" Header="{loc:Loc Editor_Backgrounds_16A0B5}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="bgPanelHost" Visibility="Collapsed">
+                                <Border x:Name="bgPanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:BackgroundPanel x:Name="bgPanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
                             <Expander x:Name="expander_bgBlackBorderPanel"
-                                      Header="Background Border"
+                                      Header="{loc:Loc Editor_Background_Border_A213F4}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="bgBlackBorderPanelHost" Visibility="Collapsed">
+                                <Border x:Name="bgBlackBorderPanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:BlackBorderPanel x:Name="bgBlackBorderPanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
-                            <Expander Header="Common"
+                            <Expander x:Name="commonExpander" Header="{loc:Loc Editor_Footholds_Ropes_Regions_913790}"
                                       Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
-                                <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">
+                                <Border x:Name="commonPanelHost" Visibility="Collapsed"
+                                        Background="{StaticResource HareSurfaceBrush}"
+                                        BorderBrush="{StaticResource HareBorderBrush}"
+                                        BorderThickness="1" CornerRadius="6">
                                     <editorItems:CommonPanel x:Name="commonPanel"/>
-                                </WindowsFormsHost>
+                                </Border>
                             </Expander>
 
                             <Expander x:Name="expanderAIMapEditor"
-                                      Header="AI Map Editor"
+                                      Header="{loc:Loc Editor_AI_Map_Editor_B208D2}"
                                       Expanded="ExpanderAIMapEditor_Expanded"
-                                      ToolTip="Open AI Map Editor for the current map"/>
+                                      ToolTip="{loc:Loc Editor_Open_AI_Map_Editor_for_the_current_map_9FC120}"/>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem x:Name="objectViewerTabItem" Header="Object Viewer">
+                <TabItem x:Name="objectViewerTabItem" Header="{loc:Loc Editor_Hierarchy_23BE56}">
                     <Grid>
-                        <WindowsFormsHost x:Name="objectViewerPanelHostDocked">
+                        <Border x:Name="objectViewerPanelHostDocked"
+                                Background="{StaticResource HareSurfaceBrush}"
+                                BorderBrush="{StaticResource HareBorderBrush}"
+                                BorderThickness="1" CornerRadius="6">
                             <editorItems:ObjectViewerPanel x:Name="objectViewerPanelDocked"/>
-                        </WindowsFormsHost>
+                        </Border>
                     </Grid>
                 </TabItem>
 
-                <TabItem x:Name="mapLoadErrorsTabItem" Header="Map Load Errors">
-                    <Grid Margin="8">
+                <TabItem x:Name="mapLoadErrorsTabItem" Header="{loc:Loc Editor_Issues_666067}" Visibility="Collapsed">
+                    <Grid Margin="12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock x:Name="mapLoadErrorsSummaryTextBlock"
-                                   Grid.Row="0"
-                                   Margin="0,0,0,8"
-                                   TextWrapping="Wrap"
-                                   FontWeight="SemiBold"/>
+                        <Border Grid.Row="0" Margin="0,0,0,10" Padding="12,10"
+                                Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="6">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Editor_Map_diagnostics_269074}" Foreground="#9A3412" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="mapLoadErrorsSummaryTextBlock" Margin="0,3,0,0"
+                                           Foreground="#7C2D12" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
 
-                        <TextBox x:Name="mapLoadErrorsTextBox"
-                                 Grid.Row="1"
-                                 IsReadOnly="True"
-                                 TextWrapping="NoWrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Auto"
-                                 AcceptsReturn="True"
-                                 AcceptsTab="True"
-                                 FontFamily="Consolas"/>
+                        <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource DividerBrush}"
+                                BorderThickness="1" CornerRadius="6">
+                            <TextBox x:Name="mapLoadErrorsTextBox" Margin="1" Padding="10"
+                                     Background="Transparent" BorderThickness="0" IsReadOnly="True"
+                                     TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto" AcceptsReturn="True"
+                                     AcceptsTab="True" FontFamily="Consolas" FontSize="12"/>
+                        </Border>
 
                         <Grid Grid.Row="2" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
@@ -494,62 +1135,74 @@
                             <Button x:Name="mapLoadErrorsClearButton"
                                     Grid.Column="1"
                                     Width="88"
+                                    Style="{StaticResource CommandButtonStyle}"
                                     Click="MapLoadErrorsClearButton_Click"
-                                    Content="Clear"/>
+                                    Content="{loc:Loc Editor_Clear_83B12C}"/>
                             <Button x:Name="mapLoadErrorsCopyButton"
                                     Grid.Column="2"
                                     Width="88"
                                     Margin="8,0,0,0"
+                                    Style="{StaticResource CommandButtonStyle}"
                                     Click="MapLoadErrorsCopyButton_Click"
-                                    Content="Copy All"/>
+                                    Content="{loc:Loc Editor_Copy_All_7A1861}"/>
                             <Button x:Name="mapLoadErrorsOpenLogButton"
                                     Grid.Column="3"
                                     Width="88"
                                     Margin="8,0,0,0"
+                                    Style="{StaticResource PrimaryCommandButtonStyle}"
                                     Click="MapLoadErrorsOpenLogButton_Click"
-                                    Content="Open Log"/>
+                                    Content="{loc:Loc Editor_Open_Log_01468E}"/>
                         </Grid>
                     </Grid>
                 </TabItem>
             </TabControl>
         </Grid>
 
-        <StatusBar x:Name="statusBar" Grid.Row="2" Grid.ColumnSpan="3">
+        <StatusBar x:Name="statusBar" Grid.Row="2" Grid.ColumnSpan="4"
+                   Background="#F8FAFC" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
             <StatusBarItem HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <Grid>
+                <Grid Margin="6,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="5*"/>
-                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <TextBlock Text="Game Cursor: X = " />
-                        <TextBlock x:Name="textblock_CursorX" Text="0" />
-                        <TextBlock Text=", Y = " />
-                        <TextBlock x:Name="textblock_CursorY" Text="0" />
-
-                        <TextBlock Text="|" Margin="20,0,20,0"/>
-                        <TextBlock Text="Monitor cursor: X = " />
-                        <TextBlock x:Name="textblock_RCursorX" Text="0" />
-                        <TextBlock Text=", Y = " />
-                        <TextBlock x:Name="textblock_RCursorY" Text="0" />
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Layer_AC9FFC}"/>
+                        <TextBlock x:Name="txtActiveLayer" Margin="5,0,0,0" FontWeight="SemiBold" Text="&#x2014;"/>
+                        <TextBlock Margin="10,0" Foreground="#CBD5E1" Text="|"/>
+                        <TextBlock x:Name="txtSnapState" Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Snap_Off_4E4910}"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,0">
-                        <TextBlock Text="|" Margin="20,0,20,0"/>
-                        <TextBlock Text="Selected item: " />
-                        <TextBlock x:Name="textblock_selectedItem" Text="" />
+                    <StackPanel Grid.Column="1" Margin="18,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Cursor_2C014F}"/>
+                        <TextBlock Margin="6,0,0,0" Text="X"/>
+                        <TextBlock x:Name="textblock_CursorX" Text="0" />
+                        <TextBlock Margin="7,0,0,0" Text="Y"/>
+                        <TextBlock x:Name="textblock_CursorY" Text="0" />
+                        <StackPanel Visibility="Collapsed">
+                        <TextBlock x:Name="textblock_RCursorX" Text="0" />
+                        <TextBlock x:Name="textblock_RCursorY" Text="0" />
+                        </StackPanel>
+                    </StackPanel>
 
-                        <TextBlock Text="|" Margin="20,0,10,0"/>
-                        <TextBlock Text="Zoom: " VerticalAlignment="Center"/>
-                        <Button x:Name="btnZoomOut" Content="-" Width="20" Height="18"
-                                Click="BtnZoomOut_Click" ToolTip="Zoom Out" Padding="0,-2,0,0"/>
+                    <StackPanel Grid.Column="2" Margin="18,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{loc:Loc Editor_Selected_57FD7A}"/>
+                        <TextBlock x:Name="textblock_selectedItem" MaxWidth="260" Margin="6,0,0,0" Text="" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="btnZoomOut" Content="&#x2212;" Width="24" Height="22"
+                                Click="BtnZoomOut_Click" ToolTip="{loc:Loc Editor_Zoom_out_BC7B63}" Padding="0" Focusable="False"/>
                         <TextBlock x:Name="txtZoomLevel" Text="100%" Width="40" TextAlignment="Center"
                                    VerticalAlignment="Center" Margin="2,0"/>
-                        <Button x:Name="btnZoomIn" Content="+" Width="20" Height="18"
-                                Click="BtnZoomIn_Click" ToolTip="Zoom In" Padding="0,-2,0,0"/>
-                        <Button x:Name="btnZoomReset" Content="1:1" Width="28" Height="18"
-                                Click="BtnZoomReset_Click" ToolTip="Reset Zoom" Margin="4,0,0,0" Padding="0,-2,0,0"/>
+                        <Button x:Name="btnZoomIn" Content="+" Width="24" Height="22"
+                                Click="BtnZoomIn_Click" ToolTip="{loc:Loc Editor_Zoom_in_0E47F0}" Padding="0" Focusable="False"/>
+                        <Button x:Name="btnZoomReset" Content="1:1" Width="32" Height="22"
+                                Click="BtnZoomReset_Click" ToolTip="{loc:Loc Editor_Reset_zoom_91A661}" Margin="4,0,0,0" Padding="0" Focusable="False"/>
                     </StackPanel>
                 </Grid>
                

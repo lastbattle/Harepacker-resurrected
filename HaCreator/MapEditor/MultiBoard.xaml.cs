@@ -240,7 +240,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("Graphics adapter is not supported: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Format("GraphicsAdapterUnsupported", e.Message, e.StackTrace));
                 Environment.Exit(0);
                 // This code will never be reached, but VS still requires this path to end
                 throw;
@@ -784,7 +784,7 @@ namespace HaCreator.MapEditor
         {
             if (SelectedBoard.SelectedLayerIndex == -1)
             {
-                MessageBox.Show("Select a real layer", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Get("SelectRealLayer"), HaCreator.GUI.Localization.MapEditorText.Get("ErrorTitle"), System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
             return true;
@@ -984,11 +984,11 @@ namespace HaCreator.MapEditor
         public delegate void ImageDroppedDelegate(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Point pos);
         public event ImageDroppedDelegate ImageDropped;
 
-        public event HaCreator.GUI.HaRibbon.EmptyEvent ExportRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent LoadRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent CloseTabRequested;
+        public event Action ExportRequested;
+        public event Action LoadRequested;
+        public event Action CloseTabRequested;
         public event EventHandler<bool> SwitchTabRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent BackupCheck;
+        public event Action BackupCheck;
 
         /// <summary>
         /// Mouse click

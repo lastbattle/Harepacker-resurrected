@@ -1,144 +1,61 @@
-﻿using System;
 using System.ComponentModel;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI.InstanceEditor
 {
-    public partial class LoadMapSelector : System.Windows.Forms.Form
+    public partial class LoadMapSelector : Window
     {
-        /// <summary>
-        /// The NumericUpDown text to set upon selection
-        /// </summary>
-        private NumericUpDown numericUpDown = null;
+        private readonly Forms.NumericUpDown numericUpDown;
+        private readonly Forms.TextBox textBox;
+        private bool accepted;
+        private string selectedMap = string.Empty;
 
-        /// <summary>
-        /// Or the textbox
-        /// </summary>
-        private TextBox textBox = null;
-
-        /// <summary>
-        /// Constructor for no NumericUpDown or TextBox
-        /// </summary>
-        public LoadMapSelector()
-        {
-            InitializeComponent();
-
-            this.FormClosing += LoadQuestSelector_FormClosing;
-            this.KeyDown += Load_KeyDown;
-
-            DialogResult = DialogResult.Cancel;
-
-            this.searchBox.TextChanged += SearchBox_TextChanged;
-        }
-
-        /// <summary>
-        /// Load map selector for NumericUpDown
-        /// </summary>
-        /// <param name="numericUpDown"></param>
-        public LoadMapSelector(NumericUpDown numericUpDown)
-        {
-            InitializeComponent();
-
-            DialogResult = DialogResult.Cancel;
-            
-            this.numericUpDown = numericUpDown;
-
-            this.searchBox.TextChanged += SearchBox_TextChanged;
-        }
-
-        /// <summary>
-        /// Load map selector for TextBox
-        /// </summary>
-        /// <param name="textbox"></param>
-        public LoadMapSelector(TextBox textbox) {
-            InitializeComponent();
-
-            DialogResult = DialogResult.Cancel;
-
-            this.textBox = textbox;
-            this.searchBox.TextChanged += SearchBox_TextChanged;
-        }
-
-        /// <summary>
-        /// On load
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Load_Load(object sender, EventArgs e)
-        {
-            this.mapBrowser.InitializeMapsListboxItem(false); // load list of maps without Cash Shop, Login, etc
-        }
-
-        /// <summary>
-        /// On load button clicked, selects that map and closes this dialog.
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void loadButton_Click(object sender, EventArgs e)
-        {
-            if (mapBrowser.SelectedItem == null)
-                return;
-
-            string mapid = mapBrowser.SelectedItem.Substring(0, 9);
-            string mapcat = "Map" + mapid.Substring(0, 1);
-
-            if (numericUpDown != null) {
-                this.numericUpDown.Value = long.Parse(mapid);
-            } else if (textBox != null) {
-                this.textBox.Text = mapid;
-            }
-            // set selected map
-            SelectedMap = mapid;
-
-            DialogResult = DialogResult.OK;
-            _bNotUserClosing = true;
-            Close();
-        }
-
-        private bool _bNotUserClosing = false;
-        private string _selectedMap = string.Empty;
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string SelectedMap
         {
-            get { return _selectedMap; }
-            set { this._selectedMap = value; }
+            get => selectedMap;
+            set => selectedMap = value;
         }
 
-        private void mapBrowser_SelectionChanged()
+        public LoadMapSelector() => InitializeSelector();
+        public LoadMapSelector(Forms.NumericUpDown numericUpDown)
         {
+            this.numericUpDown = numericUpDown;
+            InitializeSelector();
+        }
+        public LoadMapSelector(Forms.TextBox textbox)
+        {
+            textBox = textbox;
+            InitializeSelector();
         }
 
-        private void SearchBox_TextChanged(object sender, EventArgs e)
+        private void InitializeSelector()
         {
-            mapBrowser.ApplySearch(searchBox.WatermarkActive ? string.Empty : searchBox.Text);
+            InitializeComponent();
+            Closing += (_, _) => { if (!accepted) selectedMap = string.Empty; };
         }
 
-        #region Window
-        private void Load_KeyDown(object sender, KeyEventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e) => mapBrowser.InitializeMapsListboxItem(false);
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => mapBrowser.ApplySearch(searchBox.Text);
+        private void SelectButton_Click(object sender, RoutedEventArgs e) => AcceptSelection();
+        private void AcceptSelection()
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                _selectedMap = string.Empty;
-                Close();
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                loadButton_Click(null, null);
-            }
+            if (mapBrowser.SelectedItem == null || mapBrowser.SelectedItem.Length < 9)
+                return;
+            string mapId = mapBrowser.SelectedItem[..9];
+            if (numericUpDown != null) numericUpDown.Value = long.Parse(mapId);
+            else if (textBox != null) textBox.Text = mapId;
+            selectedMap = mapId;
+            accepted = true;
+            DialogResult = true;
         }
-
-        /// <summary>
-        /// The form is being closed by the user (e.g., clicking the X button)
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
-            {
-                _selectedMap = string.Empty;
-            }
+            if (e.Key == Key.Escape) { selectedMap = string.Empty; Close(); }
+            else if (e.Key == Key.Enter) AcceptSelection();
         }
-        #endregion
     }
 }

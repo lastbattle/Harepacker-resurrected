@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using Forms = System.Windows.Forms;
 using HaCreator.MapEditor.AI;
 
 namespace HaCreator.GUI.EditorPanels
@@ -11,7 +14,7 @@ namespace HaCreator.GUI.EditorPanels
     /// <summary>
     /// Dialog for configuring an OpenAI-compatible AI endpoint.
     /// </summary>
-    public partial class AISettingsDialog : Form
+    public partial class AISettingsDialog : Window
     {
         private const string AutoReasoningEffort = "Auto (model default)";
 
@@ -22,10 +25,29 @@ namespace HaCreator.GUI.EditorPanels
         private bool _loadingModels;
         private bool _updatingModelCatalog;
         private bool _updatingReasoningEffort;
+        private bool _isClosed;
+
+        private Forms.FormStartPosition startPosition = Forms.FormStartPosition.CenterParent;
+        public Forms.FormStartPosition StartPosition
+        {
+            get => startPosition;
+            set
+            {
+                startPosition = value;
+                WindowStartupLocation = value == Forms.FormStartPosition.CenterScreen
+                    ? WindowStartupLocation.CenterScreen
+                    : WindowStartupLocation.CenterOwner;
+            }
+        }
 
         public AISettingsDialog()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
+            cboModel.AddHandler(TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((sender, args) => CboModel_TextChanged(sender, args)));
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
             LoadSettings();
         }
 
@@ -35,11 +57,11 @@ namespace HaCreator.GUI.EditorPanels
             try
             {
                 txtBaseUrl.Text = AISettings.BaseUrl;
-                txtApiKey.Text = AISettings.ApiKey;
+                txtApiKey.Password = AISettings.ApiKey;
                 cboModel.Text = AISettings.Model;
                 cboApiDialect.SelectedIndex = AISettings.Protocol == AIEndpointProtocol.Responses ? 1 : 0;
-                chkStrictSchemas.Checked = AISettings.StrictSchemas;
-                chkAutoApply.Checked = AISettings.AutoApplyCommands;
+                chkStrictSchemas.IsChecked = AISettings.StrictSchemas;
+                chkAutoApply.IsChecked = AISettings.AutoApplyCommands;
 
                 RebuildModelCatalog(Array.Empty<OpenAIModelInfo>());
                 UpdateReasoningEffortChoices(FindModelChoice(AISettings.Model), AISettings.ReasoningEffort);
@@ -51,12 +73,17 @@ namespace HaCreator.GUI.EditorPanels
             }
         }
 
-        private async void AISettingsDialog_Shown(object sender, EventArgs e)
+        private async void AISettingsDialog_Loaded(object sender, RoutedEventArgs e)
         {
             await RefreshEndpointModelsAsync();
         }
 
-        private async void BtnRefreshModels_Click(object sender, EventArgs e)
+        private void AISettingsDialog_Closed(object sender, EventArgs e)
+        {
+            _isClosed = true;
+        }
+
+        private async void BtnRefreshModels_Click(object sender, RoutedEventArgs e)
         {
             await RefreshEndpointModelsAsync();
         }
@@ -71,7 +98,7 @@ namespace HaCreator.GUI.EditorPanels
             await RefreshEndpointModelsAsync();
         }
 
-        private void CboModel_SelectedIndexChanged(object sender, EventArgs e)
+        private void CboModel_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_updatingModelCatalog)
                 return;
@@ -82,7 +109,6 @@ namespace HaCreator.GUI.EditorPanels
                 try
                 {
                     cboModel.Text = choice.ModelId;
-                    cboModel.SelectionStart = cboModel.Text.Length;
                 }
                 finally
                 {
@@ -105,7 +131,7 @@ namespace HaCreator.GUI.EditorPanels
 
         private async Task RefreshEndpointModelsAsync()
         {
-            if (_loadingModels || IsDisposed || Disposing)
+            if (_loadingModels || _isClosed)
                 return;
 
             var baseUrl = txtBaseUrl.Text.Trim();
@@ -114,21 +140,21 @@ namespace HaCreator.GUI.EditorPanels
                 _endpointModelsLoaded = false;
                 _endpointModels.Clear();
                 RebuildModelCatalog(_endpointModels);
-                lblModelsStatus.Text = "Enter a base URL to discover endpoint models.";
+                lblModelsStatus.Text = EditorPanelLocalizer.Text("AISettings_EnterBaseUrl", "Enter a base URL to discover endpoint models.");
                 return;
             }
 
             _loadingModels = true;
-            btnRefreshModels.Enabled = false;
-            lblModelsStatus.Text = "Discovering models from endpoint...";
-            lblModelsStatus.ForeColor = Color.Gray;
+            btnRefreshModels.IsEnabled = false;
+            lblModelsStatus.Text = EditorPanelLocalizer.Text("AISettings_DiscoveringModels", "Discovering models from endpoint...");
+            lblModelsStatus.Foreground = Brushes.Gray;
 
             try
             {
                 var client = new OpenAICompatibleClient(new OpenAICompatibleOptions
                 {
                     BaseUrl = baseUrl,
-                    ApiKey = txtApiKey.Text.Trim(),
+                    ApiKey = txtApiKey.Password.Trim(),
                     Protocol = GetSelectedProtocol(),
                     Timeout = TimeSpan.FromSeconds(30)
                 });
@@ -139,7 +165,7 @@ namespace HaCreator.GUI.EditorPanels
                     models = await client.GetModelCatalogAsync();
                 }
 
-                if (IsDisposed || Disposing)
+                if (_isClosed)
                     return;
 
                 _endpointModels.Clear();
@@ -147,26 +173,26 @@ namespace HaCreator.GUI.EditorPanels
                 _endpointModelsLoaded = true;
                 RebuildModelCatalog(_endpointModels);
                 lblModelsStatus.Text = models.Count == 0
-                    ? "No endpoint models were returned. Built-in presets remain available."
-                    : $"{models.Count} endpoint model(s) discovered and merged with the built-in presets.";
-                lblModelsStatus.ForeColor = Color.Gray;
+                    ? EditorPanelLocalizer.Text("AISettings_NoEndpointModels", "No endpoint models were returned. Built-in presets remain available.")
+                    : EditorPanelLocalizer.Format("AISettings_ModelsDiscovered", models.Count);
+                lblModelsStatus.Foreground = Brushes.Gray;
             }
             catch (Exception ex)
             {
-                if (!IsDisposed && !Disposing)
+                if (!_isClosed)
                 {
                     _endpointModels.Clear();
                     _endpointModelsLoaded = true;
                     RebuildModelCatalog(_endpointModels);
-                    lblModelsStatus.Text = $"Endpoint discovery unavailable: {ex.Message}";
-                    lblModelsStatus.ForeColor = Color.DarkOrange;
+                    lblModelsStatus.Text = EditorPanelLocalizer.Format("AISettings_DiscoveryError", ex.Message);
+                    lblModelsStatus.Foreground = Brushes.DarkOrange;
                 }
             }
             finally
             {
                 _loadingModels = false;
-                if (!IsDisposed && !Disposing)
-                    btnRefreshModels.Enabled = true;
+                if (!_isClosed)
+                    btnRefreshModels.IsEnabled = true;
             }
         }
 
@@ -204,23 +230,14 @@ namespace HaCreator.GUI.EditorPanels
             _updatingModelCatalog = true;
             try
             {
-                cboModel.BeginUpdate();
-                try
-                {
-                    cboModel.Items.Clear();
-                    foreach (var choice in choices)
-                        cboModel.Items.Add(choice);
+                cboModel.Items.Clear();
+                foreach (var choice in choices)
+                    cboModel.Items.Add(choice);
 
-                    var selectedIndex = choices.FindIndex(choice =>
-                        string.Equals(choice.ModelId, selectedModel, StringComparison.OrdinalIgnoreCase));
-                    cboModel.SelectedIndex = selectedIndex;
-                    cboModel.Text = selectedIndex >= 0 ? choices[selectedIndex].ModelId : selectedModel;
-                    cboModel.SelectionStart = cboModel.Text.Length;
-                }
-                finally
-                {
-                    cboModel.EndUpdate();
-                }
+                var selectedIndex = choices.FindIndex(choice =>
+                    string.Equals(choice.ModelId, selectedModel, StringComparison.OrdinalIgnoreCase));
+                cboModel.SelectedIndex = selectedIndex;
+                cboModel.Text = selectedIndex >= 0 ? choices[selectedIndex].ModelId : selectedModel;
             }
             finally
             {
@@ -271,23 +288,15 @@ namespace HaCreator.GUI.EditorPanels
             _updatingReasoningEffort = true;
             try
             {
-                cboReasoningEffort.BeginUpdate();
-                try
-                {
-                    cboReasoningEffort.Items.Clear();
-                    cboReasoningEffort.Items.Add(AutoReasoningEffort);
-                    foreach (var effort in efforts)
-                        cboReasoningEffort.Items.Add(effort);
+                cboReasoningEffort.Items.Clear();
+                cboReasoningEffort.Items.Add(AutoReasoningEffort);
+                foreach (var effort in efforts)
+                    cboReasoningEffort.Items.Add(effort);
 
-                    var selectedIndex = string.IsNullOrWhiteSpace(selectedReasoning)
-                        ? 0
-                        : cboReasoningEffort.Items.IndexOf(selectedReasoning.ToLowerInvariant());
-                    cboReasoningEffort.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
-                }
-                finally
-                {
-                    cboReasoningEffort.EndUpdate();
-                }
+                var selectedIndex = string.IsNullOrWhiteSpace(selectedReasoning)
+                    ? 0
+                    : cboReasoningEffort.Items.IndexOf(selectedReasoning.ToLowerInvariant());
+                cboReasoningEffort.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
             }
             finally
             {
@@ -296,15 +305,15 @@ namespace HaCreator.GUI.EditorPanels
 
             if (choice != null && choice.ReasoningEfforts.Count > 0)
             {
-                lblReasoningStatus.Text = "Endpoint advertised: " + string.Join(", ", choice.ReasoningEfforts);
+                lblReasoningStatus.Text = EditorPanelLocalizer.Format("AISettings_EndpointReasoning", string.Join(", ", choice.ReasoningEfforts));
             }
             else if (efforts.Count > 0)
             {
-                lblReasoningStatus.Text = "Detected from model family: " + string.Join(", ", efforts);
+                lblReasoningStatus.Text = EditorPanelLocalizer.Format("AISettings_DetectedReasoning", string.Join(", ", efforts));
             }
             else
             {
-                lblReasoningStatus.Text = "Auto only; this model does not advertise reasoning levels.";
+                lblReasoningStatus.Text = EditorPanelLocalizer.Text("AISettings_AutoReasoningOnly", "Auto only; this model does not advertise reasoning levels.");
             }
         }
 
@@ -328,7 +337,7 @@ namespace HaCreator.GUI.EditorPanels
             return efforts;
         }
 
-        private void OnSettingsChanged(object sender, EventArgs e)
+        private void OnSettingsChanged(object sender, RoutedEventArgs e)
         {
             if (_initializing || _updatingReasoningEffort || _updatingModelCatalog)
                 return;
@@ -339,30 +348,30 @@ namespace HaCreator.GUI.EditorPanels
         private void InvalidateConnectionTest()
         {
             _connectionTested = false;
-            btnSave.Enabled = false;
-            lblStatus.Text = "Test connection required before saving.";
-            lblStatus.ForeColor = Color.Gray;
+            btnSave.IsEnabled = false;
+            lblStatus.Text = EditorPanelLocalizer.Text("AISettings_TestRequired", "Test connection required before saving.");
+            lblStatus.Foreground = Brushes.Gray;
         }
 
         private void UpdateStatusFromSettings()
         {
             if (AISettings.IsConfigured)
             {
-                lblStatus.Text = $"Configured: {AISettings.GetStatusDescription()}";
-                lblStatus.ForeColor = Color.Green;
+                lblStatus.Text = EditorPanelLocalizer.Format("AISettings_Configured", AISettings.GetStatusDescription());
+                lblStatus.Foreground = Brushes.Green;
             }
             else
             {
-                lblStatus.Text = "Not configured.";
-                lblStatus.ForeColor = Color.Gray;
+                lblStatus.Text = EditorPanelLocalizer.Text("AISettings_NotConfigured", "Not configured.");
+                lblStatus.Foreground = Brushes.Gray;
             }
         }
 
-        private async void BtnTest_Click(object sender, EventArgs e)
+        private async void BtnTest_Click(object sender, RoutedEventArgs e)
         {
-            btnTest.Enabled = false;
-            lblStatus.Text = "Testing connection...";
-            lblStatus.ForeColor = Color.Gray;
+            btnTest.IsEnabled = false;
+            lblStatus.Text = EditorPanelLocalizer.Text("AISettings_Testing", "Testing connection...");
+            lblStatus.Foreground = Brushes.Gray;
 
             try
             {
@@ -370,26 +379,26 @@ namespace HaCreator.GUI.EditorPanels
                 var model = cboModel.Text.Trim();
                 if (string.IsNullOrWhiteSpace(baseUrl))
                 {
-                    lblStatus.Text = "Please enter an API base URL first.";
-                    lblStatus.ForeColor = Color.Red;
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_BaseUrlRequired", "Please enter an API base URL first.");
+                    lblStatus.Foreground = Brushes.Red;
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(model))
                 {
-                    lblStatus.Text = "Please select or enter a model first.";
-                    lblStatus.ForeColor = Color.Red;
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ModelRequired", "Please select or enter a model first.");
+                    lblStatus.Foreground = Brushes.Red;
                     return;
                 }
 
                 var client = new OpenAICompatibleClient(new OpenAICompatibleOptions
                 {
                     BaseUrl = baseUrl,
-                    ApiKey = txtApiKey.Text.Trim(),
+                    ApiKey = txtApiKey.Password.Trim(),
                     Model = model,
                     Protocol = GetSelectedProtocol(),
                     ReasoningEffort = GetSelectedReasoningEffort(),
-                    StrictSchemas = chkStrictSchemas.Checked
+                    StrictSchemas = chkStrictSchemas.IsChecked == true
                 });
 
                 bool success;
@@ -400,35 +409,35 @@ namespace HaCreator.GUI.EditorPanels
 
                 if (success)
                 {
-                    lblStatus.Text = "Connection successful!";
-                    lblStatus.ForeColor = Color.Green;
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ConnectionSuccessful", "Connection successful!");
+                    lblStatus.Foreground = Brushes.Green;
                     _connectionTested = true;
-                    btnSave.Enabled = true;
+                    btnSave.IsEnabled = true;
                 }
                 else
                 {
-                    lblStatus.Text = "Connection failed. Check the endpoint, model, and API key.";
-                    lblStatus.ForeColor = Color.Red;
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ConnectionFailed", "Connection failed. Check the endpoint, model, and API key.");
+                    lblStatus.Foreground = Brushes.Red;
                     _connectionTested = false;
-                    btnSave.Enabled = false;
+                    btnSave.IsEnabled = false;
                 }
             }
             catch (Exception ex)
             {
-                lblStatus.Text = $"Error: {ex.Message}";
-                lblStatus.ForeColor = Color.Red;
+                lblStatus.Text = EditorPanelLocalizer.Format("AISettings_Error", ex.Message);
+                lblStatus.Foreground = Brushes.Red;
                 _connectionTested = false;
-                btnSave.Enabled = false;
+                btnSave.IsEnabled = false;
             }
             finally
             {
-                btnTest.Enabled = true;
+                btnTest.IsEnabled = true;
             }
         }
 
         private AIEndpointProtocol GetSelectedProtocol()
         {
-            return string.Equals(cboApiDialect.SelectedItem?.ToString(), "Responses", StringComparison.Ordinal)
+            return cboApiDialect.SelectedIndex == 1
                 ? AIEndpointProtocol.Responses
                 : AIEndpointProtocol.ChatCompletions;
         }
@@ -441,21 +450,20 @@ namespace HaCreator.GUI.EditorPanels
                 : selected ?? string.Empty;
         }
 
-        private void BtnSave_Click(object sender, EventArgs e)
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             if (!_connectionTested)
                 return;
 
             AISettings.BaseUrl = txtBaseUrl.Text.Trim();
-            AISettings.ApiKey = txtApiKey.Text.Trim();
+            AISettings.ApiKey = txtApiKey.Password.Trim();
             AISettings.Model = cboModel.Text.Trim();
             AISettings.Protocol = GetSelectedProtocol();
             AISettings.ReasoningEffort = GetSelectedReasoningEffort();
-            AISettings.StrictSchemas = chkStrictSchemas.Checked;
-            AISettings.AutoApplyCommands = chkAutoApply.Checked;
+            AISettings.StrictSchemas = chkStrictSchemas.IsChecked == true;
+            AISettings.AutoApplyCommands = chkAutoApply.IsChecked == true;
 
-            DialogResult = DialogResult.OK;
-            Close();
+            DialogResult = true;
         }
 
         private sealed class ModelChoice

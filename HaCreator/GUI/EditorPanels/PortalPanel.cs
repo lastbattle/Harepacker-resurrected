@@ -1,16 +1,9 @@
-﻿using HaCreator.CustomControls;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -21,43 +14,42 @@ namespace HaCreator.GUI.EditorPanels
         public PortalPanel()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
         }
 
-        public void Initialize(HaCreatorStateManager hcsm)
+        public void Initialize(HaCreatorStateManager stateManager)
         {
-            this.hcsm = hcsm;
+            hcsm = stateManager;
+            portalImageContainer.Clear();
 
-            foreach (PortalType pt in Program.InfoManager.PortalEditor_TypeById)
+            foreach (PortalType portalType in Program.InfoManager.PortalEditor_TypeById)
             {
                 try
                 {
-                    PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
-                    if (pInfo == null || pInfo.Image == null)
-                        continue;
-
-                    ImageViewer item = portalImageContainer.Add(pInfo.Image, PortalTypeExtensions.GetFriendlyName(pt), true);
-                    item.Tag = pInfo;
-                    item.MouseDown += new MouseEventHandler(portal_MouseDown);
-                    item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
+                    PortalInfo info = PortalInfo.GetPortalInfoByType(portalType);
+                    if (info?.Image != null)
+                        portalImageContainer.Add(info.Image, PortalTypeExtensions.GetFriendlyName(portalType), info);
                 }
                 catch (KeyNotFoundException)
                 {
                 }
                 catch (Exception)
                 {
-                    // Skip portals that fail to load
+                    // A broken portal asset should not prevent the remaining types from loading.
                 }
             }
         }
 
-        void portal_MouseDown(object sender, MouseEventArgs e)
+        private void PortalImageContainer_ItemActivated(object sender, AssetGalleryItemEventArgs e)
         {
+            if (hcsm?.MultiBoard.SelectedBoard == null || e.Item.Tag is not PortalInfo info)
+                return;
+
             lock (hcsm.MultiBoard)
             {
                 hcsm.EnterEditMode(ItemTypes.Portals);
-                hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((PortalInfo)((ImageViewer)sender).Tag);
+                hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
                 hcsm.MultiBoard.Focus();
-                ((ImageViewer)sender).IsActive = true;
             }
         }
     }

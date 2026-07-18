@@ -1,0 +1,1051 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Init_WindowTitle" xml:space="preserve">
+    <value>HaCreator - 初始化</value>
+  </data>
+  <data name="Init_Heading" xml:space="preserve">
+    <value>打开 HaCreator</value>
+  </data>
+  <data name="Init_Subheading" xml:space="preserve">
+    <value>选择本次编辑会话使用的 MapleStory 数据源。</value>
+  </data>
+  <data name="Init_WzFilesTab" xml:space="preserve">
+    <value>WZ 文件</value>
+  </data>
+  <data name="Init_MapleStoryFolder" xml:space="preserve">
+    <value>MapleStory 文件夹</value>
+  </data>
+  <data name="Common_BrowseEllipsis" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="Init_WzEncryption" xml:space="preserve">
+    <value>WZ 加密</value>
+  </data>
+  <data name="Init_ClientLocalisation" xml:space="preserve">
+    <value>客户端地区</value>
+  </data>
+  <data name="Init_LocalisationHint" xml:space="preserve">
+    <value>请选择匹配的地区，因为不同客户端保存的 WZ 参数可能不同。</value>
+  </data>
+  <data name="Init_ImgVersionsTab" xml:space="preserve">
+    <value>IMG 版本</value>
+  </data>
+  <data name="Init_NoVersions" xml:space="preserve">
+    <value>未找到任何版本。
+
+选择“新建提取”将 WZ 文件提取为 IMG 格式，或选择“浏览”添加现有文件夹。</value>
+  </data>
+  <data name="Init_VersionName" xml:space="preserve">
+    <value>版本名称</value>
+  </data>
+  <data name="Init_ExtractTooltip" xml:space="preserve">
+    <value>提取 WZ 文件以创建 IMG 版本</value>
+  </data>
+  <data name="Init_ExtractNewEllipsis" xml:space="preserve">
+    <value>新建提取...</value>
+  </data>
+  <data name="Init_AddVersionTooltip" xml:space="preserve">
+    <value>添加现有 IMG 版本文件夹</value>
+  </data>
+  <data name="Common_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="Common_Rename" xml:space="preserve">
+    <value>重命名</value>
+  </data>
+  <data name="Common_Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="Common_Ready" xml:space="preserve">
+    <value>就绪</value>
+  </data>
+  <data name="Common_Settings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="Common_Initialize" xml:space="preserve">
+    <value>初始化</value>
+  </data>
+  <data name="IE_Add" xml:space="preserve">
+    <value>添加</value>
+  </data>
+  <data name="IE_Alpha" xml:space="preserve">
+    <value>透明度</value>
+  </data>
+  <data name="IE_Alpha_test" xml:space="preserve">
+    <value>透明度测试</value>
+  </data>
+  <data name="IE_Animation" xml:space="preserve">
+    <value>动画</value>
+  </data>
+  <data name="IE_Background_instance" xml:space="preserve">
+    <value>背景实例</value>
+  </data>
+  <data name="IE_Browse_map" xml:space="preserve">
+    <value>浏览地图</value>
+  </data>
+  <data name="IE_Browse_portal" xml:space="preserve">
+    <value>浏览传送门</value>
+  </data>
+  <data name="IE_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="IE_Cannot_pass_through" xml:space="preserve">
+    <value>不可穿过</value>
+  </data>
+  <data name="IE_Confirm" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="IE_Custom_name" xml:space="preserve">
+    <value>自定义名称</value>
+  </data>
+  <data name="IE_CX" xml:space="preserve">
+    <value>CX</value>
+  </data>
+  <data name="IE_CY" xml:space="preserve">
+    <value>CY</value>
+  </data>
+  <data name="IE_Delay" xml:space="preserve">
+    <value>延迟</value>
+  </data>
+  <data name="IE_Description" xml:space="preserve">
+    <value>说明</value>
+  </data>
+  <data name="IE_Dynamic" xml:space="preserve">
+    <value>动态</value>
+  </data>
+  <data name="IE_Flip" xml:space="preserve">
+    <value>翻转</value>
+  </data>
+  <data name="IE_Flow" xml:space="preserve">
+    <value>流动</value>
+  </data>
+  <data name="IE_Foothold" xml:space="preserve">
+    <value>立足点</value>
+  </data>
+  <data name="IE_Forbid_falling_down" xml:space="preserve">
+    <value>禁止向下掉落</value>
+  </data>
+  <data name="IE_Force" xml:space="preserve">
+    <value>强制</value>
+  </data>
+  <data name="IE_Front" xml:space="preserve">
+    <value>前景</value>
+  </data>
+  <data name="IE_General" xml:space="preserve">
+    <value>常规</value>
+  </data>
+  <data name="IE_Hidden" xml:space="preserve">
+    <value>隐藏</value>
+  </data>
+  <data name="IE_Hide_tooltip" xml:space="preserve">
+    <value>隐藏工具提示</value>
+  </data>
+  <data name="IE_Horizontal_impact" xml:space="preserve">
+    <value>水平作用力</value>
+  </data>
+  <data name="IE_Info" xml:space="preserve">
+    <value>信息</value>
+  </data>
+  <data name="IE_Input_quest" xml:space="preserve">
+    <value>输入任务</value>
+  </data>
+  <data name="IE_Ladder" xml:space="preserve">
+    <value>梯子</value>
+  </data>
+  <data name="IE_Life_instance" xml:space="preserve">
+    <value>生命实例</value>
+  </data>
+  <data name="IE_Limited_name" xml:space="preserve">
+    <value>限定名称</value>
+  </data>
+  <data name="IE_mirror" xml:space="preserve">
+    <value>镜像</value>
+  </data>
+  <data name="IE_Mirror_field" xml:space="preserve">
+    <value>镜像区域</value>
+  </data>
+  <data name="IE_Mob_time" xml:space="preserve">
+    <value>怪物时间</value>
+  </data>
+  <data name="IE_Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="IE_Object_instance" xml:space="preserve">
+    <value>对象实例</value>
+  </data>
+  <data name="IE_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="IE_Only_once" xml:space="preserve">
+    <value>仅一次</value>
+  </data>
+  <data name="IE_Overlay_object" xml:space="preserve">
+    <value>叠加对象</value>
+  </data>
+  <data name="IE_Page" xml:space="preserve">
+    <value>页面</value>
+  </data>
+  <data name="IE_Piece" xml:space="preserve">
+    <value>部件</value>
+  </data>
+  <data name="IE_Portal_instance" xml:space="preserve">
+    <value>传送门实例</value>
+  </data>
+  <data name="IE_Portal_name" xml:space="preserve">
+    <value>传送门名称</value>
+  </data>
+  <data name="IE_Portal_type" xml:space="preserve">
+    <value>传送门类型</value>
+  </data>
+  <data name="IE_Quest_ID" xml:space="preserve">
+    <value>任务 ID</value>
+  </data>
+  <data name="IE_Quest_states" xml:space="preserve">
+    <value>任务状态</value>
+  </data>
+  <data name="IE_R" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="IE_Random_start" xml:space="preserve">
+    <value>随机开始</value>
+  </data>
+  <data name="IE_Range" xml:space="preserve">
+    <value>范围</value>
+  </data>
+  <data name="IE_Reactor" xml:space="preserve">
+    <value>反应堆</value>
+  </data>
+  <data name="IE_Reactor_name" xml:space="preserve">
+    <value>反应堆名称</value>
+  </data>
+  <data name="IE_Reactor_time" xml:space="preserve">
+    <value>反应堆时间</value>
+  </data>
+  <data name="IE_Reflection" xml:space="preserve">
+    <value>反射</value>
+  </data>
+  <data name="IE_Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="IE_Rope" xml:space="preserve">
+    <value>绳索</value>
+  </data>
+  <data name="IE_RX" xml:space="preserve">
+    <value>RX</value>
+  </data>
+  <data name="IE_RX0_shift" xml:space="preserve">
+    <value>RX0 shift</value>
+  </data>
+  <data name="IE_RX1_shift" xml:space="preserve">
+    <value>RX1 shift</value>
+  </data>
+  <data name="IE_RY" xml:space="preserve">
+    <value>RY</value>
+  </data>
+  <data name="IE_Screen_mode" xml:space="preserve">
+    <value>屏幕模式</value>
+  </data>
+  <data name="IE_Script" xml:space="preserve">
+    <value>脚本</value>
+  </data>
+  <data name="IE_Search_items" xml:space="preserve">
+    <value>搜索物品</value>
+  </data>
+  <data name="IE_Search_jobs" xml:space="preserve">
+    <value>搜索职业</value>
+  </data>
+  <data name="IE_Search_maps" xml:space="preserve">
+    <value>搜索地图</value>
+  </data>
+  <data name="IE_Search_mobs" xml:space="preserve">
+    <value>搜索怪物</value>
+  </data>
+  <data name="IE_Search_NPCs" xml:space="preserve">
+    <value>搜索 NPC</value>
+  </data>
+  <data name="IE_Search_quests" xml:space="preserve">
+    <value>搜索任务</value>
+  </data>
+  <data name="IE_Search_skills" xml:space="preserve">
+    <value>搜索技能</value>
+  </data>
+  <data name="IE_Select" xml:space="preserve">
+    <value>选择</value>
+  </data>
+  <data name="IE_Select_a_job" xml:space="preserve">
+    <value>选择职业</value>
+  </data>
+  <data name="IE_Select_a_map" xml:space="preserve">
+    <value>选择地图</value>
+  </data>
+  <data name="IE_Select_a_mob" xml:space="preserve">
+    <value>选择怪物</value>
+  </data>
+  <data name="IE_Select_a_quest" xml:space="preserve">
+    <value>选择任务</value>
+  </data>
+  <data name="IE_Select_a_skill" xml:space="preserve">
+    <value>选择技能</value>
+  </data>
+  <data name="IE_Select_an_item" xml:space="preserve">
+    <value>选择物品</value>
+  </data>
+  <data name="IE_Select_an_NPC" xml:space="preserve">
+    <value>选择 NPC</value>
+  </data>
+  <data name="IE_Select_class_categories" xml:space="preserve">
+    <value>选择职业类别：</value>
+  </data>
+  <data name="IE_Select_job_categories" xml:space="preserve">
+    <value>选择职业分类：</value>
+  </data>
+  <data name="IE_Select_target_portal" xml:space="preserve">
+    <value>选择目标传送门</value>
+  </data>
+  <data name="IE_Session_key" xml:space="preserve">
+    <value>会话键</value>
+  </data>
+  <data name="IE_Session_value" xml:space="preserve">
+    <value>会话值</value>
+  </data>
+  <data name="IE_Set_platform_zM_for_selected_items" xml:space="preserve">
+    <value>设置所选项目的平台 zM</value>
+  </data>
+  <data name="IE_Spine" xml:space="preserve">
+    <value>Spine</value>
+  </data>
+  <data name="IE_State" xml:space="preserve">
+    <value>状态</value>
+  </data>
+  <data name="IE_Tags" xml:space="preserve">
+    <value>标签</value>
+  </data>
+  <data name="IE_Target_this_map" xml:space="preserve">
+    <value>以此地图为目标</value>
+  </data>
+  <data name="IE_Team" xml:space="preserve">
+    <value>队伍</value>
+  </data>
+  <data name="IE_Tile" xml:space="preserve">
+    <value>图块</value>
+  </data>
+  <data name="IE_Title" xml:space="preserve">
+    <value>标题</value>
+  </data>
+  <data name="IE_Tooltip" xml:space="preserve">
+    <value>工具提示</value>
+  </data>
+  <data name="IE_Type" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="IE_Upper_foothold" xml:space="preserve">
+    <value>上方立足点</value>
+  </data>
+  <data name="IE_Value" xml:space="preserve">
+    <value>值：</value>
+  </data>
+  <data name="IE_Vertical_impact" xml:space="preserve">
+    <value>垂直作用力</value>
+  </data>
+  <data name="IE_X" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="IE_X_offset" xml:space="preserve">
+    <value>X 偏移</value>
+  </data>
+  <data name="IE_Y" xml:space="preserve">
+    <value>Y</value>
+  </data>
+  <data name="IE_Y_offset" xml:space="preserve">
+    <value>Y 偏移</value>
+  </data>
+  <data name="IE_Y_shift" xml:space="preserve">
+    <value>Y 位移</value>
+  </data>
+  <data name="IE_Z" xml:space="preserve">
+    <value>Z</value>
+  </data>
+  <data name="IE_zM" xml:space="preserve">
+    <value>zM</value>
+  </data>
+  <data name="Common_Error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="Init_SelectMapleFolderMessage" xml:space="preserve">
+    <value>请选择 MapleStory 文件夹。</value>
+  </data>
+  <data name="Init_ShowEditorError" xml:space="preserve">
+    <value>显示编辑器时出错：
+{0}
+
+{1}</value>
+  </data>
+  <data name="Init_SelectVersionMessage" xml:space="preserve">
+    <value>请从列表中选择一个版本。</value>
+  </data>
+  <data name="Init_NoVersionSelectedTitle" xml:space="preserve">
+    <value>未选择版本</value>
+  </data>
+  <data name="Init_CreatingDataSource" xml:space="preserve">
+    <value>正在创建数据源...</value>
+  </data>
+  <data name="Init_ExtractingGameData" xml:space="preserve">
+    <value>正在提取游戏数据...</value>
+  </data>
+  <data name="Init_Complete" xml:space="preserve">
+    <value>初始化完成。</value>
+  </data>
+  <data name="Init_ImgInitializationError" xml:space="preserve">
+    <value>从 IMG 文件系统初始化时出错：
+{0}</value>
+  </data>
+  <data name="Init_DataWzError" xml:space="preserve">
+    <value>初始化 data.wz ({0}) 时出错。
+请确认目录有效且文件未被占用。</value>
+  </data>
+  <data name="Init_SelectMapleFolderDialog" xml:space="preserve">
+    <value>选择 MapleStory 文件夹。</value>
+  </data>
+  <data name="Init_ExtractedFormat" xml:space="preserve">
+    <value>提取时间：{0:yyyy-MM-dd HH:mm}</value>
+  </data>
+  <data name="Init_EncryptionFormat" xml:space="preserve">
+    <value>加密：{0}</value>
+  </data>
+  <data name="Init_FormatFormat" xml:space="preserve">
+    <value>格式：{0}</value>
+  </data>
+  <data name="Init_TotalImagesFormat" xml:space="preserve">
+    <value>图像总数：{0:N0}</value>
+  </data>
+  <data name="Init_CategoriesFormat" xml:space="preserve">
+    <value>类别：{0}</value>
+  </data>
+  <data name="Init_InfoFormat" xml:space="preserve">
+    <value>信息：{0}</value>
+  </data>
+  <data name="Init_WarningFormat" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="Init_StatusValid" xml:space="preserve">
+    <value>状态：有效</value>
+  </data>
+  <data name="Init_SelectImgFolderDialog" xml:space="preserve">
+    <value>选择包含已提取 IMG 文件的文件夹</value>
+  </data>
+  <data name="Init_InvalidImgFolderMessage" xml:space="preserve">
+    <value>所选文件夹似乎不包含已提取的 IMG 文件。
+
+有效的版本文件夹应包含：
+- manifest.json 文件，或
+- 含 .img 文件的 String/ 和 Map/ 文件夹</value>
+  </data>
+  <data name="Init_InvalidFolderTitle" xml:space="preserve">
+    <value>无效文件夹</value>
+  </data>
+  <data name="Init_AddVersionFailed" xml:space="preserve">
+    <value>无法添加版本。该版本可能已在列表中。</value>
+  </data>
+  <data name="Init_ConfirmDeleteVersion" xml:space="preserve">
+    <value>确定要删除版本“{0}”吗？
+
+这将永久删除所有已提取的 IMG 文件。</value>
+  </data>
+  <data name="Init_ConfirmDeleteTitle" xml:space="preserve">
+    <value>确认删除</value>
+  </data>
+  <data name="Init_DeleteVersionFailed" xml:space="preserve">
+    <value>无法删除版本。文件可能正在使用。</value>
+  </data>
+  <data name="Init_RenameVersionFailed" xml:space="preserve">
+    <value>无法重命名版本。目标文件夹可能已存在或文件正在使用。</value>
+  </data>
+  <data name="Init_RenameVersionTitle" xml:space="preserve">
+    <value>重命名 IMG 版本</value>
+  </data>
+  <data name="Init_NewVersionName" xml:space="preserve">
+    <value>新版本名称：</value>
+  </data>
+  <data name="Init_EmptyVersionName" xml:space="preserve">
+    <value>版本名称不能为空。</value>
+  </data>
+  <data name="Init_InvalidNameTitle" xml:space="preserve">
+    <value>无效名称</value>
+  </data>
+  <data name="Init_InvalidVersionCharacters" xml:space="preserve">
+    <value>版本名称包含不能用于文件夹名称的字符。</value>
+  </data>
+  <data name="Init_DataArchive" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="Init_EncryptedMsFiles" xml:space="preserve">
+    <value>个加密的 .ms 文件。</value>
+  </data>
+  <data name="Init_InitializingFormat" xml:space="preserve">
+    <value>正在初始化 {0}{1}...</value>
+  </data>
+  <data name="IE_BackgroundNegativeMessage" xml:space="preserve">
+    <value>此背景类型的 CX/CY 不能为负数。</value>
+  </data>
+  <data name="IE_InvalidBackgroundTitle" xml:space="preserve">
+    <value>无效背景</value>
+  </data>
+  <data name="Editor_About_4EFCA0" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="Editor_About_HaCreator_D7275A" xml:space="preserve">
+    <value>关于 HaCreator</value>
+  </data>
+  <data name="Editor_Active_layer_BF7C5A" xml:space="preserve">
+    <value>当前图层</value>
+  </data>
+  <data name="Editor_Active_platform_4B8392" xml:space="preserve">
+    <value>当前平台</value>
+  </data>
+  <data name="Editor_AI_Map_Editor_B208D2" xml:space="preserve">
+    <value>AI 地图编辑器</value>
+  </data>
+  <data name="Editor_All_maps_D292E9" xml:space="preserve">
+    <value>所有地图</value>
+  </data>
+  <data name="Editor_All_Objects_DBC545" xml:space="preserve">
+    <value>所有对象</value>
+  </data>
+  <data name="Editor_Animate_asset_previews_E74DF1" xml:space="preserve">
+    <value>播放资源预览动画</value>
+  </data>
+  <data name="Editor_Animate_previews_FD55D9" xml:space="preserve">
+    <value>播放预览动画</value>
+  </data>
+  <data name="Editor_Assets_BD1273" xml:space="preserve">
+    <value>资源</value>
+  </data>
+  <data name="Editor_Background_Border_A213F4" xml:space="preserve">
+    <value>背景边界</value>
+  </data>
+  <data name="Editor_Backgrounds_16A0B5" xml:space="preserve">
+    <value>背景</value>
+  </data>
+  <data name="Editor_Backgrounds_B_65E4C7" xml:space="preserve">
+    <value>背景 (B)</value>
+  </data>
+  <data name="Editor_Browse_3227AA" xml:space="preserve">
+    <value>浏览</value>
+  </data>
+  <data name="Editor_Canvas_3824A9" xml:space="preserve">
+    <value>画布</value>
+  </data>
+  <data name="Editor_Chairs_09E99D" xml:space="preserve">
+    <value>椅子</value>
+  </data>
+  <data name="Editor_Checked_edit_Mixed_view_only_Off_hidden_16154D" xml:space="preserve">
+    <value>勾选：编辑  •  混合：仅查看  •  关闭：隐藏</value>
+  </data>
+  <data name="Editor_Clear_83B12C" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="Editor_Copy_All_7A1861" xml:space="preserve">
+    <value>全部复制</value>
+  </data>
+  <data name="Editor_Current_map_A6E14D" xml:space="preserve">
+    <value>当前地图</value>
+  </data>
+  <data name="Editor_Cursor_2C014F" xml:space="preserve">
+    <value>游标</value>
+  </data>
+  <data name="Editor_DEBUG_0FFD43" xml:space="preserve">
+    <value>调试</value>
+  </data>
+  <data name="Editor_Delete_E2D0A5" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="Editor_Developer_map_tools_BE410C" xml:space="preserve">
+    <value>开发者地图工具</value>
+  </data>
+  <data name="Editor_Draw_footholds_91FC09" xml:space="preserve">
+    <value>绘制立足点</value>
+  </data>
+  <data name="Editor_Draw_map_regions_A876F1" xml:space="preserve">
+    <value>绘制地图区域</value>
+  </data>
+  <data name="Editor_Edit_464C4F" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="Editor_Edit_quests_F30A7E" xml:space="preserve">
+    <value>编辑任务</value>
+  </data>
+  <data name="Editor_Erase_items_each_click_is_undoable_256689" xml:space="preserve">
+    <value>擦除项目（每次点击皆可复原）</value>
+  </data>
+  <data name="Editor_Etc_D322DE" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="Editor_Exit_D17D84" xml:space="preserve">
+    <value>结束</value>
+  </data>
+  <data name="Editor_File_50009C" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="Editor_Finalize_Footholds_68717E" xml:space="preserve">
+    <value>完成立足点</value>
+  </data>
+
+  <data name="Editor_Footholds_7BE0B3" xml:space="preserve">
+    <value>立足点</value>
+  </data>
+  <data name="Editor_Footholds_Ropes_Regions_913790" xml:space="preserve">
+    <value>立足点、绳索与区域</value>
+  </data>
+  <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Editor_HAM_4FAE66" xml:space="preserve">
+    <value>HAM</value>
+  </data>
+  <data name="Editor_Help_B79CAC" xml:space="preserve">
+    <value>说明</value>
+  </data>
+  <data name="Editor_Hide_all_6BAD68" xml:space="preserve">
+    <value>全部隐藏</value>
+  </data>
+  <data name="Editor_Hierarchy_23BE56" xml:space="preserve">
+    <value>层级</value>
+  </data>
+  <data name="Editor_History_0E7696" xml:space="preserve">
+    <value>历史</value>
+  </data>
+  <data name="Editor_Info_Mode_F30E2B" xml:space="preserve">
+    <value>信息模式</value>
+  </data>
+  <data name="Editor_Information_overlays_1CC00F" xml:space="preserve">
+    <value>信息叠加</value>
+  </data>
+  <data name="Editor_Inspect_the_current_selection_Double_click_an_item_on_t_0FAC6F" xml:space="preserve">
+    <value>检查当前选取项目。按两下画布或层级中的项目以进行完整编辑。</value>
+  </data>
+  <data name="Editor_Inspector_DA188E" xml:space="preserve">
+    <value>检查器</value>
+  </data>
+  <data name="Editor_Issues_666067" xml:space="preserve">
+    <value>问题</value>
+  </data>
+  <data name="Editor_Item_visibility_D68C83" xml:space="preserve">
+    <value>项目可见性</value>
+  </data>
+  <data name="Editor_itemdesc_E45CDC" xml:space="preserve">
+    <value>项目说明</value>
+  </data>
+  <data name="Editor_Layer_AC9FFC" xml:space="preserve">
+    <value>图层</value>
+  </data>
+  <data name="Editor_Layers_0BCD66" xml:space="preserve">
+    <value>图层</value>
+  </data>
+  <data name="Editor_Load_selected_map_or_file_1920CB" xml:space="preserve">
+    <value>载入所选地图或文件</value>
+  </data>
+  <data name="Editor_Lock_all_AC5BB7" xml:space="preserve">
+    <value>全部锁定</value>
+  </data>
+  <data name="Editor_Manage_User_Objects_455E55" xml:space="preserve">
+    <value>管理用户对象</value>
+  </data>
+
+  <data name="Editor_Map_BE176B" xml:space="preserve">
+    <value>地图</value>
+  </data>
+  <data name="Editor_Map_browser_5ADA56" xml:space="preserve">
+    <value>地图浏览器</value>
+  </data>
+  <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
+    <value>地图诊断</value>
+  </data>
+  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
+    <value>地图文件</value>
+  </data>
+  <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
+    <value>地图对象</value>
+  </data>
+  <data name="Editor_Map_Physics_61AD90" xml:space="preserve">
+    <value>地图物理</value>
+  </data>
+
+  <data name="Editor_Map_properties_EC4B13" xml:space="preserve">
+    <value>地图属性...</value>
+  </data>
+  <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
+    <value>地图模拟器</value>
+  </data>
+  <data name="Editor_Map_XML_B46847" xml:space="preserve">
+    <value>地图 XML</value>
+  </data>
+  <data name="Editor_Maps_119E66" xml:space="preserve">
+    <value>地图</value>
+  </data>
+  <data name="Editor_Mirror_field_A21F74" xml:space="preserve">
+    <value>镜像栏位</value>
+  </data>
+  <data name="Editor_Mobs_083013" xml:space="preserve">
+    <value>怪物</value>
+  </data>
+  <data name="Editor_Mouse_Physical_19BB5E" xml:space="preserve">
+    <value>鼠标实体位置</value>
+  </data>
+  <data name="Editor_Mouse_Virtual_419B1F" xml:space="preserve">
+    <value>鼠标虚拟位置</value>
+  </data>
+  <data name="Editor_mousepos_DC487A" xml:space="preserve">
+    <value>鼠标位置</value>
+  </data>
+  <data name="Editor_New_18FDD5" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="Editor_New_Platform_A52232" xml:space="preserve">
+    <value>新增平台</value>
+  </data>
+  <data name="Editor_New_platform_D53525" xml:space="preserve">
+    <value>新增平台...</value>
+  </data>
+  <data name="Editor_NPCs_32DFCB" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
+    <value>NPC 与怪物</value>
+  </data>
+  <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
+    <value>NPC 与怪物 (N)</value>
+  </data>
+  <data name="Editor_Objects_DE5236" xml:space="preserve">
+    <value>对象</value>
+  </data>
+  <data name="Editor_Objects_O_F1F32A" xml:space="preserve">
+    <value>对象 (O)</value>
+  </data>
+  <data name="Editor_Open_ED077F" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="Editor_Open_AI_Map_Editor_for_the_current_map_9FC120" xml:space="preserve">
+    <value>为当前地图打开 AI 地图编辑器</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_E543F9" xml:space="preserve">
+    <value>打开 HaRepacker</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_09E8F1" xml:space="preserve">
+    <value>打开 HaRepacker...</value>
+  </data>
+  <data name="Editor_Open_Log_01468E" xml:space="preserve">
+    <value>打开记录</value>
+  </data>
+  <data name="Editor_Open_map_EA488D" xml:space="preserve">
+    <value>打开地图</value>
+  </data>
+  <data name="Editor_Open_map_03863A" xml:space="preserve">
+    <value>打开地图...</value>
+  </data>
+  <data name="Editor_Open_Quest_Editor_C0AFD3" xml:space="preserve">
+    <value>打开任务编辑器</value>
+  </data>
+  <data name="Editor_Options_D0DB8B" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="Editor_Other_F97E9D" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="Editor_Parallax_backgrounds_69E70D" xml:space="preserve">
+    <value>视差背景</value>
+  </data>
+  <data name="Editor_Parallax_BGs_8BC46B" xml:space="preserve">
+    <value>视差背景</value>
+  </data>
+  <data name="Editor_Physical_1324A4" xml:space="preserve">
+    <value>实体
+</value>
+  </data>
+  <data name="Editor_Place_ropes_and_ladders_8D6DF5" xml:space="preserve">
+    <value>放置绳索与梯子</value>
+  </data>
+  <data name="Editor_Platforms_AB9BD7" xml:space="preserve">
+    <value>平台</value>
+  </data>
+  <data name="Editor_Portals_B4A3DA" xml:space="preserve">
+    <value>传送点</value>
+  </data>
+  <data name="Editor_Portals_P_67398E" xml:space="preserve">
+    <value>传送点 (P)</value>
+  </data>
+  <data name="Editor_Position_6D031A" xml:space="preserve">
+    <value>位置</value>
+  </data>
+  <data name="Editor_Preview_324B13" xml:space="preserve">
+    <value>预览</value>
+  </data>
+  <data name="Editor_Preview_map_E19CEF" xml:space="preserve">
+    <value>预览地图</value>
+  </data>
+  <data name="Editor_Quest_editor_B81784" xml:space="preserve">
+    <value>任务编辑器</value>
+  </data>
+  <data name="Editor_Quest_editor_A8BFA2" xml:space="preserve">
+    <value>任务编辑器...</value>
+  </data>
+  <data name="Editor_Quests_60D40D" xml:space="preserve">
+    <value>任务</value>
+  </data>
+  <data name="Editor_Random_Tiles_1ED7F5" xml:space="preserve">
+    <value>随机图块</value>
+  </data>
+  <data name="Editor_Reactors_347F20" xml:space="preserve">
+    <value>反应器</value>
+  </data>
+  <data name="Editor_Redo_Ctrl_Y_323109" xml:space="preserve">
+    <value>重做 (Ctrl+Y)</value>
+  </data>
+  <data name="Editor_Regenerate_Minimap_CD2C30" xml:space="preserve">
+    <value>重新产生小地图</value>
+  </data>
+
+  <data name="Editor_Reload_all_F4A8C4" xml:space="preserve">
+    <value>全部重新载入</value>
+  </data>
+  <data name="Editor_Reload_the_current_map_source_901FA7" xml:space="preserve">
+    <value>重新载入当前地图来源</value>
+  </data>
+  <data name="Editor_Repack_WZ_Files_B87109" xml:space="preserve">
+    <value>重新打包 WZ 文件</value>
+  </data>
+  <data name="Editor_Repack_WZ_files_90BFA4" xml:space="preserve">
+    <value>重新打包 WZ 文件...</value>
+  </data>
+  <data name="Editor_Reset_zoom_91A661" xml:space="preserve">
+    <value>重设缩放</value>
+  </data>
+  <data name="Editor_Resolve_Missing_4C66E8" xml:space="preserve">
+    <value>解析缺少项目</value>
+  </data>
+  <data name="Editor_Resolve_missing_map_names_from_WZ_data_74AB22" xml:space="preserve">
+    <value>从 WZ 资料解析缺少的地图名称</value>
+  </data>
+  <data name="Editor_Ropes_6BB426" xml:space="preserve">
+    <value>绳索</value>
+  </data>
+  <data name="Editor_Save_1509F5" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Editor_Save_map_AB74BA" xml:space="preserve">
+    <value>保存地图</value>
+  </data>
+  <data name="Editor_Save_map_Ctrl_S_1E254B" xml:space="preserve">
+    <value>保存地图 (Ctrl+S)</value>
+  </data>
+  <data name="Editor_Save_map_1EA04E" xml:space="preserve">
+    <value>保存地图...</value>
+  </data>
+  <data name="Editor_Save_to_WZ_A5F5FB" xml:space="preserve">
+    <value>保存至 WZ</value>
+  </data>
+  <data name="Editor_Save_to_WZ_CDEA60" xml:space="preserve">
+    <value>保存至 WZ...</value>
+  </data>
+  <data name="Editor_Saving_096B73" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Editor_Search_by_map_ID_or_name_9D3E57" xml:space="preserve">
+    <value>依地图 ID 或名称搜寻</value>
+  </data>
+  <data name="Editor_Search_maps_and_commands_FF74F6" xml:space="preserve">
+    <value>搜寻地图与命令</value>
+  </data>
+  <data name="Editor_Select_S_B368AF" xml:space="preserve">
+    <value>选取 (S)</value>
+  </data>
+  <data name="Editor_Selected_57FD7A" xml:space="preserve">
+    <value>已选取</value>
+  </data>
+  <data name="Editor_Selected_Item_2DE33D" xml:space="preserve">
+    <value>所选项目</value>
+  </data>
+
+  <data name="Editor_SELECTED_MAP_F1ABF7" xml:space="preserve">
+    <value>所选地图</value>
+  </data>
+  <data name="Editor_Selection_CA4067" xml:space="preserve">
+    <value>选取范围</value>
+  </data>
+  <data name="Editor_Settings_74A883" xml:space="preserve">
+    <value>设定</value>
+  </data>
+  <data name="Editor_Show_All_E1C326" xml:space="preserve">
+    <value>全部显示</value>
+  </data>
+
+  <data name="Editor_Show_all_layers_B7053C" xml:space="preserve">
+    <value>显示所有图层</value>
+  </data>
+  <data name="Editor_Show_all_platforms_8B719C" xml:space="preserve">
+    <value>显示所有平台</value>
+  </data>
+  <data name="Editor_Show_Minimap_AEC9E5" xml:space="preserve">
+    <value>显示小地图</value>
+  </data>
+  <data name="Editor_Show_unsupported_info_props_D2FB46" xml:space="preserve">
+    <value>显示不支持的 'info/' 属性</value>
+  </data>
+  <data name="Editor_Snap_98DF9A" xml:space="preserve">
+    <value>吸附</value>
+  </data>
+  <data name="Editor_Snap_Off_4E4910" xml:space="preserve">
+    <value>吸附：关闭</value>
+  </data>
+  <data name="Editor_Snapping_D77561" xml:space="preserve">
+    <value>吸附</value>
+  </data>
+  <data name="Editor_Stats_B4A736" xml:space="preserve">
+    <value>统计</value>
+  </data>
+  <data name="Editor_Tiles_4DA22A" xml:space="preserve">
+    <value>图块</value>
+  </data>
+  <data name="Editor_Tiles_T_FE4E53" xml:space="preserve">
+    <value>图块 (T)</value>
+  </data>
+  <data name="Editor_Toggle_minimap_357182" xml:space="preserve">
+    <value>切换小地图</value>
+  </data>
+  <data name="Editor_Toggle_snapping_13C561" xml:space="preserve">
+    <value>切换吸附</value>
+  </data>
+  <data name="Editor_Tools_EA93D6" xml:space="preserve">
+    <value>工具</value>
+  </data>
+  <data name="Editor_Tooltips_1CFB0B" xml:space="preserve">
+    <value>工具提示</value>
+  </data>
+  <data name="Editor_Town_only_CB37A6" xml:space="preserve">
+    <value>仅城镇</value>
+  </data>
+  <data name="Editor_Undo_Ctrl_Z_A67232" xml:space="preserve">
+    <value>复原 (Ctrl+Z)</value>
+  </data>
+  <data name="Editor_Validate_40611A" xml:space="preserve">
+    <value>验证</value>
+  </data>
+  <data name="Editor_Validate_all_maps_7F88A7" xml:space="preserve">
+    <value>验证所有地图</value>
+  </data>
+  <data name="Editor_Validate_current_map_3137EC" xml:space="preserve">
+    <value>验证当前地图</value>
+  </data>
+  <data name="Editor_Validate_every_map_in_the_loaded_source_6F7C90" xml:space="preserve">
+    <value>验证已载入来源中的每张地图</value>
+  </data>
+  <data name="Editor_Validate_the_active_map_only_07B633" xml:space="preserve">
+    <value>仅验证使用中的地图</value>
+  </data>
+  <data name="Editor_View_DCC839" xml:space="preserve">
+    <value>查看</value>
+  </data>
+  <data name="Editor_Virtual_935084" xml:space="preserve">
+    <value>虚拟
+</value>
+  </data>
+  <data name="Editor_XML_40658E" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Editor_Zoom_509C51" xml:space="preserve">
+    <value>缩放</value>
+  </data>
+  <data name="Editor_Zoom_in_0E47F0" xml:space="preserve">
+    <value>放大</value>
+  </data>
+  <data name="Editor_Zoom_out_BC7B63" xml:space="preserve">
+    <value>缩小</value>
+  </data>
+  <data name="Editor_SnapOn" xml:space="preserve">
+    <value>吸附：打开</value>
+  </data>
+  <data name="Editor_SnapOff" xml:space="preserve">
+    <value>吸附：关闭</value>
+  </data>
+  <data name="Editor_All" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="Editor_ConfirmQuitMessage" xml:space="preserve">
+    <value>确定要结束吗？</value>
+  </data>
+  <data name="Editor_QuitTitle" xml:space="preserve">
+    <value>结束</value>
+  </data>
+  <data name="Editor_HistoryMapCount" xml:space="preserve">
+    <value>历史：{0} 张地图</value>
+  </data>
+  <data name="Editor_AllMapsIdentifier" xml:space="preserve">
+    <value>所有地图</value>
+  </data>
+  <data name="Editor_OpenMapBeforeValidation" xml:space="preserve">
+    <value>请先打开地图再执行验证。</value>
+  </data>
+  <data name="Editor_ValidateCurrentMapTitle" xml:space="preserve">
+    <value>验证当前地图</value>
+  </data>
+  <data name="Editor_MapIdentifier" xml:space="preserve">
+    <value>地图 {0:D9}</value>
+  </data>
+  <data name="Editor_Validating" xml:space="preserve">
+    <value>正在验证 {0}...</value>
+  </data>
+  <data name="Editor_ValidationIssues" xml:space="preserve">
+    <value>{0} 的验证发现 {1} 个问题。详细资料可在「问题」中查看。</value>
+  </data>
+  <data name="Editor_ValidationSuccess" xml:space="preserve">
+    <value>{0} 的验证已完成，未回报错误。</value>
+  </data>
+  <data name="Editor_MapValidationTitle" xml:space="preserve">
+    <value>地图验证</value>
+  </data>
+  <data name="Editor_ValidationFailed" xml:space="preserve">
+    <value>无法验证 {0}。
+
+{1}</value>
+  </data>
+  <data name="Editor_Loading" xml:space="preserve">
+    <value>正在载入...</value>
+  </data>
+  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
+    <value>选取要载入的地图...</value>
+  </data>
+  <data name="Editor_HamMapFileFilter" xml:space="preserve">
+    <value>HaCreator 地图文件 (*.ham)|*.ham</value>
+  </data>
+  <data name="Editor_SelectXmlTitle" xml:space="preserve">
+    <value>选取要载入的 XML...</value>
+  </data>
+  <data name="Editor_XmlFileFilter" xml:space="preserve">
+    <value>可延伸标记语言文件 (*.xml)|*.xml</value>
+  </data>
+  <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
+    <value>正在解析缺少的地图字串...</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsTitle" xml:space="preserve">
+    <value>解析缺少的地图</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsFailed" xml:space="preserve">
+    <value>无法解析缺少的地图字串。
+
+{0}</value>
+  </data>
+  <data name="Editor_OK" xml:space="preserve">
+    <value>确定</value>
+  </data>
+  <data name="Editor_NoMapLoaded" xml:space="preserve">
+    <value>当前没有载入地图。</value>
+  </data>
+  <data name="Editor_ObjectViewerTitle" xml:space="preserve">
+    <value>对象查看器</value>
+  </data>
+  <data name="Editor_SavedTo" xml:space="preserve">
+    <value>已保存至：{0}</value>
+  </data>
+  <data name="Editor_AIMapEditorTitle" xml:space="preserve">
+    <value>AI 地图编辑器</value>
+  </data>
+</root>

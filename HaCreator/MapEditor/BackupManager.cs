@@ -138,7 +138,7 @@ namespace HaCreator.MapEditor
                 string basePath = GetBasePath();
                 if (!Directory.Exists(basePath))
                     return false;
-                if (MessageBox.Show("HaCreator was shut down unexpectedly, and can attempt to recover from a backed up state automatically. Proceed?\r\n\r\n(To start from scratch, press \"No\")", "Recovery", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.No)
+                if (MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Get("RecoveryPrompt"), HaCreator.GUI.Localization.MapEditorText.Get("RecoveryTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.No)
                 {
                     ClearBackups();
                     return false;

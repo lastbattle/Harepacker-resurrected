@@ -1,28 +1,36 @@
-﻿using System.Windows.Forms;
+using System.ComponentModel;
+using System.Windows;
 
 namespace HaCreator.GUI
 {
-    public partial class WaitWindow : Form
+    public partial class WaitWindow : Window
     {
-        private bool finished = false;
+        private bool finished;
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="message"></param>
         public WaitWindow(string message)
         {
             InitializeComponent();
-            this.label1.Text = message;
+            messageText.Text = message;
+            if (Program.HaEditorWindow?.IsVisible == true)
+            {
+                Owner = Program.HaEditorWindow;
+                WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            }
         }
 
-        private void WaitWindow_FormClosing(object sender, FormClosingEventArgs e)
+        private void WaitWindow_Closing(object sender, CancelEventArgs e)
         {
             e.Cancel = !finished;
         }
 
         public void EndWait()
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(EndWait);
+                return;
+            }
+
             finished = true;
             Close();
         }

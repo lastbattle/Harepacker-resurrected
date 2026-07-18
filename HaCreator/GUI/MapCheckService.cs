@@ -18,12 +18,32 @@ namespace HaCreator.GUI
 
         public static IReadOnlyDictionary<ErrorLevel, List<Error>> CheckLoadedMaps()
         {
+            EnsureDataSourceLoaded();
+            return CheckMaps(Program.InfoManager.MapsNameCache.Keys.ToList());
+        }
+
+        public static IReadOnlyDictionary<ErrorLevel, List<Error>> CheckMap(string mapId)
+        {
+            EnsureDataSourceLoaded();
+            if (string.IsNullOrWhiteSpace(mapId) || FindMapImage(mapId) == null)
+            {
+                throw new InvalidOperationException($"Map '{mapId}' was not found in the loaded map source.");
+            }
+
+            return CheckMaps(new[] { mapId });
+        }
+
+        private static void EnsureDataSourceLoaded()
+        {
             if (Program.InfoManager == null ||
                 (Program.DataSource == null && Program.WzManager == null))
             {
                 throw new InvalidOperationException("No map data source is loaded.");
             }
+        }
 
+        private static IReadOnlyDictionary<ErrorLevel, List<Error>> CheckMaps(IEnumerable<string> mapIds)
+        {
             MultiBoard multiBoard = new MultiBoard();
             Board mapBoard = new Board(
                 new Microsoft.Xna.Framework.Point(),
@@ -39,7 +59,7 @@ namespace HaCreator.GUI
                 .ToHashSet();
             Dictionary<ErrorLevel, List<Error>> checkErrors = new Dictionary<ErrorLevel, List<Error>>();
 
-            foreach (string mapId in Program.InfoManager.MapsNameCache.Keys.ToList())
+            foreach (string mapId in mapIds)
             {
                 WzImage mapImage = FindMapImage(mapId);
                 if (mapImage == null)

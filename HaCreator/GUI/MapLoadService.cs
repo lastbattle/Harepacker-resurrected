@@ -1,4 +1,5 @@
 using HaCreator.MapEditor;
+using HaCreator.GUI.Localization;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.Img;
@@ -155,8 +156,8 @@ namespace HaCreator.GUI
 
                 if (ShouldConfirmImmediateStringMapSave() &&
                     MessageBox.Show(
-                        "Saving is immediate for the current data source.\r\n\r\nYes: write String/Map.img now.\r\nNo: keep it modified in memory and save it manually later.",
-                        "Resolve Missing Maps",
+                        DialogTextExtension.Get("Dialog_ImmediateStringMapSavePrompt"),
+                        DialogTextExtension.Get("Dialog_ResolveMissingMaps"),
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Question) == DialogResult.Yes)
                 {

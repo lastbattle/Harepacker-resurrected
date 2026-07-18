@@ -1,22 +1,22 @@
 ﻿using MapleLib.WzLib;
 using MapleLib.WzLib.Serializer;
+using HaCreator.GUI.Localization;
 using System;
 using System.CodeDom;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.ListView;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI
 {
-    public partial class Repack : Form
+    public partial class Repack : Window
     {
         private readonly List<WzFile> _toRepack;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -27,18 +27,18 @@ namespace HaCreator.GUI
         public Repack()
         {
             InitializeComponent();
+            if (Program.HaEditorWindow?.IsVisible == true) Owner = Program.HaEditorWindow;
 
             // Check if we're using IMG filesystem mode (no WzManager)
             if (Program.WzManager == null)
             {
                 // In IMG filesystem mode, changes are saved directly to disk
                 // No repacking is needed
-                MessageBox.Show(
-                    "Repacking is not needed when using IMG filesystem mode.\n\n" +
-                    "Changes are automatically saved directly to the IMG files on disk.",
-                    "IMG Filesystem Mode",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                MessageBox.Show(this,
+                    DialogTextExtension.Get("Dialog_RepackNotNeededImg"),
+                    DialogTextExtension.Get("Dialog_ImgFilesystemMode"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
                 _toRepack = new List<WzFile>();
                 return;
             }
@@ -47,7 +47,7 @@ namespace HaCreator.GUI
 
             foreach (WzFile wzf in _toRepack)
             {
-                checkedListBox_changedFiles.Items.Add(wzf.Name, CheckState.Checked);
+                filesList.Items.Add(new CheckBox { Content = wzf.Name, IsChecked = true });
             }
         }
 
@@ -56,9 +56,9 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void Repack_FormClosing(object sender, FormClosingEventArgs e)
+        private void Repack_Closing(object sender, CancelEventArgs e)
         {
-            if (!button_repack.Enabled && !Program.Restarting)
+            if (!repackButton.IsEnabled && !Program.Restarting)
             {
                 //Do not let the user close the form while saving
                 e.Cancel = true;
@@ -74,34 +74,22 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void Repack_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Escape)
-            {
-                Close();
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                button_repack_Click(null, null);
-            }
-        }
-
         /// <summary>
         /// Repack button
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private async void button_repack_Click(object sender, EventArgs e)
+        private async void Repack_Click(object sender, RoutedEventArgs e)
         {
-            button_repack.Enabled = false;
+            repackButton.IsEnabled = false;
 
             await Task.Run(RepackerThread, _cancellationTokenSource.Token);
         }
 
         private void ShowErrorMessage(string message) =>
-             MessageBox.Show(message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+             MessageBox.Show(this, message, DialogTextExtension.Get("Dialog_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
         private void ChangeRepackState(string state) =>
-            label_repackState.Text = state;
+            stateText.Text = state;
 
 
         /// <summary>
@@ -110,10 +98,11 @@ namespace HaCreator.GUI
         /// <param name="saveFileInHaCreatorDirectory"></param>
         private void FinishSuccess(bool saveFileInHaCreatorDirectory)
         {
-            var message = "Repacked successfully. " +
-                (!saveFileInHaCreatorDirectory ? string.Empty : "Please replace the files in HaCreator\\Output.");
+            var message = saveFileInHaCreatorDirectory
+                ? DialogTextExtension.Get("Dialog_RepackSuccessReplace")
+                : DialogTextExtension.Get("Dialog_RepackSuccess");
 
-            MessageBox.Show(message);
+            MessageBox.Show(this, message);
 
             if (!saveFileInHaCreatorDirectory)
             {
@@ -121,26 +110,26 @@ namespace HaCreator.GUI
             }
             else
             {
-                button_repack.Enabled = true;
+                repackButton.IsEnabled = true;
             }
             Close();
         }
 
         private void ShowErrorMessageThreadSafe(Exception ex, string saveStage)
         {
-            if (!InvokeRequired)
+            if (Dispatcher.CheckAccess())
             {
                 HandleError();
                 return;
             }
 
-            Invoke(HandleError);
+            Dispatcher.Invoke(HandleError);
 
             void HandleError()
             {
-                ChangeRepackState($"ERROR While saving {saveStage}, aborted.");
-                button_repack.Enabled = true;
-                ShowErrorMessage("There has been an error while saving, it is likely because you do not have permissions to the destination folder or the files are in use.\r\n\r\nPress OK to see the error details.");
+            ChangeRepackState(DialogTextExtension.Format("Dialog_RepackSaveAborted", saveStage));
+                repackButton.IsEnabled = true;
+            ShowErrorMessage(DialogTextExtension.Get("Dialog_RepackPermissionError"));
                 if (ex != null)
                     ShowErrorMessage($"{ex.Message}\r\n{ex.StackTrace}");
             }
@@ -148,22 +137,12 @@ namespace HaCreator.GUI
 
         private async Task UpdateUIAsync(string message)
         {
-            if (InvokeRequired)
-            {
-                await Task.Run(() => Invoke(() => ChangeRepackState(message)));
-            }
-            else
-            {
-                ChangeRepackState(message);
-            }
+            await Dispatcher.InvokeAsync(() => ChangeRepackState(message));
         }
 
         private async Task RepackerThread()
         {
-            if (InvokeRequired)
-            {
-                await UpdateUIAsync("Deleting old backups...");
-            }
+            await UpdateUIAsync(DialogTextExtension.Get("Dialog_DeletingBackups"));
 
             // Check file access for all files first
             /*foreach (var wzFile in _toRepack)
@@ -185,9 +164,11 @@ namespace HaCreator.GUI
                 SaveXMLFilesAsync(directories);
 
                 // save selected wz files
-                foreach (var wzFile in _toRepack.Where(wzFile => checkedListBox_changedFiles.CheckedItems.Cast<string>().Contains(wzFile.Name)))
+                var selectedFiles = await Dispatcher.InvokeAsync(() => filesList.Items.OfType<CheckBox>()
+                    .Where(item => item.IsChecked == true).Select(item => item.Content?.ToString()).ToHashSet());
+                foreach (var wzFile in _toRepack.Where(wzFile => selectedFiles.Contains(wzFile.Name)))
                 {
-                    await UpdateUIAsync($"Saving {wzFile.Name}...");
+                await UpdateUIAsync(DialogTextExtension.Format("Dialog_SavingFile", wzFile.Name));
 
                     var orgFile = wzFile.FilePath;
                     var tmpFile = GetTemporaryFilePath(wzFile, directories, saveFileInHaCreatorDirectory);
@@ -215,8 +196,8 @@ namespace HaCreator.GUI
                     }
                 }
 
-                await UpdateUIAsync("Finished");
-                await Task.Run(() => Invoke(() => FinishSuccess(saveFileInHaCreatorDirectory)));
+            await UpdateUIAsync(DialogTextExtension.Get("Dialog_Finished"));
+                await Dispatcher.InvokeAsync(() => FinishSuccess(saveFileInHaCreatorDirectory));
             }
             catch (Exception ex)
             {
@@ -272,7 +253,7 @@ namespace HaCreator.GUI
 
         private async void SaveXMLFilesAsync(DirectoryStructure dirs)
         {
-            await UpdateUIAsync("Saving XMLs...");
+            await UpdateUIAsync(DialogTextExtension.Get("Dialog_SavingXml"));
 
             // Skip if WzManager is null (IMG filesystem mode)
             if (Program.WzManager == null)
