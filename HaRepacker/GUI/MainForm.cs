@@ -417,51 +417,69 @@ namespace HaRepacker.GUI
         /// Unload the loaded WZ file
         /// </summary>
         /// <param name="file"></param>
-        public async void UnloadWzFile(WzFile file, Dispatcher currentDispatcher = null)
+        public void UnloadWzFile(WzFile file, Dispatcher currentDispatcher = null)
         {
-            WzNode node = (WzNode)file.HRTag; // get the ref first
+            UnloadWzFile(file, currentDispatcher, true);
+        }
 
-            // unload the wz file
-            Program.WzFileManager.UnloadWzFile(file, file.FilePath);
+        private void UnloadWzFile(WzFile file, Dispatcher currentDispatcher, bool refreshNativeTree)
+        {
+            if (file == null)
+                return;
 
-            // remove from treeview
-            if (node != null) 
+            WzNode node = file.HRTag as WzNode;
+            string filePath = file.FilePath;
+            Action unload = () =>
             {
-                if (currentDispatcher != null)
-                {
-                    await currentDispatcher.BeginInvoke((Action)(() =>
-                    {
-                        node.DeleteWzNode();
-                    }));
-                } else
+                // Dispose clears FilePath. A stale native-tree node can therefore point to
+                // a file which was already unloaded before the WPF tree was refreshed.
+                if (!file.IsUnloaded && !string.IsNullOrEmpty(filePath))
+                    Program.WzFileManager.UnloadWzFile(file, filePath);
+
+                if (node?.TreeView != null)
                     node.DeleteWzNode();
-            }
+
+                if (refreshNativeTree)
+                    MainPanel.RefreshNativeDataTree();
+            };
+
+            Dispatcher dispatcher = currentDispatcher ?? Dispatcher;
+            if (dispatcher.CheckAccess())
+                unload();
+            else
+                dispatcher.Invoke(unload);
         }
 
         /// <summary>
         /// Unload the loaded WZ image file
         /// </summary>
         /// <param name="file"></param>
-        public async void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher = null)
+        public void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher = null)
         {
-            WzNode node = (WzNode)wzImage.HRTag; // get the ref first
+            UnloadWzImageFile(wzImage, currentDispatcher, true);
+        }
 
-            // unload the wz file
-            Program.WzFileManager.UnloadWzImgFile(wzImage);
+        private void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher, bool refreshNativeTree)
+        {
+            if (wzImage == null)
+                return;
 
-            // remove from treeview
-            if (node != null)
+            WzNode node = wzImage.HRTag as WzNode;
+            Action unload = () =>
             {
-                if (currentDispatcher != null)
-                {
-                    await currentDispatcher.BeginInvoke((Action)(() =>
-                    {
-                        node.DeleteWzNode();
-                    }));
-                }
-                else
+                Program.WzFileManager.UnloadWzImgFile(wzImage);
+                if (node?.TreeView != null)
                     node.DeleteWzNode();
-            }
+
+                if (refreshNativeTree)
+                    MainPanel.RefreshNativeDataTree();
+            };
+
+            Dispatcher dispatcher = currentDispatcher ?? Dispatcher;
+            if (dispatcher.CheckAccess())
+                unload();
+            else
+                dispatcher.Invoke(unload);
         }
         #endregion
 
@@ -1367,17 +1385,11 @@ namespace HaRepacker.GUI
                 // Unload WZ files if WzFileManager is initialized
                 if (Program.WzFileManager != null)
                 {
-                    var wzFiles = Program.WzFileManager.WzFileList;
-                    Parallel.ForEach(wzFiles, wzFile =>
-                    {
-                        UnloadWzFile(wzFile, currentThread);
-                    });
+                    foreach (WzFile wzFile in Program.WzFileManager.WzFileList)
+                        UnloadWzFile(wzFile, currentThread, false);
 
-                    var wzImages = Program.WzFileManager.WzImagesList;
-                    Parallel.ForEach(wzImages, wzImage =>
-                    {
-                        UnloadWzImageFile(wzImage, currentThread);
-                    });
+                    foreach (WzImage wzImage in Program.WzFileManager.WzImagesList)
+                        UnloadWzImageFile(wzImage, currentThread, false);
                 }
 
                 // Unload VirtualWzDirectory nodes (IMG filesystem)
@@ -1399,6 +1411,8 @@ namespace HaRepacker.GUI
                     {
                         node.Remove();
                     }
+
+                    MainPanel.RefreshNativeDataTree();
                 });
             }
         }
