@@ -27,6 +27,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\HaRepacker\GUI\WzKeyBruteforceProbe.cs" Link="WzKeyBruteforceProbe.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Update="Microsoft.Testing.Extensions.CodeCoverage" Version="18.1.0" />
   </ItemGroup>
 
