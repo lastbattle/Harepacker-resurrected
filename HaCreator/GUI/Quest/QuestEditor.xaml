@@ -516,7 +516,19 @@
 
         <!-- Define a reusable DataGridTemplate -->
         <DataTemplate x:Key="ConversationDataGridTemplate">
-            <DataGrid ItemsSource="{Binding}"
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="3*" MinHeight="220"/>
+                    <RowDefinition Height="6"/>
+                    <RowDefinition Height="2*" MinHeight="285"/>
+                </Grid.RowDefinitions>
+
+                <DataGrid x:Name="ConversationGrid"
+                  Grid.Row="0"
+                  MinHeight="220"
+                  ItemsSource="{Binding}"
+                  SelectedIndex="0"
+                  SelectionMode="Single"
                   AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                 <DataGrid.Resources>
                     <!-- Define common resources here if needed -->
@@ -590,7 +602,25 @@
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
                 </DataGrid.Columns>
-            </DataGrid>
+                </DataGrid>
+
+                <GridSplitter Grid.Row="1"
+                              Height="6"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="#D8DEE8"
+                              ResizeDirection="Rows"
+                              ResizeBehavior="PreviousAndNext"
+                              ShowsPreview="True"/>
+
+                <local:NpcConversationPreview Grid.Row="2"
+                                              MinHeight="285"
+                                              Margin="0,8,0,0"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Bottom"
+                                              Conversation="{Binding SelectedItem, ElementName=ConversationGrid}"
+                                              Quest="{Binding DataContext.SelectedQuest, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
+            </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="StopConversationDataGridTemplate">
@@ -3158,7 +3188,6 @@
 
                     <!-- Say Info Tab -->
                         <TabItem Header="{local:QuestText QuestEditor_SayInfoTab}"  FontWeight="Normal">
-                        <ScrollViewer>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*"/>
@@ -3234,7 +3263,6 @@
                                     </TabItem>
                                 </TabControl>
                             </Grid>
-                        </ScrollViewer>
                     </TabItem>
 
                     <!-- Check Conditions Tab -->
