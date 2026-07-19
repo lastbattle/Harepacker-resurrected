@@ -29,7 +29,8 @@ namespace HaCreator.GUI.InstanceEditor
             if (!SelectorDialogSupport.TryGetBracketedId(resultsList.SelectedItem as string, out string id) || !int.TryParse(id, out int mobId))
             { SelectedMonsterId = 0; descriptionText.Text = string.Empty; selectButton.IsEnabled = false; return; }
             descriptionText.Text = Program.InfoManager.MobNameCache.TryGetValue(id, out string name) ? name : "NO NAME";
-            if (Program.InfoManager.MobIconCache.TryGetValue(mobId, out WzImageProperty icon) && icon is WzCanvasProperty canvas)
+            WzCanvasProperty canvas = Program.InfoManager.GetMobIcon(mobId);
+            if (canvas != null)
                 previewImage.Source = SelectorDialogSupport.ToBitmapSource(canvas.GetLinkedWzCanvasBitmap());
             SelectedMonsterId = mobId;
             selectButton.IsEnabled = true;

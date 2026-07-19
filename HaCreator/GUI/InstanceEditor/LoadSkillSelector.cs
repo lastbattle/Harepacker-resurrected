@@ -36,7 +36,8 @@ namespace HaCreator.GUI.InstanceEditor
             { SelectedSkillId = 0; nameText.Text = descriptionText.Text = string.Empty; selectButton.IsEnabled = false; return; }
             nameText.Text = info.Item1;
             descriptionText.Text = info.Item2;
-            if (Program.InfoManager.SkillWzImageCache.TryGetValue(id, out WzImageProperty image) && image?["icon"] is WzCanvasProperty icon)
+            WzImageProperty image = Program.InfoManager.GetSkillProperty(id);
+            if (image?["icon"]?.GetLinkedWzImageProperty() is WzCanvasProperty icon)
                 previewImage.Source = SelectorDialogSupport.ToBitmapSource(icon.GetLinkedWzCanvasBitmap());
             SelectedSkillId = parsed;
             selectButton.IsEnabled = true;

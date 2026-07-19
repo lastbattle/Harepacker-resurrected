@@ -16,11 +16,11 @@
         Foreground="#1F2937"
         FontFamily="Segoe UI"
         FontSize="13"
-        MinHeight="640"
-        MinWidth="1040"
+        MinHeight="700"
+        MinWidth="1200"
         WindowStartupLocation="CenterOwner"
-        d:DesignHeight="768" d:DesignWidth="1366"
-        Height="768" Width="1366">
+        d:DesignHeight="900" d:DesignWidth="1560"
+        Height="900" Width="1560">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -227,18 +227,38 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type GroupBox}">
-                        <Grid>
-                            <Border Margin="0,11,0,0" Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7"/>
-                            <Border Margin="14,0,0,0" Padding="7,2" HorizontalAlignment="Left"
-                                    Background="#F4F6F8" CornerRadius="3">
-                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
-                                                  TextElement.FontSize="12" TextElement.FontWeight="SemiBold"
-                                                  TextElement.Foreground="{StaticResource QuestMutedTextBrush}"/>
-                            </Border>
-                            <ContentPresenter Margin="14,30,14,14"/>
-                        </Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7"
+                                ClipToBounds="True">
+                            <Grid Background="{TemplateBinding Background}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0"
+                                        Padding="14,10"
+                                        Background="{StaticResource QuestSurfaceBrush}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="0,0,0,1">
+                                    <ContentPresenter ContentSource="Header"
+                                                      RecognizesAccessKey="True"
+                                                      HorizontalAlignment="Stretch"
+                                                      TextElement.FontSize="12"
+                                                      TextElement.FontWeight="SemiBold"
+                                                      TextElement.Foreground="{StaticResource QuestTextBrush}"/>
+                                </Border>
+
+                                <Border Grid.Row="1"
+                                        Padding="14"
+                                        Background="{StaticResource QuestSurfaceBrush}">
+                                    <ContentPresenter HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Stretch"/>
+                                </Border>
+                            </Grid>
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -298,14 +318,67 @@
         <Style TargetType="{x:Type DataGrid}">
             <Setter Property="Background" Value="{StaticResource QuestSurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource QuestBorderBrush}"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="GridLinesVisibility" Value="All"/>
             <Setter Property="HorizontalGridLinesBrush" Value="#E8ECF2"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#E8ECF2"/>
             <Setter Property="RowBackground" Value="White"/>
             <Setter Property="AlternatingRowBackground" Value="#FAFBFC"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="ColumnHeaderHeight" Value="34"/>
-            <Setter Property="RowHeight" Value="34"/>
+            <Setter Property="MinRowHeight" Value="38"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="CanUserResizeRows" Value="False"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridRow}">
+            <Setter Property="MinHeight" Value="38"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridCell}">
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QuestDataGridButtonStyle"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource ButtonStyle_Black}">
+            <Setter Property="MinWidth" Value="132"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Margin" Value="6,2,0,6"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QuestDataGridComboBoxStyle"
+               TargetType="{x:Type ComboBox}"
+               BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="MinWidth" Value="132"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+
+        <Style x:Key="QuestDataGridTextBlockStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="QuestDataGridTextBoxStyle"
+               TargetType="{x:Type TextBox}"
+               BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="AcceptsReturn" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
         <Style TargetType="{x:Type DataGridColumnHeader}">
@@ -452,19 +525,24 @@
                 <DataGrid.Columns>
 
                     <!-- Conversation Type Column -->
-                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="130">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                      SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       ItemsSource="{Binding Source={StaticResource ConversationTypeEnum}}"
-                                      MaxHeight="30" VerticalAlignment="Top">
+                                      VerticalAlignment="Center">
                                 </ComboBox>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
                     <!-- Conversation Text Column -->
-                <DataGridTextColumn Header="{local:QuestText QuestEditor_Text}" Binding="{Binding NpcConversation}" Width="4*"/>
+                <DataGridTextColumn Header="{local:QuestText QuestEditor_Text}"
+                                    Binding="{Binding NpcConversation, UpdateSourceTrigger=PropertyChanged}"
+                                    ElementStyle="{StaticResource QuestDataGridTextBlockStyle}"
+                                    EditingElementStyle="{StaticResource QuestDataGridTextBoxStyle}"
+                                    Width="4*"/>
 
                     <!-- Yes Responses Column -->
                 <DataGridTemplateColumn Header="{local:QuestText QuestEditor_YesResponses}" Width="3*">
@@ -474,7 +552,7 @@
                                     <ItemsControl ItemsSource="{Binding YesResponses}"
                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
                                             <Button x:Name="button_addResponse" Content="{local:QuestText QuestEditor_AddResponse}"
-                                        Style="{DynamicResource ButtonStyle_Black}" Width="100"
+                                        Style="{StaticResource QuestDataGridButtonStyle}"
                                         HorizontalAlignment="Right"
                                         IsEnabled="{Binding IsYesNoConversation}"
                                         Click="button_addResponse_Click"/>
@@ -497,7 +575,7 @@
                                     <ItemsControl ItemsSource="{Binding NoResponses}"
                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
                                             <Button x:Name="button_addNoResponse" Content="{local:QuestText QuestEditor_AddResponse}"
-                                        Style="{DynamicResource ButtonStyle_Black}" Width="100"
+                                        Style="{StaticResource QuestDataGridButtonStyle}"
                                         HorizontalAlignment="Right"
                                         IsEnabled="{Binding IsYesNoConversation}"
                                         Click="button_addResponse_Click"/>
@@ -521,12 +599,13 @@
                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                 <DataGrid.Columns>
                     <!-- Conversation Type Column -->
-                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
+                <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="150">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                      SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                       ItemsSource="{Binding Source={StaticResource ConversationStopTypeEnum}}"
-                                                                      MaxHeight="30" VerticalAlignment="Top">
+                                                                      VerticalAlignment="Center">
                                 </ComboBox>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
@@ -540,7 +619,7 @@
                                     <ItemsControl ItemsSource="{Binding Responses}"
                                                                               ItemTemplate="{StaticResource ResponseItemTemplate}"/>
                                             <Button Content="{local:QuestText QuestEditor_AddResponse}"
-                                                                        Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                                        Style="{StaticResource QuestDataGridButtonStyle}"
                                                                         HorizontalAlignment="Right"
                                                                         Click="button_addResponse_stopQuest_Click"/>
                                 </StackPanel>
@@ -721,14 +800,16 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="7*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="20"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto" MinHeight="24"/>
                                 </Grid.RowDefinitions>
 
                                 <!-- Skill level-->
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="0" Margin="2,0,10,5" Height="25">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="0" Margin="2,0,10,5">
                                     <TextBlock Text="{local:QuestText QuestEditor_SpAmount}" Width="100"/>
                                     <TextBox Text="{Binding SPValue, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100" />
                                 </StackPanel>
@@ -769,19 +850,18 @@
                                         </ListBox.ItemTemplate>
                                     </ListBox>
                                     <Button x:Name="button_addSPJob" Content="{local:QuestText QuestEditor_AddJob}"
-                                            Width="100" Height="20" 
                                             VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                            Style="{StaticResource QuestDataGridButtonStyle}"
                                             Click="button_addSPJob_Click"
                                             />
                                 </StackPanel>
 
 
                                 <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
-                                      Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" 
+                                      Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                                       Margin="0,0,0,0"/>
 
-                                <Button x:Name="button_removeSP" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
+                                <Button x:Name="button_removeSP" Grid.Column="2" Grid.Row="2" Content="X" FontSize="8" Width="15" Height="15"
                                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
                                         Click="button_removeSP_Click"
@@ -791,7 +871,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddSP" Content="{local:QuestText QuestEditor_AddSp}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddSP" Content="{local:QuestText QuestEditor_AddSp}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddSP_Click"/>
             </StackPanel>
@@ -809,13 +889,15 @@
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition MaxHeight="25"/>
-                                    <RowDefinition MaxHeight="20"/>
-                                    <RowDefinition MaxHeight="25"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="20"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="24"/>
+                                    <RowDefinition Height="Auto" MinHeight="30"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto" MinHeight="24"/>
                                 </Grid.RowDefinitions>
 
                                 <!-- Skill Id-->
@@ -890,15 +972,14 @@
                                         </ListBox.ItemTemplate>
                                     </ListBox>
                                     <Button x:Name="button_addJob" Content="{local:QuestText QuestEditor_AddJob}"
-                                        Width="100" Height="20" 
                                             VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Style="{StaticResource QuestDataGridButtonStyle}"
                                         Click="button_addJob_Click"
                                     />
                                 </Grid>
 
                                 <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
-                                  Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" 
+                                  Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4"
                                   Margin="0,0,0,0"/>
 
                                 <Button x:Name="button_removeSkill" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
@@ -911,7 +992,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddSkill_Click"/>
             </StackPanel>
@@ -952,7 +1033,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddJob_Click"/>
             </StackPanel>
@@ -1007,7 +1088,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_selectMaps_Click"/>
                 </Grid>
@@ -1089,7 +1170,8 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{local:QuestText QuestEditor_SelectSkill}" Margin="4,0,0,0"/>
                 </StackPanel>
-                <ComboBox x:Name="comboBox_petSkill" 
+                <ComboBox x:Name="comboBox_petSkill"
+                          Style="{StaticResource QuestDataGridComboBoxStyle}"
                           ItemsSource="{Binding Source={StaticResource PetSkillTypeEnum}}"  
                            SelectedItem="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource petSkillFlagConverter}}"
                           SelectionChanged="comboBox_petSkill_SelectionChanged"
@@ -1118,12 +1200,12 @@
                 <Grid Margin="0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="Auto" MinWidth="150"/>
                     </Grid.ColumnDefinitions>
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                    <Button x:Name="botton_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_selectBuff_Click"/>
                 </Grid>
@@ -1147,7 +1229,8 @@
                                              Margin="5,0,0,0" Width="100"/>
 
                                         <TextBlock Text="{local:QuestText QuestEditor_State}" Width="70" Margin="10,0,0,0"/>
-                                        <ComboBox x:Name="comboBox_questState" 
+                                        <ComboBox x:Name="comboBox_questState"
+                                                  Style="{StaticResource QuestDataGridComboBoxStyle}"
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
                                                   SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   SelectedValuePath="."
@@ -1177,7 +1260,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectAddQuest_Click"/>
             </StackPanel>
@@ -1197,13 +1280,14 @@
                 <Grid Margin="0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="Auto" MinWidth="150"/>
                     </Grid.ColumnDefinitions>
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
-                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                    <Button x:Name="botton_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1"
+                        Style="{StaticResource QuestDataGridButtonStyle}"
+                        VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                         Click="botton_selectQuest_Click"/>
                 </Grid>
             </StackPanel>
@@ -1215,7 +1299,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="100"/>
                     <ColumnDefinition Width="8*"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto" MinWidth="120"/>
                     <ColumnDefinition MinWidth="150" Width="2*"/>
                 </Grid.ColumnDefinitions>
 
@@ -1240,7 +1324,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_selectMaps_Click"/>
                 </StackPanel>
@@ -1252,7 +1336,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto" MinWidth="150"/>
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
@@ -1265,7 +1349,8 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_selectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_selectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1"
+                        Style="{StaticResource QuestDataGridButtonStyle}" VerticalAlignment="Stretch"
                         Click="button_selectNPC_Click"/>
             </Grid>
         </DataTemplate>
@@ -1288,10 +1373,11 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
-                                    <RowDefinition Height="30"/>
-                                    <RowDefinition Height="30"/>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition MinWidth="150" Width="3*"/>
@@ -1321,55 +1407,16 @@
                                 </StackPanel>
                                 
                                 <!-- Potential, prop, gender -->
-                                <StackPanel Orientation="Horizontal" 
-                                            Grid.Column="1" Grid.Row="1"
-                                            HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <TextBlock Text="{local:QuestText QuestEditor_PropType}" Margin="0,0,5,0"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox x:Name="comboBox_itemPropType" 
-                                              ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"  
-                                              SelectedItem="{Binding Prop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              SelectedValuePath="."
-                                              DisplayMemberPath="."
-                                              >
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-
-                                    <TextBlock Text="{local:QuestText QuestEditor_Gender}" Margin="20,0,5,0"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox x:Name="comboBox_itemGenderType" 
-                                              ItemsSource="{Binding Source={StaticResource RewardGenderTypeEnum}}"  
-                                              SelectedItem="{Binding Gender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              SelectedValuePath="."
-                                              DisplayMemberPath="."
-                                              >
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    
-                                    <!-- potential-->
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <StackPanel.Visibility>
-                                            <MultiBinding Converter="{StaticResource multiBooleanToVisibility2Converter}">
-                                                <Binding Path="IsEquip"/>
-                                            </MultiBinding>
-                                        </StackPanel.Visibility>
-                                        
-                                        <TextBlock Text="{local:QuestText QuestEditor_Potential}" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
-                                               />
-                                        <ComboBox x:Name="comboBox_potentialGrade" 
-                                              ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
-                                              SelectedItem="{Binding PotentialGrade, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <WrapPanel Grid.Column="1" Grid.Row="1" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,4" VerticalAlignment="Center">
+                                        <TextBlock Text="{local:QuestText QuestEditor_PropType}" Margin="0,0,5,0"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="comboBox_itemPropType"
+                                                  Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                  ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"
+                                                  SelectedItem="{Binding Prop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   SelectedValuePath="."
-                                                  DisplayMemberPath="."
-                                              >
+                                                  DisplayMemberPath=".">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
@@ -1377,7 +1424,48 @@
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
                                     </StackPanel>
-                                </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,4" VerticalAlignment="Center">
+                                        <TextBlock Text="{local:QuestText QuestEditor_Gender}" Margin="0,0,5,0"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="comboBox_itemGenderType"
+                                                  Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                  ItemsSource="{Binding Source={StaticResource RewardGenderTypeEnum}}"
+                                                  SelectedItem="{Binding Gender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValuePath="."
+                                                  DisplayMemberPath=".">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <!-- potential -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                                        <StackPanel.Visibility>
+                                            <MultiBinding Converter="{StaticResource multiBooleanToVisibility2Converter}">
+                                                <Binding Path="IsEquip"/>
+                                            </MultiBinding>
+                                        </StackPanel.Visibility>
+                                        
+                                        <TextBlock Text="{local:QuestText QuestEditor_Potential}" Margin="0,0,5,0"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="comboBox_potentialGrade"
+                                                  Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                  ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"
+                                                  SelectedItem="{Binding PotentialGrade, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValuePath="."
+                                                  DisplayMemberPath=".">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </WrapPanel>
                                 
                                 <!-- Time related category -->
                                 <StackPanel Orientation="Horizontal" 
@@ -1407,7 +1495,7 @@
 
                                 <!-- Job -->
                                 <StackPanel Orientation="Horizontal" 
-                                            Grid.Column="1" Grid.Row="4"
+                                            Grid.Column="1" Grid.Row="3"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <TextBlock Text="{local:QuestText QuestEditor_JobEx}" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding JobEx, UpdateSourceTrigger=PropertyChanged}" Width="40" 
@@ -1417,19 +1505,25 @@
                                 </StackPanel>
 
                                 <!-- class categories -->
-                                <StackPanel Orientation="Horizontal" 
-                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="4"
-                                            HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <TextBlock Text="{local:QuestText QuestEditor_Classes}"/>
-                                    <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 
-                                               Margin="5,0,5,0"
-                                             TextAlignment="Center"
-                                             />
-                                    <Button x:Name="button_selectClasses" Content="{local:QuestText QuestEditor_SelectClass}"
-                                            Style="{StaticResource ButtonStyle_Black}" Background="Gray"
-                                            Width="100" Height="20" VerticalAlignment="Bottom"
+                                <Grid Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="4" Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" MinWidth="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                                               Text="{local:QuestText QuestEditor_Classes}"/>
+                                    <TextBlock Grid.Column="1"
+                                               Margin="8,0"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}"/>
+                                    <Button x:Name="button_selectClasses"
+                                            Grid.Column="2"
+                                            Content="{local:QuestText QuestEditor_SelectClass}"
+                                            Style="{StaticResource QuestDataGridButtonStyle}"
                                             Click="button_selectClasses_Click"/>
-                                </StackPanel>
+                                </Grid>
 
                                 <Button x:Name="button_deleteItem" 
                                         Grid.Column="2" Grid.Row="0"
@@ -1443,7 +1537,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectItem_Click"/>
             </StackPanel>
@@ -1605,10 +1699,11 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Orientation="Vertical" 
@@ -1623,7 +1718,7 @@
                                 </StackPanel>
 
                                 <Button x:Name="button_check_deleteEquip" 
-                                        Grid.Column="2" Grid.Row="0"
+                                        Grid.Column="1" Grid.Row="0"
                                         Content="X" FontSize="8" Width="15" Height="15" 
                                         HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
@@ -1634,7 +1729,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectEquip_Click"/>
             </StackPanel>
@@ -1647,10 +1742,11 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Orientation="Vertical" 
@@ -1665,7 +1761,7 @@
                                 </StackPanel>
 
                                 <Button x:Name="button_check_deleteEquip" 
-                                        Grid.Column="2" Grid.Row="0"
+                                        Grid.Column="1" Grid.Row="0"
                                         Content="X" FontSize="8" Width="15" Height="15" 
                                         HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
@@ -1676,7 +1772,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectEquip" Content="{local:QuestText QuestEditor_AddEquip}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectEquip_Click"
                         />
@@ -1819,8 +1915,8 @@
                     <TextBlock Text="{local:QuestText QuestEditor_SubJobFlag}" Margin="2,0,0,0"/>
                 </StackPanel>
                 
-                <ComboBox 
-                    ItemsSource="{Binding Source={StaticResource characterSubJobFlagEnum}}"  
+                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                     ItemsSource="{Binding Source={StaticResource characterSubJobFlagEnum}}"
                     SelectedValue="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource characterSubJobTypeConverter}}"
                     SelectedValuePath="."
                     DisplayMemberPath=".">
@@ -1912,7 +2008,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button x:Name="botton_check_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                    <Button x:Name="botton_check_selectMaps" Content="{local:QuestText QuestEditor_SelectMaps}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                             Click="botton_check_selectMaps_Click"
                             />
@@ -1929,10 +2025,11 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Orientation="Horizontal" 
@@ -1948,7 +2045,7 @@
                                 </StackPanel>
 
                                 <Button x:Name="button_check_deletePetItem" 
-                                        Grid.Column="2" Grid.Row="0"
+                                        Grid.Column="1" Grid.Row="0"
                                         Content="X" FontSize="8" Width="15" Height="15" 
                                         HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
@@ -1959,7 +2056,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectPetItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectPetItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectPetItem_Click"
                         />
@@ -1975,7 +2072,7 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition MinWidth="150" Width="3*"/>
@@ -2016,7 +2113,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_selectItem" Content="{local:QuestText QuestEditor_AddItem}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectItem_Click"/>
             </StackPanel>
@@ -2031,7 +2128,7 @@
                         <DataTemplate>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition MinWidth="150" Width="3*"/>
@@ -2072,7 +2169,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_addMob" Content="{local:QuestText QuestEditor_AddMonster}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                <Button x:Name="botton_check_addMob" Content="{local:QuestText QuestEditor_AddMonster}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_addMob_Click"/>
             </StackPanel>
@@ -2113,7 +2210,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddJob" Content="{local:QuestText QuestEditor_AddJob}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddJob_Click"/>
             </StackPanel>
@@ -2122,7 +2219,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto" MinWidth="150"/>
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
@@ -2143,7 +2240,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" IsEnabled="False" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_check_jobCLassFlags" Content="{local:QuestText QuestEditor_SelectJobs}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_check_jobCLassFlags" Content="{local:QuestText QuestEditor_SelectJobs}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}" VerticalAlignment="Stretch"
                         Click="button_check_jobCLassFlags_Click"/>
             </Grid>
         </DataTemplate>
@@ -2166,7 +2263,8 @@
                                              Margin="5,0,0,0" Width="100"/>
 
                                         <TextBlock Text="{local:QuestText QuestEditor_State}" Width="70" Margin="10,0,0,0"/>
-                                        <ComboBox x:Name="comboBox_questState" 
+                                        <ComboBox x:Name="comboBox_questState"
+                                                  Style="{StaticResource QuestDataGridComboBoxStyle}"
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
                                                   SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   SelectedValuePath="."
@@ -2196,7 +2294,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddQuest" Content="{local:QuestText QuestEditor_AddQuest}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddQuest_Click"/>
             </StackPanel>
@@ -2230,7 +2328,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_info_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_info_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_info_addQuest_Click"/>
             </StackPanel>
@@ -2279,7 +2377,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_infoEx_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_infoEx_addQuest" Content="{local:QuestText QuestEditor_AddInfo}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_infoEx_addQuest_Click"/>
             </StackPanel>
@@ -2290,7 +2388,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto" MinWidth="150"/>
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
@@ -2306,7 +2404,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_check_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_check_selectQuest" Content="{local:QuestText QuestEditor_SelectQuest}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}" VerticalAlignment="Stretch"
                         Click="button_check_selectQuest_Click"/>
             </Grid>
         </DataTemplate>
@@ -2344,12 +2442,15 @@
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition MaxHeight="25"/>
-                                    <RowDefinition MaxHeight="20"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="20"/>
+                                    <RowDefinition Height="Auto" MinHeight="38"/>
+                                    <RowDefinition Height="Auto" MinHeight="24"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto" MinHeight="24"/>
                                 </Grid.RowDefinitions>
 
                                 <!-- Skill Id-->
@@ -2378,7 +2479,8 @@
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="2">
                                     <TextBlock Text="{local:QuestText QuestEditor_Condition}" Margin="0,0,5,0" Width="80"
                                                />
-                                    <ComboBox x:Name="comboBox_skillCond" MinWidth="100"
+                                    <ComboBox x:Name="comboBox_skillCond"
+                                              Style="{StaticResource QuestDataGridComboBoxStyle}"
                                               ItemsSource="{Binding Source={StaticResource SkillCondTypeEnum}}"  
                                               SelectedItem="{Binding ConditionType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               SelectedValuePath="." DisplayMemberPath="."
@@ -2397,7 +2499,7 @@
                                           Grid.Row="1" Grid.Column="1" Margin="0,0,10,5"/>
 
                                 <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
-                                      Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" 
+                                      Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4"
                                       Margin="0,0,0,0"/>
 
                                 <Button x:Name="button_check_removeSkill" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
@@ -2410,7 +2512,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="botton_check_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                <Button x:Name="botton_check_selectAddSkill" Content="{local:QuestText QuestEditor_AddSkill}" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_check_selectAddSkill_Click"
                         />
@@ -2423,7 +2525,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="Auto" MinWidth="150"/>
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
@@ -2436,7 +2538,7 @@
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button x:Name="button_checkSelectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="button_checkSelectNPC" Content="{local:QuestText QuestEditor_SelectNpc}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}" VerticalAlignment="Stretch"
                         Click="button_checkSelectNPC_Click"/>
             </Grid>
         </DataTemplate>
@@ -2473,12 +2575,12 @@
                 <Grid Margin="0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="Auto" MinWidth="150"/>
                     </Grid.ColumnDefinitions>
 
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
-                    <Button x:Name="botton_Check_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                    <Button x:Name="botton_Check_selectBuff" Content="{local:QuestText QuestEditor_SelectBuff}" Grid.Column="1" Style="{StaticResource QuestDataGridButtonStyle}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_Check_selectBuff_Click"/>
                 </Grid>
@@ -2747,33 +2849,67 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <DockPanel Margin="16">
-        <Border DockPanel.Dock="Top" Background="Transparent" Padding="2,0,0,14">
-            <Grid>
+    <Grid Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="58"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="62"/>
+        </Grid.RowDefinitions>
+
+        <!-- Compact command bar, matching the HaEditor shell. -->
+        <Border Grid.Row="0"
+                Background="{StaticResource HareSurfaceBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid Margin="16,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel>
-            <TextBlock Text="{local:QuestText QuestEditor_Subtitle}"
-                               Foreground="{StaticResource QuestMutedTextBrush}" Margin="0,3,0,0"/>
+
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{local:QuestText QuestEditor_Subtitle}"
+                               Foreground="{StaticResource HareMutedTextBrush}"/>
                 </StackPanel>
-                <Border Grid.Column="1" Background="#E8F0FE" CornerRadius="12" Padding="10,5" VerticalAlignment="Center">
-            <TextBlock Text="{local:QuestText QuestEditor_Eyebrow}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource QuestAccentBrush}"/>
+
+                <StackPanel Grid.Column="1" Margin="20,0,12,0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button MinWidth="94"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="button_addNewQuest_Click"
+                            Content="{local:QuestText QuestEditor_NewQuest}"/>
+                    <Button MinWidth="88"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="button_importNewQuest_Click"
+                            Content="{local:QuestText QuestEditor_Import}"/>
+                </StackPanel>
+
+                <Border Grid.Column="2"
+                        Padding="12,6"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource HareAccentSoftBrush}"
+                        CornerRadius="12">
+                    <TextBlock FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource HareAccentBrush}"
+                               Text="{local:QuestText QuestEditor_Eyebrow}"/>
                 </Border>
             </Grid>
         </Border>
 
-        <Grid>
+        <Grid Grid.Row="1" Margin="14,12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="300"/>
             <ColumnDefinition Width="12"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="12"/>
+            <ColumnDefinition Width="320"/>
         </Grid.ColumnDefinitions>
 
         <!-- Quest List -->
             <GroupBox Header="{local:QuestText QuestEditor_QuestLibrary}" Grid.Column="0" Margin="0" FontWeight="Bold">
-            <Grid>
+            <Grid Background="{StaticResource QuestSurfaceBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="38"/>
                     <RowDefinition Height="38"/>
@@ -2842,16 +2978,15 @@
 
         <!-- Quest Editor -->
             <GroupBox Header="{local:QuestText QuestEditor_QuestDetails}" Grid.Column="2" Margin="0" FontWeight="Bold">
-            <Grid>
+            <Grid Background="{StaticResource QuestSurfaceBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="46"/>
                 </Grid.RowDefinitions>
 
-                <TabControl Grid.Row="0" Margin="0,0,0,10">
+                <TabControl Grid.Row="0">
                     <!-- Quest Info Tab -->
                         <TabItem Header="{local:QuestText QuestEditor_QuestInfoTab}" FontWeight="Normal">
-                        <Grid>
+                        <Grid Background="{StaticResource QuestSurfaceBrush}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="25"/>
                                 <RowDefinition Height="*"/>
@@ -2859,7 +2994,9 @@
 
                             <TextBlock Grid.Row="0" Foreground="Gray" Margin="0,0,0,10">The quest <Bold>information</Bold>, such as quest name, parent name.</TextBlock>
 
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ScrollViewer Grid.Row="1"
+                                          Background="{StaticResource QuestSurfaceBrush}"
+                                          VerticalScrollBarVisibility="Auto">
                                 <StackPanel Margin="14,10,14,18">
                                     <!-- Quest name -->
                                         <TextBlock Text="{local:QuestText QuestEditor_Name}" FontWeight="Bold"/>
@@ -3027,7 +3164,7 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <TabControl Grid.Row="1">
+                                <TabControl Grid.Row="0">
                                     <!-- Start quest-->
                                     <TabItem Header="{local:QuestText QuestEditor_StartConversation}" FontWeight="Normal">
                                         <Grid>
@@ -3055,7 +3192,7 @@
 
                                             <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConversationHelp}" Foreground="Gray"/>
 
-                                            <ContentControl x:Name="DataGrid_conversationEndQuest" Grid.Row="3" 
+                                            <ContentControl x:Name="DataGrid_conversationEndQuest" Grid.Row="1"
                                                             ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
                                                             Content="{Binding SelectedQuest.SayInfoEndQuest}">
                                             </ContentControl>
@@ -3072,7 +3209,7 @@
 
                                             <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConditionHelp}" Foreground="Gray"/>
 
-                                            <ContentControl x:Name="DataGrid_conversationStopStartQuest" Grid.Row="3" 
+                                            <ContentControl x:Name="DataGrid_conversationStopStartQuest" Grid.Row="1"
                                                             ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
                                                             Content="{Binding SelectedQuest.SayInfoStop_StartQuest}">
                                             </ContentControl>
@@ -3089,7 +3226,7 @@
 
                                             <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="{local:QuestText QuestEditor_ConditionHelp}" Foreground="Gray"/>
 
-                                            <ContentControl x:Name="DataGrid_conversationStopEndQuest" Grid.Row="3" 
+                                            <ContentControl x:Name="DataGrid_conversationStopEndQuest" Grid.Row="1"
                                                             ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
                                                             Content="{Binding SelectedQuest.SayInfoStop_EndQuest}">
                                             </ContentControl>
@@ -3120,12 +3257,13 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="85">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="170">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
-                                                                <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                                          SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                           ItemsSource="{Binding Source={StaticResource CheckTypeEnum}}"
-                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                          VerticalAlignment="Center">
                                                                 </ComboBox>
                                                             </DataTemplate>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3156,12 +3294,13 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="170">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
-                                                                <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                                          SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                           ItemsSource="{Binding Source={StaticResource CheckTypeEnum}}"
-                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                          VerticalAlignment="Center">
                                                                 </ComboBox>
                                                             </DataTemplate>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3203,12 +3342,13 @@
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="85">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="170">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
-                                                                <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                                          SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                           ItemsSource="{Binding Source={StaticResource ActTypeEnum}}"
-                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                          VerticalAlignment="Center">
                                                                 </ComboBox>
                                                             </DataTemplate>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3239,12 +3379,13 @@
                                                           AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
-                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="80">
+                                        <DataGridTemplateColumn Header="{local:QuestText QuestEditor_Type}" Width="170">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
-                                                                <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                <ComboBox Style="{StaticResource QuestDataGridComboBoxStyle}"
+                                                                          SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                               ItemsSource="{Binding Source={StaticResource ActTypeEnum}}"
-                                                                              MaxHeight="30" VerticalAlignment="Top">
+                                                                              VerticalAlignment="Center">
                                                                 </ComboBox>
                                                             </DataTemplate>
                                                         </DataGridTemplateColumn.CellTemplate>
@@ -3267,19 +3408,125 @@
                     </TabItem>
                 </TabControl>
 
-                <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                    <Button x:Name="button_exportQuest" Content="{local:QuestText QuestEditor_Export}" Margin="5,0,0,0" Width="110"
-                                    Style="{DynamicResource ButtonStyle_ExportQuest}"
-                                    Click="button_exportQuest_Click"/>
-                    <Button x:Name="button_deleteQuest" Content="{local:QuestText QuestEditor_Delete}" Margin="8,0,0,0" Width="110"
-                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
-                                    Click="button_deleteQuest_Click"/>
-                    <Button x:Name="button_saveQuest" Content="{local:QuestText QuestEditor_SaveChanges}" Margin="8,0,0,0" Width="130"
-                                    Style="{DynamicResource ButtonStyle_Black}"
-                                    Click="button_saveQuest_Click"/>
-                </StackPanel>
             </Grid>
         </GroupBox>
+
+        <!-- Quick inspector for the fields used most often while editing conversations and conditions. -->
+        <GroupBox Grid.Column="4"
+                  Margin="0"
+                  FontWeight="Bold"
+                  Header="{local:QuestText QuestEditor_QuestInfoTab}">
+            <ScrollViewer Background="{StaticResource QuestSurfaceBrush}"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="2,0,2,12">
+                    <TextBlock Margin="0,0,0,4"
+                               Style="{StaticResource HareSectionTitleStyle}"
+                               Text="{local:QuestText QuestEditor_QuestDetails}"/>
+
+                    <TextBlock Text="{local:QuestText QuestEditor_QuestIdLabel}"/>
+                    <TextBox IsReadOnly="True" Text="{Binding SelectedQuest.Id}"/>
+
+                    <TextBlock Text="{local:QuestText QuestEditor_Name}"/>
+                    <TextBox Text="{Binding SelectedQuest.Name, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{local:QuestText QuestEditor_ParentQuest}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding SelectedQuest.Parent, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Button Grid.Column="1"
+                                Width="36"
+                                Margin="8,2,0,6"
+                                Style="{StaticResource HareIconButtonStyle}"
+                                ToolTip="{local:QuestText QuestEditor_Select}"
+                                AutomationProperties.Name="{local:QuestText QuestEditor_Select}"
+                                Click="button_selectParentFromList_Click"
+                                Content="..."/>
+                    </Grid>
+
+                    <TextBlock Text="{local:QuestText QuestEditor_QuestAreaCode}"/>
+                    <ComboBox ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"
+                              SelectedItem="{Binding SelectedQuest.Area, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <TextBlock Text="{local:QuestText QuestEditor_Order}"/>
+                    <TextBox InputScope="Number" Text="{Binding SelectedQuest.Order, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <Separator Margin="0,10"/>
+                    <TextBlock Margin="0,0,0,4"
+                               Style="{StaticResource HareSectionTitleStyle}"
+                               Text="{local:QuestText QuestEditor_MiscProperties}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_Blocked}" IsChecked="{Binding SelectedQuest.Blocked}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoStart}" IsChecked="{Binding SelectedQuest.AutoStart}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoPreComplete}" IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoComplete}" IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoCompleteAction}" IsChecked="{Binding SelectedQuest.AutoCompleteAction}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_SelectedMob}" IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoAccept}" IsChecked="{Binding SelectedQuest.AutoAccept}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_AutoCancel}" IsChecked="{Binding SelectedQuest.AutoCancel}"/>
+                    <CheckBox Content="{local:QuestText QuestEditor_OneShot}" IsChecked="{Binding SelectedQuest.OneShot}"/>
+
+                    <Separator Margin="0,10"/>
+                    <TextBlock Text="{local:QuestText QuestEditor_ShowLayerTag}"/>
+                    <TextBox Text="{Binding SelectedQuest.ShowLayerTag, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+            </ScrollViewer>
+        </GroupBox>
         </Grid>
-    </DockPanel>
+
+        <!-- Persistent selection state and local actions. -->
+        <Border Grid.Row="2"
+                Background="{StaticResource HareSurfaceBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="16,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="9" Height="9" Fill="{StaticResource HareSuccessBrush}"/>
+                    <TextBlock Margin="8,0,0,0"
+                               Foreground="{StaticResource HareMutedTextBrush}"
+                               Text="{local:QuestText QuestEditor_QuestDetails}"/>
+                    <TextBlock Margin="8,0,0,0" FontWeight="SemiBold" Text="{Binding SelectedQuest.Id}"/>
+                    <TextBlock Margin="4,0,0,0" FontWeight="SemiBold" Text="-"/>
+                    <TextBlock Margin="4,0,0,0"
+                               MaxWidth="360"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding SelectedQuest.Name}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="button_exportQuest"
+                            Width="110"
+                            Content="{local:QuestText QuestEditor_Export}"
+                            Style="{StaticResource HareButtonStyle}"
+                            Click="button_exportQuest_Click"/>
+                    <Button x:Name="button_deleteQuest"
+                            Width="110"
+                            Margin="8,0,0,0"
+                            Content="{local:QuestText QuestEditor_Delete}"
+                            Style="{StaticResource HareDangerButtonStyle}"
+                            Click="button_deleteQuest_Click"/>
+                    <Button x:Name="button_saveQuest"
+                            Width="130"
+                            Margin="8,0,0,0"
+                            Content="{local:QuestText QuestEditor_SaveChanges}"
+                            Style="{StaticResource HarePrimaryButtonStyle}"
+                            Click="button_saveQuest_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 </Window>

@@ -31,9 +31,9 @@ namespace HaCreator.GUI.InstanceEditor
             { SelectedNpcId = string.Empty; nameText.Text = descriptionText.Text = string.Empty; selectButton.IsEnabled = false; return; }
             nameText.Text = info.Item1;
             descriptionText.Text = info.Item2;
-            if (!Program.InfoManager.NpcPropertyCache.TryGetValue(id, out WzImage image) && Program.DataSource != null)
+            if (!Program.InfoManager.NpcPropertyCache.TryGetValue(id, out WzImage image))
             {
-                image = Program.DataSource.GetImage("Npc", $"{id}.img");
+                image = Program.FindImage("Npc", $"{id}.img");
                 image?.ParseImage();
                 if (image != null) lock (Program.InfoManager.NpcPropertyCache) Program.InfoManager.NpcPropertyCache.TryAdd(id, image);
             }

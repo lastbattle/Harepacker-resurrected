@@ -145,26 +145,128 @@ namespace HaCreator.Wz
         /// <param name="id"></param>
         /// <param name="fileManager"></param>
         /// <returns></returns>
-        public WzImage GetItemEquipSubProperty(int id, string categoryName, WzFileManager fileManager)
+        public WzImage GetItemEquipSubProperty(int id, string categoryName, WzFileManager fileManager = null)
         {
             if (EquipItemCache.ContainsKey(id))
                 return EquipItemCache[id];
 
-            WzDirectory charWzEqpCatDirectory = (WzDirectory)fileManager.FindWzImageByName("character", categoryName);
+            WzImage itemObj = null;
+            string imageName = WzInfoTools.AddLeadingZeros(id.ToString(), 8) + ".img";
+
+            if (Program.DataSource != null && !string.IsNullOrWhiteSpace(categoryName))
+            {
+                itemObj = Program.DataSource.GetImage("Character", $"{categoryName}/{imageName}");
+            }
+
+            WzDirectory charWzEqpCatDirectory = fileManager?.FindWzImageByName("character", categoryName) as WzDirectory;
             if (charWzEqpCatDirectory != null)
             {
-                WzImage itemObj = (WzImage)charWzEqpCatDirectory[WzInfoTools.AddLeadingZeros(id.ToString(), 8) + ".img"];
-                if (itemObj != null)
+                itemObj ??= charWzEqpCatDirectory[imageName] as WzImage;
+            }
+
+            if (itemObj != null)
+            {
+                lock (EquipItemCache)
                 {
-                    lock (EquipItemCache)
-                    {
-                        if (!EquipItemCache.ContainsKey(id))
-                            EquipItemCache.Add(id, itemObj);
-                    }
-                    return itemObj;
+                    if (!EquipItemCache.ContainsKey(id))
+                        EquipItemCache.Add(id, itemObj);
                 }
+                return itemObj;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Gets an item icon from either the IMG data source or the legacy WZ caches.
+        /// </summary>
+        public WzCanvasProperty GetItemIcon(int id, string categoryName, WzFileManager fileManager = null)
+        {
+            if (ItemIconCache.TryGetValue(id, out WzCanvasProperty cachedIcon))
+                return cachedIcon;
+
+            WzCanvasProperty icon = null;
+            if (MapleLib.WzLib.WzStructure.Data.ItemStructure.ItemIdsCategory.IsEquipment(id))
+            {
+                WzImage equipmentImage = GetItemEquipSubProperty(id, categoryName, fileManager);
+                icon = equipmentImage?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+            }
+            else if (Program.DataSource != null && !string.IsNullOrWhiteSpace(categoryName))
+            {
+                string paddedId = WzInfoTools.AddLeadingZeros(id.ToString(), 8);
+                bool isPet = string.Equals(categoryName, "Pet", StringComparison.OrdinalIgnoreCase);
+                string itemDirectory = string.Equals(categoryName, "Ins", StringComparison.OrdinalIgnoreCase)
+                    ? "Install"
+                    : categoryName;
+                string relativePath = isPet
+                    ? $"Pet/{id}.img"
+                    : $"{itemDirectory}/{paddedId.Substring(0, 4)}.img";
+
+                WzImage itemImage = Program.DataSource.GetImage("Item", relativePath);
+                if (isPet)
+                {
+                    icon = itemImage?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+                }
+                else
+                {
+                    WzImageProperty itemProperty = itemImage?[id.ToString()] ?? itemImage?[paddedId];
+                    icon = itemProperty?["info"]?["icon"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+                }
+            }
+
+            if (icon != null)
+            {
+                lock (ItemIconCache)
+                {
+                    ItemIconCache.TryAdd(id, icon);
+                }
+            }
+
+            return icon;
+        }
+
+        /// <summary>
+        /// Gets a mob preview icon, loading the mob IMG on demand when necessary.
+        /// </summary>
+        public WzCanvasProperty GetMobIcon(int id)
+        {
+            if (MobIconCache.TryGetValue(id, out WzImageProperty cachedIcon))
+                return cachedIcon as WzCanvasProperty;
+
+            WzImage mobImage = Program.FindImage("Mob", WzInfoTools.AddLeadingZeros(id.ToString(), 7) + ".img");
+            WzCanvasProperty icon = mobImage?["stand"]?["0"]?.GetLinkedWzImageProperty() as WzCanvasProperty;
+            if (icon != null)
+            {
+                lock (MobIconCache)
+                {
+                    MobIconCache.TryAdd(id, icon);
+                }
+            }
+
+            return icon;
+        }
+
+        /// <summary>
+        /// Gets a skill property, loading its owning skill IMG on demand when necessary.
+        /// </summary>
+        public WzImageProperty GetSkillProperty(string skillId)
+        {
+            if (SkillWzImageCache.TryGetValue(skillId, out WzImageProperty cachedSkill))
+                return cachedSkill;
+            if (!int.TryParse(skillId, out int parsedSkillId))
+                return null;
+
+            string groupName = (parsedSkillId / 10000).ToString("D3") + ".img";
+            WzImage skillImage = Program.FindImage("Skill", groupName);
+            WzImageProperty skillProperty = skillImage?["skill"]?[skillId];
+            if (skillProperty != null)
+            {
+                lock (SkillWzImageCache)
+                {
+                    SkillWzImageCache.TryAdd(skillId, skillProperty);
+                }
+            }
+
+            return skillProperty;
         }
 
         /// <summary>
