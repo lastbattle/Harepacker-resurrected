@@ -273,16 +273,19 @@
                         <Grid x:Name="DialoguePanel" Grid.Column="1" Margin="7,5">
                             <RichTextBox x:Name="DialogueText"
                                          Padding="5"
-                                         IsReadOnly="True"
-                                         IsDocumentEnabled="False"
-                                         Focusable="False"
+                                         IsReadOnly="False"
+                                         IsDocumentEnabled="True"
+                                         Focusable="True"
                                          Background="Transparent"
                                          BorderThickness="0"
                                          VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Disabled"
                                          FontFamily="Arial"
                                          FontSize="12"
-                                         Foreground="#565656">
+                                         Foreground="#565656"
+                                         SpellCheck.IsEnabled="False"
+                                         AutomationProperties.Name="Formatted NPC conversation editor"
+                                         TextChanged="DialogueText_TextChanged">
                                 <RichTextBox.Style>
                                     <Style TargetType="RichTextBox">
                                         <Setter Property="Visibility" Value="Visible"/>
@@ -373,6 +376,41 @@
                             <Border x:Name="PreviousButton" Margin="0,0,4,0" Style="{StaticResource MapleButtonStyle}">
                                 <TextBlock Text="&lt; PREV" Foreground="White" FontSize="9" FontWeight="Bold"/>
                             </Border>
+                            <Button x:Name="YesButton"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="YesButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="YES" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
+                            <Button x:Name="NoButton"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="NoButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="NO" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
+                            <Button x:Name="OkButton"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    Visibility="Collapsed"
+                                    Click="OkButton_Click">
+                                <Border Style="{StaticResource MapleButtonStyle}">
+                                    <TextBlock Text="OK" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                </Border>
+                            </Button>
                             <Border x:Name="NextButton" Style="{StaticResource MapleButtonStyle}">
                                 <TextBlock x:Name="NextButtonText" Text="NEXT &gt;" Foreground="White" FontSize="9" FontWeight="Bold"/>
                             </Border>

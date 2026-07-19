@@ -618,7 +618,8 @@
                                               Margin="0,8,0,0"
                                               HorizontalAlignment="Stretch"
                                               VerticalAlignment="Bottom"
-                                              Conversation="{Binding SelectedItem, ElementName=ConversationGrid}"
+                                              Conversation="{Binding SelectedItem.SelectedPreviewLine.Conversation, ElementName=ConversationGrid}"
+                                              ConversationGroup="{Binding SelectedItem, ElementName=ConversationGrid}"
                                               Quest="{Binding DataContext.SelectedQuest, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
             </Grid>
         </DataTemplate>

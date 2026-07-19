@@ -30,6 +30,11 @@ namespace HaCreator.GUI.Quest
         private static readonly Brush GreenTextBrush = CreateBrush("#008000");
         private static readonly Regex ReferencedNpcRegex = new(@"#p(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Dictionary<string, BitmapSource> ImageCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly DependencyProperty SourceMarkupProperty = DependencyProperty.RegisterAttached(
+            "SourceMarkup",
+            typeof(string),
+            typeof(NpcConversationPreview),
+            new PropertyMetadata(null));
         private static readonly IReadOnlyList<FormattingTokenOption> FormattingTokens =
         [
             new("Bold text", "#e|#n", "Wraps the selection in #e bold and #n normal."),
@@ -68,12 +73,19 @@ namespace HaCreator.GUI.Quest
         private bool speakerOnRight;
         private bool updatingEditor;
         private bool updatingModel;
+        private bool updatingRenderedEditor;
 
         public static readonly DependencyProperty ConversationProperty = DependencyProperty.Register(
             nameof(Conversation),
             typeof(object),
             typeof(NpcConversationPreview),
             new PropertyMetadata(null, OnConversationChanged));
+
+        public static readonly DependencyProperty ConversationGroupProperty = DependencyProperty.Register(
+            nameof(ConversationGroup),
+            typeof(QuestEditorSayModel),
+            typeof(NpcConversationPreview),
+            new PropertyMetadata(null, OnConversationGroupChanged));
 
         public static readonly DependencyProperty QuestProperty = DependencyProperty.Register(
             nameof(Quest),
@@ -85,6 +97,12 @@ namespace HaCreator.GUI.Quest
         {
             get => GetValue(ConversationProperty);
             set => SetValue(ConversationProperty, value);
+        }
+
+        public QuestEditorSayModel ConversationGroup
+        {
+            get => (QuestEditorSayModel)GetValue(ConversationGroupProperty);
+            set => SetValue(ConversationGroupProperty, value);
         }
 
         public QuestEditorModel Quest
@@ -129,6 +147,16 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private static string GetSourceMarkup(DependencyObject element)
+        {
+            return (string)element.GetValue(SourceMarkupProperty);
+        }
+
+        private static void SetSourceMarkup(DependencyObject element, string markup)
+        {
+            element.SetValue(SourceMarkupProperty, markup);
+        }
+
         private static Brush CreateBrush(string color)
         {
             SolidColorBrush brush = new((Color)ColorConverter.ConvertFromString(color));
@@ -150,6 +178,12 @@ namespace HaCreator.GUI.Quest
             NpcConversationPreview preview = (NpcConversationPreview)dependencyObject;
             preview.ResolveDefaultSpeaker();
             preview.RefreshPreview();
+        }
+
+        private static void OnConversationGroupChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
+        {
+            NpcConversationPreview preview = (NpcConversationPreview)dependencyObject;
+            preview.UpdateNavigationButtons();
         }
 
         private void SubscribeToConversation(INotifyPropertyChanged oldConversation, INotifyPropertyChanged newConversation)
@@ -175,8 +209,10 @@ namespace HaCreator.GUI.Quest
                 e.PropertyName == nameof(QuestEditorSayResponseModel.Text))
             {
                 if (!updatingModel)
+                {
                     LoadEditorText();
-                RefreshPreview();
+                    RefreshPreview();
+                }
             }
             else if (e.PropertyName == nameof(QuestEditorSayModel.ConversationType))
             {
@@ -473,7 +509,9 @@ namespace HaCreator.GUI.Quest
             bool isEndConversation = Conversation switch
             {
                 QuestEditorSayModel say => Quest.SayInfoEndQuest.Contains(say),
-                QuestEditorSayResponseModel response => Quest.SayInfoStop_EndQuest.Any(stop => stop.Responses.Contains(response)),
+                QuestEditorSayResponseModel response =>
+                    Quest.SayInfoStop_EndQuest.Any(stop => stop.Responses.Contains(response)) ||
+                    Quest.SayInfoEndQuest.Any(say => say.YesResponses.Contains(response) || say.NoResponses.Contains(response)),
                 _ => false
             };
             IEnumerable<QuestEditorCheckInfoModel> preferredChecks = isEndConversation
@@ -575,6 +613,148 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private void DialogueText_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (updatingRenderedEditor || !HasConversation)
+                return;
+
+            string markup = SerializeRenderedDocument();
+            if (markup == GetConversationText())
+                return;
+
+            updatingModel = true;
+            try
+            {
+                SetConversationText(markup);
+            }
+            finally
+            {
+                updatingModel = false;
+            }
+
+            LoadEditorText();
+        }
+
+        private string SerializeRenderedDocument()
+        {
+            StringBuilder markup = new();
+            MarkupColor currentColor = MarkupColor.Default;
+            bool currentBold = false;
+            bool firstParagraph = true;
+
+            void ApplyRunStyle(Run run, bool insideSelection)
+            {
+                bool nextBold = run.FontWeight >= FontWeights.Bold;
+                if (nextBold != currentBold)
+                {
+                    markup.Append(nextBold ? "#e" : "#n");
+                    currentBold = nextBold;
+                }
+
+                if (insideSelection)
+                    return;
+
+                MarkupColor nextColor = GetMarkupColor(run.Foreground);
+                if (nextColor == currentColor)
+                    return;
+
+                markup.Append(nextColor switch
+                {
+                    MarkupColor.Blue => "#b",
+                    MarkupColor.Red => "#r",
+                    MarkupColor.Purple => "#d",
+                    MarkupColor.Green => "#g",
+                    _ => "#k"
+                });
+                currentColor = nextColor;
+            }
+
+            void SerializeInlines(InlineCollection inlines, bool insideSelection)
+            {
+                foreach (Inline inline in inlines)
+                {
+                    if (inline is Span span)
+                    {
+                        string spanMarkup = GetSourceMarkup(span);
+                        if (!string.IsNullOrEmpty(spanMarkup))
+                        {
+                            markup.Append(spanMarkup);
+                            SerializeInlines(span.Inlines, true);
+                            markup.Append("#l");
+                        }
+                        else
+                        {
+                            SerializeInlines(span.Inlines, insideSelection);
+                        }
+                        continue;
+                    }
+
+                    string sourceMarkup = GetSourceMarkup(inline);
+                    if (!string.IsNullOrEmpty(sourceMarkup))
+                    {
+                        markup.Append(sourceMarkup);
+                        switch (sourceMarkup)
+                        {
+                            case "#b": currentColor = MarkupColor.Blue; break;
+                            case "#r": currentColor = MarkupColor.Red; break;
+                            case "#d":
+                            case "#D": currentColor = MarkupColor.Purple; break;
+                            case "#g":
+                            case "#G": currentColor = MarkupColor.Green; break;
+                            case "#k":
+                            case "#K": currentColor = MarkupColor.Default; break;
+                            case "#e":
+                            case "#E": currentBold = true; break;
+                            case "#n":
+                            case "#N": currentBold = false; break;
+                        }
+                        continue;
+                    }
+
+                    if (inline is Run run)
+                    {
+                        ApplyRunStyle(run, insideSelection);
+                        markup.Append(run.Text
+                            .Replace("\r\n", "\n", StringComparison.Ordinal)
+                            .Replace('\r', '\n'));
+                    }
+                    else if (inline is LineBreak)
+                    {
+                        markup.Append('\n');
+                    }
+                }
+            }
+
+            foreach (Paragraph paragraph in DialogueText.Document.Blocks.OfType<Paragraph>())
+            {
+                if (!firstParagraph)
+                    markup.Append('\n');
+                firstParagraph = false;
+                SerializeInlines(paragraph.Inlines, false);
+            }
+
+            if (currentBold)
+                markup.Append("#n");
+            if (currentColor != MarkupColor.Default)
+                markup.Append("#k");
+            return markup.ToString();
+        }
+
+        private static MarkupColor GetMarkupColor(Brush brush)
+        {
+            if (brush is not SolidColorBrush solidBrush)
+                return MarkupColor.Default;
+            if (solidBrush.Color == ((SolidColorBrush)BlueTextBrush).Color)
+                return MarkupColor.Blue;
+            if (solidBrush.Color == ((SolidColorBrush)RedTextBrush).Color)
+                return MarkupColor.Red;
+            if (solidBrush.Color == ((SolidColorBrush)PurpleTextBrush).Color)
+                return MarkupColor.Purple;
+            if (solidBrush.Color == ((SolidColorBrush)GreenTextBrush).Color)
+                return MarkupColor.Green;
+            return MarkupColor.Default;
+        }
+
         private void RefreshPreview()
         {
             FlowDocument document = new()
@@ -600,7 +780,16 @@ namespace HaCreator.GUI.Quest
                 RenderMarkup(paragraph, GetConversationText());
             }
 
-            DialogueText.Document = document;
+            updatingRenderedEditor = true;
+            try
+            {
+                DialogueText.Document = document;
+                DialogueText.IsReadOnly = !HasConversation;
+            }
+            finally
+            {
+                updatingRenderedEditor = false;
+            }
             UpdateNavigationButtons();
         }
 
@@ -609,15 +798,67 @@ namespace HaCreator.GUI.Quest
             QuestEditorConversationType conversationType = Conversation is QuestEditorSayModel say
                 ? say.ConversationType
                 : QuestEditorConversationType.NextPrev;
-            PreviousButton.Visibility = conversationType == QuestEditorConversationType.NextPrev
+            bool isYesNoGroup = ConversationGroup?.ConversationType == QuestEditorConversationType.YesNo;
+            bool isMainConversation = ConversationGroup != null && ReferenceEquals(Conversation, ConversationGroup);
+            bool isGroupResponse = Conversation is QuestEditorSayResponseModel response && ConversationGroup != null &&
+                (ConversationGroup.YesResponses.Contains(response) || ConversationGroup.NoResponses.Contains(response));
+
+            YesButton.Visibility = isYesNoGroup && isMainConversation ? Visibility.Visible : Visibility.Collapsed;
+            YesButton.IsEnabled = ConversationGroup?.YesResponses.Count > 0;
+            NoButton.Visibility = isYesNoGroup && isMainConversation ? Visibility.Visible : Visibility.Collapsed;
+            NoButton.IsEnabled = ConversationGroup?.NoResponses.Count > 0;
+            OkButton.Visibility = isYesNoGroup && isGroupResponse ? Visibility.Visible : Visibility.Collapsed;
+
+            PreviousButton.Visibility = !isYesNoGroup && conversationType == QuestEditorConversationType.NextPrev
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+            NextButton.Visibility = isYesNoGroup ? Visibility.Collapsed : Visibility.Visible;
             NextButtonText.Text = conversationType switch
             {
-                QuestEditorConversationType.YesNo => "YES / NO",
                 QuestEditorConversationType.Ask => "SELECT",
                 _ => "NEXT >"
             };
+        }
+
+        private void YesButton_Click(object sender, RoutedEventArgs e)
+        {
+            SelectGroupResponse(ConversationGroup?.YesResponses.FirstOrDefault());
+        }
+
+        private void NoButton_Click(object sender, RoutedEventArgs e)
+        {
+            SelectGroupResponse(ConversationGroup?.NoResponses.FirstOrDefault());
+        }
+
+        private void OkButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (ConversationGroup == null || Conversation is not QuestEditorSayResponseModel response)
+                return;
+
+            int responseIndex = ConversationGroup.YesResponses.IndexOf(response);
+            if (responseIndex >= 0)
+            {
+                SelectGroupResponse(responseIndex + 1 < ConversationGroup.YesResponses.Count
+                    ? ConversationGroup.YesResponses[responseIndex + 1]
+                    : ConversationGroup);
+                return;
+            }
+
+            responseIndex = ConversationGroup.NoResponses.IndexOf(response);
+            SelectGroupResponse(responseIndex >= 0 && responseIndex + 1 < ConversationGroup.NoResponses.Count
+                ? ConversationGroup.NoResponses[responseIndex + 1]
+                : ConversationGroup);
+        }
+
+        private void SelectGroupResponse(object conversation)
+        {
+            if (ConversationGroup == null || conversation == null)
+                return;
+
+            QuestEditorConversationPreviewLine line = ConversationGroup.PreviewLines.FirstOrDefault(
+                candidate => ReferenceEquals(candidate.Conversation, conversation));
+            if (line != null)
+                ConversationGroup.SelectedPreviewLine = line;
         }
 
         private static void RenderMarkup(Paragraph paragraph, string sourceText)
@@ -634,16 +875,24 @@ namespace HaCreator.GUI.Quest
 
             Brush currentBrush = DefaultTextBrush;
             bool bold = false;
-            bool selection = false;
+            Span selectionSpan = null;
             StringBuilder plainText = new();
+
+            void AddInline(Inline inline)
+            {
+                if (selectionSpan != null)
+                    selectionSpan.Inlines.Add(inline);
+                else
+                    paragraph.Inlines.Add(inline);
+            }
 
             void FlushText()
             {
                 if (plainText.Length == 0)
                     return;
-                paragraph.Inlines.Add(new Run(plainText.ToString())
+                AddInline(new Run(plainText.ToString())
                 {
-                    Foreground = selection ? BlueTextBrush : currentBrush,
+                    Foreground = selectionSpan != null ? BlueTextBrush : currentBrush,
                     FontWeight = bold ? FontWeights.Bold : FontWeights.Normal
                 });
                 plainText.Clear();
@@ -670,52 +919,64 @@ namespace HaCreator.GUI.Quest
                 {
                     case 'b':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         currentBrush = BlueTextBrush;
                         index += 2;
                         continue;
                     case 'r':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         currentBrush = RedTextBrush;
                         index += 2;
                         continue;
                     case 'd':
                     case 'D':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         currentBrush = PurpleTextBrush;
                         index += 2;
                         continue;
                     case 'g':
                     case 'G':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         currentBrush = GreenTextBrush;
                         index += 2;
                         continue;
                     case 'k':
                     case 'K':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         currentBrush = DefaultTextBrush;
                         index += 2;
                         continue;
                     case 'e':
                     case 'E':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         bold = true;
                         index += 2;
                         continue;
                     case 'n':
                     case 'N':
                         FlushText();
+                        AddInline(CreateMarkupMarker(text.Substring(index, 2)));
                         bold = false;
                         index += 2;
                         continue;
                     case 'l':
                         FlushText();
-                        selection = false;
+                        selectionSpan = null;
                         index += 2;
                         continue;
                     case 'x':
                     case 'X':
-                        plainText.Append("0%");
+                        FlushText();
+                        AddInline(CreateTokenTextInline(
+                            "0%",
+                            text.Substring(index, 2),
+                            selectionSpan != null ? BlueTextBrush : currentBrush,
+                            bold));
                         index += 2;
                         continue;
                 }
@@ -732,39 +993,69 @@ namespace HaCreator.GUI.Quest
 
                 if (token == 'L')
                 {
-                    paragraph.Inlines.Add(new Run("\u2022 ") { Foreground = RedTextBrush, FontWeight = FontWeights.Bold });
-                    selection = true;
+                    paragraph.Inlines.Add(CreateTokenTextInline("\u2022 ", null, RedTextBrush, true));
+                    selectionSpan = new Span { Foreground = BlueTextBrush };
+                    SetSourceMarkup(selectionSpan, $"#{token}{payload}#");
+                    paragraph.Inlines.Add(selectionSpan);
                 }
                 else if (token == 'B' && TryCreateProgressInline(payload, out Inline progressInline))
                 {
-                    paragraph.Inlines.Add(progressInline);
+                    SetSourceMarkup(progressInline, $"#{token}{payload}#");
+                    AddInline(progressInline);
                 }
                 else if (TryCreateImageInline(token, payload, out Inline imageInline))
                 {
-                    paragraph.Inlines.Add(imageInline);
+                    SetSourceMarkup(imageInline, $"#{token}{payload}#");
+                    AddInline(imageInline);
                 }
                 else if (TryResolveTextToken(token, payload, out string replacement))
                 {
-                    paragraph.Inlines.Add(new Run(replacement)
-                    {
-                        Foreground = selection ? BlueTextBrush : currentBrush,
-                        FontWeight = bold ? FontWeights.Bold : FontWeights.Normal
-                    });
+                    AddInline(CreateTokenTextInline(
+                        replacement,
+                        $"#{token}{payload}#",
+                        selectionSpan != null ? BlueTextBrush : currentBrush,
+                        bold));
                 }
                 else
                 {
-                    paragraph.Inlines.Add(new Run($"#{token}{payload}#")
-                    {
-                        Foreground = PurpleTextBrush,
-                        FontStyle = FontStyles.Italic,
-                        FontWeight = bold ? FontWeights.Bold : FontWeights.Normal
-                    });
+                    string rawToken = $"#{token}{payload}#";
+                    AddInline(CreateTokenTextInline(rawToken, rawToken, PurpleTextBrush, bold, true));
                 }
 
                 index = closingHash + 1;
             }
 
             FlushText();
+        }
+
+        private static Inline CreateTokenTextInline(
+            string text,
+            string sourceMarkup,
+            Brush foreground,
+            bool bold,
+            bool italic = false)
+        {
+            TextBlock tokenText = new()
+            {
+                Text = text,
+                Foreground = foreground,
+                FontFamily = new FontFamily("Arial"),
+                FontSize = 12,
+                FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStyle = italic ? FontStyles.Italic : FontStyles.Normal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            InlineUIContainer inline = new(tokenText) { BaselineAlignment = BaselineAlignment.Baseline };
+            if (!string.IsNullOrEmpty(sourceMarkup))
+                SetSourceMarkup(inline, sourceMarkup);
+            return inline;
+        }
+
+        private static Inline CreateMarkupMarker(string sourceMarkup)
+        {
+            InlineUIContainer marker = new(new Border { Width = 0, Height = 0 });
+            SetSourceMarkup(marker, sourceMarkup);
+            return marker;
         }
 
         private static bool TryResolveTextToken(char token, string payload, out string replacement)
@@ -1041,6 +1332,15 @@ namespace HaCreator.GUI.Quest
             while (length < value.Length && char.IsDigit(value[length]))
                 length++;
             return value[..length];
+        }
+
+        private enum MarkupColor
+        {
+            Default,
+            Blue,
+            Red,
+            Purple,
+            Green
         }
 
         private enum TokenSelectorKind
