@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Resources;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -38,8 +39,28 @@ namespace HaCreator.GUI.EditorPanels
             if (element is HeaderedContentControl headeredControl && headeredControl.Header is string header)
                 headeredControl.Header = Text(header, header);
 
-            if (element is FrameworkElement frameworkElement && frameworkElement.ToolTip is string tooltip)
-                frameworkElement.ToolTip = Text(tooltip, tooltip);
+            if (element is FrameworkElement frameworkElement)
+            {
+                if (frameworkElement.ToolTip is string tooltip)
+                    frameworkElement.ToolTip = Text(tooltip, tooltip);
+
+                string automationName = AutomationProperties.GetName(frameworkElement);
+                if (!string.IsNullOrWhiteSpace(automationName))
+                    AutomationProperties.SetName(frameworkElement, Text(automationName, automationName));
+
+                string automationHelp = AutomationProperties.GetHelpText(frameworkElement);
+                if (!string.IsNullOrWhiteSpace(automationHelp))
+                    AutomationProperties.SetHelpText(frameworkElement, Text(automationHelp, automationHelp));
+            }
+
+            if (element is ItemsControl itemsControl)
+            {
+                foreach (object item in itemsControl.Items)
+                {
+                    if (item is DependencyObject dependencyObject)
+                        Apply(dependencyObject);
+                }
+            }
 
             for (int index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
                 Apply(VisualTreeHelper.GetChild(element, index));

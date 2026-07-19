@@ -48,4 +48,8 @@
   <data name="Context_SelectConnected" xml:space="preserve"><value>Select Connected</value></data>
   <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>Change Layer/Platform...</value></data>
   <data name="Context_SelectPlatform" xml:space="preserve"><value>Select Platform</value></data>
+  <data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>Animation frame editor</value></data>
+  <data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>Open the animation frame editor</value></data>
+  <data name="Editor_Animations_2D94A1" xml:space="preserve"><value>Animations</value></data>
+  <data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI settings</value></data>
 </root>

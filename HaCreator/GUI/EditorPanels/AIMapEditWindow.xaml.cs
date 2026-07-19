@@ -534,12 +534,6 @@ namespace HaCreator.GUI.EditorPanels
             return $"Applied {result.SuccessCount} map command(s).";
         }
 
-        private void BtnSettings_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new AISettingsDialog();
-            dialog.ShowDialog();
-        }
-
         private void BtnMcpConnection_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show(

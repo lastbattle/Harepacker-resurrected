@@ -245,4 +245,14 @@
   <data name="Title_ObjectAdded" xml:space="preserve"><value>오브젝트 추가됨</value></data>
   <data name="Confirm_DeleteObject" xml:space="preserve"><value>이 오브젝트를 삭제하시겠습니까?</value></data>
   <data name="Title_DeleteObject" xml:space="preserve"><value>오브젝트 삭제</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>채팅/추론 모델</value></data>
+  <data name="Image model" xml:space="preserve"><value>이미지 모델</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>애니메이션 편집기의 프레임 생성 및 참조 편집에 사용됩니다.</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>기본 제공</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>기본 제공 + 엔드포인트</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>엔드포인트</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>자동(모델 기본값)</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>기본 제공 프리셋 {0}개. 엔드포인트 검색이 자동으로 시작됩니다.</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>기본 제공 프리셋 {0}개를 사용할 수 있습니다. 검색된 엔드포인트 모델이 없습니다.</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>기본 제공 {0}개 + 엔드포인트 {1}개, 고유 모델 {2}개.</value></data>
 </root>

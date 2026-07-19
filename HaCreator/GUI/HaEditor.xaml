@@ -26,6 +26,7 @@
         <CommandBinding Command="{x:Static local:HaEditor.About}" CanExecute="AlwaysExecute" Executed="About_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Help}" CanExecute="AlwaysExecute" Executed="Help_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Settings}" CanExecute="AlwaysExecute" Executed="Settings_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.ShowAISettings}" CanExecute="AlwaysExecute" Executed="ShowAISettings_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Exit}" CanExecute="AlwaysExecute" Executed="Exit_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Minimap}" CanExecute="AlwaysExecute" Executed="Minimap_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.Parallax}" CanExecute="AlwaysExecute" Executed="Parallax_Executed"/>
@@ -41,6 +42,7 @@
         <CommandBinding Command="{x:Static local:HaEditor.UserObjs}" CanExecute="AlwaysExecute" Executed="UserObjs_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.PhysicsEdit}" CanExecute="AlwaysExecute" Executed="PhysicsEdit_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.ShowQuestEditorWindow}" CanExecute="AlwaysExecute" Executed="ShowQuestEditorWindow_Executed"/>
+        <CommandBinding Command="{x:Static local:HaEditor.ShowAnimationEditorWindow}" CanExecute="AlwaysExecute" Executed="ShowAnimationEditorWindow_Executed"/>
         <CommandBinding Command="{x:Static local:HaEditor.ShowMapProperties}" CanExecute="AlwaysExecute" Executed="ShowMapProperties_Executed"/>
     </Window.CommandBindings>
 
@@ -362,12 +364,16 @@
                         <MenuItem Header="{loc:Loc Editor_Map_properties_EC4B13}" Command="{x:Static local:HaEditor.ShowMapProperties}"/>
                         <MenuItem Header="{loc:Loc Editor_New_platform_D53525}" Command="{x:Static local:HaEditor.NewPlatform}"/>
                         <MenuItem Header="{loc:Loc Editor_Quest_editor_A8BFA2}" Command="{x:Static local:HaEditor.ShowQuestEditorWindow}"/>
+                        <MenuItem Header="{loc:Loc Editor_Animation_editor_6F43C2}" Command="{x:Static local:HaEditor.ShowAnimationEditorWindow}"/>
                     </MenuItem>
                     <MenuItem Header="{loc:Loc Editor_Tools_EA93D6}">
                         <MenuItem Header="{loc:Loc Editor_Settings_74A883}" Command="{x:Static local:HaEditor.Settings}"/>
+                        <MenuItem Header="{loc:Loc Editor_AI_Settings_2E1A45}" Command="{x:Static local:HaEditor.ShowAISettings}"/>
+                        <Separator/>
                         <MenuItem Header="{loc:Loc Editor_Map_Physics_61AD90}" Command="{x:Static local:HaEditor.PhysicsEdit}"/>
                         <MenuItem Header="{loc:Loc Editor_Manage_User_Objects_455E55}" Command="{x:Static local:HaEditor.UserObjs}"/>
                         <MenuItem Header="{loc:Loc Editor_Quest_editor_B81784}" Command="{x:Static local:HaEditor.ShowQuestEditorWindow}"/>
+                        <MenuItem Header="{loc:Loc Editor_Animation_editor_6F43C2}" Command="{x:Static local:HaEditor.ShowAnimationEditorWindow}"/>
                     </MenuItem>
                     <MenuItem Header="{loc:Loc Editor_Help_B79CAC}">
                         <MenuItem Header="{loc:Loc Editor_Help_B79CAC}" Command="{x:Static local:HaEditor.Help}"/>
@@ -407,6 +413,14 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontSize="15" Text="▤"/>
                             <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Quests_60D40D}"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource CommandButtonStyle}"
+                            Command="{x:Static local:HaEditor.ShowAnimationEditorWindow}"
+                            ToolTip="{loc:Loc Editor_Open_Animation_Editor_7B921E}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="15" Text="&#xE7FC;"/>
+                            <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Animations_2D94A1}"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource CommandButtonStyle}" Click="ShowMapBrowser_Click" ToolTip="{loc:Loc Editor_Search_maps_and_commands_FF74F6}">

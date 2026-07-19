@@ -5,6 +5,7 @@ using HaCreator.GUI.Localization;
 using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.GUI.Quest;
+using HaCreator.GUI.FrameAnimation;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
@@ -87,6 +88,7 @@ namespace HaCreator.MapEditor
             this.editorShell.AboutClicked += Ribbon_AboutClicked;
             this.editorShell.HelpClicked += Ribbon_HelpClicked;
             this.editorShell.SettingsClicked += Ribbon_SettingsClicked;
+            this.editorShell.AISettingsClicked += Ribbon_AISettingsClicked;
             this.editorShell.ExitClicked += Ribbon_ExitClicked;
             this.editorShell.ViewToggled += Ribbon_ViewToggled;
             this.editorShell.ShowMinimapToggled += Ribbon_ShowMinimapToggled;
@@ -107,6 +109,7 @@ namespace HaCreator.MapEditor
 
             // Etc
             this.editorShell.ShowQuestEditorWindowClicked += Ribbon_ShowQuestEditorWindowClicked;
+            this.editorShell.ShowAnimationEditorWindowClicked += Ribbon_ShowAnimationEditorWindowClicked;
             //
 
             // Debug
@@ -542,6 +545,15 @@ namespace HaCreator.MapEditor
         {
             QuestEditor questEditor = new QuestEditor();
             questEditor.ShowDialog();
+        }
+
+        private void Ribbon_ShowAnimationEditorWindowClicked()
+        {
+            AnimationEditor animationEditor = new AnimationEditor
+            {
+                Owner = editorShell
+            };
+            animationEditor.ShowDialog();
         }
         #endregion
 
@@ -1038,6 +1050,14 @@ namespace HaCreator.MapEditor
             }
 
             Program.HaEditorWindow?.ShowMapExplorer(mapNameFilter);
+        }
+
+        void Ribbon_AISettingsClicked()
+        {
+            new AISettingsDialog
+            {
+                Owner = editorShell
+            }.ShowDialog();
         }
 
         /// <summary>

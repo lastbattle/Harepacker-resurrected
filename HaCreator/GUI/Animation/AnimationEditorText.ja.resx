@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>2.0</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="AnimationEditor_Title" xml:space="preserve"><value>アニメーションフレームエディター</value></data><data name="AnimationEditor_Save" xml:space="preserve"><value>保存</value></data><data name="AnimationEditor_Import" xml:space="preserve"><value>フレームをインポート</value></data><data name="AnimationEditor_Export" xml:space="preserve"><value>フレームをエクスポート</value></data>
+  <data name="AnimationEditor_Undo" xml:space="preserve"><value>元に戻す (Ctrl+Z)</value></data><data name="AnimationEditor_Redo" xml:space="preserve"><value>やり直し (Ctrl+Y)</value></data><data name="AnimationEditor_PlayPause" xml:space="preserve"><value>再生または一時停止 (スペース)</value></data><data name="AnimationEditor_Speed" xml:space="preserve"><value>速度</value></data><data name="AnimationEditor_Zoom" xml:space="preserve"><value>ズーム</value></data><data name="AnimationEditor_Fit" xml:space="preserve"><value>フィット</value></data>
+  <data name="AnimationEditor_Assets" xml:space="preserve"><value>アセット</value></data><data name="AnimationEditor_Animations" xml:space="preserve"><value>アニメーション / アクション</value></data><data name="AnimationEditor_SearchTooltip" xml:space="preserve"><value>ID、名前、WZ パスで絞り込む (Ctrl+L)</value></data>
+  <data name="AnimationEditor_Monsters" xml:space="preserve"><value>モンスターアニメーション</value></data><data name="AnimationEditor_Npcs" xml:space="preserve"><value>NPC アクション</value></data><data name="AnimationEditor_Reactors" xml:space="preserve"><value>リアクター状態</value></data><data name="AnimationEditor_Skills" xml:space="preserve"><value>スキルエフェクト</value></data><data name="AnimationEditor_MapObjects" xml:space="preserve"><value>マップオブジェクト</value></data><data name="AnimationEditor_Backgrounds" xml:space="preserve"><value>マップ背景</value></data>
+  <data name="AnimationEditor_Grid" xml:space="preserve"><value>グリッド</value></data><data name="AnimationEditor_Origin" xml:space="preserve"><value>原点</value></data><data name="AnimationEditor_Bounds" xml:space="preserve"><value>境界</value></data><data name="AnimationEditor_OnionSkin" xml:space="preserve"><value>オニオンスキン</value></data><data name="AnimationEditor_Timeline" xml:space="preserve"><value>タイムライン</value></data><data name="AnimationEditor_Loop" xml:space="preserve"><value>ループ</value></data>
+  <data name="AnimationEditor_AddFrame" xml:space="preserve"><value>フレームを追加</value></data><data name="AnimationEditor_Duplicate" xml:space="preserve"><value>複製</value></data><data name="AnimationEditor_Delete" xml:space="preserve"><value>削除</value></data><data name="AnimationEditor_Properties" xml:space="preserve"><value>プロパティ</value></data><data name="AnimationEditor_AnimationProperties" xml:space="preserve"><value>アニメーション / Raw WZ</value></data>
+  <data name="AnimationEditor_Frame" xml:space="preserve"><value>現在のフレーム</value></data><data name="AnimationEditor_FrameIndex" xml:space="preserve"><value>フレーム</value></data><data name="AnimationEditor_Layer" xml:space="preserve"><value>レイヤー</value></data><data name="AnimationEditor_Size" xml:space="preserve"><value>スプライトサイズ</value></data><data name="AnimationEditor_Transform" xml:space="preserve"><value>変形とタイミング</value></data>
+  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>原点 X</value></data><data name="AnimationEditor_ZOrder" xml:space="preserve"><value>Z 順序</value></data><data name="AnimationEditor_Delay" xml:space="preserve"><value>遅延 (ミリ秒)</value></data><data name="AnimationEditor_AlphaStart" xml:space="preserve"><value>開始アルファ</value></data><data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>終了アルファ</value></data>
+  <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>リンクフレームを独立化</value></data><data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>レイヤー画像を置換…</value></data><data name="AnimationEditor_RawFrameProperties" xml:space="preserve"><value>RAW フレームプロパティ</value></data><data name="AnimationEditor_Property" xml:space="preserve"><value>プロパティ</value></data><data name="AnimationEditor_Type" xml:space="preserve"><value>型</value></data><data name="AnimationEditor_Value" xml:space="preserve"><value>値</value></data>
+  <data name="AnimationEditor_Ready" xml:space="preserve"><value>準備完了</value></data><data name="AnimationEditor_Loading" xml:space="preserve"><value>アニメーションアセットを読み込み中…</value></data><data name="AnimationEditor_AssetsLoaded" xml:space="preserve"><value>{0} 個のアセット画像が利用できます。</value></data><data name="AnimationEditor_AnimationsLoaded" xml:space="preserve"><value>{0} 個のアニメーショントラックが見つかりました。</value></data>
+  <data name="AnimationEditor_ImageNotFound" xml:space="preserve"><value>{0} を読み込めません。</value></data><data name="AnimationEditor_NoFrames" xml:space="preserve"><value>このアニメーションに編集可能なフレームはありません。</value></data><data name="AnimationEditor_LinkedReactorSource" xml:space="preserve"><value>このリアクターは {0} にリンクされています。変更はリンク元に保存されます。</value></data>
+  <data name="AnimationEditor_ImageFilter" xml:space="preserve"><value>画像 (*.png;*.bmp;*.gif;*.jpg;*.jpeg)|*.png;*.bmp;*.gif;*.jpg;*.jpeg|すべてのファイル (*.*)|*.*</value></data><data name="AnimationEditor_ImportTitle" xml:space="preserve"><value>フレーム画像を選択</value></data><data name="AnimationEditor_DeleteLastFrame" xml:space="preserve"><value>アニメーションには少なくとも 1 フレーム必要です。</value></data><data name="AnimationEditor_MissingCanvas" xml:space="preserve"><value>選択したレイヤーに描画可能なキャンバスがありません。</value></data>
+  <data name="AnimationEditor_Exported" xml:space="preserve"><value>フレームを {0} にエクスポートしました。</value></data><data name="AnimationEditor_Saving" xml:space="preserve"><value>アニメーションを保存中…</value></data><data name="AnimationEditor_Saved" xml:space="preserve"><value>アニメーションを保存しました。</value></data><data name="AnimationEditor_SaveError" xml:space="preserve"><value>アニメーションを保存できません: {0}</value></data><data name="AnimationEditor_SaveErrorTitle" xml:space="preserve"><value>アニメーション保存エラー</value></data>
+  <data name="AnimationEditor_Unsaved" xml:space="preserve"><value>未保存の変更</value></data><data name="AnimationEditor_AllSaved" xml:space="preserve"><value>すべての変更を保存済み</value></data><data name="AnimationEditor_UnsavedPrompt" xml:space="preserve"><value>このアニメーションに未保存の変更があります。今すぐ保存しますか？</value></data><data name="AnimationEditor_UnsavedTitle" xml:space="preserve"><value>未保存のアニメーション変更</value></data><data name="AnimationEditor_MoveOrigin" xml:space="preserve"><value>原点を移動</value></data><data name="AnimationEditor_MoveFrame" xml:space="preserve"><value>フレームを移動</value></data>
+  <data name="AnimationEditor_FirstFrame" xml:space="preserve"><value>最初のフレーム</value></data>
+  <data name="AnimationEditor_PreviousFrame" xml:space="preserve"><value>前のフレーム</value></data>
+  <data name="AnimationEditor_NextFrame" xml:space="preserve"><value>次のフレーム</value></data>
+  <data name="AnimationEditor_LastFrame" xml:space="preserve"><value>最後のフレーム</value></data>
+  <data name="AnimationEditor_MoveFrameLeft" xml:space="preserve"><value>フレームを左へ移動</value></data>
+  <data name="AnimationEditor_MoveFrameRight" xml:space="preserve"><value>フレームを右へ移動</value></data>
+  <data name="AnimationEditor_AssetBrowserSplitter" xml:space="preserve"><value>アセットブラウザーの分割線</value></data>
+  <data name="AnimationEditor_TimelineSplitter" xml:space="preserve"><value>タイムラインの分割線</value></data>
+  <data name="AnimationEditor_InspectorSplitter" xml:space="preserve"><value>インスペクターの分割線</value></data>
+  <data name="AnimationEditor_AssetType" xml:space="preserve"><value>アニメーションアセットの種類</value></data>
+  <data name="AnimationEditor_AssetSearch" xml:space="preserve"><value>アニメーションアセットを検索</value></data>
+  <data name="AnimationEditor_AssetList" xml:space="preserve"><value>アニメーションアセット一覧</value></data>
+  <data name="AnimationEditor_TrackList" xml:space="preserve"><value>アニメーショントラック一覧</value></data>
+  <data name="AnimationEditor_Preview" xml:space="preserve"><value>アニメーションプレビュー</value></data>
+  <data name="AnimationEditor_TimelineScrubber" xml:space="preserve"><value>アニメーションタイムラインを移動</value></data>
+  <data name="AnimationEditor_TimelineFrames" xml:space="preserve"><value>アニメーションタイムラインのフレーム</value></data>
+  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>原点 Y</value></data>
+  <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>フレームプロパティ表</value></data>
+  <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>アニメーションプロパティ表</value></data>
+  <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG 画像 (*.png)|*.png</value></data>
+  <data name="AnimationEditor_AI" xml:space="preserve"><value>AI</value></data>
+  <data name="AnimationEditor_AIGenerateFrames" xml:space="preserve"><value>AI フレームスタジオ</value></data>
+  <data name="AnimationEditor_AIDescription" xml:space="preserve"><value>新しいフレームの生成や選択フレームの編集を行います。アニメーションを保存するまで結果は分離され、元に戻せます。</value></data>
+  <data name="AnimationEditor_AIPrompt" xml:space="preserve"><value>フレームまたは変更内容を説明</value></data>
+  <data name="AnimationEditor_AISuggestPrompt" xml:space="preserve"><value>制作向けプロンプトを提案</value></data>
+  <data name="AnimationEditor_AIFramePlan" xml:space="preserve"><value>フレーム計画</value></data>
+  <data name="AnimationEditor_AIOperation" xml:space="preserve"><value>操作</value></data>
+  <data name="AnimationEditor_AICount" xml:space="preserve"><value>フレーム数</value></data>
+  <data name="AnimationEditor_AIAlignment" xml:space="preserve"><value>原点の整列</value></data>
+  <data name="AnimationEditor_AIQuality" xml:space="preserve"><value>品質</value></data>
+  <data name="AnimationEditor_AIUseReference" xml:space="preserve"><value>選択フレームを画像参照として使用</value></data>
+  <data name="AnimationEditor_AICleanupBackground" xml:space="preserve"><value>生成後に端へ連結した背景を除去</value></data>
+  <data name="AnimationEditor_AITrimTransparent" xml:space="preserve"><value>透明な余白を切り取り原点を補正</value></data>
+  <data name="AnimationEditor_AISettings" xml:space="preserve"><value>AI 設定</value></data>
+  <data name="AnimationEditor_AIGenerate" xml:space="preserve"><value>フレームを生成</value></data>
+  <data name="AnimationEditor_AICancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="AnimationEditor_AIAddAfter" xml:space="preserve"><value>選択フレームの後に追加</value></data>
+  <data name="AnimationEditor_AIReplaceSelected" xml:space="preserve"><value>選択フレームを置換</value></data>
+  <data name="AnimationEditor_AIAutoAlign" xml:space="preserve"><value>アンカーに合わせる</value></data>
+  <data name="AnimationEditor_AIPreserveOrigin" xml:space="preserve"><value>原点を保持</value></data>
+  <data name="AnimationEditor_AIBottomCenter" xml:space="preserve"><value>下中央</value></data>
+  <data name="AnimationEditor_AIModel" xml:space="preserve"><value>画像モデル: {0}</value></data>
+  <data name="AnimationEditor_AIEnterPrompt" xml:space="preserve"><value>生成前にプロンプトを入力してください。</value></data>
+  <data name="AnimationEditor_AIRequiresFrame" xml:space="preserve"><value>アニメーショントラックを開き、編集可能なフレームを選択してください。</value></data>
+  <data name="AnimationEditor_AIGenerating" xml:space="preserve"><value>フレーム {0}/{1} を生成中…</value></data>
+  <data name="AnimationEditor_AIComplete" xml:space="preserve"><value>{0} フレームを生成しました。タイムラインを確認し、準備ができたら保存してください。</value></data>
+  <data name="AnimationEditor_AICancelled" xml:space="preserve"><value>生成をキャンセルしました。途中結果は適用されていません。</value></data>
+  <data name="AnimationEditor_AIError" xml:space="preserve"><value>AI 生成に失敗しました: {0}</value></data>
+  <data name="AnimationEditor_AISuggesting" xml:space="preserve"><value>制作向けプロンプトを作成中…</value></data>
+  <data name="AnimationEditor_AISuggestionReady" xml:space="preserve"><value>プロンプト案を作成しました。生成前に確認してください。</value></data>
+  <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} ms</value></data>
+  <data name="AnimationEditor_Items" xml:space="preserve"><value>アイテムアニメーション</value></data>
+  <data name="AnimationEditor_Equipment" xml:space="preserve"><value>装備アニメーション</value></data>
+</root>

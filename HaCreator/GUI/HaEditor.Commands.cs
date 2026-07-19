@@ -27,6 +27,7 @@ namespace HaCreator.GUI
         public static readonly RoutedUICommand About = CreateCommand(nameof(About));
         public static readonly RoutedUICommand Help = CreateCommand(nameof(Help));
         public static readonly RoutedUICommand Settings = CreateCommand(nameof(Settings));
+        public static readonly RoutedUICommand ShowAISettings = CreateCommand(nameof(ShowAISettings));
         public static readonly RoutedUICommand Exit = CreateCommand(nameof(Exit));
         public static readonly RoutedUICommand Minimap = CreateCommand(nameof(Minimap));
         public static readonly RoutedUICommand Parallax = CreateCommand(nameof(Parallax));
@@ -42,6 +43,7 @@ namespace HaCreator.GUI
         public static readonly RoutedUICommand UserObjs = CreateCommand(nameof(UserObjs));
         public static readonly RoutedUICommand PhysicsEdit = CreateCommand(nameof(PhysicsEdit));
         public static readonly RoutedUICommand ShowQuestEditorWindow = CreateCommand(nameof(ShowQuestEditorWindow));
+        public static readonly RoutedUICommand ShowAnimationEditorWindow = CreateCommand(nameof(ShowAnimationEditorWindow));
         public static readonly RoutedUICommand ShowMapProperties = CreateCommand(nameof(ShowMapProperties));
 
         private static RoutedUICommand CreateCommand(string name, KeyGesture gesture = null)
@@ -62,6 +64,7 @@ namespace HaCreator.GUI
         private void About_Executed(object sender, ExecutedRoutedEventArgs e) => AboutClicked?.Invoke();
         private void Help_Executed(object sender, ExecutedRoutedEventArgs e) => HelpClicked?.Invoke();
         private void Settings_Executed(object sender, ExecutedRoutedEventArgs e) => SettingsClicked?.Invoke();
+        private void ShowAISettings_Executed(object sender, ExecutedRoutedEventArgs e) => AISettingsClicked?.Invoke();
         private void Exit_Executed(object sender, ExecutedRoutedEventArgs e) => ExitClicked?.Invoke();
         private void Finalize_Executed(object sender, ExecutedRoutedEventArgs e) => FinalizeClicked?.Invoke();
         private void MapSim_Executed(object sender, ExecutedRoutedEventArgs e) => MapSimulationClicked?.Invoke();
@@ -72,6 +75,7 @@ namespace HaCreator.GUI
         private void UserObjs_Executed(object sender, ExecutedRoutedEventArgs e) => UserObjsClicked?.Invoke();
         private void PhysicsEdit_Executed(object sender, ExecutedRoutedEventArgs e) => MapPhysicsClicked?.Invoke();
         private void ShowQuestEditorWindow_Executed(object sender, ExecutedRoutedEventArgs e) => ShowQuestEditorWindowClicked?.Invoke();
+        private void ShowAnimationEditorWindow_Executed(object sender, ExecutedRoutedEventArgs e) => ShowAnimationEditorWindowClicked?.Invoke();
         private void ShowMapProperties_Executed(object sender, ExecutedRoutedEventArgs e) => ShowMapPropertiesClicked?.Invoke();
 
         private void Minimap_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -254,6 +258,7 @@ namespace HaCreator.GUI
         public event EmptyEvent AboutClicked;
         public event EmptyEvent HelpClicked;
         public event EmptyEvent SettingsClicked;
+        public event EmptyEvent AISettingsClicked;
         public event EmptyEvent ExitClicked;
         public event EmptyEvent FinalizeClicked;
         public event ViewToggleEvent ViewToggled;
@@ -272,6 +277,7 @@ namespace HaCreator.GUI
         public event EmptyEvent UserObjsClicked;
         public event EmptyEvent MapPhysicsClicked;
         public event EmptyEvent ShowQuestEditorWindowClicked;
+        public event EmptyEvent ShowAnimationEditorWindowClicked;
         public event EmptyEvent ShowMapPropertiesClicked;
     }
 }

@@ -245,4 +245,14 @@
   <data name="Title_ObjectAdded" xml:space="preserve"><value>对象已添加</value></data>
   <data name="Confirm_DeleteObject" xml:space="preserve"><value>删除此对象吗？</value></data>
   <data name="Title_DeleteObject" xml:space="preserve"><value>删除对象</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>聊天/推理模型</value></data>
+  <data name="Image model" xml:space="preserve"><value>图像模型</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>供动画编辑器生成帧和参考图编辑使用。</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>内置</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>内置 + 端点</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>端点</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>自动（模型默认值）</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>{0} 个内置预设。端点发现将自动开始。</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>有 {0} 个内置预设可用。未发现端点模型。</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>{0} 个内置模型 + {1} 个端点模型；共 {2} 个唯一模型。</value></data>
 </root>

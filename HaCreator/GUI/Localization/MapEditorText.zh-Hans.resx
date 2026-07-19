@@ -48,4 +48,8 @@
   <data name="Context_SelectConnected" xml:space="preserve"><value>选择相连项目</value></data>
   <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>更改图层/平台…</value></data>
   <data name="Context_SelectPlatform" xml:space="preserve"><value>选择平台</value></data>
+  <data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>动画帧编辑器</value></data>
+  <data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>打开动画帧编辑器</value></data>
+  <data name="Editor_Animations_2D94A1" xml:space="preserve"><value>动画</value></data>
+  <data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI 设置</value></data>
 </root>

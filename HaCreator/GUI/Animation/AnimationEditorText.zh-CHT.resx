@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>2.0</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="AnimationEditor_Title" xml:space="preserve"><value>動畫影格編輯器</value></data><data name="AnimationEditor_Save" xml:space="preserve"><value>儲存</value></data><data name="AnimationEditor_Import" xml:space="preserve"><value>匯入影格</value></data><data name="AnimationEditor_Export" xml:space="preserve"><value>匯出影格</value></data>
+  <data name="AnimationEditor_Undo" xml:space="preserve"><value>復原 (Ctrl+Z)</value></data><data name="AnimationEditor_Redo" xml:space="preserve"><value>取消復原 (Ctrl+Y)</value></data><data name="AnimationEditor_PlayPause" xml:space="preserve"><value>播放或暫停 (空白鍵)</value></data><data name="AnimationEditor_Speed" xml:space="preserve"><value>速度</value></data><data name="AnimationEditor_Zoom" xml:space="preserve"><value>縮放</value></data><data name="AnimationEditor_Fit" xml:space="preserve"><value>適合</value></data>
+  <data name="AnimationEditor_Assets" xml:space="preserve"><value>資源</value></data><data name="AnimationEditor_Animations" xml:space="preserve"><value>動畫 / 動作</value></data><data name="AnimationEditor_SearchTooltip" xml:space="preserve"><value>依 ID、名稱或 WZ 路徑篩選 (Ctrl+L)</value></data>
+  <data name="AnimationEditor_Monsters" xml:space="preserve"><value>怪物動畫</value></data><data name="AnimationEditor_Npcs" xml:space="preserve"><value>NPC 動作</value></data><data name="AnimationEditor_Reactors" xml:space="preserve"><value>反應爐狀態</value></data><data name="AnimationEditor_Skills" xml:space="preserve"><value>技能特效</value></data><data name="AnimationEditor_MapObjects" xml:space="preserve"><value>地圖物件</value></data><data name="AnimationEditor_Backgrounds" xml:space="preserve"><value>地圖背景</value></data>
+  <data name="AnimationEditor_Grid" xml:space="preserve"><value>格線</value></data><data name="AnimationEditor_Origin" xml:space="preserve"><value>原點</value></data><data name="AnimationEditor_Bounds" xml:space="preserve"><value>邊界</value></data><data name="AnimationEditor_OnionSkin" xml:space="preserve"><value>洋蔥皮</value></data><data name="AnimationEditor_Timeline" xml:space="preserve"><value>時間軸</value></data><data name="AnimationEditor_Loop" xml:space="preserve"><value>循環</value></data>
+  <data name="AnimationEditor_AddFrame" xml:space="preserve"><value>新增影格</value></data><data name="AnimationEditor_Duplicate" xml:space="preserve"><value>複製</value></data><data name="AnimationEditor_Delete" xml:space="preserve"><value>刪除</value></data><data name="AnimationEditor_Properties" xml:space="preserve"><value>屬性</value></data><data name="AnimationEditor_AnimationProperties" xml:space="preserve"><value>動畫 / 原始 WZ</value></data>
+  <data name="AnimationEditor_Frame" xml:space="preserve"><value>目前影格</value></data><data name="AnimationEditor_FrameIndex" xml:space="preserve"><value>影格</value></data><data name="AnimationEditor_Layer" xml:space="preserve"><value>圖層</value></data><data name="AnimationEditor_Size" xml:space="preserve"><value>精靈尺寸</value></data><data name="AnimationEditor_Transform" xml:space="preserve"><value>變換與時序</value></data>
+  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>原點 X</value></data><data name="AnimationEditor_ZOrder" xml:space="preserve"><value>Z 順序</value></data><data name="AnimationEditor_Delay" xml:space="preserve"><value>延遲 (毫秒)</value></data><data name="AnimationEditor_AlphaStart" xml:space="preserve"><value>起始透明度</value></data><data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>結束透明度</value></data>
+  <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>將連結影格轉為獨立影格</value></data><data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>取代圖層影像…</value></data><data name="AnimationEditor_RawFrameProperties" xml:space="preserve"><value>原始影格屬性</value></data><data name="AnimationEditor_Property" xml:space="preserve"><value>屬性</value></data><data name="AnimationEditor_Type" xml:space="preserve"><value>類型</value></data><data name="AnimationEditor_Value" xml:space="preserve"><value>值</value></data>
+  <data name="AnimationEditor_Ready" xml:space="preserve"><value>就緒</value></data><data name="AnimationEditor_Loading" xml:space="preserve"><value>正在載入動畫資源…</value></data><data name="AnimationEditor_AssetsLoaded" xml:space="preserve"><value>可用資源影像：{0} 個。</value></data><data name="AnimationEditor_AnimationsLoaded" xml:space="preserve"><value>找到 {0} 條動畫軌道。</value></data>
+  <data name="AnimationEditor_ImageNotFound" xml:space="preserve"><value>無法載入 {0}。</value></data><data name="AnimationEditor_NoFrames" xml:space="preserve"><value>此動畫沒有可編輯的影格。</value></data><data name="AnimationEditor_LinkedReactorSource" xml:space="preserve"><value>此反應爐連結到 {0}；變更將儲存到連結來源。</value></data>
+  <data name="AnimationEditor_ImageFilter" xml:space="preserve"><value>影像 (*.png;*.bmp;*.gif;*.jpg;*.jpeg)|*.png;*.bmp;*.gif;*.jpg;*.jpeg|所有檔案 (*.*)|*.*</value></data><data name="AnimationEditor_ImportTitle" xml:space="preserve"><value>選擇影格影像</value></data><data name="AnimationEditor_DeleteLastFrame" xml:space="preserve"><value>動畫必須至少保留一個影格。</value></data><data name="AnimationEditor_MissingCanvas" xml:space="preserve"><value>選取圖層沒有可輸出的畫布。</value></data>
+  <data name="AnimationEditor_Exported" xml:space="preserve"><value>影格已匯出至 {0}。</value></data><data name="AnimationEditor_Saving" xml:space="preserve"><value>正在儲存動畫…</value></data><data name="AnimationEditor_Saved" xml:space="preserve"><value>動畫已儲存。</value></data><data name="AnimationEditor_SaveError" xml:space="preserve"><value>無法儲存動畫：{0}</value></data><data name="AnimationEditor_SaveErrorTitle" xml:space="preserve"><value>動畫儲存錯誤</value></data>
+  <data name="AnimationEditor_Unsaved" xml:space="preserve"><value>有未儲存的變更</value></data><data name="AnimationEditor_AllSaved" xml:space="preserve"><value>所有變更已儲存</value></data><data name="AnimationEditor_UnsavedPrompt" xml:space="preserve"><value>此動畫有未儲存的變更。現在儲存嗎？</value></data><data name="AnimationEditor_UnsavedTitle" xml:space="preserve"><value>未儲存的動畫變更</value></data><data name="AnimationEditor_MoveOrigin" xml:space="preserve"><value>移動原點</value></data><data name="AnimationEditor_MoveFrame" xml:space="preserve"><value>移動影格</value></data>
+  <data name="AnimationEditor_FirstFrame" xml:space="preserve"><value>第一個影格</value></data>
+  <data name="AnimationEditor_PreviousFrame" xml:space="preserve"><value>上一個影格</value></data>
+  <data name="AnimationEditor_NextFrame" xml:space="preserve"><value>下一個影格</value></data>
+  <data name="AnimationEditor_LastFrame" xml:space="preserve"><value>最後一個影格</value></data>
+  <data name="AnimationEditor_MoveFrameLeft" xml:space="preserve"><value>向左移動影格</value></data>
+  <data name="AnimationEditor_MoveFrameRight" xml:space="preserve"><value>向右移動影格</value></data>
+  <data name="AnimationEditor_AssetBrowserSplitter" xml:space="preserve"><value>資源瀏覽器分隔線</value></data>
+  <data name="AnimationEditor_TimelineSplitter" xml:space="preserve"><value>時間軸分隔線</value></data>
+  <data name="AnimationEditor_InspectorSplitter" xml:space="preserve"><value>屬性檢視器分隔線</value></data>
+  <data name="AnimationEditor_AssetType" xml:space="preserve"><value>動畫資源類型</value></data>
+  <data name="AnimationEditor_AssetSearch" xml:space="preserve"><value>搜尋動畫資源</value></data>
+  <data name="AnimationEditor_AssetList" xml:space="preserve"><value>動畫資源清單</value></data>
+  <data name="AnimationEditor_TrackList" xml:space="preserve"><value>動畫軌道清單</value></data>
+  <data name="AnimationEditor_Preview" xml:space="preserve"><value>動畫預覽</value></data>
+  <data name="AnimationEditor_TimelineScrubber" xml:space="preserve"><value>瀏覽動畫時間軸</value></data>
+  <data name="AnimationEditor_TimelineFrames" xml:space="preserve"><value>動畫時間軸影格</value></data>
+  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>原點 Y</value></data>
+  <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>影格屬性表</value></data>
+  <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>動畫屬性表</value></data>
+  <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG 影像 (*.png)|*.png</value></data>
+  <data name="AnimationEditor_AI" xml:space="preserve"><value>AI</value></data>
+  <data name="AnimationEditor_AIGenerateFrames" xml:space="preserve"><value>AI 畫格工作室</value></data>
+  <data name="AnimationEditor_AIDescription" xml:space="preserve"><value>產生新畫格或編輯目前畫格。結果在儲存動畫前保持獨立且可復原。</value></data>
+  <data name="AnimationEditor_AIPrompt" xml:space="preserve"><value>描述畫格或修改內容</value></data>
+  <data name="AnimationEditor_AISuggestPrompt" xml:space="preserve"><value>建議製作用提示詞</value></data>
+  <data name="AnimationEditor_AIFramePlan" xml:space="preserve"><value>畫格計畫</value></data>
+  <data name="AnimationEditor_AIOperation" xml:space="preserve"><value>操作</value></data>
+  <data name="AnimationEditor_AICount" xml:space="preserve"><value>畫格數</value></data>
+  <data name="AnimationEditor_AIAlignment" xml:space="preserve"><value>原點對齊</value></data>
+  <data name="AnimationEditor_AIQuality" xml:space="preserve"><value>品質</value></data>
+  <data name="AnimationEditor_AIUseReference" xml:space="preserve"><value>使用目前畫格作為影像參考</value></data>
+  <data name="AnimationEditor_AICleanupBackground" xml:space="preserve"><value>產生後移除與邊緣相連的背景</value></data>
+  <data name="AnimationEditor_AITrimTransparent" xml:space="preserve"><value>裁切透明邊距並補償原點</value></data>
+  <data name="AnimationEditor_AISettings" xml:space="preserve"><value>AI 設定</value></data>
+  <data name="AnimationEditor_AIGenerate" xml:space="preserve"><value>產生畫格</value></data>
+  <data name="AnimationEditor_AICancel" xml:space="preserve"><value>取消</value></data>
+  <data name="AnimationEditor_AIAddAfter" xml:space="preserve"><value>新增於目前畫格之後</value></data>
+  <data name="AnimationEditor_AIReplaceSelected" xml:space="preserve"><value>取代目前畫格</value></data>
+  <data name="AnimationEditor_AIAutoAlign" xml:space="preserve"><value>符合錨點</value></data>
+  <data name="AnimationEditor_AIPreserveOrigin" xml:space="preserve"><value>保留原點</value></data>
+  <data name="AnimationEditor_AIBottomCenter" xml:space="preserve"><value>底部置中</value></data>
+  <data name="AnimationEditor_AIModel" xml:space="preserve"><value>影像模型：{0}</value></data>
+  <data name="AnimationEditor_AIEnterPrompt" xml:space="preserve"><value>請先輸入提示詞。</value></data>
+  <data name="AnimationEditor_AIRequiresFrame" xml:space="preserve"><value>請先開啟動畫軌道並選取可編輯畫格。</value></data>
+  <data name="AnimationEditor_AIGenerating" xml:space="preserve"><value>正在產生第 {0}/{1} 畫格…</value></data>
+  <data name="AnimationEditor_AIComplete" xml:space="preserve"><value>已產生 {0} 個畫格。請檢查時間軸，確認後再儲存。</value></data>
+  <data name="AnimationEditor_AICancelled" xml:space="preserve"><value>產生已取消，未套用任何部分結果。</value></data>
+  <data name="AnimationEditor_AIError" xml:space="preserve"><value>AI 產生失敗：{0}</value></data>
+  <data name="AnimationEditor_AISuggesting" xml:space="preserve"><value>正在建立製作用提示詞…</value></data>
+  <data name="AnimationEditor_AISuggestionReady" xml:space="preserve"><value>提示詞建議已就緒，請檢查後再產生。</value></data>
+  <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} 毫秒</value></data>
+  <data name="AnimationEditor_Items" xml:space="preserve"><value>道具動畫</value></data>
+  <data name="AnimationEditor_Equipment" xml:space="preserve"><value>裝備動畫</value></data>
+</root>

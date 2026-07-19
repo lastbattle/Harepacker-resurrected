@@ -1,8 +1,9 @@
 <Window x:Class="HaCreator.GUI.EditorPanels.AISettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AI endpoint settings" Width="650" Height="680" MinWidth="560" MinHeight="600"
+        Title="AI endpoint settings" Width="650" Height="680" MinWidth="560" MinHeight="620"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource HareCanvasBrush}" FontFamily="Segoe UI"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
         Loaded="AISettingsDialog_Loaded" Closed="AISettingsDialog_Closed">
     <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
@@ -12,7 +13,7 @@
         <Border Style="{StaticResource HareToolbarStyle}" Padding="20,16">
             <StackPanel>
                 <TextBlock Text="Configure an OpenAI-compatible endpoint and verify it before saving."
-                           Margin="0,4,0,0" Style="{StaticResource HareMutedTextStyle}"/>
+                           Margin="0,4,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"/>
             </StackPanel>
         </Border>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -21,41 +22,58 @@
                     <StackPanel>
                         <TextBlock Text="Endpoint" Style="{StaticResource HareSectionTitleStyle}"/>
                         <TextBlock Text="Base URL" Margin="0,12,0,4"/>
-                        <TextBox x:Name="txtBaseUrl" TextChanged="OnSettingsChanged" LostKeyboardFocus="TxtBaseUrl_Leave"/>
+                        <TextBox x:Name="txtBaseUrl" TextChanged="OnSettingsChanged" LostKeyboardFocus="TxtBaseUrl_Leave"
+                                 AutomationProperties.Name="Base URL"/>
                         <TextBlock Text="API key" Margin="0,10,0,4"/>
-                        <PasswordBox x:Name="txtApiKey" PasswordChanged="OnSettingsChanged" LostKeyboardFocus="TxtApiKey_Leave"/>
+                        <PasswordBox x:Name="txtApiKey" PasswordChanged="OnSettingsChanged" LostKeyboardFocus="TxtApiKey_Leave"
+                                     AutomationProperties.Name="API key"/>
                     </StackPanel>
                 </Border>
                 <Border Margin="0,12,0,0" Style="{StaticResource HareCardStyle}">
                     <StackPanel>
                         <TextBlock Text="Model catalog" Style="{StaticResource HareSectionTitleStyle}"/>
-                        <Grid Margin="0,12,0,0">
+                        <TextBlock Text="Chat / reasoning model" Margin="0,12,0,4"/>
+                        <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <ComboBox x:Name="cboModel" IsEditable="True" IsTextSearchEnabled="False"
-                                      SelectionChanged="CboModel_SelectedIndexChanged"/>
+                                      SelectionChanged="CboModel_SelectedIndexChanged"
+                                      AutomationProperties.Name="Chat / reasoning model"
+                                      AutomationProperties.HelpText="Built-in and endpoint models share one list. Type a custom model ID if needed."/>
                             <Button x:Name="btnRefreshModels" Grid.Column="1" Margin="8,0,0,0" MinWidth="92"
                                     Click="BtnRefreshModels_Click" Content="Refresh"/>
                         </Grid>
                         <TextBlock Text="Built-in and endpoint models share one list. Type a custom model ID if needed."
-                                   Margin="0,6,0,0" Style="{StaticResource HareMutedTextStyle}"/>
-                        <TextBlock x:Name="lblModelsStatus" Margin="0,6,0,0" Style="{StaticResource HareMutedTextStyle}"/>
+                                   Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBlock x:Name="lblModelsStatus" Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                        <TextBlock Text="Image model" Margin="0,12,0,4"/>
+                        <ComboBox x:Name="cboImageModel" IsEditable="True" IsTextSearchEnabled="False"
+                                  SelectionChanged="CboImageModel_SelectionChanged"
+                                  AutomationProperties.Name="Image model"
+                                  AutomationProperties.HelpText="Used by the animation editor for frame generation and reference edits."/>
+                        <TextBlock Text="Used by the animation editor for frame generation and reference edits."
+                                   Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"/>
                     </StackPanel>
                 </Border>
                 <Border Margin="0,12,0,0" Style="{StaticResource HareCardStyle}">
                     <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="API dialect"/>
-                            <ComboBox x:Name="cboApiDialect" Margin="0,4,0,0" SelectionChanged="OnSettingsChanged">
+                            <ComboBox x:Name="cboApiDialect" Margin="0,4,0,0" SelectionChanged="OnSettingsChanged"
+                                      AutomationProperties.Name="API dialect">
                                 <ComboBoxItem Content="Chat Completions"/><ComboBoxItem Content="Responses"/>
                             </ComboBox>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="Reasoning effort"/>
-                            <ComboBox x:Name="cboReasoningEffort" Margin="0,4,0,0" SelectionChanged="OnSettingsChanged"/>
+                            <ComboBox x:Name="cboReasoningEffort" Margin="0,4,0,0" SelectionChanged="OnSettingsChanged"
+                                      AutomationProperties.Name="Reasoning effort"/>
                         </StackPanel>
-                        <TextBlock x:Name="lblReasoningStatus" Grid.ColumnSpan="3" Margin="0,64,0,0"
-                                   Style="{StaticResource HareMutedTextStyle}"/>
+                        <TextBlock x:Name="lblReasoningStatus" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                   TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"
+                                   AutomationProperties.LiveSetting="Polite"/>
                     </Grid>
                 </Border>
                 <Border Margin="0,12,0,0" Style="{StaticResource HareCardStyle}">
@@ -72,7 +90,8 @@
         <Border Grid.Row="2" Style="{StaticResource HareToolbarStyle}" BorderThickness="0,1,0,0">
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="lblStatus" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"/>
+                <TextBlock x:Name="lblStatus" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"
+                           AutomationProperties.LiveSetting="Polite"/>
                 <Button x:Name="btnTest" Grid.Column="1" MinWidth="120" Click="BtnTest_Click" Content="Test connection"/>
                 <Button Grid.Column="2" Margin="8,0,0,0" MinWidth="88" IsCancel="True" Content="Cancel"/>
                 <Button x:Name="btnSave" Grid.Column="3" Margin="8,0,0,0" MinWidth="88" IsDefault="True" IsEnabled="False"

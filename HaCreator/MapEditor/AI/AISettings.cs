@@ -13,11 +13,13 @@ namespace HaCreator.MapEditor.AI
     {
         private const string DefaultBaseUrl = "https://openrouter.ai/api/v1";
         private const string DefaultModel = "google/gemini-3-flash-preview";
+        private const string DefaultImageModel = "gpt-image-2";
         private const AIEndpointProtocol DefaultProtocol = AIEndpointProtocol.ChatCompletions;
 
         private static string apiKey = string.Empty;
         private static string baseUrl = DefaultBaseUrl;
         private static string model = DefaultModel;
+        private static string imageModel = DefaultImageModel;
         private static AIEndpointProtocol protocol = DefaultProtocol;
         private static string reasoningEffort = string.Empty;
         private static bool strictSchemas;
@@ -70,6 +72,16 @@ namespace HaCreator.MapEditor.AI
         {
             get { EnsureLoaded(); return model; }
             set { model = string.IsNullOrWhiteSpace(value) ? DefaultModel : value.Trim(); Save(); }
+        }
+
+        /// <summary>
+        /// Model used by OpenAI-compatible image generation and edit endpoints.
+        /// This is intentionally independent from the text/tool model.
+        /// </summary>
+        public static string ImageModel
+        {
+            get { EnsureLoaded(); return imageModel; }
+            set { imageModel = string.IsNullOrWhiteSpace(value) ? DefaultImageModel : value.Trim(); Save(); }
         }
 
         public static AIEndpointProtocol Protocol
@@ -126,6 +138,12 @@ namespace HaCreator.MapEditor.AI
             "openai/gpt-5.3-codex",
             "anthropic/claude-sonnet-4.5",
             "anthropic/claude-opus-4.5"
+        };
+
+        public static readonly string[] AvailableImageModels =
+        {
+            DefaultImageModel,
+            "gpt-image-1.5"
         };
 
         public static readonly string[] AvailableReasoningEfforts =
@@ -191,6 +209,7 @@ namespace HaCreator.MapEditor.AI
                 apiKey = settings["apiKey"]?.ToString() ?? string.Empty;
                 baseUrl = settings["baseUrl"]?.ToString() ?? DefaultBaseUrl;
                 model = settings["model"]?.ToString() ?? DefaultModel;
+                imageModel = settings["imageModel"]?.ToString() ?? DefaultImageModel;
 
                 // Older files only stored OpenRouter settings. Preserve those values while
                 // moving them to the provider-neutral endpoint model.
@@ -225,6 +244,7 @@ namespace HaCreator.MapEditor.AI
                     ["baseUrl"] = baseUrl,
                     ["apiKey"] = apiKey,
                     ["model"] = model,
+                    ["imageModel"] = imageModel,
                     ["protocol"] = protocol.ToString(),
                     ["reasoningEffort"] = reasoningEffort,
                     ["strictSchemas"] = strictSchemas,

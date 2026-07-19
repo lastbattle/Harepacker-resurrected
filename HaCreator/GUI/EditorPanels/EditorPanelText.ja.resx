@@ -245,4 +245,14 @@
   <data name="Title_ObjectAdded" xml:space="preserve"><value>オブジェクトを追加しました</value></data>
   <data name="Confirm_DeleteObject" xml:space="preserve"><value>このオブジェクトを削除しますか？</value></data>
   <data name="Title_DeleteObject" xml:space="preserve"><value>オブジェクトを削除</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>チャット／推論モデル</value></data>
+  <data name="Image model" xml:space="preserve"><value>画像モデル</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>アニメーションエディターのフレーム生成と参照編集に使用します。</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>組み込み</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>組み込み + エンドポイント</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>エンドポイント</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>自動（モデルの既定値）</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>組み込みプリセットは {0} 個です。エンドポイントの検索は自動的に開始されます。</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>組み込みプリセットを {0} 個利用できます。エンドポイントモデルは見つかりませんでした。</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>組み込み {0} 個 + エンドポイント {1} 個、固有モデル {2} 個。</value></data>
 </root>

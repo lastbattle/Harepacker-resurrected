@@ -16,7 +16,8 @@ namespace HaCreator.GUI.EditorPanels
     /// </summary>
     public partial class AISettingsDialog : Window
     {
-        private const string AutoReasoningEffort = "Auto (model default)";
+        private static string AutoReasoningEffort =>
+            EditorPanelLocalizer.Text("AISettings_AutoReasoningEffort", "Auto (model default)");
 
         private readonly List<OpenAIModelInfo> _endpointModels = new List<OpenAIModelInfo>();
         private bool _connectionTested;
@@ -46,6 +47,8 @@ namespace HaCreator.GUI.EditorPanels
             EditorPanelLocalizer.Attach(this);
             cboModel.AddHandler(TextBoxBase.TextChangedEvent,
                 new TextChangedEventHandler((sender, args) => CboModel_TextChanged(sender, args)));
+            cboImageModel.AddHandler(TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((sender, args) => OnSettingsChanged(sender, args)));
             if (Program.HaEditorWindow?.IsVisible == true)
                 Owner = Program.HaEditorWindow;
             LoadSettings();
@@ -59,6 +62,7 @@ namespace HaCreator.GUI.EditorPanels
                 txtBaseUrl.Text = AISettings.BaseUrl;
                 txtApiKey.Password = AISettings.ApiKey;
                 cboModel.Text = AISettings.Model;
+                cboImageModel.Text = AISettings.ImageModel;
                 cboApiDialect.SelectedIndex = AISettings.Protocol == AIEndpointProtocol.Responses ? 1 : 0;
                 chkStrictSchemas.IsChecked = AISettings.StrictSchemas;
                 chkAutoApply.IsChecked = AISettings.AutoApplyCommands;
@@ -126,6 +130,27 @@ namespace HaCreator.GUI.EditorPanels
                 return;
 
             UpdateReasoningEffortChoices(FindModelChoice(cboModel.Text));
+            InvalidateConnectionTest();
+        }
+
+        private void CboImageModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingModelCatalog)
+                return;
+
+            if (cboImageModel.SelectedItem is ModelChoice choice)
+            {
+                _updatingModelCatalog = true;
+                try
+                {
+                    cboImageModel.Text = choice.ModelId;
+                }
+                finally
+                {
+                    _updatingModelCatalog = false;
+                }
+            }
+
             InvalidateConnectionTest();
         }
 
@@ -199,10 +224,17 @@ namespace HaCreator.GUI.EditorPanels
         private void RebuildModelCatalog(IReadOnlyList<OpenAIModelInfo> endpointModels)
         {
             var selectedModel = cboModel.Text.Trim();
+            var selectedImageModel = cboImageModel.Text.Trim();
             var choices = new List<ModelChoice>();
+            var builtInSource = EditorPanelLocalizer.Text("AISettings_ModelSourceBuiltIn", "Built-in");
+            var builtInEndpointSource = EditorPanelLocalizer.Text("AISettings_ModelSourceBuiltInEndpoint", "Built-in + endpoint");
+            var endpointSource = EditorPanelLocalizer.Text("AISettings_ModelSourceEndpoint", "Endpoint");
+            var imageChoices = AISettings.AvailableImageModels
+                .Select(model => new ModelChoice(model, builtInSource))
+                .ToList();
 
             foreach (var model in AISettings.AvailableModels)
-                choices.Add(new ModelChoice(model, "Built-in"));
+                choices.Add(new ModelChoice(model, builtInSource));
 
             foreach (var endpointModel in endpointModels)
             {
@@ -215,16 +247,19 @@ namespace HaCreator.GUI.EditorPanels
                 {
                     choices[existingIndex] = new ModelChoice(
                         endpointModel.Id,
-                        "Built-in + endpoint",
+                        builtInEndpointSource,
                         endpointModel.ReasoningEfforts);
                 }
                 else
                 {
                     choices.Add(new ModelChoice(
                         endpointModel.Id,
-                        "Endpoint",
+                        endpointSource,
                         endpointModel.ReasoningEfforts));
                 }
+
+                if (!imageChoices.Any(choice => string.Equals(choice.ModelId, endpointModel.Id, StringComparison.OrdinalIgnoreCase)))
+                    imageChoices.Add(new ModelChoice(endpointModel.Id, endpointSource, endpointModel.ReasoningEfforts));
             }
 
             _updatingModelCatalog = true;
@@ -234,10 +269,19 @@ namespace HaCreator.GUI.EditorPanels
                 foreach (var choice in choices)
                     cboModel.Items.Add(choice);
 
+                cboImageModel.Items.Clear();
+                foreach (var choice in imageChoices)
+                    cboImageModel.Items.Add(choice);
+
                 var selectedIndex = choices.FindIndex(choice =>
                     string.Equals(choice.ModelId, selectedModel, StringComparison.OrdinalIgnoreCase));
                 cboModel.SelectedIndex = selectedIndex;
                 cboModel.Text = selectedIndex >= 0 ? choices[selectedIndex].ModelId : selectedModel;
+
+                var selectedImageIndex = imageChoices.FindIndex(choice =>
+                    string.Equals(choice.ModelId, selectedImageModel, StringComparison.OrdinalIgnoreCase));
+                cboImageModel.SelectedIndex = selectedImageIndex;
+                cboImageModel.Text = selectedImageIndex >= 0 ? imageChoices[selectedImageIndex].ModelId : selectedImageModel;
             }
             finally
             {
@@ -252,13 +296,15 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (!_endpointModelsLoaded)
             {
-                lblModelsStatus.Text = $"{AISettings.AvailableModels.Length} built-in presets. Endpoint discovery starts automatically.";
+                lblModelsStatus.Text = EditorPanelLocalizer.Format(
+                    "AISettings_BuiltInPresetsPending", AISettings.AvailableModels.Length);
                 return;
             }
 
             lblModelsStatus.Text = _endpointModels.Count == 0
-                ? $"{AISettings.AvailableModels.Length} built-in presets available. No endpoint models discovered."
-                : $"{AISettings.AvailableModels.Length} built-in + {_endpointModels.Count} endpoint; {totalModelCount} unique model(s).";
+                ? EditorPanelLocalizer.Format("AISettings_BuiltInPresetsOnly", AISettings.AvailableModels.Length)
+                : EditorPanelLocalizer.Format("AISettings_ModelCatalogSummary", AISettings.AvailableModels.Length,
+                    _endpointModels.Count, totalModelCount);
         }
 
         private ModelChoice FindModelChoice(string modelId)
@@ -458,6 +504,7 @@ namespace HaCreator.GUI.EditorPanels
             AISettings.BaseUrl = txtBaseUrl.Text.Trim();
             AISettings.ApiKey = txtApiKey.Password.Trim();
             AISettings.Model = cboModel.Text.Trim();
+            AISettings.ImageModel = cboImageModel.Text.Trim();
             AISettings.Protocol = GetSelectedProtocol();
             AISettings.ReasoningEffort = GetSelectedReasoningEffort();
             AISettings.StrictSchemas = chkStrictSchemas.IsChecked == true;

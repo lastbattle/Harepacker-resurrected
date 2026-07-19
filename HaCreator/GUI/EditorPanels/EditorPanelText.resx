@@ -245,4 +245,14 @@
   <data name="Title_ObjectAdded" xml:space="preserve"><value>Object added</value></data>
   <data name="Confirm_DeleteObject" xml:space="preserve"><value>Delete this object?</value></data>
   <data name="Title_DeleteObject" xml:space="preserve"><value>Delete object</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>Chat / reasoning model</value></data>
+  <data name="Image model" xml:space="preserve"><value>Image model</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>Used by the animation editor for frame generation and reference edits.</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>Built-in</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>Built-in + endpoint</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>Endpoint</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>Auto (model default)</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>{0} built-in presets. Endpoint discovery starts automatically.</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>{0} built-in presets available. No endpoint models discovered.</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>{0} built-in + {1} endpoint; {2} unique model(s).</value></data>
 </root>
