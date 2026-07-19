@@ -38,12 +38,12 @@ Map placement coordinates are a different layer of data. Object `x/y/z/zM/f` and
 
 ## Preview and timeline
 
-- Pixel-oriented checkerboard preview with grid, bounds, origin axes, zoom, fit, and previous/next onion skin.
+- Pixel-oriented checkerboard preview with grid, bounds, origin axes, zoom, fit, previous/next onion skin, and a translucent all-frames alignment overlay. Onion skin and all-frames overlay are mutually exclusive.
 - Selecting an asset automatically opens its first animation/action. Preview zoom starts at 150%, centers the WZ origin when a track opens, and remains unchanged while switching assets or tracks; **Fit** remains an explicit command.
 - Layered frames are composited by numeric `z`; each Canvas layer can be inspected independently.
 - Playback follows each frame's delay and supports speed scaling and looping.
 - Frames can be imported, exported, bitmap-replaced, duplicated, deleted, and reordered.
-- Dragging in the preview changes the selected layer origin. Arrow keys nudge by one pixel and Shift+arrow nudges by ten.
+- Dragging in the preview changes the selected layer origin. The explicit arrow-key mode switches between scrolling the preview and moving the selected layer; move mode nudges by one pixel, or ten with Shift.
 
 ## AI frame studio
 
@@ -68,8 +68,9 @@ The **AI** inspector tab uses the OpenAI-compatible endpoint configured in **Too
 | `Alt+Left` / `Alt+Right` | Reorder frame |
 | `Space` | Play / pause |
 | `Home` / `End` | First / last frame |
-| Arrow keys | Nudge origin |
-| `Shift` + arrow keys | Nudge origin by 10 |
+| Arrow keys | Scroll the preview in Pan mode; nudge origin in Move frame mode |
+| `Shift` + arrow keys | Nudge origin by 10 in Move frame mode |
+| `M` | Switch between Pan and Move frame arrow-key modes |
 | `G`, `O`, `B` | Toggle grid, onion skin, bounds |
 | `F`, `0` | Fit, 100% zoom |
 
@@ -77,7 +78,7 @@ The **AI** inspector tab uses the OpenAI-compatible endpoint configured in **Too
 
 1. Open each supported family and confirm asset filtering and track discovery against the WZ paths above.
 2. Preview a multi-frame action, a one-frame background, a UOL frame, and a layered skill effect.
-3. Change origin, delay, Z, alpha, and a raw property; verify playback and overlays update immediately.
+3. Change origin, delay, Z, alpha, and a raw property; verify playback and overlays update immediately. Confirm Pan mode scrolls with arrow keys, Move frame mode nudges by 1/10 pixels, and All frames overlays the complete animation while keeping the selected frame prominent.
 4. Import, duplicate, reorder, delete, undo, and redo frames.
 5. Save in IMG filesystem mode, reopen the track, and verify all changes persisted without changing sibling tracks.
 6. Repeat with a WZ data source and verify the owning WZ is marked for repack.

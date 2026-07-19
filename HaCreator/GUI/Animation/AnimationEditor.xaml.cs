@@ -1127,7 +1127,15 @@ namespace HaCreator.GUI.FrameAnimation
                     previewCanvas.Children.Add(new Line { X1 = 0, X2 = 1600, Y1 = y, Y2 = y, Stroke = new SolidColorBrush(MediaColor.FromArgb(40, 100, 116, 139)), StrokeThickness = y % 250 == 0 ? 1.2 : 0.6 });
             }
 
-            if (onionCheckBox.IsChecked == true)
+            if (allFramesCheckBox.IsChecked == true)
+            {
+                foreach (AnimationFrameModel overlayFrame in _document.Frames)
+                {
+                    if (!ReferenceEquals(overlayFrame, frame))
+                        DrawFrame(overlayFrame, centerX, centerY, 0.22, null);
+                }
+            }
+            else if (onionCheckBox.IsChecked == true)
             {
                 int index = frame.Index;
                 if (index > 0) DrawFrame(_document.Frames[index - 1], centerX, centerY, 0.18, MediaBrushes.OrangeRed);
@@ -1189,6 +1197,21 @@ namespace HaCreator.GUI.FrameAnimation
             CultureInfo.InvariantCulture, out int value) ? value : 0;
 
         private void Overlay_Changed(object sender, RoutedEventArgs e) => RenderPreview();
+
+        private void TemporalOverlay_Changed(object sender, RoutedEventArgs e)
+        {
+            if (sender == allFramesCheckBox && allFramesCheckBox.IsChecked == true && onionCheckBox?.IsChecked == true)
+            {
+                onionCheckBox.IsChecked = false;
+                return;
+            }
+            if (sender == onionCheckBox && onionCheckBox.IsChecked == true && allFramesCheckBox?.IsChecked == true)
+            {
+                allFramesCheckBox.IsChecked = false;
+                return;
+            }
+            RenderPreview();
+        }
 
         private void Zoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
@@ -1339,6 +1362,25 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             }
 
+            if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.M)
+            {
+                moveFrameArrowKeysRadioButton.IsChecked = moveFrameArrowKeysRadioButton.IsChecked != true;
+                panArrowKeysRadioButton.IsChecked = moveFrameArrowKeysRadioButton.IsChecked != true;
+                e.Handled = true;
+                return;
+            }
+
+            ModifierKeys nudgeModifiers = Keyboard.Modifiers;
+            if (moveFrameArrowKeysRadioButton.IsChecked == true &&
+                (nudgeModifiers == ModifierKeys.None || nudgeModifiers == ModifierKeys.Shift))
+            {
+                int distance = nudgeModifiers == ModifierKeys.Shift ? 10 : 1;
+                if (e.Key == Key.Left) { Nudge(-distance, 0); e.Handled = true; return; }
+                if (e.Key == Key.Right) { Nudge(distance, 0); e.Handled = true; return; }
+                if (e.Key == Key.Up) { Nudge(0, -distance); e.Handled = true; return; }
+                if (e.Key == Key.Down) { Nudge(0, distance); e.Handled = true; return; }
+            }
+
             if (focused != previewCanvas)
                 return;
 
@@ -1346,10 +1388,6 @@ namespace HaCreator.GUI.FrameAnimation
             if (e.Key == Key.Delete) { DeleteFrame_Click(null, null); e.Handled = true; return; }
             if (e.Key == Key.Home) { FirstFrame_Click(null, null); e.Handled = true; return; }
             if (e.Key == Key.End) { LastFrame_Click(null, null); e.Handled = true; return; }
-            if (e.Key == Key.Left) { if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) Nudge(-10, 0); else Nudge(-1, 0); e.Handled = true; return; }
-            if (e.Key == Key.Right) { if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) Nudge(10, 0); else Nudge(1, 0); e.Handled = true; return; }
-            if (e.Key == Key.Up) { if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) Nudge(0, -10); else Nudge(0, -1); e.Handled = true; return; }
-            if (e.Key == Key.Down) { if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) Nudge(0, 10); else Nudge(0, 1); e.Handled = true; return; }
             if (e.Key == Key.O) { onionCheckBox.IsChecked = onionCheckBox.IsChecked != true; e.Handled = true; }
             if (e.Key == Key.G) { gridCheckBox.IsChecked = gridCheckBox.IsChecked != true; e.Handled = true; }
             if (e.Key == Key.B) { boundsCheckBox.IsChecked = boundsCheckBox.IsChecked != true; e.Handled = true; }

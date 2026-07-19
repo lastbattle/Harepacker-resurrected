@@ -151,7 +151,7 @@
 
             <Grid Grid.Column="2" Margin="8,12">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="42"/>
+                    <RowDefinition Height="64"/>
                     <RowDefinition Height="*" MinHeight="280"/>
                     <RowDefinition Height="5"/>
                     <RowDefinition Height="245" MinHeight="190"/>
@@ -159,17 +159,33 @@
 
                 <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}">
                     <Grid Margin="8,4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
                             <CheckBox x:Name="gridCheckBox" IsChecked="True" Content="{local:AnimationEditorText AnimationEditor_Grid}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
                             <CheckBox x:Name="originCheckBox" IsChecked="True" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Origin}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
                             <CheckBox x:Name="boundsCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Bounds}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
-                            <CheckBox x:Name="onionCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_OnionSkin}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
+                            <CheckBox x:Name="onionCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_OnionSkin}" Checked="TemporalOverlay_Changed" Unchecked="TemporalOverlay_Changed"/>
+                            <CheckBox x:Name="allFramesCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_AllFrames}"
+                                      ToolTip="{local:AnimationEditorText AnimationEditor_AllFramesTooltip}"
+                                      Checked="TemporalOverlay_Changed" Unchecked="TemporalOverlay_Changed"/>
                         </StackPanel>
-                        <TextBlock x:Name="previewPathText" Grid.Column="1" MaxWidth="440" VerticalAlignment="Center"
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,12,0">
+                            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"
+                                       Text="{local:AnimationEditorText AnimationEditor_ArrowKeyMode}"/>
+                            <RadioButton x:Name="panArrowKeysRadioButton" GroupName="PreviewArrowKeyMode" Margin="8,0,0,0" IsChecked="True"
+                                         Content="{local:AnimationEditorText AnimationEditor_Pan}" ToolTip="{local:AnimationEditorText AnimationEditor_PanTooltip}"/>
+                            <RadioButton x:Name="moveFrameArrowKeysRadioButton" GroupName="PreviewArrowKeyMode" Margin="10,0,0,0"
+                                         Content="{local:AnimationEditorText AnimationEditor_MoveFrameMode}" ToolTip="{local:AnimationEditorText AnimationEditor_MoveFrameTooltip}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="previewPathText" Grid.Row="1" Grid.Column="1" MaxWidth="440" Margin="12,4,0,0"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                    Foreground="{DynamicResource HareMutedTextBrush}" TextTrimming="CharacterEllipsis"/>
                     </Grid>
                 </Border>

@@ -27,6 +27,13 @@
   <data name="AnimationEditor_Origin" xml:space="preserve"><value>Origin</value></data>
   <data name="AnimationEditor_Bounds" xml:space="preserve"><value>Bounds</value></data>
   <data name="AnimationEditor_OnionSkin" xml:space="preserve"><value>Onion skin</value></data>
+  <data name="AnimationEditor_AllFrames" xml:space="preserve"><value>All frames</value></data>
+  <data name="AnimationEditor_AllFramesTooltip" xml:space="preserve"><value>Overlay every frame translucently while keeping the selected frame prominent.</value></data>
+  <data name="AnimationEditor_ArrowKeyMode" xml:space="preserve"><value>Arrow keys:</value></data>
+  <data name="AnimationEditor_Pan" xml:space="preserve"><value>Pan</value></data>
+  <data name="AnimationEditor_PanTooltip" xml:space="preserve"><value>Arrow keys scroll the preview. Press M to switch modes.</value></data>
+  <data name="AnimationEditor_MoveFrameMode" xml:space="preserve"><value>Move frame</value></data>
+  <data name="AnimationEditor_MoveFrameTooltip" xml:space="preserve"><value>Arrow keys move the selected layer by 1 pixel; hold Shift to move by 10. Press M to switch modes.</value></data>
   <data name="AnimationEditor_Timeline" xml:space="preserve"><value>TIMELINE</value></data>
   <data name="AnimationEditor_Loop" xml:space="preserve"><value>Loop</value></data>
   <data name="AnimationEditor_AddFrame" xml:space="preserve"><value>Add frame</value></data>
