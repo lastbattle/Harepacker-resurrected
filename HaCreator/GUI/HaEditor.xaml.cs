@@ -361,7 +361,6 @@ namespace HaCreator.GUI
                 {
                     toolWindowsTabControl.SelectedItem = inspectorTabItem;
                 }
-                mapExplorerTabItem.Visibility = Visibility.Collapsed;
                 RefreshInspectorLayerControls();
                 RefreshInspectorVisibilityControls();
             }), System.Windows.Threading.DispatcherPriority.Loaded);

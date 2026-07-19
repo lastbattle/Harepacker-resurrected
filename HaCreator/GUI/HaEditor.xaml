@@ -667,7 +667,6 @@
 
                 <TabItem x:Name="mapExplorerTabItem"
                          Header="{loc:Loc Editor_Maps_119E66}"
-                         Visibility="Collapsed"
                          HorizontalContentAlignment="Stretch"
                          VerticalContentAlignment="Stretch">
                     <TabItem.Resources>
