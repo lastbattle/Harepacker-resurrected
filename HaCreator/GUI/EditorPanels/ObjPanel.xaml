@@ -11,7 +11,7 @@
     </UserControl.Resources>
     <Grid Background="{StaticResource HareCanvasBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="210"/>
+            <RowDefinition Height="360"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
