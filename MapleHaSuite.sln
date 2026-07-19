@@ -31,6 +31,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_MapSimulator", "Un
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WzImgMCP", "WzImg-MCP-Server\WzImgMCP\WzImgMCP.csproj", "{14AC6559-57E9-8FC0-37C8-43E117AE5CFB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_AnimationEditor", "UnitTest_AnimationEditor\UnitTest_AnimationEditor.csproj", "{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -283,6 +285,30 @@ Global
 		{14AC6559-57E9-8FC0-37C8-43E117AE5CFB}.Release|x64.Build.0 = Release|Any CPU
 		{14AC6559-57E9-8FC0-37C8-43E117AE5CFB}.Release|x86.ActiveCfg = Release|Any CPU
 		{14AC6559-57E9-8FC0-37C8-43E117AE5CFB}.Release|x86.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|ARM.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|ARM.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|Win32.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|x64.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Debug|x86.Build.0 = Debug|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|ARM.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|ARM.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|ARM64.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|Win32.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|Win32.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|x64.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|x64.Build.0 = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|x86.ActiveCfg = Release|Any CPU
+		{FDABDED5-683F-4FE5-9D3F-5B15A3C82082}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
