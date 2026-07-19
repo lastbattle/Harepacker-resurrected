@@ -159,7 +159,10 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
+                if (_pn == value)
+                    return;
                 _pn = value;
+                board.InvalidatePortalPairCache();
             }
         }
 
@@ -174,8 +177,11 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
+                if (_pt == value)
+                    return;
                 _pt = value;
                 baseInfo = PortalInfo.GetPortalInfoByType(value);
+                board.InvalidatePortalPairCache();
             }
         }
 
@@ -188,7 +194,10 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
+                if (_tn == value)
+                    return;
                 _tn = value;
+                board.InvalidatePortalPairCache();
             }
         }
 

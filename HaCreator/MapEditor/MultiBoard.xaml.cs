@@ -312,6 +312,11 @@ namespace HaCreator.MapEditor
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
+            DrawLine(sprite, start, width, rotation, color);
+        }
+
+        public void DrawLine(SpriteBatch sprite, Vector2 start, int width, float rotation, Color color)
+        {
             sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
         }
 

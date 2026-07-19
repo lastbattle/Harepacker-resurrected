@@ -87,6 +87,7 @@ namespace HaCreator.Collections
 
         public void Clear()
         {
+            board.InvalidatePortalPairCache();
             foreach (IMapleList itemList in AllItemLists)
             {
                 itemList.Clear();
@@ -97,6 +98,9 @@ namespace HaCreator.Collections
         {
             lock (board.ParentControl)
             {
+                if (item is PortalInstance)
+                    board.InvalidatePortalPairCache();
+
                 if (item is TileInstance || item is ObjectInstance)
                     TileObjs.Remove((LayeredItem)item);
                 else if (item is BackgroundInstance)
@@ -138,6 +142,9 @@ namespace HaCreator.Collections
         {
             lock (board.ParentControl)
             {
+                if (item is PortalInstance)
+                    board.InvalidatePortalPairCache();
+
                 if (item is TileInstance || item is ObjectInstance)
                 {
                     TileObjs.Add((LayeredItem)item);
