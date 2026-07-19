@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
@@ -13,13 +14,14 @@ namespace HaCreator.GUI.Quest
         public QuestEditorStopConversationType _questEditorConversationType;
 
         private ObservableCollection<QuestEditorSayResponseModel> _responses = new ObservableCollection<QuestEditorSayResponseModel>();
+        private QuestEditorSayResponseModel _selectedResponse;
 
         /// <summary>
         /// Constructor
         /// </summary>
         public QuestEditorSayEndQuestModel()
         {
-
+            _responses.CollectionChanged += Responses_CollectionChanged;
         }
 
         public QuestEditorStopConversationType ConversationType
@@ -43,9 +45,41 @@ namespace HaCreator.GUI.Quest
             get => _responses;
             set
             {
-                _responses = value;
+                if (_responses != null)
+                    _responses.CollectionChanged -= Responses_CollectionChanged;
+
+                _responses = value ?? new ObservableCollection<QuestEditorSayResponseModel>();
+                _responses.CollectionChanged += Responses_CollectionChanged;
                 OnPropertyChanged(nameof(Responses));
+                EnsureSelectedResponse();
             }
+        }
+
+        /// <summary>
+        /// The stop response currently selected for editing and client preview.
+        /// </summary>
+        public QuestEditorSayResponseModel SelectedResponse
+        {
+            get => _selectedResponse;
+            set
+            {
+                if (_selectedResponse != value)
+                {
+                    _selectedResponse = value;
+                    OnPropertyChanged(nameof(SelectedResponse));
+                }
+            }
+        }
+
+        private void Responses_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            EnsureSelectedResponse();
+        }
+
+        private void EnsureSelectedResponse()
+        {
+            if (_selectedResponse == null || !_responses.Contains(_selectedResponse))
+                SelectedResponse = _responses.FirstOrDefault();
         }
 
 

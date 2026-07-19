@@ -1,6 +1,6 @@
 # Quest conversation preview
 
-`HaCreator/GUI/Quest/NpcConversationPreview` provides a resizable conversation studio below the `QuestEditor` conversation grid. Its raw markup editor and rendered client preview share the selected `Quest/Say.img` line, so edits in either the grid or studio stay synchronized.
+`HaCreator/GUI/Quest/NpcConversationPreview` provides a resizable conversation studio below the `QuestEditor` conversation grids. It is available for start, end, stop-start, and stop-end quest conversations. Its raw markup editor and rendered client preview share the selected `Quest/Say.img` line, so edits in either the grid or studio stay synchronized. Stop conversation groups expose their individual responses as selectable lines for preview and editing.
 
 The studio includes formatting buttons, an insert-token list, context hints after typing `#`, keyboard shortcuts, and line/column/token status. Editing and rendered output share the same client dialogue surface, while the vertical list/studio split remains user-resizable.
 

@@ -63,7 +63,7 @@ namespace HaCreator.GUI.Quest
             new("Item picture (#v)...", "#v1000000#", "Opens the item selector and inserts the alternate item-picture token.", TokenSelectorKind.ItemPicture)
         ];
 
-        private QuestEditorSayModel subscribedConversation;
+        private INotifyPropertyChanged subscribedConversation;
         private string speakerNpcId = string.Empty;
         private bool speakerOnRight;
         private bool updatingEditor;
@@ -71,7 +71,7 @@ namespace HaCreator.GUI.Quest
 
         public static readonly DependencyProperty ConversationProperty = DependencyProperty.Register(
             nameof(Conversation),
-            typeof(QuestEditorSayModel),
+            typeof(object),
             typeof(NpcConversationPreview),
             new PropertyMetadata(null, OnConversationChanged));
 
@@ -81,9 +81,9 @@ namespace HaCreator.GUI.Quest
             typeof(NpcConversationPreview),
             new PropertyMetadata(null, OnQuestChanged));
 
-        public QuestEditorSayModel Conversation
+        public object Conversation
         {
-            get => (QuestEditorSayModel)GetValue(ConversationProperty);
+            get => GetValue(ConversationProperty);
             set => SetValue(ConversationProperty, value);
         }
 
@@ -104,6 +104,31 @@ namespace HaCreator.GUI.Quest
             RefreshPreview();
         }
 
+        private bool HasConversation => Conversation is QuestEditorSayModel or QuestEditorSayResponseModel;
+
+        private string GetConversationText()
+        {
+            return Conversation switch
+            {
+                QuestEditorSayModel say => say.NpcConversation ?? string.Empty,
+                QuestEditorSayResponseModel response => response.Text ?? string.Empty,
+                _ => string.Empty
+            };
+        }
+
+        private void SetConversationText(string text)
+        {
+            switch (Conversation)
+            {
+                case QuestEditorSayModel say:
+                    say.NpcConversation = text;
+                    break;
+                case QuestEditorSayResponseModel response:
+                    response.Text = text;
+                    break;
+            }
+        }
+
         private static Brush CreateBrush(string color)
         {
             SolidColorBrush brush = new((Color)ColorConverter.ConvertFromString(color));
@@ -114,7 +139,7 @@ namespace HaCreator.GUI.Quest
         private static void OnConversationChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
         {
             NpcConversationPreview preview = (NpcConversationPreview)dependencyObject;
-            preview.SubscribeToConversation(e.OldValue as QuestEditorSayModel, e.NewValue as QuestEditorSayModel);
+            preview.SubscribeToConversation(e.OldValue as INotifyPropertyChanged, e.NewValue as INotifyPropertyChanged);
             preview.ResolveDefaultSpeaker();
             preview.LoadEditorText();
             preview.RefreshPreview();
@@ -127,7 +152,7 @@ namespace HaCreator.GUI.Quest
             preview.RefreshPreview();
         }
 
-        private void SubscribeToConversation(QuestEditorSayModel oldConversation, QuestEditorSayModel newConversation)
+        private void SubscribeToConversation(INotifyPropertyChanged oldConversation, INotifyPropertyChanged newConversation)
         {
             if (oldConversation != null)
                 oldConversation.PropertyChanged -= Conversation_PropertyChanged;
@@ -146,7 +171,8 @@ namespace HaCreator.GUI.Quest
 
         private void Conversation_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(QuestEditorSayModel.NpcConversation))
+            if (e.PropertyName == nameof(QuestEditorSayModel.NpcConversation) ||
+                e.PropertyName == nameof(QuestEditorSayResponseModel.Text))
             {
                 if (!updatingModel)
                     LoadEditorText();
@@ -163,7 +189,7 @@ namespace HaCreator.GUI.Quest
             if (MarkupEditor == null)
                 return;
 
-            string conversationText = Conversation?.NpcConversation ?? string.Empty;
+            string conversationText = GetConversationText();
             if (MarkupEditor.Text != conversationText)
             {
                 int oldCaretIndex = MarkupEditor.CaretIndex;
@@ -173,18 +199,18 @@ namespace HaCreator.GUI.Quest
                 updatingEditor = false;
             }
 
-            MarkupEditor.IsReadOnly = Conversation == null;
+            MarkupEditor.IsReadOnly = !HasConversation;
             UpdateEditorStatus();
         }
 
         private void MarkupEditor_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (!updatingEditor && Conversation != null && Conversation.NpcConversation != MarkupEditor.Text)
+            if (!updatingEditor && HasConversation && GetConversationText() != MarkupEditor.Text)
             {
                 updatingModel = true;
                 try
                 {
-                    Conversation.NpcConversation = MarkupEditor.Text;
+                    SetConversationText(MarkupEditor.Text);
                 }
                 finally
                 {
@@ -359,7 +385,7 @@ namespace HaCreator.GUI.Quest
 
         private void ApplyFormattingSpec(string formattingSpec)
         {
-            if (Conversation == null || string.IsNullOrEmpty(formattingSpec))
+            if (!HasConversation || string.IsNullOrEmpty(formattingSpec))
                 return;
 
             MarkupEditor.Focus();
@@ -429,9 +455,9 @@ namespace HaCreator.GUI.Quest
         private void ResolveDefaultSpeaker()
         {
             speakerNpcId = FindQuestSpeakerNpcId();
-            if (string.IsNullOrEmpty(speakerNpcId) && Conversation != null)
+            if (string.IsNullOrEmpty(speakerNpcId) && HasConversation)
             {
-                Match referencedNpc = ReferencedNpcRegex.Match(Conversation.NpcConversation ?? string.Empty);
+                Match referencedNpc = ReferencedNpcRegex.Match(GetConversationText());
                 if (referencedNpc.Success)
                     speakerNpcId = referencedNpc.Groups[1].Value;
             }
@@ -444,7 +470,12 @@ namespace HaCreator.GUI.Quest
             if (Quest == null)
                 return string.Empty;
 
-            bool isEndConversation = Conversation != null && Quest.SayInfoEndQuest.Contains(Conversation);
+            bool isEndConversation = Conversation switch
+            {
+                QuestEditorSayModel say => Quest.SayInfoEndQuest.Contains(say),
+                QuestEditorSayResponseModel response => Quest.SayInfoStop_EndQuest.Any(stop => stop.Responses.Contains(response)),
+                _ => false
+            };
             IEnumerable<QuestEditorCheckInfoModel> preferredChecks = isEndConversation
                 ? Quest.CheckEndInfo
                 : Quest.CheckStartInfo;
@@ -556,7 +587,7 @@ namespace HaCreator.GUI.Quest
             Paragraph paragraph = new() { Margin = new Thickness(0), LineHeight = 18 };
             document.Blocks.Add(paragraph);
 
-            if (Conversation == null)
+            if (!HasConversation)
             {
                 paragraph.Inlines.Add(new Run("Select a conversation row to preview it.")
                 {
@@ -566,7 +597,7 @@ namespace HaCreator.GUI.Quest
             }
             else
             {
-                RenderMarkup(paragraph, Conversation.NpcConversation ?? string.Empty);
+                RenderMarkup(paragraph, GetConversationText());
             }
 
             DialogueText.Document = document;
@@ -575,7 +606,9 @@ namespace HaCreator.GUI.Quest
 
         private void UpdateNavigationButtons()
         {
-            QuestEditorConversationType conversationType = Conversation?.ConversationType ?? QuestEditorConversationType.NextPrev;
+            QuestEditorConversationType conversationType = Conversation is QuestEditorSayModel say
+                ? say.ConversationType
+                : QuestEditorConversationType.NextPrev;
             PreviousButton.Visibility = conversationType == QuestEditorConversationType.NextPrev
                 ? Visibility.Visible
                 : Visibility.Collapsed;
