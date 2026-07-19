@@ -38,6 +38,18 @@ namespace HaCreator.GUI
             this.Loaded += HaEditor2_Loaded;
             this.Closed += HaEditor2_Closed;
             this.StateChanged += HaEditor2_StateChanged;
+            this.Activated += HaEditor2_Activated;
+            this.Deactivated += HaEditor2_Deactivated;
+        }
+
+        private void HaEditor2_Activated(object sender, EventArgs e)
+        {
+            multiBoard.UpdateWindowActivation(true);
+        }
+
+        private void HaEditor2_Deactivated(object sender, EventArgs e)
+        {
+            multiBoard.UpdateWindowActivation(false);
         }
 
         /// <summary>

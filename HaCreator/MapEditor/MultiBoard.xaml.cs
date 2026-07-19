@@ -96,6 +96,7 @@ namespace HaCreator.MapEditor
         }
 
         private System.Windows.WindowState CurrentHostWindowState = System.Windows.WindowState.Normal;
+        private volatile bool isHostWindowActive = true;
         private System.Drawing.Size _CurrentDXWindowSize = new System.Drawing.Size();
         public System.Drawing.Size CurrentDXWindowSize
         {
@@ -116,6 +117,11 @@ namespace HaCreator.MapEditor
         public void UpdateWindowState(System.Windows.WindowState CurrentHostWindowState)
         {
             this.CurrentHostWindowState = CurrentHostWindowState;
+        }
+
+        public void UpdateWindowActivation(bool isActive)
+        {
+            isHostWindowActive = isActive;
         }
 
         public void UpdateWindowSize(System.Windows.Size CurrentWindowSize)
@@ -162,7 +168,9 @@ namespace HaCreator.MapEditor
 
             while (!Program.AbortThreads)
             {
-                if (DeviceReady && CurrentHostWindowState != System.Windows.WindowState.Minimized)
+                if (DeviceReady
+                    && isHostWindowActive
+                    && CurrentHostWindowState != System.Windows.WindowState.Minimized)
                 {
                     RenderFrame();
 #if FPS_TEST
