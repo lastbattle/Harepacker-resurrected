@@ -1,0 +1,818 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <data name="Dialog_About_HaCreator_D7275A" xml:space="preserve">
+    <value>關於 HaCreator</value>
+  </data>
+  <data name="Dialog_Activity_log_A9D562" xml:space="preserve">
+    <value>活動記錄</value>
+  </data>
+  <data name="Dialog_Allow_WZ_fallback_in_hybrid_mode_C01FB6" xml:space="preserve">
+    <value>允許混合模式回退至 WZ</value>
+  </data>
+  <data name="Dialog_Back_76900F" xml:space="preserve">
+    <value>上一步</value>
+  </data>
+  <data name="Dialog_Background_formulae_Koolk_God_F7E779" xml:space="preserve">
+    <value>背景公式 — Koolk, God
+
+</value>
+  </data>
+  <data name="Dialog_Behavior_EDF8D3" xml:space="preserve">
+    <value>行為</value>
+  </data>
+  <data name="Dialog_Blank_map_8DF131" xml:space="preserve">
+    <value>空白地圖</value>
+  </data>
+  <data name="Dialog_Browse_3227AA" xml:space="preserve">
+    <value>瀏覽</value>
+  </data>
+  <data name="Dialog_Browse_maps_75E8C8" xml:space="preserve">
+    <value>瀏覽地圖</value>
+  </data>
+  <data name="Dialog_Browse_93C6B6" xml:space="preserve">
+    <value>瀏覽…</value>
+  </data>
+  <data name="Dialog_Cached_images_CCAEA9" xml:space="preserve">
+    <value>快取影像</value>
+  </data>
+  <data name="Dialog_Cancel_19766E" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Dialog_Categories_to_pack_28422D" xml:space="preserve">
+    <value>要封裝的類別</value>
+  </data>
+  <data name="Dialog_Change_layer_577636" xml:space="preserve">
+    <value>變更圖層</value>
+  </data>
+  <data name="Dialog_Choose_a_MapleStory_installation_select_the_data_groups_528310" xml:space="preserve">
+    <value>選擇 MapleStory 安裝位置與要解壓縮的資料群組，並建立可重用的 HaCreator 版本。</value>
+  </data>
+  <data name="Dialog_Choose_how_HaCreator_loads_and_caches_MapleStory_assets_D8EF67" xml:space="preserve">
+    <value>選擇 HaCreator 載入與快取 MapleStory 資源的方式。</value>
+  </data>
+  <data name="Dialog_Choose_the_categories_and_target_format_for_the_generat_4E9F07" xml:space="preserve">
+    <value>選擇要產生的 WZ 資料類別與目標格式。</value>
+  </data>
+  <data name="Dialog_Choose_the_map_ID_or_a_supported_special_map_name_624D2A" xml:space="preserve">
+    <value>選擇地圖 ID 或支援的特殊地圖名稱。</value>
+  </data>
+  <data name="Dialog_Choose_tile_set_7EB655" xml:space="preserve">
+    <value>選擇磚塊組</value>
+  </data>
+  <data name="Dialog_Choose_which_modified_archives_to_write_B53E60" xml:space="preserve">
+    <value>選擇要寫入的已修改封存檔。</value>
+  </data>
+  <data name="Dialog_Client_locale_0C3F96" xml:space="preserve">
+    <value>用戶端地區設定</value>
+  </data>
+  <data name="Dialog_Clip_text_to_bounds_C0904C" xml:space="preserve">
+    <value>將文字裁剪至邊界</value>
+  </data>
+  <data name="Dialog_Clone_map_36503E" xml:space="preserve">
+    <value>複製地圖</value>
+  </data>
+  <data name="Dialog_Close_7D9EB7" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Circle_9FABCB" xml:space="preserve">
+    <value>圓形色票</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_1_B757EF" xml:space="preserve">
+    <value>方形色票 1</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_2_2EA9D8" xml:space="preserve">
+    <value>方形色票 2</value>
+  </data>
+  <data name="Dialog_Colors_88C45D" xml:space="preserve">
+    <value>色彩</value>
+  </data>
+  <data name="Dialog_Configure_version_BA4170" xml:space="preserve">
+    <value>設定版本</value>
+  </data>
+  <data name="Dialog_Convert_WZ_assets_automatically_DA87FF" xml:space="preserve">
+    <value>自動轉換 WZ 資源</value>
+  </data>
+  <data name="Dialog_Copy_all_96E3F0" xml:space="preserve">
+    <value>全部複製</value>
+  </data>
+  <data name="Dialog_Create_a_map_AFD283" xml:space="preserve">
+    <value>建立地圖</value>
+  </data>
+  <data name="Dialog_Create_blank_map_A7F938" xml:space="preserve">
+    <value>建立空白地圖</value>
+  </data>
+  <data name="Dialog_Create_from_map_CFB30F" xml:space="preserve">
+    <value>從地圖建立</value>
+  </data>
+  <data name="Dialog_Create_map_AD41DE" xml:space="preserve">
+    <value>建立地圖</value>
+  </data>
+  <data name="Dialog_Credits_and_attributions_8F890E" xml:space="preserve">
+    <value>製作人員與出處</value>
+  </data>
+  <data name="Dialog_Custom_objects_3DD433" xml:space="preserve">
+    <value>自訂物件</value>
+  </data>
+  <data name="Dialog_Data_source_settings_6660A7" xml:space="preserve">
+    <value>資料來源設定</value>
+  </data>
+  <data name="Dialog_Delete_object_0B1BBB" xml:space="preserve">
+    <value>刪除物件</value>
+  </data>
+  <data name="Dialog_Deleting_an_object_removes_it_from_the_custom_object_li_D93856" xml:space="preserve">
+    <value>刪除物件會將它從自訂物件庫移除，現有地圖中的配置不會自動修復。</value>
+  </data>
+  <data name="Dialog_Detected_installations_EAE79D" xml:space="preserve">
+    <value>偵測到的安裝</value>
+  </data>
+  <data name="Dialog_Display_name_2B7F6A" xml:space="preserve">
+    <value>顯示名稱</value>
+  </data>
+  <data name="Dialog_Edit_values_stored_in_Map_Physics_img_3C88D3" xml:space="preserve">
+    <value>編輯儲存在 Map/Physics.img 的值。</value>
+  </data>
+  <data name="Dialog_Enable_automatic_backups_217ACD" xml:space="preserve">
+    <value>啟用自動備份</value>
+  </data>
+  <data name="Dialog_Encryption_82F4E7" xml:space="preserve">
+    <value>加密</value>
+  </data>
+  <data name="Dialog_Export_folder_B41FF5" xml:space="preserve">
+    <value>匯出資料夾</value>
+  </data>
+  <data name="Dialog_Extract_C15301" xml:space="preserve">
+    <value>解壓縮</value>
+  </data>
+  <data name="Dialog_Extract_WZ_Data_42667B" xml:space="preserve">
+    <value>解壓縮 WZ 資料</value>
+  </data>
+  <data name="Dialog_Extracting_assets_17CB7D" xml:space="preserve">
+    <value>正在解壓縮資源</value>
+  </data>
+  <data name="Dialog_Field_limits_field_types_and_portal_types_Koolk_Fiel_Bl_54AB6B" xml:space="preserve">
+    <value>欄位限制、欄位類型與傳送點類型 — Koolk, Fiel, BluePoop, LightPepsi, Bui
+
+</value>
+  </data>
+  <data name="Dialog_Find_usages_1A0A20" xml:space="preserve">
+    <value>尋找使用位置</value>
+  </data>
+  <data name="Dialog_Fix_foothold_mispositions_D4B68F" xml:space="preserve">
+    <value>修正立足點錯位</value>
+  </data>
+  <data name="Dialog_Font_name_2CD8F5" xml:space="preserve">
+    <value>字型名稱</value>
+  </data>
+  <data name="Dialog_General_C910D4" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="Dialog_Generate_extraction_index_B7D7D5" xml:space="preserve">
+    <value>產生解壓縮索引</value>
+  </data>
+  <data name="Dialog_Graphics_and_GUI_Anthonywolfe_Diamondo25_Bugale_98E17C" xml:space="preserve">
+    <value>圖形與 GUI — Anthonywolfe, Diamondo25, Bugale
+
+</value>
+  </data>
+  <data name="Dialog_HaCreator_encountered_an_error_9237B9" xml:space="preserve">
+    <value>HaCreator 發生錯誤</value>
+  </data>
+  <data name="Dialog_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Dialog_HaCreator_settings_762561" xml:space="preserve">
+    <value>HaCreator 設定</value>
+  </data>
+  <data name="Dialog_Height_BFE2EC" xml:space="preserve">
+    <value>高度</value>
+  </data>
+  <data name="Dialog_Hybrid_6C67DC" xml:space="preserve">
+    <value>混合</value>
+  </data>
+  <data name="Dialog_IMG_filesystem_5D40A3" xml:space="preserve">
+    <value>IMG 檔案系統</value>
+  </data>
+  <data name="Dialog_Input_36ECB4" xml:space="preserve">
+    <value>輸入</value>
+  </data>
+  <data name="Dialog_Invert_layer_up_down_8D7820" xml:space="preserve">
+    <value>反轉圖層上移/下移</value>
+  </data>
+  <data name="Dialog_Layer_AC9FFC" xml:space="preserve">
+    <value>圖層</value>
+  </data>
+  <data name="Dialog_Linked_to_B4B7FE" xml:space="preserve">
+    <value>連結至 </value>
+  </data>
+  <data name="Dialog_Manage_custom_objects_2FDA41" xml:space="preserve">
+    <value>管理自訂物件</value>
+  </data>
+  <data name="Dialog_Manual_folder_959DA1" xml:space="preserve">
+    <value>手動選擇資料夾</value>
+  </data>
+  <data name="Dialog_Map_data_is_unavailable_537DF8" xml:space="preserve">
+    <value>無法使用地圖資料</value>
+  </data>
+  <data name="Dialog_Map_diagnostics_269074" xml:space="preserve">
+    <value>地圖診斷</value>
+  </data>
+  <data name="Dialog_Map_editor_for_MapleStory_WZ_data_F80834" xml:space="preserve">
+    <value>MapleStory WZ 資料的地圖編輯器</value>
+  </data>
+  <data name="Dialog_Map_hierarchy_E5070B" xml:space="preserve">
+    <value>地圖階層</value>
+  </data>
+  <data name="Dialog_Map_physics_C03020" xml:space="preserve">
+    <value>地圖物理</value>
+  </data>
+  <data name="Dialog_MapleLib_Snow_0E19E4" xml:space="preserve">
+    <value>MapleLib — Snow
+
+</value>
+  </data>
+  <data name="Dialog_Memory_cache_MB_CF25E8" xml:space="preserve">
+    <value>記憶體快取 (MB)</value>
+  </data>
+  <data name="Dialog_Migrate_to_IMG_filesystem_53CE8F" xml:space="preserve">
+    <value>遷移至 IMG 檔案系統</value>
+  </data>
+  <data name="Dialog_Migrate_WZ_files_70876B" xml:space="preserve">
+    <value>遷移 WZ 檔案</value>
+  </data>
+  <data name="Dialog_Mode_5E23EC" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="Dialog_Name_2683CA" xml:space="preserve">
+    <value>名稱：</value>
+  </data>
+  <data name="Dialog_NEW_A253FF" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="Dialog_New_platform_20103C" xml:space="preserve">
+    <value>新增平台</value>
+  </data>
+  <data name="Dialog_Next_1FF57A" xml:space="preserve">
+    <value>下一步</value>
+  </data>
+  <data name="Dialog_OK_565339" xml:space="preserve">
+    <value>確定</value>
+  </data>
+  <data name="Dialog_Open_log_7230E6" xml:space="preserve">
+    <value>開啟記錄</value>
+  </data>
+  <data name="Dialog_Open_project_repository_50B264" xml:space="preserve">
+    <value>開啟專案存放庫</value>
+  </data>
+  <data name="Dialog_Output_folder_998915" xml:space="preserve">
+    <value>輸出資料夾</value>
+  </data>
+  <data name="Dialog_Output_format_93C53D" xml:space="preserve">
+    <value>輸出格式</value>
+  </data>
+  <data name="Dialog_Pack_80DC21" xml:space="preserve">
+    <value>封裝</value>
+  </data>
+  <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
+    <value>封裝為 Beta Data.wz</value>
+  </data>
+  <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
+    <value>將 IMG 檔案封裝為 WZ</value>
+  </data>
+
+  <data name="Dialog_Parallel_extraction_threads_23467E" xml:space="preserve">
+    <value>平行解壓縮執行緒</value>
+  </data>
+  <data name="Dialog_Patch_version_0_auto_45DAB0" xml:space="preserve">
+    <value>修補版本（0 = 自動）</value>
+  </data>
+  <data name="Dialog_Physics_and_character_simulation_research_Lexi_9E98C8" xml:space="preserve">
+    <value>物理與角色模擬研究 — Lexi
+
+</value>
+  </data>
+  <data name="Dialog_Pick_Color_9B78AB" xml:space="preserve">
+    <value>選擇顏色</value>
+  </data>
+  <data name="Dialog_Pick_swatch_type_44DF7A" xml:space="preserve">
+    <value>選擇色票類型</value>
+  </data>
+  <data name="Dialog_Platform_zM_71E85E" xml:space="preserve">
+    <value>平台 (zM)</value>
+  </data>
+  <data name="Dialog_Platform_number_DD431C" xml:space="preserve">
+    <value>平台編號</value>
+  </data>
+  <data name="Dialog_Please_wait_650CFE" xml:space="preserve">
+    <value>請稍候</value>
+  </data>
+  <data name="Dialog_Preview_324B13" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="Dialog_Read_9B9A8D" xml:space="preserve">
+    <value>讀取</value>
+  </data>
+  <data name="Dialog_Ready_5FA7AA" xml:space="preserve">
+    <value>就緒</value>
+  </data>
+  <data name="Dialog_Repack_8D3E09" xml:space="preserve">
+    <value>重新封裝</value>
+  </data>
+  <data name="Dialog_Repack_changed_WZ_files_598100" xml:space="preserve">
+    <value>重新封裝已變更的 WZ 檔案</value>
+  </data>
+  <data name="Dialog_Repack_WZ_files_FE4AEF" xml:space="preserve">
+    <value>重新封裝 WZ 檔案</value>
+  </data>
+  <data name="Dialog_Repacker_Resurrection_LastBattle_HaCreator_Resurrection_7F3172" xml:space="preserve">
+    <value>重新封裝er 復興 — LastBattle
+HaCreator 復興 — Lapig</value>
+  </data>
+  <data name="Dialog_Reset_defaults_4542D4" xml:space="preserve">
+    <value>重設預設值</value>
+  </data>
+  <data name="Dialog_Review_reusable_objects_created_in_this_workspace_and_f_D306AC" xml:space="preserve">
+    <value>檢視此工作區建立的可重用物件，並尋找每個物件的使用位置。</value>
+  </data>
+  <data name="Dialog_Save_1509F5" xml:space="preserve">
+    <value>儲存</value>
+  </data>
+  <data name="Dialog_Save_as_64_bit_WZ_format_4BC4B4" xml:space="preserve">
+    <value>儲存為 64 位元 WZ 格式</value>
+  </data>
+  <data name="Dialog_Save_changed_images_to_source_3FCA18" xml:space="preserve">
+    <value>將已變更影像儲存至來源</value>
+  </data>
+  <data name="Dialog_Save_images_in_a_separate_Canvas_folder_0133B6" xml:space="preserve">
+    <value>將影像儲存在個別的 _Canvas 資料夾</value>
+  </data>
+  <data name="Dialog_Save_map_AB74BA" xml:space="preserve">
+    <value>儲存 map</value>
+  </data>
+  <data name="Dialog_Scan_folder_48FCB3" xml:space="preserve">
+    <value>掃描資料夾</value>
+  </data>
+  <data name="Dialog_Scan_installation_D2939B" xml:space="preserve">
+    <value>掃描安裝位置…</value>
+  </data>
+  <data name="Dialog_Search_and_select_a_tile_set_for_the_active_layer_E5FB28" xml:space="preserve">
+    <value>搜尋並選取目前圖層的磚塊組。</value>
+  </data>
+  <data name="Dialog_Select_2A7802" xml:space="preserve">
+    <value>選取</value>
+  </data>
+  <data name="Dialog_Select_a_MapleStory_installation_to_begin_1BD82A" xml:space="preserve">
+    <value>選擇 MapleStory 安裝位置以開始。</value>
+  </data>
+  <data name="Dialog_Select_all_1FC9A3" xml:space="preserve">
+    <value>全部選取</value>
+  </data>
+  <data name="Dialog_Select_none_41AFE0" xml:space="preserve">
+    <value>全部取消選取</value>
+  </data>
+  <data name="Dialog_Select_source_140B76" xml:space="preserve">
+    <value>選擇來源</value>
+  </data>
+  <data name="Dialog_Show_error_summaries_7C99AC" xml:space="preserve">
+    <value>顯示錯誤摘要</value>
+  </data>
+  <data name="Dialog_Something_went_wrong_AB827E" xml:space="preserve">
+    <value>發生錯誤</value>
+  </data>
+  <data name="Dialog_Source_Unknown_14D3DB" xml:space="preserve">
+    <value>來源：未知</value>
+  </data>
+  <data name="Dialog_This_wizard_extracts_a_MapleStory_WZ_installation_into_A3FE9D" xml:space="preserve">
+    <value>此精靈會將 MapleStory WZ 安裝內容解壓縮為版本化 IMG 檔案系統。</value>
+  </data>
+  <data name="Dialog_Tile_sets_429FBB" xml:space="preserve">
+    <value>磚塊組</value>
+  </data>
+  <data name="Dialog_Tile_snapping_offsets_special_list_view_control_and_mob_81965C" xml:space="preserve">
+    <value>磚塊貼齊偏移、特殊清單檢視控制項與怪物倍率 — Koolk
+
+</value>
+  </data>
+  <data name="Dialog_Unknown_B764CD" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Dialog_Use_memory_mapped_files_EDB079" xml:space="preserve">
+    <value>使用記憶體對映檔案</value>
+  </data>
+  <data name="Dialog_Validate_after_extraction_7FAB37" xml:space="preserve">
+    <value>解壓縮後驗證</value>
+  </data>
+  <data name="Dialog_Value_224A33" xml:space="preserve">
+    <value>值：</value>
+  </data>
+  <data name="Dialog_Version_name_C5BE1C" xml:space="preserve">
+    <value>版本名稱</value>
+  </data>
+  <data name="Dialog_Width_301994" xml:space="preserve">
+    <value>寬度</value>
+  </data>
+  <data name="Dialog_Working_A92F04" xml:space="preserve">
+    <value>處理中</value>
+  </data>
+  <data name="Dialog_Write_3F0092" xml:space="preserve">
+    <value>寫入</value>
+  </data>
+  <data name="Dialog_WZ_data_groups_EB7F0F" xml:space="preserve">
+    <value>WZ 資料群組</value>
+  </data>
+  <data name="Dialog_WZ_files_8F86F3" xml:space="preserve">
+    <value>WZ 檔案</value>
+  </data>
+  <data name="Dialog_WZ_path_AA541C" xml:space="preserve">
+    <value>WZ 路徑</value>
+  </data>
+<data name="Dialog_CancelTimeoutMessage" xml:space="preserve"><value>無法在 5000 毫秒內停止背景動作。如果應用程式行為異常，請儲存工作並重新啟動。</value></data><data name="Dialog_CancelTimeoutTitle" xml:space="preserve"><value>背景動作仍在執行</value></data><data name="Dialog_ImgModeDescription" xml:space="preserve"><value>IMG 檔案系統模式（建議）：快速使用已解壓縮資源並直接編輯檔案。</value></data><data name="Dialog_WzModeDescription" xml:space="preserve"><value>WZ 檔案模式（舊版）：直接從 MapleStory 安裝位置載入。</value></data><data name="Dialog_HybridModeDescription" xml:space="preserve"><value>混合模式：優先使用已解壓縮的 IMG 資源，並在需要時回退至 WZ 檔案。</value></data><data name="Dialog_SelectMapleWzFolder" xml:space="preserve"><value>選擇包含 WZ 檔案的 MapleStory 目錄</value></data><data name="Dialog_NoWzFiles" xml:space="preserve"><value>所選資料夾不包含 .wz 檔案。</value></data><data name="Dialog_InvalidDirectory" xml:space="preserve"><value>無效的目錄</value></data><data name="Dialog_ConfirmResetDataSource" xml:space="preserve"><value>要將所有資料來源設定重設為預設值嗎？</value></data><data name="Dialog_ConfirmReset" xml:space="preserve"><value>確認重設</value></data><data name="Dialog_SpecifyWzDirectory" xml:space="preserve"><value>請指定 WZ 檔案目錄。</value></data><data name="Dialog_ValidationError" xml:space="preserve"><value>驗證錯誤</value></data><data name="Dialog_CacheThreadsIntegers" xml:space="preserve"><value>快取與執行緒的值必須是整數。</value></data><data name="Dialog_LayerTileSetMismatch" xml:space="preserve"><value>目標圖層無法容納所選項目，因為其中包含不同磚塊組的磚塊。</value></data><data name="Dialog_CannotChangeLayer" xml:space="preserve"><value>無法變更圖層</value></data><data name="Dialog_PhysicsUnavailableBeta" xml:space="preserve"><value>Beta MapleStory 資料不支援物理編輯。</value></data><data name="Dialog_NoDataSource" xml:space="preserve"><value>沒有可用的資料來源。</value></data><data name="Dialog_PhysicsLoadFailed" xml:space="preserve"><value>無法載入 Map/Physics.img。
+{0}</value></data><data name="Dialog_PhysicsUpdated" xml:space="preserve"><value>物理值已更新。請重新封裝 WZ 檔案以保留變更。</value></data><data name="Dialog_Success" xml:space="preserve"><value>成功</value></data><data name="Dialog_PositiveDimensions" xml:space="preserve"><value>請輸入正數尺寸。</value></data><data name="Dialog_InvalidMapSize" xml:space="preserve"><value>無效的地圖大小</value></data><data name="Dialog_SelectedMapLoadFailed" xml:space="preserve"><value>無法載入所選地圖。</value></data><data name="Dialog_InvalidSettingValue" xml:space="preserve"><value>設定包含無效的值。
+{0}</value></data><data name="Dialog_InvalidSettings" xml:space="preserve"><value>無效的設定</value></data><data name="Dialog_EnterValidInteger" xml:space="preserve"><value>請輸入有效的整數值。</value></data><data name="Dialog_InvalidInput" xml:space="preserve"><value>無效的輸入</value></data><data name="Dialog_ValidationFailed" xml:space="preserve"><value>驗證失敗</value></data><data name="Dialog_NextButton" xml:space="preserve"><value>下一步 &gt;</value></data><data name="Dialog_StartExtraction" xml:space="preserve"><value>開始解壓縮</value></data><data name="Dialog_Cancel" xml:space="preserve"><value>取消</value></data><data name="Dialog_WizardStep" xml:space="preserve"><value>步驟 {0} / {1}</value></data><data name="Dialog_ConfirmCancelExtraction" xml:space="preserve"><value>確定要取消解壓縮嗎？</value></data><data name="Dialog_SelectScanFolder" xml:space="preserve"><value>選擇要掃描 MapleStory 安裝位置的資料夾</value></data><data name="Dialog_NoMapleInstallations" xml:space="preserve"><value>在所選資料夾中找不到 MapleStory 安裝。</value></data><data name="Dialog_ScanComplete" xml:space="preserve"><value>掃描完成</value></data><data name="Dialog_InvalidVersionNameChars" xml:space="preserve"><value>版本名稱只能包含字母、數字、底線與連字號。</value></data><data name="Dialog_VersionExists" xml:space="preserve"><value>已存在同名版本。</value></data><data name="Dialog_StartingExtraction" xml:space="preserve"><value>正在開始解壓縮...</value></data><data name="Dialog_LogStartingCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] 開始：{1}</value></data><data name="Dialog_LogCompletedCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] 完成：{1}（{2} 個影像）</value></data><data name="Dialog_ExtractionSuccess" xml:space="preserve"><value>解壓縮成功完成！</value></data><data name="Dialog_Finish" xml:space="preserve"><value>完成</value></data><data name="Dialog_ExtractionSuccessSummary" xml:space="preserve"><value>解壓縮成功完成！
+
+已解壓縮類別：{0}
+已解壓縮影像：{1}
+經過時間：{2:mm\:ss}</value></data><data name="Dialog_ExtractionCompletedErrors" xml:space="preserve"><value>解壓縮完成，但發生錯誤。</value></data><data name="Dialog_Back" xml:space="preserve"><value>上一步</value></data><data name="Dialog_ExtractionCancelled" xml:space="preserve"><value>解壓縮已取消。</value></data><data name="Dialog_ErrorWithMessage" xml:space="preserve"><value>錯誤：{0}</value></data><data name="Dialog_ExtractionException" xml:space="preserve"><value>解壓縮期間發生錯誤：
+
+{0}</value></data><data name="Dialog_Error" xml:space="preserve"><value>錯誤</value></data><data name="Dialog_RepackNotNeededImg" xml:space="preserve"><value>IMG 檔案系統模式不需要重新封裝。
+
+變更會直接儲存至磁碟上的 IMG 檔案。</value></data><data name="Dialog_ImgFilesystemMode" xml:space="preserve"><value>IMG 檔案系統模式</value></data><data name="Dialog_RepackSuccess" xml:space="preserve"><value>重新封裝成功。</value></data><data name="Dialog_RepackSuccessReplace" xml:space="preserve"><value>重新封裝成功。請取代 HaCreator\Output 中的檔案。</value></data><data name="Dialog_RepackSaveAborted" xml:space="preserve"><value>儲存 {0} 時發生錯誤；已中止。</value></data><data name="Dialog_RepackPermissionError" xml:space="preserve"><value>儲存時發生錯誤。您可能沒有目標資料夾的權限，或檔案正在使用中。
+
+選取「確定」以檢視錯誤詳細資料。</value></data><data name="Dialog_DeletingBackups" xml:space="preserve"><value>正在刪除舊備份...</value></data><data name="Dialog_SavingFile" xml:space="preserve"><value>正在儲存 {0}...</value></data><data name="Dialog_Finished" xml:space="preserve"><value>已完成</value></data><data name="Dialog_SavingXml" xml:space="preserve"><value>正在儲存 XML 檔案...</value></data><data name="Dialog_ChooseMapId" xml:space="preserve"><value>請選擇 ID。</value></data><data name="Dialog_NumericMapId" xml:space="preserve"><value>請輸入數字地圖 ID。</value></data><data name="Dialog_MapIdRange" xml:space="preserve"><value>請選擇 {0} 到 {1} 之間的 ID。</value></data><data name="Dialog_MapIdExists" xml:space="preserve"><value>該 ID 已存在；請選擇空白 ID。</value></data><data name="Dialog_MapOverwriteWarning" xml:space="preserve"><value>這將覆寫現有地圖。</value></data><data name="Dialog_UnsavedObjectsPrompt" xml:space="preserve"><value>未儲存的使用者物件將寫入 WZ 檔案：
+
+{0}
+
+要繼續嗎？</value></data><data name="Dialog_UnsavedObjectsTitle" xml:space="preserve"><value>未儲存的物件</value></data><data name="Dialog_SavedMapId" xml:space="preserve"><value>已儲存 ID 為 {0} 的地圖</value></data><data name="Dialog_SavedMapName" xml:space="preserve"><value>已儲存地圖：{0}</value></data><data name="Dialog_ConfirmDeleteObject" xml:space="preserve"><value>此動作無法復原。要移除此物件嗎？</value></data><data name="Dialog_DeleteCustomObject" xml:space="preserve"><value>刪除自訂物件</value></data><data name="Dialog_SearchAllMapsPrompt" xml:space="preserve"><value>要在所有已載入地圖中搜尋此物件嗎？這可能需要一些時間。</value></data><data name="Dialog_FindUsages" xml:space="preserve"><value>尋找使用位置</value></data><data name="Dialog_Searching" xml:space="preserve"><value>正在搜尋...</value></data><data name="Dialog_OpenMapResult" xml:space="preserve"><value>{0}（已開啟）</value></data><data name="Dialog_ObjectNotUsed" xml:space="preserve"><value>任何地圖都未使用此物件。</value></data><data name="Dialog_ObjectUsageMaps" xml:space="preserve"><value>下列地圖使用此物件：
+
+{0}</value></data><data name="Dialog_UsageResults" xml:space="preserve"><value>使用結果</value></data><data name="Dialog_CrashBeforeEditing" xml:space="preserve"><value>HaCreator 在地圖編輯開始前停止。沒有遺失地圖工作。詳細錯誤記錄已儲存至 {0}。回報問題時請附上此檔案。</value></data><data name="Dialog_RestartHaCreator" xml:space="preserve"><value>重新啟動 HaCreator</value></data><data name="Dialog_CrashDuringEditing" xml:space="preserve"><value>HaCreator 在編輯期間發生未預期的錯誤。復原管理員會在重新啟動前保留可用的地圖工作。詳細錯誤記錄已儲存至 {0}。</value></data><data name="Dialog_SaveRecoveryRestart" xml:space="preserve"><value>儲存復原資料並重新啟動</value></data><data name="Dialog_NoChangedImages" xml:space="preserve"><value>沒有要儲存的已變更影像</value></data><data name="Dialog_SelectWzOutputFolder" xml:space="preserve"><value>選擇 WZ 檔案的輸出資料夾</value></data><data name="Dialog_SelectPackCategory" xml:space="preserve"><value>請至少選擇一個要封裝的類別。</value></data><data name="Dialog_NoCategoriesSelected" xml:space="preserve"><value>未選擇類別</value></data><data name="Dialog_SpecifyOutputPath" xml:space="preserve"><value>請指定輸出路徑。</value></data><data name="Dialog_OutputPathRequired" xml:space="preserve"><value>需要輸出路徑</value></data><data name="Dialog_SavingChangedImages" xml:space="preserve"><value>正在將 {0} 個已變更影像儲存至來源...</value></data><data name="Dialog_SavedChangedImages" xml:space="preserve"><value>已將 {0} 個影像儲存至來源。</value></data><data name="Dialog_PartialImageSave" xml:space="preserve"><value>{1} 個已變更影像中只有 {0} 個成功儲存。</value></data><data name="Dialog_PartialSave" xml:space="preserve"><value>部分儲存</value></data><data name="Dialog_PackCompletedStatus" xml:space="preserve"><value>完成！已封裝 {0} 個影像。</value></data><data name="Dialog_PackSuccessSummary" xml:space="preserve"><value>已成功將 {0} 個影像封裝至 {1} 個 WZ 檔案。
+
+輸出：{2}
+總大小：{3}
+時間：{4:F1} 秒</value></data><data name="Dialog_PackingComplete" xml:space="preserve"><value>封裝完成</value></data><data name="Dialog_FailedWithMessage" xml:space="preserve"><value>失敗：{0}</value></data><data name="Dialog_PackingFailedMessage" xml:space="preserve"><value>封裝失敗：{0}</value></data><data name="Dialog_PackingFailed" xml:space="preserve"><value>封裝失敗</value></data><data name="Dialog_Cancelled" xml:space="preserve"><value>已取消</value></data><data name="Dialog_PackingCancelled" xml:space="preserve"><value>封裝已取消。</value></data><data name="Dialog_PackingException" xml:space="preserve"><value>封裝期間發生錯誤：{0}</value></data><data name="Dialog_WaitForPacking" xml:space="preserve"><value>請等待封裝完成，或先將其取消。</value></data><data name="Dialog_PackingInProgress" xml:space="preserve"><value>正在封裝</value></data><data name="Dialog_ImmediateStringMapSavePrompt" xml:space="preserve"><value>目前資料來源會立即儲存。
+
+是：立即寫入 String/Map.img。
+否：保留記憶體中的修改，稍後手動儲存。</value></data><data name="Dialog_ResolveMissingMaps" xml:space="preserve"><value>解析缺少的地圖</value></data><data name="Dialog_Copy" xml:space="preserve"><value>複製</value></data><data name="Dialog_SelectAll" xml:space="preserve"><value>全部選取</value></data><data name="Dialog_CopyAll" xml:space="preserve"><value>全部複製</value></data><data name="Dialog_SelectExportFolder" xml:space="preserve"><value>選擇匯出資料夾</value></data><data name="Dialog_Extract" xml:space="preserve"><value>解壓縮</value></data><data name="Dialog_AutoDetect" xml:space="preserve"><value>自動偵測</value></data><data name="Dialog_AutoDetectedEncryption" xml:space="preserve"><value>自動偵測到加密：{0}（64 位元：{1}）</value></data><data name="Dialog_AutoDetectDefault" xml:space="preserve"><value>無法自動偵測，預設為：{0}</value></data><data name="Dialog_SelectValidOutputFolder" xml:space="preserve"><value>請選擇有效的輸出資料夾。</value></data><data name="Dialog_ScanWzFirst" xml:space="preserve"><value>請先掃描 WZ 檔案。</value></data><data name="Dialog_SelectWzToExtract" xml:space="preserve"><value>請至少選擇一個要解壓縮的 WZ 檔案。</value></data><data name="Dialog_VersionFolderExists" xml:space="preserve"><value>版本資料夾「{0}」已存在。要覆寫嗎？</value></data><data name="Dialog_ConfirmOverwrite" xml:space="preserve"><value>確認覆寫</value></data><data name="Dialog_StartingWzExtraction" xml:space="preserve"><value>正在開始解壓縮 {0} 個 WZ 檔案...</value></data><data name="Dialog_SelectedCategories" xml:space="preserve"><value>已選擇 {0} 個類別：{1}</value></data><data name="Dialog_ExtractionCompleteStatus" xml:space="preserve"><value>解壓縮完成！已解壓縮 {0} 個影像。</value></data><data name="Dialog_ExtractionCompleteLog" xml:space="preserve"><value>=== 解壓縮完成 ===</value></data><data name="Dialog_TotalImages" xml:space="preserve"><value>影像總數：{0}</value></data><data name="Dialog_TotalSize" xml:space="preserve"><value>總大小：{0}</value></data><data name="Dialog_LinksResolved" xml:space="preserve"><value>已解析連結：{0}</value></data><data name="Dialog_LinksFailed" xml:space="preserve"><value>連結失敗：{0}（原始 WZ 中缺少）</value></data><data name="Dialog_DurationSeconds" xml:space="preserve"><value>時間：{0:F1} 秒</value></data><data name="Dialog_OutputPath" xml:space="preserve"><value>輸出：{0}</value></data><data name="Dialog_UnpackSuccessSummary" xml:space="preserve"><value>解壓縮完成！
+
+已解壓縮影像：{0}
+總大小：{1}
+已解析連結：{2}
+缺少連結：{3}
+時間：{4:F1} 秒
+輸出：{5}
+
+版本已加入 HaCreator 的版本選擇器。</value></data><data name="Dialog_ExtractionFailedStatus" xml:space="preserve"><value>解壓縮失敗：{0}</value></data><data name="Dialog_ErrorLog" xml:space="preserve"><value>錯誤：{0}</value></data><data name="Dialog_ExtractionFailedMessage" xml:space="preserve"><value>解壓縮失敗：
+{0}</value></data><data name="Dialog_ExtractionCancelledByUser" xml:space="preserve"><value>使用者已取消解壓縮。</value></data><data name="Dialog_ErrorOccurred" xml:space="preserve"><value>發生錯誤：
+{0}</value></data><data name="Dialog_ProgressPhaseFile" xml:space="preserve"><value>{0}：{1}</value></data><data name="Dialog_StartingCategory" xml:space="preserve"><value>開始：{0}</value></data><data name="Dialog_LinksResolvedSuffix" xml:space="preserve"><value>，已解析 {0} 個連結</value></data><data name="Dialog_CategoryCompleted" xml:space="preserve"><value>  完成：{0} - {1} 個影像（{2}{3}）</value></data><data name="Dialog_WarningLog" xml:space="preserve"><value>    警告：{0}</value></data><data name="Dialog_MoreWarnings" xml:space="preserve"><value>    ... 以及另外 {0} 個警告</value></data><data name="Dialog_WzFileFilter" xml:space="preserve"><value>MapleStory WZ|Base.wz;Base_000.wz;Data.wz|所有 WZ 檔案 (*.wz)|*.wz|所有檔案 (*.*)|*.*</value></data><data name="Dialog_SelectBaseWzTitle" xml:space="preserve"><value>從 MapleStory 安裝位置選擇 Base.wz、Data.wz（beta）或 Base_000.wz（64 位元）</value></data><data name="Dialog_HotfixDataWzSelected" xml:space="preserve"><value>這似乎是修補程式 Data.wz，而不是 beta MapleStory 安裝。
+標準安裝請選擇 Base.wz。</value></data><data name="Dialog_CannotDetectFromSelectedWz" xml:space="preserve"><value>所選檔案無法偵測 MapleStory 安裝目錄。
+標準安裝請選擇 Base.wz；64 位元安裝請選擇 Data/Base 資料夾中的 Base_000.wz。</value></data><data name="Dialog_CannotDetectMapleDirectory" xml:space="preserve"><value>無法偵測 MapleStory 安裝目錄。
+標準安裝請選擇 Base.wz；64 位元安裝請選擇 Data 資料夾中的任一 .wz 檔案。</value></data><data name="Dialog_SelectSupportedBaseWz" xml:space="preserve"><value>請選擇 Base.wz（標準）、Data.wz（beta）或 Base_000.wz（Data/Base 中的 64 位元）。</value></data><data name="Dialog_DetectedBetaDataWz" xml:space="preserve"><value>偵測到 beta Data.wz 格式（{0}，加密：{1}）</value></data><data name="Dialog_DataWzParseFailed" xml:space="preserve"><value>解析 Data.wz 失敗：{0}</value></data><data name="Dialog_DataWzParseFailedTryEncryption" xml:space="preserve"><value>解析 Data.wz 失敗：{0}
+
+請嘗試不同的加密版本。</value></data><data name="Dialog_ParseError" xml:space="preserve"><value>解析錯誤</value></data><data name="Dialog_DataWzReadError" xml:space="preserve"><value>讀取 Data.wz 時發生錯誤：{0}</value></data><data name="Dialog_DataWzReadErrorTryEncryption" xml:space="preserve"><value>讀取 Data.wz 時發生錯誤：{0}
+
+請嘗試不同的加密版本。</value></data><data name="Dialog_DataWzCategoryDisplay" xml:space="preserve"><value>{0}（{1} 個影像）[來自 Data.wz]</value></data><data name="Dialog_WzCategoryCanvasDisplay" xml:space="preserve"><value>{0}（{1}，{2} + {3} 個畫布檔案）</value></data><data name="Dialog_WzCategoryDisplay" xml:space="preserve"><value>{0}（{1}，{2} 個檔案）</value></data><data name="Dialog_PacksDisplay" xml:space="preserve"><value>Packs（{0}，{1} 個 .ms 檔案）</value></data><data name="Dialog_VersionAdded" xml:space="preserve"><value>已將版本「{0}」加入版本選擇器</value></data><data name="Dialog_VersionAlreadyInSelector" xml:space="preserve"><value>版本選擇器中已存在此版本</value></data><data name="Dialog_VersionAddWarning" xml:space="preserve"><value>警告：無法加入版本選擇器：{0}</value></data><data name="Dialog_SourceBeta" xml:space="preserve"><value>來源：Beta（單一 Data.wz）</value></data><data name="Dialog_Source64Bit" xml:space="preserve"><value>來源：64 位元（Data 資料夾）</value></data><data name="Dialog_SourcePreBigBang" xml:space="preserve"><value>來源：Big Bang 前</value></data><data name="Dialog_SourceStandard" xml:space="preserve"><value>來源：標準</value></data><data name="Dialog_SourceUnknown" xml:space="preserve"><value>來源：未知</value></data><data name="Dialog_VersionUnknownManifest" xml:space="preserve"><value>版本：未知（沒有 manifest.json）</value></data><data name="Dialog_SaveChangedBeforePacking" xml:space="preserve"><value>封裝前將 {0} 個已變更影像儲存至來源</value></data><data name="Dialog_OutputPathLabel" xml:space="preserve"><value>輸出路徑：</value></data><data name="Dialog_PatchVersionLabel" xml:space="preserve"><value>修補版本（0 = 自動）：</value></data><data name="Dialog_FormatStandard" xml:space="preserve"><value>格式：標準</value></data><data name="Dialog_RecommendedSuffix" xml:space="preserve"><value>（建議）</value></data></root>

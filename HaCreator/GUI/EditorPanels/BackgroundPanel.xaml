@@ -1,0 +1,74 @@
+<UserControl x:Class="HaCreator.GUI.EditorPanels.BackgroundPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:HaCreator.GUI.EditorPanels"
+             MinWidth="240" MinHeight="320"
+             Background="{DynamicResource HareCanvasBrush}"
+             Foreground="{DynamicResource HareTextBrush}">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="240"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="2,0,2,9">
+            <TextBlock Text="Background assets" Style="{StaticResource HareSectionTitleStyle}"/>
+            <TextBlock Text="Choose a set and background type, then select an asset to place it."
+                       Style="{StaticResource HareMutedTextStyle}" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource HareCardStyle}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Padding="11,8" Background="{StaticResource HareSurfaceAltBrush}"
+                        BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="0,0,0,1">
+                    <TextBlock Text="BACKGROUND SET" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource HareMutedTextBrush}"/>
+                </Border>
+                <ListBox x:Name="bgSetListBox" Grid.Row="1" BorderThickness="0"
+                         SelectionChanged="BackgroundSet_SelectionChanged"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Margin="0,10,0,10" Padding="10,7"
+                Background="{StaticResource HareSurfaceBrush}"
+                BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="6">
+            <StackPanel>
+                <TextBlock Text="TYPE" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource HareMutedTextBrush}" Margin="0,0,0,5"/>
+                <WrapPanel>
+                    <RadioButton x:Name="staticRadioButton" Content="Static" IsChecked="True"
+                                 Margin="0,0,14,0" Checked="BackgroundType_Checked"/>
+                    <RadioButton x:Name="animatedRadioButton" Content="Animated"
+                                 Margin="0,0,14,0" Checked="BackgroundType_Checked"/>
+                    <RadioButton x:Name="spineRadioButton" Content="Spine"
+                                 Checked="BackgroundType_Checked"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="3" Style="{StaticResource HareCardStyle}" Padding="0" ClipToBounds="True">
+            <local:AssetGallery x:Name="backgroundGallery"/>
+        </Border>
+
+        <Button x:Name="addImageButton" Grid.Row="4" Content="Add custom background…"
+                Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                Style="{StaticResource HarePrimaryButtonStyle}"
+                Click="AddImageButton_Click"/>
+    </Grid>
+</UserControl>

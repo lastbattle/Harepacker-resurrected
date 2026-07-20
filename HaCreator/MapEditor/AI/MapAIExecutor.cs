@@ -160,6 +160,7 @@ namespace HaCreator.MapEditor.AI
             executionLog.Clear();
             int successCount = 0;
             int failCount = 0;
+            int undoBatchStart = board.UndoRedoMan.UndoList.Count;
 
             foreach (var command in commands)
             {
@@ -168,6 +169,8 @@ namespace HaCreator.MapEditor.AI
                 else
                     failCount++;
             }
+
+            board.UndoRedoMan.CollapseUndoBatches(undoBatchStart);
 
             return new ExecutionResult
             {

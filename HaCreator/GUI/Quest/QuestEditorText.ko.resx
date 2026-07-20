@@ -1,0 +1,534 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="QuestEditor_Title" xml:space="preserve">
+    <value>퀘스트 편집기</value>
+  </data>
+  <data name="QuestEditor_Subtitle" xml:space="preserve">
+    <value>QuestInfo, Say, Check 및 Act의 퀘스트 데이터를 탐색하고 설정하며 검증합니다.</value>
+  </data>
+  <data name="QuestEditor_Eyebrow" xml:space="preserve">
+    <value>WZ 퀘스트 데이터</value>
+  </data>
+  <data name="QuestEditor_QuestLibrary" xml:space="preserve">
+    <value>퀘스트 라이브러리</value>
+  </data>
+  <data name="QuestEditor_QuestDetails" xml:space="preserve">
+    <value>퀘스트 세부 정보</value>
+  </data>
+  <data name="QuestEditor_Area" xml:space="preserve">
+    <value>지역</value>
+  </data>
+  <data name="QuestEditor_FilterTooltip" xml:space="preserve">
+    <value>ID 또는 이름으로 퀘스트 필터링</value>
+  </data>
+  <data name="QuestEditor_NewQuest" xml:space="preserve">
+    <value>새 퀘스트</value>
+  </data>
+  <data name="QuestEditor_Import" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="QuestEditor_Export" xml:space="preserve">
+    <value>내보내기</value>
+  </data>
+  <data name="QuestEditor_Delete" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="QuestEditor_SaveChanges" xml:space="preserve">
+    <value>변경 내용 저장</value>
+  </data>
+  <data name="QuestEditor_Select" xml:space="preserve">
+    <value>선택</value>
+  </data>
+  <data name="QuestEditor_Type" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="QuestEditor_Text" xml:space="preserve">
+    <value>텍스트</value>
+  </data>
+  <data name="QuestEditor_Responses" xml:space="preserve">
+    <value>응답</value>
+  </data>
+  <data name="QuestEditor_YesResponses" xml:space="preserve">
+    <value>예 응답</value>
+  </data>
+  <data name="QuestEditor_NoResponses" xml:space="preserve">
+    <value>아니요 응답</value>
+  </data>
+  <data name="QuestEditor_AddResponse" xml:space="preserve">
+    <value>응답 추가</value>
+  </data>
+  <data name="QuestEditor_QuestInfoTab" xml:space="preserve">
+    <value>퀘스트 정보 (QuestInfo.img)</value>
+  </data>
+  <data name="QuestEditor_SayInfoTab" xml:space="preserve">
+    <value>대화 정보 (SayInfo.img)</value>
+  </data>
+  <data name="QuestEditor_CheckConditionsTab" xml:space="preserve">
+    <value>검사 조건 (Check.img)</value>
+  </data>
+  <data name="QuestEditor_ActRequirementsTab" xml:space="preserve">
+    <value>동작 요구 사항 (Act.img)</value>
+  </data>
+  <data name="QuestEditor_StartConversation" xml:space="preserve">
+    <value>시작 퀘스트 대화</value>
+  </data>
+  <data name="QuestEditor_EndConversation" xml:space="preserve">
+    <value>완료 퀘스트 대화</value>
+  </data>
+  <data name="QuestEditor_StartCheck" xml:space="preserve">
+    <value>시작 퀘스트 검사 (0)</value>
+  </data>
+  <data name="QuestEditor_EndCheck" xml:space="preserve">
+    <value>완료 퀘스트 검사 (1)</value>
+  </data>
+  <data name="QuestEditor_StartAction" xml:space="preserve">
+    <value>시작 퀘스트 동작 (0)</value>
+  </data>
+  <data name="QuestEditor_EndAction" xml:space="preserve">
+    <value>완료 퀘스트 동작 (1)</value>
+  </data>
+  <data name="QuestEditor_Name" xml:space="preserve">
+    <value>이름:</value>
+  </data>
+  <data name="QuestEditor_ParentQuest" xml:space="preserve">
+    <value>상위 퀘스트:</value>
+  </data>
+  <data name="QuestEditor_QuestAreaCode" xml:space="preserve">
+    <value>퀘스트 지역 코드:</value>
+  </data>
+  <data name="QuestEditor_Order" xml:space="preserve">
+    <value>순서:</value>
+  </data>
+  <data name="QuestEditor_Blocked" xml:space="preserve">
+    <value>차단됨</value>
+  </data>
+  <data name="QuestEditor_AutoStart" xml:space="preserve">
+    <value>자동 시작</value>
+  </data>
+  <data name="QuestEditor_AutoComplete" xml:space="preserve">
+    <value>자동 완료</value>
+  </data>
+  <data name="QuestEditor_AutoAccept" xml:space="preserve">
+    <value>자동 수락</value>
+  </data>
+  <data name="QuestEditor_AutoCancel" xml:space="preserve">
+    <value>자동 취소</value>
+  </data>
+  <data name="QuestEditor_Summary" xml:space="preserve">
+    <value>요약:</value>
+  </data>
+  <data name="QuestEditor_DemandSummary" xml:space="preserve">
+    <value>요구 사항 요약:</value>
+  </data>
+  <data name="QuestEditor_RewardSummary" xml:space="preserve">
+    <value>보상 요약:</value>
+  </data>
+  <data name="QuestEditor_GenerateFromCheck" xml:space="preserve">
+    <value>“Check”에서 생성</value>
+  </data>
+  <data name="QuestEditor_GenerateFromAct" xml:space="preserve">
+    <value>“Act”에서 생성</value>
+  </data>
+  <data name="QuestEditor_UnsavedPrompt" xml:space="preserve">
+    <value>저장하지 않은 변경 내용이 있습니다. 닫기 전에 Quest.wz 파일을 저장하시겠습니까?</value>
+  </data>
+  <data name="QuestEditor_UnsavedTitle" xml:space="preserve">
+    <value>저장하지 않은 변경 내용</value>
+  </data>
+  <data name="QuestEditor_WzImportFilter" xml:space="preserve">
+    <value>WZ 파일 (*.wz)|*.wz|모든 파일 (*.*)|*.*</value>
+  </data>
+  <data name="QuestEditor_WzExportFilter" xml:space="preserve">
+    <value>WZ 파일 (*.wz)|*.wz</value>
+  </data>
+  <data name="QuestEditor_ImportDialogTitle" xml:space="preserve">
+    <value>가져올 퀘스트 WZ 파일 선택</value>
+  </data>
+  <data name="QuestEditor_ImportError" xml:space="preserve">
+    <value>가져오기 오류</value>
+  </data>
+  <data name="QuestEditor_InvalidImportFormat" xml:space="preserve">
+    <value>잘못된 퀘스트 WZ 형식: {0}에서 QuestInfo.img를 찾을 수 없습니다.</value>
+  </data>
+  <data name="QuestEditor_ImportException" xml:space="preserve">
+    <value>{0}에서 가져오는 중 오류 발생: {1}</value>
+  </data>
+  <data name="QuestEditor_OverwritePrompt" xml:space="preserve">
+    <value>다음 퀘스트 ID가 이미 있습니다:
+{0}
+
+덮어쓰시겠습니까?</value>
+  </data>
+  <data name="QuestEditor_OverwriteTitle" xml:space="preserve">
+    <value>퀘스트가 이미 있음</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessMessage" xml:space="preserve">
+    <value>{0}개의 퀘스트를 가져왔습니다.</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessTitle" xml:space="preserve">
+    <value>가져오기 성공</value>
+  </data>
+  <data name="QuestEditor_NameTooLong" xml:space="preserve">
+    <value>퀘스트 이름이 너무 깁니다.</value>
+  </data>
+  <data name="QuestEditor_QuestName" xml:space="preserve">
+    <value>퀘스트 이름</value>
+  </data>
+  <data name="QuestEditor_QuestId" xml:space="preserve">
+    <value>퀘스트 ID</value>
+  </data>
+  <data name="QuestEditor_AddNewQuestPrompt" xml:space="preserve">
+    <value>새 퀘스트 추가:</value>
+  </data>
+  <data name="QuestEditor_SaveParentError" xml:space="preserve">
+    <value>퀘스트 {0}을(를) 저장하는 동안 하나 이상의 상위 이미지를 확인할 수 없습니다. 손상을 방지하기 위해 저장을 취소했습니다.</value>
+  </data>
+  <data name="QuestEditor_SaveError" xml:space="preserve">
+    <value>저장 오류</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessMessage" xml:space="preserve">
+    <value>퀘스트 {0}을(를) {1}(으)로 내보냈습니다.</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessTitle" xml:space="preserve">
+    <value>내보내기 성공</value>
+  </data>
+  <data name="QuestEditor_ExportErrorMessage" xml:space="preserve">
+    <value>퀘스트 내보내기 오류: {0}</value>
+  </data>
+  <data name="QuestEditor_ExportErrorTitle" xml:space="preserve">
+    <value>내보내기 오류</value>
+  </data>
+  <data name="QuestEditor_RequiredAmount" xml:space="preserve">
+    <value> 필요 수량:</value>
+  </data>
+  <data name="QuestEditor_RequiredMesoAmount" xml:space="preserve">
+    <value> 필요 메소:</value>
+  </data>
+  <data name="QuestEditor_RewardAmount" xml:space="preserve">
+    <value> 보상 수량:</value>
+  </data>
+  <data name="QuestEditor_RequiredCharismaAmount" xml:space="preserve">
+    <value>(카리스마) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardCharismaAmount" xml:space="preserve">
+    <value>(카리스마) 보상량:</value>
+  </data>
+  <data name="QuestEditor_RequiredCharmAmount" xml:space="preserve">
+    <value>(매력) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardCharmAmount" xml:space="preserve">
+    <value>(매력) 보상량:</value>
+  </data>
+  <data name="QuestEditor_RequiredCraftAmount" xml:space="preserve">
+    <value>(손재주) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardCraftAmount" xml:space="preserve">
+    <value>(손재주) 보상량:</value>
+  </data>
+  <data name="QuestEditor_RequiredInsightAmount" xml:space="preserve">
+    <value>(통찰력) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardInsightAmount" xml:space="preserve">
+    <value>(통찰력) 보상량:</value>
+  </data>
+  <data name="QuestEditor_RequiredSenseAmount" xml:space="preserve">
+    <value>(감성) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardSenseAmount" xml:space="preserve">
+    <value>(감성) 보상량:</value>
+  </data>
+  <data name="QuestEditor_RequiredWillAmount" xml:space="preserve">
+    <value>(의지) 필요량:</value>
+  </data>
+  <data name="QuestEditor_RewardWillAmount" xml:space="preserve">
+    <value>(의지) 보상량:</value>
+  </data>
+  <data name="QuestEditor_AcquireSkillRegardlessLevel" xml:space="preserve">
+    <value>획득(skillLevel과 관계없이 플레이어가 스킬을 보유해야 하는 경우)</value>
+  </data>
+  <data name="QuestEditor_AcquireRemoveSkill" xml:space="preserve">
+    <value>획득(스킬 제거)</value>
+  </data>
+  <data name="QuestEditor_ActiveQuestDescription" xml:space="preserve">
+    <value>진행 중 퀘스트 설명: (1)</value>
+  </data>
+  <data name="QuestEditor_AddEquip" xml:space="preserve">
+    <value>장비 추가</value>
+  </data>
+  <data name="QuestEditor_AddInfo" xml:space="preserve">
+    <value>정보 추가</value>
+  </data>
+  <data name="QuestEditor_AddItem" xml:space="preserve">
+    <value>아이템 추가</value>
+  </data>
+  <data name="QuestEditor_AddJob" xml:space="preserve">
+    <value>직업 추가</value>
+  </data>
+  <data name="QuestEditor_AddMonster" xml:space="preserve">
+    <value>몬스터 추가</value>
+  </data>
+  <data name="QuestEditor_AddQuest" xml:space="preserve">
+    <value>퀘스트 추가</value>
+  </data>
+  <data name="QuestEditor_AddSkill" xml:space="preserve">
+    <value>스킬 추가</value>
+  </data>
+  <data name="QuestEditor_AddSp" xml:space="preserve">
+    <value>SP 추가</value>
+  </data>
+  <data name="QuestEditor_AnimationAction" xml:space="preserve">
+    <value>애니메이션 동작:</value>
+  </data>
+  <data name="QuestEditor_AutoCompleteAction" xml:space="preserve">
+    <value>자동 완료 동작</value>
+  </data>
+  <data name="QuestEditor_AutoPreComplete" xml:space="preserve">
+    <value>자동 사전 완료</value>
+  </data>
+  <data name="QuestEditor_BuffReward" xml:space="preserve">
+    <value>버프 보상:</value>
+  </data>
+  <data name="QuestEditor_Classes" xml:space="preserve">
+    <value>직업군:</value>
+  </data>
+  <data name="QuestEditor_Condition" xml:space="preserve">
+    <value>조건:</value>
+  </data>
+  <data name="QuestEditor_DailyRepeatable" xml:space="preserve">
+    <value>매일(매일 반복 가능 퀘스트):</value>
+  </data>
+  <data name="QuestEditor_DisableCompleteTab" xml:space="preserve">
+    <value>완료 탭에서 비활성화</value>
+  </data>
+  <data name="QuestEditor_DisablePerformTab" xml:space="preserve">
+    <value>수행 탭에서 비활성화</value>
+  </data>
+  <data name="QuestEditor_DisableStartTab" xml:space="preserve">
+    <value>시작 탭에서 비활성화</value>
+  </data>
+  <data name="QuestEditor_EndDate" xml:space="preserve">
+    <value>종료 날짜:</value>
+  </data>
+  <data name="QuestEditor_EndQuestDescription" xml:space="preserve">
+    <value>완료 퀘스트 설명: (2)</value>
+  </data>
+  <data name="QuestEditor_EndScript" xml:space="preserve">
+    <value>퀘스트 종료 시 실행할 스크립트:</value>
+  </data>
+  <data name="QuestEditor_EndTimeDate" xml:space="preserve">
+    <value>End_t 날짜:</value>
+  </data>
+  <data name="QuestEditor_ExceptBuff" xml:space="preserve">
+    <value>제외 버프:</value>
+  </data>
+  <data name="QuestEditor_Expiry" xml:space="preserve">
+    <value>만료:</value>
+  </data>
+  <data name="QuestEditor_Gender" xml:space="preserve">
+    <value>성별:</value>
+  </data>
+  <data name="QuestEditor_GivenToJobs" xml:space="preserve">
+    <value>부여 직업:</value>
+  </data>
+  <data name="QuestEditor_InfoLabel" xml:space="preserve">
+    <value>정보:</value>
+  </data>
+  <data name="QuestEditor_InfoExString" xml:space="preserve">
+    <value>InfoEx 문자열:</value>
+  </data>
+  <data name="QuestEditor_IntervalMinutes" xml:space="preserve">
+    <value>간격(분):</value>
+  </data>
+  <data name="QuestEditor_RepeatInterval" xml:space="preserve">
+    <value>간격(x분 후 반복 가능):</value>
+  </data>
+  <data name="QuestEditor_IsMarried" xml:space="preserve">
+    <value>결혼 여부 💘:</value>
+  </data>
+  <data name="QuestEditor_NormalAutoStart" xml:space="preserve">
+    <value>일반 자동 시작 퀘스트:</value>
+  </data>
+  <data name="QuestEditor_IsPremium" xml:space="preserve">
+    <value>프리미엄:</value>
+  </data>
+  <data name="QuestEditor_WeeklyRepeat" xml:space="preserve">
+    <value>주간 반복 퀘스트:</value>
+  </data>
+  <data name="QuestEditor_JobFlags" xml:space="preserve">
+    <value>직업 플래그:</value>
+  </data>
+  <data name="QuestEditor_JobId" xml:space="preserve">
+    <value>직업 ID:</value>
+  </data>
+  <data name="QuestEditor_JobEx" xml:space="preserve">
+    <value>JobEx:</value>
+  </data>
+  <data name="QuestEditor_LevelMax" xml:space="preserve">
+    <value>최대 레벨:</value>
+  </data>
+  <data name="QuestEditor_LevelMin" xml:space="preserve">
+    <value>최소 레벨:</value>
+  </data>
+  <data name="QuestEditor_MapsToEnter" xml:space="preserve">
+    <value>입장 가능 맵:</value>
+  </data>
+  <data name="QuestEditor_MapsToShowIn" xml:space="preserve">
+    <value>표시할 맵:</value>
+  </data>
+  <data name="QuestEditor_MasterLevel" xml:space="preserve">
+    <value>마스터 레벨:</value>
+  </data>
+  <data name="QuestEditor_Medal" xml:space="preserve">
+    <value>훈장</value>
+  </data>
+  <data name="QuestEditor_MedalCategory" xml:space="preserve">
+    <value>훈장 분류:</value>
+  </data>
+  <data name="QuestEditor_MessageNotice" xml:space="preserve">
+    <value>메시지 알림:</value>
+  </data>
+  <data name="QuestEditor_MiscProperties" xml:space="preserve">
+    <value>기타 속성:</value>
+  </data>
+  <data name="QuestEditor_NextQuest" xml:space="preserve">
+    <value>다음 퀘스트:</value>
+  </data>
+  <data name="QuestEditor_NpcId" xml:space="preserve">
+    <value>NPC ID:</value>
+  </data>
+  <data name="QuestEditor_OneShot" xml:space="preserve">
+    <value>1회</value>
+  </data>
+  <data name="QuestEditor_OnlyMasterLevel" xml:space="preserve">
+    <value>마스터 레벨만</value>
+  </data>
+  <data name="QuestEditor_PeriodMinutes" xml:space="preserve">
+    <value>기간(분):</value>
+  </data>
+  <data name="QuestEditor_PetAutoSpeakingLimit" xml:space="preserve">
+    <value>펫 자동 말하기 제한:</value>
+  </data>
+  <data name="QuestEditor_PetRecallLimit" xml:space="preserve">
+    <value>펫 소환 제한:</value>
+  </data>
+  <data name="QuestEditor_PetSpeed" xml:space="preserve">
+    <value>펫 속도:</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMax" xml:space="preserve">
+    <value>펫 친밀도 최대:</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMin" xml:space="preserve">
+    <value>펫 친밀도 최소:</value>
+  </data>
+  <data name="QuestEditor_PetTameness" xml:space="preserve">
+    <value>펫 친밀도:</value>
+  </data>
+  <data name="QuestEditor_Potential" xml:space="preserve">
+    <value>잠재능력:</value>
+  </data>
+  <data name="QuestEditor_PropType" xml:space="preserve">
+    <value>속성 유형:</value>
+  </data>
+  <data name="QuestEditor_Quantity" xml:space="preserve">
+    <value>수량:</value>
+  </data>
+  <data name="QuestEditor_QuestIdLabel" xml:space="preserve">
+    <value>퀘스트 ID:</value>
+  </data>
+  <data name="QuestEditor_Rewards" xml:space="preserve">
+    <value>보상</value>
+  </data>
+  <data name="QuestEditor_SelectSkill" xml:space="preserve">
+    <value>스킬 선택:</value>
+  </data>
+  <data name="QuestEditor_SelectBuff" xml:space="preserve">
+    <value>버프 선택</value>
+  </data>
+  <data name="QuestEditor_SelectClass" xml:space="preserve">
+    <value>직업군 선택</value>
+  </data>
+  <data name="QuestEditor_SelectJobs" xml:space="preserve">
+    <value>직업 선택</value>
+  </data>
+  <data name="QuestEditor_SelectMaps" xml:space="preserve">
+    <value>맵 선택</value>
+  </data>
+  <data name="QuestEditor_SelectNpc" xml:space="preserve">
+    <value>NPC 선택</value>
+  </data>
+  <data name="QuestEditor_SelectQuest" xml:space="preserve">
+    <value>퀘스트 선택</value>
+  </data>
+  <data name="QuestEditor_SelectedMob" xml:space="preserve">
+    <value>선택한 몬스터</value>
+  </data>
+  <data name="QuestEditor_ShowLayerTag" xml:space="preserve">
+    <value>레이어 태그 표시:</value>
+  </data>
+  <data name="QuestEditor_SkillId" xml:space="preserve">
+    <value>스킬 ID:</value>
+  </data>
+  <data name="QuestEditor_SkillLevel" xml:space="preserve">
+    <value>스킬 레벨:</value>
+  </data>
+  <data name="QuestEditor_SpAmount" xml:space="preserve">
+    <value>SP 수량:</value>
+  </data>
+  <data name="QuestEditor_Start" xml:space="preserve">
+    <value>시작</value>
+  </data>
+  <data name="QuestEditor_StartDate" xml:space="preserve">
+    <value>시작 날짜:</value>
+  </data>
+  <data name="QuestEditor_StartQuestDescription" xml:space="preserve">
+    <value>시작 퀘스트 설명: (0)</value>
+  </data>
+  <data name="QuestEditor_StartScript" xml:space="preserve">
+    <value>퀘스트 시작 시 실행할 스크립트:</value>
+  </data>
+  <data name="QuestEditor_StartTimeDate" xml:space="preserve">
+    <value>Start_t 날짜:</value>
+  </data>
+  <data name="QuestEditor_State" xml:space="preserve">
+    <value>상태:</value>
+  </data>
+  <data name="QuestEditor_Stop" xml:space="preserve">
+    <value>중지</value>
+  </data>
+  <data name="QuestEditor_StopEndConversation" xml:space="preserve">
+    <value>'중지' 완료 퀘스트 대화</value>
+  </data>
+  <data name="QuestEditor_StopStartConversation" xml:space="preserve">
+    <value>'중지' 시작 퀘스트 대화</value>
+  </data>
+  <data name="QuestEditor_SubJobFlag" xml:space="preserve">
+    <value>보조 직업 플래그:</value>
+  </data>
+  <data name="QuestEditor_TamingMobLevelMin" xml:space="preserve">
+    <value>라이딩 몬스터 최소 레벨:</value>
+  </data>
+  <data name="QuestEditor_PreBigBangUnavailable" xml:space="preserve">
+    <value>이 기능은 빅뱅 이전 메이플스토리에서 사용할 수 없습니다.</value>
+  </data>
+  <data name="QuestEditor_Value" xml:space="preserve">
+    <value>값:</value>
+  </data>
+  <data name="QuestEditor_Var" xml:space="preserve">
+    <value>변수:</value>
+  </data>
+  <data name="QuestEditor_ViewMedalItem" xml:space="preserve">
+    <value>훈장 아이템 보기:</value>
+  </data>
+  <data name="QuestEditor_ConversationHelp" xml:space="preserve">
+    <value>퀘스트 시작 또는 완료 시 NPC가 말할 대화 내용입니다. 예 또는 아니요 텍스트가 없으면 Next() 또는 NextPrev() NPC 대화가 됩니다.</value>
+  </data>
+  <data name="QuestEditor_ConditionHelp" xml:space="preserve">
+    <value>퀘스트 시작 또는 종료 조건을 충족하지 못했을 때 NPC가 말할 내용입니다.</value>
+  </data>
+  <data name="QuestEditor_WorldMax" xml:space="preserve">
+    <value>최대 월드:</value>
+  </data>
+  <data name="QuestEditor_WorldMin" xml:space="preserve">
+    <value>최소 월드:</value>
+  </data>
+</root>

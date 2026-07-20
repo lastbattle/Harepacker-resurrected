@@ -1,0 +1,1051 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Init_WindowTitle" xml:space="preserve">
+    <value>HaCreator - 초기화</value>
+  </data>
+  <data name="Init_Heading" xml:space="preserve">
+    <value>HaCreator 열기</value>
+  </data>
+  <data name="Init_Subheading" xml:space="preserve">
+    <value>이 편집 세션에서 사용할 MapleStory 데이터 원본을 선택하세요.</value>
+  </data>
+  <data name="Init_WzFilesTab" xml:space="preserve">
+    <value>WZ 파일</value>
+  </data>
+  <data name="Init_MapleStoryFolder" xml:space="preserve">
+    <value>MapleStory 폴더</value>
+  </data>
+  <data name="Common_BrowseEllipsis" xml:space="preserve">
+    <value>찾아보기...</value>
+  </data>
+  <data name="Init_WzEncryption" xml:space="preserve">
+    <value>WZ 암호화</value>
+  </data>
+  <data name="Init_ClientLocalisation" xml:space="preserve">
+    <value>클라이언트 지역</value>
+  </data>
+  <data name="Init_LocalisationHint" xml:space="preserve">
+    <value>클라이언트마다 저장되는 WZ 매개 변수가 다를 수 있으므로 일치하는 지역을 선택하세요.</value>
+  </data>
+  <data name="Init_ImgVersionsTab" xml:space="preserve">
+    <value>IMG 버전</value>
+  </data>
+  <data name="Init_NoVersions" xml:space="preserve">
+    <value>버전을 찾을 수 없습니다.
+
+“새로 추출”을 선택하여 WZ 파일을 IMG 형식으로 추출하거나 “찾아보기”로 기존 폴더를 추가하세요.</value>
+  </data>
+  <data name="Init_VersionName" xml:space="preserve">
+    <value>버전 이름</value>
+  </data>
+  <data name="Init_ExtractTooltip" xml:space="preserve">
+    <value>WZ 파일을 추출하여 IMG 버전 만들기</value>
+  </data>
+  <data name="Init_ExtractNewEllipsis" xml:space="preserve">
+    <value>새로 추출...</value>
+  </data>
+  <data name="Init_AddVersionTooltip" xml:space="preserve">
+    <value>기존 IMG 버전 폴더 추가</value>
+  </data>
+  <data name="Common_Refresh" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="Common_Rename" xml:space="preserve">
+    <value>이름 바꾸기</value>
+  </data>
+  <data name="Common_Delete" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="Common_Ready" xml:space="preserve">
+    <value>준비됨</value>
+  </data>
+  <data name="Common_Settings" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="Common_Initialize" xml:space="preserve">
+    <value>초기화</value>
+  </data>
+  <data name="IE_Add" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="IE_Alpha" xml:space="preserve">
+    <value>알파</value>
+  </data>
+  <data name="IE_Alpha_test" xml:space="preserve">
+    <value>알파 테스트</value>
+  </data>
+  <data name="IE_Animation" xml:space="preserve">
+    <value>애니메이션</value>
+  </data>
+  <data name="IE_Background_instance" xml:space="preserve">
+    <value>배경 인스턴스</value>
+  </data>
+  <data name="IE_Browse_map" xml:space="preserve">
+    <value>맵 찾아보기</value>
+  </data>
+  <data name="IE_Browse_portal" xml:space="preserve">
+    <value>포털 찾아보기</value>
+  </data>
+  <data name="IE_Cancel" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="IE_Cannot_pass_through" xml:space="preserve">
+    <value>통과 불가</value>
+  </data>
+  <data name="IE_Confirm" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="IE_Custom_name" xml:space="preserve">
+    <value>사용자 지정 이름</value>
+  </data>
+  <data name="IE_CX" xml:space="preserve">
+    <value>CX</value>
+  </data>
+  <data name="IE_CY" xml:space="preserve">
+    <value>CY</value>
+  </data>
+  <data name="IE_Delay" xml:space="preserve">
+    <value>지연</value>
+  </data>
+  <data name="IE_Description" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="IE_Dynamic" xml:space="preserve">
+    <value>동적</value>
+  </data>
+  <data name="IE_Flip" xml:space="preserve">
+    <value>뒤집기</value>
+  </data>
+  <data name="IE_Flow" xml:space="preserve">
+    <value>흐름</value>
+  </data>
+  <data name="IE_Foothold" xml:space="preserve">
+    <value>발판</value>
+  </data>
+  <data name="IE_Forbid_falling_down" xml:space="preserve">
+    <value>아래로 떨어지기 금지</value>
+  </data>
+  <data name="IE_Force" xml:space="preserve">
+    <value>강제</value>
+  </data>
+  <data name="IE_Front" xml:space="preserve">
+    <value>전면</value>
+  </data>
+  <data name="IE_General" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="IE_Hidden" xml:space="preserve">
+    <value>숨김</value>
+  </data>
+  <data name="IE_Hide_tooltip" xml:space="preserve">
+    <value>도구 설명 숨기기</value>
+  </data>
+  <data name="IE_Horizontal_impact" xml:space="preserve">
+    <value>수평 영향</value>
+  </data>
+  <data name="IE_Info" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="IE_Input_quest" xml:space="preserve">
+    <value>퀘스트 입력</value>
+  </data>
+  <data name="IE_Ladder" xml:space="preserve">
+    <value>사다리</value>
+  </data>
+  <data name="IE_Life_instance" xml:space="preserve">
+    <value>생명체 인스턴스</value>
+  </data>
+  <data name="IE_Limited_name" xml:space="preserve">
+    <value>제한 이름</value>
+  </data>
+  <data name="IE_mirror" xml:space="preserve">
+    <value>거울</value>
+  </data>
+  <data name="IE_Mirror_field" xml:space="preserve">
+    <value>거울 영역</value>
+  </data>
+  <data name="IE_Mob_time" xml:space="preserve">
+    <value>몹 시간</value>
+  </data>
+  <data name="IE_Name" xml:space="preserve">
+    <value>이름</value>
+  </data>
+  <data name="IE_Object_instance" xml:space="preserve">
+    <value>오브젝트 인스턴스</value>
+  </data>
+  <data name="IE_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="IE_Only_once" xml:space="preserve">
+    <value>한 번만</value>
+  </data>
+  <data name="IE_Overlay_object" xml:space="preserve">
+    <value>오버레이 오브젝트</value>
+  </data>
+  <data name="IE_Page" xml:space="preserve">
+    <value>페이지</value>
+  </data>
+  <data name="IE_Piece" xml:space="preserve">
+    <value>조각</value>
+  </data>
+  <data name="IE_Portal_instance" xml:space="preserve">
+    <value>포털 인스턴스</value>
+  </data>
+  <data name="IE_Portal_name" xml:space="preserve">
+    <value>포털 이름</value>
+  </data>
+  <data name="IE_Portal_type" xml:space="preserve">
+    <value>포털 유형</value>
+  </data>
+  <data name="IE_Quest_ID" xml:space="preserve">
+    <value>퀘스트 ID</value>
+  </data>
+  <data name="IE_Quest_states" xml:space="preserve">
+    <value>퀘스트 상태</value>
+  </data>
+  <data name="IE_R" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="IE_Random_start" xml:space="preserve">
+    <value>무작위 시작</value>
+  </data>
+  <data name="IE_Range" xml:space="preserve">
+    <value>범위</value>
+  </data>
+  <data name="IE_Reactor" xml:space="preserve">
+    <value>리액터</value>
+  </data>
+  <data name="IE_Reactor_name" xml:space="preserve">
+    <value>리액터 이름</value>
+  </data>
+  <data name="IE_Reactor_time" xml:space="preserve">
+    <value>리액터 시간</value>
+  </data>
+  <data name="IE_Reflection" xml:space="preserve">
+    <value>반사</value>
+  </data>
+  <data name="IE_Remove" xml:space="preserve">
+    <value>제거</value>
+  </data>
+  <data name="IE_Rope" xml:space="preserve">
+    <value>로프</value>
+  </data>
+  <data name="IE_RX" xml:space="preserve">
+    <value>RX</value>
+  </data>
+  <data name="IE_RX0_shift" xml:space="preserve">
+    <value>RX0 shift</value>
+  </data>
+  <data name="IE_RX1_shift" xml:space="preserve">
+    <value>RX1 shift</value>
+  </data>
+  <data name="IE_RY" xml:space="preserve">
+    <value>RY</value>
+  </data>
+  <data name="IE_Screen_mode" xml:space="preserve">
+    <value>화면 모드</value>
+  </data>
+  <data name="IE_Script" xml:space="preserve">
+    <value>스크립트</value>
+  </data>
+  <data name="IE_Search_items" xml:space="preserve">
+    <value>아이템 검색</value>
+  </data>
+  <data name="IE_Search_jobs" xml:space="preserve">
+    <value>직업 검색</value>
+  </data>
+  <data name="IE_Search_maps" xml:space="preserve">
+    <value>맵 검색</value>
+  </data>
+  <data name="IE_Search_mobs" xml:space="preserve">
+    <value>몹 검색</value>
+  </data>
+  <data name="IE_Search_NPCs" xml:space="preserve">
+    <value>NPC 검색</value>
+  </data>
+  <data name="IE_Search_quests" xml:space="preserve">
+    <value>퀘스트 검색</value>
+  </data>
+  <data name="IE_Search_skills" xml:space="preserve">
+    <value>스킬 검색</value>
+  </data>
+  <data name="IE_Select" xml:space="preserve">
+    <value>선택</value>
+  </data>
+  <data name="IE_Select_a_job" xml:space="preserve">
+    <value>직업 선택</value>
+  </data>
+  <data name="IE_Select_a_map" xml:space="preserve">
+    <value>맵 선택</value>
+  </data>
+  <data name="IE_Select_a_mob" xml:space="preserve">
+    <value>몹 선택</value>
+  </data>
+  <data name="IE_Select_a_quest" xml:space="preserve">
+    <value>퀘스트 선택</value>
+  </data>
+  <data name="IE_Select_a_skill" xml:space="preserve">
+    <value>스킬 선택</value>
+  </data>
+  <data name="IE_Select_an_item" xml:space="preserve">
+    <value>아이템 선택</value>
+  </data>
+  <data name="IE_Select_an_NPC" xml:space="preserve">
+    <value>NPC 선택</value>
+  </data>
+  <data name="IE_Select_class_categories" xml:space="preserve">
+    <value>직업 클래스 선택:</value>
+  </data>
+  <data name="IE_Select_job_categories" xml:space="preserve">
+    <value>직업 분류 선택:</value>
+  </data>
+  <data name="IE_Select_target_portal" xml:space="preserve">
+    <value>대상 포털 선택</value>
+  </data>
+  <data name="IE_Session_key" xml:space="preserve">
+    <value>세션 키</value>
+  </data>
+  <data name="IE_Session_value" xml:space="preserve">
+    <value>세션 값</value>
+  </data>
+  <data name="IE_Set_platform_zM_for_selected_items" xml:space="preserve">
+    <value>선택 항목의 플랫폼 zM 설정</value>
+  </data>
+  <data name="IE_Spine" xml:space="preserve">
+    <value>Spine</value>
+  </data>
+  <data name="IE_State" xml:space="preserve">
+    <value>상태</value>
+  </data>
+  <data name="IE_Tags" xml:space="preserve">
+    <value>태그</value>
+  </data>
+  <data name="IE_Target_this_map" xml:space="preserve">
+    <value>이 맵을 대상으로 설정</value>
+  </data>
+  <data name="IE_Team" xml:space="preserve">
+    <value>팀</value>
+  </data>
+  <data name="IE_Tile" xml:space="preserve">
+    <value>타일</value>
+  </data>
+  <data name="IE_Title" xml:space="preserve">
+    <value>제목</value>
+  </data>
+  <data name="IE_Tooltip" xml:space="preserve">
+    <value>도구 설명</value>
+  </data>
+  <data name="IE_Type" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="IE_Upper_foothold" xml:space="preserve">
+    <value>위쪽 발판</value>
+  </data>
+  <data name="IE_Value" xml:space="preserve">
+    <value>값: </value>
+  </data>
+  <data name="IE_Vertical_impact" xml:space="preserve">
+    <value>수직 영향</value>
+  </data>
+  <data name="IE_X" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="IE_X_offset" xml:space="preserve">
+    <value>X 오프셋</value>
+  </data>
+  <data name="IE_Y" xml:space="preserve">
+    <value>Y</value>
+  </data>
+  <data name="IE_Y_offset" xml:space="preserve">
+    <value>Y 오프셋</value>
+  </data>
+  <data name="IE_Y_shift" xml:space="preserve">
+    <value>Y 이동</value>
+  </data>
+  <data name="IE_Z" xml:space="preserve">
+    <value>Z</value>
+  </data>
+  <data name="IE_zM" xml:space="preserve">
+    <value>zM</value>
+  </data>
+  <data name="Common_Error" xml:space="preserve">
+    <value>오류</value>
+  </data>
+  <data name="Init_SelectMapleFolderMessage" xml:space="preserve">
+    <value>MapleStory 폴더를 선택하세요.</value>
+  </data>
+  <data name="Init_ShowEditorError" xml:space="preserve">
+    <value>편집기를 표시하는 중 오류가 발생했습니다:
+{0}
+
+{1}</value>
+  </data>
+  <data name="Init_SelectVersionMessage" xml:space="preserve">
+    <value>목록에서 버전을 선택하세요.</value>
+  </data>
+  <data name="Init_NoVersionSelectedTitle" xml:space="preserve">
+    <value>선택한 버전 없음</value>
+  </data>
+  <data name="Init_CreatingDataSource" xml:space="preserve">
+    <value>데이터 원본을 만드는 중...</value>
+  </data>
+  <data name="Init_ExtractingGameData" xml:space="preserve">
+    <value>게임 데이터를 추출하는 중...</value>
+  </data>
+  <data name="Init_Complete" xml:space="preserve">
+    <value>초기화가 완료되었습니다.</value>
+  </data>
+  <data name="Init_ImgInitializationError" xml:space="preserve">
+    <value>IMG 파일 시스템에서 초기화하는 중 오류가 발생했습니다:
+{0}</value>
+  </data>
+  <data name="Init_DataWzError" xml:space="preserve">
+    <value>data.wz ({0}) 초기화 중 오류가 발생했습니다.
+디렉터리가 올바르고 파일이 사용 중이 아닌지 확인하세요.</value>
+  </data>
+  <data name="Init_SelectMapleFolderDialog" xml:space="preserve">
+    <value>MapleStory 폴더를 선택하세요.</value>
+  </data>
+  <data name="Init_ExtractedFormat" xml:space="preserve">
+    <value>추출 시간: {0:yyyy-MM-dd HH:mm}</value>
+  </data>
+  <data name="Init_EncryptionFormat" xml:space="preserve">
+    <value>암호화: {0}</value>
+  </data>
+  <data name="Init_FormatFormat" xml:space="preserve">
+    <value>형식: {0}</value>
+  </data>
+  <data name="Init_TotalImagesFormat" xml:space="preserve">
+    <value>전체 이미지: {0:N0}</value>
+  </data>
+  <data name="Init_CategoriesFormat" xml:space="preserve">
+    <value>분류: {0}</value>
+  </data>
+  <data name="Init_InfoFormat" xml:space="preserve">
+    <value>정보: {0}</value>
+  </data>
+  <data name="Init_WarningFormat" xml:space="preserve">
+    <value>경고: {0}</value>
+  </data>
+  <data name="Init_StatusValid" xml:space="preserve">
+    <value>상태: 유효</value>
+  </data>
+  <data name="Init_SelectImgFolderDialog" xml:space="preserve">
+    <value>추출된 IMG 파일이 있는 폴더 선택</value>
+  </data>
+  <data name="Init_InvalidImgFolderMessage" xml:space="preserve">
+    <value>선택한 폴더에 추출된 IMG 파일이 없는 것 같습니다.
+
+올바른 버전 폴더에는 다음 중 하나가 있어야 합니다:
+- manifest.json 파일 또는
+- .img 파일이 있는 String/ 및 Map/ 폴더</value>
+  </data>
+  <data name="Init_InvalidFolderTitle" xml:space="preserve">
+    <value>잘못된 폴더</value>
+  </data>
+  <data name="Init_AddVersionFailed" xml:space="preserve">
+    <value>버전을 추가하지 못했습니다. 이미 목록에 있을 수 있습니다.</value>
+  </data>
+  <data name="Init_ConfirmDeleteVersion" xml:space="preserve">
+    <value>버전 “{0}”을(를) 삭제하시겠습니까?
+
+추출된 모든 IMG 파일이 영구적으로 삭제됩니다.</value>
+  </data>
+  <data name="Init_ConfirmDeleteTitle" xml:space="preserve">
+    <value>삭제 확인</value>
+  </data>
+  <data name="Init_DeleteVersionFailed" xml:space="preserve">
+    <value>버전을 삭제하지 못했습니다. 파일이 사용 중일 수 있습니다.</value>
+  </data>
+  <data name="Init_RenameVersionFailed" xml:space="preserve">
+    <value>버전 이름을 바꾸지 못했습니다. 대상 폴더가 이미 있거나 파일이 사용 중일 수 있습니다.</value>
+  </data>
+  <data name="Init_RenameVersionTitle" xml:space="preserve">
+    <value>IMG 버전 이름 바꾸기</value>
+  </data>
+  <data name="Init_NewVersionName" xml:space="preserve">
+    <value>새 버전 이름:</value>
+  </data>
+  <data name="Init_EmptyVersionName" xml:space="preserve">
+    <value>버전 이름은 비워 둘 수 없습니다.</value>
+  </data>
+  <data name="Init_InvalidNameTitle" xml:space="preserve">
+    <value>잘못된 이름</value>
+  </data>
+  <data name="Init_InvalidVersionCharacters" xml:space="preserve">
+    <value>버전 이름에 폴더 이름으로 사용할 수 없는 문자가 있습니다.</value>
+  </data>
+  <data name="Init_DataArchive" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="Init_EncryptedMsFiles" xml:space="preserve">
+    <value>개의 암호화된 .ms 파일.</value>
+  </data>
+  <data name="Init_InitializingFormat" xml:space="preserve">
+    <value>{0}{1} 초기화 중...</value>
+  </data>
+  <data name="IE_BackgroundNegativeMessage" xml:space="preserve">
+    <value>이 배경 유형에서는 CX/CY가 음수일 수 없습니다.</value>
+  </data>
+  <data name="IE_InvalidBackgroundTitle" xml:space="preserve">
+    <value>잘못된 배경</value>
+  </data>
+  <data name="Editor_About_4EFCA0" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="Editor_About_HaCreator_D7275A" xml:space="preserve">
+    <value>HaCreator 정보</value>
+  </data>
+  <data name="Editor_Active_layer_BF7C5A" xml:space="preserve">
+    <value>현재 레이어</value>
+  </data>
+  <data name="Editor_Active_platform_4B8392" xml:space="preserve">
+    <value>현재 플랫폼</value>
+  </data>
+  <data name="Editor_AI_Map_Editor_B208D2" xml:space="preserve">
+    <value>AI 맵 편집기</value>
+  </data>
+  <data name="Editor_All_maps_D292E9" xml:space="preserve">
+    <value>모든 맵</value>
+  </data>
+  <data name="Editor_All_Objects_DBC545" xml:space="preserve">
+    <value>모든 오브젝트</value>
+  </data>
+  <data name="Editor_Animate_asset_previews_E74DF1" xml:space="preserve">
+    <value>에셋 미리 보기 애니메이션</value>
+  </data>
+  <data name="Editor_Animate_previews_FD55D9" xml:space="preserve">
+    <value>미리 보기 애니메이션</value>
+  </data>
+  <data name="Editor_Assets_BD1273" xml:space="preserve">
+    <value>에셋</value>
+  </data>
+  <data name="Editor_Background_Border_A213F4" xml:space="preserve">
+    <value>배경 경계</value>
+  </data>
+  <data name="Editor_Backgrounds_16A0B5" xml:space="preserve">
+    <value>배경</value>
+  </data>
+  <data name="Editor_Backgrounds_B_65E4C7" xml:space="preserve">
+    <value>배경 (B)</value>
+  </data>
+  <data name="Editor_Browse_3227AA" xml:space="preserve">
+    <value>찾아보기</value>
+  </data>
+  <data name="Editor_Canvas_3824A9" xml:space="preserve">
+    <value>캔버스</value>
+  </data>
+  <data name="Editor_Chairs_09E99D" xml:space="preserve">
+    <value>의자</value>
+  </data>
+  <data name="Editor_Checked_edit_Mixed_view_only_Off_hidden_16154D" xml:space="preserve">
+    <value>선택: 편집  •  혼합: 보기 전용  •  끔: 숨김</value>
+  </data>
+  <data name="Editor_Clear_83B12C" xml:space="preserve">
+    <value>지우기</value>
+  </data>
+  <data name="Editor_Copy_All_7A1861" xml:space="preserve">
+    <value>모두 복사</value>
+  </data>
+  <data name="Editor_Current_map_A6E14D" xml:space="preserve">
+    <value>현재 맵</value>
+  </data>
+  <data name="Editor_Cursor_2C014F" xml:space="preserve">
+    <value>커서</value>
+  </data>
+  <data name="Editor_DEBUG_0FFD43" xml:space="preserve">
+    <value>디버그</value>
+  </data>
+  <data name="Editor_Delete_E2D0A5" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="Editor_Developer_map_tools_BE410C" xml:space="preserve">
+    <value>개발자 맵 도구</value>
+  </data>
+  <data name="Editor_Draw_footholds_91FC09" xml:space="preserve">
+    <value>발판 그리기</value>
+  </data>
+  <data name="Editor_Draw_map_regions_A876F1" xml:space="preserve">
+    <value>맵 영역 그리기</value>
+  </data>
+  <data name="Editor_Edit_464C4F" xml:space="preserve">
+    <value>편집</value>
+  </data>
+  <data name="Editor_Edit_quests_F30A7E" xml:space="preserve">
+    <value>퀘스트 편집</value>
+  </data>
+  <data name="Editor_Erase_items_each_click_is_undoable_256689" xml:space="preserve">
+    <value>항목 지우기(클릭마다 실행 취소 가능)</value>
+  </data>
+  <data name="Editor_Etc_D322DE" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="Editor_Exit_D17D84" xml:space="preserve">
+    <value>종료</value>
+  </data>
+  <data name="Editor_File_50009C" xml:space="preserve">
+    <value>파일</value>
+  </data>
+  <data name="Editor_Finalize_Footholds_68717E" xml:space="preserve">
+    <value>발판 마무리</value>
+  </data>
+
+  <data name="Editor_Footholds_7BE0B3" xml:space="preserve">
+    <value>발판</value>
+  </data>
+  <data name="Editor_Footholds_Ropes_Regions_913790" xml:space="preserve">
+    <value>발판, 로프 및 영역</value>
+  </data>
+  <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Editor_HAM_4FAE66" xml:space="preserve">
+    <value>HAM</value>
+  </data>
+  <data name="Editor_Help_B79CAC" xml:space="preserve">
+    <value>도움말</value>
+  </data>
+  <data name="Editor_Hide_all_6BAD68" xml:space="preserve">
+    <value>모두 숨기기</value>
+  </data>
+  <data name="Editor_Hierarchy_23BE56" xml:space="preserve">
+    <value>계층</value>
+  </data>
+  <data name="Editor_History_0E7696" xml:space="preserve">
+    <value>기록</value>
+  </data>
+  <data name="Editor_Info_Mode_F30E2B" xml:space="preserve">
+    <value>정보 모드</value>
+  </data>
+  <data name="Editor_Information_overlays_1CC00F" xml:space="preserve">
+    <value>정보 오버레이</value>
+  </data>
+  <data name="Editor_Inspect_the_current_selection_Double_click_an_item_on_t_0FAC6F" xml:space="preserve">
+    <value>현재 선택 항목을 검사합니다. 전체 편집은 캔버스나 계층에서 항목을 두 번 클릭하세요.</value>
+  </data>
+  <data name="Editor_Inspector_DA188E" xml:space="preserve">
+    <value>검사기</value>
+  </data>
+  <data name="Editor_Issues_666067" xml:space="preserve">
+    <value>문제</value>
+  </data>
+  <data name="Editor_Item_visibility_D68C83" xml:space="preserve">
+    <value>항목 표시</value>
+  </data>
+  <data name="Editor_itemdesc_E45CDC" xml:space="preserve">
+    <value>항목 설명</value>
+  </data>
+  <data name="Editor_Layer_AC9FFC" xml:space="preserve">
+    <value>레이어</value>
+  </data>
+  <data name="Editor_Layers_0BCD66" xml:space="preserve">
+    <value>레이어</value>
+  </data>
+  <data name="Editor_Load_selected_map_or_file_1920CB" xml:space="preserve">
+    <value>선택한 맵 또는 파일 불러오기</value>
+  </data>
+  <data name="Editor_Lock_all_AC5BB7" xml:space="preserve">
+    <value>모두 잠그기</value>
+  </data>
+  <data name="Editor_Manage_User_Objects_455E55" xml:space="preserve">
+    <value>사용자 오브젝트 관리</value>
+  </data>
+
+  <data name="Editor_Map_BE176B" xml:space="preserve">
+    <value>맵</value>
+  </data>
+  <data name="Editor_Map_browser_5ADA56" xml:space="preserve">
+    <value>맵 브라우저</value>
+  </data>
+  <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
+    <value>맵 진단</value>
+  </data>
+  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
+    <value>맵 파일</value>
+  </data>
+  <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
+    <value>맵 오브젝트</value>
+  </data>
+  <data name="Editor_Map_Physics_61AD90" xml:space="preserve">
+    <value>맵 물리</value>
+  </data>
+
+  <data name="Editor_Map_properties_EC4B13" xml:space="preserve">
+    <value>맵 속성...</value>
+  </data>
+  <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
+    <value>맵 시뮬레이터</value>
+  </data>
+  <data name="Editor_Map_XML_B46847" xml:space="preserve">
+    <value>맵 XML</value>
+  </data>
+  <data name="Editor_Maps_119E66" xml:space="preserve">
+    <value>맵</value>
+  </data>
+  <data name="Editor_Mirror_field_A21F74" xml:space="preserve">
+    <value>미러 필드</value>
+  </data>
+  <data name="Editor_Mobs_083013" xml:space="preserve">
+    <value>몬스터</value>
+  </data>
+  <data name="Editor_Mouse_Physical_19BB5E" xml:space="preserve">
+    <value>마우스 물리 좌표</value>
+  </data>
+  <data name="Editor_Mouse_Virtual_419B1F" xml:space="preserve">
+    <value>마우스 가상 좌표</value>
+  </data>
+  <data name="Editor_mousepos_DC487A" xml:space="preserve">
+    <value>마우스 위치</value>
+  </data>
+  <data name="Editor_New_18FDD5" xml:space="preserve">
+    <value>새로 만들기</value>
+  </data>
+  <data name="Editor_New_Platform_A52232" xml:space="preserve">
+    <value>새 플랫폼</value>
+  </data>
+  <data name="Editor_New_platform_D53525" xml:space="preserve">
+    <value>새 플랫폼...</value>
+  </data>
+  <data name="Editor_NPCs_32DFCB" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
+    <value>NPC, 몬스터 및 리액터</value>
+  </data>
+  <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
+    <value>NPC, 몬스터 및 리액터 (N)</value>
+  </data>
+  <data name="Editor_Objects_DE5236" xml:space="preserve">
+    <value>오브젝트</value>
+  </data>
+  <data name="Editor_Objects_O_F1F32A" xml:space="preserve">
+    <value>오브젝트 (O)</value>
+  </data>
+  <data name="Editor_Open_ED077F" xml:space="preserve">
+    <value>열기</value>
+  </data>
+  <data name="Editor_Open_AI_Map_Editor_for_the_current_map_9FC120" xml:space="preserve">
+    <value>현재 맵을 AI 맵 편집기에서 열기</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_E543F9" xml:space="preserve">
+    <value>HaRepacker 열기</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_09E8F1" xml:space="preserve">
+    <value>HaRepacker 열기...</value>
+  </data>
+  <data name="Editor_Open_Log_01468E" xml:space="preserve">
+    <value>로그 열기</value>
+  </data>
+  <data name="Editor_Open_map_EA488D" xml:space="preserve">
+    <value>맵 열기</value>
+  </data>
+  <data name="Editor_Open_map_03863A" xml:space="preserve">
+    <value>맵 열기...</value>
+  </data>
+  <data name="Editor_Open_Quest_Editor_C0AFD3" xml:space="preserve">
+    <value>퀘스트 편집기 열기</value>
+  </data>
+  <data name="Editor_Options_D0DB8B" xml:space="preserve">
+    <value>옵션</value>
+  </data>
+  <data name="Editor_Other_F97E9D" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="Editor_Parallax_backgrounds_69E70D" xml:space="preserve">
+    <value>시차 배경</value>
+  </data>
+  <data name="Editor_Parallax_BGs_8BC46B" xml:space="preserve">
+    <value>시차 배경</value>
+  </data>
+  <data name="Editor_Physical_1324A4" xml:space="preserve">
+    <value>물리
+</value>
+  </data>
+  <data name="Editor_Place_ropes_and_ladders_8D6DF5" xml:space="preserve">
+    <value>로프와 사다리 배치</value>
+  </data>
+  <data name="Editor_Platforms_AB9BD7" xml:space="preserve">
+    <value>플랫폼</value>
+  </data>
+  <data name="Editor_Portals_B4A3DA" xml:space="preserve">
+    <value>포털</value>
+  </data>
+  <data name="Editor_Portals_P_67398E" xml:space="preserve">
+    <value>포털 (P)</value>
+  </data>
+  <data name="Editor_Position_6D031A" xml:space="preserve">
+    <value>위치</value>
+  </data>
+  <data name="Editor_Preview_324B13" xml:space="preserve">
+    <value>미리 보기</value>
+  </data>
+  <data name="Editor_Preview_map_E19CEF" xml:space="preserve">
+    <value>맵 미리 보기</value>
+  </data>
+  <data name="Editor_Quest_editor_B81784" xml:space="preserve">
+    <value>퀘스트 편집기</value>
+  </data>
+  <data name="Editor_Quest_editor_A8BFA2" xml:space="preserve">
+    <value>퀘스트 편집기...</value>
+  </data>
+  <data name="Editor_Quests_60D40D" xml:space="preserve">
+    <value>퀘스트</value>
+  </data>
+  <data name="Editor_Random_Tiles_1ED7F5" xml:space="preserve">
+    <value>무작위 타일</value>
+  </data>
+  <data name="Editor_Reactors_347F20" xml:space="preserve">
+    <value>리액터</value>
+  </data>
+  <data name="Editor_Redo_Ctrl_Y_323109" xml:space="preserve">
+    <value>다시 실행 (Ctrl+Y)</value>
+  </data>
+  <data name="Editor_Regenerate_Minimap_CD2C30" xml:space="preserve">
+    <value>미니맵 다시 생성</value>
+  </data>
+
+  <data name="Editor_Reload_all_F4A8C4" xml:space="preserve">
+    <value>모두 다시 불러오기</value>
+  </data>
+  <data name="Editor_Reload_the_current_map_source_901FA7" xml:space="preserve">
+    <value>현재 맵 원본 다시 불러오기</value>
+  </data>
+  <data name="Editor_Repack_WZ_Files_B87109" xml:space="preserve">
+    <value>WZ 파일 다시 패킹</value>
+  </data>
+  <data name="Editor_Repack_WZ_files_90BFA4" xml:space="preserve">
+    <value>WZ 파일 다시 패킹...</value>
+  </data>
+  <data name="Editor_Reset_zoom_91A661" xml:space="preserve">
+    <value>확대/축소 초기화</value>
+  </data>
+  <data name="Editor_Resolve_Missing_4C66E8" xml:space="preserve">
+    <value>누락 항목 해결</value>
+  </data>
+  <data name="Editor_Resolve_missing_map_names_from_WZ_data_74AB22" xml:space="preserve">
+    <value>WZ 데이터에서 누락된 맵 이름 해결</value>
+  </data>
+  <data name="Editor_Ropes_6BB426" xml:space="preserve">
+    <value>로프</value>
+  </data>
+  <data name="Editor_Save_1509F5" xml:space="preserve">
+    <value>저장</value>
+  </data>
+  <data name="Editor_Save_map_AB74BA" xml:space="preserve">
+    <value>맵 저장</value>
+  </data>
+  <data name="Editor_Save_map_Ctrl_S_1E254B" xml:space="preserve">
+    <value>맵 저장 (Ctrl+S)</value>
+  </data>
+  <data name="Editor_Save_map_1EA04E" xml:space="preserve">
+    <value>맵 저장...</value>
+  </data>
+  <data name="Editor_Save_to_WZ_A5F5FB" xml:space="preserve">
+    <value>WZ에 저장</value>
+  </data>
+  <data name="Editor_Save_to_WZ_CDEA60" xml:space="preserve">
+    <value>WZ에 저장...</value>
+  </data>
+  <data name="Editor_Saving_096B73" xml:space="preserve">
+    <value>저장</value>
+  </data>
+  <data name="Editor_Search_by_map_ID_or_name_9D3E57" xml:space="preserve">
+    <value>맵 ID 또는 이름으로 검색</value>
+  </data>
+  <data name="Editor_Search_maps_and_commands_FF74F6" xml:space="preserve">
+    <value>맵 및 명령 검색</value>
+  </data>
+  <data name="Editor_Select_S_B368AF" xml:space="preserve">
+    <value>선택 (S)</value>
+  </data>
+  <data name="Editor_Selected_57FD7A" xml:space="preserve">
+    <value>선택됨</value>
+  </data>
+  <data name="Editor_Selected_Item_2DE33D" xml:space="preserve">
+    <value>선택한 항목</value>
+  </data>
+
+  <data name="Editor_SELECTED_MAP_F1ABF7" xml:space="preserve">
+    <value>선택한 맵</value>
+  </data>
+  <data name="Editor_Selection_CA4067" xml:space="preserve">
+    <value>선택</value>
+  </data>
+  <data name="Editor_Settings_74A883" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="Editor_Show_All_E1C326" xml:space="preserve">
+    <value>모두 표시</value>
+  </data>
+
+  <data name="Editor_Show_all_layers_B7053C" xml:space="preserve">
+    <value>모든 레이어 표시</value>
+  </data>
+  <data name="Editor_Show_all_platforms_8B719C" xml:space="preserve">
+    <value>모든 플랫폼 표시</value>
+  </data>
+  <data name="Editor_Show_Minimap_AEC9E5" xml:space="preserve">
+    <value>미니맵 표시</value>
+  </data>
+  <data name="Editor_Show_unsupported_info_props_D2FB46" xml:space="preserve">
+    <value>지원되지 않는 'info/' 속성 표시</value>
+  </data>
+  <data name="Editor_Snap_98DF9A" xml:space="preserve">
+    <value>맞춤</value>
+  </data>
+  <data name="Editor_Snap_Off_4E4910" xml:space="preserve">
+    <value>맞춤: 끔</value>
+  </data>
+  <data name="Editor_Snapping_D77561" xml:space="preserve">
+    <value>맞춤</value>
+  </data>
+  <data name="Editor_Stats_B4A736" xml:space="preserve">
+    <value>통계</value>
+  </data>
+  <data name="Editor_Tiles_4DA22A" xml:space="preserve">
+    <value>타일</value>
+  </data>
+  <data name="Editor_Tiles_T_FE4E53" xml:space="preserve">
+    <value>타일 (T)</value>
+  </data>
+  <data name="Editor_Toggle_minimap_357182" xml:space="preserve">
+    <value>미니맵 전환</value>
+  </data>
+  <data name="Editor_Toggle_snapping_13C561" xml:space="preserve">
+    <value>맞춤 전환</value>
+  </data>
+  <data name="Editor_Tools_EA93D6" xml:space="preserve">
+    <value>도구</value>
+  </data>
+  <data name="Editor_Tooltips_1CFB0B" xml:space="preserve">
+    <value>도구 설명</value>
+  </data>
+  <data name="Editor_Town_only_CB37A6" xml:space="preserve">
+    <value>마을만</value>
+  </data>
+  <data name="Editor_Undo_Ctrl_Z_A67232" xml:space="preserve">
+    <value>실행 취소 (Ctrl+Z)</value>
+  </data>
+  <data name="Editor_Validate_40611A" xml:space="preserve">
+    <value>검증</value>
+  </data>
+  <data name="Editor_Validate_all_maps_7F88A7" xml:space="preserve">
+    <value>모든 맵 검증</value>
+  </data>
+  <data name="Editor_Validate_current_map_3137EC" xml:space="preserve">
+    <value>현재 맵 검증</value>
+  </data>
+  <data name="Editor_Validate_every_map_in_the_loaded_source_6F7C90" xml:space="preserve">
+    <value>불러온 원본의 모든 맵 검증</value>
+  </data>
+  <data name="Editor_Validate_the_active_map_only_07B633" xml:space="preserve">
+    <value>현재 맵만 검증</value>
+  </data>
+  <data name="Editor_View_DCC839" xml:space="preserve">
+    <value>보기</value>
+  </data>
+  <data name="Editor_Virtual_935084" xml:space="preserve">
+    <value>가상
+</value>
+  </data>
+  <data name="Editor_XML_40658E" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Editor_Zoom_509C51" xml:space="preserve">
+    <value>확대/축소</value>
+  </data>
+  <data name="Editor_Zoom_in_0E47F0" xml:space="preserve">
+    <value>확대</value>
+  </data>
+  <data name="Editor_Zoom_out_BC7B63" xml:space="preserve">
+    <value>축소</value>
+  </data>
+  <data name="Editor_SnapOn" xml:space="preserve">
+    <value>맞춤: 켬</value>
+  </data>
+  <data name="Editor_SnapOff" xml:space="preserve">
+    <value>맞춤: 끔</value>
+  </data>
+  <data name="Editor_All" xml:space="preserve">
+    <value>모두</value>
+  </data>
+  <data name="Editor_ConfirmQuitMessage" xml:space="preserve">
+    <value>종료하시겠습니까?</value>
+  </data>
+  <data name="Editor_QuitTitle" xml:space="preserve">
+    <value>종료</value>
+  </data>
+  <data name="Editor_HistoryMapCount" xml:space="preserve">
+    <value>기록: 맵 {0}개</value>
+  </data>
+  <data name="Editor_AllMapsIdentifier" xml:space="preserve">
+    <value>모든 맵</value>
+  </data>
+  <data name="Editor_OpenMapBeforeValidation" xml:space="preserve">
+    <value>검증을 실행하기 전에 맵을 여세요.</value>
+  </data>
+  <data name="Editor_ValidateCurrentMapTitle" xml:space="preserve">
+    <value>현재 맵 검증</value>
+  </data>
+  <data name="Editor_MapIdentifier" xml:space="preserve">
+    <value>맵 {0:D9}</value>
+  </data>
+  <data name="Editor_Validating" xml:space="preserve">
+    <value>{0} 검증 중...</value>
+  </data>
+  <data name="Editor_ValidationIssues" xml:space="preserve">
+    <value>{0} 검증에서 문제 {1}개를 찾았습니다. 자세한 내용은 문제 탭에서 확인할 수 있습니다.</value>
+  </data>
+  <data name="Editor_ValidationSuccess" xml:space="preserve">
+    <value>{0} 검증이 완료되었으며 보고된 오류가 없습니다.</value>
+  </data>
+  <data name="Editor_MapValidationTitle" xml:space="preserve">
+    <value>맵 검증</value>
+  </data>
+  <data name="Editor_ValidationFailed" xml:space="preserve">
+    <value>{0}을(를) 검증할 수 없습니다.
+
+{1}</value>
+  </data>
+  <data name="Editor_Loading" xml:space="preserve">
+    <value>불러오는 중...</value>
+  </data>
+  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
+    <value>불러올 맵 선택...</value>
+  </data>
+  <data name="Editor_HamMapFileFilter" xml:space="preserve">
+    <value>HaCreator 맵 파일 (*.ham)|*.ham</value>
+  </data>
+  <data name="Editor_SelectXmlTitle" xml:space="preserve">
+    <value>불러올 XML 선택...</value>
+  </data>
+  <data name="Editor_XmlFileFilter" xml:space="preserve">
+    <value>확장성 마크업 언어 파일 (*.xml)|*.xml</value>
+  </data>
+  <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
+    <value>누락된 맵 문자열 해결 중...</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsTitle" xml:space="preserve">
+    <value>누락된 맵 해결</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsFailed" xml:space="preserve">
+    <value>누락된 맵 문자열을 해결하지 못했습니다.
+
+{0}</value>
+  </data>
+  <data name="Editor_OK" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Editor_NoMapLoaded" xml:space="preserve">
+    <value>현재 불러온 맵이 없습니다.</value>
+  </data>
+  <data name="Editor_ObjectViewerTitle" xml:space="preserve">
+    <value>오브젝트 뷰어</value>
+  </data>
+  <data name="Editor_SavedTo" xml:space="preserve">
+    <value>저장 위치: {0}</value>
+  </data>
+  <data name="Editor_AIMapEditorTitle" xml:space="preserve">
+    <value>AI 맵 편집기</value>
+  </data>
+</root>

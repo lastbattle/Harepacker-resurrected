@@ -652,7 +652,7 @@ namespace HaRepacker.FHMapper
                 settings = settings,
                 MobSpawnPoints = MSPs
             };
-            showMap.FormClosed += new FormClosedEventHandler(DisplayMapClosed);
+            showMap.Closed += DisplayMapClosed;
             try
             {
                 showMap.scale = zoom;
@@ -661,7 +661,7 @@ namespace HaRepacker.FHMapper
             }
             catch (FormatException)
             {
-                MessageBox.Show("You must set the render scale to a valid number.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(UiLocalization.Translate("You must set the render scale to a valid number."), UiLocalization.Translate("Warning"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
         }
@@ -673,7 +673,7 @@ namespace HaRepacker.FHMapper
             return BitConverter.ToInt32(md5, 0) & 0xFFFFFF;
         }
 
-        private void DisplayMapClosed(object sender, FormClosedEventArgs e)
+        private void DisplayMapClosed(object sender, EventArgs e)
         {
             ((WzNode)node).Reparse();
         }
@@ -707,16 +707,11 @@ namespace HaRepacker.FHMapper
                 settings.Add(Regex.Match(theSettings, @"(?<=!DSt:)\d*,?\d*(?=!)").Value);
                 settings.Add(bool.Parse(Regex.Match(theSettings, @"(?<=!DSc:)\w+(?=!)").Value));
             }
-            catch { MessageBox.Show("Failed to load settings.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
-            foreach (Form form in Application.OpenForms)
-            {
-                DisplayMap mapForm;
-                if (form.Name == "DisplayMap")// If the Map window is open, update its settings
-                {
-                    mapForm = (DisplayMap)form;
+            catch { MessageBox.Show(UiLocalization.Translate("Failed to load settings."), UiLocalization.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+            // If a rendered map window is open, update its live settings.
+            if (System.Windows.Application.Current != null)
+                foreach (DisplayMap mapForm in System.Windows.Application.Current.Windows.OfType<DisplayMap>())
                     mapForm.settings = settings;
-                }
-            }
         }
     }
 }

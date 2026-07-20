@@ -9,7 +9,7 @@ namespace HaCreator.MapEditor.AI
     /// <summary>
     /// Manages the conversation history for multi-turn AI interactions.
     /// Maintains both the display messages (ObservableCollection for UI) and
-    /// converts to API message format (JArray for OpenRouter).
+    /// converts to API message format (JArray for OpenAI-compatible APIs).
     /// </summary>
     public class ChatSession : INotifyPropertyChanged
     {
@@ -113,7 +113,7 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
-        /// Convert the session to JArray format for OpenRouter API.
+        /// Convert the session to JArray format for an OpenAI-compatible chat API.
         /// Includes system prompt, map context in first user message, and all conversation history.
         /// </summary>
         public JArray ToApiMessages()

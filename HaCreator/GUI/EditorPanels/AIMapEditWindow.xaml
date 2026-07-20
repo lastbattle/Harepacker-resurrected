@@ -8,23 +8,49 @@
         Title="AI Map Editor"
         Width="1200" Height="700"
         MinWidth="900" MinHeight="400"
+        Background="{DynamicResource HareCanvasBrush}"
+        FontFamily="Segoe UI"
         WindowStartupLocation="CenterOwner"
         Closing="Window_Closing">
 
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
         <!-- Bool to Visibility Converters -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <SolidColorBrush x:Key="DividerBrush" Color="#DCE3EC"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#64748B"/>
 
         <!-- Button Styles -->
-        <Style x:Key="ToolbarButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="Padding" Value="10,4"/>
+        <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource HareButtonStyle}">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="76"/>
+            <Setter Property="Padding" Value="12,5"/>
             <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#EEF2F7"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="#4285F4"/>
+            <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="12"/>
@@ -34,13 +60,13 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="3"
+                                CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#5A95F5"/>
+                                <Setter Property="Background" Value="#1D4ED8"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Background" Value="#CCCCCC"/>
@@ -53,7 +79,7 @@
 
         <Style x:Key="SuccessButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="#34A853"/>
+            <Setter Property="Background" Value="#16A34A"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="12"/>
@@ -63,7 +89,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="3"
+                                CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -89,13 +115,13 @@
         <Style x:Key="SubLabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="10"/>
-            <Setter Property="Foreground" Value="#646464"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
             <Setter Property="Margin" Value="0,0,0,3"/>
         </Style>
 
         <!-- User Message Bubble Style -->
         <Style x:Key="UserMessageBubbleStyle" TargetType="Border">
-            <Setter Property="Background" Value="#DCF8C6"/>
+            <Setter Property="Background" Value="#DBEAFE"/>
             <Setter Property="CornerRadius" Value="12,12,0,12"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Margin" Value="60,4,8,4"/>
@@ -105,7 +131,9 @@
 
         <!-- Assistant Message Bubble Style -->
         <Style x:Key="AssistantMessageBubbleStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F1F0F0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="12,12,12,0"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Margin" Value="8,4,60,4"/>
@@ -277,6 +305,7 @@
                 </Border>
             </Grid>
         </DataTemplate>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid>
@@ -286,10 +315,10 @@
         </Grid.RowDefinitions>
 
         <!-- Menu Bar -->
-        <Menu Grid.Row="0" Background="White">
+        <Menu Grid.Row="0" Height="36" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
             <MenuItem Header="_Tools">
-                <MenuItem x:Name="menuSettings" Header="_Settings" Click="BtnSettings_Click"
-                          ToolTip="Configure OpenRouter API key and model"/>
+                <MenuItem x:Name="menuMcpConnection" Header="_MCP Connection" Click="BtnMcpConnection_Click"
+                    ToolTip="Show the local MCP endpoint and authorization token for external clients"/>
                 <Separator/>
                 <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
                           ToolTip="Run automated tests to verify AI agent capabilities"/>
@@ -297,7 +326,7 @@
         </Menu>
 
         <!-- Main Content: Left (Map Context) | Right (Chat) -->
-        <Grid Grid.Row="1" Margin="5,0,5,5">
+        <Grid Grid.Row="1" Margin="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="150"/>
                 <ColumnDefinition Width="5"/>
@@ -316,7 +345,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Map Context (auto-loaded):"
+                    <TextBlock Grid.Column="0" Text="Map context"
                                Style="{StaticResource SubLabelStyle}"/>
                     <Button x:Name="btnRefresh" Grid.Column="1" Content="Refresh"
                             Style="{StaticResource ToolbarButtonStyle}"
@@ -332,7 +361,8 @@
                          VerticalScrollBarVisibility="Auto"
                          FontFamily="Consolas"
                          FontSize="10"
-                         Background="#FAFAFA"/>
+                         Padding="10"
+                         Background="White" BorderBrush="{StaticResource DividerBrush}"/>
             </Grid>
 
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center"
@@ -356,7 +386,7 @@
                 </StackPanel>
 
                 <!-- Chat Messages Area -->
-                <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Background="White">
+                <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7" Background="White">
                     <ScrollViewer x:Name="chatScrollViewer"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
@@ -380,7 +410,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="White">
+                    <Border Grid.Column="0" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="7" Background="White">
                         <TextBox x:Name="txtMessageInput"
                                  AcceptsReturn="True"
                                  TextWrapping="Wrap"
@@ -395,17 +425,17 @@
                     </Border>
 
                     <Button x:Name="btnSend" Grid.Column="1"
-                            Content="Send"
+                            Content="Ask"
                             Style="{StaticResource PrimaryButtonStyle}"
                             Width="70"
                             Margin="8,0,0,0"
                             Click="BtnSend_Click"
-                            ToolTip="Send message (Enter)"/>
+                            ToolTip="Ask message (Enter)"/>
                 </Grid>
 
                 <!-- Execute Commands Button -->
                 <Button x:Name="btnExecute" Grid.Row="3"
-                        Content="Execute Latest Commands"
+                        Content="Apply Latest Commands"
                         Style="{StaticResource SuccessButtonStyle}"
                         Margin="0,8,0,0"
                         Click="BtnExecute_Click"

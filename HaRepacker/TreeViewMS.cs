@@ -11,12 +11,19 @@ namespace HaRepacker
 	/// </summary>
 	public class TreeViewMS : System.Windows.Forms.TreeView
 	{
+		public event EventHandler ModelChanged;
 		protected ArrayList		m_coll;
 		protected TreeNode		m_lastNode, m_firstNode;
 
 		public TreeViewMS()
 		{
 			m_coll = new ArrayList();
+		}
+
+		public new void EndUpdate()
+		{
+			base.EndUpdate();
+			ModelChanged?.Invoke(this, EventArgs.Empty);
 		}
 
 		protected override void OnPaint(PaintEventArgs pe)

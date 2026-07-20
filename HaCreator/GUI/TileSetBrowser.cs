@@ -1,121 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
-using System.Collections;
+using HaCreator.GUI.EditorPanels;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using HaCreator.CustomControls;
-using System.Diagnostics;
+using System;
+using System.Drawing;
+using System.Linq;
+using System.Windows;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI
 {
-    public partial class TileSetBrowser : Form
+    public partial class TileSetBrowser : Window, IDisposable
     {
-        private ListBox targetListBox;
-        public ImageViewer selectedItem = null;
+        private readonly Action<string> selectTileSet;
+        public TileSetBrowser(Forms.ListBox target) : this(tileSet => target.SelectedItem = tileSet) { }
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="target"></param>
-        public TileSetBrowser(ListBox target)
+        public TileSetBrowser(Action<string> selectTileSet)
         {
+            this.selectTileSet = selectTileSet ?? throw new ArgumentNullException(nameof(selectTileSet));
             InitializeComponent();
-            targetListBox = target;
-
-            Load += TileSetBrowser_Load;
+            if (Program.HaEditorWindow?.IsVisible == true) Owner = Program.HaEditorWindow;
+            Loaded += TileSetBrowser_Loaded;
         }
 
-        /// <summary>
-        /// On load
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void TileSetBrowser_Load(object sender, EventArgs e)
+        private void TileSetBrowser_Loaded(object sender, RoutedEventArgs e)
         {
-            foreach (var tSKey in Program.InfoManager.TileSets.Keys.ToList())
+            foreach (string tileSetKey in Program.InfoManager.TileSets.Keys.OrderBy(key => key))
             {
-                WzImage tSImage = Program.InfoManager.GetTileSet(tSKey);
-                if (tSImage == null)
-                    continue;
-                WzImageProperty enh0 = tSImage["enH0"];
-                if (enh0 == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' missing 'enH0' property.");
-                    continue;
-                }
-                WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
-                if (image == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' 'enH0' missing '0' property.");
-                    continue;
-                }
-
-                Bitmap bitmap = image.GetLinkedWzCanvasBitmap();
-                if (bitmap == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' bitmap is null.");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' loaded bitmap: {bitmap.Width}x{bitmap.Height}");
-                }
-
-                ImageViewer item = koolkLVContainer.Add(bitmap, tSKey, true);
-                item.MouseDown += new MouseEventHandler(item_Click);
-                item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
-
-                // Add a visible border for debugging
-                item.BorderStyle = BorderStyle.FixedSingle;
-
-                // Log the control's size and location
-                System.Diagnostics.Debug.WriteLine($"Added ImageViewer for '{tSKey}' at size {item.Width}x{item.Height}");
+                WzImage image = Program.InfoManager.GetTileSet(tileSetKey);
+                WzCanvasProperty canvas = image?["enH0"]?["0"] as WzCanvasProperty;
+                if (canvas == null) continue;
+                using Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                gallery.Add(bitmap, tileSetKey, tileSetKey);
             }
         }
 
-        /// <summary>
-        /// Tile item double click
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        void item_DoubleClick(object sender, MouseEventArgs e)
+        private void Select_Click(object sender, RoutedEventArgs e)
         {
-            if (selectedItem == null) 
-                return;
-            targetListBox.SelectedItem = selectedItem.Name;
-            Close();
+            if (gallery.SelectedItem?.Tag is not string tileSet) return;
+            selectTileSet(tileSet);
+            DialogResult = true;
         }
 
-        /// <summary>
-        /// Tile itme click
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        void item_Click(object sender, MouseEventArgs e)
+        public void Dispose()
         {
-            if (selectedItem != null)
-                selectedItem.IsActive = false;
-            selectedItem = (ImageViewer)sender;
-            selectedItem.IsActive = true;
-        }
-
-        /// <summary>
-        /// On keydown
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void TileSetBrowser_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Escape)
-            {
-                e.Handled = true;
-                Close();
-            }
+            if (IsVisible) Close();
         }
     }
 }

@@ -1,188 +1,41 @@
-﻿using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib;
-using SharpDX.Direct3D9;
+using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using HaCreator.MapEditor.Instance.Shapes;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Windows.Threading;
-using MapleLib.WzLib.WzProperties;
-using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace HaCreator.GUI.InstanceEditor
 {
-    public partial class LoadMobSelector : Form
+    public partial class LoadMobSelector : Window
     {
-        private bool _isLoading = false;
-        private bool _bItemsLoaded = false;
+        private readonly List<string> itemNames = new();
+        private bool accepted;
+        public int SelectedMonsterId { get; private set; }
 
-        // dictionary
-        private readonly List<string> itemNames = new(); // cache
-
-        private bool _bNotUserClosing = false;
-        private int _selectedMonsterId = 0;
-        /// <summary>
-        /// The selected itemId in the listbox
-        /// </summary>
-        public int SelectedMonsterId
-        {
-            get { return _selectedMonsterId; }
-        }
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
         public LoadMobSelector()
         {
             InitializeComponent();
-
-            LoadSearchHelper searchBox = new LoadSearchHelper(listBox_npcList, itemNames);
-            this.searchBox.TextChanged += searchBox.TextChanged;
-
-            this.FormClosing += LoadQuestSelector_FormClosing;
-
-            // load items
-            load();
+            itemNames.AddRange(Program.InfoManager.MobNameCache.Select(item => $"[{item.Key}] - {item.Value}").OrderBy(item => item));
+            SelectorDialogSupport.Filter(resultsList, itemNames, string.Empty);
+            Closing += (_, _) => { if (!accepted) SelectedMonsterId = 0; };
         }
-
-        #region Window
-
-        /// <summary>
-        /// Loads the item on start of the window
-        /// </summary>
-        private void load()
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => SelectorDialogSupport.Filter(resultsList, itemNames, searchBox.Text);
+        private void ResultsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            _isLoading = true;
-            try
-            {
-                // Maps
-                foreach (KeyValuePair<string, string> mob in Program.InfoManager.MobNameCache) // mobId, mob name
-                {
-                    string npcId = mob.Key;
-                    string npcName = mob.Value;
-                    
-                    string combinedId_ItemName = string.Format("[{0}] - {1}", npcId, npcName);
-                    itemNames.Add(combinedId_ItemName);
-                }
-                itemNames.Sort();
-
-                object[] itemObjs = itemNames.Cast<object>().ToArray();
-                listBox_npcList.Items.AddRange(itemObjs);
-            }
-            finally
-            {
-                _isLoading = false;
-                _bItemsLoaded = true;
-            }
+            previewImage.Source = null;
+            if (!SelectorDialogSupport.TryGetBracketedId(resultsList.SelectedItem as string, out string id) || !int.TryParse(id, out int mobId))
+            { SelectedMonsterId = 0; descriptionText.Text = string.Empty; selectButton.IsEnabled = false; return; }
+            descriptionText.Text = Program.InfoManager.MobNameCache.TryGetValue(id, out string name) ? name : "NO NAME";
+            WzCanvasProperty canvas = Program.InfoManager.GetMobIcon(mobId);
+            if (canvas != null)
+                previewImage.Source = SelectorDialogSupport.ToBitmapSource(canvas.GetLinkedWzCanvasBitmap());
+            SelectedMonsterId = mobId;
+            selectButton.IsEnabled = true;
         }
-
-        private void Load_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.Escape)
-            {
-                _selectedMonsterId = 0; // set none
-                Close(); // close window
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                //loadButton_Click(null, null);
-            }
-        }
-
-        /// <summary>
-        /// The form is being closed by the user (e.g., clicking the X button)
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
-            {
-                _selectedMonsterId = 0; // set none
-            }
-        }
-        #endregion
-
-        /// <summary>
-        /// On list box selection changed
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void listBox_itemList_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (_isLoading || listBox_npcList.SelectedItem == null)
-                return;
-
-            string selectedItem = listBox_npcList.SelectedItem as string;
-
-            const string pattern = @"\[(\d+)\]"; //  "[123] - SampleItem"
-            Match match = Regex.Match(selectedItem, pattern);
-
-            if (match.Success)
-            {
-                string mobIdStr = match.Groups[1].Value;
-                int mobId = int.Parse(mobIdStr);
-
-                string mobName = "NO NAME";
-                if (Program.InfoManager.MobNameCache.ContainsKey(mobIdStr))
-                {
-                    mobName = Program.InfoManager.MobNameCache[mobIdStr]; 
-                }
-
-                // mob image
-                if (Program.InfoManager.MobNameCache.ContainsKey(mobIdStr) && Program.InfoManager.MobIconCache.ContainsKey(mobId))
-                {
-                    WzImageProperty standCanvas = Program.InfoManager.MobIconCache[mobId];
-                    if (standCanvas != null)
-                        pictureBox_IconPreview.Image = ((WzCanvasProperty) standCanvas).GetLinkedWzCanvasBitmap();
-                    else
-                        pictureBox_IconPreview.Image = null;
-                }
-                else
-                    pictureBox_IconPreview.Image = null;
-
-                // label desc
-                label_itemDesc.Text = mobName;
-
-                // set selected itemid
-                this._selectedMonsterId = mobId;
-                this.button_select.Enabled = true;
-                return;
-            }
-            this._selectedMonsterId = 0;
-            button_select.Enabled = false;
-        }
-
-        private void listBox_itemList_measureItem(object sender, MeasureItemEventArgs e)
-        {
-            //e.ItemHeight = (int)e.Graphics.MeasureString(listBox_itemList.Items[e.Index].ToString(), listBox_itemList.Font, listBox_itemList.Width).Height;
-        }
-
-        private void listBox_itemList_drawItem(object sender, DrawItemEventArgs e)
-        {
-            //e.DrawBackground();
-            //e.DrawFocusRectangle();
-
-            //e.Graphics.DrawString(listBox_itemList.Items[e.Index].ToString(), e.Font, new SolidBrush(e.ForeColor), e.Bounds);
-        }
-
-        /// <summary>
-        /// On select button click
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_select_Click(object sender, EventArgs e)
-        {
-            _bNotUserClosing = true;
-            Close();
-        }
+        private void SelectButton_Click(object sender, RoutedEventArgs e) { if (SelectedMonsterId == 0) return; accepted = true; Close(); }
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Escape) { SelectedMonsterId = 0; Close(); } }
     }
 }

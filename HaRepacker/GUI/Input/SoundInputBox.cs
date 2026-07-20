@@ -1,57 +1,55 @@
-﻿using System;
-using System.Windows.Forms;
+using Microsoft.Win32;
+using System.IO;
+using System.Windows;
+using System.Windows.Input;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class SoundInputBox : Form
+    public partial class SoundInputBox : Window
     {
+        private string nameResult;
+        private string soundResult;
+
         public static bool Show(string title, out string name, out string path)
         {
-            SoundInputBox form = new SoundInputBox(title);
-            bool result = form.ShowDialog() == DialogResult.OK;
+            SoundInputBox form = new(title);
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
             path = form.soundResult;
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private string soundResult = null;
 
         public SoundInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "Name:");
+            labelPath.Text = InputDialogSupport.Text(GetType(), "label2.Text", "Path:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
+            browseButton.Content = InputDialogSupport.Text(GetType(), "browseButton.Text", "Browse…");
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+        private void BrowseButton_Click(object sender, RoutedEventArgs e)
         {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            if (pathBox.Text != "" && pathBox.Text != null && nameBox.Text != "" && nameBox.Text != null && System.IO.File.Exists(pathBox.Text))
+            OpenFileDialog dialog = new()
             {
-                nameResult = nameBox.Text;
-                soundResult = pathBox.Text;
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Title = Properties.Resources.SelectMp3,
+                Filter = $"{Properties.Resources.Mp3Filter}|*.mp3"
+            };
+            if (dialog.ShowDialog(this) == true) pathBox.Text = dialog.FileName;
         }
 
-        private void cancelButton_Click(object sender, EventArgs e)
+        private void Accept()
         {
-            DialogResult = DialogResult.Cancel;
-            Close();
-        }
-
-        private void browseButton_Click(object sender, EventArgs e)
-        {
-            OpenFileDialog dialog = new OpenFileDialog { Title = Properties.Resources.SelectMp3, Filter = string.Format("{0}|*.mp3", Properties.Resources.Mp3Filter) };
-            if (dialog.ShowDialog() == DialogResult.OK) pathBox.Text = dialog.FileName;
+            if (string.IsNullOrEmpty(nameBox.Text) || string.IsNullOrEmpty(pathBox.Text) || !File.Exists(pathBox.Text))
+            { InputDialogSupport.WarnInvalidInput(); return; }
+            nameResult = nameBox.Text;
+            soundResult = pathBox.Text;
+            DialogResult = true;
         }
     }
 }

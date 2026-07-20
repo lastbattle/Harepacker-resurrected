@@ -1,4 +1,5 @@
 using HaCreator.GUI.EditorPanels;
+using HaCreator.GUI.Localization;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Input;
 using MapleLib.Helpers;
@@ -6,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,6 +26,8 @@ namespace HaCreator.GUI
         private bool _isMapExplorerInitialized;
         private bool _isMapExplorerHistoryInitialized;
         private string _mapLoadErrorsLogFilePath;
+        private bool _syncingInspectorControls;
+        private bool _syncingVisibilityControls;
 
         public HaEditor()
         {
@@ -34,6 +38,18 @@ namespace HaCreator.GUI
             this.Loaded += HaEditor2_Loaded;
             this.Closed += HaEditor2_Closed;
             this.StateChanged += HaEditor2_StateChanged;
+            this.Activated += HaEditor2_Activated;
+            this.Deactivated += HaEditor2_Deactivated;
+        }
+
+        private void HaEditor2_Activated(object sender, EventArgs e)
+        {
+            multiBoard.UpdateWindowActivation(true);
+        }
+
+        private void HaEditor2_Deactivated(object sender, EventArgs e)
+        {
+            multiBoard.UpdateWindowActivation(false);
         }
 
         /// <summary>
@@ -73,10 +89,14 @@ namespace HaCreator.GUI
             // helper classes
             handler = new InputHandler(multiBoard);
             hcsm = new HaCreatorStateManager(
-                multiBoard, ribbon, tabControl1, handler, editorPanel,
+                multiBoard, this, tabControl1, handler, editorPanel,
                 textblock_CursorX, textblock_CursorY, textblock_RCursorX, textblock_RCursorY, textblock_selectedItem);
             hcsm.CloseRequested += Hcsm_CloseRequested;
             hcsm.FirstMapLoaded += Hcsm_FirstMapLoaded;
+            multiBoard.ReturnToSelectionState += MultiBoard_ReturnToSelectionState;
+            LayerViewChanged += Ribbon_LayerViewChanged;
+            SnappingToggled += Ribbon_SnappingToggled;
+            txtSnapState.Text = LocExtension.Get(UserSettings.useSnapping ? "Editor_SnapOn" : "Editor_SnapOff");
 
             tilePanel.Initialize(hcsm);
             objPanel.Initialize(hcsm);
@@ -107,6 +127,213 @@ namespace HaCreator.GUI
                 return;
 
             UpdateZoomLabel();
+            RefreshInspectorLayerControls();
+            RefreshInspectorVisibilityControls();
+        }
+
+        private void RefreshInspectorLayerControls()
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board == null || inspectorLayerComboBox == null)
+                return;
+
+            _syncingInspectorControls = true;
+            inspectorLayerComboBox.ItemsSource = board.Layers
+                .Select((layer, index) => $"{index}  ·  {layer}")
+                .ToList();
+            inspectorLayerComboBox.SelectedIndex = board.SelectedLayerIndex;
+            if (board.SelectedLayerIndex >= 0 && board.SelectedLayerIndex < board.Layers.Count)
+            {
+                inspectorPlatformComboBox.ItemsSource = board.Layers[board.SelectedLayerIndex].zMList.ToList();
+                inspectorPlatformComboBox.SelectedItem = board.SelectedPlatform;
+            }
+            inspectorAllLayersCheckBox.IsChecked = board.SelectedAllLayers;
+            inspectorAllPlatformsCheckBox.IsChecked = board.SelectedAllPlatforms;
+            inspectorSnapCheckBox.IsChecked = UserSettings.useSnapping;
+            _syncingInspectorControls = false;
+        }
+
+        private void InspectorLayerComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_syncingInspectorControls && inspectorLayerComboBox.SelectedIndex >= 0)
+                SelectLayerFromShell(inspectorLayerComboBox.SelectedIndex);
+        }
+
+        private void InspectorAllLayersCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_syncingInspectorControls)
+                SetAllLayersFromShell(inspectorAllLayersCheckBox.IsChecked == true);
+        }
+
+        private void InspectorPlatformComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_syncingInspectorControls && inspectorPlatformComboBox.SelectedItem is int platform)
+                SelectPlatformFromShell(platform);
+        }
+
+        private void InspectorAllPlatformsCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_syncingInspectorControls)
+                SetAllPlatformsFromShell(inspectorAllPlatformsCheckBox.IsChecked == true);
+        }
+
+        private void InspectorSnapCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_syncingInspectorControls)
+                SetSnappingFromShell(inspectorSnapCheckBox.IsChecked == true);
+        }
+
+        private void RefreshInspectorVisibilityControls()
+        {
+            if (visibilityFiltersPanel == null)
+                return;
+
+            _syncingVisibilityControls = true;
+            foreach (CheckBox checkBox in visibilityFiltersPanel.Children.OfType<CheckBox>())
+            {
+                checkBox.IsChecked = GetVisibilityFromShell(checkBox.Tag as string);
+            }
+            _syncingVisibilityControls = false;
+        }
+
+        private void VisibilityFilter_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingVisibilityControls || !IsInitialized || sender is not CheckBox checkBox)
+                return;
+
+            SetVisibilityFromShell(checkBox.Tag as string, checkBox.IsChecked);
+            multiBoard?.Focus();
+        }
+
+        private void VisibilityPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button)
+                return;
+
+            bool? state = (button.Tag as string) switch
+            {
+                "Visible" => true,
+                "Locked" => null,
+                "Hidden" => false,
+                _ => true
+            };
+            SetAllVisibilityFromShell(state);
+            RefreshInspectorVisibilityControls();
+            multiBoard?.Focus();
+        }
+
+        private void Undo_Click(object sender, RoutedEventArgs e)
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board?.UndoRedoMan?.UndoList.Count > 0)
+            {
+                board.UndoRedoMan.Undo();
+            }
+
+            multiBoard?.Focus();
+        }
+
+        private void Redo_Click(object sender, RoutedEventArgs e)
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board?.UndoRedoMan?.RedoList.Count > 0)
+            {
+                board.UndoRedoMan.Redo();
+            }
+
+            multiBoard?.Focus();
+        }
+
+        private void ShowMapBrowser_Click(object sender, RoutedEventArgs e)
+        {
+            ShowMapExplorer();
+        }
+
+        private void ShowAssets_Click(object sender, RoutedEventArgs e)
+        {
+            if (toolWindowsTabControl != null && toolboxTabItem != null)
+            {
+                toolWindowsTabControl.SelectedItem = toolboxTabItem;
+            }
+        }
+
+        private void ShowHierarchy_Click(object sender, RoutedEventArgs e)
+        {
+            ShowObjectViewerDocked();
+        }
+
+        /// <summary>
+        /// Switches the contextual panel to the asset family represented by the rail.
+        /// Placement mode still begins only after the user chooses an asset.
+        /// </summary>
+        private void EditorTool_Checked(object sender, RoutedEventArgs e)
+        {
+            if (!IsInitialized || sender is not System.Windows.Controls.RadioButton button)
+            {
+                return;
+            }
+
+            string tool = button.Tag as string;
+            if (string.Equals(tool, "Select", StringComparison.Ordinal))
+            {
+                if (toolWindowsTabControl != null && inspectorTabItem != null)
+                {
+                    toolWindowsTabControl.SelectedItem = inspectorTabItem;
+                }
+
+                multiBoard?.SelectedBoard?.Mouse.SelectionMode();
+                multiBoard?.Focus();
+                return;
+            }
+
+            if (string.Equals(tool, "Eraser", StringComparison.Ordinal))
+            {
+                multiBoard?.SelectedBoard?.Mouse.SetEraserMode();
+                multiBoard?.Focus();
+                return;
+            }
+
+            if (string.Equals(tool, "Region", StringComparison.Ordinal))
+            {
+                toolWindowsTabControl.SelectedItem = toolboxTabItem;
+                commonExpander.IsExpanded = true;
+                commonExpander.BringIntoView();
+                multiBoard?.SelectedBoard?.Mouse.SetRegionMode();
+                multiBoard?.Focus();
+                return;
+            }
+
+            if (toolWindowsTabControl == null || toolboxTabItem == null)
+            {
+                return;
+            }
+
+            toolWindowsTabControl.SelectedItem = toolboxTabItem;
+
+            Expander target = tool switch
+            {
+                "Tile" => tileExpander,
+                "Object" => objectExpander,
+                "Life" => lifeExpander,
+                "Portal" => portalExpander,
+                "Background" => backgroundExpander,
+                "Foothold" => commonExpander,
+                "Rope" => commonExpander,
+                _ => null
+            };
+
+            if (target != null)
+            {
+                target.IsExpanded = true;
+                target.BringIntoView();
+            }
+
+
+            if (string.Equals(tool, "Foothold", StringComparison.Ordinal) ||
+                string.Equals(tool, "Rope", StringComparison.Ordinal))
+            {
+                commonPanel.ActivateTool(tool);
+            }
         }
 
         /// <summary>
@@ -129,16 +356,54 @@ namespace HaCreator.GUI
             Close();
         }
 
+        private void MultiBoard_ReturnToSelectionState()
+        {
+            Dispatcher.BeginInvoke(new Action(() => selectionToolRadioButton.IsChecked = true));
+        }
+
         void Hcsm_FirstMapLoaded()
         {
-            // Auto-show Object Viewer if setting is enabled
-            if (ApplicationSettings.ShowObjectViewerOnLoad)
+            Dispatcher.BeginInvoke(new Action(() =>
             {
-                // Use Dispatcher to ensure window is fully loaded before showing Object Viewer
-                Dispatcher.BeginInvoke(new Action(() =>
+                if (ApplicationSettings.ShowObjectViewerOnLoad)
                 {
                     ShowObjectViewerDocked(isManualOpen: false);
-                }), System.Windows.Threading.DispatcherPriority.Loaded);
+                }
+                else
+                {
+                    toolWindowsTabControl.SelectedItem = inspectorTabItem;
+                }
+                RefreshInspectorLayerControls();
+                RefreshInspectorVisibilityControls();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void Ribbon_LayerViewChanged(int layer, int platform, bool allLayers, bool allPlatforms, string tileSet)
+        {
+            txtActiveLayer.Text = allLayers ? LocExtension.Get("Editor_All") : layer.ToString();
+            if (inspectorLayerComboBox != null)
+            {
+                _syncingInspectorControls = true;
+                inspectorLayerComboBox.SelectedIndex = layer;
+                if (multiBoard?.SelectedBoard != null && layer >= 0 && layer < multiBoard.SelectedBoard.Layers.Count)
+                {
+                    inspectorPlatformComboBox.ItemsSource = multiBoard.SelectedBoard.Layers[layer].zMList.ToList();
+                    inspectorPlatformComboBox.SelectedItem = platform;
+                }
+                inspectorAllLayersCheckBox.IsChecked = allLayers;
+                inspectorAllPlatformsCheckBox.IsChecked = allPlatforms;
+                _syncingInspectorControls = false;
+            }
+        }
+
+        private void Ribbon_SnappingToggled(bool enabled)
+        {
+            txtSnapState.Text = LocExtension.Get(enabled ? "Editor_SnapOn" : "Editor_SnapOff");
+            if (inspectorSnapCheckBox != null)
+            {
+                _syncingInspectorControls = true;
+                inspectorSnapCheckBox.IsChecked = enabled;
+                _syncingInspectorControls = false;
             }
         }
 
@@ -149,7 +414,11 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void HaEditor2_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if (!Program.Restarting && System.Windows.MessageBox.Show("Are you sure you want to quit?", "Quit", MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) != MessageBoxResult.Yes)
+            if (!Program.Restarting && System.Windows.MessageBox.Show(
+                    LocExtension.Get("Editor_ConfirmQuitMessage"),
+                    LocExtension.Get("Editor_QuitTitle"),
+                    MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question) != MessageBoxResult.Yes)
             {
                 e.Cancel = true;
             }
@@ -232,6 +501,7 @@ namespace HaCreator.GUI
         public void ShowMapExplorer(string mapNameFilter = null)
         {
             InitializeMapExplorer();
+            mapExplorerTabItem.Visibility = Visibility.Visible;
             toolWindowsTabControl.SelectedItem = mapExplorerTabItem;
             mapExplorerSourceTabControl.SelectedItem = mapExplorerWzTabItem;
 
@@ -258,6 +528,8 @@ namespace HaCreator.GUI
             if (!_isMapExplorerInitialized)
             {
                 mapExplorerLoadButton.IsEnabled = false;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = string.Empty;
                 return;
             }
@@ -266,11 +538,15 @@ namespace HaCreator.GUI
             {
                 string selectedItem = _isMapExplorerHistoryInitialized ? mapExplorerHistoryBrowser.SelectedItem : null;
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = _isMapExplorerHistoryInitialized && mapExplorerHistoryBrowser.LoadMapEnabled;
                 mapExplorerDeleteHistoryButton.IsEnabled = !string.IsNullOrEmpty(selectedItem);
                 mapExplorerReloadButton.IsEnabled = true;
                 mapExplorerSelectionTextBlock.Text = selectedItem ??
-                    (_isMapExplorerHistoryInitialized ? $"History: {mapExplorerHistoryBrowser.ItemCount} map(s)" : string.Empty);
+                    (_isMapExplorerHistoryInitialized
+                        ? LocExtension.Format("Editor_HistoryMapCount", mapExplorerHistoryBrowser.ItemCount)
+                        : string.Empty);
                 return;
             }
 
@@ -278,6 +554,8 @@ namespace HaCreator.GUI
             if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerHamTabItem))
             {
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerHamPathTextBox.Text);
                 mapExplorerReloadButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = mapExplorerHamPathTextBox.Text;
@@ -287,6 +565,8 @@ namespace HaCreator.GUI
             if (Equals(mapExplorerSourceTabControl.SelectedItem, mapExplorerXmlTabItem))
             {
                 mapExplorerResolveMissingButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.Visibility = Visibility.Collapsed;
+                mapExplorerCheckMapButton.IsEnabled = false;
                 mapExplorerLoadButton.IsEnabled = File.Exists(mapExplorerXmlPathTextBox.Text);
                 mapExplorerReloadButton.IsEnabled = false;
                 mapExplorerSelectionTextBlock.Text = mapExplorerXmlPathTextBox.Text;
@@ -295,6 +575,9 @@ namespace HaCreator.GUI
 
             string wzSelectedItem = mapExplorerBrowser.SelectedItem;
             mapExplorerResolveMissingButton.Visibility = Visibility.Visible;
+            mapExplorerCheckMapButton.Visibility = Visibility.Visible;
+            mapExplorerCheckMapButton.IsEnabled = Program.InfoManager != null &&
+                (Program.DataSource != null || Program.WzManager != null);
             mapExplorerLoadButton.IsEnabled = mapExplorerBrowser.LoadMapEnabled;
             mapExplorerReloadButton.IsEnabled = true;
             mapExplorerSelectionTextBlock.Text = wzSelectedItem ?? string.Empty;
@@ -360,6 +643,73 @@ namespace HaCreator.GUI
             UpdateMapExplorerSelectionState();
         }
 
+        private void MapExplorerCheckMapButton_Click(object sender, RoutedEventArgs e)
+        {
+            RunMapValidation(LocExtension.Get("Editor_AllMapsIdentifier"), MapCheckService.CheckLoadedMaps);
+        }
+
+        private void ValidateCurrentMap_Click(object sender, RoutedEventArgs e)
+        {
+            var mapInfo = multiBoard?.SelectedBoard?.MapInfo;
+            if (mapInfo == null)
+            {
+                System.Windows.MessageBox.Show(
+                    LocExtension.Get("Editor_OpenMapBeforeValidation"),
+                    LocExtension.Get("Editor_ValidateCurrentMapTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string mapId = mapInfo.id.ToString();
+            string mapIdentifier = LocExtension.Format("Editor_MapIdentifier", mapInfo.id);
+            RunMapValidation(mapIdentifier, () => MapCheckService.CheckMap(mapId));
+        }
+
+        private void RunMapValidation(
+            string mapIdentifier,
+            Func<IReadOnlyDictionary<ErrorLevel, List<Error>>> validation)
+        {
+            WaitWindow waitWindow = new WaitWindow(LocExtension.Format("Editor_Validating", mapIdentifier));
+            waitWindow.Show();
+            Forms.Application.DoEvents();
+
+            try
+            {
+                IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot = validation();
+                int errorCount = errorSnapshot.Values.Sum(errors => errors.Count);
+
+                if (errorCount > 0)
+                {
+                    ShowMapLoadErrors(
+                        mapIdentifier,
+                        errorSnapshot,
+                        Path.GetFullPath(MapCheckService.OutputErrorFilename));
+                    toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
+                }
+
+                System.Windows.MessageBox.Show(
+                    errorCount > 0
+                        ? LocExtension.Format("Editor_ValidationIssues", mapIdentifier, errorCount)
+                        : LocExtension.Format("Editor_ValidationSuccess", mapIdentifier),
+                    LocExtension.Get("Editor_MapValidationTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception exception)
+            {
+                System.Windows.MessageBox.Show(
+                    LocExtension.Format("Editor_ValidationFailed", mapIdentifier, exception.Message),
+                    LocExtension.Get("Editor_MapValidationTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                waitWindow.EndWait();
+            }
+        }
+
         private void MapExplorerLoadButton_Click(object sender, RoutedEventArgs e)
         {
             InitializeMapExplorer();
@@ -369,7 +719,7 @@ namespace HaCreator.GUI
                 return;
             }
 
-            WaitWindow waitWindow = new WaitWindow("Loading...");
+            WaitWindow waitWindow = new WaitWindow(LocExtension.Get("Editor_Loading"));
             waitWindow.Show();
             Forms.Application.DoEvents();
 
@@ -408,7 +758,7 @@ namespace HaCreator.GUI
 
                 if (!loaded)
                 {
-                    System.Windows.MessageBox.Show(errorMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show(errorMessage, LocExtension.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             finally
@@ -421,8 +771,8 @@ namespace HaCreator.GUI
         {
             using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
             {
-                dialog.Title = "Select Map to load...";
-                dialog.Filter = "HaCreator Map File (*.ham)|*.ham";
+                dialog.Title = LocExtension.Get("Editor_SelectHamMapTitle");
+                dialog.Filter = LocExtension.Get("Editor_HamMapFileFilter");
                 if (!string.IsNullOrEmpty(mapExplorerHamPathTextBox.Text))
                 {
                     dialog.FileName = mapExplorerHamPathTextBox.Text;
@@ -441,8 +791,8 @@ namespace HaCreator.GUI
         {
             using (Forms.OpenFileDialog dialog = new Forms.OpenFileDialog())
             {
-                dialog.Title = "Select XML to load...";
-                dialog.Filter = "eXtensible Markup Language file (*.xml)|*.xml";
+                dialog.Title = LocExtension.Get("Editor_SelectXmlTitle");
+                dialog.Filter = LocExtension.Get("Editor_XmlFileFilter");
                 if (!string.IsNullOrEmpty(mapExplorerXmlPathTextBox.Text))
                 {
                     dialog.FileName = mapExplorerXmlPathTextBox.Text;
@@ -485,7 +835,7 @@ namespace HaCreator.GUI
 
         private void MapExplorerResolveMissingButton_Click(object sender, RoutedEventArgs e)
         {
-            WaitWindow waitWindow = new WaitWindow("Resolving missing map strings...");
+            WaitWindow waitWindow = new WaitWindow(LocExtension.Get("Editor_ResolvingMissingMaps"));
             waitWindow.Show();
             Forms.Application.DoEvents();
 
@@ -497,11 +847,13 @@ namespace HaCreator.GUI
                 mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
                 UpdateMapExplorerSelectionState();
 
-                ShowScrollableMessage("Resolve Missing Maps", MapLoadService.BuildResolutionSummaryMessage(result));
+                ShowScrollableMessage(LocExtension.Get("Editor_ResolveMissingMapsTitle"), MapLoadService.BuildResolutionSummaryMessage(result));
             }
             catch (Exception ex)
             {
-                ShowScrollableMessage("Resolve Missing Maps", $"Failed to resolve missing map strings.\r\n\r\n{ex}");
+                ShowScrollableMessage(
+                    LocExtension.Get("Editor_ResolveMissingMapsTitle"),
+                    LocExtension.Format("Editor_ResolveMissingMapsFailed", ex));
             }
             finally
             {
@@ -529,7 +881,7 @@ namespace HaCreator.GUI
                 messageBox.Font = new System.Drawing.Font("Consolas", 9F);
                 messageBox.Text = message;
 
-                okButton.Text = "OK";
+            okButton.Text = LocExtension.Get("Editor_OK");
                 okButton.Dock = Forms.DockStyle.Bottom;
                 okButton.Height = 30;
                 okButton.DialogResult = Forms.DialogResult.OK;
@@ -548,7 +900,9 @@ namespace HaCreator.GUI
             {
                 if (isManualOpen)
                 {
-                    System.Windows.MessageBox.Show("No map is currently loaded.", "Object Viewer",
+                    System.Windows.MessageBox.Show(
+                        LocExtension.Get("Editor_NoMapLoaded"),
+                        LocExtension.Get("Editor_ObjectViewerTitle"),
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
@@ -586,9 +940,9 @@ namespace HaCreator.GUI
             mapLoadErrorsTextBox.ScrollToHome();
             mapLoadErrorsLogPathTextBlock.Text = string.IsNullOrEmpty(logFilePath)
                 ? string.Empty
-                : $"Saved to: {Path.GetFileName(logFilePath)}";
+                : LocExtension.Format("Editor_SavedTo", Path.GetFileName(logFilePath));
             mapLoadErrorsOpenLogButton.IsEnabled = !string.IsNullOrEmpty(logFilePath) && File.Exists(logFilePath);
-            //toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
+            mapLoadErrorsTabItem.Visibility = Visibility.Visible;
         }
 
         private void MapLoadErrorsClearButton_Click(object sender, RoutedEventArgs e)
@@ -598,6 +952,7 @@ namespace HaCreator.GUI
             mapLoadErrorsTextBox.Text = string.Empty;
             mapLoadErrorsLogPathTextBlock.Text = string.Empty;
             mapLoadErrorsOpenLogButton.IsEnabled = false;
+            mapLoadErrorsTabItem.Visibility = Visibility.Collapsed;
             toolWindowsTabControl.SelectedItem = toolboxTabItem;
         }
 
@@ -658,7 +1013,9 @@ namespace HaCreator.GUI
             var board = multiBoard?.SelectedBoard;
             if (board == null)
             {
-                System.Windows.MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                System.Windows.MessageBox.Show(
+                    LocExtension.Get("Editor_NoMapLoaded"),
+                    LocExtension.Get("Editor_AIMapEditorTitle"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }

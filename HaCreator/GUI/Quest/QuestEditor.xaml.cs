@@ -96,8 +96,8 @@ namespace HaCreator.GUI.Quest
             if (_unsavedChanges)
             {
                 MessageBoxResult result = MessageBox.Show(
-                    "You have unsaved changes. Do you want to save the Quest.wz file before closing?",
-                    "Unsaved Changes",
+                    QuestTextExtension.Get("QuestEditor_UnsavedPrompt"),
+                    QuestTextExtension.Get("QuestEditor_UnsavedTitle"),
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Warning);
 
@@ -1764,9 +1764,9 @@ namespace HaCreator.GUI.Quest
             // Create and configure open file dialog
             Microsoft.Win32.OpenFileDialog openFileDialog = new()
             {
-                Filter = "WZ files (*.wz)|*.wz|All files (*.*)|*.*",
+                Filter = QuestTextExtension.Get("QuestEditor_WzImportFilter"),
                 Multiselect = true,
-                Title = "Select Quest WZ file(s) to import"
+                Title = QuestTextExtension.Get("QuestEditor_ImportDialogTitle")
             };
             if (openFileDialog.ShowDialog() == true)
             {
@@ -1788,8 +1788,8 @@ namespace HaCreator.GUI.Quest
 
                         if (questInfoImage == null)
                         {
-                            MessageBox.Show($"Invalid Quest WZ format - QuestInfo.img not found in {fileName}",
-                                "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            MessageBox.Show(QuestTextExtension.Get("QuestEditor_InvalidImportFormat", fileName),
+                                QuestTextExtension.Get("QuestEditor_ImportError"), MessageBoxButton.OK, MessageBoxImage.Error);
                             continue;
                         }
 
@@ -1813,8 +1813,8 @@ namespace HaCreator.GUI.Quest
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error importing from {fileName}: {ex.Message}",
-                            "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show(QuestTextExtension.Get("QuestEditor_ImportException", fileName, ex.Message),
+                            QuestTextExtension.Get("QuestEditor_ImportError"), MessageBoxButton.OK, MessageBoxImage.Error);
                         continue;
                     }
                 }
@@ -1824,8 +1824,8 @@ namespace HaCreator.GUI.Quest
                 {
                     string questList = string.Join(", ", existingQuestIds);
                     MessageBoxResult result = MessageBox.Show(
-                        $"The following quest IDs already exist:\n{questList}\n\nDo you want to overwrite them?",
-                        "Quests Already Exist",
+                        QuestTextExtension.Get("QuestEditor_OverwritePrompt", questList),
+                        QuestTextExtension.Get("QuestEditor_OverwriteTitle"),
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Warning);
 
@@ -1969,8 +1969,8 @@ namespace HaCreator.GUI.Quest
                 {
                     _unsavedChanges = true;
 
-                    MessageBox.Show($"Successfully imported {questsToImport.Count} quest(s)",
-                        "Import Successful",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ImportSuccessMessage", questsToImport.Count),
+                        QuestTextExtension.Get("QuestEditor_ImportSuccessTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
                 }
@@ -1991,12 +1991,12 @@ namespace HaCreator.GUI.Quest
                     return string.Format("This quest ID [{0}] was already being used.", questId);
 
                 if (questName.Length == 0 || questName.Length > 100)
-                    return "Quest name is too long.";
+                return QuestTextExtension.Get("QuestEditor_NameTooLong");
 
                 return string.Empty;
             }))
             {
-                inputForm.SetWindowInfo("Quest Name", "Quest Id", "Add a new quest:");
+            inputForm.SetWindowInfo(QuestTextExtension.Get("QuestEditor_QuestName"), QuestTextExtension.Get("QuestEditor_QuestId"), QuestTextExtension.Get("QuestEditor_AddNewQuestPrompt"));
 
                 if (inputForm.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
@@ -3419,8 +3419,8 @@ namespace HaCreator.GUI.Quest
             if (questInfoParentImg == null || questSayParentImg == null || questActParentImg == null || questCheckParentImg == null)
             {
                 MessageBox.Show(
-                    $"Unable to resolve one or more quest parent images while saving quest {quest.Id}. Save was cancelled to prevent corruption.",
-                    "Save Error",
+                    QuestTextExtension.Get("QuestEditor_SaveParentError", quest.Id),
+                    QuestTextExtension.Get("QuestEditor_SaveError"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
                 return;
@@ -4534,7 +4534,7 @@ namespace HaCreator.GUI.Quest
             // Create dialog to select save location
             Microsoft.Win32.SaveFileDialog saveFileDialog = new()
             {
-                Filter = "WZ files (*.wz)|*.wz",
+                Filter = QuestTextExtension.Get("QuestEditor_WzExportFilter"),
                 FileName = $"Quest_{quest.Id}.wz",
                 DefaultExt = ".wz"
             };
@@ -4568,15 +4568,15 @@ namespace HaCreator.GUI.Quest
                     // Save WZ file
                     wzFile.SaveToDisk(saveFileDialog.FileName);
 
-                    MessageBox.Show($"Quest {quest.Id} successfully exported to {saveFileDialog.FileName}",
-                        "Export Successful",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ExportSuccessMessage", quest.Id, saveFileDialog.FileName),
+                        QuestTextExtension.Get("QuestEditor_ExportSuccessTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error exporting quest: {ex.Message}",
-                        "Export Error",
+                    MessageBox.Show(QuestTextExtension.Get("QuestEditor_ExportErrorMessage", ex.Message),
+                        QuestTextExtension.Get("QuestEditor_ExportErrorTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                 }

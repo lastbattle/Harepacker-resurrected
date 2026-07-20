@@ -1,0 +1,106 @@
+<gui:EditorBase x:Class="HaCreator.GUI.InfoEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:gui="clr-namespace:HaCreator.GUI"
+    xmlns:local="clr-namespace:HaCreator.GUI.InfoEditorControls"
+    xmlns:shared="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+    Title="Map Info" Width="940" Height="720" MinWidth="760" MinHeight="560" Background="{DynamicResource HareCanvasBrush}"
+    Closing="InfoEditor_FormClosing">
+    <gui:EditorBase.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/></ResourceDictionary.MergedDictionaries>
+            <Style TargetType="local:NumericUpDown" BasedOn="{StaticResource {x:Type TextBox}}"><Setter Property="MinWidth" Value="110"/></Style>
+            <Style TargetType="local:CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"><Setter Property="Margin" Value="0,3"/></Style>
+        </ResourceDictionary>
+    </gui:EditorBase.Resources>
+    <Grid Margin="18">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,14">
+            <TextBlock Text="Edit map identity, scripts, gameplay rules, limits, and client behavior." Opacity="0.72"/>
+        </StackPanel>
+        <TabControl x:Name="tabControl1" Grid.Row="1">
+            <TabItem Header="Essential">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock Text="Map ID"/><TextBlock x:Name="IDLabel" Grid.Column="1" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Row="1" Text="Map name"/><TextBox x:Name="nameBox" Grid.Row="1" Grid.Column="1" Margin="0,3"/>
+                    <TextBlock Grid.Row="2" Text="Street name"/><TextBox x:Name="streetBox" Grid.Row="2" Grid.Column="1" Margin="0,3"/>
+                    <TextBlock Grid.Row="3" Text="Category"/><TextBox x:Name="categoryBox" Grid.Row="3" Grid.Column="1" Margin="0,3"/>
+                    <TextBlock Grid.Row="4" Text="BGM"/><ComboBox x:Name="bgmBox" Grid.Row="4" Grid.Column="1" Margin="0,3" SelectionChanged="bgmBox_SelectedIndexChanged"/>
+                    <shared:SoundPlayer x:Name="soundPlayer1" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8,12,8"/>
+                    <TextBlock Grid.Column="2" Text="Map mark"/><ComboBox x:Name="markBox" Grid.Column="3" Margin="0,3" SelectionChanged="markBox_SelectedIndexChanged"/>
+                    <Image x:Name="markImage" Grid.Row="1" Grid.Column="2" Grid.RowSpan="2" Width="48" Height="48" Stretch="Uniform"/>
+                    <local:CheckBox x:Name="cannotReturnCBX" Grid.Row="3" Grid.Column="2" Content="Cannot return" Checked="cannotReturnCBX_CheckedChanged" Unchecked="cannotReturnCBX_CheckedChanged"/>
+                    <StackPanel Grid.Row="3" Grid.Column="3" Orientation="Horizontal"><local:NumericUpDown x:Name="returnBox"/><Button Content="Choose…" Margin="8,0,0,0" Click="button_selectReturnMap_Click"/></StackPanel>
+                    <local:CheckBox x:Name="returnHereCBX" Grid.Row="4" Grid.Column="2" Content="Forced return here" Checked="returnHereCBX_CheckedChanged" Unchecked="returnHereCBX_CheckedChanged"/>
+                    <StackPanel Grid.Row="4" Grid.Column="3" Orientation="Horizontal"><local:NumericUpDown x:Name="forcedRet"/><Button Content="Choose…" Margin="8,0,0,0" Click="button_selectForcedReturnMap_Click"/></StackPanel>
+                    <TextBlock Grid.Row="5" Grid.Column="2" Text="Mob rate"/><local:NumericUpDown x:Name="mobRate" Grid.Row="5" Grid.Column="3" AllowDecimal="True"/>
+                    <TextBlock Grid.Row="6" Grid.Column="2" Text="Map width"/><local:NumericUpDown x:Name="xBox" Grid.Row="6" Grid.Column="3"/>
+                    <TextBlock Grid.Row="7" Grid.Column="2" Text="Map height"/><local:NumericUpDown x:Name="yBox" Grid.Row="7" Grid.Column="3"/>
+                </Grid></ScrollViewer>
+            </TabItem>
+            <TabItem Header="Optional properties">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <local:CheckBox x:Name="timeLimitEnable" Content="Time limit" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="timeLimit" Grid.Column="1"/>
+                    <local:CheckBox x:Name="lvLimitEnable" Grid.Row="1" Content="Level limit" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="lvLimit" Grid.Row="1" Grid.Column="1"/>
+                    <local:CheckBox x:Name="lvForceMoveUse" Grid.Row="2" Content="Force-move level" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="lvForceMove" Grid.Row="2" Grid.Column="1"/>
+                    <local:CheckBox x:Name="firstUserEnable" Grid.Row="3" Content="First-user script" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="firstUserEnter" Grid.Row="3" Grid.Column="1"/>
+                    <local:CheckBox x:Name="userEnterEnable" Grid.Row="4" Content="User-enter script" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="userEnter" Grid.Row="4" Grid.Column="1"/>
+                    <local:CheckBox x:Name="fieldTypeEnable" Grid.Row="5" Content="Field type" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><ComboBox x:Name="fieldType" Grid.Row="5" Grid.Column="1"/>
+                    <local:CheckBox x:Name="moveLimitEnable" Grid.Row="6" Content="Move limit" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="moveLimit" Grid.Row="6" Grid.Column="1"/>
+                    <local:CheckBox x:Name="mapNameEnable" Grid.Row="7" Content="Internal map name" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="mapName" Grid.Row="7" Grid.Column="1"/>
+                    <local:CheckBox x:Name="mapDescEnable" Grid.Row="8" Content="Map description" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="mapDesc" Grid.Row="8" Grid.Column="1"/>
+                    <local:CheckBox x:Name="streetNameEnable" Grid.Row="9" Content="Internal street name" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="streetNameBox" Grid.Row="9" Grid.Column="1"/>
+                    <local:CheckBox x:Name="effectEnable" Grid.Row="10" Content="Effect" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="effectBox" Grid.Row="10" Grid.Column="1"/>
+                    <local:CheckBox x:Name="dropExpireEnable" Grid.Column="2" Content="Drop expiration" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="dropExpire" Grid.Column="3"/>
+                    <local:CheckBox x:Name="dropRateEnable" Grid.Row="1" Grid.Column="2" Content="Drop rate" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="dropRate" Grid.Row="1" Grid.Column="3" AllowDecimal="True"/>
+                    <local:CheckBox x:Name="recoveryEnable" Grid.Row="2" Grid.Column="2" Content="Recovery" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="recovery" Grid.Row="2" Grid.Column="3" AllowDecimal="True"/>
+                    <local:CheckBox x:Name="fsEnable" Grid.Row="3" Grid.Column="2" Content="Friction" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="fsBox" Grid.Row="3" Grid.Column="3" AllowDecimal="True"/>
+                    <local:CheckBox x:Name="reactorShuffle" Grid.Row="4" Grid.Column="2" Content="Shuffle reactors" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                    <local:CheckBox x:Name="reactorNameShuffle" Grid.Row="5" Grid.Column="2" Content="Shuffle name" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="reactorNameBox" Grid.Row="5" Grid.Column="3"/>
+                    <local:CheckBox x:Name="massEnable" Grid.Row="6" Grid.Column="2" Content="Mob mass settings" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                    <StackPanel Grid.Row="6" Grid.Column="3"><local:NumericUpDown x:Name="createMobInterval"/><local:NumericUpDown x:Name="fixedMobCapacity" Margin="0,5,0,0"/></StackPanel>
+                    <local:CheckBox x:Name="helpEnable" Grid.Row="7" Grid.Column="2" Content="Help text" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="helpBox" Grid.Row="7" Grid.Column="3" Height="75" AcceptsReturn="True" TextWrapping="Wrap"/>
+                </Grid></ScrollViewer>
+            </TabItem>
+            <TabItem Header="Gameplay">
+                <Grid Margin="16"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="16"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <ScrollViewer><StackPanel>
+                        <local:CheckBox x:Name="hpDecEnable" Content="Enable HP decrease" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <TextBlock Text="HP decrease"/><local:NumericUpDown x:Name="decHP"/>
+                        <local:CheckBox x:Name="decIntervalEnable" Content="Custom interval" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="decInterval"/>
+                        <local:CheckBox x:Name="protectEnable" Content="Protected items" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <ListBox x:Name="listBox_protectItem" Height="100"/>
+                        <StackPanel Orientation="Horizontal"><Button Content="Add" Click="button_addProtectItem_Click"/><Button Content="Remove" Margin="6,0,0,0" Click="button_removeProtectItem_Click"/></StackPanel>
+                        <local:CheckBox x:Name="allowedItemsEnable" Content="Allowed items" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <ListBox x:Name="allowedItems" Height="100"/>
+                        <StackPanel Orientation="Horizontal"><Button x:Name="allowedItemsAdd" Content="Add" Click="allowedItemsAdd_Click"/><Button x:Name="allowedItemsRemove" Content="Remove" Margin="6,0,0,0" Click="allowedItemsRemove_Click"/></StackPanel>
+                    </StackPanel></ScrollViewer>
+                    <ScrollViewer Grid.Column="2"><StackPanel>
+                        <local:CheckBox x:Name="summonMobEnable" Content="Timed mob" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <local:CheckBox x:Name="timedMobEnable" Content="Custom hours" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <UniformGrid Columns="2"><local:NumericUpDown x:Name="timedMobStart"/><local:NumericUpDown x:Name="timedMobEnd"/></UniformGrid>
+                        <TextBlock Text="Mob ID"/><local:NumericUpDown x:Name="timedMobId"/>
+                        <TextBlock Text="Message"/><TextBox x:Name="timedMobMessage" Height="60" AcceptsReturn="True"/>
+                        <local:CheckBox x:Name="autoLieDetectorEnable" Content="Auto lie detector" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/>
+                        <UniformGrid Columns="2"><local:NumericUpDown x:Name="autoLieStart"/><local:NumericUpDown x:Name="autoLieEnd"/><local:NumericUpDown x:Name="autoLieInterval"/><local:NumericUpDown x:Name="autoLieProp"/></UniformGrid>
+                    </StackPanel></ScrollViewer>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Rules &amp; limits">
+                <Grid Margin="16"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="16"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <local:CheckListBox x:Name="optionsList"/>
+                    <shared:FieldLimitPanel x:Name="fieldLimitPanel1" Grid.Column="2"/>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Additional properties"><TreeView x:Name="unknownProps" Margin="12"/></TabItem>
+        </TabControl>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button x:Name="cancelButton" Content="Cancel" IsCancel="True" Padding="20,7" Click="CancelButton_WpfClick"/>
+            <Button x:Name="okButton" Content="Apply" IsDefault="True" Padding="22,7" Margin="8,0,0,0" Click="OkButton_WpfClick"/>
+        </StackPanel>
+    </Grid>
+</gui:EditorBase>

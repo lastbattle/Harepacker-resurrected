@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,16 +18,19 @@ namespace HaCreator.GUI.EditorPanels
     /// </summary>
     public partial class AIMapEditWindow : Window
     {
-        private const string OPENCODE_MANUAL_START_HINT =
-            "Hint: Run in CMD: opencode serve --port 4096 --hostname 127.0.0.1";
-
         private static readonly Dictionary<Board, AIMapEditWindow> instances = new Dictionary<Board, AIMapEditWindow>();
-        private static readonly object openCodeStartupLock = new object();
-        private static Task openCodeStartupTask = Task.CompletedTask;
 
         private readonly Board board;
         private readonly ChatSession _chatSession;
+        private readonly MapMcpToolServer mapMcpServer;
         private bool isProcessing = false;
+
+        /// <summary>
+        /// Loopback MCP endpoint for the active map window.
+        /// </summary>
+        public string McpEndpoint => mapMcpServer?.Endpoint;
+        public string McpAuthorizationToken => mapMcpServer?.AuthorizationToken;
+        public event EventHandler<string> McpCommandReceived;
 
         private AIMapEditWindow(Board board)
         {
@@ -36,8 +38,18 @@ namespace HaCreator.GUI.EditorPanels
 
             // Initialize chat session
             _chatSession = new ChatSession();
+            mapMcpServer = new MapMcpToolServer();
+            mapMcpServer.CommandReceived += (sender, command) =>
+            {
+                if (Dispatcher.CheckAccess())
+                    McpCommandReceived?.Invoke(this, command);
+                else
+                    Dispatcher.BeginInvoke(new Action(() => McpCommandReceived?.Invoke(this, command)));
+            };
+            mapMcpServer.CommandExecutor = ApplyMcpCommand;
 
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
 
             // Bind chat messages to ItemsControl
             chatItemsControl.ItemsSource = _chatSession.Messages;
@@ -47,11 +59,14 @@ namespace HaCreator.GUI.EditorPanels
 
             // Update title with map info
             UpdateTitle();
+
+            // Start the external MCP endpoint only after the WPF window is initialized.
+            mapMcpServer.Start();
         }
 
         private void UpdateTitle()
         {
-            string mapName = "Unknown";
+            string mapName = EditorPanelLocalizer.Text("AI_UnknownMap", "Unknown");
             int mapId = 0;
 
             if (board?.MapInfo != null)
@@ -59,10 +74,10 @@ namespace HaCreator.GUI.EditorPanels
                 mapId = board.MapInfo.id;
                 mapName = !string.IsNullOrEmpty(board.MapInfo.strMapName)
                     ? board.MapInfo.strMapName
-                    : $"Map {mapId}";
+                    : EditorPanelLocalizer.Format("AI_DefaultMapName", mapId);
             }
 
-            this.Title = $"AI Map Editor - {mapName} ({mapId})";
+            this.Title = EditorPanelLocalizer.Format("AI_WindowTitle", mapName, mapId);
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)
@@ -103,7 +118,7 @@ namespace HaCreator.GUI.EditorPanels
             var window = GetOrCreate(board);
             if (window == null)
             {
-                MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI Map Editor"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -123,47 +138,8 @@ namespace HaCreator.GUI.EditorPanels
                 window.Show();
             }
 
-            // If OpenCode is selected, warm up the server in the background when opening AI Map Editor.
-            TryAutoStartOpenCodeServer();
-
             // Auto-load map context every time the window is shown/focused
             window.LoadMapContext();
-        }
-
-        private static void TryAutoStartOpenCodeServer()
-        {
-            if (AISettings.Provider != AIProvider.OpenCode || !AISettings.OpenCodeAutoStart)
-            {
-                return;
-            }
-
-            lock (openCodeStartupLock)
-            {
-                if (openCodeStartupTask != null && !openCodeStartupTask.IsCompleted)
-                {
-                    return;
-                }
-
-                openCodeStartupTask = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var client = new OpenCodeClient(
-                            AISettings.OpenCodeHost,
-                            AISettings.OpenCodePort,
-                            AISettings.OpenCodeModel,
-                            AISettings.OpenCodeAutoStart,
-                            AISettings.OpenCodeReasoningEffort);
-
-                        await client.EnsureServerAsync();
-                        Debug.WriteLine("[AIMapEditWindow] OpenCode server is ready.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[AIMapEditWindow] OpenCode auto-start failed: {ex.Message}");
-                    }
-                });
-            }
         }
 
         /// <summary>
@@ -176,6 +152,7 @@ namespace HaCreator.GUI.EditorPanels
                 instances.Remove(board);
                 window.Closing -= window.Window_Closing;
                 window.Close();
+                window.mapMcpServer?.Dispose();
             }
         }
 
@@ -188,11 +165,10 @@ namespace HaCreator.GUI.EditorPanels
             {
                 window.Closing -= window.Window_Closing;
                 window.Close();
+                window.mapMcpServer?.Dispose();
             }
             instances.Clear();
 
-            // Cleanup any auto-started OpenCode server
-            AIClientFactory.Cleanup();
         }
 
         private static void CleanupClosedInstances()
@@ -226,7 +202,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (board == null)
             {
-                txtMapContext.Text = "# No map loaded";
+                txtMapContext.Text = EditorPanelLocalizer.Text("AI_NoMapContext", "# No map loaded");
                 return;
             }
 
@@ -241,7 +217,7 @@ namespace HaCreator.GUI.EditorPanels
             }
             catch (Exception ex)
             {
-                txtMapContext.Text = $"# Error loading map: {ex.Message}";
+                txtMapContext.Text = EditorPanelLocalizer.Format("AI_MapLoadError", ex.Message);
             }
         }
 
@@ -307,7 +283,7 @@ namespace HaCreator.GUI.EditorPanels
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI Map Editor"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -347,6 +323,16 @@ namespace HaCreator.GUI.EditorPanels
                 assistantMessage.IsProcessing = false;
                 await StreamAssistantTextAsync(assistantMessage, explanation, CancellationToken.None);
                 assistantMessage.CommandsContent = commands;
+
+                if (AISettings.AutoApplyCommands && !string.IsNullOrWhiteSpace(commands))
+                {
+                    var execution = ExecuteCommandText(commands);
+                    if (execution != null && execution.SuccessCount > 0)
+                    {
+                        assistantMessage.Content += Environment.NewLine + Environment.NewLine +
+                            $"Applied automatically: {execution.SuccessCount} succeeded, {execution.FailCount} failed.";
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -361,7 +347,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 isProcessing = false;
                 btnSend.IsEnabled = true;
-                btnExecute.IsEnabled = _chatSession.HasCommands;
+                btnExecute.IsEnabled = _chatSession.HasCommands && !AISettings.AutoApplyCommands;
                 txtMessageInput.Focus();
             }
         }
@@ -423,8 +409,8 @@ namespace HaCreator.GUI.EditorPanels
             if (_chatSession.HasMessages)
             {
                 var result = MessageBox.Show(
-                    "Start a new conversation? Current chat history will be cleared.",
-                    "New Chat",
+                    EditorPanelLocalizer.Text("AI_ClearChatConfirm", "Start a new conversation? Current chat history will be cleared."),
+                    EditorPanelLocalizer.Text("New Chat"),
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
 
@@ -449,7 +435,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Execute Commands",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -457,28 +443,23 @@ namespace HaCreator.GUI.EditorPanels
             var commandText = _chatSession.GetLatestCommands();
             if (string.IsNullOrWhiteSpace(commandText))
             {
-                MessageBox.Show("No commands to execute. Send a message to generate commands first.",
-                    "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoCommands", "No commands to execute. Send a message to generate commands first."),
+                    EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             try
             {
-                var parser = new MapAIParser();
-                var commands = parser.ParseCommands(commandText);
-
-                if (commands.Count == 0)
+                var result = ExecuteCommandText(commandText);
+                if (result == null)
                 {
-                    MessageBox.Show("No valid commands found in the generated output.",
-                        "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(EditorPanelLocalizer.Text("AI_NoValidCommands", "No valid commands found in the generated output."),
+                        EditorPanelLocalizer.Text("AI_ExecuteCommandsTitle", "Execute Commands"), MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
-                var executor = new MapAIExecutor(board);
-                var result = executor.ExecuteCommands(commands);
-
                 // Show execution summary
-                string summary = $"Execution complete: {result.SuccessCount} succeeded, {result.FailCount} failed";
+                string summary = EditorPanelLocalizer.Format("AI_ExecutionSummary", result.SuccessCount, result.FailCount);
 
                 if (result.FailCount > 0 && result.Log.Count > 0)
                 {
@@ -491,27 +472,75 @@ namespace HaCreator.GUI.EditorPanels
                     }
                 }
 
-                MessageBox.Show(summary, "Execution Result",
+                MessageBox.Show(summary, EditorPanelLocalizer.Text("AI_ExecutionResultTitle", "Execution Result"),
                     MessageBoxButton.OK,
                     result.FailCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
-                if (result.SuccessCount > 0)
-                {
-                    board.Dirty = true;
-                    LoadMapContext(); // Refresh context
-                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error executing commands: {ex.Message}", "Execution Error",
+                MessageBox.Show(EditorPanelLocalizer.Format("AI_ExecutionError", ex.Message), EditorPanelLocalizer.Text("AI_ExecutionErrorTitle", "Execution Error"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        private ExecutionResult ExecuteCommandText(string commandText)
         {
-            var dialog = new AISettingsDialog();
-            dialog.ShowDialog();
+            var parser = new MapAIParser();
+            var commands = parser.ParseCommands(commandText);
+            if (commands.Count == 0)
+                return null;
+
+            var executor = new MapAIExecutor(board);
+            var result = executor.ExecuteCommands(commands);
+            if (result.SuccessCount > 0)
+            {
+                board.Dirty = true;
+                LoadMapContext();
+            }
+
+            return result;
+        }
+
+        private string ApplyMcpCommand(string commandText)
+        {
+            ExecutionResult result = null;
+            Exception error = null;
+
+            Action apply = () =>
+            {
+                try
+                {
+                    result = ExecuteCommandText(commandText);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+            };
+
+            if (Dispatcher.CheckAccess())
+                apply();
+            else
+                Dispatcher.Invoke(apply);
+
+            if (error != null)
+                return $"# ERROR: {error.Message}";
+            if (result == null)
+                return "# ERROR: The MCP command was not valid.";
+            if (result.FailCount > 0)
+                return $"# ERROR: {result.SuccessCount} succeeded, {result.FailCount} failed. {string.Join("; ", result.Log)}";
+
+            return $"Applied {result.SuccessCount} map command(s).";
+        }
+
+        private void BtnMcpConnection_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBox.Show(
+                EditorPanelLocalizer.Format("AI_McpConnectionDetails", McpEndpoint, McpAuthorizationToken),
+                EditorPanelLocalizer.Text("AI_McpConnectionTitle", "MCP Connection"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
 
         private async void BtnRunTests_Click(object sender, RoutedEventArgs e)
@@ -535,7 +564,7 @@ namespace HaCreator.GUI.EditorPanels
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Run Tests",
+                MessageBox.Show(EditorPanelLocalizer.Text("AI_NoMapLoaded", "No map is currently loaded."), EditorPanelLocalizer.Text("AI_RunTestsTitle", "Run Tests"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -591,7 +620,7 @@ namespace HaCreator.GUI.EditorPanels
                 isProcessing = false;
                 menuRunTests.IsEnabled = true;
                 btnSend.IsEnabled = true;
-                btnExecute.IsEnabled = _chatSession.HasCommands;
+                btnExecute.IsEnabled = _chatSession.HasCommands && !AISettings.AutoApplyCommands;
             }
         }
 
@@ -738,30 +767,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             var message = $"{prefix}: {ex.Message}";
 
-            if (AISettings.Provider == AIProvider.OpenCode &&
-                AISettings.OpenCodeAutoStart &&
-                IsOpenCodeAutoStartFailure(ex?.Message))
-            {
-                message += Environment.NewLine + OPENCODE_MANUAL_START_HINT;
-            }
-
             return message;
-        }
-
-        private static bool IsOpenCodeAutoStartFailure(string message)
-        {
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                return false;
-            }
-
-            var m = message.ToLowerInvariant();
-            return m.Contains("failed to auto-start")
-                || m.Contains("open code server not running")
-                || m.Contains("opencode server not running")
-                || m.Contains("start with: opencode serve")
-                || m.Contains("opencode cli not found")
-                || (m.Contains("opencode") && m.Contains("not running"));
         }
 
         private async Task StreamAssistantTextAsync(ChatMessage message, string text, CancellationToken cancellationToken)

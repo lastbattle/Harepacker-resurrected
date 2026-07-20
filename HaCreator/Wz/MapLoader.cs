@@ -80,7 +80,7 @@ namespace HaCreator.Wz
                         copyPropNames.Add(prop.Name);
                         if (!userless)
                         {
-                            MessageBox.Show("The map you are opening has the feature \"" + prop.Name + "\", which is purposely not supported in the editor.\r\nTo get around this, HaCreator will copy the original feature's data byte-to-byte. This might cause the feature to stop working if it depends on map objects, such as footholds or mobs.");
+                            MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Format("UnsupportedMapFeature", prop.Name));
                         }
                         continue;
                     case "tokyoBossParty": // Neo Tokyo 802000801.img
@@ -928,7 +928,7 @@ namespace HaCreator.Wz
 
             System.Windows.Controls.MenuItem menuItem1 = new System.Windows.Controls.MenuItem
             {
-                Header = "Edit map info..."
+                Header = HaCreator.GUI.Localization.MapEditorText.Get("EditMapInfo")
             };
             menuItem1.Click += rightClickHandler[0];
             menuItem1.Icon = new System.Windows.Controls.Image
@@ -938,7 +938,7 @@ namespace HaCreator.Wz
 
             System.Windows.Controls.MenuItem menuItem2 = new System.Windows.Controls.MenuItem
             {
-                Header = "Add VR"
+                Header = HaCreator.GUI.Localization.MapEditorText.Get("AddVr")
             };
             menuItem2.Click += rightClickHandler[1];
             menuItem2.Icon = new System.Windows.Controls.Image
@@ -948,7 +948,7 @@ namespace HaCreator.Wz
 
             System.Windows.Controls.MenuItem menuItem3 = new System.Windows.Controls.MenuItem
             {
-                Header = "Add Minimap"
+                Header = HaCreator.GUI.Localization.MapEditorText.Get("AddMinimap")
             };
             menuItem3.Click += rightClickHandler[2];
             menuItem3.Icon = new System.Windows.Controls.Image
@@ -958,7 +958,7 @@ namespace HaCreator.Wz
 
             System.Windows.Controls.MenuItem menuItem4 = new System.Windows.Controls.MenuItem
             {
-                Header = "Close"
+                Header = HaCreator.GUI.Localization.MapEditorText.Get("CloseTitle")
             };
             menuItem4.Click += rightClickHandler[3];
             menuItem4.Icon = new System.Windows.Controls.Image
@@ -1090,7 +1090,7 @@ namespace HaCreator.Wz
             }
             catch (NoVRException)
             {
-                MessageBox.Show("Error - map does not contain size information and HaCreator was unable to generate it. An error has been logged.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Get("MapSizeMissing"), HaCreator.GUI.Localization.MapEditorText.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, "no size @map " + info.id.ToString());
                 return;
             }

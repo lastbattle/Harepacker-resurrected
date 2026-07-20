@@ -19,7 +19,9 @@ namespace HaRepacker.GUI {
     /// ZLZ WZ encryption keys 
     /// Credits: http://forum.ragezone.com/f921/release-gms-key-retriever-895646/index2.html 
     /// </summary>
-    public partial class ZLZPacketEncryptionKeyForm : Form {
+    public partial class ZLZPacketEncryptionKeyForm : ThemedDialogWindow {
+        private static string T(string text) => UiLocalization.Translate(text);
+        private static string TF(string text, params object[] args) => string.Format(T(text), args);
         public ZLZPacketEncryptionKeyForm() {
             InitializeComponent();
         }
@@ -44,7 +46,7 @@ namespace HaRepacker.GUI {
 
             if (module == IntPtr.Zero) {
                 uint lastError = kernel32.GetLastError();
-                MessageBox.Show($"Unable to load DLL Library. Kernel32 GetLastError() : {lastError}", "Error");
+                MessageBox.Show(TF("Unable to load DLL library. Kernel32 GetLastError(): {0}", lastError), T("Error"));
             }
             else {
                 bool bError = true;
@@ -76,14 +78,14 @@ namespace HaRepacker.GUI {
                         bError = false;
                     }                }
                 catch (Exception exp) {
-                    MessageBox.Show($"Invalid KeyGen position. This version of MapleStory may be unsupported.\r\n{exp}", "Error");
+                    MessageBox.Show(TF("Invalid KeyGen position. This version of MapleStory may be unsupported.\n{0}", exp), T("Error"));
                 }
                 finally {
                     kernel32.FreeLibrary(module);
                 }
 
                 if (bError) {
-                    MessageBox.Show(String.Format("Invalid KeyGen position. This version of MapleStory may be unsupported.\r\nfunc_setEncryptionKey = {0}, encryptionKeyLoc = {1}", func_setEncryptionKey.ToString("X8"), encryptionKeyLoc.ToString("X8")), "Error");
+                    MessageBox.Show(TF("Invalid KeyGen position. This version of MapleStory may be unsupported.\nfunc_setEncryptionKey = {0}, encryptionKeyLoc = {1}", func_setEncryptionKey.ToString("X8"), encryptionKeyLoc.ToString("X8")), T("Error"));
                 }
                 else
                     return true;
@@ -282,7 +284,6 @@ LABEL_27:
   *(_DWORD *)(a1 + 56) = 0;
   return result;
 }
-
         * 
         * Inside sub_180003BA0(v19, v18, v16, (unsigned int)&unk_180074010, 0);
         * __int128 *__fastcall sub_180003BA0(__int64 a1, int a2, int a3, _DWORD *a4, int a5)
@@ -341,7 +342,6 @@ LABEL_27:
   }
   return result;
 }
-
         * 
         * First function
         * void init_key()
@@ -404,7 +404,7 @@ LABEL_27:
             if (((int)(module = kernel32.LoadLibrary(fileinfo.FullName))) == 0) {
                 uint lastError = kernel32.GetLastError();
 
-                MessageBox.Show("Unable to load DLL Library. Kernel32 GetLastError() : " + lastError, "Error");
+                MessageBox.Show(TF("Unable to load DLL library. Kernel32 GetLastError(): {0}", lastError), T("Error"));
             }
             else {
                 try {
@@ -418,7 +418,7 @@ LABEL_27:
                     return true;
                 }
                 catch (Exception exp) {
-                    MessageBox.Show("Invalid KeyGen position. This version of MapleStory may be unsupported.\r\n" + exp.ToString(), "Error");
+                    MessageBox.Show(TF("Invalid KeyGen position. This version of MapleStory may be unsupported.\n{0}", exp), T("Error"));
                 }
                 finally {
                     kernel32.FreeLibrary(module);

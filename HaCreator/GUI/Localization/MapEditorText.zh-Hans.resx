@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="BackupFailed" xml:space="preserve"><value>备份失败！错误：{0}\r\n{1}</value></data>
+  <data name="DuplicateObjectName" xml:space="preserve"><value>无法添加“{0}”，因为已存在同名对象。</value></data>
+  <data name="ErrorTitle" xml:space="preserve"><value>错误</value></data>
+  <data name="InstanceEditorError" xml:space="preserve"><value>显示 {0} 的实例编辑器时出错：\r\n{1}</value></data>
+  <data name="CloseMapConfirm" xml:space="preserve"><value>确定要关闭此地图吗？</value></data>
+  <data name="CloseTitle" xml:space="preserve"><value>关闭</value></data>
+  <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>不支持的属性列表</value></data>
+  <data name="SelectExportLocation" xml:space="preserve"><value>选择导出位置</value></data>
+  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator 地图文件 (*.ham)|*.ham</value></data>
+  <data name="CouldNotSave" xml:space="preserve"><value>无法保存：{0}\r\n\r\n{1}</value></data>
+  <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>这将完成所有立足点、移除其图块绑定并清除撤销/重做列表。\r\n是否继续？</value></data>
+  <data name="WarningTitle" xml:space="preserve"><value>警告</value></data>
+  <data name="MinimapRegenerated" xml:space="preserve"><value>小地图重新生成成功。</value></data>
+  <data name="SuccessTitle" xml:space="preserve"><value>成功</value></data>
+  <data name="MinimapRegenerationError" xml:space="preserve"><value>重新生成小地图时出错。错误已记录。请尽可能保存地图并在 GitHub 上报告。</value></data>
+  <data name="HelpFileMissing" xml:space="preserve"><value>找不到 HRHelp.htm，无法显示帮助。</value></data>
+  <data name="ImgFilesystemPathUnknown" xml:space="preserve"><value>无法确定 IMG 文件系统路径。\n\n请使用 HaRepacker 将 IMG 文件打包到 WZ。</value></data>
+  <data name="ImgFilesystemModeTitle" xml:space="preserve"><value>IMG 文件系统模式</value></data>
+  <data name="ConfirmTitle" xml:space="preserve"><value>确认</value></data>
+  <data name="RemoveVrConfirm" xml:space="preserve"><value>这将移除地图的 VR，且无法撤销；必须从地图菜单重新添加 VR。是否继续？</value></data>
+  <data name="RemoveMinimapConfirm" xml:space="preserve"><value>这将移除地图的小地图，且无法撤销；必须从地图菜单重新添加。是否继续？</value></data>
+  <data name="ClipboardInvalid" xml:space="preserve"><value>剪贴板数据不可用或无效。</value></data>
+  <data name="GenericError" xml:space="preserve"><value>发生错误：{0}</value></data>
+  <data name="ClipboardDifferentTileSets" xml:space="preserve"><value>剪贴板包含不同图块集的图块，无法粘贴。</value></data>
+  <data name="ClipboardNoLayerSelected" xml:space="preserve"><value>剪贴板包含分层项目，但未选择图层或平台。</value></data>
+  <data name="ClipboardTileSetMismatch" xml:space="preserve"><value>剪贴板图块使用的图块集与所选图层不同。</value></data>
+  <data name="GraphicsAdapterUnsupported" xml:space="preserve"><value>不支持此图形适配器：{0}\r\n\r\n{1}</value></data>
+  <data name="SelectRealLayer" xml:space="preserve"><value>请选择有效图层。</value></data>
+  <data name="RecoveryPrompt" xml:space="preserve"><value>HaCreator 意外关闭，可以从备份自动恢复。是否继续？\r\n\r\n（若要重新开始，请选择“否”。）</value></data>
+  <data name="RecoveryTitle" xml:space="preserve"><value>恢复</value></data>
+  <data name="UnsupportedMapFeature" xml:space="preserve"><value>此地图包含不支持的功能“{0}”。HaCreator 会逐字节保留其原始数据，但若它依赖已编辑的立足点或怪物等地图对象，可能无法继续工作。</value></data>
+  <data name="AddVr" xml:space="preserve"><value>VR 添加</value></data>
+  <data name="AddMinimap" xml:space="preserve"><value>添加小地图</value></data>
+  <data name="MapSizeMissing" xml:space="preserve"><value>地图没有尺寸信息，HaCreator 也无法生成。错误已记录。</value></data>
+  <data name="CurrentMapLabel" xml:space="preserve"><value>当前地图</value></data>
+  <data name="EditMapInfo" xml:space="preserve"><value>编辑地图信息…</value></data>
+  <data name="Context_EditInstance" xml:space="preserve"><value>编辑此实例…</value></data>
+  <data name="Context_LoadTargetMap" xml:space="preserve"><value>在新标签页中加载目标地图</value></data>
+  <data name="Context_AddCharacterTooltip" xml:space="preserve"><value>添加角色提示</value></data>
+  <data name="Context_BringToFront" xml:space="preserve"><value>移到最前</value></data>
+  <data name="Context_SendToBack" xml:space="preserve"><value>移到最后</value></data>
+  <data name="Context_SelectConnected" xml:space="preserve"><value>选择相连项目</value></data>
+  <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>更改图层/平台…</value></data>
+  <data name="Context_SelectPlatform" xml:space="preserve"><value>选择平台</value></data>
+  <data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>动画帧编辑器</value></data>
+  <data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>打开动画帧编辑器</value></data>
+  <data name="Editor_Animations_2D94A1" xml:space="preserve"><value>动画</value></data>
+  <data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI 设置</value></data>
+</root>

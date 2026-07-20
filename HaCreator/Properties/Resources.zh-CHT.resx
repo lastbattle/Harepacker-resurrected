@@ -1,17 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
-  <!-- 
-    Microsoft ResX Schema 
-    
+  <!--
+    Microsoft ResX Schema
+
     Version 2.0
-    
-    The primary goals of this format is to allow a simple XML format 
-    that is mostly human readable. The generation and parsing of the 
-    various data types are done through the TypeConverter classes 
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
     associated with the data types.
-    
+
     Example:
-    
+
     ... ado.net/XML headers & schema ...
     <resheader name="resmimetype">text/microsoft-resx</resheader>
     <resheader name="version">2.0</resheader>
@@ -26,36 +26,36 @@
         <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
         <comment>This is a comment</comment>
     </data>
-                
-    There are any number of "resheader" rows that contain simple 
+
+    There are any number of "resheader" rows that contain simple
     name/value pairs.
-    
-    Each data row contains a name, and value. The row also contains a 
-    type or mimetype. Type corresponds to a .NET class that support 
-    text/value conversion through the TypeConverter architecture. 
-    Classes that don't support this are serialized and stored with the 
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
     mimetype set.
-    
-    The mimetype is used for serialized objects, and tells the 
-    ResXResourceReader how to depersist the object. This is currently not 
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
     extensible. For a given mimetype the value must be set accordingly:
-    
-    Note - application/x-microsoft.net.object.binary.base64 is the format 
-    that the ResXResourceWriter will generate, however the reader can 
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
     read any of the formats listed below.
-    
+
     mimetype: application/x-microsoft.net.object.binary.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
             : and then encoded with base64 encoding.
-    
+
     mimetype: application/x-microsoft.net.object.soap.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
             : and then encoded with base64 encoding.
 
     mimetype: application/x-microsoft.net.object.bytearray.base64
-    value   : The object must be serialized into a byte array 
+    value   : The object must be serialized into a byte array
             : using a System.ComponentModel.TypeConverter
             : and then encoded with base64 encoding.
     -->
@@ -126,4 +126,69 @@
   <data name="Warning" xml:space="preserve">
     <value>警告</value>
   </data>
+  <data name="QuestEditor_Title" xml:space="preserve"><value>任務編輯器</value></data>
+  <data name="QuestEditor_Subtitle" xml:space="preserve"><value>瀏覽、設定並驗證 QuestInfo、Say、Check 與 Act 任務資料。</value></data>
+  <data name="QuestEditor_Eyebrow" xml:space="preserve"><value>WZ 任務資料</value></data>
+  <data name="QuestEditor_QuestLibrary" xml:space="preserve"><value>任務庫</value></data>
+  <data name="QuestEditor_QuestDetails" xml:space="preserve"><value>任務詳細資料</value></data>
+  <data name="QuestEditor_Area" xml:space="preserve"><value>區域</value></data>
+  <data name="QuestEditor_FilterTooltip" xml:space="preserve"><value>依 ID 或名稱篩選任務</value></data>
+  <data name="QuestEditor_NewQuest" xml:space="preserve"><value>新增任務</value></data>
+  <data name="QuestEditor_Import" xml:space="preserve"><value>匯入</value></data>
+  <data name="QuestEditor_Export" xml:space="preserve"><value>匯出</value></data>
+  <data name="QuestEditor_Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="QuestEditor_SaveChanges" xml:space="preserve"><value>儲存變更</value></data>
+  <data name="QuestEditor_Select" xml:space="preserve"><value>選擇</value></data>
+  <data name="QuestEditor_Type" xml:space="preserve"><value>類型</value></data>
+  <data name="QuestEditor_Text" xml:space="preserve"><value>文字</value></data>
+  <data name="QuestEditor_Responses" xml:space="preserve"><value>回應</value></data>
+  <data name="QuestEditor_YesResponses" xml:space="preserve"><value>是的回應</value></data>
+  <data name="QuestEditor_NoResponses" xml:space="preserve"><value>否的回應</value></data>
+  <data name="QuestEditor_AddResponse" xml:space="preserve"><value>新增回應</value></data>
+  <data name="QuestEditor_QuestInfoTab" xml:space="preserve"><value>任務資訊 (QuestInfo.img)</value></data>
+  <data name="QuestEditor_SayInfoTab" xml:space="preserve"><value>對話資訊 (SayInfo.img)</value></data>
+  <data name="QuestEditor_CheckConditionsTab" xml:space="preserve"><value>檢查條件 (Check.img)</value></data>
+  <data name="QuestEditor_ActRequirementsTab" xml:space="preserve"><value>任務動作 (Act.img)</value></data>
+  <data name="QuestEditor_StartConversation" xml:space="preserve"><value>開始任務對話</value></data>
+  <data name="QuestEditor_EndConversation" xml:space="preserve"><value>結束任務對話</value></data>
+  <data name="QuestEditor_StartCheck" xml:space="preserve"><value>開始任務檢查 (0)</value></data>
+  <data name="QuestEditor_EndCheck" xml:space="preserve"><value>結束任務檢查 (1)</value></data>
+  <data name="QuestEditor_StartAction" xml:space="preserve"><value>開始任務動作 (0)</value></data>
+  <data name="QuestEditor_EndAction" xml:space="preserve"><value>結束任務動作 (1)</value></data>
+  <data name="QuestEditor_Name" xml:space="preserve"><value>名稱：</value></data>
+  <data name="QuestEditor_ParentQuest" xml:space="preserve"><value>父任務：</value></data>
+  <data name="QuestEditor_QuestAreaCode" xml:space="preserve"><value>任務區域代碼：</value></data>
+  <data name="QuestEditor_Order" xml:space="preserve"><value>順序：</value></data>
+  <data name="QuestEditor_Blocked" xml:space="preserve"><value>封鎖</value></data>
+  <data name="QuestEditor_AutoStart" xml:space="preserve"><value>自動開始</value></data>
+  <data name="QuestEditor_AutoComplete" xml:space="preserve"><value>自動完成</value></data>
+  <data name="QuestEditor_AutoAccept" xml:space="preserve"><value>自動接受</value></data>
+  <data name="QuestEditor_AutoCancel" xml:space="preserve"><value>自動取消</value></data>
+  <data name="QuestEditor_Summary" xml:space="preserve"><value>摘要：</value></data>
+  <data name="QuestEditor_DemandSummary" xml:space="preserve"><value>需求摘要：</value></data>
+  <data name="QuestEditor_RewardSummary" xml:space="preserve"><value>獎勵摘要：</value></data>
+  <data name="QuestEditor_GenerateFromCheck" xml:space="preserve"><value>從「Check」產生</value></data>
+  <data name="QuestEditor_GenerateFromAct" xml:space="preserve"><value>從「Act」產生</value></data>
+  <data name="QuestEditor_UnsavedPrompt" xml:space="preserve"><value>尚有未儲存的變更。關閉前要儲存 Quest.wz 嗎？</value></data>
+  <data name="QuestEditor_UnsavedTitle" xml:space="preserve"><value>未儲存的變更</value></data>
+  <data name="QuestEditor_WzImportFilter" xml:space="preserve"><value>WZ 檔案 (*.wz)|*.wz|所有檔案 (*.*)|*.*</value></data>
+  <data name="QuestEditor_WzExportFilter" xml:space="preserve"><value>WZ 檔案 (*.wz)|*.wz</value></data>
+  <data name="QuestEditor_ImportDialogTitle" xml:space="preserve"><value>選擇要匯入的任務 WZ 檔案</value></data>
+  <data name="QuestEditor_ImportError" xml:space="preserve"><value>匯入錯誤</value></data>
+  <data name="QuestEditor_InvalidImportFormat" xml:space="preserve"><value>無效的任務 WZ 格式：在 {0} 中找不到 QuestInfo.img。</value></data>
+  <data name="QuestEditor_ImportException" xml:space="preserve"><value>從 {0} 匯入時發生錯誤：{1}</value></data>
+  <data name="QuestEditor_OverwritePrompt" xml:space="preserve"><value>下列任務 ID 已存在：&#xA;{0}&#xA;&#xA;要覆寫嗎？</value></data>
+  <data name="QuestEditor_OverwriteTitle" xml:space="preserve"><value>任務已存在</value></data>
+  <data name="QuestEditor_ImportSuccessMessage" xml:space="preserve"><value>已成功匯入 {0} 個任務。</value></data>
+  <data name="QuestEditor_ImportSuccessTitle" xml:space="preserve"><value>匯入成功</value></data>
+  <data name="QuestEditor_NameTooLong" xml:space="preserve"><value>任務名稱太長。</value></data>
+  <data name="QuestEditor_QuestName" xml:space="preserve"><value>任務名稱</value></data>
+  <data name="QuestEditor_QuestId" xml:space="preserve"><value>任務 ID</value></data>
+  <data name="QuestEditor_AddNewQuestPrompt" xml:space="preserve"><value>新增任務：</value></data>
+  <data name="QuestEditor_SaveParentError" xml:space="preserve"><value>儲存任務 {0} 時無法解析一或多個父影像。為避免資料損毀，已取消儲存。</value></data>
+  <data name="QuestEditor_SaveError" xml:space="preserve"><value>儲存錯誤</value></data>
+  <data name="QuestEditor_ExportSuccessMessage" xml:space="preserve"><value>任務 {0} 已匯出至 {1}。</value></data>
+  <data name="QuestEditor_ExportSuccessTitle" xml:space="preserve"><value>匯出成功</value></data>
+  <data name="QuestEditor_ExportErrorMessage" xml:space="preserve"><value>匯出任務時發生錯誤：{0}</value></data>
+  <data name="QuestEditor_ExportErrorTitle" xml:space="preserve"><value>匯出錯誤</value></data>
 </root>

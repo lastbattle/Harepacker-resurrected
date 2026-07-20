@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name=". . ." xml:space="preserve"><value>. . .</value></data>
+  <data name="_MCP Connection" xml:space="preserve"><value>_MCP Connection</value></data>
+  <data name="_Run Tests" xml:space="preserve"><value>_Run Tests</value></data>
+  <data name="_Settings" xml:space="preserve"><value>_Settings</value></data>
+  <data name="_Tools" xml:space="preserve"><value>_Tools</value></data>
+  <data name="Add" xml:space="preserve"><value>追加</value></data>
+  <data name="Add custom background…" xml:space="preserve"><value>カスタム背景を追加…</value></data>
+  <data name="Add custom object…" xml:space="preserve"><value>カスタムオブジェクトを追加…</value></data>
+  <data name="Additional properties" xml:space="preserve"><value>追加プロパティ</value></data>
+  <data name="AI endpoint settings" xml:space="preserve"><value>AI エンドポイント設定</value></data>
+  <data name="AI Image Upscale" xml:space="preserve"><value>AI 画像拡大</value></data>
+  <data name="AI Map Editor" xml:space="preserve"><value>AI マップエディター</value></data>
+  <data name="AI upscale…" xml:space="preserve"><value>AI 拡大…</value></data>
+  <data name="Allowed items" xml:space="preserve"><value>許可アイテム</value></data>
+  <data name="Animated" xml:space="preserve"><value>アニメーション</value></data>
+  <data name="API dialect" xml:space="preserve"><value>API 方式</value></data>
+  <data name="API key" xml:space="preserve"><value>API キー</value></data>
+  <data name="Apply" xml:space="preserve"><value>適用</value></data>
+  <data name="Apply generated map edits automatically" xml:space="preserve"><value>生成されたマップ編集を自動適用</value></data>
+  <data name="Apply Latest Commands" xml:space="preserve"><value>最新コマンドを適用</value></data>
+  <data name="Apply the commands from the last AI response" xml:space="preserve"><value>直前の AI 応答のコマンドを適用</value></data>
+  <data name="Ask" xml:space="preserve"><value>質問</value></data>
+  <data name="Ask message (Enter)" xml:space="preserve"><value>質問を入力（Enter）</value></data>
+  <data name="Auto lie detector" xml:space="preserve"><value>自動嘘探知機</value></data>
+  <data name="Background assets" xml:space="preserve"><value>背景アセット</value></data>
+  <data name="BACKGROUND SET" xml:space="preserve"><value>背景セット</value></data>
+  <data name="Base URL" xml:space="preserve"><value>ベース URL</value></data>
+  <data name="BGM" xml:space="preserve"><value>BGM</value></data>
+  <data name="Black borders" xml:space="preserve"><value>黒帯</value></data>
+  <data name="Bottom (LBBottom)" xml:space="preserve"><value>下（LBBottom）</value></data>
+  <data name="Built-in and endpoint models share one list. Type a custom model ID if needed." xml:space="preserve"><value>組み込みモデルとエンドポイントモデルは同じ一覧に表示されます。必要ならカスタムモデル ID を入力できます。</value></data>
+  <data name="Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Cannot return" xml:space="preserve"><value>帰還不可</value></data>
+  <data name="Category" xml:space="preserve"><value>カテゴリ</value></data>
+  <data name="Chat Completions" xml:space="preserve"><value>Chat Completions</value></data>
+  <data name="Choose a portal, then place it on the active map." xml:space="preserve"><value>ポータルを選択し、現在のマップに配置します。</value></data>
+  <data name="Choose a set and background type, then select an asset to place it." xml:space="preserve"><value>セットと背景タイプを選択し、配置するアセットを選びます。</value></data>
+  <data name="Choose a structural tool, then draw it directly on the map." xml:space="preserve"><value>構造ツールを選択し、マップ上に直接描画します。</value></data>
+  <data name="Choose…" xml:space="preserve"><value>選択…</value></data>
+  <data name="Compare the source with the AI-enhanced result before applying it." xml:space="preserve"><value>適用前に元画像と AI 強化結果を比較します。</value></data>
+  <data name="Configure an OpenAI-compatible endpoint and verify it before saving." xml:space="preserve"><value>OpenAI 互換エンドポイントを設定し、保存前に確認します。</value></data>
+  <data name="Configure the OpenAI-compatible API endpoint, key, and model" xml:space="preserve"><value>OpenAI 互換 API のエンドポイント、キー、モデルを設定</value></data>
+  <data name="Custom hours" xml:space="preserve"><value>カスタム時間</value></data>
+  <data name="Custom interval" xml:space="preserve"><value>カスタム間隔</value></data>
+  <data name="Define the hidden map edges used by older maps at modern resolutions." xml:space="preserve"><value>古いマップが現代の解像度で使用する非表示境界を定義します。</value></data>
+  <data name="Delete object" xml:space="preserve"><value>オブジェクトを削除</value></data>
+  <data name="Drop expiration" xml:space="preserve"><value>ドロップ有効時間</value></data>
+  <data name="Drop rate" xml:space="preserve"><value>ドロップ率</value></data>
+  <data name="Edit map identity, scripts, gameplay rules, limits, and client behavior." xml:space="preserve"><value>マップ識別情報、スクリプト、ゲームルール、制限、クライアント動作を編集します。</value></data>
+  <data name="Effect" xml:space="preserve"><value>エフェクト</value></data>
+  <data name="Enable HP decrease" xml:space="preserve"><value>HP 減少を有効化</value></data>
+  <data name="Endpoint" xml:space="preserve"><value>エンドポイント</value></data>
+  <data name="Enhanced" xml:space="preserve"><value>強化後</value></data>
+  <data name="Essential" xml:space="preserve"><value>基本情報</value></data>
+  <data name="Field type" xml:space="preserve"><value>フィールドタイプ</value></data>
+  <data name="Filter assets by name" xml:space="preserve"><value>名前でアセットを絞り込み</value></data>
+  <data name="First-user script" xml:space="preserve"><value>最初のユーザースクリプト</value></data>
+  <data name="Forced return here" xml:space="preserve"><value>ここへ強制帰還</value></data>
+  <data name="Force-move level" xml:space="preserve"><value>強制移動レベル</value></data>
+  <data name="Friction" xml:space="preserve"><value>摩擦</value></data>
+  <data name="Gameplay" xml:space="preserve"><value>ゲーム設定</value></data>
+  <data name="Generated Commands" xml:space="preserve"><value>生成されたコマンド</value></data>
+  <data name="Help text" xml:space="preserve"><value>ヘルプテキスト</value></data>
+  <data name="HP decrease" xml:space="preserve"><value>HP 減少</value></data>
+  <data name="Internal map name" xml:space="preserve"><value>内部マップ名</value></data>
+  <data name="Internal street name" xml:space="preserve"><value>内部ストリート名</value></data>
+  <data name="Level limit" xml:space="preserve"><value>レベル制限</value></data>
+  <data name="Life type" xml:space="preserve"><value>ライフタイプ</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>画像のない項目を非表示</value></data>
+  <data name="Manage…" xml:space="preserve"><value>管理…</value></data>
+  <data name="Map context" xml:space="preserve"><value>マップコンテキスト</value></data>
+  <data name="Map description" xml:space="preserve"><value>マップ説明</value></data>
+  <data name="Map editing behavior" xml:space="preserve"><value>マップ編集動作</value></data>
+  <data name="Map height" xml:space="preserve"><value>マップ高さ</value></data>
+  <data name="Map hierarchy" xml:space="preserve"><value>マップ階層</value></data>
+  <data name="Map ID" xml:space="preserve"><value>マップ ID</value></data>
+  <data name="Map Info" xml:space="preserve"><value>マップ情報</value></data>
+  <data name="Map information" xml:space="preserve"><value>マップ情報</value></data>
+  <data name="Map mark" xml:space="preserve"><value>マップマーク</value></data>
+  <data name="Map name" xml:space="preserve"><value>マップ名</value></data>
+  <data name="Map structures" xml:space="preserve"><value>マップ構造</value></data>
+  <data name="Map width" xml:space="preserve"><value>マップ幅</value></data>
+  <data name="Message" xml:space="preserve"><value>メッセージ</value></data>
+  <data name="Mob ID" xml:space="preserve"><value>モンスター ID</value></data>
+  <data name="Mob mass settings" xml:space="preserve"><value>モンスター一括設定</value></data>
+  <data name="Mob rate" xml:space="preserve"><value>モンスター出現率</value></data>
+  <data name="Mobs" xml:space="preserve"><value>モンスター</value></data>
+  <data name="Model catalog" xml:space="preserve"><value>モデル一覧</value></data>
+  <data name="Move limit" xml:space="preserve"><value>移動制限</value></data>
+  <data name="New Chat" xml:space="preserve"><value>新しいチャット</value></data>
+  <data name="NPCs" xml:space="preserve"><value>NPC</value></data>
+  <data name="Object set" xml:space="preserve"><value>オブジェクトセット</value></data>
+  <data name="Optional properties" xml:space="preserve"><value>任意プロパティ</value></data>
+  <data name="Original" xml:space="preserve"><value>元画像</value></data>
+  <data name="Pixels" xml:space="preserve"><value>ピクセル</value></data>
+  <data name="Portal types" xml:space="preserve"><value>ポータルタイプ</value></data>
+  <data name="Preview" xml:space="preserve"><value>プレビュー</value></data>
+  <data name="Preview the result in Map Simulator after changing border dimensions." xml:space="preserve"><value>境界サイズを変更した後、マップシミュレーターで結果を確認してください。</value></data>
+  <data name="Processing…" xml:space="preserve"><value>処理中…</value></data>
+  <data name="Protected items" xml:space="preserve"><value>保護アイテム</value></data>
+  <data name="Reactors" xml:space="preserve"><value>リアクター</value></data>
+  <data name="Reasoning effort" xml:space="preserve"><value>推論レベル</value></data>
+  <data name="Recovery" xml:space="preserve"><value>回復率</value></data>
+  <data name="Refresh" xml:space="preserve"><value>更新</value></data>
+  <data name="Refresh map context after making changes" xml:space="preserve"><value>変更後にマップコンテキストを更新</value></data>
+  <data name="Remove" xml:space="preserve"><value>削除</value></data>
+  <data name="Responses" xml:space="preserve"><value>Responses</value></data>
+  <data name="Review enhanced image" xml:space="preserve"><value>強化画像を確認</value></data>
+  <data name="Rules &amp; limits" xml:space="preserve"><value>ルールと制限</value></data>
+  <data name="Run automated tests to verify AI agent capabilities" xml:space="preserve"><value>AI エージェント機能を検証する自動テストを実行</value></data>
+  <data name="Save" xml:space="preserve"><value>保存</value></data>
+  <data name="Save image…" xml:space="preserve"><value>画像を保存…</value></data>
+  <data name="Search and select objects currently placed on the active map." xml:space="preserve"><value>現在のマップに配置されたオブジェクトを検索して選択します。</value></data>
+  <data name="Search by type, asset path, name, or coordinates" xml:space="preserve"><value>種類、アセットパス、名前、座標で検索</value></data>
+  <data name="Selected 0" xml:space="preserve"><value>選択 0</value></data>
+  <data name="Show the local MCP endpoint and authorization token for external clients" xml:space="preserve"><value>外部クライアント向けのローカル MCP エンドポイントと認証トークンを表示</value></data>
+  <data name="Shuffle name" xml:space="preserve"><value>名前をシャッフル</value></data>
+  <data name="Shuffle reactors" xml:space="preserve"><value>リアクターをシャッフル</value></data>
+  <data name="Sides (LBSide)" xml:space="preserve"><value>左右（LBSide）</value></data>
+  <data name="Spine" xml:space="preserve"><value>Spine</value></data>
+  <data name="Start a new conversation" xml:space="preserve"><value>新しい会話を開始</value></data>
+  <data name="Static" xml:space="preserve"><value>静止画</value></data>
+  <data name="Street name" xml:space="preserve"><value>ストリート名</value></data>
+  <data name="Test connection" xml:space="preserve"><value>接続テスト</value></data>
+  <data name="The original asset is unchanged until you choose Use enhanced image." xml:space="preserve"><value>「強化画像を使用」を選ぶまで元のアセットは変更されません。</value></data>
+  <data name="Thinking" xml:space="preserve"><value>思考中</value></data>
+  <data name="Tile set" xml:space="preserve"><value>タイルセット</value></data>
+  <data name="Time limit" xml:space="preserve"><value>制限時間</value></data>
+  <data name="Timed mob" xml:space="preserve"><value>時間指定モンスター</value></data>
+  <data name="Top (LBTop)" xml:space="preserve"><value>上（LBTop）</value></data>
+  <data name="Total 0" xml:space="preserve"><value>合計 0</value></data>
+  <data name="TYPE" xml:space="preserve"><value>タイプ</value></data>
+  <data name="Use enhanced image" xml:space="preserve"><value>強化画像を使用</value></data>
+  <data name="Use strict tool schemas" xml:space="preserve"><value>厳密なツールスキーマを使用</value></data>
+  <data name="User-enter script" xml:space="preserve"><value>入場スクリプト</value></data>
+  <data name="Variant" xml:space="preserve"><value>バリエーション</value></data>
+  <data name="Status_Ready" xml:space="preserve"><value>準備完了</value></data>
+  <data name="Status_UpscaleFailed" xml:space="preserve"><value>拡大に失敗しました: {0}</value></data>
+  <data name="Confirm_ChangeTileSet" xml:space="preserve"><value>現在のレイヤーのタイルセットを変更します。続行しますか？</value></data>
+  <data name="Title_ChangeTileSet" xml:space="preserve"><value>タイルセットを変更</value></data>
+  <data name="Menu_SelectOnBoard" xml:space="preserve"><value>ボード上で選択</value></data>
+  <data name="Menu_JumpToObject" xml:space="preserve"><value>オブジェクトへ移動</value></data>
+  <data name="Menu_EditProperties" xml:space="preserve"><value>プロパティを編集…</value></data>
+  <data name="Menu_Delete" xml:space="preserve"><value>削除</value></data>
+  <data name="Menu_SelectAllOfType" xml:space="preserve"><value>同じ種類をすべて選択</value></data>
+  <data name="Menu_SelectAllInLayer" xml:space="preserve"><value>レイヤー内をすべて選択</value></data>
+  <data name="Format_Layer" xml:space="preserve"><value> • レイヤー {0}</value></data>
+  <data name="Format_ObjectSummary" xml:space="preserve"><value>{0}{1} • {2} @ ({3}, {4})</value></data>
+  <data name="ObjectType_Tile" xml:space="preserve"><value>タイル</value></data>
+  <data name="ObjectType_Object" xml:space="preserve"><value>オブジェクト</value></data>
+  <data name="ObjectType_Background" xml:space="preserve"><value>背景</value></data>
+  <data name="ObjectType_Mob" xml:space="preserve"><value>モンスター</value></data>
+  <data name="ObjectType_Reactor" xml:space="preserve"><value>リアクター</value></data>
+  <data name="ObjectType_Portal" xml:space="preserve"><value>ポータル</value></data>
+  <data name="ObjectType_Foothold" xml:space="preserve"><value>足場</value></data>
+  <data name="ObjectType_RopeLadder" xml:space="preserve"><value>ロープ/はしご</value></data>
+  <data name="ObjectType_Chair" xml:space="preserve"><value>椅子</value></data>
+  <data name="ObjectType_Tooltip" xml:space="preserve"><value>ツールチップ</value></data>
+  <data name="ObjectType_MirrorField" xml:space="preserve"><value>ミラーフィールド</value></data>
+  <data name="ObjectType_Misc" xml:space="preserve"><value>その他</value></data>
+  <data name="Format_Total" xml:space="preserve"><value>合計 {0}</value></data>
+  <data name="Format_Selected" xml:space="preserve"><value>選択 {0}</value></data>
+  <data name="Prompt_EnterItemId" xml:space="preserve"><value>アイテム ID を入力</value></data>
+  <data name="Error_ValueNotZero" xml:space="preserve"><value>値を 0 にすることはできません。</value></data>
+  <data name="Prompt_InsertItemId" xml:space="preserve"><value>アイテム ID を入力</value></data>
+  <data name="Title_AddAllowedItem" xml:space="preserve"><value>許可アイテムを追加</value></data>
+  <data name="AI_UnknownMap" xml:space="preserve"><value>不明</value></data>
+  <data name="AI_DefaultMapName" xml:space="preserve"><value>マップ {0}</value></data>
+  <data name="AI_WindowTitle" xml:space="preserve"><value>AI マップエディター - {0} ({1})</value></data>
+  <data name="AI_NoMapLoaded" xml:space="preserve"><value>マップが読み込まれていません。</value></data>
+  <data name="AI_NoMapContext" xml:space="preserve"><value># マップ未読込</value></data>
+  <data name="AI_MapLoadError" xml:space="preserve"><value># マップ読込エラー: {0}</value></data>
+  <data name="AI_ClearChatConfirm" xml:space="preserve"><value>新しい会話を開始しますか？現在の履歴は消去されます。</value></data>
+  <data name="AI_ExecuteCommandsTitle" xml:space="preserve"><value>コマンドを実行</value></data>
+  <data name="AI_NoCommands" xml:space="preserve"><value>実行するコマンドがありません。先にメッセージを送信してください。</value></data>
+  <data name="AI_NoValidCommands" xml:space="preserve"><value>生成結果に有効なコマンドがありません。</value></data>
+  <data name="AI_ExecutionSummary" xml:space="preserve"><value>実行完了: 成功 {0}、失敗 {1}</value></data>
+  <data name="AI_ExecutionResultTitle" xml:space="preserve"><value>実行結果</value></data>
+  <data name="AI_ExecutionError" xml:space="preserve"><value>コマンド実行エラー: {0}</value></data>
+  <data name="AI_ExecutionErrorTitle" xml:space="preserve"><value>実行エラー</value></data>
+  <data name="AI_McpConnectionDetails" xml:space="preserve"><value>MCP エンドポイント:\n{0}\n\n認証ヘッダー:\nBearer {1}\n\nこのマップウィンドウが開いている間、エンドポイントは有効です。</value></data>
+  <data name="AI_McpConnectionTitle" xml:space="preserve"><value>MCP 接続</value></data>
+  <data name="AI_RunTestsTitle" xml:space="preserve"><value>テストを実行</value></data>
+  <data name="AISettings_EnterBaseUrl" xml:space="preserve"><value>エンドポイントモデルを検索するベース URL を入力してください。</value></data>
+  <data name="AISettings_DiscoveringModels" xml:space="preserve"><value>エンドポイントからモデルを検索中…</value></data>
+  <data name="AISettings_NoEndpointModels" xml:space="preserve"><value>エンドポイントからモデルが返されませんでした。組み込みプリセットは利用できます。</value></data>
+  <data name="AISettings_ModelsDiscovered" xml:space="preserve"><value>{0} 個のエンドポイントモデルを検出し、組み込みプリセットと統合しました。</value></data>
+  <data name="AISettings_DiscoveryError" xml:space="preserve"><value>エンドポイント検索を利用できません: {0}</value></data>
+  <data name="AISettings_EndpointReasoning" xml:space="preserve"><value>エンドポイント対応: {0}</value></data>
+  <data name="AISettings_DetectedReasoning" xml:space="preserve"><value>モデル系統から検出: {0}</value></data>
+  <data name="AISettings_AutoReasoningOnly" xml:space="preserve"><value>自動のみ。このモデルは推論レベルを公開していません。</value></data>
+  <data name="AISettings_TestRequired" xml:space="preserve"><value>保存前に接続テストが必要です。</value></data>
+  <data name="AISettings_Configured" xml:space="preserve"><value>設定済み: {0}</value></data>
+  <data name="AISettings_NotConfigured" xml:space="preserve"><value>未設定です。</value></data>
+  <data name="AISettings_Testing" xml:space="preserve"><value>接続をテスト中…</value></data>
+  <data name="AISettings_BaseUrlRequired" xml:space="preserve"><value>先に API ベース URL を入力してください。</value></data>
+  <data name="AISettings_ModelRequired" xml:space="preserve"><value>先にモデルを選択または入力してください。</value></data>
+  <data name="AISettings_ConnectionSuccessful" xml:space="preserve"><value>接続に成功しました。</value></data>
+  <data name="AISettings_ConnectionFailed" xml:space="preserve"><value>接続に失敗しました。エンドポイント、モデル、API キーを確認してください。</value></data>
+  <data name="AISettings_Error" xml:space="preserve"><value>エラー: {0}</value></data>
+  <data name="Error_AddingImage" xml:space="preserve"><value>画像追加エラー: {0}</value></data>
+  <data name="Common_Error" xml:space="preserve"><value>エラー</value></data>
+  <data name="Dialog_SaveImage" xml:space="preserve"><value>画像の保存先を選択…</value></data>
+  <data name="Dialog_SaveObjectImage" xml:space="preserve"><value>オブジェクト画像を保存</value></data>
+  <data name="MapOption_Clouds" xml:space="preserve"><value>雲</value></data>
+  <data name="MapOption_Snow" xml:space="preserve"><value>雪</value></data>
+  <data name="MapOption_Rain" xml:space="preserve"><value>雨</value></data>
+  <data name="MapOption_Swim" xml:space="preserve"><value>水泳</value></data>
+  <data name="MapOption_Fly" xml:space="preserve"><value>飛行</value></data>
+  <data name="MapOption_Town" xml:space="preserve"><value>街</value></data>
+  <data name="MapOption_PartyOnly" xml:space="preserve"><value>パーティー限定</value></data>
+  <data name="MapOption_ExpeditionOnly" xml:space="preserve"><value>遠征隊限定</value></data>
+  <data name="MapOption_NoMapCommands" xml:space="preserve"><value>マップコマンド禁止</value></data>
+  <data name="MapOption_HideMinimap" xml:space="preserve"><value>ミニマップを非表示</value></data>
+  <data name="MapOption_MinimapToggle" xml:space="preserve"><value>ミニマップ切替</value></data>
+  <data name="MapOption_PersonalShops" xml:space="preserve"><value>個人商店</value></data>
+  <data name="MapOption_EntrustedShops" xml:space="preserve"><value>雇用商店</value></data>
+  <data name="MapOption_NoRegeneration" xml:space="preserve"><value>再生成なし</value></data>
+  <data name="MapOption_BlockPartyBossChange" xml:space="preserve"><value>パーティーリーダー変更禁止</value></data>
+  <data name="MapOption_Everlast" xml:space="preserve"><value>ドロップ永続</value></data>
+  <data name="MapOption_DamageCheckFree" xml:space="preserve"><value>ダメージチェックなし</value></data>
+  <data name="MapOption_DisableScrolls" xml:space="preserve"><value>書を無効化</value></data>
+  <data name="MapOption_FlySkillRequired" xml:space="preserve"><value>飛行にスキルが必要</value></data>
+  <data name="MapOption_ZakumAntiHack" xml:space="preserve"><value>ジャクム2忍耐アンチチート</value></data>
+  <data name="MapOption_CheckAllMoves" xml:space="preserve"><value>全移動を検査（アンチチート）</value></data>
+  <data name="MapOption_UseVrAsLimits" xml:space="preserve"><value>VR を境界として使用</value></data>
+  <data name="MapOption_MirrorBottom" xml:space="preserve"><value>下部を鏡面反射</value></data>
+  <data name="Dialog_SelectImage" xml:space="preserve"><value>追加する画像を選択</value></data>
+  <data name="Dialog_ImageOpenFilter" xml:space="preserve"><value>画像ファイル (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg</value></data>
+  <data name="Dialog_ImageSaveFilterLong" xml:space="preserve"><value>PNG 画像 (*.png)|*.png|GIF 画像 (*.gif)|*.gif|ビットマップ (*.bmp)|*.bmp|JPEG 画像 (*.jpg)|*.jpg|TIFF 画像 (*.tif)|*.tif</value></data>
+  <data name="Dialog_ImageSaveFilterShort" xml:space="preserve"><value>PNG (*.png)|*.png|GIF (*.gif)|*.gif|ビットマップ (*.bmp)|*.bmp|JPEG (*.jpg)|*.jpg|TIFF (*.tif)|*.tif</value></data>
+  <data name="Message_BackgroundAdded" xml:space="preserve"><value>画像「{0}」を「{1}」として追加しました。</value></data>
+  <data name="Title_ImageAdded" xml:space="preserve"><value>画像を追加しました</value></data>
+  <data name="Confirm_DeleteBackground" xml:space="preserve"><value>選択した背景を削除しますか？</value></data>
+  <data name="Title_ConfirmDelete" xml:space="preserve"><value>削除の確認</value></data>
+  <data name="Prompt_SelectObjectCategory" xml:space="preserve"><value>先にオブジェクトカテゴリを選択してください。</value></data>
+  <data name="Title_NoCategorySelected" xml:space="preserve"><value>カテゴリ未選択</value></data>
+  <data name="Message_ObjectAdded" xml:space="preserve"><value>{0} を {1} として追加しました。</value></data>
+  <data name="Title_ObjectAdded" xml:space="preserve"><value>オブジェクトを追加しました</value></data>
+  <data name="Confirm_DeleteObject" xml:space="preserve"><value>このオブジェクトを削除しますか？</value></data>
+  <data name="Title_DeleteObject" xml:space="preserve"><value>オブジェクトを削除</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>チャット／推論モデル</value></data>
+  <data name="Image model" xml:space="preserve"><value>画像モデル</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>アニメーションエディターのフレーム生成と参照編集に使用します。</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>組み込み</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>組み込み + エンドポイント</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>エンドポイント</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>自動（モデルの既定値）</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>組み込みプリセットは {0} 個です。エンドポイントの検索は自動的に開始されます。</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>組み込みプリセットを {0} 個利用できます。エンドポイントモデルは見つかりませんでした。</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>組み込み {0} 個 + エンドポイント {1} 個、固有モデル {2} 個。</value></data>
+</root>

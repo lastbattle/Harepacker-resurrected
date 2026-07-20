@@ -30,6 +30,7 @@ namespace HaRepacker.GUI.Panels
     /// </summary>
     public partial class MainPanel : UserControl
     {
+        public TreeViewMS DataTree { get; } = new TreeViewMS();
         // Constants
         private const string FIELD_LIMIT_OBJ_NAME = "fieldLimit";
         private const string FIELD_TYPE_OBJ_NAME = "fieldType";
@@ -53,6 +54,10 @@ namespace HaRepacker.GUI.Panels
 
         private bool isSelectingWzMapFieldLimit = false;
         private bool isLoading = false;
+        private bool isSynchronizingNativeSelection = false;
+        private readonly List<WzNode> nativeSelectedNodes = new List<WzNode>();
+        private readonly Dictionary<WzNode, TreeViewItem> nativeTreeItems = new Dictionary<WzNode, TreeViewItem>();
+        private WzNode nativeSelectionAnchor;
 
         /// <summary>
         /// Constructor
@@ -60,6 +65,10 @@ namespace HaRepacker.GUI.Panels
         public MainPanel(MainForm mainForm)
         {
             InitializeComponent();
+
+            DataTree.AfterSelect += DataTree_AfterSelect;
+            DataTree.BeforeExpand += DataTree_BeforeExpand;
+            DataTree.ModelChanged += (_, _) => RefreshNativeDataTree();
 
             isLoading = true;
 
@@ -97,6 +106,13 @@ namespace HaRepacker.GUI.Panels
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
             menuItem_saveImage.Visibility = Visibility.Collapsed;
+            button_MoreOption.Content = UiLocalization.Translate("More actions");
+            button_MoreOption.ToolTip = UiLocalization.Translate("More actions");
+            menuItem_changeImage.Header = UiLocalization.Translate("Change Image");
+            menuItem_changeSound.Header = UiLocalization.Translate("Change Sound");
+            menuItem_saveSound.Header = UiLocalization.Translate("Save Sound");
+            menuItem_saveImage.Header = UiLocalization.Translate("Save Image");
+            menuItem_exportFile.Header = UiLocalization.Translate("Export file");
 
             textEditor.SaveButtonClicked += TextEditor_SaveButtonClicked;
             Loaded += MainPanelXAML_Loaded;
@@ -108,6 +124,7 @@ namespace HaRepacker.GUI.Panels
         private void MainPanelXAML_Loaded(object sender, RoutedEventArgs e)
         {
             this.fieldLimitPanel1.FieldLimitChanged += FieldLimitPanel1_FieldLimitChanged;
+            RefreshNativeDataTree();
             //this.fieldTypePanel.SetTextboxOnFieldTypeChange(textPropBox);
         }
 
@@ -117,6 +134,345 @@ namespace HaRepacker.GUI.Panels
         #endregion
 
         #region Data Tree
+        public void RefreshNativeDataTree()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(RefreshNativeDataTree); return; }
+            var expandedNodes = nativeTreeItems
+                .Where(pair => pair.Value.IsExpanded)
+                .Select(pair => pair.Key)
+                .ToHashSet();
+            WzNode activeNode = DataTree.SelectedNode as WzNode;
+
+            nativeSelectedNodes.Clear();
+            nativeSelectedNodes.AddRange(DataTree.SelectedNodes.Cast<WzNode>());
+            if (nativeSelectedNodes.Count == 0 && activeNode != null)
+                nativeSelectedNodes.Add(activeNode);
+
+            nativeTreeItems.Clear();
+            dataTreeView.Items.Clear();
+            foreach (WzNode node in DataTree.Nodes) dataTreeView.Items.Add(CreateNativeTreeItem(node));
+            foreach (WzNode node in DataTree.Nodes) RestoreNativeExpansion(node, expandedNodes);
+            UpdateNativeSelectionVisuals();
+
+            if (activeNode != null && nativeTreeItems.TryGetValue(activeNode, out TreeViewItem activeItem))
+                Dispatcher.BeginInvoke(new Action(activeItem.BringIntoView), DispatcherPriority.Loaded);
+        }
+
+        private void RestoreNativeExpansion(WzNode node, HashSet<WzNode> expandedNodes)
+        {
+            if (!expandedNodes.Contains(node) || !nativeTreeItems.TryGetValue(node, out TreeViewItem item))
+                return;
+
+            item.IsExpanded = true;
+            foreach (WzNode child in node.Nodes.Cast<WzNode>().ToArray())
+                RestoreNativeExpansion(child, expandedNodes);
+        }
+
+        private TreeViewItem CreateNativeTreeItem(WzNode node)
+        {
+            var item = new TreeViewItem { Header = node.Text, Tag = node };
+            nativeTreeItems[node] = item;
+            item.PreviewMouseLeftButtonDown += DataTreeViewItem_PreviewMouseLeftButtonDown;
+            item.PreviewMouseRightButtonDown += DataTreeViewItem_PreviewMouseRightButtonDown;
+            if (node.Nodes.Count > 0) item.Items.Add(new TreeViewItem { Header = UiLocalization.Translate("Loading…"), IsEnabled = false });
+            return item;
+        }
+
+        private void DataTreeViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not TreeViewItem item || item.Tag is not WzNode node ||
+                !ReferenceEquals(ItemsControl.ContainerFromElement(null, e.OriginalSource as DependencyObject), item))
+                return;
+
+            if (e.ClickCount == 2)
+            {
+                if (!nativeSelectedNodes.Contains(node))
+                    ApplyNativeSelection(node, ModifierKeys.None);
+                else
+                    SynchronizeNativeSelection(node);
+
+                bool wasExpanded = item.IsExpanded;
+                DataTree_DoubleClick(dataTreeView, EventArgs.Empty);
+
+                // Parsing an IMG on double-click can add its children after the WPF
+                // container was created, so give it a placeholder before expanding.
+                if (node.Nodes.Count > 0)
+                {
+                    if (!wasExpanded && item.Items.Count == 0)
+                        item.Items.Add(new TreeViewItem { Header = UiLocalization.Translate("Loading…"), IsEnabled = false });
+                    item.IsExpanded = !wasExpanded;
+                }
+
+                FocusNativeTreeItem(item);
+                e.Handled = true;
+                return;
+            }
+
+            ApplyNativeSelection(node, Keyboard.Modifiers);
+            FocusNativeTreeItem(item);
+            e.Handled = true;
+        }
+
+        private void DataTreeViewItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not TreeViewItem item || item.Tag is not WzNode node ||
+                !ReferenceEquals(ItemsControl.ContainerFromElement(null, e.OriginalSource as DependencyObject), item))
+                return;
+
+            if (!nativeSelectedNodes.Contains(node))
+                ApplyNativeSelection(node, ModifierKeys.None);
+            else
+                SynchronizeNativeSelection(node);
+            FocusNativeTreeItem(item);
+            item.ContextMenu = BuildNativeContextMenu(node.ContextMenuStrip);
+        }
+
+        private void FocusNativeTreeItem(TreeViewItem item)
+        {
+            isSynchronizingNativeSelection = true;
+            try
+            {
+                item.Focus();
+            }
+            finally
+            {
+                isSynchronizingNativeSelection = false;
+            }
+            UpdateNativeSelectionVisuals();
+        }
+
+        private void ApplyNativeSelection(WzNode node, ModifierKeys modifiers)
+        {
+            bool controlPressed = (modifiers & ModifierKeys.Control) != 0;
+            bool shiftPressed = (modifiers & ModifierKeys.Shift) != 0;
+
+            if (shiftPressed && nativeSelectionAnchor != null)
+            {
+                List<WzNode> visibleNodes = GetVisibleNativeNodes();
+                int anchorIndex = visibleNodes.IndexOf(nativeSelectionAnchor);
+                int nodeIndex = visibleNodes.IndexOf(node);
+                if (anchorIndex >= 0 && nodeIndex >= 0)
+                {
+                    if (!controlPressed)
+                        nativeSelectedNodes.Clear();
+                    int first = Math.Min(anchorIndex, nodeIndex);
+                    int last = Math.Max(anchorIndex, nodeIndex);
+                    for (int index = first; index <= last; index++)
+                    {
+                        if (!nativeSelectedNodes.Contains(visibleNodes[index]))
+                            nativeSelectedNodes.Add(visibleNodes[index]);
+                    }
+                }
+                else
+                {
+                    ReplaceNativeSelection(node);
+                }
+            }
+            else if (controlPressed)
+            {
+                if (!nativeSelectedNodes.Remove(node))
+                    nativeSelectedNodes.Add(node);
+                nativeSelectionAnchor = node;
+            }
+            else
+            {
+                ReplaceNativeSelection(node);
+            }
+
+            SynchronizeNativeSelection(node);
+        }
+
+        private void ReplaceNativeSelection(WzNode node)
+        {
+            nativeSelectedNodes.Clear();
+            nativeSelectedNodes.Add(node);
+            nativeSelectionAnchor = node;
+        }
+
+        private void SynchronizeNativeSelection(WzNode activeNode)
+        {
+            isSynchronizingNativeSelection = true;
+            try
+            {
+                DataTree.SelectedNode = activeNode;
+                DataTree.SelectedNodes = new System.Collections.ArrayList(nativeSelectedNodes);
+                ShowSelectedDataTreeNode(activeNode);
+            }
+            finally
+            {
+                isSynchronizingNativeSelection = false;
+            }
+            UpdateNativeSelectionVisuals();
+        }
+
+        private List<WzNode> GetVisibleNativeNodes()
+        {
+            var result = new List<WzNode>();
+            foreach (TreeViewItem root in dataTreeView.Items.OfType<TreeViewItem>())
+                AddVisibleNativeNodes(root, result);
+            return result;
+        }
+
+        private static void AddVisibleNativeNodes(TreeViewItem item, List<WzNode> result)
+        {
+            if (item.Tag is WzNode node)
+                result.Add(node);
+            if (!item.IsExpanded)
+                return;
+            foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
+                AddVisibleNativeNodes(child, result);
+        }
+
+        private void UpdateNativeSelectionVisuals()
+        {
+            foreach ((WzNode node, TreeViewItem item) in nativeTreeItems)
+            {
+                if (nativeSelectedNodes.Contains(node))
+                {
+                    item.Background = System.Windows.SystemColors.HighlightBrush;
+                    item.Foreground = System.Windows.SystemColors.HighlightTextBrush;
+                }
+                else
+                {
+                    if (item.IsSelected)
+                        item.IsSelected = false;
+                    item.ClearValue(Control.BackgroundProperty);
+                    item.ClearValue(Control.ForegroundProperty);
+                }
+            }
+        }
+
+        private ContextMenu BuildNativeContextMenu(System.Windows.Forms.ContextMenuStrip source)
+        {
+            if (source == null) return null;
+            var menu = new ContextMenu();
+            foreach (System.Windows.Forms.ToolStripItem sourceItem in source.Items)
+            {
+                if (sourceItem is System.Windows.Forms.ToolStripSeparator) { menu.Items.Add(new Separator()); continue; }
+                if (sourceItem is not System.Windows.Forms.ToolStripMenuItem command) continue;
+                menu.Items.Add(BuildNativeMenuItem(command));
+            }
+            return menu;
+        }
+
+        private MenuItem BuildNativeMenuItem(System.Windows.Forms.ToolStripMenuItem source)
+        {
+            var item = new MenuItem { Header = UiLocalization.Translate(source.Text), IsEnabled = source.Enabled, IsCheckable = source.CheckOnClick, IsChecked = source.Checked };
+            foreach (System.Windows.Forms.ToolStripItem child in source.DropDownItems)
+            {
+                if (child is System.Windows.Forms.ToolStripSeparator) item.Items.Add(new Separator());
+                else if (child is System.Windows.Forms.ToolStripMenuItem childCommand) item.Items.Add(BuildNativeMenuItem(childCommand));
+            }
+            item.Click += (_, _) => { source.PerformClick(); Dispatcher.BeginInvoke(RefreshNativeDataTree); };
+            return item;
+        }
+
+        private void DataTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is not TreeViewItem item || item.Tag is not WzNode node) return;
+            if (!isSynchronizingNativeSelection)
+                ApplyNativeSelection(node, Keyboard.Modifiers);
+        }
+
+        private void DataTreeView_ItemExpanded(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource is not TreeViewItem item || item.Tag is not WzNode node) return;
+            var args = new System.Windows.Forms.TreeViewCancelEventArgs(node, false, System.Windows.Forms.TreeViewAction.Expand);
+            DataTree_BeforeExpand(DataTree, args);
+            if (!args.Cancel)
+                PopulateNativeTreeItem(item, node);
+        }
+
+        private void PopulateNativeTreeItem(TreeViewItem item, WzNode node)
+        {
+            RemoveNativeDescendantItems(item);
+            item.Items.Clear();
+            foreach (WzNode child in node.Nodes)
+                item.Items.Add(CreateNativeTreeItem(child));
+            UpdateNativeSelectionVisuals();
+        }
+
+        private void SelectAndRevealNativeNode(WzNode node)
+        {
+            if (node == null)
+                return;
+
+            var path = new List<WzNode>();
+            for (WzNode current = node; current != null; current = current.Parent as WzNode)
+                path.Add(current);
+            path.Reverse();
+
+            TreeViewItem item = null;
+            for (int index = 0; index < path.Count; index++)
+            {
+                WzNode pathNode = path[index];
+                if (!nativeTreeItems.TryGetValue(pathNode, out item))
+                {
+                    if (index == 0 || !nativeTreeItems.TryGetValue(path[index - 1], out TreeViewItem parentItem))
+                        return;
+
+                    PopulateNativeTreeItem(parentItem, path[index - 1]);
+                    if (!nativeTreeItems.TryGetValue(pathNode, out item))
+                        return;
+                }
+
+                if (index < path.Count - 1 && !item.IsExpanded)
+                    item.IsExpanded = true;
+            }
+
+            ReplaceNativeSelection(node);
+            SynchronizeNativeSelection(node);
+            FocusNativeTreeItem(item);
+            Dispatcher.BeginInvoke(new Action(item.BringIntoView), DispatcherPriority.Loaded);
+        }
+
+        private void RemoveNativeDescendantItems(TreeViewItem parent)
+        {
+            foreach (TreeViewItem child in parent.Items.OfType<TreeViewItem>())
+            {
+                RemoveNativeDescendantItems(child);
+                if (child.Tag is WzNode node)
+                    nativeTreeItems.Remove(node);
+            }
+        }
+
+        private void DataTreeView_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete) { PromptRemoveSelectedTreeNodes(); e.Handled = true; RefreshNativeDataTree(); }
+            else if (e.Key == Key.F5) { StartAnimateSelectedCanvas(); e.Handled = true; }
+            else if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.Key == Key.C) { DoCopy(); e.Handled = true; }
+            else if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.Key == Key.V) { DoPaste(); e.Handled = true; RefreshNativeDataTree(); }
+            else if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && e.Key == Key.F) { ShowSearchPanel(); e.Handled = true; }
+        }
+
+        public void ShowSearchPanel()
+        {
+            if (grid_FindPanel.Visibility != Visibility.Visible)
+            {
+                var storyboard = (System.Windows.Media.Animation.Storyboard)FindResource("Storyboard_Find_FadeIn");
+                storyboard.Begin();
+            }
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                findBox.Focus();
+                Keyboard.Focus(findBox);
+                findBox.SelectAll();
+            }), DispatcherPriority.Input);
+        }
+
+        private void DataTreeView_DragOver(object sender, System.Windows.DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void DataTreeView_Drop(object sender, System.Windows.DragEventArgs e)
+        {
+            if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) NativeFilesDropped?.Invoke(this, paths);
+        }
+
+        public event EventHandler<string[]> NativeFilesDropped;
         private void DataTree_DoubleClick(object sender, EventArgs e)
         {
             if (DataTree.SelectedNode is not WzNode selectedNode)
@@ -136,14 +492,30 @@ namespace HaRepacker.GUI.Panels
 
         private void DataTree_AfterSelect(object sender, System.Windows.Forms.TreeViewEventArgs e)
         {
-            if (DataTree.SelectedNode == null)
-            {
+            if (isSynchronizingNativeSelection)
                 return;
-            }
-            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);
 
-            _bindingPropertyItem.WzFileType = ((WzNode)DataTree.SelectedNode).GetTypeName();
+            WzNode selectedNode = e.Node as WzNode ?? DataTree.SelectedNode as WzNode;
+            if (selectedNode != null)
+            {
+                ReplaceNativeSelection(selectedNode);
+                nativeSelectedNodes.Clear();
+                nativeSelectedNodes.AddRange(DataTree.SelectedNodes.Cast<WzNode>());
+                if (nativeSelectedNodes.Count == 0)
+                    nativeSelectedNodes.Add(selectedNode);
+                UpdateNativeSelectionVisuals();
+            }
+            ShowSelectedDataTreeNode(selectedNode);
             //selectionLabel.Text = string.Format(Properties.Resources.SelectionType, ((WzNode)DataTree.SelectedNode).GetTypeName());
+        }
+
+        private void ShowSelectedDataTreeNode(WzNode node)
+        {
+            if (node?.Tag is not WzObject selectedObject)
+                return;
+
+            ShowObjectValue(selectedObject);
+            _bindingPropertyItem.WzFileType = node.GetTypeName();
         }
 
         /// <summary>
@@ -223,14 +595,9 @@ namespace HaRepacker.GUI.Panels
                         e.SuppressKeyPress = true;
                         break;
                     case System.Windows.Forms.Keys.F: // open search box
-                        if (grid_FindPanel.Visibility == Visibility.Collapsed)
-                        {
-                            System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
-                            sbb.Begin();
-
-                            e.Handled = true;
-                            e.SuppressKeyPress = true;
-                        }
+                        ShowSearchPanel();
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
                         break;
                     case System.Windows.Forms.Keys.T:
                     case System.Windows.Forms.Keys.O:
@@ -684,7 +1051,7 @@ namespace HaRepacker.GUI.Panels
             {
                 loadingPanel.OnStartAnimate();
                 grid_LoadingPanel.Visibility = Visibility.Visible;
-                treeView_WinFormsHost.Visibility = Visibility.Collapsed;
+                dataTreeView.Visibility = Visibility.Collapsed;
             };
             if (currentDispatcher != null)
                 currentDispatcher.BeginInvoke(action);
@@ -702,7 +1069,8 @@ namespace HaRepacker.GUI.Panels
             {
                 loadingPanel.OnPauseAnimate();
                 grid_LoadingPanel.Visibility = Visibility.Collapsed;
-                treeView_WinFormsHost.Visibility = Visibility.Visible;
+                dataTreeView.Visibility = Visibility.Visible;
+                RefreshNativeDataTree();
             };
             if (currentDispatcher != null)
                 currentDispatcher.BeginInvoke(action);
@@ -742,7 +1110,7 @@ namespace HaRepacker.GUI.Panels
         {
             if (DataTree.SelectedNodes.Count == 0)
             {
-                MessageBox.Show("Please select at least one or more canvas node.");
+                MessageBox.Show(UiLocalization.Translate("Please select one or more canvas nodes."));
                 return;
             }
 
@@ -763,7 +1131,7 @@ namespace HaRepacker.GUI.Panels
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Error previewing animation. " + ex.ToString());
+                    MessageBox.Show(string.Format(UiLocalization.Translate("Error previewing animation: {0}"), ex));
                 }
             });
             thread.Start();
@@ -873,7 +1241,7 @@ namespace HaRepacker.GUI.Panels
             RefreshSelectedImageToImageRenderviewer(DataTree.SelectedNode.Tag, canvasPropBox);
 
             double ms = (DateTime.Now - t0).TotalMilliseconds;
-            MessageBox.Show("Completed.\r\nElapsed time: " + ms + " ms (avg: " + (ms / nodeCount) + ")");
+            MessageBox.Show(string.Format(UiLocalization.Translate("Completed.\nElapsed time: {0} ms (average: {1})"), ms, ms / nodeCount));
         }
 
         /// <summary>
@@ -1084,10 +1452,10 @@ namespace HaRepacker.GUI.Panels
 
                     double ms_runtime = (DateTime.Now - t0).TotalSeconds;
 
-                    MessageBox.Show("Completed.\r\nElapsed time: " + ms_runtime.ToString("N2") + " sec(s) (avg: " + (ms_runtime / nodeCount).ToString("N2") + ")");
+                    MessageBox.Show(string.Format(UiLocalization.Translate("Completed.\nElapsed time: {0} seconds (average: {1})"), ms_runtime.ToString("N2"), (ms_runtime / nodeCount).ToString("N2")));
                 }
                 catch (Exception exp) {
-                    MessageBox.Show("Error", "Unable to upscale image, error:\r\n" + exp.ToString());
+                    MessageBox.Show(UiLocalization.Translate("Error"), string.Format(UiLocalization.Translate("Unable to upscale image:\n{0}"), exp));
                 }
                 finally {
                     await canvasPropBox.Dispatcher.BeginInvoke(new Action(() => {
@@ -1183,8 +1551,8 @@ namespace HaRepacker.GUI.Panels
             {
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
                 {
-                    Title = "Select the sound",
-                    Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3(*.mp3)|*.mp3"
+                    Title = UiLocalization.Translate("Select the sound"),
+                    Filter = UiLocalization.Translate("MP3 audio (*.mp3)|*.mp3")
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
                 WzBinaryProperty prop;
@@ -1220,8 +1588,8 @@ namespace HaRepacker.GUI.Panels
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
                 FileName = mp3.Name,
-                Title = "Select where to save the .mp3 file.",
-                Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3"
+                Title = UiLocalization.Translate("Select where to save the MP3 file"),
+                Filter = UiLocalization.Translate("MP3 audio (*.mp3)|*.mp3")
             };
             if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 return;
@@ -1270,8 +1638,8 @@ namespace HaRepacker.GUI.Panels
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
                 FileName = fileName,
-                Title = "Select where to save the image...",
-                Filter = "Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
+                Title = UiLocalization.Translate("Select where to save the image"),
+                Filter = UiLocalization.Translate("Image files|*.png;*.gif;*.bmp;*.jpg;*.tif")
             };
             if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) 
                 return;
@@ -1317,8 +1685,8 @@ namespace HaRepacker.GUI.Panels
             System.Windows.Forms.SaveFileDialog saveFileDialog1 = new System.Windows.Forms.SaveFileDialog()
             {
                 FileName = fileName,
-                Title = "Select where to save the file...",
-                Filter = fileType + " files (*."+ fileType + ")|*."+ fileType + "|All files (*.*)|*.*" 
+                Title = UiLocalization.Translate("Select where to save the file"),
+                Filter = string.Format(UiLocalization.Translate("{0} files (*.{0})|*.{0}|All files (*.*)|*.*"), fileType)
             }
             ;
             if (saveFileDialog1.ShowDialog() != System.Windows.Forms.DialogResult.OK) 
@@ -1342,8 +1710,8 @@ namespace HaRepacker.GUI.Panels
             if (DataTree.SelectedNode.Tag is WzCanvasProperty) // only allow button click if its an image property
             {
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog() {
-                    Title = "Select an image",
-                    Filter = "Supported Image Formats (*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff)|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff"
+                    Title = UiLocalization.Translate("Select an image"),
+                    Filter = UiLocalization.Translate("Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff")
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
@@ -1764,6 +2132,18 @@ namespace HaRepacker.GUI.Panels
                     }
                     SetImageRenderView(canvasProp);
                 }
+                else if (obj is WzPngProperty pngProp && pngProp.Parent is WzCanvasProperty parentCanvas) {
+                    bAnimateMoreButton = true;
+
+                    menuItem_changeImage.Visibility = Visibility.Visible;
+                    menuItem_saveImage.Visibility = Visibility.Visible;
+
+                    Bitmap bmp = pngProp.GetImage(false);
+                    canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(pngProp.Format);
+                    canvasPropBox.BindingPropertyItem.Bitmap = bmp;
+                    canvasPropBox.BindingPropertyItem.BitmapBackup = bmp;
+                    SetImageRenderView(parentCanvas);
+                }
                 else if (obj is WzUOLProperty uolProperty) {
                     bAnimateMoreButton = true; // flag
 
@@ -1837,7 +2217,7 @@ namespace HaRepacker.GUI.Panels
                                     Window.Run();
                                 }
                                 catch (Exception e) {
-                                    Warning.Error("Error initialising/ rendering spine object. " + e.ToString());
+                                    Warning.Error(string.Format(UiLocalization.Translate("Error initializing or rendering Spine object: {0}"), e));
                                 }
                             });
                             thread.Start();
@@ -2197,8 +2577,7 @@ namespace HaRepacker.GUI.Panels
                         //if (node.Style == null) node.Style = new ElementStyle();
                         node.BackColor = System.Drawing.Color.Yellow;
                         coloredNode = node;
-                        node.EnsureVisible();
-                        //DataTree.Focus();
+                        SelectAndRevealNativeNode(node);
                         finished = true;
                         searchidx++;
                         return;
@@ -2228,8 +2607,7 @@ namespace HaRepacker.GUI.Panels
                         //if (subnode.Style == null) subnode.Style = new ElementStyle();
                         subnode.BackColor = System.Drawing.Color.Yellow;
                         coloredNode = subnode;
-                        subnode.EnsureVisible();
-                        //DataTree.Focus();
+                        SelectAndRevealNativeNode(subnode);
                         finished = true;
                         searchidx++;
                         return;
@@ -2317,9 +2695,7 @@ namespace HaRepacker.GUI.Panels
             }
             if (node != null)
             {
-                DataTree.SelectedNode = node;
-                node.EnsureVisible();
-                DataTree.RefreshSelectedNodes();
+                SelectAndRevealNativeNode(node);
             }
         }
 

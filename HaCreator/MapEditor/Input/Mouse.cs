@@ -125,6 +125,22 @@ namespace HaCreator.MapEditor.Input
                     Board.UndoRedoMan.AddUndoBatch(undoPipe);
                     CreateClock();
                 }
+                else if (state == MouseState.Regions)
+                {
+                    Area area = BoundItems.Keys.OfType<Area>().FirstOrDefault();
+                    foreach (BoardItem item in BoundItems.Keys.ToList())
+                    {
+                        ReleaseItem(item);
+                    }
+
+                    if (area != null)
+                    {
+                        List<UndoRedoAction> undoPipe = new List<UndoRedoAction>();
+                        area.OnItemPlaced(undoPipe);
+                        Board.UndoRedoMan.AddUndoBatch(undoPipe);
+                    }
+                    CreateRegion();
+                }
             }
         }
 
@@ -242,7 +258,7 @@ namespace HaCreator.MapEditor.Input
                     fh.Remove(false, null);
                     Board.BoardItems.FootholdLines.Remove(fh);
                 } 
-                else if (state == MouseState.Clock)
+                else if (state == MouseState.Clock || state == MouseState.Regions)
                 {
                     List<BoardItem> items = BoundItems.Keys.ToList();
                     foreach (BoardItem item in items)
@@ -264,6 +280,32 @@ namespace HaCreator.MapEditor.Input
                 currAddedInfo = null;
                 tileRandomList = null;
                 state = MouseState.Selection;
+            }
+        }
+
+        private void CreateRegion()
+        {
+            lock (Board.ParentControl)
+            {
+                int suffix = Board.BoardItems.MiscItems.OfType<Area>().Count() + 1;
+                Area area = new Area(Board, new Xna.Rectangle(X - 100, Y - 75, 200, 150), $"area{suffix}");
+                Board.BoardItems.MiscItems.Add(area);
+                BindItem(area, new Xna.Point(area.Width / 2, area.Height / 2));
+                BindItem(area.PointA, new Xna.Point(-area.Width / 2, -area.Height / 2));
+                BindItem(area.PointB, new Xna.Point(area.Width / 2, -area.Height / 2));
+                BindItem(area.PointC, new Xna.Point(area.Width / 2, area.Height / 2));
+                BindItem(area.PointD, new Xna.Point(-area.Width / 2, area.Height / 2));
+            }
+        }
+
+        public void SetEraserMode()
+        {
+            lock (Board.ParentControl)
+            {
+                Clear();
+                currAddedInfo = null;
+                tileRandomList = null;
+                state = MouseState.Eraser;
             }
         }
 
@@ -350,6 +392,16 @@ namespace HaCreator.MapEditor.Input
                 Clear();
                 state = MouseState.Clock;
                 CreateClock();
+            }
+        }
+
+        public void SetRegionMode()
+        {
+            lock (Board.ParentControl)
+            {
+                Clear();
+                state = MouseState.Regions;
+                CreateRegion();
             }
         }
 

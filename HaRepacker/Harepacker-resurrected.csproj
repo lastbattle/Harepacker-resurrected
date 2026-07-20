@@ -107,4 +107,96 @@
       <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Update="FHMapper\DisplayMap.cs">
+      <DependentUpon>DisplayMap.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="FHMapper\Edit.cs">
+      <DependentUpon>Edit.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="FHMapper\EditPortals.cs">
+      <DependentUpon>EditPortals.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="FHMapper\Settings.cs">
+      <DependentUpon>Settings.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="FHMapper\SpawnpointInfo.cs">
+      <DependentUpon>SpawnpointInfo.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\AboutForm.cs">
+      <DependentUpon>AboutForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\FirstRunForm.cs">
+      <DependentUpon>FirstRunForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\ListEditor.cs">
+      <DependentUpon>ListEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\MainForm.cs">
+      <DependentUpon>MainForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\NewForm.cs">
+      <DependentUpon>NewForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\OptionsForm.cs">
+      <DependentUpon>OptionsForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\PackToWzForm.cs">
+      <DependentUpon>PackToWzForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\SaveForm.cs">
+      <DependentUpon>SaveForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\WzKeyBruteforceForm.cs">
+      <DependentUpon>WzKeyBruteforceForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\WzStringSearchForm.cs">
+      <DependentUpon>WzStringSearchForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\ZLZPacketEncryptionKeyForm.cs">
+      <DependentUpon>ZLZPacketEncryptionKeyForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\HotSwap\HotSwapNotificationBar.cs">
+      <DependentUpon>HotSwapNotificationBar.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\BitmapInputBox.cs">
+      <DependentUpon>BitmapInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\FloatingPointInputBox.cs">
+      <DependentUpon>FloatingPointInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\IntInputBox.cs">
+      <DependentUpon>IntInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\LongInputBox.cs">
+      <DependentUpon>LongInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\NameInputBox.cs">
+      <DependentUpon>NameInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\NameValueInputBox.cs">
+      <DependentUpon>NameValueInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\RenameInputBox.cs">
+      <DependentUpon>RenameInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\ReplaceBox.cs">
+      <DependentUpon>ReplaceBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\SearchOptionsForm.cs">
+      <DependentUpon>SearchOptionsForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\SearchSelectionForm.cs">
+      <DependentUpon>SearchSelectionForm.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\SoundInputBox.cs">
+      <DependentUpon>SoundInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Input\VectorInputBox.cs">
+      <DependentUpon>VectorInputBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="GUI\Interaction\WzMapleVersionInputBox.cs">
+      <DependentUpon>WzMapleVersionInputBox.xaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
 </Project>

@@ -1,269 +1,186 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Drawing;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
 using HaCreator.MapEditor;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using MapleLib.WzLib.WzStructure.Data;
-using System.Collections;
-using HaCreator.GUI;
-using MapleLib.WzLib.WzStructure;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.UndoRedo;
-using HaCreator.CustomControls;
 using HaCreator.Wz;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI.EditorPanels
 {
     public partial class TilePanel : UserControl
     {
         private HaCreatorStateManager hcsm;
-        private HotSwapRefreshService _hotSwapService;
+        private HotSwapRefreshService hotSwapService;
+        private bool isSelectingTileSet;
 
         public TilePanel()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
         }
 
-        #region Hot Swap
-        /// <summary>
-        /// Subscribes to hot swap events from the HotSwapRefreshService
-        /// </summary>
-        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public event EventHandler SelectedIndexChanged;
+
+        public void Initialize(HaCreatorStateManager stateManager)
+        {
+            hcsm = stateManager;
+            hcsm.SetTilePanel(this);
+            tileSetList.ItemsSource = Program.InfoManager.TileSets.Keys.OrderBy(name => name).ToList();
+        }
+
         public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
         {
-            if (_hotSwapService != null)
-            {
-                _hotSwapService.TileSetChanged -= OnTileSetChanged;
-            }
-
-            _hotSwapService = refreshService;
-
-            if (_hotSwapService != null)
-            {
-                _hotSwapService.TileSetChanged += OnTileSetChanged;
-            }
+            if (hotSwapService != null)
+                hotSwapService.TileSetChanged -= OnTileSetChanged;
+            hotSwapService = refreshService;
+            if (hotSwapService != null)
+                hotSwapService.TileSetChanged += OnTileSetChanged;
         }
 
-        /// <summary>
-        /// Handles tile set change events
-        /// </summary>
         private void OnTileSetChanged(object sender, TileSetChangedEventArgs e)
         {
-            if (InvokeRequired)
+            if (!Dispatcher.CheckAccess())
             {
-                BeginInvoke(new Action(() => HandleTileSetChange(e)));
+                Dispatcher.BeginInvoke(() => HandleTileSetChange(e));
                 return;
             }
             HandleTileSetChange(e);
         }
 
-        /// <summary>
-        /// Handles the tile set change on the UI thread
-        /// </summary>
         private void HandleTileSetChange(TileSetChangedEventArgs e)
         {
-            switch (e.ChangeType)
+            string selected = tileSetList.SelectedItem as string;
+            tileSetList.ItemsSource = Program.InfoManager.TileSets.Keys.OrderBy(name => name).ToList();
+
+            if (e.ChangeType == AssetChangeType.Removed && selected == e.SetName)
             {
-                case AssetChangeType.Added:
-                    // Add to tileset dropdown if not present
-                    if (!tileSetList.Items.Contains(e.SetName))
-                    {
-                        tileSetList.Items.Add(e.SetName);
-                        SortTileSetList();
-                    }
-                    break;
-
-                case AssetChangeType.Removed:
-                    // Remove from dropdown
-                    tileSetList.Items.Remove(e.SetName);
-                    // If currently selected, clear panel
-                    if (tileSetList.SelectedItem?.ToString() == e.SetName)
-                    {
-                        tileImagesContainer.Controls.Clear();
-                        if (tileSetList.Items.Count > 0)
-                        {
-                            tileSetList.SelectedIndex = 0;
-                        }
-                    }
-                    break;
-
-                case AssetChangeType.Modified:
-                    // If set doesn't exist in list, add it (Windows sometimes reports new files as Changed)
-                    if (!tileSetList.Items.Contains(e.SetName))
-                    {
-                        tileSetList.Items.Add(e.SetName);
-                        SortTileSetList();
-                    }
-                    else if (tileSetList.SelectedItem?.ToString() == e.SetName)
-                    {
-                        // Force reload from disk
-                        Program.InfoManager.RefreshTileSet(e.SetName);
-                        LoadTileSetList();
-                    }
-                    break;
+                tileImagesContainer.Clear();
+                tileSetList.SelectedIndex = tileSetList.Items.Count > 0 ? 0 : -1;
             }
-        }
-
-        /// <summary>
-        /// Sorts the tile set list alphabetically
-        /// </summary>
-        private void SortTileSetList()
-        {
-            var items = tileSetList.Items.Cast<string>().OrderBy(s => s).ToList();
-            var selected = tileSetList.SelectedItem;
-            tileSetList.Items.Clear();
-            foreach (var item in items)
+            else if (e.ChangeType == AssetChangeType.Modified && selected == e.SetName)
             {
-                tileSetList.Items.Add(item);
+                Program.InfoManager.RefreshTileSet(e.SetName);
+                SetSelectedTileSet(e.SetName);
             }
-            if (selected != null && tileSetList.Items.Contains(selected))
+            else if (selected != null && tileSetList.Items.Contains(selected))
             {
                 tileSetList.SelectedItem = selected;
             }
         }
-        #endregion
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="hcsm"></param>
-        public void Initialize(HaCreatorStateManager hcsm)
-        {
-            this.hcsm = hcsm;
-            hcsm.SetTilePanel(this);
-
-            foreach (string tileSetName in Program.InfoManager.TileSets.Keys) {
-                tileSetList.Items.Add(tileSetName);
-            }
-        }
-
-        private void searchResultsBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            SelectedIndexChanged.Invoke(sender, e);
-        }
-
-        public event EventHandler SelectedIndexChanged;
-
-        private void tileBrowse_Click(object sender, EventArgs e)
+        private void TileBrowse_Click(object sender, RoutedEventArgs e)
         {
             lock (hcsm.MultiBoard)
             {
-                new TileSetBrowser(tileSetList).ShowDialog();
+                // TileSetBrowser remains WinForms during the staged dialog migration.
+                using TileSetBrowser browser = new(SetSelectedTileSet);
+                browser.ShowDialog();
             }
         }
 
-        /// <summary>
-        /// Sets the currently selected tileSet, and refresh the list of tiles
-        /// </summary>
-        /// <param name="tileSet"></param>
         public void SetSelectedTileSet(string tileSet)
         {
             if (!Program.InfoManager.TileSets.ContainsKey(tileSet))
                 return;
-            else if ((string) tileSetList.SelectedItem == tileSet) // its the same.
-                return;
+            isSelectingTileSet = true;
             tileSetList.SelectedItem = tileSet;
-
+            isSelectingTileSet = false;
             LoadTileSetList();
         }
 
-        private void tileSetList_SelectedIndexChanged(object sender, EventArgs e)
+        private void TileSetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            LoadTileSetList();
+            SelectedIndexChanged?.Invoke(sender, EventArgs.Empty);
+            if (!isSelectingTileSet)
+                LoadTileSetList();
         }
 
         public void LoadTileSetList()
         {
+            if (hcsm == null)
+                return;
+
             lock (hcsm.MultiBoard)
             {
-                if (tileSetList.SelectedItem == null) 
+                if (tileSetList.SelectedItem is not string selectedSetName ||
+                    !Program.InfoManager.TileSets.ContainsKey(selectedSetName))
                     return;
 
-                string selectedSetName = (string)tileSetList.SelectedItem;
-                if (!Program.InfoManager.TileSets.ContainsKey(selectedSetName))
-                    return;
-
-                // Clear existing
-                tileImagesContainer.Controls.Clear();
-
+                tileImagesContainer.Clear();
                 WzImage tileSetImage = Program.InfoManager.GetTileSet(selectedSetName);
                 if (tileSetImage == null)
                     return;
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
 
-                foreach (WzSubProperty tCat in tileSetImage.WzProperties)
+                foreach (WzSubProperty category in tileSetImage.WzProperties.OfType<WzSubProperty>())
                 {
-                    if (tCat.Name == "info") 
+                    if (category.Name == "info")
                         continue;
+
                     if (ApplicationSettings.randomTiles)
                     {
-                        WzCanvasProperty canvasProp = (WzCanvasProperty)tCat["0"];
-                        if (canvasProp == null) 
+                        WzCanvasProperty canvas = category["0"] as WzCanvasProperty;
+                        if (canvas == null)
                             continue;
-                        ImageViewer item = tileImagesContainer.Add(canvasProp.GetLinkedWzCanvasBitmap(), tCat.Name, true);
-                        TileInfo[] randomInfos = new TileInfo[tCat.WzProperties.Count];
-                        for (int i = 0; i < randomInfos.Length; i++)
-                        {
-                            randomInfos[i] = TileInfo.Get((string)tileSetList.SelectedItem, tCat.Name, tCat.WzProperties[i].Name, mag);
-                        }
-                        item.Tag = randomInfos;
-                        item.MouseDown += new MouseEventHandler(tileItem_Click);
-                        item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
+                        TileInfo[] randomInfos = category.WzProperties
+                            .Select(tile => TileInfo.Get(selectedSetName, category.Name, tile.Name, mag))
+                            .ToArray();
+                        tileImagesContainer.Add(canvas.GetLinkedWzCanvasBitmap(), category.Name, randomInfos);
                     }
                     else
                     {
-                        foreach (WzCanvasProperty tile in tCat.WzProperties)
+                        foreach (WzCanvasProperty tile in category.WzProperties.OfType<WzCanvasProperty>())
                         {
-                            ImageViewer item = tileImagesContainer.Add(tile.GetLinkedWzCanvasBitmap(), tCat.Name + "/" + tile.Name, true);
-                            item.Tag = TileInfo.Get((string)tileSetList.SelectedItem, tCat.Name, tile.Name, mag);
-                            item.MouseDown += new MouseEventHandler(tileItem_Click);
-                            item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
+                            TileInfo info = TileInfo.Get(selectedSetName, category.Name, tile.Name, mag);
+                            tileImagesContainer.Add(tile.GetLinkedWzCanvasBitmap(), $"{category.Name}/{tile.Name}", info);
                         }
                     }
                 }
             }
         }
 
-        void tileItem_Click(object sender, MouseEventArgs e)
+        private void TileImagesContainer_ItemActivated(object sender, AssetGalleryItemEventArgs e)
         {
+            if (hcsm?.MultiBoard.SelectedBoard == null ||
+                e.Item.Tag is not TileInfo && e.Item.Tag is not TileInfo[])
+                return;
+
             lock (hcsm.MultiBoard)
             {
-                ImageViewer item = (ImageViewer)sender;
                 if (!hcsm.MultiBoard.AssertLayerSelected())
-                {
                     return;
-                }
+
+                TileInfo selectedInfo = e.Item.Tag is TileInfo[] randomInfos ? randomInfos[0] : (TileInfo)e.Item.Tag;
                 Layer layer = hcsm.MultiBoard.SelectedBoard.SelectedLayer;
-                if (layer.tS != null)
+                if (layer.tS != null && selectedInfo.tS != layer.tS)
                 {
-                    TileInfo infoToAdd = null;
-                    if (ApplicationSettings.randomTiles)
-                        infoToAdd = ((TileInfo[])item.Tag)[0];
-                    else
-                        infoToAdd = (TileInfo)item.Tag;
-                    if (infoToAdd.tS != layer.tS)
+                    MessageBoxResult result = MessageBox.Show(
+                        EditorPanelLocalizer.Text("Confirm_ChangeTileSet", "This will change the active layer's tile set. Continue?"),
+                        EditorPanelLocalizer.Text("Title_ChangeTileSet", "Change tile set"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (result != MessageBoxResult.Yes)
+                        return;
+
+                    List<UndoRedoAction> actions = new()
                     {
-                        if (MessageBox.Show("This action will change the layer's tS. Proceed?", "Layer tS Change", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != System.Windows.Forms.DialogResult.Yes)
-                            return;
-                        List<UndoRedoAction> actions = new List<UndoRedoAction>();
-                        actions.Add(UndoRedoManager.LayerTSChanged(layer, layer.tS, infoToAdd.tS));
-                        layer.ReplaceTS(infoToAdd.tS);
-                        hcsm.MultiBoard.SelectedBoard.UndoRedoMan.AddUndoBatch(actions);
-                    }
+                        UndoRedoManager.LayerTSChanged(layer, layer.tS, selectedInfo.tS)
+                    };
+                    layer.ReplaceTS(selectedInfo.tS);
+                    hcsm.MultiBoard.SelectedBoard.UndoRedoMan.AddUndoBatch(actions);
                 }
+
                 hcsm.EnterEditMode(ItemTypes.Tiles);
-                if (ApplicationSettings.randomTiles)
-                    hcsm.MultiBoard.SelectedBoard.Mouse.SetRandomTilesMode((TileInfo[])item.Tag);
+                if (e.Item.Tag is TileInfo[] infos)
+                    hcsm.MultiBoard.SelectedBoard.Mouse.SetRandomTilesMode(infos);
                 else
-                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((TileInfo)item.Tag);
+                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((TileInfo)e.Item.Tag);
                 hcsm.MultiBoard.Focus();
-                item.IsActive = true;
             }
         }
     }

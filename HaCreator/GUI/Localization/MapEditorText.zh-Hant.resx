@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="BackupFailed" xml:space="preserve"><value>備份失敗！錯誤：{0}\r\n{1}</value></data>
+  <data name="DuplicateObjectName" xml:space="preserve"><value>無法新增「{0}」，因為已存在同名物件。</value></data>
+  <data name="ErrorTitle" xml:space="preserve"><value>錯誤</value></data>
+  <data name="InstanceEditorError" xml:space="preserve"><value>顯示 {0} 的執行個體編輯器時發生錯誤：\r\n{1}</value></data>
+  <data name="CloseMapConfirm" xml:space="preserve"><value>確定要關閉此地圖嗎？</value></data>
+  <data name="CloseTitle" xml:space="preserve"><value>關閉</value></data>
+  <data name="UnsupportedPropertiesTitle" xml:space="preserve"><value>不支援的屬性清單</value></data>
+  <data name="SelectExportLocation" xml:space="preserve"><value>選擇匯出位置</value></data>
+  <data name="HaCreatorMapFilter" xml:space="preserve"><value>HaCreator 地圖檔案 (*.ham)|*.ham</value></data>
+  <data name="CouldNotSave" xml:space="preserve"><value>無法儲存：{0}\r\n\r\n{1}</value></data>
+  <data name="FinalizeFootholdsConfirm" xml:space="preserve"><value>這將完成所有立足點、移除其圖塊繫結並清除復原/重做清單。\r\n是否繼續？</value></data>
+  <data name="WarningTitle" xml:space="preserve"><value>警告</value></data>
+  <data name="MinimapRegenerated" xml:space="preserve"><value>小地圖重新產生成功。</value></data>
+  <data name="SuccessTitle" xml:space="preserve"><value>成功</value></data>
+  <data name="MinimapRegenerationError" xml:space="preserve"><value>重新產生小地圖時發生錯誤。錯誤已記錄。請盡可能儲存地圖並在 GitHub 上回報。</value></data>
+  <data name="HelpFileMissing" xml:space="preserve"><value>找不到 HRHelp.htm，無法顯示說明。</value></data>
+  <data name="ImgFilesystemPathUnknown" xml:space="preserve"><value>無法判斷 IMG 檔案系統路徑。\n\n請使用 HaRepacker 將 IMG 檔案封裝到 WZ。</value></data>
+  <data name="ImgFilesystemModeTitle" xml:space="preserve"><value>IMG 檔案系統模式</value></data>
+  <data name="ConfirmTitle" xml:space="preserve"><value>確認</value></data>
+  <data name="RemoveVrConfirm" xml:space="preserve"><value>這將移除地圖的 VR，且無法復原；必須從地圖選單重新新增 VR。是否繼續？</value></data>
+  <data name="RemoveMinimapConfirm" xml:space="preserve"><value>這將移除地圖的小地圖，且無法復原；必須從地圖選單重新新增。是否繼續？</value></data>
+  <data name="ClipboardInvalid" xml:space="preserve"><value>剪貼簿資料無法使用或無效。</value></data>
+  <data name="GenericError" xml:space="preserve"><value>發生錯誤：{0}</value></data>
+  <data name="ClipboardDifferentTileSets" xml:space="preserve"><value>剪貼簿包含不同圖塊集的圖塊，無法貼上。</value></data>
+  <data name="ClipboardNoLayerSelected" xml:space="preserve"><value>剪貼簿包含分層項目，但未選取圖層或平台。</value></data>
+  <data name="ClipboardTileSetMismatch" xml:space="preserve"><value>剪貼簿圖塊使用的圖塊集與所選圖層不同。</value></data>
+  <data name="GraphicsAdapterUnsupported" xml:space="preserve"><value>不支援此圖形介面卡：{0}\r\n\r\n{1}</value></data>
+  <data name="SelectRealLayer" xml:space="preserve"><value>請選取有效圖層。</value></data>
+  <data name="RecoveryPrompt" xml:space="preserve"><value>HaCreator 意外關閉，可以從備份自動復原。是否繼續？\r\n\r\n（若要重新開始，請選擇「否」。）</value></data>
+  <data name="RecoveryTitle" xml:space="preserve"><value>復原</value></data>
+  <data name="UnsupportedMapFeature" xml:space="preserve"><value>此地圖包含不支援的功能「{0}」。HaCreator 會逐位元組保留其原始資料，但若它依賴已編輯的立足點或怪物等地圖物件，可能無法繼續運作。</value></data>
+  <data name="AddVr" xml:space="preserve"><value>新增 VR</value></data>
+  <data name="AddMinimap" xml:space="preserve"><value>新增小地圖</value></data>
+  <data name="MapSizeMissing" xml:space="preserve"><value>地圖沒有尺寸資訊，HaCreator 也無法產生。錯誤已記錄。</value></data>
+  <data name="CurrentMapLabel" xml:space="preserve"><value>目前地圖</value></data>
+  <data name="EditMapInfo" xml:space="preserve"><value>編輯地圖資訊…</value></data>
+  <data name="Context_EditInstance" xml:space="preserve"><value>編輯此執行個體…</value></data>
+  <data name="Context_LoadTargetMap" xml:space="preserve"><value>在新分頁中載入目標地圖</value></data>
+  <data name="Context_AddCharacterTooltip" xml:space="preserve"><value>新增角色提示</value></data>
+  <data name="Context_BringToFront" xml:space="preserve"><value>移到最前</value></data>
+  <data name="Context_SendToBack" xml:space="preserve"><value>移到最後</value></data>
+  <data name="Context_SelectConnected" xml:space="preserve"><value>選取相連項目</value></data>
+  <data name="Context_ChangeLayerPlatform" xml:space="preserve"><value>變更圖層/平台…</value></data>
+  <data name="Context_SelectPlatform" xml:space="preserve"><value>選取平台</value></data>
+  <data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>動畫影格編輯器</value></data>
+  <data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>開啟動畫影格編輯器</value></data>
+  <data name="Editor_Animations_2D94A1" xml:space="preserve"><value>動畫</value></data>
+  <data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI 設定</value></data>
+</root>

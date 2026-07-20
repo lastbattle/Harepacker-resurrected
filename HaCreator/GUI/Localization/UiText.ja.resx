@@ -1,0 +1,1051 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Init_WindowTitle" xml:space="preserve">
+    <value>HaCreator - 初期化</value>
+  </data>
+  <data name="Init_Heading" xml:space="preserve">
+    <value>HaCreator を開く</value>
+  </data>
+  <data name="Init_Subheading" xml:space="preserve">
+    <value>この編集セッションで使用する MapleStory データソースを選択します。</value>
+  </data>
+  <data name="Init_WzFilesTab" xml:space="preserve">
+    <value>WZ ファイル</value>
+  </data>
+  <data name="Init_MapleStoryFolder" xml:space="preserve">
+    <value>MapleStory フォルダー</value>
+  </data>
+  <data name="Common_BrowseEllipsis" xml:space="preserve">
+    <value>参照...</value>
+  </data>
+  <data name="Init_WzEncryption" xml:space="preserve">
+    <value>WZ 暗号化</value>
+  </data>
+  <data name="Init_ClientLocalisation" xml:space="preserve">
+    <value>クライアント地域</value>
+  </data>
+  <data name="Init_LocalisationHint" xml:space="preserve">
+    <value>保存される WZ パラメーターはクライアントごとに異なるため、一致する地域を選択してください。</value>
+  </data>
+  <data name="Init_ImgVersionsTab" xml:space="preserve">
+    <value>IMG バージョン</value>
+  </data>
+  <data name="Init_NoVersions" xml:space="preserve">
+    <value>バージョンが見つかりません。
+
+「新規抽出」で WZ ファイルを IMG 形式に抽出するか、「参照」で既存のフォルダーを追加してください。</value>
+  </data>
+  <data name="Init_VersionName" xml:space="preserve">
+    <value>バージョン名</value>
+  </data>
+  <data name="Init_ExtractTooltip" xml:space="preserve">
+    <value>WZ ファイルを抽出して IMG バージョンを作成</value>
+  </data>
+  <data name="Init_ExtractNewEllipsis" xml:space="preserve">
+    <value>新規抽出...</value>
+  </data>
+  <data name="Init_AddVersionTooltip" xml:space="preserve">
+    <value>既存の IMG バージョンフォルダーを追加</value>
+  </data>
+  <data name="Common_Refresh" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="Common_Rename" xml:space="preserve">
+    <value>名前の変更</value>
+  </data>
+  <data name="Common_Delete" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="Common_Ready" xml:space="preserve">
+    <value>準備完了</value>
+  </data>
+  <data name="Common_Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Common_Initialize" xml:space="preserve">
+    <value>初期化</value>
+  </data>
+  <data name="IE_Add" xml:space="preserve">
+    <value>追加</value>
+  </data>
+  <data name="IE_Alpha" xml:space="preserve">
+    <value>アルファ</value>
+  </data>
+  <data name="IE_Alpha_test" xml:space="preserve">
+    <value>アルファテスト</value>
+  </data>
+  <data name="IE_Animation" xml:space="preserve">
+    <value>アニメーション</value>
+  </data>
+  <data name="IE_Background_instance" xml:space="preserve">
+    <value>背景インスタンス</value>
+  </data>
+  <data name="IE_Browse_map" xml:space="preserve">
+    <value>マップを参照</value>
+  </data>
+  <data name="IE_Browse_portal" xml:space="preserve">
+    <value>ポータルを参照</value>
+  </data>
+  <data name="IE_Cancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="IE_Cannot_pass_through" xml:space="preserve">
+    <value>通過不可</value>
+  </data>
+  <data name="IE_Confirm" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="IE_Custom_name" xml:space="preserve">
+    <value>カスタム名</value>
+  </data>
+  <data name="IE_CX" xml:space="preserve">
+    <value>CX</value>
+  </data>
+  <data name="IE_CY" xml:space="preserve">
+    <value>CY</value>
+  </data>
+  <data name="IE_Delay" xml:space="preserve">
+    <value>遅延</value>
+  </data>
+  <data name="IE_Description" xml:space="preserve">
+    <value>説明</value>
+  </data>
+  <data name="IE_Dynamic" xml:space="preserve">
+    <value>動的</value>
+  </data>
+  <data name="IE_Flip" xml:space="preserve">
+    <value>反転</value>
+  </data>
+  <data name="IE_Flow" xml:space="preserve">
+    <value>フロー</value>
+  </data>
+  <data name="IE_Foothold" xml:space="preserve">
+    <value>足場</value>
+  </data>
+  <data name="IE_Forbid_falling_down" xml:space="preserve">
+    <value>下方向への落下を禁止</value>
+  </data>
+  <data name="IE_Force" xml:space="preserve">
+    <value>強制</value>
+  </data>
+  <data name="IE_Front" xml:space="preserve">
+    <value>前面</value>
+  </data>
+  <data name="IE_General" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="IE_Hidden" xml:space="preserve">
+    <value>非表示</value>
+  </data>
+  <data name="IE_Hide_tooltip" xml:space="preserve">
+    <value>ツールチップを非表示</value>
+  </data>
+  <data name="IE_Horizontal_impact" xml:space="preserve">
+    <value>水平方向の作用</value>
+  </data>
+  <data name="IE_Info" xml:space="preserve">
+    <value>情報</value>
+  </data>
+  <data name="IE_Input_quest" xml:space="preserve">
+    <value>クエスト入力</value>
+  </data>
+  <data name="IE_Ladder" xml:space="preserve">
+    <value>はしご</value>
+  </data>
+  <data name="IE_Life_instance" xml:space="preserve">
+    <value>ライフインスタンス</value>
+  </data>
+  <data name="IE_Limited_name" xml:space="preserve">
+    <value>制限名</value>
+  </data>
+  <data name="IE_mirror" xml:space="preserve">
+    <value>ミラー</value>
+  </data>
+  <data name="IE_Mirror_field" xml:space="preserve">
+    <value>ミラーフィールド</value>
+  </data>
+  <data name="IE_Mob_time" xml:space="preserve">
+    <value>モブ時間</value>
+  </data>
+  <data name="IE_Name" xml:space="preserve">
+    <value>名前</value>
+  </data>
+  <data name="IE_Object_instance" xml:space="preserve">
+    <value>オブジェクトインスタンス</value>
+  </data>
+  <data name="IE_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="IE_Only_once" xml:space="preserve">
+    <value>1 回のみ</value>
+  </data>
+  <data name="IE_Overlay_object" xml:space="preserve">
+    <value>オーバーレイオブジェクト</value>
+  </data>
+  <data name="IE_Page" xml:space="preserve">
+    <value>ページ</value>
+  </data>
+  <data name="IE_Piece" xml:space="preserve">
+    <value>パーツ</value>
+  </data>
+  <data name="IE_Portal_instance" xml:space="preserve">
+    <value>ポータルインスタンス</value>
+  </data>
+  <data name="IE_Portal_name" xml:space="preserve">
+    <value>ポータル名</value>
+  </data>
+  <data name="IE_Portal_type" xml:space="preserve">
+    <value>ポータルタイプ</value>
+  </data>
+  <data name="IE_Quest_ID" xml:space="preserve">
+    <value>クエスト ID</value>
+  </data>
+  <data name="IE_Quest_states" xml:space="preserve">
+    <value>クエスト状態</value>
+  </data>
+  <data name="IE_R" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="IE_Random_start" xml:space="preserve">
+    <value>ランダム開始</value>
+  </data>
+  <data name="IE_Range" xml:space="preserve">
+    <value>範囲</value>
+  </data>
+  <data name="IE_Reactor" xml:space="preserve">
+    <value>リアクター</value>
+  </data>
+  <data name="IE_Reactor_name" xml:space="preserve">
+    <value>リアクター名</value>
+  </data>
+  <data name="IE_Reactor_time" xml:space="preserve">
+    <value>リアクター時間</value>
+  </data>
+  <data name="IE_Reflection" xml:space="preserve">
+    <value>反射</value>
+  </data>
+  <data name="IE_Remove" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="IE_Rope" xml:space="preserve">
+    <value>ロープ</value>
+  </data>
+  <data name="IE_RX" xml:space="preserve">
+    <value>RX</value>
+  </data>
+  <data name="IE_RX0_shift" xml:space="preserve">
+    <value>RX0 shift</value>
+  </data>
+  <data name="IE_RX1_shift" xml:space="preserve">
+    <value>RX1 shift</value>
+  </data>
+  <data name="IE_RY" xml:space="preserve">
+    <value>RY</value>
+  </data>
+  <data name="IE_Screen_mode" xml:space="preserve">
+    <value>画面モード</value>
+  </data>
+  <data name="IE_Script" xml:space="preserve">
+    <value>スクリプト</value>
+  </data>
+  <data name="IE_Search_items" xml:space="preserve">
+    <value>アイテムを検索</value>
+  </data>
+  <data name="IE_Search_jobs" xml:space="preserve">
+    <value>職業を検索</value>
+  </data>
+  <data name="IE_Search_maps" xml:space="preserve">
+    <value>マップを検索</value>
+  </data>
+  <data name="IE_Search_mobs" xml:space="preserve">
+    <value>モブを検索</value>
+  </data>
+  <data name="IE_Search_NPCs" xml:space="preserve">
+    <value>NPC を検索</value>
+  </data>
+  <data name="IE_Search_quests" xml:space="preserve">
+    <value>クエストを検索</value>
+  </data>
+  <data name="IE_Search_skills" xml:space="preserve">
+    <value>スキルを検索</value>
+  </data>
+  <data name="IE_Select" xml:space="preserve">
+    <value>選択</value>
+  </data>
+  <data name="IE_Select_a_job" xml:space="preserve">
+    <value>職業を選択</value>
+  </data>
+  <data name="IE_Select_a_map" xml:space="preserve">
+    <value>マップを選択</value>
+  </data>
+  <data name="IE_Select_a_mob" xml:space="preserve">
+    <value>モブを選択</value>
+  </data>
+  <data name="IE_Select_a_quest" xml:space="preserve">
+    <value>クエストを選択</value>
+  </data>
+  <data name="IE_Select_a_skill" xml:space="preserve">
+    <value>スキルを選択</value>
+  </data>
+  <data name="IE_Select_an_item" xml:space="preserve">
+    <value>アイテムを選択</value>
+  </data>
+  <data name="IE_Select_an_NPC" xml:space="preserve">
+    <value>NPC を選択</value>
+  </data>
+  <data name="IE_Select_class_categories" xml:space="preserve">
+    <value>職業クラスを選択：</value>
+  </data>
+  <data name="IE_Select_job_categories" xml:space="preserve">
+    <value>職業カテゴリを選択：</value>
+  </data>
+  <data name="IE_Select_target_portal" xml:space="preserve">
+    <value>対象ポータルを選択</value>
+  </data>
+  <data name="IE_Session_key" xml:space="preserve">
+    <value>セッションキー</value>
+  </data>
+  <data name="IE_Session_value" xml:space="preserve">
+    <value>セッション値</value>
+  </data>
+  <data name="IE_Set_platform_zM_for_selected_items" xml:space="preserve">
+    <value>選択項目のプラットフォーム zM を設定</value>
+  </data>
+  <data name="IE_Spine" xml:space="preserve">
+    <value>Spine</value>
+  </data>
+  <data name="IE_State" xml:space="preserve">
+    <value>状態</value>
+  </data>
+  <data name="IE_Tags" xml:space="preserve">
+    <value>タグ</value>
+  </data>
+  <data name="IE_Target_this_map" xml:space="preserve">
+    <value>このマップを対象にする</value>
+  </data>
+  <data name="IE_Team" xml:space="preserve">
+    <value>チーム</value>
+  </data>
+  <data name="IE_Tile" xml:space="preserve">
+    <value>タイル</value>
+  </data>
+  <data name="IE_Title" xml:space="preserve">
+    <value>タイトル</value>
+  </data>
+  <data name="IE_Tooltip" xml:space="preserve">
+    <value>ツールチップ</value>
+  </data>
+  <data name="IE_Type" xml:space="preserve">
+    <value>タイプ</value>
+  </data>
+  <data name="IE_Upper_foothold" xml:space="preserve">
+    <value>上側の足場</value>
+  </data>
+  <data name="IE_Value" xml:space="preserve">
+    <value>値：</value>
+  </data>
+  <data name="IE_Vertical_impact" xml:space="preserve">
+    <value>垂直方向の作用</value>
+  </data>
+  <data name="IE_X" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="IE_X_offset" xml:space="preserve">
+    <value>X オフセット</value>
+  </data>
+  <data name="IE_Y" xml:space="preserve">
+    <value>Y</value>
+  </data>
+  <data name="IE_Y_offset" xml:space="preserve">
+    <value>Y オフセット</value>
+  </data>
+  <data name="IE_Y_shift" xml:space="preserve">
+    <value>Y シフト</value>
+  </data>
+  <data name="IE_Z" xml:space="preserve">
+    <value>Z</value>
+  </data>
+  <data name="IE_zM" xml:space="preserve">
+    <value>zM</value>
+  </data>
+  <data name="Common_Error" xml:space="preserve">
+    <value>エラー</value>
+  </data>
+  <data name="Init_SelectMapleFolderMessage" xml:space="preserve">
+    <value>MapleStory フォルダーを選択してください。</value>
+  </data>
+  <data name="Init_ShowEditorError" xml:space="preserve">
+    <value>エディターの表示中にエラーが発生しました：
+{0}
+
+{1}</value>
+  </data>
+  <data name="Init_SelectVersionMessage" xml:space="preserve">
+    <value>一覧からバージョンを選択してください。</value>
+  </data>
+  <data name="Init_NoVersionSelectedTitle" xml:space="preserve">
+    <value>バージョンが選択されていません</value>
+  </data>
+  <data name="Init_CreatingDataSource" xml:space="preserve">
+    <value>データソースを作成しています...</value>
+  </data>
+  <data name="Init_ExtractingGameData" xml:space="preserve">
+    <value>ゲームデータを抽出しています...</value>
+  </data>
+  <data name="Init_Complete" xml:space="preserve">
+    <value>初期化が完了しました。</value>
+  </data>
+  <data name="Init_ImgInitializationError" xml:space="preserve">
+    <value>IMG ファイルシステムからの初期化中にエラーが発生しました：
+{0}</value>
+  </data>
+  <data name="Init_DataWzError" xml:space="preserve">
+    <value>data.wz ({0}) の初期化中にエラーが発生しました。
+ディレクトリが有効で、ファイルが使用中でないことを確認してください。</value>
+  </data>
+  <data name="Init_SelectMapleFolderDialog" xml:space="preserve">
+    <value>MapleStory フォルダーを選択してください。</value>
+  </data>
+  <data name="Init_ExtractedFormat" xml:space="preserve">
+    <value>抽出日時：{0:yyyy-MM-dd HH:mm}</value>
+  </data>
+  <data name="Init_EncryptionFormat" xml:space="preserve">
+    <value>暗号化：{0}</value>
+  </data>
+  <data name="Init_FormatFormat" xml:space="preserve">
+    <value>形式：{0}</value>
+  </data>
+  <data name="Init_TotalImagesFormat" xml:space="preserve">
+    <value>画像総数：{0:N0}</value>
+  </data>
+  <data name="Init_CategoriesFormat" xml:space="preserve">
+    <value>カテゴリ：{0}</value>
+  </data>
+  <data name="Init_InfoFormat" xml:space="preserve">
+    <value>情報：{0}</value>
+  </data>
+  <data name="Init_WarningFormat" xml:space="preserve">
+    <value>警告：{0}</value>
+  </data>
+  <data name="Init_StatusValid" xml:space="preserve">
+    <value>状態：有効</value>
+  </data>
+  <data name="Init_SelectImgFolderDialog" xml:space="preserve">
+    <value>抽出済み IMG ファイルを含むフォルダーを選択</value>
+  </data>
+  <data name="Init_InvalidImgFolderMessage" xml:space="preserve">
+    <value>選択したフォルダーに抽出済み IMG ファイルが含まれていないようです。
+
+有効なバージョンフォルダーには次のいずれかが必要です：
+- manifest.json ファイル、または
+- .img ファイルを含む String/ と Map/ フォルダー</value>
+  </data>
+  <data name="Init_InvalidFolderTitle" xml:space="preserve">
+    <value>無効なフォルダー</value>
+  </data>
+  <data name="Init_AddVersionFailed" xml:space="preserve">
+    <value>バージョンを追加できませんでした。すでに一覧に存在する可能性があります。</value>
+  </data>
+  <data name="Init_ConfirmDeleteVersion" xml:space="preserve">
+    <value>バージョン「{0}」を削除しますか？
+
+抽出済みのすべての IMG ファイルが完全に削除されます。</value>
+  </data>
+  <data name="Init_ConfirmDeleteTitle" xml:space="preserve">
+    <value>削除の確認</value>
+  </data>
+  <data name="Init_DeleteVersionFailed" xml:space="preserve">
+    <value>バージョンを削除できませんでした。ファイルが使用中の可能性があります。</value>
+  </data>
+  <data name="Init_RenameVersionFailed" xml:space="preserve">
+    <value>バージョン名を変更できませんでした。対象フォルダーがすでに存在するか、ファイルが使用中の可能性があります。</value>
+  </data>
+  <data name="Init_RenameVersionTitle" xml:space="preserve">
+    <value>IMG バージョン名の変更</value>
+  </data>
+  <data name="Init_NewVersionName" xml:space="preserve">
+    <value>新しいバージョン名：</value>
+  </data>
+  <data name="Init_EmptyVersionName" xml:space="preserve">
+    <value>バージョン名は空にできません。</value>
+  </data>
+  <data name="Init_InvalidNameTitle" xml:space="preserve">
+    <value>無効な名前</value>
+  </data>
+  <data name="Init_InvalidVersionCharacters" xml:space="preserve">
+    <value>バージョン名にフォルダー名として使用できない文字が含まれています。</value>
+  </data>
+  <data name="Init_DataArchive" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="Init_EncryptedMsFiles" xml:space="preserve">
+    <value>個の暗号化済み .ms ファイル。</value>
+  </data>
+  <data name="Init_InitializingFormat" xml:space="preserve">
+    <value>{0}{1} を初期化しています...</value>
+  </data>
+  <data name="IE_BackgroundNegativeMessage" xml:space="preserve">
+    <value>この背景タイプでは CX/CY を負の値にできません。</value>
+  </data>
+  <data name="IE_InvalidBackgroundTitle" xml:space="preserve">
+    <value>無効な背景</value>
+  </data>
+  <data name="Editor_About_4EFCA0" xml:space="preserve">
+    <value>バージョン情報</value>
+  </data>
+  <data name="Editor_About_HaCreator_D7275A" xml:space="preserve">
+    <value>HaCreator について</value>
+  </data>
+  <data name="Editor_Active_layer_BF7C5A" xml:space="preserve">
+    <value>現在のレイヤー</value>
+  </data>
+  <data name="Editor_Active_platform_4B8392" xml:space="preserve">
+    <value>現在の足場</value>
+  </data>
+  <data name="Editor_AI_Map_Editor_B208D2" xml:space="preserve">
+    <value>AI マップエディター</value>
+  </data>
+  <data name="Editor_All_maps_D292E9" xml:space="preserve">
+    <value>すべてのマップ</value>
+  </data>
+  <data name="Editor_All_Objects_DBC545" xml:space="preserve">
+    <value>すべてのオブジェクト</value>
+  </data>
+  <data name="Editor_Animate_asset_previews_E74DF1" xml:space="preserve">
+    <value>アセットプレビューをアニメーション</value>
+  </data>
+  <data name="Editor_Animate_previews_FD55D9" xml:space="preserve">
+    <value>プレビューをアニメーション</value>
+  </data>
+  <data name="Editor_Assets_BD1273" xml:space="preserve">
+    <value>アセット</value>
+  </data>
+  <data name="Editor_Background_Border_A213F4" xml:space="preserve">
+    <value>背景の境界</value>
+  </data>
+  <data name="Editor_Backgrounds_16A0B5" xml:space="preserve">
+    <value>背景</value>
+  </data>
+  <data name="Editor_Backgrounds_B_65E4C7" xml:space="preserve">
+    <value>背景 (B)</value>
+  </data>
+  <data name="Editor_Browse_3227AA" xml:space="preserve">
+    <value>参照</value>
+  </data>
+  <data name="Editor_Canvas_3824A9" xml:space="preserve">
+    <value>キャンバス</value>
+  </data>
+  <data name="Editor_Chairs_09E99D" xml:space="preserve">
+    <value>椅子</value>
+  </data>
+  <data name="Editor_Checked_edit_Mixed_view_only_Off_hidden_16154D" xml:space="preserve">
+    <value>オン：編集  •  混在：表示のみ  •  オフ：非表示</value>
+  </data>
+  <data name="Editor_Clear_83B12C" xml:space="preserve">
+    <value>クリア</value>
+  </data>
+  <data name="Editor_Copy_All_7A1861" xml:space="preserve">
+    <value>すべてコピー</value>
+  </data>
+  <data name="Editor_Current_map_A6E14D" xml:space="preserve">
+    <value>現在のマップ</value>
+  </data>
+  <data name="Editor_Cursor_2C014F" xml:space="preserve">
+    <value>カーソル</value>
+  </data>
+  <data name="Editor_DEBUG_0FFD43" xml:space="preserve">
+    <value>デバッグ</value>
+  </data>
+  <data name="Editor_Delete_E2D0A5" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="Editor_Developer_map_tools_BE410C" xml:space="preserve">
+    <value>開発者向けマップツール</value>
+  </data>
+  <data name="Editor_Draw_footholds_91FC09" xml:space="preserve">
+    <value>足場を描画</value>
+  </data>
+  <data name="Editor_Draw_map_regions_A876F1" xml:space="preserve">
+    <value>マップ領域を描画</value>
+  </data>
+  <data name="Editor_Edit_464C4F" xml:space="preserve">
+    <value>編集</value>
+  </data>
+  <data name="Editor_Edit_quests_F30A7E" xml:space="preserve">
+    <value>クエストを編集</value>
+  </data>
+  <data name="Editor_Erase_items_each_click_is_undoable_256689" xml:space="preserve">
+    <value>アイテムを消去（クリックごとに元に戻せます）</value>
+  </data>
+  <data name="Editor_Etc_D322DE" xml:space="preserve">
+    <value>その他</value>
+  </data>
+  <data name="Editor_Exit_D17D84" xml:space="preserve">
+    <value>終了</value>
+  </data>
+  <data name="Editor_File_50009C" xml:space="preserve">
+    <value>ファイル</value>
+  </data>
+  <data name="Editor_Finalize_Footholds_68717E" xml:space="preserve">
+    <value>足場を確定</value>
+  </data>
+
+  <data name="Editor_Footholds_7BE0B3" xml:space="preserve">
+    <value>足場</value>
+  </data>
+  <data name="Editor_Footholds_Ropes_Regions_913790" xml:space="preserve">
+    <value>足場、ロープ、領域</value>
+  </data>
+  <data name="Editor_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Editor_HAM_4FAE66" xml:space="preserve">
+    <value>HAM</value>
+  </data>
+  <data name="Editor_Help_B79CAC" xml:space="preserve">
+    <value>ヘルプ</value>
+  </data>
+  <data name="Editor_Hide_all_6BAD68" xml:space="preserve">
+    <value>すべて非表示</value>
+  </data>
+  <data name="Editor_Hierarchy_23BE56" xml:space="preserve">
+    <value>階層</value>
+  </data>
+  <data name="Editor_History_0E7696" xml:space="preserve">
+    <value>履歴</value>
+  </data>
+  <data name="Editor_Info_Mode_F30E2B" xml:space="preserve">
+    <value>情報モード</value>
+  </data>
+  <data name="Editor_Information_overlays_1CC00F" xml:space="preserve">
+    <value>情報オーバーレイ</value>
+  </data>
+  <data name="Editor_Inspect_the_current_selection_Double_click_an_item_on_t_0FAC6F" xml:space="preserve">
+    <value>現在の選択内容を確認します。完全に編集するには、キャンバスまたは階層の項目をダブルクリックしてください。</value>
+  </data>
+  <data name="Editor_Inspector_DA188E" xml:space="preserve">
+    <value>インスペクター</value>
+  </data>
+  <data name="Editor_Issues_666067" xml:space="preserve">
+    <value>問題</value>
+  </data>
+  <data name="Editor_Item_visibility_D68C83" xml:space="preserve">
+    <value>アイテムの表示</value>
+  </data>
+  <data name="Editor_itemdesc_E45CDC" xml:space="preserve">
+    <value>アイテムの説明</value>
+  </data>
+  <data name="Editor_Layer_AC9FFC" xml:space="preserve">
+    <value>レイヤー</value>
+  </data>
+  <data name="Editor_Layers_0BCD66" xml:space="preserve">
+    <value>レイヤー</value>
+  </data>
+  <data name="Editor_Load_selected_map_or_file_1920CB" xml:space="preserve">
+    <value>選択したマップまたはファイルを読み込む</value>
+  </data>
+  <data name="Editor_Lock_all_AC5BB7" xml:space="preserve">
+    <value>すべてロック</value>
+  </data>
+  <data name="Editor_Manage_User_Objects_455E55" xml:space="preserve">
+    <value>ユーザーオブジェクトを管理</value>
+  </data>
+
+  <data name="Editor_Map_BE176B" xml:space="preserve">
+    <value>マップ</value>
+  </data>
+  <data name="Editor_Map_browser_5ADA56" xml:space="preserve">
+    <value>マップブラウザー</value>
+  </data>
+  <data name="Editor_Map_diagnostics_269074" xml:space="preserve">
+    <value>マップ診断</value>
+  </data>
+  <data name="Editor_Map_file_1C2EF1" xml:space="preserve">
+    <value>マップファイル</value>
+  </data>
+  <data name="Editor_Map_Objects_4CD3A1" xml:space="preserve">
+    <value>マップオブジェクト</value>
+  </data>
+  <data name="Editor_Map_Physics_61AD90" xml:space="preserve">
+    <value>マップ物理</value>
+  </data>
+
+  <data name="Editor_Map_properties_EC4B13" xml:space="preserve">
+    <value>マップのプロパティ...</value>
+  </data>
+  <data name="Editor_Map_Simulator_68DDBB" xml:space="preserve">
+    <value>マップシミュレーター</value>
+  </data>
+  <data name="Editor_Map_XML_B46847" xml:space="preserve">
+    <value>マップ XML</value>
+  </data>
+  <data name="Editor_Maps_119E66" xml:space="preserve">
+    <value>マップ</value>
+  </data>
+  <data name="Editor_Mirror_field_A21F74" xml:space="preserve">
+    <value>ミラーフィールド</value>
+  </data>
+  <data name="Editor_Mobs_083013" xml:space="preserve">
+    <value>モンスター</value>
+  </data>
+  <data name="Editor_Mouse_Physical_19BB5E" xml:space="preserve">
+    <value>マウス物理座標</value>
+  </data>
+  <data name="Editor_Mouse_Virtual_419B1F" xml:space="preserve">
+    <value>マウス仮想座標</value>
+  </data>
+  <data name="Editor_mousepos_DC487A" xml:space="preserve">
+    <value>マウス位置</value>
+  </data>
+  <data name="Editor_New_18FDD5" xml:space="preserve">
+    <value>新規</value>
+  </data>
+  <data name="Editor_New_Platform_A52232" xml:space="preserve">
+    <value>新しい足場</value>
+  </data>
+  <data name="Editor_New_platform_D53525" xml:space="preserve">
+    <value>新しい足場...</value>
+  </data>
+  <data name="Editor_NPCs_32DFCB" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Editor_NPCs_Mobs_1C7EF3" xml:space="preserve">
+    <value>NPC、モンスター、リアクター</value>
+  </data>
+  <data name="Editor_NPCs_and_mobs_N_9A06FB" xml:space="preserve">
+    <value>NPC、モンスター、リアクター (N)</value>
+  </data>
+  <data name="Editor_Objects_DE5236" xml:space="preserve">
+    <value>オブジェクト</value>
+  </data>
+  <data name="Editor_Objects_O_F1F32A" xml:space="preserve">
+    <value>オブジェクト (O)</value>
+  </data>
+  <data name="Editor_Open_ED077F" xml:space="preserve">
+    <value>開く</value>
+  </data>
+  <data name="Editor_Open_AI_Map_Editor_for_the_current_map_9FC120" xml:space="preserve">
+    <value>現在のマップを AI マップエディターで開く</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_E543F9" xml:space="preserve">
+    <value>HaRepacker を開く</value>
+  </data>
+  <data name="Editor_Open_HaRepacker_09E8F1" xml:space="preserve">
+    <value>HaRepacker を開く...</value>
+  </data>
+  <data name="Editor_Open_Log_01468E" xml:space="preserve">
+    <value>ログを開く</value>
+  </data>
+  <data name="Editor_Open_map_EA488D" xml:space="preserve">
+    <value>マップを開く</value>
+  </data>
+  <data name="Editor_Open_map_03863A" xml:space="preserve">
+    <value>マップを開く...</value>
+  </data>
+  <data name="Editor_Open_Quest_Editor_C0AFD3" xml:space="preserve">
+    <value>クエストエディターを開く</value>
+  </data>
+  <data name="Editor_Options_D0DB8B" xml:space="preserve">
+    <value>オプション</value>
+  </data>
+  <data name="Editor_Other_F97E9D" xml:space="preserve">
+    <value>その他</value>
+  </data>
+  <data name="Editor_Parallax_backgrounds_69E70D" xml:space="preserve">
+    <value>視差背景</value>
+  </data>
+  <data name="Editor_Parallax_BGs_8BC46B" xml:space="preserve">
+    <value>視差背景</value>
+  </data>
+  <data name="Editor_Physical_1324A4" xml:space="preserve">
+    <value>物理
+</value>
+  </data>
+  <data name="Editor_Place_ropes_and_ladders_8D6DF5" xml:space="preserve">
+    <value>ロープとはしごを配置</value>
+  </data>
+  <data name="Editor_Platforms_AB9BD7" xml:space="preserve">
+    <value>足場</value>
+  </data>
+  <data name="Editor_Portals_B4A3DA" xml:space="preserve">
+    <value>ポータル</value>
+  </data>
+  <data name="Editor_Portals_P_67398E" xml:space="preserve">
+    <value>ポータル (P)</value>
+  </data>
+  <data name="Editor_Position_6D031A" xml:space="preserve">
+    <value>位置</value>
+  </data>
+  <data name="Editor_Preview_324B13" xml:space="preserve">
+    <value>プレビュー</value>
+  </data>
+  <data name="Editor_Preview_map_E19CEF" xml:space="preserve">
+    <value>マップをプレビュー</value>
+  </data>
+  <data name="Editor_Quest_editor_B81784" xml:space="preserve">
+    <value>クエストエディター</value>
+  </data>
+  <data name="Editor_Quest_editor_A8BFA2" xml:space="preserve">
+    <value>クエストエディター...</value>
+  </data>
+  <data name="Editor_Quests_60D40D" xml:space="preserve">
+    <value>クエスト</value>
+  </data>
+  <data name="Editor_Random_Tiles_1ED7F5" xml:space="preserve">
+    <value>ランダムタイル</value>
+  </data>
+  <data name="Editor_Reactors_347F20" xml:space="preserve">
+    <value>リアクター</value>
+  </data>
+  <data name="Editor_Redo_Ctrl_Y_323109" xml:space="preserve">
+    <value>やり直し (Ctrl+Y)</value>
+  </data>
+  <data name="Editor_Regenerate_Minimap_CD2C30" xml:space="preserve">
+    <value>ミニマップを再生成</value>
+  </data>
+
+  <data name="Editor_Reload_all_F4A8C4" xml:space="preserve">
+    <value>すべて再読み込み</value>
+  </data>
+  <data name="Editor_Reload_the_current_map_source_901FA7" xml:space="preserve">
+    <value>現在のマップソースを再読み込み</value>
+  </data>
+  <data name="Editor_Repack_WZ_Files_B87109" xml:space="preserve">
+    <value>WZ ファイルを再パック</value>
+  </data>
+  <data name="Editor_Repack_WZ_files_90BFA4" xml:space="preserve">
+    <value>WZ ファイルを再パック...</value>
+  </data>
+  <data name="Editor_Reset_zoom_91A661" xml:space="preserve">
+    <value>ズームをリセット</value>
+  </data>
+  <data name="Editor_Resolve_Missing_4C66E8" xml:space="preserve">
+    <value>不足情報を解決</value>
+  </data>
+  <data name="Editor_Resolve_missing_map_names_from_WZ_data_74AB22" xml:space="preserve">
+    <value>WZ データから不足しているマップ名を解決</value>
+  </data>
+  <data name="Editor_Ropes_6BB426" xml:space="preserve">
+    <value>ロープ</value>
+  </data>
+  <data name="Editor_Save_1509F5" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Editor_Save_map_AB74BA" xml:space="preserve">
+    <value>マップを保存</value>
+  </data>
+  <data name="Editor_Save_map_Ctrl_S_1E254B" xml:space="preserve">
+    <value>マップを保存 (Ctrl+S)</value>
+  </data>
+  <data name="Editor_Save_map_1EA04E" xml:space="preserve">
+    <value>マップを保存...</value>
+  </data>
+  <data name="Editor_Save_to_WZ_A5F5FB" xml:space="preserve">
+    <value>WZ に保存</value>
+  </data>
+  <data name="Editor_Save_to_WZ_CDEA60" xml:space="preserve">
+    <value>WZ に保存...</value>
+  </data>
+  <data name="Editor_Saving_096B73" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Editor_Search_by_map_ID_or_name_9D3E57" xml:space="preserve">
+    <value>マップ ID または名前で検索</value>
+  </data>
+  <data name="Editor_Search_maps_and_commands_FF74F6" xml:space="preserve">
+    <value>マップとコマンドを検索</value>
+  </data>
+  <data name="Editor_Select_S_B368AF" xml:space="preserve">
+    <value>選択 (S)</value>
+  </data>
+  <data name="Editor_Selected_57FD7A" xml:space="preserve">
+    <value>選択済み</value>
+  </data>
+  <data name="Editor_Selected_Item_2DE33D" xml:space="preserve">
+    <value>選択したアイテム</value>
+  </data>
+
+  <data name="Editor_SELECTED_MAP_F1ABF7" xml:space="preserve">
+    <value>選択したマップ</value>
+  </data>
+  <data name="Editor_Selection_CA4067" xml:space="preserve">
+    <value>選択</value>
+  </data>
+  <data name="Editor_Settings_74A883" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Editor_Show_All_E1C326" xml:space="preserve">
+    <value>すべて表示</value>
+  </data>
+
+  <data name="Editor_Show_all_layers_B7053C" xml:space="preserve">
+    <value>すべてのレイヤーを表示</value>
+  </data>
+  <data name="Editor_Show_all_platforms_8B719C" xml:space="preserve">
+    <value>すべての足場を表示</value>
+  </data>
+  <data name="Editor_Show_Minimap_AEC9E5" xml:space="preserve">
+    <value>ミニマップを表示</value>
+  </data>
+  <data name="Editor_Show_unsupported_info_props_D2FB46" xml:space="preserve">
+    <value>未対応の 'info/' プロパティを表示</value>
+  </data>
+  <data name="Editor_Snap_98DF9A" xml:space="preserve">
+    <value>スナップ</value>
+  </data>
+  <data name="Editor_Snap_Off_4E4910" xml:space="preserve">
+    <value>スナップ：オフ</value>
+  </data>
+  <data name="Editor_Snapping_D77561" xml:space="preserve">
+    <value>スナップ</value>
+  </data>
+  <data name="Editor_Stats_B4A736" xml:space="preserve">
+    <value>統計</value>
+  </data>
+  <data name="Editor_Tiles_4DA22A" xml:space="preserve">
+    <value>タイル</value>
+  </data>
+  <data name="Editor_Tiles_T_FE4E53" xml:space="preserve">
+    <value>タイル (T)</value>
+  </data>
+  <data name="Editor_Toggle_minimap_357182" xml:space="preserve">
+    <value>ミニマップを切り替え</value>
+  </data>
+  <data name="Editor_Toggle_snapping_13C561" xml:space="preserve">
+    <value>スナップを切り替え</value>
+  </data>
+  <data name="Editor_Tools_EA93D6" xml:space="preserve">
+    <value>ツール</value>
+  </data>
+  <data name="Editor_Tooltips_1CFB0B" xml:space="preserve">
+    <value>ツールチップ</value>
+  </data>
+  <data name="Editor_Town_only_CB37A6" xml:space="preserve">
+    <value>街のみ</value>
+  </data>
+  <data name="Editor_Undo_Ctrl_Z_A67232" xml:space="preserve">
+    <value>元に戻す (Ctrl+Z)</value>
+  </data>
+  <data name="Editor_Validate_40611A" xml:space="preserve">
+    <value>検証</value>
+  </data>
+  <data name="Editor_Validate_all_maps_7F88A7" xml:space="preserve">
+    <value>すべてのマップを検証</value>
+  </data>
+  <data name="Editor_Validate_current_map_3137EC" xml:space="preserve">
+    <value>現在のマップを検証</value>
+  </data>
+  <data name="Editor_Validate_every_map_in_the_loaded_source_6F7C90" xml:space="preserve">
+    <value>読み込んだソース内のすべてのマップを検証</value>
+  </data>
+  <data name="Editor_Validate_the_active_map_only_07B633" xml:space="preserve">
+    <value>現在のマップのみ検証</value>
+  </data>
+  <data name="Editor_View_DCC839" xml:space="preserve">
+    <value>表示</value>
+  </data>
+  <data name="Editor_Virtual_935084" xml:space="preserve">
+    <value>仮想
+</value>
+  </data>
+  <data name="Editor_XML_40658E" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Editor_Zoom_509C51" xml:space="preserve">
+    <value>ズーム</value>
+  </data>
+  <data name="Editor_Zoom_in_0E47F0" xml:space="preserve">
+    <value>拡大</value>
+  </data>
+  <data name="Editor_Zoom_out_BC7B63" xml:space="preserve">
+    <value>縮小</value>
+  </data>
+  <data name="Editor_SnapOn" xml:space="preserve">
+    <value>スナップ：オン</value>
+  </data>
+  <data name="Editor_SnapOff" xml:space="preserve">
+    <value>スナップ：オフ</value>
+  </data>
+  <data name="Editor_All" xml:space="preserve">
+    <value>すべて</value>
+  </data>
+  <data name="Editor_ConfirmQuitMessage" xml:space="preserve">
+    <value>終了してもよろしいですか？</value>
+  </data>
+  <data name="Editor_QuitTitle" xml:space="preserve">
+    <value>終了</value>
+  </data>
+  <data name="Editor_HistoryMapCount" xml:space="preserve">
+    <value>履歴：{0} マップ</value>
+  </data>
+  <data name="Editor_AllMapsIdentifier" xml:space="preserve">
+    <value>すべてのマップ</value>
+  </data>
+  <data name="Editor_OpenMapBeforeValidation" xml:space="preserve">
+    <value>検証を実行する前にマップを開いてください。</value>
+  </data>
+  <data name="Editor_ValidateCurrentMapTitle" xml:space="preserve">
+    <value>現在のマップを検証</value>
+  </data>
+  <data name="Editor_MapIdentifier" xml:space="preserve">
+    <value>マップ {0:D9}</value>
+  </data>
+  <data name="Editor_Validating" xml:space="preserve">
+    <value>{0} を検証しています...</value>
+  </data>
+  <data name="Editor_ValidationIssues" xml:space="preserve">
+    <value>{0} の検証で {1} 件の問題が見つかりました。詳細は「問題」で確認できます。</value>
+  </data>
+  <data name="Editor_ValidationSuccess" xml:space="preserve">
+    <value>{0} の検証が完了しました。報告されたエラーはありません。</value>
+  </data>
+  <data name="Editor_MapValidationTitle" xml:space="preserve">
+    <value>マップ検証</value>
+  </data>
+  <data name="Editor_ValidationFailed" xml:space="preserve">
+    <value>{0} を検証できません。
+
+{1}</value>
+  </data>
+  <data name="Editor_Loading" xml:space="preserve">
+    <value>読み込み中...</value>
+  </data>
+  <data name="Editor_SelectHamMapTitle" xml:space="preserve">
+    <value>読み込むマップを選択...</value>
+  </data>
+  <data name="Editor_HamMapFileFilter" xml:space="preserve">
+    <value>HaCreator マップファイル (*.ham)|*.ham</value>
+  </data>
+  <data name="Editor_SelectXmlTitle" xml:space="preserve">
+    <value>読み込む XML を選択...</value>
+  </data>
+  <data name="Editor_XmlFileFilter" xml:space="preserve">
+    <value>拡張可能マークアップ言語ファイル (*.xml)|*.xml</value>
+  </data>
+  <data name="Editor_ResolvingMissingMaps" xml:space="preserve">
+    <value>不足しているマップ文字列を解決しています...</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsTitle" xml:space="preserve">
+    <value>不足しているマップを解決</value>
+  </data>
+  <data name="Editor_ResolveMissingMapsFailed" xml:space="preserve">
+    <value>不足しているマップ文字列を解決できません。
+
+{0}</value>
+  </data>
+  <data name="Editor_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Editor_NoMapLoaded" xml:space="preserve">
+    <value>現在マップは読み込まれていません。</value>
+  </data>
+  <data name="Editor_ObjectViewerTitle" xml:space="preserve">
+    <value>オブジェクトビューアー</value>
+  </data>
+  <data name="Editor_SavedTo" xml:space="preserve">
+    <value>保存先：{0}</value>
+  </data>
+  <data name="Editor_AIMapEditorTitle" xml:space="preserve">
+    <value>AI マップエディター</value>
+  </data>
+</root>

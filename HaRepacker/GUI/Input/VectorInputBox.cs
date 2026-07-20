@@ -1,50 +1,47 @@
-﻿using System;
-using System.Drawing;
-using System.Windows.Forms;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Input;
+using DrawingPoint = System.Drawing.Point;
 
 namespace HaRepacker.GUI.Input
 {
-    public partial class VectorInputBox : Form
+    public partial class VectorInputBox : Window
     {
-        public static bool Show(string title, out string name, out Point? pt)
+        private string nameResult;
+        private DrawingPoint? pointResult;
+
+        public static bool Show(string title, out string name, out DrawingPoint? pt)
         {
-            VectorInputBox form = new VectorInputBox(title);
-            bool result = form.ShowDialog() == DialogResult.OK;
+            VectorInputBox form = new(title);
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
             pt = form.pointResult;
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private Point? pointResult = null;
 
         public VectorInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "Name:");
+            labelValue.Text = InputDialogSupport.Text(GetType(), "label2.Text", "Value:");
+            separatorText.Text = InputDialogSupport.Text(GetType(), "label3.Text", ",");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
         }
 
-        private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-        private void okButton_Click(object sender, EventArgs e)
+        private void Accept()
         {
-            int x = xBox.Value;
-            int y = yBox.Value;
+            if (!int.TryParse(xBox.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out int x) ||
+                !int.TryParse(yBox.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out int y))
+            { InputDialogSupport.WarnInvalidInput(); return; }
             nameResult = resultBox.Text;
-            pointResult = new Point(x, y);
-            DialogResult = DialogResult.OK;
-            Close();
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
+            pointResult = new DrawingPoint(x, y);
+            DialogResult = true;
         }
     }
 }

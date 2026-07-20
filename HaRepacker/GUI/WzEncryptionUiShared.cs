@@ -8,7 +8,7 @@ namespace HaRepacker.GUI {
     /// </summary>
     internal static class WzEncryptionUiShared {
         public static void Populate(object encryptionBox) {
-            bool includeGenerate = encryptionBox is ToolStripComboBox;
+            bool includeGenerate = encryptionBox is ToolStripComboBox or System.Windows.Controls.ComboBox;
             WzEncryptionOptionsFactory.BindToComboBox(
                 encryptionBox,
                 Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName,

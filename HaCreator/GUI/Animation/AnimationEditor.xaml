@@ -1,0 +1,464 @@
+<Window x:Class="HaCreator.GUI.FrameAnimation.AnimationEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:HaCreator.GUI.FrameAnimation"
+        mc:Ignorable="d"
+        Title="{local:AnimationEditorText AnimationEditor_Title}"
+        Width="1600" Height="900" MinWidth="1280" MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource HareCanvasBrush}"
+        FontFamily="Segoe UI" FontSize="13"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <DrawingBrush x:Key="CheckerBrush" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
+                <DrawingBrush.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="#FFF8FAFC">
+                            <GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry>
+                        </GeometryDrawing>
+                        <GeometryDrawing Brush="#FFE7EBF0">
+                            <GeometryDrawing.Geometry>
+                                <GeometryGroup>
+                                    <RectangleGeometry Rect="0,0,10,10"/>
+                                    <RectangleGeometry Rect="10,10,10,10"/>
+                                </GeometryGroup>
+                            </GeometryDrawing.Geometry>
+                        </GeometryDrawing>
+                    </DrawingGroup>
+                </DrawingBrush.Drawing>
+            </DrawingBrush>
+
+            <Style x:Key="CompactIconButton" TargetType="Button" BasedOn="{StaticResource HareIconButtonStyle}">
+                <Setter Property="Width" Value="34"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Margin" Value="2,0"/>
+                <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+                <Setter Property="FontSize" Value="15"/>
+            </Style>
+
+            <Style x:Key="InspectorLabel" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource HareMutedTextBrush}"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,4,8,4"/>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="54"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="30"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{DynamicResource HareSurfaceBrush}"
+                BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource HarePrimaryButtonStyle}" Width="92" Height="34"
+                            Content="{local:AnimationEditorText AnimationEditor_Save}" Click="Save_Click"/>
+                    <Button Style="{StaticResource HareButtonStyle}" Width="96" Height="34" Margin="8,0,0,0"
+                            Content="{local:AnimationEditorText AnimationEditor_Import}" Click="ImportFrame_Click"/>
+                    <Button Style="{StaticResource HareButtonStyle}" Width="96" Height="34" Margin="8,0,0,0"
+                            Content="{local:AnimationEditorText AnimationEditor_Export}" Click="ExportFrame_Click"/>
+                </StackPanel>
+                <Separator Grid.Column="1" Margin="12,8"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="undoButton" Style="{StaticResource CompactIconButton}" Content="&#xE7A7;"
+                            ToolTip="{local:AnimationEditorText AnimationEditor_Undo}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Undo}" Click="Undo_Click"/>
+                    <Button x:Name="redoButton" Style="{StaticResource CompactIconButton}" Content="&#xE7A6;"
+                            ToolTip="{local:AnimationEditorText AnimationEditor_Redo}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Redo}" Click="Redo_Click"/>
+                    <Separator Margin="8"/>
+                    <Button x:Name="playToolbarButton" Style="{StaticResource CompactIconButton}" Content="&#xE768;"
+                            ToolTip="{local:AnimationEditorText AnimationEditor_PlayPause}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_PlayPause}" Click="PlayPause_Click"/>
+                    <TextBlock Margin="10,0,6,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Speed}"/>
+                    <ComboBox x:Name="speedComboBox" Width="78" SelectedIndex="2" SelectionChanged="Speed_SelectionChanged"
+                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Speed}">
+                        <ComboBoxItem Content="0.25x" Tag="0.25"/>
+                        <ComboBoxItem Content="0.5x" Tag="0.5"/>
+                        <ComboBoxItem Content="1.0x" Tag="1"/>
+                        <ComboBoxItem Content="1.5x" Tag="1.5"/>
+                        <ComboBoxItem Content="2.0x" Tag="2"/>
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Foreground="{DynamicResource HareMutedTextBrush}" VerticalAlignment="Center"
+                               Text="{local:AnimationEditorText AnimationEditor_Zoom}"/>
+                    <Slider x:Name="zoomSlider" Width="110" Minimum="0.25" Maximum="4" Value="1.5" Margin="8,0"
+                            TickFrequency="0.25" ValueChanged="Zoom_ValueChanged"
+                            AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Zoom}"/>
+                    <TextBlock x:Name="zoomText" Width="48" VerticalAlignment="Center" Text="150%"/>
+                    <Button Style="{StaticResource HareButtonStyle}" Width="54" Height="32"
+                            Content="{local:AnimationEditorText AnimationEditor_Fit}" Click="Fit_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="285" MinWidth="235"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*" MinWidth="520"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="350" MinWidth="300"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Margin="12,12,0,12" Style="{StaticResource HareCardStyle}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="160"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Assets}"/>
+                    <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" SelectionChanged="Kind_SelectionChanged"
+                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetType}"/>
+                    <TextBox x:Name="assetSearchBox" Grid.Row="2" Margin="0,0,0,8"
+                             ToolTip="{local:AnimationEditorText AnimationEditor_SearchTooltip}"
+                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetSearch}"
+                             TextChanged="AssetSearch_TextChanged"/>
+                    <ListBox x:Name="assetListBox" Grid.Row="3" SelectionChanged="Asset_SelectionChanged"
+                             DisplayMemberPath="DisplayName" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetList}"
+                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+                    <TextBlock Grid.Row="4" Margin="0,12,0,6" Style="{StaticResource HareSectionTitleStyle}"
+                               Text="{local:AnimationEditorText AnimationEditor_Animations}"/>
+                    <ListBox x:Name="trackListBox" Grid.Row="5" SelectionChanged="Track_SelectionChanged"
+                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TrackList}"
+                             MouseDoubleClick="Track_MouseDoubleClick"/>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+                          AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetBrowserSplitter}"/>
+
+            <Grid Grid.Column="2" Margin="8,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="40"/>
+                    <RowDefinition Height="*" MinHeight="280"/>
+                    <RowDefinition Height="5"/>
+                    <RowDefinition Height="245" MinHeight="190"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}">
+                    <Grid Margin="8,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="5*"/>
+                            <ColumnDefinition Width="5*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <CheckBox x:Name="gridCheckBox" IsChecked="True" Content="{local:AnimationEditorText AnimationEditor_Grid}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
+                            <CheckBox x:Name="originCheckBox" IsChecked="True" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Origin}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
+                            <CheckBox x:Name="boundsCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Bounds}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
+                            <CheckBox x:Name="onionCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_OnionSkin}" Checked="TemporalOverlay_Changed" Unchecked="TemporalOverlay_Changed"/>
+                            <CheckBox x:Name="allFramesCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_AllFrames}"
+                                      ToolTip="{local:AnimationEditorText AnimationEditor_AllFramesTooltip}"
+                                      Checked="TemporalOverlay_Changed" Unchecked="TemporalOverlay_Changed"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,4,12,0">
+                            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"
+                                       Text="{local:AnimationEditorText AnimationEditor_ArrowKeyMode}"/>
+                            <RadioButton x:Name="panArrowKeysRadioButton" GroupName="PreviewArrowKeyMode" Margin="8,0,0,0" IsChecked="True"
+                                         Content="{local:AnimationEditorText AnimationEditor_Pan}" ToolTip="{local:AnimationEditorText AnimationEditor_PanTooltip}"/>
+                            <RadioButton x:Name="moveFrameArrowKeysRadioButton" GroupName="PreviewArrowKeyMode" Margin="10,0,0,0"
+                                         Content="{local:AnimationEditorText AnimationEditor_MoveFrameMode}" ToolTip="{local:AnimationEditorText AnimationEditor_MoveFrameTooltip}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="previewPathText" Grid.Row="1" Grid.Column="1" MaxWidth="440" Margin="12,4,0,0"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource HareMutedTextBrush}" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="previewRegionBorder" Grid.Row="1" Background="{StaticResource CheckerBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="1" CornerRadius="0,0,7,7"
+                        ClipToBounds="True">
+                    <ScrollViewer x:Name="previewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                  PreviewMouseWheel="Preview_MouseWheel">
+                        <Canvas x:Name="previewCanvas" Width="1600" Height="1000" Background="Transparent" Focusable="True"
+                                AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Preview}"
+                                MouseMove="Preview_MouseMove" MouseLeftButtonDown="Preview_MouseLeftButtonDown" MouseLeftButtonUp="Preview_MouseLeftButtonUp"/>
+                    </ScrollViewer>
+                </Border>
+
+                <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="Transparent"
+                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TimelineSplitter}"/>
+
+                <Border x:Name="timelineRegionBorder" Grid.Row="3" Style="{StaticResource HareCardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="38"/>
+                                <RowDefinition Height="38"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center" Style="{StaticResource HareSectionTitleStyle}"
+                                       Text="{local:AnimationEditorText AnimationEditor_Timeline}"/>
+                            <StackPanel Grid.Column="1" Margin="14,0" Orientation="Horizontal">
+                                <Button Style="{StaticResource CompactIconButton}" Content="&#xE892;" Click="FirstFrame_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_FirstFrame}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_FirstFrame}"/>
+                                <Button Style="{StaticResource CompactIconButton}" Content="&#xE76B;" Click="PreviousFrame_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_PreviousFrame}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_PreviousFrame}"/>
+                                <Button x:Name="playTimelineButton" Style="{StaticResource CompactIconButton}" Content="&#xE768;" Click="PlayPause_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_PlayPause}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_PlayPause}"/>
+                                <Button Style="{StaticResource CompactIconButton}" Content="&#xE76C;" Click="NextFrame_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_NextFrame}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_NextFrame}"/>
+                                <Button Style="{StaticResource CompactIconButton}" Content="&#xE893;" Click="LastFrame_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_LastFrame}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_LastFrame}"/>
+                            </StackPanel>
+                            <Grid Grid.Column="2" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*" MinWidth="90"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="frameCounterText" VerticalAlignment="Center" TextAlignment="Center" Text="0 / 0"/>
+                                <Slider x:Name="scrubSlider" Grid.Column="1" Minimum="0" Maximum="0" Margin="8,0" ValueChanged="Scrub_ValueChanged"
+                                        AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TimelineScrubber}"/>
+                                <CheckBox x:Name="loopCheckBox" Grid.Column="2" IsChecked="True" Content="{local:AnimationEditorText AnimationEditor_Loop}"/>
+                            </Grid>
+                            <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Style="{StaticResource HareButtonStyle}" Content="{local:AnimationEditorText AnimationEditor_AddFrame}" Click="AddFrame_Click"/>
+                                <Button Style="{StaticResource CompactIconButton}" Margin="6,0,0,0" Content="&#xE76B;" Click="MoveFrameLeft_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_MoveFrameLeft}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_MoveFrameLeft}"/>
+                                <Button Style="{StaticResource CompactIconButton}" Content="&#xE76C;" Click="MoveFrameRight_Click"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_MoveFrameRight}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_MoveFrameRight}"/>
+                                <Button Style="{StaticResource HareButtonStyle}" Margin="6,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Duplicate}" Click="DuplicateFrame_Click"/>
+                                <Button Style="{StaticResource HareDangerButtonStyle}" Margin="6,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Delete}" Click="DeleteFrame_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <ListBox x:Name="timelineListBox" Grid.Row="1" SelectionChanged="Timeline_SelectionChanged"
+                                 AllowDrop="True" PreviewDragOver="Timeline_PreviewDragOver" Drop="Timeline_Drop"
+                                 ToolTip="{local:AnimationEditorText AnimationEditor_TimelineClipboardTooltip}"
+                                 AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TimelineFrames}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:AnimationFrameModel}">
+                                    <Grid Width="94" Height="128" Margin="3">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="22"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="25"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Margin="5,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding Number}"/>
+                                        <Border Grid.Row="1" Margin="4" Background="{StaticResource CheckerBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="1">
+                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                        </Border>
+                                        <TextBlock Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding DisplayDelay}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
+                          AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_InspectorSplitter}"/>
+
+            <Border Grid.Column="4" Margin="0,12,12,12" Style="{StaticResource HareCardStyle}">
+                <TabControl x:Name="inspectorTabs" Margin="8">
+                    <TabItem Header="{local:AnimationEditorText AnimationEditor_Properties}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="4,10,4,18">
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Frame}"/>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_FrameIndex}"/>
+                                    <TextBlock x:Name="frameIndexText" Grid.Column="1" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Layer}"/>
+                                    <ComboBox x:Name="layerComboBox" Grid.Row="1" Grid.Column="1" DisplayMemberPath="Name" SelectionChanged="Layer_SelectionChanged"
+                                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Layer}"/>
+                                    <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Size}"/>
+                                    <TextBlock x:Name="sizeText" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <Separator Margin="0,12"/>
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Transform}"/>
+                                <Grid x:Name="transformEditorGrid" Margin="0,8,0,0" DataContext="{Binding SelectedItem, ElementName=layerComboBox}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_OriginX}"/>
+                                    <TextBox x:Name="originXTextBox" Grid.Column="1" InputScope="Number" Text="{Binding OriginX, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="OriginX"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_OriginX}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_OriginY}"/>
+                                    <TextBox x:Name="originYTextBox" Grid.Column="3" InputScope="Number" Text="{Binding OriginY, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="OriginY"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_OriginY}"/>
+                                    <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_ZOrder}"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Z, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="Z"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_ZOrder}"/>
+                                    <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Delay}"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" InputScope="Number" Text="{Binding Delay, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="Delay"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Delay}"/>
+                                    <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AlphaStart}"/>
+                                    <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" InputScope="Number" Text="{Binding AlphaStart, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="AlphaStart"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AlphaStart}"/>
+                                    <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AlphaEnd}"/>
+                                    <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" InputScope="Number" Text="{Binding AlphaEnd, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="AlphaEnd"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AlphaEnd}"/>
+                                </Grid>
+                                <Button x:Name="materializeButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_MakeIndependent}" Click="Materialize_Click" Visibility="Collapsed"/>
+                                <Button x:Name="replaceBitmapButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_ReplaceBitmap}" Click="ReplaceBitmap_Click"/>
+
+                                <Separator Margin="0,12"/>
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_ResizeBitmap}"/>
+                                <TextBlock Margin="0,5,0,8" Foreground="{DynamicResource HareMutedTextBrush}" TextWrapping="Wrap"
+                                           Text="{local:AnimationEditorText AnimationEditor_ResizeDescription}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Width}"/>
+                                    <TextBox x:Name="resizeWidthTextBox" Grid.Column="1" Margin="0,0,10,0" InputScope="Number"
+                                             TextChanged="ResizeWidth_TextChanged" KeyDown="ResizeSize_KeyDown"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Width}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Height}"/>
+                                    <TextBox x:Name="resizeHeightTextBox" Grid.Column="3" InputScope="Number"
+                                             TextChanged="ResizeHeight_TextChanged" KeyDown="ResizeSize_KeyDown"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Height}"/>
+                                </Grid>
+                                <CheckBox x:Name="lockAspectRatioCheckBox" Margin="0,8,0,0" IsChecked="True"
+                                          Content="{local:AnimationEditorText AnimationEditor_LockAspectRatio}"/>
+                                <Button x:Name="applyResizeButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_ApplyResize}" Click="ApplyResize_Click"/>
+
+                                <Separator Margin="0,12"/>
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_RawFrameProperties}"/>
+                                <DataGrid x:Name="framePropertiesGrid" Margin="0,8,0,0" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" RowHeaderWidth="0"
+                                          BeginningEdit="PropertyGrid_BeginningEdit"
+                                          AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_FramePropertiesGrid}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Property}" Binding="{Binding Name}" IsReadOnly="True" Width="*"/>
+                                        <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Type}" Binding="{Binding Type}" IsReadOnly="True" Width="84"/>
+                                        <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Value}" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="110"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{local:AnimationEditorText AnimationEditor_AnimationProperties}">
+                        <DataGrid x:Name="animationPropertiesGrid" Margin="4,10" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" RowHeaderWidth="0"
+                                  BeginningEdit="PropertyGrid_BeginningEdit"
+                                  AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AnimationPropertiesGrid}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Property}" Binding="{Binding Name}" IsReadOnly="True" Width="*"/>
+                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Type}" Binding="{Binding Type}" IsReadOnly="True" Width="84"/>
+                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Value}" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                    <TabItem Header="{local:AnimationEditorText AnimationEditor_AI}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="4,10,4,18">
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_AIGenerateFrames}"/>
+                                <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"
+                                           Text="{local:AnimationEditorText AnimationEditor_AIDescription}"/>
+                                <TextBlock Margin="0,12,0,4" Text="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
+                                <TextBox x:Name="aiPromptTextBox" MinHeight="112" AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
+                                <Button x:Name="aiSuggestButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_AISuggestPrompt}" Click="AISuggest_Click"/>
+
+                                <Separator Margin="0,12"/>
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_AIFramePlan}"/>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="118"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AIOperation}"/>
+                                    <ComboBox x:Name="aiOperationComboBox" Grid.Column="1" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIOperation}"/>
+                                    <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AICount}"/>
+                                    <ComboBox x:Name="aiFrameCountComboBox" Grid.Row="1" Grid.Column="1" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AICount}"/>
+                                    <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AIAlignment}"/>
+                                    <ComboBox x:Name="aiAlignmentComboBox" Grid.Row="2" Grid.Column="1" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIAlignment}"/>
+                                    <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_AIQuality}"/>
+                                    <ComboBox x:Name="aiQualityComboBox" Grid.Row="3" Grid.Column="1" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIQuality}"/>
+                                </Grid>
+                                <CheckBox x:Name="aiUseReferenceCheckBox" Margin="0,10,0,0" IsChecked="True">
+                                    <TextBlock TextWrapping="Wrap" Text="{local:AnimationEditorText AnimationEditor_AIUseReference}"/>
+                                </CheckBox>
+                                <CheckBox x:Name="aiCleanupCheckBox" Margin="0,6,0,0" IsChecked="True">
+                                    <TextBlock TextWrapping="Wrap" Text="{local:AnimationEditorText AnimationEditor_AICleanupBackground}"/>
+                                </CheckBox>
+                                <CheckBox x:Name="aiTrimCheckBox" Margin="0,6,0,0" IsChecked="True">
+                                    <TextBlock TextWrapping="Wrap" Text="{local:AnimationEditorText AnimationEditor_AITrimTransparent}"/>
+                                </CheckBox>
+
+                                <Border Margin="0,12,0,0" Padding="10" Background="{DynamicResource HareCanvasBrush}"
+                                        BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="1" CornerRadius="4">
+                                    <StackPanel>
+                                        <TextBlock x:Name="aiModelText" TextWrapping="Wrap"/>
+                                        <Button x:Name="aiSettingsButton" Margin="0,8,0,0" HorizontalAlignment="Left" Style="{StaticResource HareButtonStyle}"
+                                                Content="{local:AnimationEditorText AnimationEditor_AISettings}" Click="AISettings_Click"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <ProgressBar x:Name="aiProgressBar" Height="4" Margin="0,12,0,0" IsIndeterminate="True" Visibility="Collapsed"/>
+                                <TextBlock x:Name="aiStatusText" Margin="0,8,0,0" TextWrapping="Wrap" Style="{StaticResource HareMutedTextStyle}"/>
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <Button x:Name="aiGenerateButton" Style="{StaticResource HarePrimaryButtonStyle}"
+                                            Content="{local:AnimationEditorText AnimationEditor_AIGenerate}" Click="AIGenerate_Click"/>
+                                    <Button x:Name="aiCancelButton" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource HareButtonStyle}"
+                                            Content="{local:AnimationEditorText AnimationEditor_AICancel}" Click="AICancel_Click" IsEnabled="False"/>
+                                </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{DynamicResource HareSurfaceBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="0,1,0,0">
+            <Grid Margin="12,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="{DynamicResource HareSuccessBrush}" VerticalAlignment="Center"/>
+                <TextBlock x:Name="statusText" Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Ready}"
+                           AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock x:Name="coordinateText" Grid.Column="2" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"/>
+                <TextBlock x:Name="dirtyText" Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,818 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <data name="Dialog_About_HaCreator_D7275A" xml:space="preserve">
+    <value>HaCreator 정보</value>
+  </data>
+  <data name="Dialog_Activity_log_A9D562" xml:space="preserve">
+    <value>활동 로그</value>
+  </data>
+  <data name="Dialog_Allow_WZ_fallback_in_hybrid_mode_C01FB6" xml:space="preserve">
+    <value>하이브리드 모드에서 WZ 대체 허용</value>
+  </data>
+  <data name="Dialog_Back_76900F" xml:space="preserve">
+    <value>뒤로</value>
+  </data>
+  <data name="Dialog_Background_formulae_Koolk_God_F7E779" xml:space="preserve">
+    <value>배경 공식 — Koolk, God
+
+</value>
+  </data>
+  <data name="Dialog_Behavior_EDF8D3" xml:space="preserve">
+    <value>동작</value>
+  </data>
+  <data name="Dialog_Blank_map_8DF131" xml:space="preserve">
+    <value>빈 맵</value>
+  </data>
+  <data name="Dialog_Browse_3227AA" xml:space="preserve">
+    <value>찾아보기</value>
+  </data>
+  <data name="Dialog_Browse_maps_75E8C8" xml:space="preserve">
+    <value>맵 찾아보기</value>
+  </data>
+  <data name="Dialog_Browse_93C6B6" xml:space="preserve">
+    <value>찾아보기…</value>
+  </data>
+  <data name="Dialog_Cached_images_CCAEA9" xml:space="preserve">
+    <value>캐시된 이미지</value>
+  </data>
+  <data name="Dialog_Cancel_19766E" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="Dialog_Categories_to_pack_28422D" xml:space="preserve">
+    <value>패킹할 범주</value>
+  </data>
+  <data name="Dialog_Change_layer_577636" xml:space="preserve">
+    <value>레이어 변경</value>
+  </data>
+  <data name="Dialog_Choose_a_MapleStory_installation_select_the_data_groups_528310" xml:space="preserve">
+    <value>MapleStory 설치와 추출할 데이터 그룹을 선택하여 재사용 가능한 HaCreator 버전을 만듭니다.</value>
+  </data>
+  <data name="Dialog_Choose_how_HaCreator_loads_and_caches_MapleStory_assets_D8EF67" xml:space="preserve">
+    <value>HaCreator가 MapleStory 에셋을 불러오고 캐시하는 방법을 선택합니다.</value>
+  </data>
+  <data name="Dialog_Choose_the_categories_and_target_format_for_the_generat_4E9F07" xml:space="preserve">
+    <value>생성할 WZ 데이터의 범주와 대상 형식을 선택합니다.</value>
+  </data>
+  <data name="Dialog_Choose_the_map_ID_or_a_supported_special_map_name_624D2A" xml:space="preserve">
+    <value>맵 ID 또는 지원되는 특수 맵 이름을 선택합니다.</value>
+  </data>
+  <data name="Dialog_Choose_tile_set_7EB655" xml:space="preserve">
+    <value>타일 세트 선택</value>
+  </data>
+  <data name="Dialog_Choose_which_modified_archives_to_write_B53E60" xml:space="preserve">
+    <value>기록할 수정된 아카이브를 선택합니다.</value>
+  </data>
+  <data name="Dialog_Client_locale_0C3F96" xml:space="preserve">
+    <value>클라이언트 로캘</value>
+  </data>
+  <data name="Dialog_Clip_text_to_bounds_C0904C" xml:space="preserve">
+    <value>텍스트를 경계에 맞춰 자르기</value>
+  </data>
+  <data name="Dialog_Clone_map_36503E" xml:space="preserve">
+    <value>맵 복제</value>
+  </data>
+  <data name="Dialog_Close_7D9EB7" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Circle_9FABCB" xml:space="preserve">
+    <value>원형 색상 견본</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_1_B757EF" xml:space="preserve">
+    <value>사각형 색상 견본 1</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_2_2EA9D8" xml:space="preserve">
+    <value>사각형 색상 견본 2</value>
+  </data>
+  <data name="Dialog_Colors_88C45D" xml:space="preserve">
+    <value>색상</value>
+  </data>
+  <data name="Dialog_Configure_version_BA4170" xml:space="preserve">
+    <value>버전 설정</value>
+  </data>
+  <data name="Dialog_Convert_WZ_assets_automatically_DA87FF" xml:space="preserve">
+    <value>WZ 에셋 자동 변환</value>
+  </data>
+  <data name="Dialog_Copy_all_96E3F0" xml:space="preserve">
+    <value>모두 복사</value>
+  </data>
+  <data name="Dialog_Create_a_map_AFD283" xml:space="preserve">
+    <value>맵 만들기</value>
+  </data>
+  <data name="Dialog_Create_blank_map_A7F938" xml:space="preserve">
+    <value>빈 맵 만들기</value>
+  </data>
+  <data name="Dialog_Create_from_map_CFB30F" xml:space="preserve">
+    <value>맵에서 만들기</value>
+  </data>
+  <data name="Dialog_Create_map_AD41DE" xml:space="preserve">
+    <value>맵 만들기</value>
+  </data>
+  <data name="Dialog_Credits_and_attributions_8F890E" xml:space="preserve">
+    <value>제작진 및 출처</value>
+  </data>
+  <data name="Dialog_Custom_objects_3DD433" xml:space="preserve">
+    <value>사용자 오브젝트</value>
+  </data>
+  <data name="Dialog_Data_source_settings_6660A7" xml:space="preserve">
+    <value>데이터 원본 설정</value>
+  </data>
+  <data name="Dialog_Delete_object_0B1BBB" xml:space="preserve">
+    <value>오브젝트 삭제</value>
+  </data>
+  <data name="Dialog_Deleting_an_object_removes_it_from_the_custom_object_li_D93856" xml:space="preserve">
+    <value>오브젝트를 삭제하면 사용자 오브젝트 라이브러리에서 제거됩니다. 기존 맵 배치는 자동으로 복구되지 않습니다.</value>
+  </data>
+  <data name="Dialog_Detected_installations_EAE79D" xml:space="preserve">
+    <value>검색된 설치</value>
+  </data>
+  <data name="Dialog_Display_name_2B7F6A" xml:space="preserve">
+    <value>표시 이름</value>
+  </data>
+  <data name="Dialog_Edit_values_stored_in_Map_Physics_img_3C88D3" xml:space="preserve">
+    <value>Map/Physics.img에 저장된 값을 편집합니다.</value>
+  </data>
+  <data name="Dialog_Enable_automatic_backups_217ACD" xml:space="preserve">
+    <value>자동 백업 사용</value>
+  </data>
+  <data name="Dialog_Encryption_82F4E7" xml:space="preserve">
+    <value>암호화</value>
+  </data>
+  <data name="Dialog_Export_folder_B41FF5" xml:space="preserve">
+    <value>내보낼 폴더</value>
+  </data>
+  <data name="Dialog_Extract_C15301" xml:space="preserve">
+    <value>추출</value>
+  </data>
+  <data name="Dialog_Extract_WZ_Data_42667B" xml:space="preserve">
+    <value>WZ 데이터 추출</value>
+  </data>
+  <data name="Dialog_Extracting_assets_17CB7D" xml:space="preserve">
+    <value>에셋 추출 중</value>
+  </data>
+  <data name="Dialog_Field_limits_field_types_and_portal_types_Koolk_Fiel_Bl_54AB6B" xml:space="preserve">
+    <value>필드 제한, 필드 유형 및 포털 유형 — Koolk, Fiel, BluePoop, LightPepsi, Bui
+
+</value>
+  </data>
+  <data name="Dialog_Find_usages_1A0A20" xml:space="preserve">
+    <value>사용 위치 찾기</value>
+  </data>
+  <data name="Dialog_Fix_foothold_mispositions_D4B68F" xml:space="preserve">
+    <value>발판 위치 오류 수정</value>
+  </data>
+  <data name="Dialog_Font_name_2CD8F5" xml:space="preserve">
+    <value>글꼴 이름</value>
+  </data>
+  <data name="Dialog_General_C910D4" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="Dialog_Generate_extraction_index_B7D7D5" xml:space="preserve">
+    <value>추출 인덱스 생성</value>
+  </data>
+  <data name="Dialog_Graphics_and_GUI_Anthonywolfe_Diamondo25_Bugale_98E17C" xml:space="preserve">
+    <value>그래픽 및 GUI — Anthonywolfe, Diamondo25, Bugale
+
+</value>
+  </data>
+  <data name="Dialog_HaCreator_encountered_an_error_9237B9" xml:space="preserve">
+    <value>HaCreator에서 오류가 발생했습니다</value>
+  </data>
+  <data name="Dialog_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Dialog_HaCreator_settings_762561" xml:space="preserve">
+    <value>HaCreator 설정</value>
+  </data>
+  <data name="Dialog_Height_BFE2EC" xml:space="preserve">
+    <value>높이</value>
+  </data>
+  <data name="Dialog_Hybrid_6C67DC" xml:space="preserve">
+    <value>하이브리드</value>
+  </data>
+  <data name="Dialog_IMG_filesystem_5D40A3" xml:space="preserve">
+    <value>IMG 파일 시스템</value>
+  </data>
+  <data name="Dialog_Input_36ECB4" xml:space="preserve">
+    <value>입력</value>
+  </data>
+  <data name="Dialog_Invert_layer_up_down_8D7820" xml:space="preserve">
+    <value>레이어 위/아래 이동 반전</value>
+  </data>
+  <data name="Dialog_Layer_AC9FFC" xml:space="preserve">
+    <value>레이어</value>
+  </data>
+  <data name="Dialog_Linked_to_B4B7FE" xml:space="preserve">
+    <value>연결 대상: </value>
+  </data>
+  <data name="Dialog_Manage_custom_objects_2FDA41" xml:space="preserve">
+    <value>사용자 오브젝트 관리</value>
+  </data>
+  <data name="Dialog_Manual_folder_959DA1" xml:space="preserve">
+    <value>폴더 직접 지정</value>
+  </data>
+  <data name="Dialog_Map_data_is_unavailable_537DF8" xml:space="preserve">
+    <value>맵 데이터를 사용할 수 없습니다</value>
+  </data>
+  <data name="Dialog_Map_diagnostics_269074" xml:space="preserve">
+    <value>맵 진단</value>
+  </data>
+  <data name="Dialog_Map_editor_for_MapleStory_WZ_data_F80834" xml:space="preserve">
+    <value>MapleStory WZ 데이터용 맵 편집기</value>
+  </data>
+  <data name="Dialog_Map_hierarchy_E5070B" xml:space="preserve">
+    <value>맵 계층</value>
+  </data>
+  <data name="Dialog_Map_physics_C03020" xml:space="preserve">
+    <value>맵 물리</value>
+  </data>
+  <data name="Dialog_MapleLib_Snow_0E19E4" xml:space="preserve">
+    <value>MapleLib — Snow
+
+</value>
+  </data>
+  <data name="Dialog_Memory_cache_MB_CF25E8" xml:space="preserve">
+    <value>메모리 캐시 (MB)</value>
+  </data>
+  <data name="Dialog_Migrate_to_IMG_filesystem_53CE8F" xml:space="preserve">
+    <value>IMG 파일 시스템으로 마이그레이션</value>
+  </data>
+  <data name="Dialog_Migrate_WZ_files_70876B" xml:space="preserve">
+    <value>WZ 파일 마이그레이션</value>
+  </data>
+  <data name="Dialog_Mode_5E23EC" xml:space="preserve">
+    <value>모드</value>
+  </data>
+  <data name="Dialog_Name_2683CA" xml:space="preserve">
+    <value>이름:</value>
+  </data>
+  <data name="Dialog_NEW_A253FF" xml:space="preserve">
+    <value>새 항목</value>
+  </data>
+  <data name="Dialog_New_platform_20103C" xml:space="preserve">
+    <value>새 플랫폼</value>
+  </data>
+  <data name="Dialog_Next_1FF57A" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="Dialog_OK_565339" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Dialog_Open_log_7230E6" xml:space="preserve">
+    <value>로그 열기</value>
+  </data>
+  <data name="Dialog_Open_project_repository_50B264" xml:space="preserve">
+    <value>프로젝트 저장소 열기</value>
+  </data>
+  <data name="Dialog_Output_folder_998915" xml:space="preserve">
+    <value>출력 폴더</value>
+  </data>
+  <data name="Dialog_Output_format_93C53D" xml:space="preserve">
+    <value>출력 형식</value>
+  </data>
+  <data name="Dialog_Pack_80DC21" xml:space="preserve">
+    <value>패킹</value>
+  </data>
+  <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
+    <value>Beta Data.wz로 패킹</value>
+  </data>
+  <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
+    <value>IMG 파일을 WZ로 패킹</value>
+  </data>
+
+  <data name="Dialog_Parallel_extraction_threads_23467E" xml:space="preserve">
+    <value>병렬 추출 스레드</value>
+  </data>
+  <data name="Dialog_Patch_version_0_auto_45DAB0" xml:space="preserve">
+    <value>패치 버전(0 = 자동)</value>
+  </data>
+  <data name="Dialog_Physics_and_character_simulation_research_Lexi_9E98C8" xml:space="preserve">
+    <value>물리 및 캐릭터 시뮬레이션 연구 — Lexi
+
+</value>
+  </data>
+  <data name="Dialog_Pick_Color_9B78AB" xml:space="preserve">
+    <value>색상 선택</value>
+  </data>
+  <data name="Dialog_Pick_swatch_type_44DF7A" xml:space="preserve">
+    <value>색상 견본 유형 선택</value>
+  </data>
+  <data name="Dialog_Platform_zM_71E85E" xml:space="preserve">
+    <value>플랫폼 (zM)</value>
+  </data>
+  <data name="Dialog_Platform_number_DD431C" xml:space="preserve">
+    <value>플랫폼 번호</value>
+  </data>
+  <data name="Dialog_Please_wait_650CFE" xml:space="preserve">
+    <value>잠시 기다려 주세요</value>
+  </data>
+  <data name="Dialog_Preview_324B13" xml:space="preserve">
+    <value>미리 보기</value>
+  </data>
+  <data name="Dialog_Read_9B9A8D" xml:space="preserve">
+    <value>읽기</value>
+  </data>
+  <data name="Dialog_Ready_5FA7AA" xml:space="preserve">
+    <value>준비됨</value>
+  </data>
+  <data name="Dialog_Repack_8D3E09" xml:space="preserve">
+    <value>다시 패킹</value>
+  </data>
+  <data name="Dialog_Repack_changed_WZ_files_598100" xml:space="preserve">
+    <value>변경된 WZ 파일 다시 패킹</value>
+  </data>
+  <data name="Dialog_Repack_WZ_files_FE4AEF" xml:space="preserve">
+    <value>WZ 파일 다시 패킹</value>
+  </data>
+  <data name="Dialog_Repacker_Resurrection_LastBattle_HaCreator_Resurrection_7F3172" xml:space="preserve">
+    <value>다시 패킹er 부활 — LastBattle
+HaCreator 부활 — Lapig</value>
+  </data>
+  <data name="Dialog_Reset_defaults_4542D4" xml:space="preserve">
+    <value>기본값 복원</value>
+  </data>
+  <data name="Dialog_Review_reusable_objects_created_in_this_workspace_and_f_D306AC" xml:space="preserve">
+    <value>이 작업 공간에서 만든 재사용 가능 오브젝트와 각 사용 위치를 확인합니다.</value>
+  </data>
+  <data name="Dialog_Save_1509F5" xml:space="preserve">
+    <value>저장</value>
+  </data>
+  <data name="Dialog_Save_as_64_bit_WZ_format_4BC4B4" xml:space="preserve">
+    <value>64비트 WZ 형식으로 저장</value>
+  </data>
+  <data name="Dialog_Save_changed_images_to_source_3FCA18" xml:space="preserve">
+    <value>변경된 이미지를 원본에 저장</value>
+  </data>
+  <data name="Dialog_Save_images_in_a_separate_Canvas_folder_0133B6" xml:space="preserve">
+    <value>이미지를 별도 _Canvas 폴더에 저장</value>
+  </data>
+  <data name="Dialog_Save_map_AB74BA" xml:space="preserve">
+    <value>저장 map</value>
+  </data>
+  <data name="Dialog_Scan_folder_48FCB3" xml:space="preserve">
+    <value>폴더 검색</value>
+  </data>
+  <data name="Dialog_Scan_installation_D2939B" xml:space="preserve">
+    <value>설치 검색…</value>
+  </data>
+  <data name="Dialog_Search_and_select_a_tile_set_for_the_active_layer_E5FB28" xml:space="preserve">
+    <value>현재 레이어에 사용할 타일 세트를 검색하고 선택합니다.</value>
+  </data>
+  <data name="Dialog_Select_2A7802" xml:space="preserve">
+    <value>선택</value>
+  </data>
+  <data name="Dialog_Select_a_MapleStory_installation_to_begin_1BD82A" xml:space="preserve">
+    <value>시작하려면 MapleStory 설치를 선택하세요.</value>
+  </data>
+  <data name="Dialog_Select_all_1FC9A3" xml:space="preserve">
+    <value>모두 선택</value>
+  </data>
+  <data name="Dialog_Select_none_41AFE0" xml:space="preserve">
+    <value>모두 선택 해제</value>
+  </data>
+  <data name="Dialog_Select_source_140B76" xml:space="preserve">
+    <value>원본 선택</value>
+  </data>
+  <data name="Dialog_Show_error_summaries_7C99AC" xml:space="preserve">
+    <value>오류 요약 표시</value>
+  </data>
+  <data name="Dialog_Something_went_wrong_AB827E" xml:space="preserve">
+    <value>문제가 발생했습니다</value>
+  </data>
+  <data name="Dialog_Source_Unknown_14D3DB" xml:space="preserve">
+    <value>원본: 알 수 없음</value>
+  </data>
+  <data name="Dialog_This_wizard_extracts_a_MapleStory_WZ_installation_into_A3FE9D" xml:space="preserve">
+    <value>이 마법사는 MapleStory WZ 설치를 버전별 IMG 파일 시스템으로 추출합니다.</value>
+  </data>
+  <data name="Dialog_Tile_sets_429FBB" xml:space="preserve">
+    <value>타일 세트</value>
+  </data>
+  <data name="Dialog_Tile_snapping_offsets_special_list_view_control_and_mob_81965C" xml:space="preserve">
+    <value>타일 맞춤 오프셋, 특수 목록 보기 컨트롤 및 몬스터 배율 — Koolk
+
+</value>
+  </data>
+  <data name="Dialog_Unknown_B764CD" xml:space="preserve">
+    <value>알 수 없음</value>
+  </data>
+  <data name="Dialog_Use_memory_mapped_files_EDB079" xml:space="preserve">
+    <value>메모리 매핑 파일 사용</value>
+  </data>
+  <data name="Dialog_Validate_after_extraction_7FAB37" xml:space="preserve">
+    <value>추출 후 검증</value>
+  </data>
+  <data name="Dialog_Value_224A33" xml:space="preserve">
+    <value>값:</value>
+  </data>
+  <data name="Dialog_Version_name_C5BE1C" xml:space="preserve">
+    <value>버전 이름</value>
+  </data>
+  <data name="Dialog_Width_301994" xml:space="preserve">
+    <value>너비</value>
+  </data>
+  <data name="Dialog_Working_A92F04" xml:space="preserve">
+    <value>작업 중</value>
+  </data>
+  <data name="Dialog_Write_3F0092" xml:space="preserve">
+    <value>쓰기</value>
+  </data>
+  <data name="Dialog_WZ_data_groups_EB7F0F" xml:space="preserve">
+    <value>WZ 데이터 그룹</value>
+  </data>
+  <data name="Dialog_WZ_files_8F86F3" xml:space="preserve">
+    <value>WZ 파일</value>
+  </data>
+  <data name="Dialog_WZ_path_AA541C" xml:space="preserve">
+    <value>WZ 경로</value>
+  </data>
+<data name="Dialog_CancelTimeoutMessage" xml:space="preserve"><value>5000밀리초 안에 백그라운드 작업을 중지하지 못했습니다. 응용 프로그램이 비정상적으로 동작하면 작업을 저장하고 다시 시작하세요.</value></data><data name="Dialog_CancelTimeoutTitle" xml:space="preserve"><value>백그라운드 작업이 아직 실행 중입니다</value></data><data name="Dialog_ImgModeDescription" xml:space="preserve"><value>IMG 파일 시스템 모드(권장): 추출된 에셋을 빠르게 불러오고 파일을 직접 편집합니다.</value></data><data name="Dialog_WzModeDescription" xml:space="preserve"><value>WZ 파일 모드(레거시): MapleStory 설치에서 직접 불러옵니다.</value></data><data name="Dialog_HybridModeDescription" xml:space="preserve"><value>하이브리드 모드: 추출된 IMG 에셋을 우선 사용하고 필요하면 WZ 파일로 대체합니다.</value></data><data name="Dialog_SelectMapleWzFolder" xml:space="preserve"><value>WZ 파일이 있는 MapleStory 디렉터리 선택</value></data><data name="Dialog_NoWzFiles" xml:space="preserve"><value>선택한 폴더에 .wz 파일이 없습니다.</value></data><data name="Dialog_InvalidDirectory" xml:space="preserve"><value>잘못된 디렉터리</value></data><data name="Dialog_ConfirmResetDataSource" xml:space="preserve"><value>모든 데이터 원본 설정을 기본값으로 되돌리시겠습니까?</value></data><data name="Dialog_ConfirmReset" xml:space="preserve"><value>초기화 확인</value></data><data name="Dialog_SpecifyWzDirectory" xml:space="preserve"><value>WZ 파일 디렉터리를 지정하세요.</value></data><data name="Dialog_ValidationError" xml:space="preserve"><value>검증 오류</value></data><data name="Dialog_CacheThreadsIntegers" xml:space="preserve"><value>캐시와 스레드 값은 정수여야 합니다.</value></data><data name="Dialog_LayerTileSetMismatch" xml:space="preserve"><value>다른 타일 세트의 타일이 포함되어 있어 선택한 항목을 대상 레이어로 옮길 수 없습니다.</value></data><data name="Dialog_CannotChangeLayer" xml:space="preserve"><value>레이어를 변경할 수 없음</value></data><data name="Dialog_PhysicsUnavailableBeta" xml:space="preserve"><value>Beta MapleStory 데이터에서는 물리 편집을 사용할 수 없습니다.</value></data><data name="Dialog_NoDataSource" xml:space="preserve"><value>사용 가능한 데이터 원본이 없습니다.</value></data><data name="Dialog_PhysicsLoadFailed" xml:space="preserve"><value>Map/Physics.img를 불러오지 못했습니다.
+{0}</value></data><data name="Dialog_PhysicsUpdated" xml:space="preserve"><value>물리 값을 업데이트했습니다. 변경 내용을 유지하려면 WZ 파일을 다시 패킹하세요.</value></data><data name="Dialog_Success" xml:space="preserve"><value>성공</value></data><data name="Dialog_PositiveDimensions" xml:space="preserve"><value>양의 숫자로 크기를 입력하세요.</value></data><data name="Dialog_InvalidMapSize" xml:space="preserve"><value>잘못된 맵 크기</value></data><data name="Dialog_SelectedMapLoadFailed" xml:space="preserve"><value>선택한 맵을 불러오지 못했습니다.</value></data><data name="Dialog_InvalidSettingValue" xml:space="preserve"><value>설정에 잘못된 값이 있습니다.
+{0}</value></data><data name="Dialog_InvalidSettings" xml:space="preserve"><value>잘못된 설정</value></data><data name="Dialog_EnterValidInteger" xml:space="preserve"><value>올바른 정수 값을 입력하세요.</value></data><data name="Dialog_InvalidInput" xml:space="preserve"><value>잘못된 입력</value></data><data name="Dialog_ValidationFailed" xml:space="preserve"><value>검증 실패</value></data><data name="Dialog_NextButton" xml:space="preserve"><value>다음 &gt;</value></data><data name="Dialog_StartExtraction" xml:space="preserve"><value>추출 시작</value></data><data name="Dialog_Cancel" xml:space="preserve"><value>취소</value></data><data name="Dialog_WizardStep" xml:space="preserve"><value>{1}단계 중 {0}단계</value></data><data name="Dialog_ConfirmCancelExtraction" xml:space="preserve"><value>추출을 취소하시겠습니까?</value></data><data name="Dialog_SelectScanFolder" xml:space="preserve"><value>MapleStory 설치를 검색할 폴더 선택</value></data><data name="Dialog_NoMapleInstallations" xml:space="preserve"><value>선택한 폴더에서 MapleStory 설치를 찾지 못했습니다.</value></data><data name="Dialog_ScanComplete" xml:space="preserve"><value>검색 완료</value></data><data name="Dialog_InvalidVersionNameChars" xml:space="preserve"><value>버전 이름에는 문자, 숫자, 밑줄 및 하이픈만 사용할 수 있습니다.</value></data><data name="Dialog_VersionExists" xml:space="preserve"><value>같은 이름의 버전이 이미 있습니다.</value></data><data name="Dialog_StartingExtraction" xml:space="preserve"><value>추출 시작 중...</value></data><data name="Dialog_LogStartingCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] 시작: {1}</value></data><data name="Dialog_LogCompletedCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] 완료: {1}(이미지 {2}개)</value></data><data name="Dialog_ExtractionSuccess" xml:space="preserve"><value>추출이 완료되었습니다!</value></data><data name="Dialog_Finish" xml:space="preserve"><value>완료</value></data><data name="Dialog_ExtractionSuccessSummary" xml:space="preserve"><value>추출이 완료되었습니다!
+
+추출한 범주: {0}
+추출한 이미지: {1}
+경과 시간: {2:mm\:ss}</value></data><data name="Dialog_ExtractionCompletedErrors" xml:space="preserve"><value>오류와 함께 추출이 완료되었습니다.</value></data><data name="Dialog_Back" xml:space="preserve"><value>뒤로</value></data><data name="Dialog_ExtractionCancelled" xml:space="preserve"><value>추출이 취소되었습니다.</value></data><data name="Dialog_ErrorWithMessage" xml:space="preserve"><value>오류: {0}</value></data><data name="Dialog_ExtractionException" xml:space="preserve"><value>추출 중 오류가 발생했습니다:
+
+{0}</value></data><data name="Dialog_Error" xml:space="preserve"><value>오류</value></data><data name="Dialog_RepackNotNeededImg" xml:space="preserve"><value>IMG 파일 시스템 모드에서는 다시 패킹할 필요가 없습니다.
+
+변경 내용은 디스크의 IMG 파일에 직접 저장됩니다.</value></data><data name="Dialog_ImgFilesystemMode" xml:space="preserve"><value>IMG 파일 시스템 모드</value></data><data name="Dialog_RepackSuccess" xml:space="preserve"><value>다시 패킹했습니다.</value></data><data name="Dialog_RepackSuccessReplace" xml:space="preserve"><value>다시 패킹했습니다. HaCreator\Output의 파일을 교체하세요.</value></data><data name="Dialog_RepackSaveAborted" xml:space="preserve"><value>{0} 저장 중 오류가 발생하여 중단했습니다.</value></data><data name="Dialog_RepackPermissionError" xml:space="preserve"><value>저장 중 오류가 발생했습니다. 대상 폴더에 대한 권한이 없거나 파일이 사용 중일 수 있습니다.
+
+확인을 선택하면 오류 세부 정보를 표시합니다.</value></data><data name="Dialog_DeletingBackups" xml:space="preserve"><value>이전 백업 삭제 중...</value></data><data name="Dialog_SavingFile" xml:space="preserve"><value>{0} 저장 중...</value></data><data name="Dialog_Finished" xml:space="preserve"><value>완료</value></data><data name="Dialog_SavingXml" xml:space="preserve"><value>XML 파일 저장 중...</value></data><data name="Dialog_ChooseMapId" xml:space="preserve"><value>ID를 선택하세요.</value></data><data name="Dialog_NumericMapId" xml:space="preserve"><value>숫자 맵 ID를 입력하세요.</value></data><data name="Dialog_MapIdRange" xml:space="preserve"><value>{0}에서 {1} 사이의 ID를 선택하세요.</value></data><data name="Dialog_MapIdExists" xml:space="preserve"><value>해당 ID가 이미 있습니다. 비어 있는 ID를 선택하세요.</value></data><data name="Dialog_MapOverwriteWarning" xml:space="preserve"><value>기존 맵을 덮어씁니다.</value></data><data name="Dialog_UnsavedObjectsPrompt" xml:space="preserve"><value>저장되지 않은 사용자 오브젝트를 WZ 파일에 기록합니다:
+
+{0}
+
+계속하시겠습니까?</value></data><data name="Dialog_UnsavedObjectsTitle" xml:space="preserve"><value>저장되지 않은 오브젝트</value></data><data name="Dialog_SavedMapId" xml:space="preserve"><value>ID {0} 맵을 저장했습니다</value></data><data name="Dialog_SavedMapName" xml:space="preserve"><value>맵 저장됨: {0}</value></data><data name="Dialog_ConfirmDeleteObject" xml:space="preserve"><value>이 작업은 취소할 수 없습니다. 이 오브젝트를 제거하시겠습니까?</value></data><data name="Dialog_DeleteCustomObject" xml:space="preserve"><value>사용자 오브젝트 삭제</value></data><data name="Dialog_SearchAllMapsPrompt" xml:space="preserve"><value>불러온 모든 맵에서 이 오브젝트를 검색하시겠습니까? 시간이 걸릴 수 있습니다.</value></data><data name="Dialog_FindUsages" xml:space="preserve"><value>사용 위치 찾기</value></data><data name="Dialog_Searching" xml:space="preserve"><value>검색 중...</value></data><data name="Dialog_OpenMapResult" xml:space="preserve"><value>{0}(열림)</value></data><data name="Dialog_ObjectNotUsed" xml:space="preserve"><value>어떤 맵에서도 이 오브젝트를 사용하지 않습니다.</value></data><data name="Dialog_ObjectUsageMaps" xml:space="preserve"><value>다음 맵에서 사용 중입니다:
+
+{0}</value></data><data name="Dialog_UsageResults" xml:space="preserve"><value>사용 결과</value></data><data name="Dialog_CrashBeforeEditing" xml:space="preserve"><value>맵 편집을 시작하기 전에 HaCreator가 중지되었습니다. 맵 작업은 손실되지 않았습니다. 자세한 오류 로그를 {0}에 저장했습니다. 문제를 보고할 때 첨부하세요.</value></data><data name="Dialog_RestartHaCreator" xml:space="preserve"><value>HaCreator 다시 시작</value></data><data name="Dialog_CrashDuringEditing" xml:space="preserve"><value>편집 중 HaCreator에서 예기치 않은 오류가 발생했습니다. 복구 관리자가 다시 시작하기 전에 사용 가능한 맵 작업을 보존합니다. 자세한 오류 로그를 {0}에 저장했습니다.</value></data><data name="Dialog_SaveRecoveryRestart" xml:space="preserve"><value>복구 데이터 저장 후 다시 시작</value></data><data name="Dialog_NoChangedImages" xml:space="preserve"><value>저장할 변경된 이미지가 없습니다</value></data><data name="Dialog_SelectWzOutputFolder" xml:space="preserve"><value>WZ 파일 출력 폴더 선택</value></data><data name="Dialog_SelectPackCategory" xml:space="preserve"><value>패킹할 범주를 하나 이상 선택하세요.</value></data><data name="Dialog_NoCategoriesSelected" xml:space="preserve"><value>선택한 범주 없음</value></data><data name="Dialog_SpecifyOutputPath" xml:space="preserve"><value>출력 경로를 지정하세요.</value></data><data name="Dialog_OutputPathRequired" xml:space="preserve"><value>출력 경로 필요</value></data><data name="Dialog_SavingChangedImages" xml:space="preserve"><value>변경된 이미지 {0}개를 원본에 저장 중...</value></data><data name="Dialog_SavedChangedImages" xml:space="preserve"><value>이미지 {0}개를 원본에 저장했습니다.</value></data><data name="Dialog_PartialImageSave" xml:space="preserve"><value>변경된 이미지 {1}개 중 {0}개만 저장했습니다.</value></data><data name="Dialog_PartialSave" xml:space="preserve"><value>일부 저장</value></data><data name="Dialog_PackCompletedStatus" xml:space="preserve"><value>완료! 이미지 {0}개를 패킹했습니다.</value></data><data name="Dialog_PackSuccessSummary" xml:space="preserve"><value>이미지 {0}개를 WZ 파일 {1}개로 패킹했습니다.
+
+출력: {2}
+전체 크기: {3}
+시간: {4:F1}초</value></data><data name="Dialog_PackingComplete" xml:space="preserve"><value>패킹 완료</value></data><data name="Dialog_FailedWithMessage" xml:space="preserve"><value>실패: {0}</value></data><data name="Dialog_PackingFailedMessage" xml:space="preserve"><value>패킹 실패: {0}</value></data><data name="Dialog_PackingFailed" xml:space="preserve"><value>패킹 실패</value></data><data name="Dialog_Cancelled" xml:space="preserve"><value>취소됨</value></data><data name="Dialog_PackingCancelled" xml:space="preserve"><value>패킹이 취소되었습니다.</value></data><data name="Dialog_PackingException" xml:space="preserve"><value>패킹 중 오류가 발생했습니다: {0}</value></data><data name="Dialog_WaitForPacking" xml:space="preserve"><value>패킹이 완료될 때까지 기다리거나 먼저 취소하세요.</value></data><data name="Dialog_PackingInProgress" xml:space="preserve"><value>패킹 중</value></data><data name="Dialog_ImmediateStringMapSavePrompt" xml:space="preserve"><value>현재 데이터 원본에는 즉시 저장됩니다.
+
+예: 지금 String/Map.img에 기록합니다.
+아니요: 메모리의 변경 내용을 유지하고 나중에 수동 저장합니다.</value></data><data name="Dialog_ResolveMissingMaps" xml:space="preserve"><value>누락된 맵 해결</value></data><data name="Dialog_Copy" xml:space="preserve"><value>복사</value></data><data name="Dialog_SelectAll" xml:space="preserve"><value>모두 선택</value></data><data name="Dialog_CopyAll" xml:space="preserve"><value>모두 복사</value></data><data name="Dialog_SelectExportFolder" xml:space="preserve"><value>내보낼 폴더 선택</value></data><data name="Dialog_Extract" xml:space="preserve"><value>추출</value></data><data name="Dialog_AutoDetect" xml:space="preserve"><value>자동 감지</value></data><data name="Dialog_AutoDetectedEncryption" xml:space="preserve"><value>자동 감지된 암호화: {0}(64비트: {1})</value></data><data name="Dialog_AutoDetectDefault" xml:space="preserve"><value>자동 감지 실패, 기본값 사용: {0}</value></data><data name="Dialog_SelectValidOutputFolder" xml:space="preserve"><value>올바른 출력 폴더를 선택하세요.</value></data><data name="Dialog_ScanWzFirst" xml:space="preserve"><value>먼저 WZ 파일을 검색하세요.</value></data><data name="Dialog_SelectWzToExtract" xml:space="preserve"><value>추출할 WZ 파일을 하나 이상 선택하세요.</value></data><data name="Dialog_VersionFolderExists" xml:space="preserve"><value>버전 폴더 '{0}'이(가) 이미 있습니다. 덮어쓰시겠습니까?</value></data><data name="Dialog_ConfirmOverwrite" xml:space="preserve"><value>덮어쓰기 확인</value></data><data name="Dialog_StartingWzExtraction" xml:space="preserve"><value>WZ 파일 {0}개 추출 시작 중...</value></data><data name="Dialog_SelectedCategories" xml:space="preserve"><value>범주 {0}개 선택: {1}</value></data><data name="Dialog_ExtractionCompleteStatus" xml:space="preserve"><value>추출 완료! 이미지 {0}개를 추출했습니다.</value></data><data name="Dialog_ExtractionCompleteLog" xml:space="preserve"><value>=== 추출 완료 ===</value></data><data name="Dialog_TotalImages" xml:space="preserve"><value>전체 이미지: {0}</value></data><data name="Dialog_TotalSize" xml:space="preserve"><value>전체 크기: {0}</value></data><data name="Dialog_LinksResolved" xml:space="preserve"><value>해결된 링크: {0}</value></data><data name="Dialog_LinksFailed" xml:space="preserve"><value>링크 실패: {0}(원본 WZ에 없음)</value></data><data name="Dialog_DurationSeconds" xml:space="preserve"><value>시간: {0:F1}초</value></data><data name="Dialog_OutputPath" xml:space="preserve"><value>출력: {0}</value></data><data name="Dialog_UnpackSuccessSummary" xml:space="preserve"><value>추출 완료!
+
+추출한 이미지: {0}
+전체 크기: {1}
+해결된 링크: {2}
+누락된 링크: {3}
+시간: {4:F1}초
+출력: {5}
+
+버전을 HaCreator 버전 선택기에 추가했습니다.</value></data><data name="Dialog_ExtractionFailedStatus" xml:space="preserve"><value>추출 실패: {0}</value></data><data name="Dialog_ErrorLog" xml:space="preserve"><value>오류: {0}</value></data><data name="Dialog_ExtractionFailedMessage" xml:space="preserve"><value>추출 실패:
+{0}</value></data><data name="Dialog_ExtractionCancelledByUser" xml:space="preserve"><value>사용자가 추출을 취소했습니다.</value></data><data name="Dialog_ErrorOccurred" xml:space="preserve"><value>오류가 발생했습니다:
+{0}</value></data><data name="Dialog_ProgressPhaseFile" xml:space="preserve"><value>{0}: {1}</value></data><data name="Dialog_StartingCategory" xml:space="preserve"><value>시작: {0}</value></data><data name="Dialog_LinksResolvedSuffix" xml:space="preserve"><value>，링크 {0}개 해결</value></data><data name="Dialog_CategoryCompleted" xml:space="preserve"><value>  완료: {0} - 이미지 {1}개({2}{3})</value></data><data name="Dialog_WarningLog" xml:space="preserve"><value>    경고: {0}</value></data><data name="Dialog_MoreWarnings" xml:space="preserve"><value>    ... 외 경고 {0}개</value></data><data name="Dialog_WzFileFilter" xml:space="preserve"><value>MapleStory WZ|Base.wz;Base_000.wz;Data.wz|모든 WZ 파일 (*.wz)|*.wz|모든 파일 (*.*)|*.*</value></data><data name="Dialog_SelectBaseWzTitle" xml:space="preserve"><value>MapleStory 설치에서 Base.wz, Data.wz(beta) 또는 Base_000.wz(64비트) 선택</value></data><data name="Dialog_HotfixDataWzSelected" xml:space="preserve"><value>beta MapleStory 설치가 아니라 핫픽스 Data.wz 파일로 보입니다.
+표준 설치에서는 Base.wz를 선택하세요.</value></data><data name="Dialog_CannotDetectFromSelectedWz" xml:space="preserve"><value>선택한 파일에서 MapleStory 설치 폴더를 감지하지 못했습니다.
+표준 설치는 Base.wz, 64비트 설치는 Data/Base 폴더의 Base_000.wz를 선택하세요.</value></data><data name="Dialog_CannotDetectMapleDirectory" xml:space="preserve"><value>MapleStory 설치 폴더를 감지하지 못했습니다.
+표준 설치는 Base.wz, 64비트 설치는 Data 폴더의 아무 .wz 파일을 선택하세요.</value></data><data name="Dialog_SelectSupportedBaseWz" xml:space="preserve"><value>Base.wz(표준), Data.wz(beta) 또는 Base_000.wz(Data/Base의 64비트)를 선택하세요.</value></data><data name="Dialog_DetectedBetaDataWz" xml:space="preserve"><value>beta Data.wz 형식 감지({0}, 암호화: {1})</value></data><data name="Dialog_DataWzParseFailed" xml:space="preserve"><value>Data.wz 구문 분석 실패: {0}</value></data><data name="Dialog_DataWzParseFailedTryEncryption" xml:space="preserve"><value>Data.wz 구문 분석 실패: {0}
+
+다른 암호화 버전을 사용해 보세요.</value></data><data name="Dialog_ParseError" xml:space="preserve"><value>구문 분석 오류</value></data><data name="Dialog_DataWzReadError" xml:space="preserve"><value>Data.wz 읽기 오류: {0}</value></data><data name="Dialog_DataWzReadErrorTryEncryption" xml:space="preserve"><value>Data.wz 읽기 오류: {0}
+
+다른 암호화 버전을 사용해 보세요.</value></data><data name="Dialog_DataWzCategoryDisplay" xml:space="preserve"><value>{0}(이미지 {1}개) [Data.wz에서]</value></data><data name="Dialog_WzCategoryCanvasDisplay" xml:space="preserve"><value>{0}({1}, {2} + 캔버스 파일 {3}개)</value></data><data name="Dialog_WzCategoryDisplay" xml:space="preserve"><value>{0}({1}, 파일 {2}개)</value></data><data name="Dialog_PacksDisplay" xml:space="preserve"><value>Packs({0}, .ms 파일 {1}개)</value></data><data name="Dialog_VersionAdded" xml:space="preserve"><value>버전 '{0}'을(를) 버전 선택기에 추가했습니다</value></data><data name="Dialog_VersionAlreadyInSelector" xml:space="preserve"><value>버전이 선택기에 이미 있습니다</value></data><data name="Dialog_VersionAddWarning" xml:space="preserve"><value>경고: 버전 선택기에 추가하지 못했습니다: {0}</value></data><data name="Dialog_SourceBeta" xml:space="preserve"><value>원본: Beta(단일 Data.wz)</value></data><data name="Dialog_Source64Bit" xml:space="preserve"><value>원본: 64비트(Data 폴더)</value></data><data name="Dialog_SourcePreBigBang" xml:space="preserve"><value>원본: 빅뱅 이전</value></data><data name="Dialog_SourceStandard" xml:space="preserve"><value>원본: 표준</value></data><data name="Dialog_SourceUnknown" xml:space="preserve"><value>원본: 알 수 없음</value></data><data name="Dialog_VersionUnknownManifest" xml:space="preserve"><value>버전: 알 수 없음(manifest.json 없음)</value></data><data name="Dialog_SaveChangedBeforePacking" xml:space="preserve"><value>패킹 전에 변경된 이미지 {0}개를 원본에 저장</value></data><data name="Dialog_OutputPathLabel" xml:space="preserve"><value>출력 경로:</value></data><data name="Dialog_PatchVersionLabel" xml:space="preserve"><value>패치 버전(0 = 자동):</value></data><data name="Dialog_FormatStandard" xml:space="preserve"><value>형식: 표준</value></data><data name="Dialog_RecommendedSuffix" xml:space="preserve"><value>(권장)</value></data></root>

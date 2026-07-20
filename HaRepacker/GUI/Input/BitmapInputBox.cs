@@ -1,161 +1,113 @@
-﻿using System;
+using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
 namespace HaRepacker.GUI.Input
 {
-    /// <summary>
-    /// Bitmap input box
-    /// Returns a list of images selected
-    /// </summary>
-    public partial class BitmapInputBox : Form
+    public partial class BitmapInputBox : Window
     {
+        private string nameResult;
+        private readonly List<Bitmap> bmpResult = new();
+
         public static bool Show(string title, out string name, out List<Bitmap> bmp)
         {
-            BitmapInputBox form = new BitmapInputBox(title);
-            bool result = form.ShowDialog() == DialogResult.OK;
+            BitmapInputBox form = new(title);
+            bool accepted = form.ShowDialog() == true;
             name = form.nameResult;
             bmp = form.bmpResult;
-
-            return result;
+            return accepted;
         }
-
-        private string nameResult = null;
-        private List<Bitmap> bmpResult = new List<Bitmap>();
 
         public BitmapInputBox(string title)
         {
             InitializeComponent();
-            DialogResult = DialogResult.Cancel;
-            Text = title;
+            Title = title;
+            labelName.Text = InputDialogSupport.Text(GetType(), "label1.Text", "Name:");
+            labelPath.Text = InputDialogSupport.Text(GetType(), "label2.Text", "Path:");
+            okButton.Content = InputDialogSupport.Text(GetType(), "okButton.Text", "OK");
+            cancelButton.Content = InputDialogSupport.Text(GetType(), "cancelButton.Text", "Cancel");
+            browseButton.Content = InputDialogSupport.Text(GetType(), "browseButton.Text", "Browse…");
         }
 
-        private void keyPress(object sender, KeyPressEventArgs e)
+        private void Input_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Accept(); }
+        private void OkButton_Click(object sender, RoutedEventArgs e) => Accept();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+        private void BrowseButton_Click(object sender, RoutedEventArgs e)
         {
-            if (e.KeyChar == (char)13)
-                okButton_Click(null, null);
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            string filePath = pathBox.Text;
-            string fileName = nameBox.Text;
-
-            bool validated = false;
-
-            // Validate input
-            if (nameBox.Text != null && pathBox.Text != null && pathBox.Text != "" && pictureBox.Image != null)
-            {
-                if ((fileName == string.Empty && IsPathGIF(filePath)) || fileName != string.Empty) // only allow string empty name if its a GIF. [Frames of file name 0, 1, 2, 3, 4, 5]
-                {
-                    validated = true;
-                }
-            }
-
-            if (validated)
-            {
-                nameResult = nameBox.Text;
-
-                DialogResult = DialogResult.OK;
-                Close();
-            }
-            else
-            {
-                MessageBox.Show(Properties.Resources.EnterValidInput, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
-        }
-
-        private void browseButton_Click(object sender, EventArgs e)
-        {
-            OpenFileDialog dialog = new OpenFileDialog()
+            OpenFileDialog dialog = new()
             {
                 Title = Properties.Resources.SelectImage,
-                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", Properties.Resources.ImagesFilter)
+                Filter = $"{Properties.Resources.ImagesFilter}|*.jpg;*.bmp;*.png;*.gif;*.tiff"
             };
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                // Set path
-                pathBox.Text = dialog.FileName;
-            }
+            if (dialog.ShowDialog(this) == true) pathBox.Text = dialog.FileName;
         }
 
-        /// <summary>
-        /// On path changed
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void pathBox_TextChanged(object sender, EventArgs e)
+        private void PathBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
-            if (pictureBox.Image != null)
-            {
-                pictureBox.Image.Dispose();
-                pictureBox.Image = null;
-            }
-
-            string FilePath = pathBox.Text;
-
+            bmpResult.Clear();
+            previewImage.Source = null;
             try
             {
-                Image img = Image.FromFile(FilePath);
+                string path = pathBox.Text;
+                if (!File.Exists(path)) return;
 
-                pictureBox.Size = img.Size;
-                pictureBox.Image = img;
+                BitmapImage preview = new();
+                preview.BeginInit();
+                preview.CacheOption = BitmapCacheOption.OnLoad;
+                preview.UriSource = new Uri(path, UriKind.Absolute);
+                preview.EndInit();
+                preview.Freeze();
+                previewImage.Source = preview;
 
-
-                if (IsPathGIF(FilePath))
+                if (IsPathGif(path))
                 {
-                    using (Stream imageStreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read))
-                    {
-                        GifBitmapDecoder decoder = new GifBitmapDecoder(imageStreamSource, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.Default);
-                        foreach (BitmapSource src in decoder.Frames)
-                        {
-                            bmpResult.Add(BitmapFromSource(src));
-                        }
-                    }
-                } else
+                    using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    GifBitmapDecoder decoder = new(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    foreach (BitmapSource frame in decoder.Frames)
+                        bmpResult.Add(BitmapFromSource(frame));
+                }
+                else
                 {
-                    bmpResult.Add((Bitmap)img);
+                    using Bitmap source = new(path);
+                    bmpResult.Add(new Bitmap(source));
                 }
             }
-            catch (Exception exp)
+            catch (Exception exception)
             {
-                Debug.WriteLine(exp.ToString());
-            }
-        }
-        /// <summary>
-        /// Converts a BitmapSource object to Bitmap
-        /// </summary>
-        /// <param name="bitmapsource"></param>
-        /// <returns></returns>
-        private static Bitmap BitmapFromSource(BitmapSource bitmapsource)
-        {
-            using (var outStream = new MemoryStream())
-            {
-                BitmapEncoder enc = new BmpBitmapEncoder();
-                enc.Frames.Add(BitmapFrame.Create(bitmapsource));
-                enc.Save(outStream);
-                return new Bitmap(outStream);
+                Debug.WriteLine(exception);
             }
         }
 
-        /// <summary>
-        /// Is the file path specified a GIF
-        /// </summary>
-        /// <param name="filePath"></param>
-        /// <returns></returns>
-        private static bool IsPathGIF(string filePath)
+        private void Accept()
         {
-            return filePath.ToLower().EndsWith("gif");
+            string path = pathBox.Text;
+            string name = nameBox.Text;
+            bool valid = !string.IsNullOrEmpty(path) && bmpResult.Count > 0 &&
+                         ((!string.IsNullOrEmpty(name)) || IsPathGif(path));
+            if (!valid) { InputDialogSupport.WarnInvalidInput(); return; }
+            nameResult = name;
+            DialogResult = true;
         }
+
+        private static Bitmap BitmapFromSource(BitmapSource source)
+        {
+            using MemoryStream stream = new();
+            BitmapEncoder encoder = new BmpBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            encoder.Save(stream);
+            stream.Position = 0;
+            using Bitmap bitmap = new(stream);
+            return new Bitmap(bitmap);
+        }
+
+        private static bool IsPathGif(string path) =>
+            string.Equals(Path.GetExtension(path), ".gif", StringComparison.OrdinalIgnoreCase);
     }
 }

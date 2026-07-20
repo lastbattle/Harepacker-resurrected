@@ -1,99 +1,100 @@
-﻿using HaCreator.CustomControls;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI.EditorPanels
 {
     public partial class CommonPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
+        private IReadOnlyList<AssetGalleryItem> commonItems = Array.Empty<AssetGalleryItem>();
 
         public CommonPanel()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
         }
 
-        public void Initialize(HaCreatorStateManager hcsm)
+        public void Initialize(HaCreatorStateManager stateManager)
         {
-            this.hcsm = hcsm;
+            hcsm = stateManager;
+            miscItemsContainer.Clear();
 
-            ImageViewer[] commonItems = new ImageViewer[] {
-                miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.FootholdColor)), "Foothold", true),
-                miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.RopeColor)), "Rope", true),
-                miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.ChairColor)), "Chair", true),
-                miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.ToolTipColor)), "Tooltip", true),
-                miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.MiscColor)), "Clock", true)
-            };
-            foreach (ImageViewer item in commonItems)
-            {
-                item.MouseDown += new MouseEventHandler(commonItem_Click);
-                item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
-            }
+            AddTool("Foothold", WzInfoTools.XNAToDrawingColor(UserSettings.FootholdColor));
+            AddTool("Rope", WzInfoTools.XNAToDrawingColor(UserSettings.RopeColor));
+            AddTool("Chair", WzInfoTools.XNAToDrawingColor(UserSettings.ChairColor));
+            AddTool("Tooltip", WzInfoTools.XNAToDrawingColor(UserSettings.ToolTipColor));
+            AddTool("Clock", WzInfoTools.XNAToDrawingColor(UserSettings.MiscColor));
+            commonItems = miscItemsContainer.Items;
         }
 
-        private Bitmap CreateColoredBitmap(Color color)
+        private void AddTool(string name, Color color)
+        {
+            using Bitmap bitmap = CreateColoredBitmap(color);
+            miscItemsContainer.Add(bitmap, name, name);
+        }
+
+        private static Bitmap CreateColoredBitmap(Color color)
         {
             int containerSize = UserSettings.dotDescriptionBoxSize;
-            int DotWidth = Math.Min(UserSettings.DotWidth, containerSize);
-            Bitmap result = new Bitmap(containerSize, containerSize);
-            using (Graphics g = Graphics.FromImage(result))
-                g.FillRectangle(new SolidBrush(color), new Rectangle((containerSize / 2) - (DotWidth / 2), (containerSize / 2) - (DotWidth / 2), DotWidth, DotWidth));
+            int dotWidth = Math.Min(UserSettings.DotWidth, containerSize);
+            Bitmap result = new(containerSize, containerSize);
+            using Graphics graphics = Graphics.FromImage(result);
+            using SolidBrush brush = new(color);
+            graphics.FillRectangle(brush, new Rectangle(
+                (containerSize - dotWidth) / 2,
+                (containerSize - dotWidth) / 2,
+                dotWidth,
+                dotWidth));
             return result;
         }
 
-        void commonItem_Click(object sender, MouseEventArgs e)
+        private void MiscItemsContainer_ItemActivated(object sender, AssetGalleryItemEventArgs e)
         {
+            ActivateTool(e.Item.Tag as string ?? e.Item.Name);
+        }
+
+        public void ActivateTool(string toolName)
+        {
+            if (hcsm?.MultiBoard.SelectedBoard == null || !commonItems.Any(item => item.Name == toolName))
+                return;
+
             lock (hcsm.MultiBoard)
             {
-                ImageViewer item = (ImageViewer)sender;
-                switch (item.Name)
+                switch (toolName)
                 {
                     case "Foothold":
-                        if (!hcsm.MultiBoard.AssertLayerSelected())
-                        {
-                            return;
-                        }
+                        if (!hcsm.MultiBoard.AssertLayerSelected()) return;
                         hcsm.EnterEditMode(ItemTypes.Footholds);
                         hcsm.MultiBoard.SelectedBoard.Mouse.SetFootholdMode();
-                        hcsm.MultiBoard.Focus();
                         break;
                     case "Rope":
-                        if (!hcsm.MultiBoard.AssertLayerSelected())
-                        {
-                            return;
-                        }
+                        if (!hcsm.MultiBoard.AssertLayerSelected()) return;
                         hcsm.EnterEditMode(ItemTypes.Ropes);
                         hcsm.MultiBoard.SelectedBoard.Mouse.SetRopeMode();
-                        hcsm.MultiBoard.Focus();
                         break;
                     case "Chair":
                         hcsm.EnterEditMode(ItemTypes.Chairs);
                         hcsm.MultiBoard.SelectedBoard.Mouse.SetChairMode();
-                        hcsm.MultiBoard.Focus();
                         break;
                     case "Tooltip":
                         hcsm.EnterEditMode(ItemTypes.Footholds);
                         hcsm.MultiBoard.SelectedBoard.Mouse.SetTooltipMode();
-                        hcsm.MultiBoard.Focus();
                         break;
                     case "Clock":
                         hcsm.EnterEditMode(ItemTypes.Misc);
                         hcsm.MultiBoard.SelectedBoard.Mouse.SetClockMode();
-                        hcsm.MultiBoard.Focus();
                         break;
+                    default:
+                        return;
                 }
-                item.IsActive = true;
+                hcsm.MultiBoard.Focus();
             }
         }
     }

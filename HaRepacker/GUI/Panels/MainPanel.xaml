@@ -5,9 +5,6 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              
-             xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
-             
-             xmlns:local="clr-namespace:HaRepacker"
              xmlns:converter="clr-namespace:HaRepacker.Converter"
              xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
              xmlns:sharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
@@ -21,6 +18,10 @@
              d:DesignHeight="661" d:DesignWidth="1599">
 
     <UserControl.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
         <Storyboard x:Key="Storyboard_Find_FadeIn">
             <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Visibility)" Storyboard.TargetName="grid_FindPanel">
                 <DiscreteObjectKeyFrame KeyTime="0" Value="{x:Static Visibility.Visible}"/>
@@ -176,6 +177,7 @@
                 <EasingDoubleKeyFrame KeyTime="0:0:0.4" Value="1"/>
             </DoubleAnimationUsingKeyFrames>
         </Storyboard>
+        </ResourceDictionary>
     </UserControl.Resources>
     
     <UserControl.Triggers>
@@ -186,7 +188,7 @@
         </EventTrigger>
     </UserControl.Triggers>
 
-    <DockPanel>
+    <DockPanel Background="{StaticResource HareCanvasBrush}">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="VisualStateGroup">
                 <VisualState x:Name="Default">
@@ -317,14 +319,11 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <WindowsFormsHost x:Name="treeView_WinFormsHost" Grid.Row="0">
-                    <local:TreeViewMS x:Name="DataTree" x:FieldModifier="public" 
-                                      AllowDrop="True"
-                                      AfterSelect="DataTree_AfterSelect"
-                                      BeforeExpand="DataTree_BeforeExpand"
-                                      KeyDown="DataTree_KeyDown"
-                                      DoubleClick="DataTree_DoubleClick"/>
-                </WindowsFormsHost>
+                <TreeView x:Name="dataTreeView" Grid.Row="0" AllowDrop="True"
+                          SelectedItemChanged="DataTreeView_SelectedItemChanged"
+                          PreviewKeyDown="DataTreeView_PreviewKeyDown"
+                          TreeViewItem.Expanded="DataTreeView_ItemExpanded"
+                          DragOver="DataTreeView_DragOver" Drop="DataTreeView_Drop"/>
 
                 <xctk:PropertyGrid x:Name="propertyGrid" 
                            Grid.Row="1"
@@ -393,7 +392,7 @@
                   ResizeBehavior="PreviousAndNext" />
 
 
-            <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
+        <Grid x:Name="grid" Grid.Column="2" Background="{StaticResource HareSurfaceAltBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
                     <RowDefinition Height="*" />
@@ -403,11 +402,39 @@
                     <ColumnDefinition Width="0.5*"/>
                 </Grid.ColumnDefinitions>
 
-                <Grid x:Name="grid1" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2">
+                <Border Grid.Row="0" Grid.ColumnSpan="2"
+                        Padding="8,4" Background="{StaticResource HareSurfaceBrush}"
+                        BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="0,0,0,1">
+                    <Button x:Name="button_MoreOption" HorizontalAlignment="Right"
+                            MinWidth="112" Height="30" Padding="12,3"
+                            Style="{StaticResource HareButtonStyle}"
+                            Content="More actions" Click="button_MoreOption_Click"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Button.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform/>
+                                <SkewTransform/>
+                                <RotateTransform/>
+                                <TranslateTransform/>
+                            </TransformGroup>
+                        </Button.RenderTransform>
+                        <Button.ContextMenu>
+                            <ContextMenu Name="cm" StaysOpen="true">
+                                <MenuItem Header="Change Image" x:Name="menuItem_changeImage" Click="MenuItem_changeImage_Click"/>
+                                <MenuItem Header="Change Sound" x:Name="menuItem_changeSound" Click="MenuItem_changeSound_Click"/>
+                                <MenuItem Header="Save Sound" x:Name="menuItem_saveSound" Click="MenuItem_saveSound_Click"/>
+                                <MenuItem Header="Save Image" x:Name="menuItem_saveImage" Click="menuItem_saveImage_Click"/>
+                                <MenuItem Header="Export file" x:Name="menuItem_exportFile" Click="menuItem_ExportFile_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </Border>
+
+                <Grid x:Name="grid1" Grid.Row="1" Grid.ColumnSpan="2">
                     <!-- Map.wz/../fieldLimit-->
-                    <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
+                    <Grid x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
-                    </WindowsFormsHost>
+                    </Grid>
 
                     <!-- Map.wz/../fieldType -->
                     <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
@@ -430,37 +457,6 @@
                         </localSubPanels:ImageRenderViewer>
                     </Grid>
                 </Grid>
-
-                <!-- Context menu -->
-                <Button x:Name="button_MoreOption" Content="..."  
-                        Width="40" Height="40" 
-                        Style="{DynamicResource ButtonStyle_MoreOption}"
-                        Margin="0,0,0,0"
-                        Grid.Row="0"  Grid.Column="1"
-                        Visibility="Visible"
-                                Click="button_MoreOption_Click" RenderTransformOrigin="0.5,0.5">
-                    <Button.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform/>
-                            <SkewTransform/>
-                            <RotateTransform/>
-                            <TranslateTransform/>
-                        </TransformGroup>
-                    </Button.RenderTransform>
-                    <Button.ContextMenu>
-                        <ContextMenu Name="cm" StaysOpen="true">
-                            <MenuItem Header="Change Image" x:Name="menuItem_changeImage" Click="MenuItem_changeImage_Click"/>
-                            <MenuItem Header="Change Sound" x:Name="menuItem_changeSound" Click="MenuItem_changeSound_Click"/>
-                            <MenuItem Header="Save Sound" x:Name="menuItem_saveSound" Click="MenuItem_saveSound_Click"/>
-                            <MenuItem Header="Save Image" x:Name="menuItem_saveImage" Click="menuItem_saveImage_Click"/>
-                            <MenuItem Header="Export file" x:Name="menuItem_exportFile" Click="menuItem_ExportFile_Click"/>
-                            <!--  <MenuItem Header="Save Sound">
-                                        <MenuItem Header="ReadMe.txt"/>
-                                        <MenuItem Header="Schedule.xls"/>
-                                    </MenuItem>-->
-                        </ContextMenu>
-                    </Button.ContextMenu>
-                </Button>
 
             </Grid>
 

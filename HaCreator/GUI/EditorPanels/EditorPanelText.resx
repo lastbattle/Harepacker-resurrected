@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name=". . ." xml:space="preserve"><value>. . .</value></data>
+  <data name="_MCP Connection" xml:space="preserve"><value>_MCP Connection</value></data>
+  <data name="_Run Tests" xml:space="preserve"><value>_Run Tests</value></data>
+  <data name="_Settings" xml:space="preserve"><value>_Settings</value></data>
+  <data name="_Tools" xml:space="preserve"><value>_Tools</value></data>
+  <data name="Add" xml:space="preserve"><value>Add</value></data>
+  <data name="Add custom background…" xml:space="preserve"><value>Add custom background…</value></data>
+  <data name="Add custom object…" xml:space="preserve"><value>Add custom object…</value></data>
+  <data name="Additional properties" xml:space="preserve"><value>Additional properties</value></data>
+  <data name="AI endpoint settings" xml:space="preserve"><value>AI endpoint settings</value></data>
+  <data name="AI Image Upscale" xml:space="preserve"><value>AI Image Upscale</value></data>
+  <data name="AI Map Editor" xml:space="preserve"><value>AI Map Editor</value></data>
+  <data name="AI upscale…" xml:space="preserve"><value>AI upscale…</value></data>
+  <data name="Allowed items" xml:space="preserve"><value>Allowed items</value></data>
+  <data name="Animated" xml:space="preserve"><value>Animated</value></data>
+  <data name="API dialect" xml:space="preserve"><value>API dialect</value></data>
+  <data name="API key" xml:space="preserve"><value>API key</value></data>
+  <data name="Apply" xml:space="preserve"><value>Apply</value></data>
+  <data name="Apply generated map edits automatically" xml:space="preserve"><value>Apply generated map edits automatically</value></data>
+  <data name="Apply Latest Commands" xml:space="preserve"><value>Apply Latest Commands</value></data>
+  <data name="Apply the commands from the last AI response" xml:space="preserve"><value>Apply the commands from the last AI response</value></data>
+  <data name="Ask" xml:space="preserve"><value>Ask</value></data>
+  <data name="Ask message (Enter)" xml:space="preserve"><value>Ask message (Enter)</value></data>
+  <data name="Auto lie detector" xml:space="preserve"><value>Auto lie detector</value></data>
+  <data name="Background assets" xml:space="preserve"><value>Background assets</value></data>
+  <data name="BACKGROUND SET" xml:space="preserve"><value>BACKGROUND SET</value></data>
+  <data name="Base URL" xml:space="preserve"><value>Base URL</value></data>
+  <data name="BGM" xml:space="preserve"><value>BGM</value></data>
+  <data name="Black borders" xml:space="preserve"><value>Black borders</value></data>
+  <data name="Bottom (LBBottom)" xml:space="preserve"><value>Bottom (LBBottom)</value></data>
+  <data name="Built-in and endpoint models share one list. Type a custom model ID if needed." xml:space="preserve"><value>Built-in and endpoint models share one list. Type a custom model ID if needed.</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Cannot return" xml:space="preserve"><value>Cannot return</value></data>
+  <data name="Category" xml:space="preserve"><value>Category</value></data>
+  <data name="Chat Completions" xml:space="preserve"><value>Chat Completions</value></data>
+  <data name="Choose a portal, then place it on the active map." xml:space="preserve"><value>Choose a portal, then place it on the active map.</value></data>
+  <data name="Choose a set and background type, then select an asset to place it." xml:space="preserve"><value>Choose a set and background type, then select an asset to place it.</value></data>
+  <data name="Choose a structural tool, then draw it directly on the map." xml:space="preserve"><value>Choose a structural tool, then draw it directly on the map.</value></data>
+  <data name="Choose…" xml:space="preserve"><value>Choose…</value></data>
+  <data name="Compare the source with the AI-enhanced result before applying it." xml:space="preserve"><value>Compare the source with the AI-enhanced result before applying it.</value></data>
+  <data name="Configure an OpenAI-compatible endpoint and verify it before saving." xml:space="preserve"><value>Configure an OpenAI-compatible endpoint and verify it before saving.</value></data>
+  <data name="Configure the OpenAI-compatible API endpoint, key, and model" xml:space="preserve"><value>Configure the OpenAI-compatible API endpoint, key, and model</value></data>
+  <data name="Custom hours" xml:space="preserve"><value>Custom hours</value></data>
+  <data name="Custom interval" xml:space="preserve"><value>Custom interval</value></data>
+  <data name="Define the hidden map edges used by older maps at modern resolutions." xml:space="preserve"><value>Define the hidden map edges used by older maps at modern resolutions.</value></data>
+  <data name="Delete object" xml:space="preserve"><value>Delete object</value></data>
+  <data name="Drop expiration" xml:space="preserve"><value>Drop expiration</value></data>
+  <data name="Drop rate" xml:space="preserve"><value>Drop rate</value></data>
+  <data name="Edit map identity, scripts, gameplay rules, limits, and client behavior." xml:space="preserve"><value>Edit map identity, scripts, gameplay rules, limits, and client behavior.</value></data>
+  <data name="Effect" xml:space="preserve"><value>Effect</value></data>
+  <data name="Enable HP decrease" xml:space="preserve"><value>Enable HP decrease</value></data>
+  <data name="Endpoint" xml:space="preserve"><value>Endpoint</value></data>
+  <data name="Enhanced" xml:space="preserve"><value>Enhanced</value></data>
+  <data name="Essential" xml:space="preserve"><value>Essential</value></data>
+  <data name="Field type" xml:space="preserve"><value>Field type</value></data>
+  <data name="Filter assets by name" xml:space="preserve"><value>Filter assets by name</value></data>
+  <data name="First-user script" xml:space="preserve"><value>First-user script</value></data>
+  <data name="Forced return here" xml:space="preserve"><value>Forced return here</value></data>
+  <data name="Force-move level" xml:space="preserve"><value>Force-move level</value></data>
+  <data name="Friction" xml:space="preserve"><value>Friction</value></data>
+  <data name="Gameplay" xml:space="preserve"><value>Gameplay</value></data>
+  <data name="Generated Commands" xml:space="preserve"><value>Generated Commands</value></data>
+  <data name="Help text" xml:space="preserve"><value>Help text</value></data>
+  <data name="HP decrease" xml:space="preserve"><value>HP decrease</value></data>
+  <data name="Internal map name" xml:space="preserve"><value>Internal map name</value></data>
+  <data name="Internal street name" xml:space="preserve"><value>Internal street name</value></data>
+  <data name="Level limit" xml:space="preserve"><value>Level limit</value></data>
+  <data name="Life type" xml:space="preserve"><value>Life type</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>Hide entries without images</value></data>
+  <data name="Manage…" xml:space="preserve"><value>Manage…</value></data>
+  <data name="Map context" xml:space="preserve"><value>Map context</value></data>
+  <data name="Map description" xml:space="preserve"><value>Map description</value></data>
+  <data name="Map editing behavior" xml:space="preserve"><value>Map editing behavior</value></data>
+  <data name="Map height" xml:space="preserve"><value>Map height</value></data>
+  <data name="Map hierarchy" xml:space="preserve"><value>Map hierarchy</value></data>
+  <data name="Map ID" xml:space="preserve"><value>Map ID</value></data>
+  <data name="Map Info" xml:space="preserve"><value>Map Info</value></data>
+  <data name="Map information" xml:space="preserve"><value>Map information</value></data>
+  <data name="Map mark" xml:space="preserve"><value>Map mark</value></data>
+  <data name="Map name" xml:space="preserve"><value>Map name</value></data>
+  <data name="Map structures" xml:space="preserve"><value>Map structures</value></data>
+  <data name="Map width" xml:space="preserve"><value>Map width</value></data>
+  <data name="Message" xml:space="preserve"><value>Message</value></data>
+  <data name="Mob ID" xml:space="preserve"><value>Mob ID</value></data>
+  <data name="Mob mass settings" xml:space="preserve"><value>Mob mass settings</value></data>
+  <data name="Mob rate" xml:space="preserve"><value>Mob rate</value></data>
+  <data name="Mobs" xml:space="preserve"><value>Mobs</value></data>
+  <data name="Model catalog" xml:space="preserve"><value>Model catalog</value></data>
+  <data name="Move limit" xml:space="preserve"><value>Move limit</value></data>
+  <data name="New Chat" xml:space="preserve"><value>New Chat</value></data>
+  <data name="NPCs" xml:space="preserve"><value>NPCs</value></data>
+  <data name="Object set" xml:space="preserve"><value>Object set</value></data>
+  <data name="Optional properties" xml:space="preserve"><value>Optional properties</value></data>
+  <data name="Original" xml:space="preserve"><value>Original</value></data>
+  <data name="Pixels" xml:space="preserve"><value>Pixels</value></data>
+  <data name="Portal types" xml:space="preserve"><value>Portal types</value></data>
+  <data name="Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="Preview the result in Map Simulator after changing border dimensions." xml:space="preserve"><value>Preview the result in Map Simulator after changing border dimensions.</value></data>
+  <data name="Processing…" xml:space="preserve"><value>Processing…</value></data>
+  <data name="Protected items" xml:space="preserve"><value>Protected items</value></data>
+  <data name="Reactors" xml:space="preserve"><value>Reactors</value></data>
+  <data name="Reasoning effort" xml:space="preserve"><value>Reasoning effort</value></data>
+  <data name="Recovery" xml:space="preserve"><value>Recovery</value></data>
+  <data name="Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Refresh map context after making changes" xml:space="preserve"><value>Refresh map context after making changes</value></data>
+  <data name="Remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Responses" xml:space="preserve"><value>Responses</value></data>
+  <data name="Review enhanced image" xml:space="preserve"><value>Review enhanced image</value></data>
+  <data name="Rules &amp; limits" xml:space="preserve"><value>Rules &amp; limits</value></data>
+  <data name="Run automated tests to verify AI agent capabilities" xml:space="preserve"><value>Run automated tests to verify AI agent capabilities</value></data>
+  <data name="Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Save image…" xml:space="preserve"><value>Save image…</value></data>
+  <data name="Search and select objects currently placed on the active map." xml:space="preserve"><value>Search and select objects currently placed on the active map.</value></data>
+  <data name="Search by type, asset path, name, or coordinates" xml:space="preserve"><value>Search by type, asset path, name, or coordinates</value></data>
+  <data name="Selected 0" xml:space="preserve"><value>Selected 0</value></data>
+  <data name="Show the local MCP endpoint and authorization token for external clients" xml:space="preserve"><value>Show the local MCP endpoint and authorization token for external clients</value></data>
+  <data name="Shuffle name" xml:space="preserve"><value>Shuffle name</value></data>
+  <data name="Shuffle reactors" xml:space="preserve"><value>Shuffle reactors</value></data>
+  <data name="Sides (LBSide)" xml:space="preserve"><value>Sides (LBSide)</value></data>
+  <data name="Spine" xml:space="preserve"><value>Spine</value></data>
+  <data name="Start a new conversation" xml:space="preserve"><value>Start a new conversation</value></data>
+  <data name="Static" xml:space="preserve"><value>Static</value></data>
+  <data name="Street name" xml:space="preserve"><value>Street name</value></data>
+  <data name="Test connection" xml:space="preserve"><value>Test connection</value></data>
+  <data name="The original asset is unchanged until you choose Use enhanced image." xml:space="preserve"><value>The original asset is unchanged until you choose Use enhanced image.</value></data>
+  <data name="Thinking" xml:space="preserve"><value>Thinking</value></data>
+  <data name="Tile set" xml:space="preserve"><value>Tile set</value></data>
+  <data name="Time limit" xml:space="preserve"><value>Time limit</value></data>
+  <data name="Timed mob" xml:space="preserve"><value>Timed mob</value></data>
+  <data name="Top (LBTop)" xml:space="preserve"><value>Top (LBTop)</value></data>
+  <data name="Total 0" xml:space="preserve"><value>Total 0</value></data>
+  <data name="TYPE" xml:space="preserve"><value>TYPE</value></data>
+  <data name="Use enhanced image" xml:space="preserve"><value>Use enhanced image</value></data>
+  <data name="Use strict tool schemas" xml:space="preserve"><value>Use strict tool schemas</value></data>
+  <data name="User-enter script" xml:space="preserve"><value>User-enter script</value></data>
+  <data name="Variant" xml:space="preserve"><value>Variant</value></data>
+  <data name="Status_Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="Status_UpscaleFailed" xml:space="preserve"><value>Upscale failed: {0}</value></data>
+  <data name="Confirm_ChangeTileSet" xml:space="preserve"><value>This will change the active layer's tile set. Continue?</value></data>
+  <data name="Title_ChangeTileSet" xml:space="preserve"><value>Change tile set</value></data>
+  <data name="Menu_SelectOnBoard" xml:space="preserve"><value>Select on board</value></data>
+  <data name="Menu_JumpToObject" xml:space="preserve"><value>Jump to object</value></data>
+  <data name="Menu_EditProperties" xml:space="preserve"><value>Edit properties…</value></data>
+  <data name="Menu_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Menu_SelectAllOfType" xml:space="preserve"><value>Select all of type</value></data>
+  <data name="Menu_SelectAllInLayer" xml:space="preserve"><value>Select all in layer</value></data>
+  <data name="Format_Layer" xml:space="preserve"><value> • Layer {0}</value></data>
+  <data name="Format_ObjectSummary" xml:space="preserve"><value>{0}{1} • {2} @ ({3}, {4})</value></data>
+  <data name="ObjectType_Tile" xml:space="preserve"><value>Tile</value></data>
+  <data name="ObjectType_Object" xml:space="preserve"><value>Object</value></data>
+  <data name="ObjectType_Background" xml:space="preserve"><value>Background</value></data>
+  <data name="ObjectType_Mob" xml:space="preserve"><value>Mob</value></data>
+  <data name="ObjectType_Reactor" xml:space="preserve"><value>Reactor</value></data>
+  <data name="ObjectType_Portal" xml:space="preserve"><value>Portal</value></data>
+  <data name="ObjectType_Foothold" xml:space="preserve"><value>Foothold</value></data>
+  <data name="ObjectType_RopeLadder" xml:space="preserve"><value>Rope/Ladder</value></data>
+  <data name="ObjectType_Chair" xml:space="preserve"><value>Chair</value></data>
+  <data name="ObjectType_Tooltip" xml:space="preserve"><value>Tooltip</value></data>
+  <data name="ObjectType_MirrorField" xml:space="preserve"><value>Mirror field</value></data>
+  <data name="ObjectType_Misc" xml:space="preserve"><value>Misc</value></data>
+  <data name="Format_Total" xml:space="preserve"><value>Total {0}</value></data>
+  <data name="Format_Selected" xml:space="preserve"><value>Selected {0}</value></data>
+  <data name="Prompt_EnterItemId" xml:space="preserve"><value>Enter item ID</value></data>
+  <data name="Error_ValueNotZero" xml:space="preserve"><value>Value must not be 0.</value></data>
+  <data name="Prompt_InsertItemId" xml:space="preserve"><value>Insert item ID</value></data>
+  <data name="Title_AddAllowedItem" xml:space="preserve"><value>Add Allowed Item</value></data>
+  <data name="AI_UnknownMap" xml:space="preserve"><value>Unknown</value></data>
+  <data name="AI_DefaultMapName" xml:space="preserve"><value>Map {0}</value></data>
+  <data name="AI_WindowTitle" xml:space="preserve"><value>AI Map Editor - {0} ({1})</value></data>
+  <data name="AI_NoMapLoaded" xml:space="preserve"><value>No map is currently loaded.</value></data>
+  <data name="AI_NoMapContext" xml:space="preserve"><value># No map loaded</value></data>
+  <data name="AI_MapLoadError" xml:space="preserve"><value># Error loading map: {0}</value></data>
+  <data name="AI_ClearChatConfirm" xml:space="preserve"><value>Start a new conversation? Current chat history will be cleared.</value></data>
+  <data name="AI_ExecuteCommandsTitle" xml:space="preserve"><value>Execute Commands</value></data>
+  <data name="AI_NoCommands" xml:space="preserve"><value>No commands to execute. Send a message to generate commands first.</value></data>
+  <data name="AI_NoValidCommands" xml:space="preserve"><value>No valid commands found in the generated output.</value></data>
+  <data name="AI_ExecutionSummary" xml:space="preserve"><value>Execution complete: {0} succeeded, {1} failed</value></data>
+  <data name="AI_ExecutionResultTitle" xml:space="preserve"><value>Execution Result</value></data>
+  <data name="AI_ExecutionError" xml:space="preserve"><value>Error executing commands: {0}</value></data>
+  <data name="AI_ExecutionErrorTitle" xml:space="preserve"><value>Execution Error</value></data>
+  <data name="AI_McpConnectionDetails" xml:space="preserve"><value>MCP endpoint:\n{0}\n\nAuthorization header:\nBearer {1}\n\nThe endpoint is active while this map window is open.</value></data>
+  <data name="AI_McpConnectionTitle" xml:space="preserve"><value>MCP Connection</value></data>
+  <data name="AI_RunTestsTitle" xml:space="preserve"><value>Run Tests</value></data>
+  <data name="AISettings_EnterBaseUrl" xml:space="preserve"><value>Enter a base URL to discover endpoint models.</value></data>
+  <data name="AISettings_DiscoveringModels" xml:space="preserve"><value>Discovering models from endpoint...</value></data>
+  <data name="AISettings_NoEndpointModels" xml:space="preserve"><value>No endpoint models were returned. Built-in presets remain available.</value></data>
+  <data name="AISettings_ModelsDiscovered" xml:space="preserve"><value>Discovered {0} endpoint model(s) and merged them with the built-in presets.</value></data>
+  <data name="AISettings_DiscoveryError" xml:space="preserve"><value>Endpoint discovery unavailable: {0}</value></data>
+  <data name="AISettings_EndpointReasoning" xml:space="preserve"><value>Endpoint advertised: {0}</value></data>
+  <data name="AISettings_DetectedReasoning" xml:space="preserve"><value>Detected from model family: {0}</value></data>
+  <data name="AISettings_AutoReasoningOnly" xml:space="preserve"><value>Auto only; this model does not advertise reasoning levels.</value></data>
+  <data name="AISettings_TestRequired" xml:space="preserve"><value>Test connection required before saving.</value></data>
+  <data name="AISettings_Configured" xml:space="preserve"><value>Configured: {0}</value></data>
+  <data name="AISettings_NotConfigured" xml:space="preserve"><value>Not configured.</value></data>
+  <data name="AISettings_Testing" xml:space="preserve"><value>Testing connection...</value></data>
+  <data name="AISettings_BaseUrlRequired" xml:space="preserve"><value>Please enter an API base URL first.</value></data>
+  <data name="AISettings_ModelRequired" xml:space="preserve"><value>Please select or enter a model first.</value></data>
+  <data name="AISettings_ConnectionSuccessful" xml:space="preserve"><value>Connection successful!</value></data>
+  <data name="AISettings_ConnectionFailed" xml:space="preserve"><value>Connection failed. Check the endpoint, model, and API key.</value></data>
+  <data name="AISettings_Error" xml:space="preserve"><value>Error: {0}</value></data>
+  <data name="Error_AddingImage" xml:space="preserve"><value>Error adding image: {0}</value></data>
+  <data name="Common_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="Dialog_SaveImage" xml:space="preserve"><value>Select where to save the image...</value></data>
+  <data name="Dialog_SaveObjectImage" xml:space="preserve"><value>Save object image</value></data>
+  <data name="MapOption_Clouds" xml:space="preserve"><value>Clouds</value></data>
+  <data name="MapOption_Snow" xml:space="preserve"><value>Snow</value></data>
+  <data name="MapOption_Rain" xml:space="preserve"><value>Rain</value></data>
+  <data name="MapOption_Swim" xml:space="preserve"><value>Swim</value></data>
+  <data name="MapOption_Fly" xml:space="preserve"><value>Fly</value></data>
+  <data name="MapOption_Town" xml:space="preserve"><value>Town</value></data>
+  <data name="MapOption_PartyOnly" xml:space="preserve"><value>Party Only</value></data>
+  <data name="MapOption_ExpeditionOnly" xml:space="preserve"><value>Expedition Only</value></data>
+  <data name="MapOption_NoMapCommands" xml:space="preserve"><value>No Map Commands</value></data>
+  <data name="MapOption_HideMinimap" xml:space="preserve"><value>Hide Minimap</value></data>
+  <data name="MapOption_MinimapToggle" xml:space="preserve"><value>Minimap On/Off</value></data>
+  <data name="MapOption_PersonalShops" xml:space="preserve"><value>Personal Shops</value></data>
+  <data name="MapOption_EntrustedShops" xml:space="preserve"><value>Entrusted Shops</value></data>
+  <data name="MapOption_NoRegeneration" xml:space="preserve"><value>No Regeneration</value></data>
+  <data name="MapOption_BlockPartyBossChange" xml:space="preserve"><value>Block P-Boss Change</value></data>
+  <data name="MapOption_Everlast" xml:space="preserve"><value>Everlast</value></data>
+  <data name="MapOption_DamageCheckFree" xml:space="preserve"><value>Damage-Check Free</value></data>
+  <data name="MapOption_DisableScrolls" xml:space="preserve"><value>Disable Scrolls</value></data>
+  <data name="MapOption_FlySkillRequired" xml:space="preserve"><value>Skill Needed to Fly</value></data>
+  <data name="MapOption_ZakumAntiHack" xml:space="preserve"><value>Zakum-2 JQ Anti-Hack</value></data>
+  <data name="MapOption_CheckAllMoves" xml:space="preserve"><value>Check All Moves (Anti-Hack)</value></data>
+  <data name="MapOption_UseVrAsLimits" xml:space="preserve"><value>Use VR as Limits</value></data>
+  <data name="MapOption_MirrorBottom" xml:space="preserve"><value>Mirror Bottom (Reflection)</value></data>
+  <data name="Dialog_SelectImage" xml:space="preserve"><value>Select an image to add</value></data>
+  <data name="Dialog_ImageOpenFilter" xml:space="preserve"><value>Image files (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg</value></data>
+  <data name="Dialog_ImageSaveFilterLong" xml:space="preserve"><value>Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif</value></data>
+  <data name="Dialog_ImageSaveFilterShort" xml:space="preserve"><value>PNG (*.png)|*.png|GIF (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|JPEG (*.jpg)|*.jpg|TIFF (*.tif)|*.tif</value></data>
+  <data name="Message_BackgroundAdded" xml:space="preserve"><value>Image '{0}' was added successfully as '{1}'.</value></data>
+  <data name="Title_ImageAdded" xml:space="preserve"><value>Image Added</value></data>
+  <data name="Confirm_DeleteBackground" xml:space="preserve"><value>Delete the selected background?</value></data>
+  <data name="Title_ConfirmDelete" xml:space="preserve"><value>Confirm delete</value></data>
+  <data name="Prompt_SelectObjectCategory" xml:space="preserve"><value>Select an object category first.</value></data>
+  <data name="Title_NoCategorySelected" xml:space="preserve"><value>No category selected</value></data>
+  <data name="Message_ObjectAdded" xml:space="preserve"><value>Added {0} as {1}.</value></data>
+  <data name="Title_ObjectAdded" xml:space="preserve"><value>Object added</value></data>
+  <data name="Confirm_DeleteObject" xml:space="preserve"><value>Delete this object?</value></data>
+  <data name="Title_DeleteObject" xml:space="preserve"><value>Delete object</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>Chat / reasoning model</value></data>
+  <data name="Image model" xml:space="preserve"><value>Image model</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>Used by the animation editor for frame generation and reference edits.</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>Built-in</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>Built-in + endpoint</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>Endpoint</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>Auto (model default)</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>{0} built-in presets. Endpoint discovery starts automatically.</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>{0} built-in presets available. No endpoint models discovered.</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>{0} built-in + {1} endpoint; {2} unique model(s).</value></data>
+</root>

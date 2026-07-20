@@ -121,6 +121,8 @@ namespace HaCreator.MapEditor
             {
                 position.X = x;
                 position.Y = y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
                 List<BoardItem> items = boundItems.Keys.ToList();
                 foreach (BoardItem item in items)
                 {
@@ -144,6 +146,8 @@ namespace HaCreator.MapEditor
             {
                 position.X = x;
                 position.Y = y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
                 List<BoardItem> items = boundItems.Keys.ToList();
                 foreach (BoardItem item in items)
                 {
@@ -450,6 +454,8 @@ namespace HaCreator.MapEditor
             {
                 position.X += offset.Value.X;
                 position.Y += offset.Value.Y;
+                if (this is PortalInstance)
+                    board.InvalidatePortalPairCache();
             }
         }
         #endregion

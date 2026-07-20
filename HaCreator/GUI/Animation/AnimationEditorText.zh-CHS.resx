@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>2.0</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="AnimationEditor_Title" xml:space="preserve"><value>动画帧编辑器</value></data><data name="AnimationEditor_Save" xml:space="preserve"><value>保存</value></data><data name="AnimationEditor_Import" xml:space="preserve"><value>导入帧</value></data><data name="AnimationEditor_TimelineClipboardTooltip" xml:space="preserve"><value>按 Ctrl+C 复制所选帧图像。按 Ctrl+V 在其后插入剪贴板图像。可将图像文件拖放到此处以添加帧。</value></data><data name="AnimationEditor_FrameCopied" xml:space="preserve"><value>已将所选帧图像复制到剪贴板。</value></data><data name="AnimationEditor_ClipboardHasNoImage" xml:space="preserve"><value>剪贴板中没有图像。</value></data><data name="AnimationEditor_PasteFrame" xml:space="preserve"><value>粘贴帧</value></data><data name="AnimationEditor_FramePasted" xml:space="preserve"><value>已在所选帧后插入剪贴板图像。</value></data><data name="AnimationEditor_DropFrames" xml:space="preserve"><value>拖放帧</value></data><data name="AnimationEditor_FramesAdded" xml:space="preserve"><value>已添加 {0} 个图像帧。</value></data><data name="AnimationEditor_NoImagesAdded" xml:space="preserve"><value>没有可添加的受支持图像文件。</value></data><data name="AnimationEditor_Export" xml:space="preserve"><value>导出帧</value></data>
+  <data name="AnimationEditor_Undo" xml:space="preserve"><value>撤销 (Ctrl+Z)</value></data><data name="AnimationEditor_Redo" xml:space="preserve"><value>重做 (Ctrl+Y)</value></data><data name="AnimationEditor_PlayPause" xml:space="preserve"><value>播放或暂停 (空格)</value></data><data name="AnimationEditor_Speed" xml:space="preserve"><value>速度</value></data><data name="AnimationEditor_Zoom" xml:space="preserve"><value>缩放</value></data><data name="AnimationEditor_Fit" xml:space="preserve"><value>适应</value></data>
+  <data name="AnimationEditor_Assets" xml:space="preserve"><value>资源</value></data><data name="AnimationEditor_Animations" xml:space="preserve"><value>动画 / 动作</value></data><data name="AnimationEditor_SearchTooltip" xml:space="preserve"><value>按 ID、名称或 WZ 路径筛选 (Ctrl+L)</value></data>
+  <data name="AnimationEditor_Monsters" xml:space="preserve"><value>怪物动画</value></data><data name="AnimationEditor_Npcs" xml:space="preserve"><value>NPC 动作</value></data><data name="AnimationEditor_Reactors" xml:space="preserve"><value>反应堆状态</value></data><data name="AnimationEditor_Skills" xml:space="preserve"><value>技能特效</value></data><data name="AnimationEditor_MapObjects" xml:space="preserve"><value>地图对象</value></data><data name="AnimationEditor_Backgrounds" xml:space="preserve"><value>地图背景</value></data>
+  <data name="AnimationEditor_Grid" xml:space="preserve"><value>网格</value></data><data name="AnimationEditor_Origin" xml:space="preserve"><value>原点</value></data><data name="AnimationEditor_Bounds" xml:space="preserve"><value>边界</value></data><data name="AnimationEditor_OnionSkin" xml:space="preserve"><value>洋葱皮</value></data><data name="AnimationEditor_AllFrames" xml:space="preserve"><value>所有帧</value></data><data name="AnimationEditor_AllFramesTooltip" xml:space="preserve"><value>半透明叠加所有帧，并突出显示当前选中的帧。</value></data><data name="AnimationEditor_ArrowKeyMode" xml:space="preserve"><value>方向键：</value></data><data name="AnimationEditor_Pan" xml:space="preserve"><value>平移</value></data><data name="AnimationEditor_PanTooltip" xml:space="preserve"><value>使用方向键滚动预览。按 M 切换模式。</value></data><data name="AnimationEditor_MoveFrameMode" xml:space="preserve"><value>移动帧</value></data><data name="AnimationEditor_MoveFrameTooltip" xml:space="preserve"><value>方向键将选中图层移动 1 像素；按住 Shift 移动 10 像素。按 M 切换模式。</value></data><data name="AnimationEditor_Timeline" xml:space="preserve"><value>时间轴</value></data><data name="AnimationEditor_Loop" xml:space="preserve"><value>循环</value></data>
+  <data name="AnimationEditor_AddFrame" xml:space="preserve"><value>添加帧</value></data><data name="AnimationEditor_Duplicate" xml:space="preserve"><value>复制</value></data><data name="AnimationEditor_Delete" xml:space="preserve"><value>删除</value></data><data name="AnimationEditor_Properties" xml:space="preserve"><value>属性</value></data><data name="AnimationEditor_AnimationProperties" xml:space="preserve"><value>动画 / 原始 WZ</value></data>
+  <data name="AnimationEditor_Frame" xml:space="preserve"><value>当前帧</value></data><data name="AnimationEditor_FrameIndex" xml:space="preserve"><value>帧</value></data><data name="AnimationEditor_Layer" xml:space="preserve"><value>图层</value></data><data name="AnimationEditor_Size" xml:space="preserve"><value>精灵尺寸</value></data><data name="AnimationEditor_Transform" xml:space="preserve"><value>变换与时序</value></data>
+  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>原点 X</value></data><data name="AnimationEditor_ZOrder" xml:space="preserve"><value>Z 顺序</value></data><data name="AnimationEditor_Delay" xml:space="preserve"><value>延迟 (毫秒)</value></data><data name="AnimationEditor_AlphaStart" xml:space="preserve"><value>起始透明度</value></data><data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>结束透明度</value></data>
+  <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>将链接帧转为独立帧</value></data><data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>替换图层图像…</value></data><data name="AnimationEditor_ResizeBitmap" xml:space="preserve"><value>调整位图大小</value></data><data name="AnimationEditor_ResizeDescription" xml:space="preserve"><value>更改所选图层的实际像素尺寸，不影响预览缩放。</value></data><data name="AnimationEditor_Width" xml:space="preserve"><value>宽度</value></data><data name="AnimationEditor_Height" xml:space="preserve"><value>高度</value></data><data name="AnimationEditor_LockAspectRatio" xml:space="preserve"><value>锁定宽高比</value></data><data name="AnimationEditor_ApplyResize" xml:space="preserve"><value>应用调整</value></data><data name="AnimationEditor_InvalidResizeSize" xml:space="preserve"><value>宽度和高度必须是 1 到 16384 像素之间的整数。</value></data><data name="AnimationEditor_RawFrameProperties" xml:space="preserve"><value>原始帧属性</value></data><data name="AnimationEditor_Property" xml:space="preserve"><value>属性</value></data><data name="AnimationEditor_Type" xml:space="preserve"><value>类型</value></data><data name="AnimationEditor_Value" xml:space="preserve"><value>值</value></data>
+  <data name="AnimationEditor_Ready" xml:space="preserve"><value>就绪</value></data><data name="AnimationEditor_Loading" xml:space="preserve"><value>正在加载动画资源…</value></data><data name="AnimationEditor_AssetsLoaded" xml:space="preserve"><value>可用资源图像：{0} 个。</value></data><data name="AnimationEditor_AnimationsLoaded" xml:space="preserve"><value>找到 {0} 条动画轨道。</value></data>
+  <data name="AnimationEditor_ImageNotFound" xml:space="preserve"><value>无法加载 {0}。</value></data><data name="AnimationEditor_NoFrames" xml:space="preserve"><value>此动画没有可编辑的帧。</value></data><data name="AnimationEditor_LinkedReactorSource" xml:space="preserve"><value>此反应堆链接到 {0}；更改将保存到链接源。</value></data>
+  <data name="AnimationEditor_ImageFilter" xml:space="preserve"><value>图像 (*.png;*.bmp;*.gif;*.jpg;*.jpeg)|*.png;*.bmp;*.gif;*.jpg;*.jpeg|所有文件 (*.*)|*.*</value></data><data name="AnimationEditor_ImportTitle" xml:space="preserve"><value>选择帧图像</value></data><data name="AnimationEditor_DeleteLastFrame" xml:space="preserve"><value>动画必须至少保留一帧。</value></data><data name="AnimationEditor_MissingCanvas" xml:space="preserve"><value>所选图层没有可渲染画布。</value></data>
+  <data name="AnimationEditor_Exported" xml:space="preserve"><value>帧已导出到 {0}。</value></data><data name="AnimationEditor_Saving" xml:space="preserve"><value>正在保存动画…</value></data><data name="AnimationEditor_Saved" xml:space="preserve"><value>动画已保存。</value></data><data name="AnimationEditor_SaveError" xml:space="preserve"><value>无法保存动画：{0}</value></data><data name="AnimationEditor_SaveErrorTitle" xml:space="preserve"><value>动画保存错误</value></data>
+  <data name="AnimationEditor_Unsaved" xml:space="preserve"><value>有未保存的更改</value></data><data name="AnimationEditor_AllSaved" xml:space="preserve"><value>所有更改已保存</value></data><data name="AnimationEditor_UnsavedPrompt" xml:space="preserve"><value>此动画有未保存的更改。现在保存吗？</value></data><data name="AnimationEditor_UnsavedTitle" xml:space="preserve"><value>未保存的动画更改</value></data><data name="AnimationEditor_MoveOrigin" xml:space="preserve"><value>移动原点</value></data><data name="AnimationEditor_MoveFrame" xml:space="preserve"><value>移动帧</value></data>
+  <data name="AnimationEditor_FirstFrame" xml:space="preserve"><value>第一帧</value></data>
+  <data name="AnimationEditor_PreviousFrame" xml:space="preserve"><value>上一帧</value></data>
+  <data name="AnimationEditor_NextFrame" xml:space="preserve"><value>下一帧</value></data>
+  <data name="AnimationEditor_LastFrame" xml:space="preserve"><value>最后一帧</value></data>
+  <data name="AnimationEditor_MoveFrameLeft" xml:space="preserve"><value>向左移动帧</value></data>
+  <data name="AnimationEditor_MoveFrameRight" xml:space="preserve"><value>向右移动帧</value></data>
+  <data name="AnimationEditor_AssetBrowserSplitter" xml:space="preserve"><value>资源浏览器分隔条</value></data>
+  <data name="AnimationEditor_TimelineSplitter" xml:space="preserve"><value>时间轴分隔条</value></data>
+  <data name="AnimationEditor_InspectorSplitter" xml:space="preserve"><value>检查器分隔条</value></data>
+  <data name="AnimationEditor_AssetType" xml:space="preserve"><value>动画资源类型</value></data>
+  <data name="AnimationEditor_AssetSearch" xml:space="preserve"><value>搜索动画资源</value></data>
+  <data name="AnimationEditor_AssetList" xml:space="preserve"><value>动画资源列表</value></data>
+  <data name="AnimationEditor_TrackList" xml:space="preserve"><value>动画轨道列表</value></data>
+  <data name="AnimationEditor_Preview" xml:space="preserve"><value>动画预览</value></data>
+  <data name="AnimationEditor_TimelineScrubber" xml:space="preserve"><value>浏览动画时间轴</value></data>
+  <data name="AnimationEditor_TimelineFrames" xml:space="preserve"><value>动画时间轴帧</value></data>
+  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>原点 Y</value></data>
+  <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>帧属性表</value></data>
+  <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>动画属性表</value></data>
+  <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG 图像 (*.png)|*.png</value></data>
+  <data name="AnimationEditor_AI" xml:space="preserve"><value>AI</value></data>
+  <data name="AnimationEditor_AIGenerateFrames" xml:space="preserve"><value>AI 帧工作室</value></data>
+  <data name="AnimationEditor_AIDescription" xml:space="preserve"><value>生成新帧或编辑当前帧。结果在保存动画前保持独立并可撤销。</value></data>
+  <data name="AnimationEditor_AIPrompt" xml:space="preserve"><value>描述帧或修改内容</value></data>
+  <data name="AnimationEditor_AISuggestPrompt" xml:space="preserve"><value>建议制作提示词</value></data>
+  <data name="AnimationEditor_AIFramePlan" xml:space="preserve"><value>帧计划</value></data>
+  <data name="AnimationEditor_AIOperation" xml:space="preserve"><value>操作</value></data>
+  <data name="AnimationEditor_AICount" xml:space="preserve"><value>帧数</value></data>
+  <data name="AnimationEditor_AIAlignment" xml:space="preserve"><value>原点对齐</value></data>
+  <data name="AnimationEditor_AIQuality" xml:space="preserve"><value>质量</value></data>
+  <data name="AnimationEditor_AIUseReference" xml:space="preserve"><value>使用当前帧作为图像参考</value></data>
+  <data name="AnimationEditor_AICleanupBackground" xml:space="preserve"><value>生成后移除与边缘相连的背景</value></data>
+  <data name="AnimationEditor_AITrimTransparent" xml:space="preserve"><value>裁剪透明边距并补偿原点</value></data>
+  <data name="AnimationEditor_AISettings" xml:space="preserve"><value>AI 设置</value></data>
+  <data name="AnimationEditor_AIGenerate" xml:space="preserve"><value>生成帧</value></data>
+  <data name="AnimationEditor_AICancel" xml:space="preserve"><value>取消</value></data>
+  <data name="AnimationEditor_AIAddAfter" xml:space="preserve"><value>添加到当前帧之后</value></data>
+  <data name="AnimationEditor_AIReplaceSelected" xml:space="preserve"><value>替换当前帧</value></data>
+  <data name="AnimationEditor_AIAutoAlign" xml:space="preserve"><value>匹配锚点</value></data>
+  <data name="AnimationEditor_AIPreserveOrigin" xml:space="preserve"><value>保留原点</value></data>
+  <data name="AnimationEditor_AIBottomCenter" xml:space="preserve"><value>底部居中</value></data>
+  <data name="AnimationEditor_AIModel" xml:space="preserve"><value>图像模型：{0}</value></data>
+  <data name="AnimationEditor_AIEnterPrompt" xml:space="preserve"><value>请先输入提示词。</value></data>
+  <data name="AnimationEditor_AIRequiresFrame" xml:space="preserve"><value>请先打开动画轨道并选择可编辑帧。</value></data>
+  <data name="AnimationEditor_AIGenerating" xml:space="preserve"><value>正在生成第 {0}/{1} 帧…</value></data>
+  <data name="AnimationEditor_AIComplete" xml:space="preserve"><value>已生成 {0} 帧。请检查时间线，确认后再保存。</value></data>
+  <data name="AnimationEditor_AICancelled" xml:space="preserve"><value>生成已取消，未应用任何部分结果。</value></data>
+  <data name="AnimationEditor_AIError" xml:space="preserve"><value>AI 生成失败：{0}</value></data>
+  <data name="AnimationEditor_AISuggesting" xml:space="preserve"><value>正在构建制作提示词…</value></data>
+  <data name="AnimationEditor_AISuggestionReady" xml:space="preserve"><value>提示词建议已就绪，请检查后再生成。</value></data>
+  <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} 毫秒</value></data>
+  <data name="AnimationEditor_Items" xml:space="preserve"><value>物品动画</value></data>
+  <data name="AnimationEditor_Equipment" xml:space="preserve"><value>装备动画</value></data>
+</root>

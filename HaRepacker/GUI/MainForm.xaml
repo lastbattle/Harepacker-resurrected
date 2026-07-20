@@ -1,0 +1,115 @@
+<Window x:Class="HaRepacker.GUI.MainForm" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shared="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+ Title="HaRepacker" Width="1280" Height="800" MinWidth="860" MinHeight="560" AllowDrop="True"
+ Background="{DynamicResource HareCanvasBrush}" Closing="MainForm_FormClosing" Loaded="MainForm_Load" SizeChanged="MainForm_SizeChanged" PreviewKeyDown="MainWindow_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Menu x:Name="mainMenu" Grid.Row="0">
+            <MenuItem x:Name="fileToolStripMenuItem" Header="_File">
+                <MenuItem x:Name="newToolStripMenuItem" Header="_New" InputGestureText="Ctrl+N" Click="newToolStripMenuItem_Click"/>
+                <MenuItem x:Name="openToolStripMenuItem" Header="_Open…" InputGestureText="Ctrl+O" Click="openToolStripMenuItem_Click"/>
+                <MenuItem x:Name="openVersionDirectoryToolStripMenuItem" Header="Open _Version Directory…" Click="openVersionDirectoryToolStripMenuItem_Click"/>
+                <MenuItem x:Name="toolStripMenuItem_newWzFormat" Header="Open New WZ _Format…" InputGestureText="Ctrl+I" Click="toolStripMenuItem_newWzFormat_Click"/>
+                <MenuItem x:Name="saveToolStripMenuItem" Header="_Save" InputGestureText="Ctrl+S" Click="SaveToolStripMenuItem_Click"/>
+                <Separator/>
+                <MenuItem x:Name="copyToolStripMenuItem" Header="_Copy" InputGestureText="Ctrl+C" Click="CopyToolStripMenuItem_Click"/>
+                <MenuItem x:Name="pasteToolStripMenuItem" Header="_Paste" InputGestureText="Ctrl+V" Click="PasteToolStripMenuItem_Click"/>
+                <Separator/>
+                <MenuItem x:Name="reloadAllToolStripMenuItem" x:FieldModifier="public" Header="Reload all" Click="reloadAllToolStripMenuItem_Click"/>
+                <MenuItem x:Name="unloadAllToolStripMenuItem" x:FieldModifier="public" Header="Unload all" Click="unloadAllToolStripMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem x:Name="editToolStripMenuItem" Header="_Edit">
+                <MenuItem x:Name="addToolStripMenuItem" Header="_Add">
+                    <MenuItem x:Name="wzDirectoryToolStripMenuItem" Header="WZ directory" Click="WzDirectoryToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzImageToolStripMenuItem" Header="WZ image" Click="WzImageToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzSubPropertyToolStripMenuItem" Header="Sub property" Click="WzSubPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzUolPropertyToolStripMenuItem" Header="UOL property" Click="WzUolPropertyToolStripMenuItem_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="wzCanvasPropertyToolStripMenuItem" Header="Canvas property" Click="WzCanvasPropertyToolStripMenuItem_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="wzStringPropertyToolStripMenuItem" Header="String property" Click="WzStringPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzByteFloatPropertyToolStripMenuItem" Header="Float property" Click="WzByteFloatPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzLongPropertyToolStripMenuItem" Header="Long property" Click="WzLongPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzDoublePropertyToolStripMenuItem" Header="Double property" Click="WzDoublePropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzCompressedIntPropertyToolStripMenuItem" Header="Integer property" Click="WzCompressedIntPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzUnsignedShortPropertyToolStripMenuItem" Header="Unsigned short property" Click="WzUnsignedShortPropertyToolStripMenuItem_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="wzConvexPropertyToolStripMenuItem" Header="Convex property" Click="WzConvexPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzNullPropertyToolStripMenuItem" Header="Null property" Click="WzNullPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzSoundPropertyToolStripMenuItem" Header="Sound property" Click="WzSoundPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzVectorPropertyToolStripMenuItem" Header="Vector property" Click="WzVectorPropertyToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="wzLuaPropertyToolStripMenuItem" Header="Lua property" Click="wzLuaPropertyToolStripMenuItem_Click"/>
+                </MenuItem>
+                <MenuItem x:Name="removeToolStripMenuItem" Header="_Remove" Click="RemoveToolStripMenuItem_Click"/>
+                <Separator/>
+                <MenuItem x:Name="undoToolStripMenuItem" Header="_Undo" Click="UndoMenu_Click"/>
+                <MenuItem x:Name="redoToolStripMenuItem" Header="_Redo" Click="RedoMenu_Click"/>
+                <Separator/>
+                <MenuItem x:Name="expandAllToolStripMenuItem" Header="Expand all" Click="expandAllToolStripMenuItem_Click"/>
+                <MenuItem x:Name="collapseAllToolStripMenuItem" Header="Collapse all" Click="collapseAllToolStripMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem x:Name="toolsToolStripMenuItem" Header="_Tools">
+                <MenuItem x:Name="exportFilesToXMLToolStripMenuItem" Header="Export files">
+                    <MenuItem x:Name="xMLToolStripMenuItem" Header="XML" Click="xMLToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="rawDataToolStripMenuItem" Header="Raw data" Click="rawDataToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="imgToolStripMenuItem" Header="IMG" Click="imgToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="nXFormatToolStripMenuItem" Header="NX" Click="nXFormatToolStripMenuItem_Click"/>
+                </MenuItem>
+                <MenuItem x:Name="exportDataToolStripMenuItem" Header="Export data">
+                    <MenuItem x:Name="xMLToolStripMenuItem1" Header="XML">
+                        <MenuItem x:Name="privateServerToolStripMenuItem" Header="Private server" Click="privateServerToolStripMenuItem_Click"/>
+                        <MenuItem x:Name="classicToolStripMenuItem" Header="Classic" Click="classicToolStripMenuItem_Click"/>
+                        <MenuItem x:Name="newToolStripMenuItem1" Header="New" Click="newToolStripMenuItem1_Click"/>
+                    </MenuItem>
+                    <MenuItem x:Name="jSONToolStripMenuItem" Header="JSON" Click="jSONToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="bSONToolStripMenuItem" Header="BSON" Click="bSONToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="pNGsToolStripMenuItem" Header="PNGs" Click="pNGsToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="imgToolStripMenuItem1" Header="IMG" Click="imgToolStripMenuItem1_Click"/>
+                </MenuItem>
+                <MenuItem x:Name="importToolStripMenuItem" Header="Import">
+                    <MenuItem x:Name="xMLToolStripMenuItem2" Header="XML" Click="xMLToolStripMenuItem2_Click"/>
+                    <MenuItem x:Name="iMGToolStripMenuItem2" Header="IMG" Click="iMGToolStripMenuItem2_Click"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem x:Name="packImgToWzToolStripMenuItem" Header="Pack IMG to WZ…" Click="packImgToWzToolStripMenuItem_Click"/>
+                <MenuItem x:Name="optionsToolStripMenuItem" Header="Options…" Click="optionsToolStripMenuItem_Click"/>
+                <Separator/>
+                <MenuItem x:Name="searchToolStripMenuItem" Header="Search…" Click="searchToolStripMenuItem_Click"/>
+                <MenuItem x:Name="fHMappingToolStripMenuItem" Header="Foothold mapping">
+                    <MenuItem x:Name="renderMapToolStripMenuItem" Header="Render map" Click="renderMapToolStripMenuItem_Click"/>
+                    <MenuItem x:Name="settingsToolStripMenuItem" Header="Settings" Click="settingsToolStripMenuItem_Click"/>
+                    <Separator/>
+                    <shared:NumericTextBox x:Name="zoomTextBox" AllowDecimal="True" Width="90" Text="1.0"/>
+                </MenuItem>
+                <MenuItem x:Name="toolStripMenuItem_searchWzStrings" Header="Search WZ strings…" Click="ToolStripMenuItem_searchWzStrings_Click"/>
+                <MenuItem x:Name="toolsToolStripMenuItem1" Header="Utilities"/>
+            </MenuItem>
+            <MenuItem x:Name="helpToolStripMenuItem" Header="_Help">
+                <MenuItem x:Name="viewHelpToolStripMenuItem" Header="View help" Click="ViewHelpToolStripMenuItem_Click"/>
+                <MenuItem x:Name="aboutToolStripMenuItem" Header="About" Click="aboutToolStripMenuItem_Click"/>
+            </MenuItem>
+        </Menu>
+        <Border Grid.Row="1" Style="{StaticResource HareToolbarStyle}" Padding="10,6">
+            <DockPanel>
+                <TextBlock Text="Encryption" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ComboBox x:Name="encryptionBox" Width="270" SelectionChanged="EncryptionBox_SelectedIndexChanged"/>
+                <Button x:Name="button_addTab" DockPanel.Dock="Right" Content="New tab" Padding="14,5" Click="Button_addTab_Click"/>
+                <Button x:Name="AbortButton" DockPanel.Dock="Right" Content="Cancel operation" Margin="0,0,8,0" Padding="14,5" Visibility="Collapsed" Click="AbortButton_Click"/>
+            </DockPanel>
+        </Border>
+        <ContentControl x:Name="hotSwapHost" Grid.Row="2" VerticalAlignment="Top" Panel.ZIndex="2"/>
+        <TabControl x:Name="tabControl_MainPanels" Grid.Row="2" SelectionChanged="tabControl_MainPanels_TabIndexChanged" Margin="0,0,0,0"/>
+        <TextBlock Grid.Row="3" Text="Ready" Style="{StaticResource HareMutedTextStyle}" Margin="10,5"/>
+    </Grid>
+</Window>

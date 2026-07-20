@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="AnimationEditor_Title" xml:space="preserve"><value>Animation Frame Editor</value></data>
+  <data name="AnimationEditor_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="AnimationEditor_Import" xml:space="preserve"><value>Import frames</value></data>
+  <data name="AnimationEditor_TimelineClipboardTooltip" xml:space="preserve"><value>Ctrl+C copies the selected frame image. Ctrl+V inserts a clipboard image after it. Drop image files here to add frames.</value></data>
+  <data name="AnimationEditor_FrameCopied" xml:space="preserve"><value>Selected frame image copied to the clipboard.</value></data>
+  <data name="AnimationEditor_ClipboardHasNoImage" xml:space="preserve"><value>The clipboard does not contain an image.</value></data>
+  <data name="AnimationEditor_PasteFrame" xml:space="preserve"><value>Paste frame</value></data>
+  <data name="AnimationEditor_FramePasted" xml:space="preserve"><value>Clipboard image inserted after the selected frame.</value></data>
+  <data name="AnimationEditor_DropFrames" xml:space="preserve"><value>Drop frames</value></data>
+  <data name="AnimationEditor_FramesAdded" xml:space="preserve"><value>Added {0} image frame(s).</value></data>
+  <data name="AnimationEditor_NoImagesAdded" xml:space="preserve"><value>No supported image files could be added.</value></data>
+  <data name="AnimationEditor_Export" xml:space="preserve"><value>Export frame</value></data>
+  <data name="AnimationEditor_Undo" xml:space="preserve"><value>Undo (Ctrl+Z)</value></data>
+  <data name="AnimationEditor_Redo" xml:space="preserve"><value>Redo (Ctrl+Y)</value></data>
+  <data name="AnimationEditor_PlayPause" xml:space="preserve"><value>Play or pause (Space)</value></data>
+  <data name="AnimationEditor_Speed" xml:space="preserve"><value>Speed</value></data>
+  <data name="AnimationEditor_Zoom" xml:space="preserve"><value>Zoom</value></data>
+  <data name="AnimationEditor_Fit" xml:space="preserve"><value>Fit</value></data>
+  <data name="AnimationEditor_Assets" xml:space="preserve"><value>ASSETS</value></data>
+  <data name="AnimationEditor_Animations" xml:space="preserve"><value>ANIMATIONS / ACTIONS</value></data>
+  <data name="AnimationEditor_SearchTooltip" xml:space="preserve"><value>Filter by ID, name, or WZ path (Ctrl+L)</value></data>
+  <data name="AnimationEditor_Monsters" xml:space="preserve"><value>Monster animations</value></data>
+  <data name="AnimationEditor_Npcs" xml:space="preserve"><value>NPC actions</value></data>
+  <data name="AnimationEditor_Reactors" xml:space="preserve"><value>Reactor states</value></data>
+  <data name="AnimationEditor_Skills" xml:space="preserve"><value>Skill effects</value></data>
+  <data name="AnimationEditor_MapObjects" xml:space="preserve"><value>Map objects</value></data>
+  <data name="AnimationEditor_Backgrounds" xml:space="preserve"><value>Map backgrounds</value></data>
+  <data name="AnimationEditor_Grid" xml:space="preserve"><value>Grid</value></data>
+  <data name="AnimationEditor_Origin" xml:space="preserve"><value>Origin</value></data>
+  <data name="AnimationEditor_Bounds" xml:space="preserve"><value>Bounds</value></data>
+  <data name="AnimationEditor_OnionSkin" xml:space="preserve"><value>Onion skin</value></data>
+  <data name="AnimationEditor_AllFrames" xml:space="preserve"><value>All frames</value></data>
+  <data name="AnimationEditor_AllFramesTooltip" xml:space="preserve"><value>Overlay every frame translucently while keeping the selected frame prominent.</value></data>
+  <data name="AnimationEditor_ArrowKeyMode" xml:space="preserve"><value>Arrow keys:</value></data>
+  <data name="AnimationEditor_Pan" xml:space="preserve"><value>Pan</value></data>
+  <data name="AnimationEditor_PanTooltip" xml:space="preserve"><value>Arrow keys scroll the preview. Press M to switch modes.</value></data>
+  <data name="AnimationEditor_MoveFrameMode" xml:space="preserve"><value>Move frame</value></data>
+  <data name="AnimationEditor_MoveFrameTooltip" xml:space="preserve"><value>Arrow keys move the selected layer by 1 pixel; hold Shift to move by 10. Press M to switch modes.</value></data>
+  <data name="AnimationEditor_Timeline" xml:space="preserve"><value>TIMELINE</value></data>
+  <data name="AnimationEditor_Loop" xml:space="preserve"><value>Loop</value></data>
+  <data name="AnimationEditor_AddFrame" xml:space="preserve"><value>Add frame</value></data>
+  <data name="AnimationEditor_Duplicate" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="AnimationEditor_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="AnimationEditor_Properties" xml:space="preserve"><value>Properties</value></data>
+  <data name="AnimationEditor_AnimationProperties" xml:space="preserve"><value>Animation / Raw WZ</value></data>
+  <data name="AnimationEditor_Frame" xml:space="preserve"><value>CURRENT FRAME</value></data>
+  <data name="AnimationEditor_FrameIndex" xml:space="preserve"><value>Frame</value></data>
+  <data name="AnimationEditor_Layer" xml:space="preserve"><value>Layer</value></data>
+  <data name="AnimationEditor_Size" xml:space="preserve"><value>Sprite size</value></data>
+  <data name="AnimationEditor_Transform" xml:space="preserve"><value>TRANSFORM &amp; TIMING</value></data>
+  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>Origin X</value></data>
+  <data name="AnimationEditor_ZOrder" xml:space="preserve"><value>Z order</value></data>
+  <data name="AnimationEditor_Delay" xml:space="preserve"><value>Delay (ms)</value></data>
+  <data name="AnimationEditor_AlphaStart" xml:space="preserve"><value>Alpha start</value></data>
+  <data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>Alpha end</value></data>
+  <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>Make linked frame independent</value></data>
+  <data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>Replace layer bitmap…</value></data>
+  <data name="AnimationEditor_ResizeBitmap" xml:space="preserve"><value>RESIZE BITMAP</value></data>
+  <data name="AnimationEditor_ResizeDescription" xml:space="preserve"><value>Changes the frame's actual pixel size. Preview zoom is unaffected.</value></data>
+  <data name="AnimationEditor_Width" xml:space="preserve"><value>Width</value></data>
+  <data name="AnimationEditor_Height" xml:space="preserve"><value>Height</value></data>
+  <data name="AnimationEditor_LockAspectRatio" xml:space="preserve"><value>Lock aspect ratio</value></data>
+  <data name="AnimationEditor_ApplyResize" xml:space="preserve"><value>Apply resize</value></data>
+  <data name="AnimationEditor_InvalidResizeSize" xml:space="preserve"><value>Width and height must be whole numbers between 1 and 16384 pixels.</value></data>
+  <data name="AnimationEditor_RawFrameProperties" xml:space="preserve"><value>RAW FRAME PROPERTIES</value></data>
+  <data name="AnimationEditor_Property" xml:space="preserve"><value>Property</value></data>
+  <data name="AnimationEditor_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="AnimationEditor_Value" xml:space="preserve"><value>Value</value></data>
+  <data name="AnimationEditor_Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="AnimationEditor_Loading" xml:space="preserve"><value>Loading animation assets…</value></data>
+  <data name="AnimationEditor_AssetsLoaded" xml:space="preserve"><value>{0} asset images available.</value></data>
+  <data name="AnimationEditor_AnimationsLoaded" xml:space="preserve"><value>{0} animation tracks found.</value></data>
+  <data name="AnimationEditor_ImageNotFound" xml:space="preserve"><value>Unable to load {0}.</value></data>
+  <data name="AnimationEditor_NoFrames" xml:space="preserve"><value>This animation has no editable frames.</value></data>
+  <data name="AnimationEditor_LinkedReactorSource" xml:space="preserve"><value>This reactor links to {0}; edits will be saved to the linked source.</value></data>
+  <data name="AnimationEditor_ImageFilter" xml:space="preserve"><value>Images (*.png;*.bmp;*.gif;*.jpg;*.jpeg)|*.png;*.bmp;*.gif;*.jpg;*.jpeg|All files (*.*)|*.*</value></data>
+  <data name="AnimationEditor_ImportTitle" xml:space="preserve"><value>Select frame images</value></data>
+  <data name="AnimationEditor_DeleteLastFrame" xml:space="preserve"><value>An animation must keep at least one frame.</value></data>
+  <data name="AnimationEditor_MissingCanvas" xml:space="preserve"><value>The selected layer has no renderable canvas.</value></data>
+  <data name="AnimationEditor_Exported" xml:space="preserve"><value>Frame exported to {0}.</value></data>
+  <data name="AnimationEditor_Saving" xml:space="preserve"><value>Saving animation…</value></data>
+  <data name="AnimationEditor_Saved" xml:space="preserve"><value>Animation saved.</value></data>
+  <data name="AnimationEditor_SaveError" xml:space="preserve"><value>Unable to save the animation: {0}</value></data>
+  <data name="AnimationEditor_SaveErrorTitle" xml:space="preserve"><value>Animation save error</value></data>
+  <data name="AnimationEditor_Unsaved" xml:space="preserve"><value>Unsaved changes</value></data>
+  <data name="AnimationEditor_AllSaved" xml:space="preserve"><value>All changes saved</value></data>
+  <data name="AnimationEditor_UnsavedPrompt" xml:space="preserve"><value>This animation has unsaved changes. Save them now?</value></data>
+  <data name="AnimationEditor_UnsavedTitle" xml:space="preserve"><value>Unsaved animation changes</value></data>
+  <data name="AnimationEditor_MoveOrigin" xml:space="preserve"><value>Move origin</value></data>
+  <data name="AnimationEditor_MoveFrame" xml:space="preserve"><value>Move frame</value></data>
+  <data name="AnimationEditor_FirstFrame" xml:space="preserve"><value>First frame</value></data>
+  <data name="AnimationEditor_PreviousFrame" xml:space="preserve"><value>Previous frame</value></data>
+  <data name="AnimationEditor_NextFrame" xml:space="preserve"><value>Next frame</value></data>
+  <data name="AnimationEditor_LastFrame" xml:space="preserve"><value>Last frame</value></data>
+  <data name="AnimationEditor_MoveFrameLeft" xml:space="preserve"><value>Move frame left</value></data>
+  <data name="AnimationEditor_MoveFrameRight" xml:space="preserve"><value>Move frame right</value></data>
+  <data name="AnimationEditor_AssetBrowserSplitter" xml:space="preserve"><value>Asset browser splitter</value></data>
+  <data name="AnimationEditor_TimelineSplitter" xml:space="preserve"><value>Timeline splitter</value></data>
+  <data name="AnimationEditor_InspectorSplitter" xml:space="preserve"><value>Inspector splitter</value></data>
+  <data name="AnimationEditor_AssetType" xml:space="preserve"><value>Animation asset type</value></data>
+  <data name="AnimationEditor_AssetSearch" xml:space="preserve"><value>Search animation assets</value></data>
+  <data name="AnimationEditor_AssetList" xml:space="preserve"><value>Animation asset list</value></data>
+  <data name="AnimationEditor_TrackList" xml:space="preserve"><value>Animation track list</value></data>
+  <data name="AnimationEditor_Preview" xml:space="preserve"><value>Animation preview</value></data>
+  <data name="AnimationEditor_TimelineScrubber" xml:space="preserve"><value>Scrub animation timeline</value></data>
+  <data name="AnimationEditor_TimelineFrames" xml:space="preserve"><value>Animation timeline frames</value></data>
+  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>Origin Y</value></data>
+  <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>Frame property table</value></data>
+  <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>Animation property table</value></data>
+  <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG image (*.png)|*.png</value></data>
+  <data name="AnimationEditor_AI" xml:space="preserve"><value>AI</value></data>
+  <data name="AnimationEditor_AIGenerateFrames" xml:space="preserve"><value>AI frame studio</value></data>
+  <data name="AnimationEditor_AIDescription" xml:space="preserve"><value>Generate new frames or edit the selected frame. Results stay detached and undoable until you save the animation.</value></data>
+  <data name="AnimationEditor_AIPrompt" xml:space="preserve"><value>Describe the frame or change</value></data>
+  <data name="AnimationEditor_AISuggestPrompt" xml:space="preserve"><value>Suggest production prompt</value></data>
+  <data name="AnimationEditor_AIFramePlan" xml:space="preserve"><value>Frame plan</value></data>
+  <data name="AnimationEditor_AIOperation" xml:space="preserve"><value>Operation</value></data>
+  <data name="AnimationEditor_AICount" xml:space="preserve"><value>Frame count</value></data>
+  <data name="AnimationEditor_AIAlignment" xml:space="preserve"><value>Origin alignment</value></data>
+  <data name="AnimationEditor_AIQuality" xml:space="preserve"><value>Quality</value></data>
+  <data name="AnimationEditor_AIUseReference" xml:space="preserve"><value>Use the selected frame as an image reference</value></data>
+  <data name="AnimationEditor_AICleanupBackground" xml:space="preserve"><value>Remove edge-connected background after generation</value></data>
+  <data name="AnimationEditor_AITrimTransparent" xml:space="preserve"><value>Trim transparent padding and compensate the origin</value></data>
+  <data name="AnimationEditor_AISettings" xml:space="preserve"><value>AI settings</value></data>
+  <data name="AnimationEditor_AIGenerate" xml:space="preserve"><value>Generate frames</value></data>
+  <data name="AnimationEditor_AICancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="AnimationEditor_AIAddAfter" xml:space="preserve"><value>Add after selected frame</value></data>
+  <data name="AnimationEditor_AIReplaceSelected" xml:space="preserve"><value>Replace selected frame</value></data>
+  <data name="AnimationEditor_AIAutoAlign" xml:space="preserve"><value>Match anchor</value></data>
+  <data name="AnimationEditor_AIPreserveOrigin" xml:space="preserve"><value>Keep origin</value></data>
+  <data name="AnimationEditor_AIBottomCenter" xml:space="preserve"><value>Bottom center</value></data>
+  <data name="AnimationEditor_AIModel" xml:space="preserve"><value>Image model: {0}</value></data>
+  <data name="AnimationEditor_AIEnterPrompt" xml:space="preserve"><value>Enter a prompt before generating.</value></data>
+  <data name="AnimationEditor_AIRequiresFrame" xml:space="preserve"><value>Open an animation track and select an editable frame first.</value></data>
+  <data name="AnimationEditor_AIGenerating" xml:space="preserve"><value>Generating frame {0} of {1}…</value></data>
+  <data name="AnimationEditor_AIComplete" xml:space="preserve"><value>Generated {0} frame(s). Review the timeline, then save when ready.</value></data>
+  <data name="AnimationEditor_AICancelled" xml:space="preserve"><value>Generation cancelled. No partial frames were applied.</value></data>
+  <data name="AnimationEditor_AIError" xml:space="preserve"><value>AI generation failed: {0}</value></data>
+  <data name="AnimationEditor_AISuggesting" xml:space="preserve"><value>Building a production prompt…</value></data>
+  <data name="AnimationEditor_AISuggestionReady" xml:space="preserve"><value>Prompt suggestion ready. Review it before generating.</value></data>
+  <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} ms</value></data>
+  <data name="AnimationEditor_Items" xml:space="preserve"><value>Item animations</value></data>
+  <data name="AnimationEditor_Equipment" xml:space="preserve"><value>Equipment animations</value></data>
+</root>

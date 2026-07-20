@@ -1,17 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
-  <!-- 
-    Microsoft ResX Schema 
-    
+  <!--
+    Microsoft ResX Schema
+
     Version 2.0
-    
-    The primary goals of this format is to allow a simple XML format 
-    that is mostly human readable. The generation and parsing of the 
-    various data types are done through the TypeConverter classes 
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
     associated with the data types.
-    
+
     Example:
-    
+
     ... ado.net/XML headers & schema ...
     <resheader name="resmimetype">text/microsoft-resx</resheader>
     <resheader name="version">2.0</resheader>
@@ -26,36 +26,36 @@
         <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
         <comment>This is a comment</comment>
     </data>
-                
-    There are any number of "resheader" rows that contain simple 
+
+    There are any number of "resheader" rows that contain simple
     name/value pairs.
-    
-    Each data row contains a name, and value. The row also contains a 
-    type or mimetype. Type corresponds to a .NET class that support 
-    text/value conversion through the TypeConverter architecture. 
-    Classes that don't support this are serialized and stored with the 
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
     mimetype set.
-    
-    The mimetype is used for serialized objects, and tells the 
-    ResXResourceReader how to depersist the object. This is currently not 
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
     extensible. For a given mimetype the value must be set accordingly:
-    
-    Note - application/x-microsoft.net.object.binary.base64 is the format 
-    that the ResXResourceWriter will generate, however the reader can 
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
     read any of the formats listed below.
-    
+
     mimetype: application/x-microsoft.net.object.binary.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
             : and then encoded with base64 encoding.
-    
+
     mimetype: application/x-microsoft.net.object.soap.base64
-    value   : The object must be serialized with 
+    value   : The object must be serialized with
             : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
             : and then encoded with base64 encoding.
 
     mimetype: application/x-microsoft.net.object.bytearray.base64
-    value   : The object must be serialized into a byte array 
+    value   : The object must be serialized into a byte array
             : using a System.ComponentModel.TypeConverter
             : and then encoded with base64 encoding.
     -->
@@ -133,4 +133,69 @@
   <data name="Warning" xml:space="preserve">
     <value>Warning</value>
   </data>
+  <data name="QuestEditor_Title" xml:space="preserve"><value>Quest Editor</value></data>
+  <data name="QuestEditor_Subtitle" xml:space="preserve"><value>Browse, configure, and validate quest data across QuestInfo, Say, Check, and Act.</value></data>
+  <data name="QuestEditor_Eyebrow" xml:space="preserve"><value>WZ QUEST DATA</value></data>
+  <data name="QuestEditor_QuestLibrary" xml:space="preserve"><value>QUEST LIBRARY</value></data>
+  <data name="QuestEditor_QuestDetails" xml:space="preserve"><value>QUEST DETAILS</value></data>
+  <data name="QuestEditor_Area" xml:space="preserve"><value>Area</value></data>
+  <data name="QuestEditor_FilterTooltip" xml:space="preserve"><value>Filter quests by ID or name</value></data>
+  <data name="QuestEditor_NewQuest" xml:space="preserve"><value>New quest</value></data>
+  <data name="QuestEditor_Import" xml:space="preserve"><value>Import</value></data>
+  <data name="QuestEditor_Export" xml:space="preserve"><value>Export</value></data>
+  <data name="QuestEditor_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="QuestEditor_SaveChanges" xml:space="preserve"><value>Save changes</value></data>
+  <data name="QuestEditor_Select" xml:space="preserve"><value>Select</value></data>
+  <data name="QuestEditor_Type" xml:space="preserve"><value>Type</value></data>
+  <data name="QuestEditor_Text" xml:space="preserve"><value>Text</value></data>
+  <data name="QuestEditor_Responses" xml:space="preserve"><value>Responses</value></data>
+  <data name="QuestEditor_YesResponses" xml:space="preserve"><value>Yes responses</value></data>
+  <data name="QuestEditor_NoResponses" xml:space="preserve"><value>No responses</value></data>
+  <data name="QuestEditor_AddResponse" xml:space="preserve"><value>Add response</value></data>
+  <data name="QuestEditor_QuestInfoTab" xml:space="preserve"><value>Quest Info (QuestInfo.img)</value></data>
+  <data name="QuestEditor_SayInfoTab" xml:space="preserve"><value>Say Info (SayInfo.img)</value></data>
+  <data name="QuestEditor_CheckConditionsTab" xml:space="preserve"><value>Check Conditions (Check.img)</value></data>
+  <data name="QuestEditor_ActRequirementsTab" xml:space="preserve"><value>Act Requirements (Act.img)</value></data>
+  <data name="QuestEditor_StartConversation" xml:space="preserve"><value>Start quest conversation</value></data>
+  <data name="QuestEditor_EndConversation" xml:space="preserve"><value>End quest conversation</value></data>
+  <data name="QuestEditor_StartCheck" xml:space="preserve"><value>Start quest check (0)</value></data>
+  <data name="QuestEditor_EndCheck" xml:space="preserve"><value>End quest check (1)</value></data>
+  <data name="QuestEditor_StartAction" xml:space="preserve"><value>Start quest action (0)</value></data>
+  <data name="QuestEditor_EndAction" xml:space="preserve"><value>End quest action (1)</value></data>
+  <data name="QuestEditor_Name" xml:space="preserve"><value>Name:</value></data>
+  <data name="QuestEditor_ParentQuest" xml:space="preserve"><value>Parent quest:</value></data>
+  <data name="QuestEditor_QuestAreaCode" xml:space="preserve"><value>Quest area code:</value></data>
+  <data name="QuestEditor_Order" xml:space="preserve"><value>Order:</value></data>
+  <data name="QuestEditor_Blocked" xml:space="preserve"><value>Blocked</value></data>
+  <data name="QuestEditor_AutoStart" xml:space="preserve"><value>Auto start</value></data>
+  <data name="QuestEditor_AutoComplete" xml:space="preserve"><value>Auto complete</value></data>
+  <data name="QuestEditor_AutoAccept" xml:space="preserve"><value>Auto accept</value></data>
+  <data name="QuestEditor_AutoCancel" xml:space="preserve"><value>Auto cancel</value></data>
+  <data name="QuestEditor_Summary" xml:space="preserve"><value>Summary:</value></data>
+  <data name="QuestEditor_DemandSummary" xml:space="preserve"><value>Demand summary:</value></data>
+  <data name="QuestEditor_RewardSummary" xml:space="preserve"><value>Reward summary:</value></data>
+  <data name="QuestEditor_GenerateFromCheck" xml:space="preserve"><value>Generate from 'Check'</value></data>
+  <data name="QuestEditor_GenerateFromAct" xml:space="preserve"><value>Generate from 'Act'</value></data>
+  <data name="QuestEditor_UnsavedPrompt" xml:space="preserve"><value>You have unsaved changes. Save the Quest.wz file before closing?</value></data>
+  <data name="QuestEditor_UnsavedTitle" xml:space="preserve"><value>Unsaved changes</value></data>
+  <data name="QuestEditor_WzImportFilter" xml:space="preserve"><value>WZ files (*.wz)|*.wz|All files (*.*)|*.*</value></data>
+  <data name="QuestEditor_WzExportFilter" xml:space="preserve"><value>WZ files (*.wz)|*.wz</value></data>
+  <data name="QuestEditor_ImportDialogTitle" xml:space="preserve"><value>Select Quest WZ file(s) to import</value></data>
+  <data name="QuestEditor_ImportError" xml:space="preserve"><value>Import error</value></data>
+  <data name="QuestEditor_InvalidImportFormat" xml:space="preserve"><value>Invalid Quest WZ format: QuestInfo.img was not found in {0}.</value></data>
+  <data name="QuestEditor_ImportException" xml:space="preserve"><value>Error importing from {0}: {1}</value></data>
+  <data name="QuestEditor_OverwritePrompt" xml:space="preserve"><value>The following quest IDs already exist:&#xA;{0}&#xA;&#xA;Overwrite them?</value></data>
+  <data name="QuestEditor_OverwriteTitle" xml:space="preserve"><value>Quests already exist</value></data>
+  <data name="QuestEditor_ImportSuccessMessage" xml:space="preserve"><value>Successfully imported {0} quest(s).</value></data>
+  <data name="QuestEditor_ImportSuccessTitle" xml:space="preserve"><value>Import successful</value></data>
+  <data name="QuestEditor_NameTooLong" xml:space="preserve"><value>Quest name is too long.</value></data>
+  <data name="QuestEditor_QuestName" xml:space="preserve"><value>Quest name</value></data>
+  <data name="QuestEditor_QuestId" xml:space="preserve"><value>Quest ID</value></data>
+  <data name="QuestEditor_AddNewQuestPrompt" xml:space="preserve"><value>Add a new quest:</value></data>
+  <data name="QuestEditor_SaveParentError" xml:space="preserve"><value>Unable to resolve one or more parent images while saving quest {0}. Saving was cancelled to prevent corruption.</value></data>
+  <data name="QuestEditor_SaveError" xml:space="preserve"><value>Save error</value></data>
+  <data name="QuestEditor_ExportSuccessMessage" xml:space="preserve"><value>Quest {0} was exported to {1}.</value></data>
+  <data name="QuestEditor_ExportSuccessTitle" xml:space="preserve"><value>Export successful</value></data>
+  <data name="QuestEditor_ExportErrorMessage" xml:space="preserve"><value>Error exporting quest: {0}</value></data>
+  <data name="QuestEditor_ExportErrorTitle" xml:space="preserve"><value>Export error</value></data>
 </root>

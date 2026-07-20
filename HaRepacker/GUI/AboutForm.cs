@@ -1,54 +1,46 @@
-﻿using System;
+using System;
 using System.Diagnostics;
-using System.Windows.Forms;
+using System.Windows;
 
 namespace HaRepacker.GUI
 {
-    public partial class AboutForm : Form
+    public partial class AboutForm : ThemedDialogWindow
     {
         public AboutForm()
         {
             InitializeComponent();
+            ApplyLocalizedText();
         }
 
-        /// <summary>
-        /// Process command key on the form
-        /// </summary>
-        /// <param name="msg"></param>
-        /// <param name="keyData"></param>
-        /// <returns></returns>
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        private string Text(string key, string fallback) => WpfDialogSupport.Text(typeof(AboutForm), key, fallback);
+
+        private void ApplyLocalizedText()
         {
-            // ...
-            if (keyData == (Keys.Escape))
+            Title = Text("$this.Text", "About");
+            productName.Text = Text("label1.Text", "HaRepacker");
+            developerText.Text = Text("label2.Text", "Developed by haha01haha01");
+            creditsText.Text = Text("label3.Text", "Thanks to Snow for MapleLib");
+            copyrightText.Text = Text("label4.Text", "HaRepacker - WZ extractor and repacker\nCopyright (C) 2009-2015 haha01haha01");
+            forkText.Text = Text("label5.Text", "A fork~");
+            repositoryLink.Content = Text("linkLabel1.Text", "https://github.com/lastbattle/Harepacker-resurrected");
+            okButton.Content = Text("button1.Text", "OK");
+        }
+
+        private void button1_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void linkLabel1_LinkClicked(object sender, RoutedEventArgs e)
+        {
+            try
             {
-                Close(); // exit window
-                return true;
+                Process.Start(new ProcessStartInfo(repositoryLink.Content?.ToString() ?? string.Empty)
+                {
+                    UseShellExecute = true
+                });
             }
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        /// <summary>
-        /// Exit button
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button1_Click(object sender, EventArgs e)
-        {
-            Close();
-        }
-
-        /// <summary>
-        /// Hyperlink
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
-            try {
-                Process.Start("explorer", linkLabel1.Text);
-            }
-            catch (Exception ex) {
-                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            catch (Exception ex)
+            {
+                MessageBox.Show(string.Format(UiLocalization.Translate("An error occurred: {0}"), ex.Message),
+                    UiLocalization.Translate("Error"), MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

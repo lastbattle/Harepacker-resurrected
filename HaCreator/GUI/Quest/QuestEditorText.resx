@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="QuestEditor_Title" xml:space="preserve">
+    <value>Quest Editor</value>
+  </data>
+  <data name="QuestEditor_Subtitle" xml:space="preserve">
+    <value>Browse, configure, and validate quest data across QuestInfo, Say, Check, and Act.</value>
+  </data>
+  <data name="QuestEditor_Eyebrow" xml:space="preserve">
+    <value>WZ QUEST DATA</value>
+  </data>
+  <data name="QuestEditor_QuestLibrary" xml:space="preserve">
+    <value>QUEST LIBRARY</value>
+  </data>
+  <data name="QuestEditor_QuestDetails" xml:space="preserve">
+    <value>QUEST DETAILS</value>
+  </data>
+  <data name="QuestEditor_Area" xml:space="preserve">
+    <value>Area</value>
+  </data>
+  <data name="QuestEditor_FilterTooltip" xml:space="preserve">
+    <value>Filter quests by ID or name</value>
+  </data>
+  <data name="QuestEditor_NewQuest" xml:space="preserve">
+    <value>New quest</value>
+  </data>
+  <data name="QuestEditor_Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="QuestEditor_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="QuestEditor_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="QuestEditor_SaveChanges" xml:space="preserve">
+    <value>Save changes</value>
+  </data>
+  <data name="QuestEditor_Select" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="QuestEditor_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="QuestEditor_Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="QuestEditor_Responses" xml:space="preserve">
+    <value>Responses</value>
+  </data>
+  <data name="QuestEditor_YesResponses" xml:space="preserve">
+    <value>Yes responses</value>
+  </data>
+  <data name="QuestEditor_NoResponses" xml:space="preserve">
+    <value>No responses</value>
+  </data>
+  <data name="QuestEditor_AddResponse" xml:space="preserve">
+    <value>Add response</value>
+  </data>
+  <data name="QuestEditor_QuestInfoTab" xml:space="preserve">
+    <value>Quest Info (QuestInfo.img)</value>
+  </data>
+  <data name="QuestEditor_SayInfoTab" xml:space="preserve">
+    <value>Say Info (SayInfo.img)</value>
+  </data>
+  <data name="QuestEditor_CheckConditionsTab" xml:space="preserve">
+    <value>Check Conditions (Check.img)</value>
+  </data>
+  <data name="QuestEditor_ActRequirementsTab" xml:space="preserve">
+    <value>Act Requirements (Act.img)</value>
+  </data>
+  <data name="QuestEditor_StartConversation" xml:space="preserve">
+    <value>Start quest conversation</value>
+  </data>
+  <data name="QuestEditor_EndConversation" xml:space="preserve">
+    <value>End quest conversation</value>
+  </data>
+  <data name="QuestEditor_StartCheck" xml:space="preserve">
+    <value>Start quest check (0)</value>
+  </data>
+  <data name="QuestEditor_EndCheck" xml:space="preserve">
+    <value>End quest check (1)</value>
+  </data>
+  <data name="QuestEditor_StartAction" xml:space="preserve">
+    <value>Start quest action (0)</value>
+  </data>
+  <data name="QuestEditor_EndAction" xml:space="preserve">
+    <value>End quest action (1)</value>
+  </data>
+  <data name="QuestEditor_Name" xml:space="preserve">
+    <value>Name:</value>
+  </data>
+  <data name="QuestEditor_ParentQuest" xml:space="preserve">
+    <value>Parent quest:</value>
+  </data>
+  <data name="QuestEditor_QuestAreaCode" xml:space="preserve">
+    <value>Quest area code:</value>
+  </data>
+  <data name="QuestEditor_Order" xml:space="preserve">
+    <value>Order:</value>
+  </data>
+  <data name="QuestEditor_Blocked" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="QuestEditor_AutoStart" xml:space="preserve">
+    <value>Auto start</value>
+  </data>
+  <data name="QuestEditor_AutoComplete" xml:space="preserve">
+    <value>Auto complete</value>
+  </data>
+  <data name="QuestEditor_AutoAccept" xml:space="preserve">
+    <value>Auto accept</value>
+  </data>
+  <data name="QuestEditor_AutoCancel" xml:space="preserve">
+    <value>Auto cancel</value>
+  </data>
+  <data name="QuestEditor_Summary" xml:space="preserve">
+    <value>Summary:</value>
+  </data>
+  <data name="QuestEditor_DemandSummary" xml:space="preserve">
+    <value>Demand summary:</value>
+  </data>
+  <data name="QuestEditor_RewardSummary" xml:space="preserve">
+    <value>Reward summary:</value>
+  </data>
+  <data name="QuestEditor_GenerateFromCheck" xml:space="preserve">
+    <value>Generate from 'Check'</value>
+  </data>
+  <data name="QuestEditor_GenerateFromAct" xml:space="preserve">
+    <value>Generate from 'Act'</value>
+  </data>
+  <data name="QuestEditor_UnsavedPrompt" xml:space="preserve">
+    <value>You have unsaved changes. Save the Quest.wz file before closing?</value>
+  </data>
+  <data name="QuestEditor_UnsavedTitle" xml:space="preserve">
+    <value>Unsaved changes</value>
+  </data>
+  <data name="QuestEditor_WzImportFilter" xml:space="preserve">
+    <value>WZ files (*.wz)|*.wz|All files (*.*)|*.*</value>
+  </data>
+  <data name="QuestEditor_WzExportFilter" xml:space="preserve">
+    <value>WZ files (*.wz)|*.wz</value>
+  </data>
+  <data name="QuestEditor_ImportDialogTitle" xml:space="preserve">
+    <value>Select Quest WZ file(s) to import</value>
+  </data>
+  <data name="QuestEditor_ImportError" xml:space="preserve">
+    <value>Import error</value>
+  </data>
+  <data name="QuestEditor_InvalidImportFormat" xml:space="preserve">
+    <value>Invalid Quest WZ format: QuestInfo.img was not found in {0}.</value>
+  </data>
+  <data name="QuestEditor_ImportException" xml:space="preserve">
+    <value>Error importing from {0}: {1}</value>
+  </data>
+  <data name="QuestEditor_OverwritePrompt" xml:space="preserve">
+    <value>The following quest IDs already exist:
+{0}
+
+Overwrite them?</value>
+  </data>
+  <data name="QuestEditor_OverwriteTitle" xml:space="preserve">
+    <value>Quests already exist</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessMessage" xml:space="preserve">
+    <value>Successfully imported {0} quest(s).</value>
+  </data>
+  <data name="QuestEditor_ImportSuccessTitle" xml:space="preserve">
+    <value>Import successful</value>
+  </data>
+  <data name="QuestEditor_NameTooLong" xml:space="preserve">
+    <value>Quest name is too long.</value>
+  </data>
+  <data name="QuestEditor_QuestName" xml:space="preserve">
+    <value>Quest name</value>
+  </data>
+  <data name="QuestEditor_QuestId" xml:space="preserve">
+    <value>Quest ID</value>
+  </data>
+  <data name="QuestEditor_AddNewQuestPrompt" xml:space="preserve">
+    <value>Add a new quest:</value>
+  </data>
+  <data name="QuestEditor_SaveParentError" xml:space="preserve">
+    <value>Unable to resolve one or more parent images while saving quest {0}. Saving was cancelled to prevent corruption.</value>
+  </data>
+  <data name="QuestEditor_SaveError" xml:space="preserve">
+    <value>Save error</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessMessage" xml:space="preserve">
+    <value>Quest {0} was exported to {1}.</value>
+  </data>
+  <data name="QuestEditor_ExportSuccessTitle" xml:space="preserve">
+    <value>Export successful</value>
+  </data>
+  <data name="QuestEditor_ExportErrorMessage" xml:space="preserve">
+    <value>Error exporting quest: {0}</value>
+  </data>
+  <data name="QuestEditor_ExportErrorTitle" xml:space="preserve">
+    <value>Export error</value>
+  </data>
+  <data name="QuestEditor_RequiredAmount" xml:space="preserve">
+    <value> required amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredMesoAmount" xml:space="preserve">
+    <value> required meso amount:</value>
+  </data>
+  <data name="QuestEditor_RewardAmount" xml:space="preserve">
+    <value> reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredCharismaAmount" xml:space="preserve">
+    <value>(charisma) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardCharismaAmount" xml:space="preserve">
+    <value>(charisma) reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredCharmAmount" xml:space="preserve">
+    <value>(charm) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardCharmAmount" xml:space="preserve">
+    <value>(charm) reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredCraftAmount" xml:space="preserve">
+    <value>(craft) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardCraftAmount" xml:space="preserve">
+    <value>(craft) reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredInsightAmount" xml:space="preserve">
+    <value>(insight) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardInsightAmount" xml:space="preserve">
+    <value>(insight) reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredSenseAmount" xml:space="preserve">
+    <value>(sense) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardSenseAmount" xml:space="preserve">
+    <value>(sense) reward amount:</value>
+  </data>
+  <data name="QuestEditor_RequiredWillAmount" xml:space="preserve">
+    <value>(will) required amount:</value>
+  </data>
+  <data name="QuestEditor_RewardWillAmount" xml:space="preserve">
+    <value>(will) reward amount:</value>
+  </data>
+  <data name="QuestEditor_AcquireSkillRegardlessLevel" xml:space="preserve">
+    <value>Acquire (if the player should 'have' the skill regardless of skillLevel.)</value>
+  </data>
+  <data name="QuestEditor_AcquireRemoveSkill" xml:space="preserve">
+    <value>Acquire (remove skill)</value>
+  </data>
+  <data name="QuestEditor_ActiveQuestDescription" xml:space="preserve">
+    <value>Active quest description: (1)</value>
+  </data>
+  <data name="QuestEditor_AddEquip" xml:space="preserve">
+    <value>Add equip</value>
+  </data>
+  <data name="QuestEditor_AddInfo" xml:space="preserve">
+    <value>Add info</value>
+  </data>
+  <data name="QuestEditor_AddItem" xml:space="preserve">
+    <value>Add item</value>
+  </data>
+  <data name="QuestEditor_AddJob" xml:space="preserve">
+    <value>Add job</value>
+  </data>
+  <data name="QuestEditor_AddMonster" xml:space="preserve">
+    <value>Add monster</value>
+  </data>
+  <data name="QuestEditor_AddQuest" xml:space="preserve">
+    <value>Add quest</value>
+  </data>
+  <data name="QuestEditor_AddSkill" xml:space="preserve">
+    <value>Add skill</value>
+  </data>
+  <data name="QuestEditor_AddSp" xml:space="preserve">
+    <value>Add SP</value>
+  </data>
+  <data name="QuestEditor_AnimationAction" xml:space="preserve">
+    <value>Animation action:</value>
+  </data>
+  <data name="QuestEditor_AutoCompleteAction" xml:space="preserve">
+    <value>Auto complete action</value>
+  </data>
+  <data name="QuestEditor_AutoPreComplete" xml:space="preserve">
+    <value>Auto pre-complete</value>
+  </data>
+  <data name="QuestEditor_BuffReward" xml:space="preserve">
+    <value>Buff reward:</value>
+  </data>
+  <data name="QuestEditor_Classes" xml:space="preserve">
+    <value>Classes: </value>
+  </data>
+  <data name="QuestEditor_Condition" xml:space="preserve">
+    <value>Condition:</value>
+  </data>
+  <data name="QuestEditor_DailyRepeatable" xml:space="preserve">
+    <value>Day by day (Repeatable everyday quest):</value>
+  </data>
+  <data name="QuestEditor_DisableCompleteTab" xml:space="preserve">
+    <value>Disable at complete tab</value>
+  </data>
+  <data name="QuestEditor_DisablePerformTab" xml:space="preserve">
+    <value>Disable at perform tab</value>
+  </data>
+  <data name="QuestEditor_DisableStartTab" xml:space="preserve">
+    <value>Disable at start tab</value>
+  </data>
+  <data name="QuestEditor_EndDate" xml:space="preserve">
+    <value>End date:</value>
+  </data>
+  <data name="QuestEditor_EndQuestDescription" xml:space="preserve">
+    <value>End quest description: (2)</value>
+  </data>
+  <data name="QuestEditor_EndScript" xml:space="preserve">
+    <value>End script to execute upon ending the quest:</value>
+  </data>
+  <data name="QuestEditor_EndTimeDate" xml:space="preserve">
+    <value>End_t date:</value>
+  </data>
+  <data name="QuestEditor_ExceptBuff" xml:space="preserve">
+    <value>Except Buff:</value>
+  </data>
+  <data name="QuestEditor_Expiry" xml:space="preserve">
+    <value>Expiry:</value>
+  </data>
+  <data name="QuestEditor_Gender" xml:space="preserve">
+    <value>Gender:</value>
+  </data>
+  <data name="QuestEditor_GivenToJobs" xml:space="preserve">
+    <value>Given to jobs:</value>
+  </data>
+  <data name="QuestEditor_InfoLabel" xml:space="preserve">
+    <value>info:</value>
+  </data>
+  <data name="QuestEditor_InfoExString" xml:space="preserve">
+    <value>InfoEx string:</value>
+  </data>
+  <data name="QuestEditor_IntervalMinutes" xml:space="preserve">
+    <value>Interval (minutes):</value>
+  </data>
+  <data name="QuestEditor_RepeatInterval" xml:space="preserve">
+    <value>Interval (repeatable after x minutes):</value>
+  </data>
+  <data name="QuestEditor_IsMarried" xml:space="preserve">
+    <value>Is married 💘:</value>
+  </data>
+  <data name="QuestEditor_NormalAutoStart" xml:space="preserve">
+    <value>Is normal auto start quest:</value>
+  </data>
+  <data name="QuestEditor_IsPremium" xml:space="preserve">
+    <value>Is premium:</value>
+  </data>
+  <data name="QuestEditor_WeeklyRepeat" xml:space="preserve">
+    <value>Is weekly repeat quest:</value>
+  </data>
+  <data name="QuestEditor_JobFlags" xml:space="preserve">
+    <value>Job flags:</value>
+  </data>
+  <data name="QuestEditor_JobId" xml:space="preserve">
+    <value>Job Id:</value>
+  </data>
+  <data name="QuestEditor_JobEx" xml:space="preserve">
+    <value>JobEx: </value>
+  </data>
+  <data name="QuestEditor_LevelMax" xml:space="preserve">
+    <value>Level max:</value>
+  </data>
+  <data name="QuestEditor_LevelMin" xml:space="preserve">
+    <value>Level min:</value>
+  </data>
+  <data name="QuestEditor_MapsToEnter" xml:space="preserve">
+    <value>Maps to enter:</value>
+  </data>
+  <data name="QuestEditor_MapsToShowIn" xml:space="preserve">
+    <value>Maps to show in:</value>
+  </data>
+  <data name="QuestEditor_MasterLevel" xml:space="preserve">
+    <value>Master Level:</value>
+  </data>
+  <data name="QuestEditor_Medal" xml:space="preserve">
+    <value>Medal</value>
+  </data>
+  <data name="QuestEditor_MedalCategory" xml:space="preserve">
+    <value>Medal category:</value>
+  </data>
+  <data name="QuestEditor_MessageNotice" xml:space="preserve">
+    <value>Message notice:</value>
+  </data>
+  <data name="QuestEditor_MiscProperties" xml:space="preserve">
+    <value>Misc properties:</value>
+  </data>
+  <data name="QuestEditor_NextQuest" xml:space="preserve">
+    <value>Next quest:</value>
+  </data>
+  <data name="QuestEditor_NpcId" xml:space="preserve">
+    <value>NPC ID:</value>
+  </data>
+  <data name="QuestEditor_OneShot" xml:space="preserve">
+    <value>One shot</value>
+  </data>
+  <data name="QuestEditor_OnlyMasterLevel" xml:space="preserve">
+    <value>Only Master Level</value>
+  </data>
+  <data name="QuestEditor_PeriodMinutes" xml:space="preserve">
+    <value>Period (minutes):</value>
+  </data>
+  <data name="QuestEditor_PetAutoSpeakingLimit" xml:space="preserve">
+    <value>Pet auto speaking limit:</value>
+  </data>
+  <data name="QuestEditor_PetRecallLimit" xml:space="preserve">
+    <value>Pet recall limit:</value>
+  </data>
+  <data name="QuestEditor_PetSpeed" xml:space="preserve">
+    <value>Pet speed:</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMax" xml:space="preserve">
+    <value>Pet tameness max:</value>
+  </data>
+  <data name="QuestEditor_PetTamenessMin" xml:space="preserve">
+    <value>Pet tameness min:</value>
+  </data>
+  <data name="QuestEditor_PetTameness" xml:space="preserve">
+    <value>Pet tameness:</value>
+  </data>
+  <data name="QuestEditor_Potential" xml:space="preserve">
+    <value>Potential:</value>
+  </data>
+  <data name="QuestEditor_PropType" xml:space="preserve">
+    <value>Prop type:</value>
+  </data>
+  <data name="QuestEditor_Quantity" xml:space="preserve">
+    <value>Quantity:</value>
+  </data>
+  <data name="QuestEditor_QuestIdLabel" xml:space="preserve">
+    <value>Quest Id:</value>
+  </data>
+  <data name="QuestEditor_Rewards" xml:space="preserve">
+    <value>Rewards</value>
+  </data>
+  <data name="QuestEditor_SelectSkill" xml:space="preserve">
+    <value>Select a skill:</value>
+  </data>
+  <data name="QuestEditor_SelectBuff" xml:space="preserve">
+    <value>Select Buff</value>
+  </data>
+  <data name="QuestEditor_SelectClass" xml:space="preserve">
+    <value>Select class</value>
+  </data>
+  <data name="QuestEditor_SelectJobs" xml:space="preserve">
+    <value>Select jobs</value>
+  </data>
+  <data name="QuestEditor_SelectMaps" xml:space="preserve">
+    <value>Select maps</value>
+  </data>
+  <data name="QuestEditor_SelectNpc" xml:space="preserve">
+    <value>Select NPC</value>
+  </data>
+  <data name="QuestEditor_SelectQuest" xml:space="preserve">
+    <value>Select quest</value>
+  </data>
+  <data name="QuestEditor_SelectedMob" xml:space="preserve">
+    <value>Selected Mob</value>
+  </data>
+  <data name="QuestEditor_ShowLayerTag" xml:space="preserve">
+    <value>Show layer tag:</value>
+  </data>
+  <data name="QuestEditor_SkillId" xml:space="preserve">
+    <value>Skill Id:</value>
+  </data>
+  <data name="QuestEditor_SkillLevel" xml:space="preserve">
+    <value>Skill Level:</value>
+  </data>
+  <data name="QuestEditor_SpAmount" xml:space="preserve">
+    <value>SP amount:</value>
+  </data>
+  <data name="QuestEditor_Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="QuestEditor_StartDate" xml:space="preserve">
+    <value>Start date:</value>
+  </data>
+  <data name="QuestEditor_StartQuestDescription" xml:space="preserve">
+    <value>Start quest description: (0)</value>
+  </data>
+  <data name="QuestEditor_StartScript" xml:space="preserve">
+    <value>Start script to execute upon starting the quest:</value>
+  </data>
+  <data name="QuestEditor_StartTimeDate" xml:space="preserve">
+    <value>Start_t date:</value>
+  </data>
+  <data name="QuestEditor_State" xml:space="preserve">
+    <value>State:</value>
+  </data>
+  <data name="QuestEditor_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="QuestEditor_StopEndConversation" xml:space="preserve">
+    <value>'Stop' end quest conversation</value>
+  </data>
+  <data name="QuestEditor_StopStartConversation" xml:space="preserve">
+    <value>'Stop' start quest conversation</value>
+  </data>
+  <data name="QuestEditor_SubJobFlag" xml:space="preserve">
+    <value>Sub job flag:</value>
+  </data>
+  <data name="QuestEditor_TamingMobLevelMin" xml:space="preserve">
+    <value>Taming mob level min:</value>
+  </data>
+  <data name="QuestEditor_PreBigBangUnavailable" xml:space="preserve">
+    <value>This is not available in the pre-bigbang version of MapleStory.</value>
+  </data>
+  <data name="QuestEditor_Value" xml:space="preserve">
+    <value>Value:</value>
+  </data>
+  <data name="QuestEditor_Var" xml:space="preserve">
+    <value>Var: </value>
+  </data>
+  <data name="QuestEditor_ViewMedalItem" xml:space="preserve">
+    <value>View medal Item:</value>
+  </data>
+  <data name="QuestEditor_ConversationHelp" xml:space="preserve">
+    <value>What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation.</value>
+  </data>
+  <data name="QuestEditor_ConditionHelp" xml:space="preserve">
+    <value>What the NPC would say when certain conditions to start, or to end the quest is not met.</value>
+  </data>
+  <data name="QuestEditor_WorldMax" xml:space="preserve">
+    <value>World max:</value>
+  </data>
+  <data name="QuestEditor_WorldMin" xml:space="preserve">
+    <value>World min:</value>
+  </data>
+</root>

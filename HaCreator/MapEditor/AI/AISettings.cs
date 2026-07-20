@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -6,256 +6,195 @@ using Newtonsoft.Json.Linq;
 namespace HaCreator.MapEditor.AI
 {
     /// <summary>
-    /// Settings for AI integration with persistent storage.
-    /// Supports multiple AI providers: OpenRouter and OpenCode.
+    /// Persistent settings for the OpenAI-compatible AI endpoint.
+    /// The OpenRouter URL is only a default preset; custom RPC endpoints use the same settings.
     /// </summary>
     public static class AISettings
     {
-        // OpenRouter defaults
-        private const string DEFAULT_MODEL = "google/gemini-3-flash-preview";
+        private const string DefaultBaseUrl = "https://openrouter.ai/api/v1";
+        private const string DefaultModel = "google/gemini-3-flash-preview";
+        private const string DefaultImageModel = "gpt-image-2";
+        private const AIEndpointProtocol DefaultProtocol = AIEndpointProtocol.ChatCompletions;
 
-        // OpenCode defaults
-        private const string DEFAULT_OPENCODE_HOST = "127.0.0.1";
-        private const int DEFAULT_OPENCODE_PORT = 4096;
-        private const string DEFAULT_OPENCODE_MODEL = "claude-opus-4-5-20251101";//"claude-sonnet-4-5-20250929";
-        private const string DEFAULT_OPENCODE_REASONING_EFFORT = "medium";
-
-        // OpenRouter settings
-        private static string _apiKey = string.Empty;
-        private static string _model = DEFAULT_MODEL;
-
-        // OpenCode settings
-        private static string _openCodeHost = DEFAULT_OPENCODE_HOST;
-        private static int _openCodePort = DEFAULT_OPENCODE_PORT;
-        private static string _openCodeModel = DEFAULT_OPENCODE_MODEL;
-        private static string _openCodeReasoningEffort = DEFAULT_OPENCODE_REASONING_EFFORT;
-        private static bool _openCodeAutoStart = true;
-
-        // Provider selection
-        private static AIProvider _provider = AIProvider.OpenRouter;
-
-        private static bool _loaded = false;
+        private static string apiKey = string.Empty;
+        private static string baseUrl = DefaultBaseUrl;
+        private static string model = DefaultModel;
+        private static string imageModel = DefaultImageModel;
+        private static AIEndpointProtocol protocol = DefaultProtocol;
+        private static string reasoningEffort = string.Empty;
+        private static bool strictSchemas;
+        private static bool autoApplyCommands = true;
+        private static int maxToolTurns = 40;
+        private static int maxOutputTokens = 100000;
+        private static bool loaded;
 
         private static readonly string SettingsFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "HaCreator", "Settings_AI.json");
 
-        #region Provider Selection
-
-        /// <summary>
-        /// Currently selected AI provider
-        /// </summary>
         public static AIProvider Provider
         {
             get
             {
                 EnsureLoaded();
-                return _provider;
+                return AIProvider.OpenAICompatible;
             }
             set
             {
-                _provider = value;
+                // Kept for compatibility with callers written before endpoint presets existed.
+                EnsureLoaded();
                 Save();
             }
         }
 
-        /// <summary>
-        /// Check if the current provider is properly configured
-        /// </summary>
         public static bool IsConfigured
         {
             get
             {
                 EnsureLoaded();
-                switch (_provider)
-                {
-                    case AIProvider.OpenCode:
-                        // OpenCode doesn't require an API key (uses OAuth)
-                        return !string.IsNullOrWhiteSpace(_openCodeHost) && _openCodePort > 0;
-                    case AIProvider.OpenRouter:
-                    default:
-                        return !string.IsNullOrWhiteSpace(_apiKey);
-                }
+                return !string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(model);
             }
         }
 
-        #endregion
-
-        #region OpenRouter Settings
-
-        /// <summary>
-        /// OpenRouter API key
-        /// </summary>
         public static string ApiKey
         {
-            get
-            {
-                EnsureLoaded();
-                return _apiKey;
-            }
-            set
-            {
-                _apiKey = value ?? string.Empty;
-                Save();
-            }
+            get { EnsureLoaded(); return apiKey; }
+            set { apiKey = value ?? string.Empty; Save(); }
         }
 
-        /// <summary>
-        /// OpenRouter model identifier
-        /// </summary>
+        public static string BaseUrl
+        {
+            get { EnsureLoaded(); return baseUrl; }
+            set { baseUrl = string.IsNullOrWhiteSpace(value) ? DefaultBaseUrl : value.Trim(); Save(); }
+        }
+
         public static string Model
         {
-            get
-            {
-                EnsureLoaded();
-                return _model;
-            }
+            get { EnsureLoaded(); return model; }
+            set { model = string.IsNullOrWhiteSpace(value) ? DefaultModel : value.Trim(); Save(); }
+        }
+
+        /// <summary>
+        /// Model used by OpenAI-compatible image generation and edit endpoints.
+        /// This is intentionally independent from the text/tool model.
+        /// </summary>
+        public static string ImageModel
+        {
+            get { EnsureLoaded(); return imageModel; }
+            set { imageModel = string.IsNullOrWhiteSpace(value) ? DefaultImageModel : value.Trim(); Save(); }
+        }
+
+        public static AIEndpointProtocol Protocol
+        {
+            get { EnsureLoaded(); return protocol; }
+            set { protocol = value; Save(); }
+        }
+
+        public static string ReasoningEffort
+        {
+            get { EnsureLoaded(); return reasoningEffort; }
             set
             {
-                _model = value ?? DEFAULT_MODEL;
+                var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+                reasoningEffort = AvailableReasoningEfforts.Contains(normalized) ? normalized : string.Empty;
                 Save();
             }
         }
 
-        /// <summary>
-        /// Available models on OpenRouter that support function calling
-        /// </summary>
-        public static readonly string[] AvailableModels = new[]
+        public static bool StrictSchemas
         {
-            DEFAULT_MODEL,
+            get { EnsureLoaded(); return strictSchemas; }
+            set { strictSchemas = value; Save(); }
+        }
+
+        /// <summary>
+        /// Apply valid commands returned by an AI turn immediately after the response.
+        /// This is enabled by default so a prompt can create or edit a map autonomously.
+        /// </summary>
+        public static bool AutoApplyCommands
+        {
+            get { EnsureLoaded(); return autoApplyCommands; }
+            set { autoApplyCommands = value; Save(); }
+        }
+
+        public static int MaxToolTurns
+        {
+            get { EnsureLoaded(); return maxToolTurns; }
+            set { maxToolTurns = Math.Max(1, Math.Min(200, value)); Save(); }
+        }
+
+        public static int MaxOutputTokens
+        {
+            get { EnsureLoaded(); return maxOutputTokens; }
+            set { maxOutputTokens = Math.Max(256, Math.Min(1000000, value)); Save(); }
+        }
+
+        public static readonly string[] AvailableModels =
+        {
+            DefaultModel,
             "google/gemini-3.1-flash-lite-preview",
             "google/gemini-3.1-pro-preview",
-            "google/gemini-3-pro-preview",
-            "openai/gpt-5.3-codex",
             "openai/gpt-5.4",
+            "openai/gpt-5.3-codex",
             "anthropic/claude-sonnet-4.5",
             "anthropic/claude-opus-4.5"
         };
 
-        #endregion
-
-        #region OpenCode Settings
-
-        /// <summary>
-        /// OpenCode server hostname
-        /// </summary>
-        public static string OpenCodeHost
+        public static readonly string[] AvailableImageModels =
         {
-            get
-            {
-                EnsureLoaded();
-                return _openCodeHost;
-            }
-            set
-            {
-                _openCodeHost = string.IsNullOrWhiteSpace(value) ? DEFAULT_OPENCODE_HOST : value;
-                Save();
-            }
-        }
-
-        /// <summary>
-        /// OpenCode server port
-        /// </summary>
-        public static int OpenCodePort
-        {
-            get
-            {
-                EnsureLoaded();
-                return _openCodePort;
-            }
-            set
-            {
-                _openCodePort = value > 0 ? value : DEFAULT_OPENCODE_PORT;
-                Save();
-            }
-        }
-
-        /// <summary>
-        /// OpenCode model identifier (e.g., "anthropic/claude-sonnet-4-20250514")
-        /// </summary>
-        public static string OpenCodeModel
-        {
-            get
-            {
-                EnsureLoaded();
-                return _openCodeModel;
-            }
-            set
-            {
-                _openCodeModel = string.IsNullOrWhiteSpace(value) ? DEFAULT_OPENCODE_MODEL : value;
-                Save();
-            }
-        }
-
-        /// <summary>
-        /// Available models for OpenCode (Claude models via OAuth)
-        /// </summary>
-        public static readonly string[] AvailableOpenCodeModels = new[]
-        {
-            DEFAULT_OPENCODE_MODEL,
-            "claude-opus-4-5-20251101",
-            "openai/gpt-5.4",
-            "openai/gpt-5.3-codex",
-            "openai/gpt-5.2"
+            DefaultImageModel,
+            "gpt-image-1.5"
         };
 
-        /// <summary>
-        /// Available reasoning effort levels for OpenCode reasoning-capable models.
-        /// </summary>
-        public static readonly string[] AvailableOpenCodeReasoningEfforts = new[]
+        public static readonly string[] AvailableReasoningEfforts =
         {
-            "low",
-            "medium",
-            "high",
-            "xhigh"
+            "low", "medium", "high", "xhigh"
         };
 
-        /// <summary>
-        /// OpenCode reasoning effort level (low/medium/high/xhigh).
-        /// </summary>
-        public static string OpenCodeReasoningEffort
+        public static OpenAICompatibleOptions CreateOptions()
         {
-            get
+            EnsureLoaded();
+            return new OpenAICompatibleOptions
             {
-                EnsureLoaded();
-                return _openCodeReasoningEffort;
-            }
-            set
-            {
-                var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-                _openCodeReasoningEffort = AvailableOpenCodeReasoningEfforts.Contains(normalized)
-                    ? normalized
-                    : DEFAULT_OPENCODE_REASONING_EFFORT;
-                Save();
-            }
+                BaseUrl = baseUrl,
+                ApiKey = apiKey,
+                Model = model,
+                Protocol = protocol,
+                ReasoningEffort = reasoningEffort,
+                StrictSchemas = strictSchemas,
+                MaxToolTurns = maxToolTurns,
+                MaxOutputTokens = maxOutputTokens
+            };
         }
 
-        /// <summary>
-        /// Whether to automatically start the OpenCode server if not running.
-        /// When enabled, the client will launch 'opencode serve' automatically.
-        /// </summary>
-        public static bool OpenCodeAutoStart
+        public static string GetProviderDisplayName()
         {
-            get
-            {
-                EnsureLoaded();
-                return _openCodeAutoStart;
-            }
-            set
-            {
-                _openCodeAutoStart = value;
-                Save();
-            }
+            return "OpenAI-compatible API";
         }
 
-        #endregion
+        public static string GetProviderDisplayName(AIProvider provider)
+        {
+            return GetProviderDisplayName();
+        }
 
-        #region Load/Save
+        public static string GetActiveModel()
+        {
+            return Model;
+        }
+
+        public static string GetStatusDescription()
+        {
+            EnsureLoaded();
+            return string.IsNullOrWhiteSpace(apiKey)
+                ? $"{protocol} ({model}, key not set)"
+                : $"{protocol} ({model}) @ {baseUrl}";
+        }
 
         private static void EnsureLoaded()
         {
-            if (_loaded) return;
-            _loaded = true;
+            if (loaded)
+                return;
+            loaded = true;
             Load();
         }
 
@@ -263,38 +202,32 @@ namespace HaCreator.MapEditor.AI
         {
             try
             {
-                if (File.Exists(SettingsFilePath))
-                {
-                    var json = File.ReadAllText(SettingsFilePath);
-                    var settings = JObject.Parse(json);
+                if (!File.Exists(SettingsFilePath))
+                    return;
 
-                    // Load provider selection
-                    var providerStr = settings["provider"]?.ToString();
-                    if (Enum.TryParse<AIProvider>(providerStr, out var provider))
-                    {
-                        _provider = provider;
-                    }
+                var settings = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                apiKey = settings["apiKey"]?.ToString() ?? string.Empty;
+                baseUrl = settings["baseUrl"]?.ToString() ?? DefaultBaseUrl;
+                model = settings["model"]?.ToString() ?? DefaultModel;
+                imageModel = settings["imageModel"]?.ToString() ?? DefaultImageModel;
 
-                    // Load OpenRouter settings
-                    _apiKey = settings["apiKey"]?.ToString() ?? string.Empty;
-                    _model = settings["model"]?.ToString() ?? DEFAULT_MODEL;
+                // Older files only stored OpenRouter settings. Preserve those values while
+                // moving them to the provider-neutral endpoint model.
+                if (settings["openRouterApiUrl"] != null && settings["baseUrl"] == null)
+                    baseUrl = settings["openRouterApiUrl"].ToString();
 
-                    // Load OpenCode settings
-                    _openCodeHost = settings["openCodeHost"]?.ToString() ?? DEFAULT_OPENCODE_HOST;
-                    _openCodePort = settings["openCodePort"]?.Value<int>() ?? DEFAULT_OPENCODE_PORT;
-                    _openCodeModel = settings["openCodeModel"]?.ToString() ?? DEFAULT_OPENCODE_MODEL;
-                    _openCodeReasoningEffort = settings["openCodeReasoningEffort"]?.ToString() ?? DEFAULT_OPENCODE_REASONING_EFFORT;
-                    if (!AvailableOpenCodeReasoningEfforts.Contains(_openCodeReasoningEffort))
-                    {
-                        _openCodeReasoningEffort = DEFAULT_OPENCODE_REASONING_EFFORT;
-                    }
-                    _openCodeAutoStart = settings["openCodeAutoStart"]?.Value<bool>() ?? true;
-                }
+                if (Enum.TryParse(settings["protocol"]?.ToString(), true, out AIEndpointProtocol parsedProtocol))
+                    protocol = parsedProtocol;
+
+                reasoningEffort = settings["reasoningEffort"]?.ToString() ?? string.Empty;
+                strictSchemas = settings["strictSchemas"]?.Value<bool>() ?? false;
+                autoApplyCommands = settings["autoApplyCommands"]?.Value<bool>() ?? true;
+                maxToolTurns = Clamp(settings["maxToolTurns"]?.Value<int>() ?? 40, 1, 200);
+                maxOutputTokens = Clamp(settings["maxOutputTokens"]?.Value<int>() ?? 100000, 256, 1000000);
             }
             catch (Exception ex)
             {
-                // Log load errors, use defaults
-                System.Diagnostics.Debug.WriteLine($"[AISettings] Failed to load settings: {ex.GetType().Name}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[AISettings] Failed to load settings: {ex.Message}");
             }
         }
 
@@ -302,98 +235,34 @@ namespace HaCreator.MapEditor.AI
         {
             try
             {
-                var dir = Path.GetDirectoryName(SettingsFilePath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
+                var directory = Path.GetDirectoryName(SettingsFilePath);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
 
                 var settings = new JObject
                 {
-                    // Provider selection
-                    ["provider"] = _provider.ToString(),
-
-                    // OpenRouter settings
-                    ["apiKey"] = _apiKey,
-                    ["model"] = _model,
-
-                    // OpenCode settings
-                    ["openCodeHost"] = _openCodeHost,
-                    ["openCodePort"] = _openCodePort,
-                    ["openCodeModel"] = _openCodeModel,
-                    ["openCodeReasoningEffort"] = _openCodeReasoningEffort,
-                    ["openCodeAutoStart"] = _openCodeAutoStart
+                    ["baseUrl"] = baseUrl,
+                    ["apiKey"] = apiKey,
+                    ["model"] = model,
+                    ["imageModel"] = imageModel,
+                    ["protocol"] = protocol.ToString(),
+                    ["reasoningEffort"] = reasoningEffort,
+                    ["strictSchemas"] = strictSchemas,
+                    ["autoApplyCommands"] = autoApplyCommands,
+                    ["maxToolTurns"] = maxToolTurns,
+                    ["maxOutputTokens"] = maxOutputTokens
                 };
-
                 File.WriteAllText(SettingsFilePath, settings.ToString(Newtonsoft.Json.Formatting.Indented));
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore save errors
+                System.Diagnostics.Debug.WriteLine($"[AISettings] Failed to save settings: {ex.Message}");
             }
         }
 
-        #endregion
-
-        #region Helper Methods
-
-        /// <summary>
-        /// Get the display name for the current provider
-        /// </summary>
-        public static string GetProviderDisplayName()
+        private static int Clamp(int value, int minimum, int maximum)
         {
-            return GetProviderDisplayName(_provider);
+            return Math.Max(minimum, Math.Min(maximum, value));
         }
-
-        /// <summary>
-        /// Get the display name for a provider
-        /// </summary>
-        public static string GetProviderDisplayName(AIProvider provider)
-        {
-            switch (provider)
-            {
-                case AIProvider.OpenCode:
-                    return "OpenCode (Local)";
-                case AIProvider.OpenRouter:
-                default:
-                    return "OpenRouter";
-            }
-        }
-
-        /// <summary>
-        /// Get the currently configured model for the active provider
-        /// </summary>
-        public static string GetActiveModel()
-        {
-            EnsureLoaded();
-            switch (_provider)
-            {
-                case AIProvider.OpenCode:
-                    return _openCodeModel;
-                case AIProvider.OpenRouter:
-                default:
-                    return _model;
-            }
-        }
-
-        /// <summary>
-        /// Get a status description for the current configuration
-        /// </summary>
-        public static string GetStatusDescription()
-        {
-            EnsureLoaded();
-            switch (_provider)
-            {
-                case AIProvider.OpenCode:
-                    return $"OpenCode @ {_openCodeHost}:{_openCodePort}";
-                case AIProvider.OpenRouter:
-                default:
-                    return string.IsNullOrWhiteSpace(_apiKey)
-                        ? "OpenRouter (not configured)"
-                        : $"OpenRouter ({_model})";
-            }
-        }
-
-        #endregion
     }
 }

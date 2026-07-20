@@ -96,6 +96,7 @@ namespace HaCreator.MapEditor
         }
 
         private System.Windows.WindowState CurrentHostWindowState = System.Windows.WindowState.Normal;
+        private volatile bool isHostWindowActive = true;
         private System.Drawing.Size _CurrentDXWindowSize = new System.Drawing.Size();
         public System.Drawing.Size CurrentDXWindowSize
         {
@@ -116,6 +117,11 @@ namespace HaCreator.MapEditor
         public void UpdateWindowState(System.Windows.WindowState CurrentHostWindowState)
         {
             this.CurrentHostWindowState = CurrentHostWindowState;
+        }
+
+        public void UpdateWindowActivation(bool isActive)
+        {
+            isHostWindowActive = isActive;
         }
 
         public void UpdateWindowSize(System.Windows.Size CurrentWindowSize)
@@ -162,7 +168,9 @@ namespace HaCreator.MapEditor
 
             while (!Program.AbortThreads)
             {
-                if (DeviceReady && CurrentHostWindowState != System.Windows.WindowState.Minimized)
+                if (DeviceReady
+                    && isHostWindowActive
+                    && CurrentHostWindowState != System.Windows.WindowState.Minimized)
                 {
                     RenderFrame();
 #if FPS_TEST
@@ -240,7 +248,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                MessageBox.Show(string.Format("Graphics adapter is not supported: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Format("GraphicsAdapterUnsupported", e.Message, e.StackTrace));
                 Environment.Exit(0);
                 // This code will never be reached, but VS still requires this path to end
                 throw;
@@ -312,6 +320,11 @@ namespace HaCreator.MapEditor
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
+            DrawLine(sprite, start, width, rotation, color);
+        }
+
+        public void DrawLine(SpriteBatch sprite, Vector2 start, int width, float rotation, Color color)
+        {
             sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
         }
 
@@ -784,7 +797,7 @@ namespace HaCreator.MapEditor
         {
             if (SelectedBoard.SelectedLayerIndex == -1)
             {
-                MessageBox.Show("Select a real layer", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show(HaCreator.GUI.Localization.MapEditorText.Get("SelectRealLayer"), HaCreator.GUI.Localization.MapEditorText.Get("ErrorTitle"), System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
             return true;
@@ -984,11 +997,11 @@ namespace HaCreator.MapEditor
         public delegate void ImageDroppedDelegate(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Point pos);
         public event ImageDroppedDelegate ImageDropped;
 
-        public event HaCreator.GUI.HaRibbon.EmptyEvent ExportRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent LoadRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent CloseTabRequested;
+        public event Action ExportRequested;
+        public event Action LoadRequested;
+        public event Action CloseTabRequested;
         public event EventHandler<bool> SwitchTabRequested;
-        public event HaCreator.GUI.HaRibbon.EmptyEvent BackupCheck;
+        public event Action BackupCheck;
 
         /// <summary>
         /// Mouse click
@@ -1270,6 +1283,12 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
+                bool centerInitialView = selectedBoard != null
+                    && selectedBoard.InitialViewPending
+                    && _CurrentDXWindowSize.Width > 0
+                    && _CurrentDXWindowSize.Height > 0
+                    && (MapSize.X > 0 || MapSize.Y > 0);
+
                 // Get zoom factor - when zoomed out, viewport covers more virtual space
                 float zoom = selectedBoard?.Zoom ?? 1.0f;
                 float viewportWidth = _CurrentDXWindowSize.Width / zoom;
@@ -1317,6 +1336,13 @@ namespace HaCreator.MapEditor
                     vScrollBar.IsEnabled = false;
                     vScrollBar.Value = 0;
                     vScrollBar.Maximum = 0;
+                }
+
+                if (centerInitialView)
+                {
+                    selectedBoard.hScroll = (int)Math.Round(hScrollBar.Maximum / 2.0);
+                    selectedBoard.vScroll = (int)vScrollBar.Maximum;
+                    selectedBoard.MarkInitialViewInitialized();
                 }
             }
         }

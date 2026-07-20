@@ -1,4 +1,5 @@
 using HaCreator.MapEditor;
+using HaCreator.GUI.Localization;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.Img;
@@ -155,8 +156,8 @@ namespace HaCreator.GUI
 
                 if (ShouldConfirmImmediateStringMapSave() &&
                     MessageBox.Show(
-                        "Saving is immediate for the current data source.\r\n\r\nYes: write String/Map.img now.\r\nNo: keep it modified in memory and save it manually later.",
-                        "Resolve Missing Maps",
+                        DialogTextExtension.Get("Dialog_ImmediateStringMapSavePrompt"),
+                        DialogTextExtension.Get("Dialog_ResolveMissingMaps"),
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Question) == DialogResult.Yes)
                 {
@@ -215,49 +216,19 @@ namespace HaCreator.GUI
             string categoryName;
             MapInfo info;
 
-            if (selectedItem.StartsWith("MapLogin"))
+            if (selectedItem.StartsWith("MapLogin", StringComparison.Ordinal) ||
+                selectedItem == "CashShopPreview" ||
+                selectedItem == "ITCPreview")
             {
-                List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                foreach (WzDirectory uiWzDir in uiWzDirs)
-                {
-                    mapImage = (WzImage)uiWzDir?[selectedItem + ".img"];
-                    if (mapImage != null)
-                    {
-                        break;
-                    }
-                }
+                mapImage = Program.FindImage("UI", selectedItem + ".img");
 
                 mapName = streetName = categoryName = selectedItem;
-                info = new MapInfo(mapImage, mapName, streetName, categoryName);
-            }
-            else if (selectedItem == "CashShopPreview")
-            {
-                List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                foreach (WzDirectory uiWzDir in uiWzDirs)
+                if (mapImage == null)
                 {
-                    mapImage = (WzImage)uiWzDir?["CashShopPreview.img"];
-                    if (mapImage != null)
-                    {
-                        break;
-                    }
+                    errorMessage = "Failed to load map image.";
+                    return false;
                 }
 
-                mapName = streetName = categoryName = "CashShopPreview";
-                info = new MapInfo(mapImage, mapName, streetName, categoryName);
-            }
-            else if (selectedItem == "ITCPreview")
-            {
-                List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                foreach (WzDirectory uiWzDir in uiWzDirs)
-                {
-                    mapImage = (WzImage)uiWzDir?["ITCPreview.img"];
-                    if (mapImage != null)
-                    {
-                        break;
-                    }
-                }
-
-                mapName = streetName = categoryName = "ITCPreview";
                 info = new MapInfo(mapImage, mapName, streetName, categoryName);
             }
             else

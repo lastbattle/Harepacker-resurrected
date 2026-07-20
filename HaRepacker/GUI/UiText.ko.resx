@@ -1,0 +1,1399 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="-" xml:space="preserve">
+    <value>-</value>
+  </data>
+  <data name="&amp;#xE711;" xml:space="preserve">
+    <value>&amp;#xE711;</value>
+  </data>
+  <data name="&amp;#xE71D;" xml:space="preserve">
+    <value>&amp;#xE71D;</value>
+  </data>
+  <data name="&amp;#xE721;" xml:space="preserve">
+    <value>&amp;#xE721;</value>
+  </data>
+  <data name="*" xml:space="preserve">
+    <value>*</value>
+  </data>
+  <data name="," xml:space="preserve">
+    <value>,</value>
+  </data>
+  <data name="..." xml:space="preserve">
+    <value>...</value>
+  </data>
+  <data name=".wz" xml:space="preserve">
+    <value>.wz</value>
+  </data>
+  <data name="_Add" xml:space="preserve">
+    <value>_추가</value>
+  </data>
+  <data name="_Copy" xml:space="preserve">
+    <value>_복사</value>
+  </data>
+  <data name="_Edit" xml:space="preserve">
+    <value>_편집</value>
+  </data>
+  <data name="_File" xml:space="preserve">
+    <value>_파일</value>
+  </data>
+  <data name="_Help" xml:space="preserve">
+    <value>_도움말</value>
+  </data>
+  <data name="_New" xml:space="preserve">
+    <value>_새로 만들기</value>
+  </data>
+  <data name="_Open…" xml:space="preserve">
+    <value>_열기…</value>
+  </data>
+  <data name="_Paste" xml:space="preserve">
+    <value>_붙여넣기</value>
+  </data>
+  <data name="_Redo" xml:space="preserve">
+    <value>_다시 실행</value>
+  </data>
+  <data name="_Remove" xml:space="preserve">
+    <value>_제거</value>
+  </data>
+  <data name="_Save" xml:space="preserve">
+    <value>_저장</value>
+  </data>
+  <data name="_Tools" xml:space="preserve">
+    <value>_도구</value>
+  </data>
+  <data name="_Undo" xml:space="preserve">
+    <value>_실행 취소</value>
+  </data>
+  <data name="{0} files (*.{0})|*.{0}|All files (*.*)|*.*" xml:space="preserve">
+    <value>{0} files (*.{0})|*.{0}|모두 files (*.*)|*.*</value>
+  </data>
+  <data name="0" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="0xFF" xml:space="preserve">
+    <value>0xFF</value>
+  </data>
+  <data name="1" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="1.0" xml:space="preserve">
+    <value>1.0</value>
+  </data>
+  <data name="A fork~ " xml:space="preserve">
+    <value>A fork~ </value>
+  </data>
+  <data name="Abort" xml:space="preserve">
+    <value>중단</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="About HaRepacker" xml:space="preserve">
+    <value>정보 HaRepacker</value>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="Add new tab (Ctl + T)" xml:space="preserve">
+    <value>새 탭 추가 (Ctl + T)</value>
+  </data>
+  <data name="AES Keys (MapleShark):" xml:space="preserve">
+    <value>AES 키 (MapleShark):</value>
+  </data>
+  <data name="AES Keys (Odin):" xml:space="preserve">
+    <value>AES 키 (Odin):</value>
+  </data>
+  <data name="All WZ files|*.wz" xml:space="preserve">
+    <value>모든 WZ 파일|*.wz</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>적용</value>
+  </data>
+  <data name="Are you sure you want to close this file?" xml:space="preserve">
+    <value>이 파일을 닫으시겠습니까?</value>
+  </data>
+  <data name="Auto-load related Wz (Map.wz, Map001.wz, Map002.wz)" xml:space="preserve">
+    <value>관련 WZ 자동 불러오기(Map.wz, Map001.wz, Map002.wz)</value>
+  </data>
+  <data name="Automatically associate WZ files with HaRepacker" xml:space="preserve">
+    <value>자동 연결 WZ files with HaRepacker</value>
+  </data>
+  <data name="Binary (mp3, bin)" xml:space="preserve">
+    <value>바이너리 (mp3, bin)</value>
+  </data>
+  <data name="Browse..." xml:space="preserve">
+    <value>찾아보기...</value>
+  </data>
+  <data name="Browse…" xml:space="preserve">
+    <value>찾아보기…</value>
+  </data>
+  <data name="Brute-force WZ key" xml:space="preserve">
+    <value>WZ 키 무차별 대입</value>
+  </data>
+  <data name="Brute-forcing..." xml:space="preserve">
+    <value>무차별 대입 중…</value>
+  </data>
+  <data name="BSON" xml:space="preserve">
+    <value>BSON</value>
+  </data>
+  <data name="Byte or Float" xml:space="preserve">
+    <value>Byte or 부동소수점</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="Cancel operation" xml:space="preserve">
+    <value>취소 작업</value>
+  </data>
+  <data name="Canvas / Image" xml:space="preserve">
+    <value>캔버스 / 이미지</value>
+  </data>
+  <data name="Canvas property" xml:space="preserve">
+    <value>캔버스 속성</value>
+  </data>
+  <data name="CASH" xml:space="preserve">
+    <value>CASH</value>
+  </data>
+  <data name="Categories to pack:" xml:space="preserve">
+    <value>패킹할 범주:</value>
+  </data>
+  <data name="Change Image" xml:space="preserve">
+    <value>이미지 변경</value>
+  </data>
+  <data name="Change Sound" xml:space="preserve">
+    <value>사운드 변경</value>
+  </data>
+  <data name="Choose the archive type and encoding options." xml:space="preserve">
+    <value>아카이브 유형과 인코딩 옵션을 선택하세요.</value>
+  </data>
+  <data name="Choose the MapleStory encryption version for this import." xml:space="preserve">
+    <value>이 가져오기에 사용할 MapleStory 암호화 버전을 선택하세요.</value>
+  </data>
+  <data name="Choose the output format and WZ encoding options." xml:space="preserve">
+    <value>출력 형식과 WZ 인코딩 옵션을 선택하세요.</value>
+  </data>
+  <data name="Choose the startup integration you want to enable." xml:space="preserve">
+    <value>사용할 시작 통합을 선택하세요.</value>
+  </data>
+  <data name="Classic" xml:space="preserve">
+    <value>클래식</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Collapse all" xml:space="preserve">
+    <value>접기 모두</value>
+  </data>
+  <data name="Configure archive loading, export formatting, and application behavior." xml:space="preserve">
+    <value>아카이브 로드, 내보내기 형식 및 애플리케이션 동작을 설정합니다.</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Convex" xml:space="preserve">
+    <value>볼록</value>
+  </data>
+  <data name="Convex property" xml:space="preserve">
+    <value>Convex 속성</value>
+  </data>
+  <data name="Copy (Ctrl+C)" xml:space="preserve">
+    <value>복사 (Ctrl+C)</value>
+  </data>
+  <data name="Copyright" xml:space="preserve">
+    <value>저작권</value>
+  </data>
+  <data name="Create WZ content" xml:space="preserve">
+    <value>만들기 WZ 콘텐츠</value>
+  </data>
+  <data name="Ctrl+C" xml:space="preserve">
+    <value>Ctrl+C</value>
+  </data>
+  <data name="Ctrl+I" xml:space="preserve">
+    <value>Ctrl+I</value>
+  </data>
+  <data name="Ctrl+N" xml:space="preserve">
+    <value>Ctrl+N</value>
+  </data>
+  <data name="Ctrl+O" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="Ctrl+S" xml:space="preserve">
+    <value>Ctrl+S</value>
+  </data>
+  <data name="Ctrl+V" xml:space="preserve">
+    <value>Ctrl+V</value>
+  </data>
+  <data name="Current force value:" xml:space="preserve">
+    <value>현재 힘 값:</value>
+  </data>
+  <data name="Current next value:" xml:space="preserve">
+    <value>현재 다음 값:</value>
+  </data>
+  <data name="Current prev value:" xml:space="preserve">
+    <value>현재 prev 값:</value>
+  </data>
+  <data name="DEBUG MODE" xml:space="preserve">
+    <value>DEBUG MODE</value>
+  </data>
+  <data name="Default filepath" xml:space="preserve">
+    <value>기본 파일 경로</value>
+  </data>
+  <data name="Default filepath:" xml:space="preserve">
+    <value>기본 파일 경로:</value>
+  </data>
+  <data name="Default force value" xml:space="preserve">
+    <value>기본 힘 값</value>
+  </data>
+  <data name="Default force value:" xml:space="preserve">
+    <value>기본 힘 값:</value>
+  </data>
+  <data name="Default next value" xml:space="preserve">
+    <value>기본 다음 값</value>
+  </data>
+  <data name="Default next value:" xml:space="preserve">
+    <value>기본 다음 값:</value>
+  </data>
+  <data name="Default portal type" xml:space="preserve">
+    <value>기본 포털 유형</value>
+  </data>
+  <data name="Default prev value" xml:space="preserve">
+    <value>기본 prev 값</value>
+  </data>
+  <data name="Default prev value:" xml:space="preserve">
+    <value>기본 prev 값:</value>
+  </data>
+  <data name="Default render size" xml:space="preserve">
+    <value>기본 렌더링 크기</value>
+  </data>
+  <data name="Default render size:" xml:space="preserve">
+    <value>기본 렌더링 크기:</value>
+  </data>
+  <data name="Default type:" xml:space="preserve">
+    <value>기본 유형:</value>
+  </data>
+  <data name="Default X coord:" xml:space="preserve">
+    <value>기본 X coord:</value>
+  </data>
+  <data name="Default X coordinate" xml:space="preserve">
+    <value>기본 X 좌표</value>
+  </data>
+  <data name="Default XML Folder:" xml:space="preserve">
+    <value>기본 XML 폴더:</value>
+  </data>
+  <data name="Default Y coord:" xml:space="preserve">
+    <value>기본 Y coord:</value>
+  </data>
+  <data name="Default Y coordinate" xml:space="preserve">
+    <value>기본 Y 좌표</value>
+  </data>
+  <data name="Destination" xml:space="preserve">
+    <value>대상</value>
+  </data>
+  <data name="Destination:" xml:space="preserve">
+    <value>대상:</value>
+  </data>
+  <data name="Developed by haha01haha01" xml:space="preserve">
+    <value>개발자 haha01haha01</value>
+  </data>
+  <data name="Directory" xml:space="preserve">
+    <value>디렉터리</value>
+  </data>
+  <data name="Double" xml:space="preserve">
+    <value>배정밀도</value>
+  </data>
+  <data name="Double property" xml:space="preserve">
+    <value>배정밀도 속성</value>
+  </data>
+  <data name="Duration:" xml:space="preserve">
+    <value>지속 시간:</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>편집</value>
+  </data>
+  <data name="Edit foothold" xml:space="preserve">
+    <value>편집 발판</value>
+  </data>
+  <data name="Edit one encrypted list entry per line." xml:space="preserve">
+    <value>편집 한 줄에 암호화 목록 항목 하나.</value>
+  </data>
+  <data name="Edit portal" xml:space="preserve">
+    <value>편집 포털</value>
+  </data>
+  <data name="Encryption" xml:space="preserve">
+    <value>암호화</value>
+  </data>
+  <data name="Encryption:" xml:space="preserve">
+    <value>암호화:</value>
+  </data>
+  <data name="EQ" xml:space="preserve">
+    <value>EQ</value>
+  </data>
+  <data name="ETC" xml:space="preserve">
+    <value>ETC</value>
+  </data>
+  <data name="Expand all" xml:space="preserve">
+    <value>펼치기 모두</value>
+  </data>
+  <data name="Export data" xml:space="preserve">
+    <value>내보내기 데이터</value>
+  </data>
+  <data name="Export file" xml:space="preserve">
+    <value>내보내기 파일</value>
+  </data>
+  <data name="Export File(s) to" xml:space="preserve">
+    <value>내보내기 파일(s) 에</value>
+  </data>
+  <data name="Export files" xml:space="preserve">
+    <value>파일 내보내기</value>
+  </data>
+  <data name="Export Selection" xml:space="preserve">
+    <value>내보내기 Selection</value>
+  </data>
+  <data name="Extracted AES key formats for use with Odin and MapleShark tooling." xml:space="preserve">
+    <value>Odin 및 MapleShark 도구용으로 추출한 AES 키 형식입니다.</value>
+  </data>
+  <data name="False" xml:space="preserve">
+    <value>거짓</value>
+  </data>
+  <data name="FH Mapping" xml:space="preserve">
+    <value>발판 매핑</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>파일</value>
+  </data>
+  <data name="File format selection:" xml:space="preserve">
+    <value>파일 형식 선택:</value>
+  </data>
+  <data name="First Run" xml:space="preserve">
+    <value>첫 실행</value>
+  </data>
+  <data name="Float property" xml:space="preserve">
+    <value>부동소수점 속성</value>
+  </data>
+  <data name="Foothold ID" xml:space="preserve">
+    <value>발판 ID</value>
+  </data>
+  <data name="Foothold ID:" xml:space="preserve">
+    <value>발판 ID:</value>
+  </data>
+  <data name="Foothold mapping" xml:space="preserve">
+    <value>발판 매핑</value>
+  </data>
+  <data name="Footholds" xml:space="preserve">
+    <value>발판</value>
+  </data>
+  <data name="Force" xml:space="preserve">
+    <value>힘</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="HaRepacker" xml:space="preserve">
+    <value>HaRepacker</value>
+  </data>
+  <data name="HaRepacker - WZ extractor and repacker&#xA;Copyright (C) 2009-2015 haha01haha01" xml:space="preserve">
+    <value>HaRepacker - WZ extractor and repacker
+저작권 (C) 2009-2015 haha01haha01</value>
+  </data>
+  <data name="Harepacker resurrected ~ Fork of HaRepacker ;)" xml:space="preserve">
+    <value>Harepacker resurrected ~ HaRepacker 포크 ;)</value>
+  </data>
+  <data name="Height" xml:space="preserve">
+    <value>높이</value>
+  </data>
+  <data name="Help" xml:space="preserve">
+    <value>도움말</value>
+  </data>
+  <data name="Hex:" xml:space="preserve">
+    <value>16진수:</value>
+  </data>
+  <data name="Hotfix Data.wz" xml:space="preserve">
+    <value>Hotfix 데이터.wz</value>
+  </data>
+  <data name="https://github.com/lastbattle/Harepacker-resurrected" xml:space="preserve">
+    <value>https://github.com/lastbattle/Harepacker-resurrected</value>
+  </data>
+  <data name="Image" xml:space="preserve">
+    <value>이미지</value>
+  </data>
+  <data name="Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff" xml:space="preserve">
+    <value>이미지 files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff</value>
+  </data>
+  <data name="Image files|*.png;*.gif;*.bmp;*.jpg;*.tif" xml:space="preserve">
+    <value>이미지 files|*.png;*.gif;*.bmp;*.jpg;*.tif</value>
+  </data>
+  <data name="IMG" xml:space="preserve">
+    <value>IMG</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="Indentation" xml:space="preserve">
+    <value>들여쓰기</value>
+  </data>
+  <data name="Int" xml:space="preserve">
+    <value>정수</value>
+  </data>
+  <data name="Integer" xml:space="preserve">
+    <value>정수</value>
+  </data>
+  <data name="Integer property" xml:space="preserve">
+    <value>정수 속성</value>
+  </data>
+  <data name="JOBS" xml:space="preserve">
+    <value>JOBS</value>
+  </data>
+  <data name="JSON" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="Key:" xml:space="preserve">
+    <value>키:</value>
+  </data>
+  <data name="Line break" xml:space="preserve">
+    <value>줄 바꿈</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>목록</value>
+  </data>
+  <data name="List file" xml:space="preserve">
+    <value>목록 파일</value>
+  </data>
+  <data name="List WZ File (*.wz)|*.wz" xml:space="preserve">
+    <value>List WZ 파일 (*.wz)|*.wz</value>
+  </data>
+  <data name="List.wz Editor" xml:space="preserve">
+    <value>목록.wz 편집기</value>
+  </data>
+  <data name="Loading…" xml:space="preserve">
+    <value>불러오는 중…</value>
+  </data>
+  <data name="Long" xml:space="preserve">
+    <value>긴 정수</value>
+  </data>
+  <data name="Long property" xml:space="preserve">
+    <value>긴 정수 속성</value>
+  </data>
+  <data name="Lua property" xml:space="preserve">
+    <value>Lua 속성</value>
+  </data>
+  <data name="Lua Script" xml:space="preserve">
+    <value>Lua 스크립트</value>
+  </data>
+  <data name="Map" xml:space="preserve">
+    <value>맵</value>
+  </data>
+  <data name="MapleStory Base.wz|Base.wz" xml:space="preserve">
+    <value>MapleStory Base.wz|Base.wz</value>
+  </data>
+  <data name="MAPS" xml:space="preserve">
+    <value>MAPS</value>
+  </data>
+  <data name="menuStrip1" xml:space="preserve">
+    <value>menuStrip1</value>
+  </data>
+  <data name="Mob ID" xml:space="preserve">
+    <value>몬스터 ID</value>
+  </data>
+  <data name="Mob ID:" xml:space="preserve">
+    <value>몬스터 ID:</value>
+  </data>
+  <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
+    <value>MP3 audio (*.mp3)|*.mp3</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>이름</value>
+  </data>
+  <data name="Name:" xml:space="preserve">
+    <value>이름:</value>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>새로 만들기</value>
+  </data>
+  <data name="New (Ctl + T)" xml:space="preserve">
+    <value>새로 만들기 (Ctl + T)</value>
+  </data>
+  <data name="New force value:" xml:space="preserve">
+    <value>새로 만들기 힘 값:</value>
+  </data>
+  <data name="New name:" xml:space="preserve">
+    <value>새로 만들기 이름:</value>
+  </data>
+  <data name="New next value:" xml:space="preserve">
+    <value>새로 만들기 다음 값:</value>
+  </data>
+  <data name="New prev value:" xml:space="preserve">
+    <value>새로 만들기 prev 값:</value>
+  </data>
+  <data name="New tab" xml:space="preserve">
+    <value>새 탭</value>
+  </data>
+  <data name="New type value:" xml:space="preserve">
+    <value>새로 만들기 유형 값:</value>
+  </data>
+  <data name="New X value:" xml:space="preserve">
+    <value>새로 만들기 X 값:</value>
+  </data>
+  <data name="New Y value:" xml:space="preserve">
+    <value>새로 만들기 Y 값:</value>
+  </data>
+  <data name="New..." xml:space="preserve">
+    <value>새로 만들기...</value>
+  </data>
+  <data name="Next foothold" xml:space="preserve">
+    <value>다음 발판</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>아니요</value>
+  </data>
+  <data name="No to all" xml:space="preserve">
+    <value>아니요 에 모두</value>
+  </data>
+  <data name="No version number" xml:space="preserve">
+    <value>버전 번호 없음</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>없음</value>
+  </data>
+  <data name="NPC" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Null" xml:space="preserve">
+    <value>널</value>
+  </data>
+  <data name="Null property" xml:space="preserve">
+    <value>Null 속성</value>
+  </data>
+  <data name="NX" xml:space="preserve">
+    <value>NX</value>
+  </data>
+  <data name="NXFormat" xml:space="preserve">
+    <value>NXFormat</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Open _Version Directory…" xml:space="preserve">
+    <value>열기 _버전 디렉터리…</value>
+  </data>
+  <data name="Open 64-bit WZ folder  (Ctl + I)" xml:space="preserve">
+    <value>열기 64-bit WZ 폴더  (Ctl + I)</value>
+  </data>
+  <data name="Open New WZ _Format…" xml:space="preserve">
+    <value>열기 새로 만들기 WZ _형식…</value>
+  </data>
+  <data name="Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)" xml:space="preserve">
+    <value>열기 WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>옵션</value>
+  </data>
+  <data name="Options..." xml:space="preserve">
+    <value>옵션...</value>
+  </data>
+  <data name="Options…" xml:space="preserve">
+    <value>옵션…</value>
+  </data>
+  <data name="Other" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="Output" xml:space="preserve">
+    <value>출력</value>
+  </data>
+  <data name="Output Item Name" xml:space="preserve">
+    <value>출력 항목 이름</value>
+  </data>
+  <data name="Output path:" xml:space="preserve">
+    <value>출력 경로:</value>
+  </data>
+  <data name="Override" xml:space="preserve">
+    <value>덮어쓰기</value>
+  </data>
+  <data name="Pack" xml:space="preserve">
+    <value>패킹</value>
+  </data>
+  <data name="Pack as Beta Data.wz" xml:space="preserve">
+    <value>Beta Data.wz로 패킹</value>
+  </data>
+  <data name="Pack IMG Files to WZ" xml:space="preserve">
+    <value>IMG 파일을 WZ로 패킹</value>
+  </data>
+  <data name="Pack IMG filesystem" xml:space="preserve">
+    <value>IMG 파일 시스템 패킹</value>
+  </data>
+  <data name="Pack IMG to WZ…" xml:space="preserve">
+    <value>IMG를 WZ로 패킹…</value>
+  </data>
+  <data name="Package file v1.0 Copyright 2002 Wizet, ZMS" xml:space="preserve">
+    <value>Package 파일 v1.0 Copyright 2002 Wizet, ZMS</value>
+  </data>
+  <data name="Packet encryption keys" xml:space="preserve">
+    <value>패킷 암호화 키</value>
+  </data>
+  <data name="Parse images while searching" xml:space="preserve">
+    <value>검색 중 이미지 분석</value>
+  </data>
+  <data name="Parse images while searching (warning - can take a lot of time)" xml:space="preserve">
+    <value>검색 중 이미지 분석(경고: 시간이 오래 걸릴 수 있음)</value>
+  </data>
+  <data name="Paste (Ctrl+V)" xml:space="preserve">
+    <value>붙여넣기 (Ctrl+V)</value>
+  </data>
+  <data name="Patch Version (0=auto):" xml:space="preserve">
+    <value>Patch 버전 (0=auto):</value>
+  </data>
+  <data name="Path:" xml:space="preserve">
+    <value>경로:</value>
+  </data>
+  <data name="PNG\MP3" xml:space="preserve">
+    <value>PNG\MP3</value>
+  </data>
+  <data name="PNGs" xml:space="preserve">
+    <value>PNGs</value>
+  </data>
+  <data name="Portal" xml:space="preserve">
+    <value>포털</value>
+  </data>
+  <data name="Portal type" xml:space="preserve">
+    <value>포털 유형</value>
+  </data>
+  <data name="Portal type:" xml:space="preserve">
+    <value>포털 유형:</value>
+  </data>
+  <data name="Portals" xml:space="preserve">
+    <value>포털</value>
+  </data>
+  <data name="Preferences" xml:space="preserve">
+    <value>환경 설정</value>
+  </data>
+  <data name="Previous foothold" xml:space="preserve">
+    <value>이전 발판</value>
+  </data>
+  <data name="Private server" xml:space="preserve">
+    <value>사설 서버</value>
+  </data>
+  <data name="Private Server XML" xml:space="preserve">
+    <value>사설 서버 XML</value>
+  </data>
+  <data name="Query:" xml:space="preserve">
+    <value>쿼리:</value>
+  </data>
+  <data name="QUEST" xml:space="preserve">
+    <value>QUEST</value>
+  </data>
+  <data name="Raw data" xml:space="preserve">
+    <value>Raw 데이터</value>
+  </data>
+  <data name="ReadMe.txt" xml:space="preserve">
+    <value>ReadMe.txt</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>준비</value>
+  </data>
+  <data name="Redo" xml:space="preserve">
+    <value>다시 실행</value>
+  </data>
+  <data name="Regular" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="Reload all" xml:space="preserve">
+    <value>다시 불러오기 모두</value>
+  </data>
+  <data name="Remove (Del)" xml:space="preserve">
+    <value>제거 (Del)</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>이름 바꾸기</value>
+  </data>
+  <data name="Render map" xml:space="preserve">
+    <value>렌더링 맵</value>
+  </data>
+  <data name="Render Map (Ctl + R)" xml:space="preserve">
+    <value>렌더링 맵 (Ctl + R)</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>바꾸기</value>
+  </data>
+  <data name="Repository" xml:space="preserve">
+    <value>저장소</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>재설정</value>
+  </data>
+  <data name="Results" xml:space="preserve">
+    <value>결과</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>저장</value>
+  </data>
+  <data name="Save archive" xml:space="preserve">
+    <value>저장 아카이브</value>
+  </data>
+  <data name="Save as .ms file" xml:space="preserve">
+    <value>저장 as .ms 파일</value>
+  </data>
+  <data name="Save as .ms file (encrypted. v220++)" xml:space="preserve">
+    <value>저장 as .ms 파일 (encrypted. v220++)</value>
+  </data>
+  <data name="Save as .wz file" xml:space="preserve">
+    <value>저장 as .wz 파일</value>
+  </data>
+  <data name="Save as 64-bit WZ format" xml:space="preserve">
+    <value>저장 as 64-bit WZ 형식</value>
+  </data>
+  <data name="Save Image" xml:space="preserve">
+    <value>저장 이미지</value>
+  </data>
+  <data name="Save Sound" xml:space="preserve">
+    <value>저장 사운드</value>
+  </data>
+  <data name="Save..." xml:space="preserve">
+    <value>저장...</value>
+  </data>
+  <data name="Schedule.xls" xml:space="preserve">
+    <value>Schedule.xls</value>
+  </data>
+  <data name="Search (Ctrl+F)" xml:space="preserve">
+    <value>검색 (Ctrl+F)</value>
+  </data>
+  <data name="Search behavior" xml:space="preserve">
+    <value>검색 동작</value>
+  </data>
+  <data name="Search names and descriptions across loaded WZ data, then copy the matching ID bytes." xml:space="preserve">
+    <value>불러온 WZ 데이터에서 이름과 설명을 검색한 다음 일치하는 ID 바이트를 복사합니다.</value>
+  </data>
+  <data name="Search Options" xml:space="preserve">
+    <value>검색 옵션</value>
+  </data>
+  <data name="Search results" xml:space="preserve">
+    <value>검색 결과</value>
+  </data>
+  <data name="Search string values" xml:space="preserve">
+    <value>문자열 값 검색</value>
+  </data>
+  <data name="Search WZ strings" xml:space="preserve">
+    <value>WZ 문자열 검색</value>
+  </data>
+  <data name="Search WZ strings…" xml:space="preserve">
+    <value>WZ 문자열 검색…</value>
+  </data>
+  <data name="Search…" xml:space="preserve">
+    <value>검색…</value>
+  </data>
+  <data name="Select a result to navigate to it." xml:space="preserve">
+    <value>이동할 결과를 선택하세요.</value>
+  </data>
+  <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
+    <value>작은 WZ 파일을 선택하고 IV 키 공간을 병렬로 검색합니다.</value>
+  </data>
+  <data name="Select All" xml:space="preserve">
+    <value>선택 모두</value>
+  </data>
+  <data name="Select an image" xml:space="preserve">
+    <value>선택 an 이미지</value>
+  </data>
+  <data name="Select None" xml:space="preserve">
+    <value>선택 없음</value>
+  </data>
+  <data name="Select the sound" xml:space="preserve">
+    <value>선택 the 사운드</value>
+  </data>
+  <data name="Select the version you're importing from:" xml:space="preserve">
+    <value>가져올 원본 버전을 선택하세요:</value>
+  </data>
+  <data name="Select where to save the file" xml:space="preserve">
+    <value>파일을 저장할 위치 선택</value>
+  </data>
+  <data name="Select where to save the image" xml:space="preserve">
+    <value>선택 where 에 저장 the 이미지</value>
+  </data>
+  <data name="Select where to save the MP3 file" xml:space="preserve">
+    <value>선택 where 에 저장 the MP3 파일</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="Settings..." xml:space="preserve">
+    <value>설정...</value>
+  </data>
+  <data name="SETUP" xml:space="preserve">
+    <value>SETUP</value>
+  </data>
+  <data name="Short" xml:space="preserve">
+    <value>짧은 정수</value>
+  </data>
+  <data name="SKILLS" xml:space="preserve">
+    <value>SKILLS</value>
+  </data>
+  <data name="Sort TreeView by default (slow!)" xml:space="preserve">
+    <value>기본적으로 트리 보기 정렬(느림)</value>
+  </data>
+  <data name="Sound property" xml:space="preserve">
+    <value>사운드 속성</value>
+  </data>
+  <data name="Source: Standard" xml:space="preserve">
+    <value>원본: Standard</value>
+  </data>
+  <data name="Spawnpoint" xml:space="preserve">
+    <value>스폰 지점</value>
+  </data>
+  <data name="Spawnpoint details" xml:space="preserve">
+    <value>스폰 지점 세부 정보</value>
+  </data>
+  <data name="Start brute-forcing" xml:space="preserve">
+    <value>무차별 대입 시작</value>
+  </data>
+  <data name="String" xml:space="preserve">
+    <value>문자열</value>
+  </data>
+  <data name="String property" xml:space="preserve">
+    <value>문자열 속성</value>
+  </data>
+  <data name="Sub" xml:space="preserve">
+    <value>하위</value>
+  </data>
+  <data name="Sub property" xml:space="preserve">
+    <value>Sub 속성</value>
+  </data>
+  <data name="Sword" xml:space="preserve">
+    <value>Sword</value>
+  </data>
+  <data name="Syntax highlighting: " xml:space="preserve">
+    <value>구문 강조: </value>
+  </data>
+  <data name="Thanks to Snow for MapleLib&#xA;&#xA;" xml:space="preserve">
+    <value>Thanks 에 Snow for MapleLib
+
+</value>
+  </data>
+  <data name="Theme Color:" xml:space="preserve">
+    <value>테마 색상:</value>
+  </data>
+  <data name="Tools" xml:space="preserve">
+    <value>도구</value>
+  </data>
+  <data name="toolStrip1" xml:space="preserve">
+    <value>toolStrip1</value>
+  </data>
+  <data name="toolStripButton1" xml:space="preserve">
+    <value>toolStripButton1</value>
+  </data>
+  <data name="Tries:" xml:space="preserve">
+    <value>시도 횟수:</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="Undo" xml:space="preserve">
+    <value>실행 취소</value>
+  </data>
+  <data name="Unload all" xml:space="preserve">
+    <value>언로드 모두</value>
+  </data>
+  <data name="Unsigned short property" xml:space="preserve">
+    <value>부호 없는 짧은 정수 속성</value>
+  </data>
+  <data name="Uol" xml:space="preserve">
+    <value>Uol</value>
+  </data>
+  <data name="UOL property" xml:space="preserve">
+    <value>UOL 속성</value>
+  </data>
+  <data name="USE" xml:space="preserve">
+    <value>사용</value>
+  </data>
+  <data name="Use APNG incompatibility frame" xml:space="preserve">
+    <value>사용 APNG 비호환 프레임</value>
+  </data>
+  <data name="Utilities" xml:space="preserve">
+    <value>유틸리티</value>
+  </data>
+  <data name="Value:" xml:space="preserve">
+    <value>값:</value>
+  </data>
+  <data name="Vector (x, y)" xml:space="preserve">
+    <value>벡터 (x, y)</value>
+  </data>
+  <data name="Vector property" xml:space="preserve">
+    <value>벡터 속성</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>버전</value>
+  </data>
+  <data name="Version: Unknown" xml:space="preserve">
+    <value>버전: 알 수 없음</value>
+  </data>
+  <data name="View help" xml:space="preserve">
+    <value>보기 도움말</value>
+  </data>
+  <data name="Welcome to HaRepacker" xml:space="preserve">
+    <value>HaRepacker에 오신 것을 환영합니다</value>
+  </data>
+  <data name="WZ directory" xml:space="preserve">
+    <value>WZ 디렉터리</value>
+  </data>
+  <data name="WZ editor and archive toolkit" xml:space="preserve">
+    <value>WZ 편집기 및 아카이브 도구 모음</value>
+  </data>
+  <data name="WZ encryption" xml:space="preserve">
+    <value>WZ 암호화</value>
+  </data>
+  <data name="WZ image" xml:space="preserve">
+    <value>WZ 이미지</value>
+  </data>
+  <data name="WZ key brute force" xml:space="preserve">
+    <value>WZ 키 무차별 대입</value>
+  </data>
+  <data name="WZ String searcher" xml:space="preserve">
+    <value>WZ 문자열 검색기</value>
+  </data>
+  <data name="X coord:" xml:space="preserve">
+    <value>X 좌표:</value>
+  </data>
+  <data name="X coordinate" xml:space="preserve">
+    <value>X 좌표</value>
+  </data>
+  <data name="X position" xml:space="preserve">
+    <value>X 위치</value>
+  </data>
+  <data name="X position:" xml:space="preserve">
+    <value>X 위치:</value>
+  </data>
+  <data name="X:" xml:space="preserve">
+    <value>X:</value>
+  </data>
+  <data name="X: " xml:space="preserve">
+    <value>X: </value>
+  </data>
+  <data name="XML" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Y coord:" xml:space="preserve">
+    <value>Y 좌표:</value>
+  </data>
+  <data name="Y coordinate" xml:space="preserve">
+    <value>Y 좌표</value>
+  </data>
+  <data name="Y position" xml:space="preserve">
+    <value>Y 위치</value>
+  </data>
+  <data name="Y position:" xml:space="preserve">
+    <value>Y 위치:</value>
+  </data>
+  <data name="Y:" xml:space="preserve">
+    <value>Y:</value>
+  </data>
+  <data name="Y: " xml:space="preserve">
+    <value>Y: </value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>예</value>
+  </data>
+  <data name="Yes to all" xml:space="preserve">
+    <value>예 에 모두</value>
+  </data>
+  <data name="ZLZ AES Encryption keys" xml:space="preserve">
+    <value>ZLZ AES 암호화 키</value>
+  </data>
+  <data name="Error">
+    <value>오류</value>
+  </data>
+  <data name="Warning">
+    <value>경고</value>
+  </data>
+  <data name="Success">
+    <value>성공</value>
+  </data>
+  <data name="Cancelled">
+    <value>취소됨</value>
+  </data>
+  <data name="Reload">
+    <value>다시 불러오기</value>
+  </data>
+  <data name="Unload">
+    <value>언로드</value>
+  </data>
+  <data name="Remove">
+    <value>제거</value>
+  </data>
+  <data name="Save to IMG">
+    <value>IMG로 저장</value>
+  </data>
+  <data name="Create New IMG File">
+    <value>새 IMG 파일 만들기</value>
+  </data>
+  <data name="Delete IMG File">
+    <value>IMG 파일 삭제</value>
+  </data>
+  <data name="Please select only one node.">
+    <value>노드를 하나만 선택하세요.</value>
+  </data>
+  <data name="Are you sure you want to unload this?">
+    <value>이 항목을 언로드하시겠습니까?</value>
+  </data>
+  <data name="Are you sure you want to reload this file?">
+    <value>이 파일을 다시 불러오시겠습니까?</value>
+  </data>
+  <data name="Sort child nodes view">
+    <value>하위 노드 보기 정렬</value>
+  </data>
+  <data name="Sort properties by name">
+    <value>속성을 이름순으로 정렬</value>
+  </data>
+  <data name="Cannot Save">
+    <value>저장할 수 없음</value>
+  </data>
+  <data name="This item is not from an IMG filesystem directory.">
+    <value>이 항목은 IMG 파일 시스템 디렉터리에 속하지 않습니다.</value>
+  </data>
+  <data name="Saved {0} successfully.">
+    <value>{0}을(를) 저장했습니다.</value>
+  </data>
+  <data name="Failed to save {0}.">
+    <value>{0}을(를) 저장하지 못했습니다.</value>
+  </data>
+  <data name="Saved {0} changed image(s) successfully.">
+    <value>변경된 이미지 {0}개를 저장했습니다.</value>
+  </data>
+  <data name="No changed images to save.">
+    <value>저장할 변경된 이미지가 없습니다.</value>
+  </data>
+  <data name="Save Complete">
+    <value>저장 완료</value>
+  </data>
+  <data name="Save Failed">
+    <value>저장 실패</value>
+  </data>
+  <data name="Save Error">
+    <value>저장 오류</value>
+  </data>
+  <data name="Error saving: {0}">
+    <value>저장 중 오류 발생: {0}</value>
+  </data>
+  <data name="Please select a directory from an IMG filesystem.">
+    <value>IMG 파일 시스템에서 디렉터리를 선택하세요.</value>
+  </data>
+  <data name="Cannot Create File">
+    <value>파일을 만들 수 없음</value>
+  </data>
+  <data name="A file named '{0}' already exists in this directory.">
+    <value>이 디렉터리에 '{0}' 파일이 이미 있습니다.</value>
+  </data>
+  <data name="File Exists">
+    <value>파일이 이미 있음</value>
+  </data>
+  <data name="Created '{0}' successfully.">
+    <value>'{0}'을(를) 만들었습니다.</value>
+  </data>
+  <data name="Failed to create '{0}'.">
+    <value>'{0}'을(를) 만들지 못했습니다.</value>
+  </data>
+  <data name="File Created">
+    <value>파일 생성 완료</value>
+  </data>
+  <data name="Creation Failed">
+    <value>생성 실패</value>
+  </data>
+  <data name="Error creating file: {0}">
+    <value>파일 생성 중 오류 발생: {0}</value>
+  </data>
+  <data name="Please select an IMG file to delete.">
+    <value>삭제할 IMG 파일을 선택하세요.</value>
+  </data>
+  <data name="Cannot Delete">
+    <value>삭제할 수 없음</value>
+  </data>
+  <data name="This file is not from an IMG filesystem directory.">
+    <value>이 파일은 IMG 파일 시스템 디렉터리에 속하지 않습니다.</value>
+  </data>
+  <data name="Are you sure you want to delete '{0}'?&#xA;&#xA;This will permanently delete the file from disk.">
+    <value>'{0}'을(를) 삭제하시겠습니까?
+
+파일이 디스크에서 영구적으로 삭제됩니다.</value>
+  </data>
+  <data name="Confirm Delete">
+    <value>삭제 확인</value>
+  </data>
+  <data name="Deleted '{0}' successfully.">
+    <value>'{0}'을(를) 삭제했습니다.</value>
+  </data>
+  <data name="Failed to delete '{0}'.">
+    <value>'{0}'을(를) 삭제하지 못했습니다.</value>
+  </data>
+  <data name="File Deleted">
+    <value>파일 삭제 완료</value>
+  </data>
+  <data name="Deletion Failed">
+    <value>삭제 실패</value>
+  </data>
+  <data name="Error deleting file: {0}">
+    <value>파일 삭제 중 오류 발생: {0}</value>
+  </data>
+  <data name="Version: {0}">
+    <value>버전: {0}</value>
+  </data>
+  <data name="Source: Beta (single Data.wz)">
+    <value>원본: Beta(단일 Data.wz)</value>
+  </data>
+  <data name="Source: 64-bit (Data folder)">
+    <value>원본: 64비트(Data 폴더)</value>
+  </data>
+  <data name="Source: Pre-Big Bang">
+    <value>원본: Big Bang 이전</value>
+  </data>
+  <data name="Source: Unknown">
+    <value>원본: 알 수 없음</value>
+  </data>
+  <data name="Version: Unknown (no manifest.json)">
+    <value>버전: 알 수 없음(manifest.json 없음)</value>
+  </data>
+  <data name="Please select at least one category to pack.">
+    <value>패킹할 범주를 하나 이상 선택하세요.</value>
+  </data>
+  <data name="No Categories Selected">
+    <value>선택된 범주 없음</value>
+  </data>
+  <data name="Please specify an output path.">
+    <value>출력 경로를 지정하세요.</value>
+  </data>
+  <data name="Output Path Required">
+    <value>출력 경로 필요</value>
+  </data>
+  <data name="Completed! Packed {0} images.">
+    <value>완료! 이미지 {0}개를 패킹했습니다.</value>
+  </data>
+  <data name="Failed: {0}">
+    <value>실패: {0}</value>
+  </data>
+  <data name="Error: {0}">
+    <value>오류: {0}</value>
+  </data>
+  <data name="Packing was cancelled.">
+    <value>패킹이 취소되었습니다.</value>
+  </data>
+  <data name="Error during packing: {0}">
+    <value>패킹 중 오류 발생: {0}</value>
+  </data>
+  <data name="Please wait for packing to complete or cancel it first.">
+    <value>패킹이 완료될 때까지 기다리거나 먼저 취소하세요.</value>
+  </data>
+  <data name="Packing in Progress">
+    <value>패킹 진행 중</value>
+  </data>
+  <data name="Unable to load DLL library. Kernel32 GetLastError(): {0}">
+    <value>DLL 라이브러리를 불러올 수 없습니다. Kernel32 GetLastError(): {0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;{0}">
+    <value>KeyGen 위치가 잘못되었습니다. 이 MapleStory 버전은 지원되지 않을 수 있습니다.
+{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;func_setEncryptionKey = {0}, encryptionKeyLoc = {1}">
+    <value>KeyGen 위치가 잘못되었습니다. 이 MapleStory 버전은 지원되지 않을 수 있습니다.
+func_setEncryptionKey = {0}, encryptionKeyLoc = {1}</value>
+  </data>
+  <data name="An error occurred: {0}">
+    <value>오류가 발생했습니다: {0}</value>
+  </data>
+  <data name="Found the encryption key to the WZ file:">
+    <value>WZ 파일의 암호화 키를 찾았습니다:</value>
+  </data>
+  <data name="Please select one or more canvas nodes.">
+    <value>캔버스 노드를 하나 이상 선택하세요.</value>
+  </data>
+  <data name="Error previewing animation: {0}">
+    <value>애니메이션 미리 보기 중 오류 발생: {0}</value>
+  </data>
+  <data name="Error rendering map">
+    <value>맵 렌더링 오류</value>
+  </data>
+  <data name="Failed to load settings.">
+    <value>설정을 불러오지 못했습니다.</value>
+  </data>
+  <data name="You must set the render scale to a valid number.">
+    <value>렌더링 배율을 올바른 숫자로 설정해야 합니다.</value>
+  </data>
+  <data name="Saved {0} changed image(s).">
+    <value>변경된 이미지 {0}개를 저장했습니다.</value>
+  </data>
+  <data name="No changes to save.">
+    <value>저장할 변경 사항이 없습니다.</value>
+  </data>
+  <data name="Could not insert property; make sure all types are correct.">
+    <value>속성을 삽입할 수 없습니다. 모든 유형이 올바른지 확인하세요.</value>
+  </data>
+  <data name="Canvas">
+    <value>캔버스</value>
+  </data>
+  <data name="Float">
+    <value>부동소수점</value>
+  </data>
+  <data name="Sound">
+    <value>사운드</value>
+  </data>
+  <data name="Vector">
+    <value>벡터</value>
+  </data>
+  <data name="Sort">
+    <value>정렬</value>
+  </data>
+  <data name="Cannot insert node &quot;{0}&quot; because a node with the same name already exists. Skipping.">
+    <value>같은 이름의 노드가 이미 있어 "{0}" 노드를 삽입할 수 없습니다. 건너뜁니다.</value>
+  </data>
+  <data name="Cannot insert object &quot;{0}&quot; because an object with the same name already exists. Skipping.">
+    <value>같은 이름의 개체가 이미 있어 "{0}" 개체를 삽입할 수 없습니다. 건너뜁니다.</value>
+  </data>
+  <data name="Skipping Node">
+    <value>노드 건너뛰기</value>
+  </data>
+  <data name="Skipping Object">
+    <value>개체 건너뛰기</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} ms (average: {1})">
+    <value>완료.
+경과 시간: {0}ms(평균: {1})</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} seconds (average: {1})">
+    <value>완료.
+경과 시간: {0}초(평균: {1})</value>
+  </data>
+  <data name="Error initializing or rendering Spine object: {0}">
+    <value>Spine 개체 초기화 또는 렌더링 중 오류 발생: {0}</value>
+  </data>
+  <data name="Unable to upscale image:&#xA;{0}">
+    <value>이미지를 확대할 수 없습니다:
+{0}</value>
+  </data>
+  <data name="The selected directory does not appear to be a valid IMG filesystem.&#xA;&#xA;Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc.">
+    <value>선택한 디렉터리가 올바른 IMG 파일 시스템이 아닌 것 같습니다.
+
+추출된 IMG 파일과 String, Map, Mob, Npc 등의 범주 폴더가 있는 디렉터리를 선택하세요.</value>
+  </data>
+  <data name="Not found">
+    <value>찾을 수 없음</value>
+  </data>
+  <data name="Map X: {0} Y: {1}">
+    <value>맵 X: {0} Y: {1}</value>
+  </data>
+  <data name="Error overwriting WZ file: {0}">
+    <value>WZ 파일을 덮어쓰는 중 오류 발생: {0}</value>
+  </data>
+  <data name="More actions" xml:space="preserve">
+    <value>추가 작업</value>
+  </data>
+</root>

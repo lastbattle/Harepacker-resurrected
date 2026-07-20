@@ -4,7 +4,7 @@ using MapleLib.WzLib.WzProperties;
 
 namespace Footholds
 {
-    public partial class SpawnpointInfo : Form
+    public partial class SpawnpointInfo : HaRepacker.GUI.ThemedDialogWindow
     {
         public SpawnPoint.Spawnpoint spawnpoint;
         public SpawnpointInfo()

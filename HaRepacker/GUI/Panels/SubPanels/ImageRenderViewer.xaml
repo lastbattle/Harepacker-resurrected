@@ -12,6 +12,10 @@
              d:DesignHeight="400" d:DesignWidth="600">
 
     <UserControl.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
         <converter:ImageSizeDoubleToIntegerConverter x:Key="imageSizeConverter" />
         <converter:VectorOriginPointFToMarginConverter x:Key="vectorOriginConverter" />
         <converter:CheckboxToVisibilityConverter x:Key="checkboxToVisibilityConverter"/>
@@ -541,6 +545,7 @@
             </Setter>
         </Style>
 
+        </ResourceDictionary>
     </UserControl.Resources>
 
 

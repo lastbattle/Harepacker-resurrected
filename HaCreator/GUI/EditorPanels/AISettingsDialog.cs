@@ -1,563 +1,535 @@
 using System;
-using System.Drawing;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using Forms = System.Windows.Forms;
 using HaCreator.MapEditor.AI;
 
 namespace HaCreator.GUI.EditorPanels
 {
     /// <summary>
-    /// Dialog for configuring AI API settings (OpenRouter and OpenCode)
+    /// Dialog for configuring an OpenAI-compatible AI endpoint.
     /// </summary>
-    public class AISettingsDialog : Form
+    public partial class AISettingsDialog : Window
     {
-        private const string OPENCODE_MANUAL_START_HINT =
-            "Hint: Run in CMD: opencode serve --port 4096 --hostname 127.0.0.1";
+        private static string AutoReasoningEffort =>
+            EditorPanelLocalizer.Text("AISettings_AutoReasoningEffort", "Auto (model default)");
 
-        // Provider selection
-        private ComboBox cboProvider;
+        private readonly List<OpenAIModelInfo> _endpointModels = new List<OpenAIModelInfo>();
+        private bool _connectionTested;
+        private bool _endpointModelsLoaded;
+        private bool _initializing;
+        private bool _loadingModels;
+        private bool _updatingModelCatalog;
+        private bool _updatingReasoningEffort;
+        private bool _isClosed;
 
-        // OpenRouter controls
-        private Panel pnlOpenRouter;
-        private TextBox txtApiKey;
-        private ComboBox cboModel;
-        private LinkLabel lnkGetKey;
-
-        // OpenCode controls
-        private Panel pnlOpenCode;
-        private TextBox txtOpenCodeHost;
-        private NumericUpDown numOpenCodePort;
-        private ComboBox cboOpenCodeModel;
-        private ComboBox cboOpenCodeReasoningEffort;
-        private CheckBox chkAutoStart;
-        private LinkLabel lnkOpenCodeHelp;
-
-        // Common controls
-        private Button btnSave;
-        private Button btnCancel;
-        private Button btnTest;
-        private Label lblStatus;
-
-        // Track if connection has been successfully tested
-        private bool _connectionTested = false;
+        private Forms.FormStartPosition startPosition = Forms.FormStartPosition.CenterParent;
+        public Forms.FormStartPosition StartPosition
+        {
+            get => startPosition;
+            set
+            {
+                startPosition = value;
+                WindowStartupLocation = value == Forms.FormStartPosition.CenterScreen
+                    ? WindowStartupLocation.CenterScreen
+                    : WindowStartupLocation.CenterOwner;
+            }
+        }
 
         public AISettingsDialog()
         {
             InitializeComponent();
+            EditorPanelLocalizer.Attach(this);
+            cboModel.AddHandler(TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((sender, args) => CboModel_TextChanged(sender, args)));
+            cboImageModel.AddHandler(TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((sender, args) => OnSettingsChanged(sender, args)));
+            if (Program.HaEditorWindow?.IsVisible == true)
+                Owner = Program.HaEditorWindow;
             LoadSettings();
-        }
-
-        private void InitializeComponent()
-        {
-            this.Text = "AI Settings";
-            this.Size = new Size(520, 410);
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.StartPosition = FormStartPosition.CenterParent;
-
-            // Provider selection
-            var lblProvider = new Label
-            {
-                Text = "AI Provider:",
-                Location = new Point(20, 20),
-                Size = new Size(100, 20)
-            };
-
-            cboProvider = new ComboBox
-            {
-                Location = new Point(120, 17),
-                Size = new Size(200, 25),
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            cboProvider.Items.Add("OpenRouter (Cloud API)");
-            cboProvider.Items.Add("OpenCode (Local Server)");
-            cboProvider.SelectedIndexChanged += CboProvider_SelectedIndexChanged;
-
-            // === OpenRouter Panel ===
-            pnlOpenRouter = new Panel
-            {
-                Location = new Point(10, 55),
-                Size = new Size(485, 200),
-                Visible = true
-            };
-
-            var lblApiKey = new Label
-            {
-                Text = "OpenRouter API Key:",
-                Location = new Point(10, 10),
-                Size = new Size(150, 20)
-            };
-
-            txtApiKey = new TextBox
-            {
-                Location = new Point(10, 35),
-                Size = new Size(460, 25),
-                UseSystemPasswordChar = true
-            };
-            txtApiKey.TextChanged += OnSettingsChanged;
-
-            lnkGetKey = new LinkLabel
-            {
-                Text = "Get your API key from openrouter.ai",
-                Location = new Point(10, 65),
-                Size = new Size(250, 20)
-            };
-            lnkGetKey.LinkClicked += LnkGetKey_LinkClicked;
-
-            var lblModel = new Label
-            {
-                Text = "AI Model:",
-                Location = new Point(10, 95),
-                Size = new Size(150, 20)
-            };
-
-            cboModel = new ComboBox
-            {
-                Location = new Point(10, 120),
-                Size = new Size(350, 25),
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            cboModel.Items.AddRange(AISettings.AvailableModels);
-            cboModel.SelectedIndexChanged += OnSettingsChanged;
-
-            pnlOpenRouter.Controls.AddRange(new Control[]
-            {
-                lblApiKey, txtApiKey, lnkGetKey,
-                lblModel, cboModel
-            });
-
-            // === OpenCode Panel ===
-            pnlOpenCode = new Panel
-            {
-                Location = new Point(10, 55),
-                Size = new Size(485, 225),
-                Visible = false
-            };
-
-            var lblOpenCodeHost = new Label
-            {
-                Text = "OpenCode Server Host:",
-                Location = new Point(10, 10),
-                Size = new Size(150, 20)
-            };
-
-            txtOpenCodeHost = new TextBox
-            {
-                Location = new Point(10, 35),
-                Size = new Size(250, 25)
-            };
-            txtOpenCodeHost.TextChanged += OnSettingsChanged;
-
-            var lblOpenCodePort = new Label
-            {
-                Text = "Port:",
-                Location = new Point(280, 38),
-                Size = new Size(40, 20)
-            };
-
-            numOpenCodePort = new NumericUpDown
-            {
-                Location = new Point(320, 35),
-                Size = new Size(80, 25),
-                Minimum = 1,
-                Maximum = 65535,
-                Value = 4096
-            };
-            numOpenCodePort.ValueChanged += OnSettingsChanged;
-
-            lnkOpenCodeHelp = new LinkLabel
-            {
-                Text = "OpenCode requires 'opencode serve' running locally",
-                Location = new Point(10, 65),
-                Size = new Size(350, 20)
-            };
-            lnkOpenCodeHelp.LinkClicked += (s, e) =>
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "https://opencode.ai/docs/server/",
-                    UseShellExecute = true
-                });
-            };
-
-            var lblOpenCodeModel = new Label
-            {
-                Text = "AI Model:",
-                Location = new Point(10, 95),
-                Size = new Size(150, 20)
-            };
-
-            cboOpenCodeModel = new ComboBox
-            {
-                Location = new Point(10, 120),
-                Size = new Size(350, 25),
-                DropDownStyle = ComboBoxStyle.DropDown // Allow custom models
-            };
-            cboOpenCodeModel.Items.AddRange(AISettings.AvailableOpenCodeModels);
-            cboOpenCodeModel.TextChanged += OnSettingsChanged;
-
-            var lblOpenCodeReasoning = new Label
-            {
-                Text = "Reasoning Effort:",
-                Location = new Point(10, 150),
-                Size = new Size(150, 20)
-            };
-
-            cboOpenCodeReasoningEffort = new ComboBox
-            {
-                Location = new Point(10, 172),
-                Size = new Size(120, 25),
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            cboOpenCodeReasoningEffort.Items.AddRange(AISettings.AvailableOpenCodeReasoningEfforts);
-            cboOpenCodeReasoningEffort.SelectedIndexChanged += OnSettingsChanged;
-
-            chkAutoStart = new CheckBox
-            {
-                Text = "Auto-start server if not running",
-                Location = new Point(155, 175),
-                Size = new Size(220, 20),
-                Checked = true
-            };
-
-            var lblOpenCodeNote = new Label
-            {
-                Text = "Note: OpenCode uses OAuth authentication. Run 'opencode auth' first.",
-                Location = new Point(10, 200),
-                Size = new Size(460, 20),
-                ForeColor = Color.Gray
-            };
-
-            var btnRegenTools = new Button
-            {
-                Text = "Regenerate Tools",
-                Location = new Point(350, 170),
-                Size = new Size(120, 25)
-            };
-            btnRegenTools.Click += BtnRegenTools_Click;
-
-            pnlOpenCode.Controls.AddRange(new Control[]
-            {
-                lblOpenCodeHost, txtOpenCodeHost,
-                lblOpenCodePort, numOpenCodePort,
-                lnkOpenCodeHelp,
-                lblOpenCodeModel, cboOpenCodeModel,
-                lblOpenCodeReasoning, cboOpenCodeReasoningEffort,
-                chkAutoStart, btnRegenTools,
-                lblOpenCodeNote
-            });
-
-            // === Common Controls ===
-            btnTest = new Button
-            {
-                Text = "Test Connection",
-                Location = new Point(20, 290),
-                Size = new Size(130, 28)
-            };
-            btnTest.Click += BtnTest_Click;
-
-            lblStatus = new Label
-            {
-                Text = "",
-                Location = new Point(160, 295),
-                Size = new Size(340, 20),
-                ForeColor = Color.Gray
-            };
-
-            btnSave = new Button
-            {
-                Text = "Save",
-                Location = new Point(310, 335),
-                Size = new Size(90, 30),
-                DialogResult = DialogResult.OK,
-                Enabled = false // Disabled until connection is tested
-            };
-            btnSave.Click += BtnSave_Click;
-
-            btnCancel = new Button
-            {
-                Text = "Cancel",
-                Location = new Point(410, 335),
-                Size = new Size(80, 30),
-                DialogResult = DialogResult.Cancel
-            };
-
-            this.Controls.AddRange(new Control[]
-            {
-                lblProvider, cboProvider,
-                pnlOpenRouter,
-                pnlOpenCode,
-                btnTest, lblStatus,
-                btnSave, btnCancel
-            });
-
-            this.AcceptButton = btnSave;
-            this.CancelButton = btnCancel;
-        }
-
-        private void LnkGetKey_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "https://openrouter.ai/keys",
-                UseShellExecute = true
-            });
         }
 
         private void LoadSettings()
         {
-            // Load provider selection
-            cboProvider.SelectedIndex = AISettings.Provider == AIProvider.OpenCode ? 1 : 0;
+            _initializing = true;
+            try
+            {
+                txtBaseUrl.Text = AISettings.BaseUrl;
+                txtApiKey.Password = AISettings.ApiKey;
+                cboModel.Text = AISettings.Model;
+                cboImageModel.Text = AISettings.ImageModel;
+                cboApiDialect.SelectedIndex = AISettings.Protocol == AIEndpointProtocol.Responses ? 1 : 0;
+                chkStrictSchemas.IsChecked = AISettings.StrictSchemas;
+                chkAutoApply.IsChecked = AISettings.AutoApplyCommands;
 
-            // Load OpenRouter settings
-            txtApiKey.Text = AISettings.ApiKey;
-            cboModel.SelectedItem = AISettings.Model;
-            if (cboModel.SelectedIndex < 0 && cboModel.Items.Count > 0)
-                cboModel.SelectedIndex = 0;
-
-            // Load OpenCode settings
-            txtOpenCodeHost.Text = AISettings.OpenCodeHost;
-            numOpenCodePort.Value = AISettings.OpenCodePort;
-            cboOpenCodeModel.Text = AISettings.OpenCodeModel;
-            cboOpenCodeReasoningEffort.SelectedItem = AISettings.OpenCodeReasoningEffort;
-            if (cboOpenCodeReasoningEffort.SelectedIndex < 0 && cboOpenCodeReasoningEffort.Items.Count > 0)
-                cboOpenCodeReasoningEffort.SelectedIndex = 1; // medium
-            chkAutoStart.Checked = AISettings.OpenCodeAutoStart;
-
-            UpdatePanelVisibility();
-            UpdateStatusFromSettings();
+                RebuildModelCatalog(Array.Empty<OpenAIModelInfo>());
+                UpdateReasoningEffortChoices(FindModelChoice(AISettings.Model), AISettings.ReasoningEffort);
+                UpdateStatusFromSettings();
+            }
+            finally
+            {
+                _initializing = false;
+            }
         }
 
-        private void CboProvider_SelectedIndexChanged(object sender, EventArgs e)
+        private async void AISettingsDialog_Loaded(object sender, RoutedEventArgs e)
         {
-            UpdatePanelVisibility();
+            await RefreshEndpointModelsAsync();
+        }
+
+        private void AISettingsDialog_Closed(object sender, EventArgs e)
+        {
+            _isClosed = true;
+        }
+
+        private async void BtnRefreshModels_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshEndpointModelsAsync();
+        }
+
+        private async void TxtBaseUrl_Leave(object sender, EventArgs e)
+        {
+            await RefreshEndpointModelsAsync();
+        }
+
+        private async void TxtApiKey_Leave(object sender, EventArgs e)
+        {
+            await RefreshEndpointModelsAsync();
+        }
+
+        private void CboModel_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingModelCatalog)
+                return;
+
+            if (cboModel.SelectedItem is ModelChoice choice)
+            {
+                _updatingModelCatalog = true;
+                try
+                {
+                    cboModel.Text = choice.ModelId;
+                }
+                finally
+                {
+                    _updatingModelCatalog = false;
+                }
+            }
+
+            UpdateReasoningEffortChoices(FindModelChoice(cboModel.Text));
             InvalidateConnectionTest();
         }
 
-        private void OnSettingsChanged(object sender, EventArgs e)
+        private void CboModel_TextChanged(object sender, EventArgs e)
         {
+            if (_initializing || _updatingModelCatalog)
+                return;
+
+            UpdateReasoningEffortChoices(FindModelChoice(cboModel.Text));
+            InvalidateConnectionTest();
+        }
+
+        private void CboImageModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingModelCatalog)
+                return;
+
+            if (cboImageModel.SelectedItem is ModelChoice choice)
+            {
+                _updatingModelCatalog = true;
+                try
+                {
+                    cboImageModel.Text = choice.ModelId;
+                }
+                finally
+                {
+                    _updatingModelCatalog = false;
+                }
+            }
+
+            InvalidateConnectionTest();
+        }
+
+        private async Task RefreshEndpointModelsAsync()
+        {
+            if (_loadingModels || _isClosed)
+                return;
+
+            var baseUrl = txtBaseUrl.Text.Trim();
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                _endpointModelsLoaded = false;
+                _endpointModels.Clear();
+                RebuildModelCatalog(_endpointModels);
+                lblModelsStatus.Text = EditorPanelLocalizer.Text("AISettings_EnterBaseUrl", "Enter a base URL to discover endpoint models.");
+                return;
+            }
+
+            _loadingModels = true;
+            btnRefreshModels.IsEnabled = false;
+            lblModelsStatus.Text = EditorPanelLocalizer.Text("AISettings_DiscoveringModels", "Discovering models from endpoint...");
+            lblModelsStatus.Foreground = Brushes.Gray;
+
+            try
+            {
+                var client = new OpenAICompatibleClient(new OpenAICompatibleOptions
+                {
+                    BaseUrl = baseUrl,
+                    ApiKey = txtApiKey.Password.Trim(),
+                    Protocol = GetSelectedProtocol(),
+                    Timeout = TimeSpan.FromSeconds(30)
+                });
+
+                IReadOnlyList<OpenAIModelInfo> models;
+                using (client)
+                {
+                    models = await client.GetModelCatalogAsync();
+                }
+
+                if (_isClosed)
+                    return;
+
+                _endpointModels.Clear();
+                _endpointModels.AddRange(models);
+                _endpointModelsLoaded = true;
+                RebuildModelCatalog(_endpointModels);
+                lblModelsStatus.Text = models.Count == 0
+                    ? EditorPanelLocalizer.Text("AISettings_NoEndpointModels", "No endpoint models were returned. Built-in presets remain available.")
+                    : EditorPanelLocalizer.Format("AISettings_ModelsDiscovered", models.Count);
+                lblModelsStatus.Foreground = Brushes.Gray;
+            }
+            catch (Exception ex)
+            {
+                if (!_isClosed)
+                {
+                    _endpointModels.Clear();
+                    _endpointModelsLoaded = true;
+                    RebuildModelCatalog(_endpointModels);
+                    lblModelsStatus.Text = EditorPanelLocalizer.Format("AISettings_DiscoveryError", ex.Message);
+                    lblModelsStatus.Foreground = Brushes.DarkOrange;
+                }
+            }
+            finally
+            {
+                _loadingModels = false;
+                if (!_isClosed)
+                    btnRefreshModels.IsEnabled = true;
+            }
+        }
+
+        private void RebuildModelCatalog(IReadOnlyList<OpenAIModelInfo> endpointModels)
+        {
+            var selectedModel = cboModel.Text.Trim();
+            var selectedImageModel = cboImageModel.Text.Trim();
+            var choices = new List<ModelChoice>();
+            var builtInSource = EditorPanelLocalizer.Text("AISettings_ModelSourceBuiltIn", "Built-in");
+            var builtInEndpointSource = EditorPanelLocalizer.Text("AISettings_ModelSourceBuiltInEndpoint", "Built-in + endpoint");
+            var endpointSource = EditorPanelLocalizer.Text("AISettings_ModelSourceEndpoint", "Endpoint");
+            var imageChoices = AISettings.AvailableImageModels
+                .Select(model => new ModelChoice(model, builtInSource))
+                .ToList();
+
+            foreach (var model in AISettings.AvailableModels)
+                choices.Add(new ModelChoice(model, builtInSource));
+
+            foreach (var endpointModel in endpointModels)
+            {
+                if (string.IsNullOrWhiteSpace(endpointModel.Id))
+                    continue;
+
+                var existingIndex = choices.FindIndex(choice =>
+                    string.Equals(choice.ModelId, endpointModel.Id, StringComparison.OrdinalIgnoreCase));
+                if (existingIndex >= 0)
+                {
+                    choices[existingIndex] = new ModelChoice(
+                        endpointModel.Id,
+                        builtInEndpointSource,
+                        endpointModel.ReasoningEfforts);
+                }
+                else
+                {
+                    choices.Add(new ModelChoice(
+                        endpointModel.Id,
+                        endpointSource,
+                        endpointModel.ReasoningEfforts));
+                }
+
+                if (!imageChoices.Any(choice => string.Equals(choice.ModelId, endpointModel.Id, StringComparison.OrdinalIgnoreCase)))
+                    imageChoices.Add(new ModelChoice(endpointModel.Id, endpointSource, endpointModel.ReasoningEfforts));
+            }
+
+            _updatingModelCatalog = true;
+            try
+            {
+                cboModel.Items.Clear();
+                foreach (var choice in choices)
+                    cboModel.Items.Add(choice);
+
+                cboImageModel.Items.Clear();
+                foreach (var choice in imageChoices)
+                    cboImageModel.Items.Add(choice);
+
+                var selectedIndex = choices.FindIndex(choice =>
+                    string.Equals(choice.ModelId, selectedModel, StringComparison.OrdinalIgnoreCase));
+                cboModel.SelectedIndex = selectedIndex;
+                cboModel.Text = selectedIndex >= 0 ? choices[selectedIndex].ModelId : selectedModel;
+
+                var selectedImageIndex = imageChoices.FindIndex(choice =>
+                    string.Equals(choice.ModelId, selectedImageModel, StringComparison.OrdinalIgnoreCase));
+                cboImageModel.SelectedIndex = selectedImageIndex;
+                cboImageModel.Text = selectedImageIndex >= 0 ? imageChoices[selectedImageIndex].ModelId : selectedImageModel;
+            }
+            finally
+            {
+                _updatingModelCatalog = false;
+            }
+
+            UpdateReasoningEffortChoices(FindModelChoice(selectedModel));
+            UpdateModelCatalogStatus(choices.Count);
+        }
+
+        private void UpdateModelCatalogStatus(int totalModelCount)
+        {
+            if (!_endpointModelsLoaded)
+            {
+                lblModelsStatus.Text = EditorPanelLocalizer.Format(
+                    "AISettings_BuiltInPresetsPending", AISettings.AvailableModels.Length);
+                return;
+            }
+
+            lblModelsStatus.Text = _endpointModels.Count == 0
+                ? EditorPanelLocalizer.Format("AISettings_BuiltInPresetsOnly", AISettings.AvailableModels.Length)
+                : EditorPanelLocalizer.Format("AISettings_ModelCatalogSummary", AISettings.AvailableModels.Length,
+                    _endpointModels.Count, totalModelCount);
+        }
+
+        private ModelChoice FindModelChoice(string modelId)
+        {
+            if (string.IsNullOrWhiteSpace(modelId))
+                return null;
+
+            foreach (var item in cboModel.Items.OfType<ModelChoice>())
+            {
+                if (string.Equals(item.ModelId, modelId.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return item;
+            }
+
+            return null;
+        }
+
+        private void UpdateReasoningEffortChoices(ModelChoice choice, string preferredReasoning = null)
+        {
+            if (cboReasoningEffort == null)
+                return;
+
+            var selectedReasoning = preferredReasoning ?? GetSelectedReasoningEffort();
+            var efforts = choice != null && choice.ReasoningEfforts.Count > 0
+                ? choice.ReasoningEfforts
+                : InferReasoningEfforts(choice?.ModelId);
+
+            _updatingReasoningEffort = true;
+            try
+            {
+                cboReasoningEffort.Items.Clear();
+                cboReasoningEffort.Items.Add(AutoReasoningEffort);
+                foreach (var effort in efforts)
+                    cboReasoningEffort.Items.Add(effort);
+
+                var selectedIndex = string.IsNullOrWhiteSpace(selectedReasoning)
+                    ? 0
+                    : cboReasoningEffort.Items.IndexOf(selectedReasoning.ToLowerInvariant());
+                cboReasoningEffort.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+            }
+            finally
+            {
+                _updatingReasoningEffort = false;
+            }
+
+            if (choice != null && choice.ReasoningEfforts.Count > 0)
+            {
+                lblReasoningStatus.Text = EditorPanelLocalizer.Format("AISettings_EndpointReasoning", string.Join(", ", choice.ReasoningEfforts));
+            }
+            else if (efforts.Count > 0)
+            {
+                lblReasoningStatus.Text = EditorPanelLocalizer.Format("AISettings_DetectedReasoning", string.Join(", ", efforts));
+            }
+            else
+            {
+                lblReasoningStatus.Text = EditorPanelLocalizer.Text("AISettings_AutoReasoningOnly", "Auto only; this model does not advertise reasoning levels.");
+            }
+        }
+
+        private static IReadOnlyList<string> InferReasoningEfforts(string modelId)
+        {
+            if (string.IsNullOrWhiteSpace(modelId))
+                return Array.Empty<string>();
+
+            var normalized = modelId.Trim().ToLowerInvariant();
+            var supportsReasoning = normalized.Contains("gpt-5") ||
+                normalized.StartsWith("o1", StringComparison.Ordinal) ||
+                normalized.StartsWith("o3", StringComparison.Ordinal) ||
+                normalized.StartsWith("o4", StringComparison.Ordinal) ||
+                normalized.Contains("codex");
+            if (!supportsReasoning)
+                return Array.Empty<string>();
+
+            var efforts = new List<string> { "low", "medium", "high" };
+            if (normalized.Contains("codex"))
+                efforts.Add("xhigh");
+            return efforts;
+        }
+
+        private void OnSettingsChanged(object sender, RoutedEventArgs e)
+        {
+            if (_initializing || _updatingReasoningEffort || _updatingModelCatalog)
+                return;
+
             InvalidateConnectionTest();
         }
 
         private void InvalidateConnectionTest()
         {
             _connectionTested = false;
-            btnSave.Enabled = false;
-            lblStatus.Text = "Test connection required before saving.";
-            lblStatus.ForeColor = Color.Gray;
-        }
-
-        private void UpdatePanelVisibility()
-        {
-            bool isOpenCode = cboProvider.SelectedIndex == 1;
-            pnlOpenRouter.Visible = !isOpenCode;
-            pnlOpenCode.Visible = isOpenCode;
+            btnSave.IsEnabled = false;
+            lblStatus.Text = EditorPanelLocalizer.Text("AISettings_TestRequired", "Test connection required before saving.");
+            lblStatus.Foreground = Brushes.Gray;
         }
 
         private void UpdateStatusFromSettings()
         {
             if (AISettings.IsConfigured)
             {
-                lblStatus.Text = $"Configured: {AISettings.GetStatusDescription()}";
-                lblStatus.ForeColor = Color.Green;
+                lblStatus.Text = EditorPanelLocalizer.Format("AISettings_Configured", AISettings.GetStatusDescription());
+                lblStatus.Foreground = Brushes.Green;
             }
             else
             {
-                lblStatus.Text = "Not configured.";
-                lblStatus.ForeColor = Color.Gray;
+                lblStatus.Text = EditorPanelLocalizer.Text("AISettings_NotConfigured", "Not configured.");
+                lblStatus.Foreground = Brushes.Gray;
             }
         }
 
-        private async void BtnTest_Click(object sender, EventArgs e)
+        private async void BtnTest_Click(object sender, RoutedEventArgs e)
         {
-            btnTest.Enabled = false;
-            lblStatus.Text = "Testing connection...";
-            lblStatus.ForeColor = Color.Gray;
+            btnTest.IsEnabled = false;
+            lblStatus.Text = EditorPanelLocalizer.Text("AISettings_Testing", "Testing connection...");
+            lblStatus.Foreground = Brushes.Gray;
 
             try
             {
-                bool success;
-                bool isOpenCode = cboProvider.SelectedIndex == 1;
-
-                if (isOpenCode)
+                var baseUrl = txtBaseUrl.Text.Trim();
+                var model = cboModel.Text.Trim();
+                if (string.IsNullOrWhiteSpace(baseUrl))
                 {
-                    // Test OpenCode connection
-                    var host = txtOpenCodeHost.Text.Trim();
-                    var port = (int)numOpenCodePort.Value;
-                    var autoStart = chkAutoStart.Checked;
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_BaseUrlRequired", "Please enter an API base URL first.");
+                    lblStatus.Foreground = Brushes.Red;
+                    return;
+                }
 
-                    if (string.IsNullOrWhiteSpace(host))
-                    {
-                        lblStatus.Text = "Please enter the OpenCode server host.";
-                        lblStatus.ForeColor = Color.Red;
-                        return;
-                    }
+                if (string.IsNullOrWhiteSpace(model))
+                {
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ModelRequired", "Please select or enter a model first.");
+                    lblStatus.Foreground = Brushes.Red;
+                    return;
+                }
 
-                    if (autoStart)
-                    {
-                        lblStatus.Text = "Starting OpenCode server...";
-                        lblStatus.ForeColor = Color.Gray;
-                        lblStatus.Refresh();
-                    }
+                var client = new OpenAICompatibleClient(new OpenAICompatibleOptions
+                {
+                    BaseUrl = baseUrl,
+                    ApiKey = txtApiKey.Password.Trim(),
+                    Model = model,
+                    Protocol = GetSelectedProtocol(),
+                    ReasoningEffort = GetSelectedReasoningEffort(),
+                    StrictSchemas = chkStrictSchemas.IsChecked == true
+                });
 
-                    var client = new OpenCodeClient(
-                        host,
-                        port,
-                        cboOpenCodeModel.Text,
-                        autoStart,
-                        cboOpenCodeReasoningEffort.SelectedItem?.ToString());
+                bool success;
+                using (client)
+                {
                     success = await client.TestConnectionAsync();
+                }
 
-                    if (success)
-                    {
-                        var statusMsg = OpenCodeClient.IsManagedServerRunning
-                            ? "OpenCode connection successful! (server auto-started)"
-                            : "OpenCode connection successful!";
-                        lblStatus.Text = statusMsg;
-                        lblStatus.ForeColor = Color.Green;
-                        _connectionTested = true;
-                        btnSave.Enabled = true;
-                    }
-                    else
-                    {
-                        lblStatus.Text = autoStart
-                            ? $"Failed to start/connect to OpenCode. Is 'opencode' installed? {OPENCODE_MANUAL_START_HINT}"
-                            : $"Cannot connect to OpenCode at {host}:{port}. Is 'opencode serve' running? {OPENCODE_MANUAL_START_HINT}";
-                        lblStatus.ForeColor = Color.Red;
-                        _connectionTested = false;
-                        btnSave.Enabled = false;
-                    }
+                if (success)
+                {
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ConnectionSuccessful", "Connection successful!");
+                    lblStatus.Foreground = Brushes.Green;
+                    _connectionTested = true;
+                    btnSave.IsEnabled = true;
                 }
                 else
                 {
-                    // Test OpenRouter connection
-                    if (string.IsNullOrWhiteSpace(txtApiKey.Text))
-                    {
-                        lblStatus.Text = "Please enter an API key first.";
-                        lblStatus.ForeColor = Color.Red;
-                        return;
-                    }
-
-                    var client = new OpenRouterClient(txtApiKey.Text, cboModel.SelectedItem?.ToString() ?? AISettings.Model);
-                    success = await client.TestConnectionAsync();
-
-                    if (success)
-                    {
-                        lblStatus.Text = "OpenRouter connection successful!";
-                        lblStatus.ForeColor = Color.Green;
-                        _connectionTested = true;
-                        btnSave.Enabled = true;
-                    }
-                    else
-                    {
-                        lblStatus.Text = "Connection failed. Check your API key.";
-                        lblStatus.ForeColor = Color.Red;
-                        _connectionTested = false;
-                        btnSave.Enabled = false;
-                    }
+                    lblStatus.Text = EditorPanelLocalizer.Text("AISettings_ConnectionFailed", "Connection failed. Check the endpoint, model, and API key.");
+                    lblStatus.Foreground = Brushes.Red;
+                    _connectionTested = false;
+                    btnSave.IsEnabled = false;
                 }
             }
             catch (Exception ex)
             {
-                var errorMessage = $"Error: {ex.Message}";
-                if (cboProvider.SelectedIndex == 1 &&
-                    chkAutoStart.Checked &&
-                    IsOpenCodeAutoStartFailure(ex.Message))
-                {
-                    errorMessage += $" {OPENCODE_MANUAL_START_HINT}";
-                }
-
-                lblStatus.Text = errorMessage;
-                lblStatus.ForeColor = Color.Red;
+                lblStatus.Text = EditorPanelLocalizer.Format("AISettings_Error", ex.Message);
+                lblStatus.Foreground = Brushes.Red;
                 _connectionTested = false;
-                btnSave.Enabled = false;
+                btnSave.IsEnabled = false;
             }
             finally
             {
-                btnTest.Enabled = true;
+                btnTest.IsEnabled = true;
             }
         }
 
-        private static bool IsOpenCodeAutoStartFailure(string message)
+        private AIEndpointProtocol GetSelectedProtocol()
         {
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                return false;
-            }
-
-            var m = message.ToLowerInvariant();
-            return m.Contains("failed to auto-start")
-                || m.Contains("open code server not running")
-                || m.Contains("opencode server not running")
-                || m.Contains("start with: opencode serve")
-                || m.Contains("opencode cli not found")
-                || (m.Contains("opencode") && m.Contains("not running"));
+            return cboApiDialect.SelectedIndex == 1
+                ? AIEndpointProtocol.Responses
+                : AIEndpointProtocol.ChatCompletions;
         }
 
-        private void BtnRegenTools_Click(object sender, EventArgs e)
+        private string GetSelectedReasoningEffort()
         {
-            try
-            {
-                // Find project root by looking for .opencode folder
-                var dir = AppDomain.CurrentDomain.BaseDirectory;
-                while (!string.IsNullOrEmpty(dir))
-                {
-                    if (System.IO.Directory.Exists(System.IO.Path.Combine(dir, ".opencode")))
-                        break;
-                    var parent = System.IO.Directory.GetParent(dir);
-                    if (parent == null) { dir = null; break; }
-                    dir = parent.FullName;
-                }
-
-                if (string.IsNullOrEmpty(dir))
-                {
-                    // Fall back to prompting user
-                    using (var fbd = new FolderBrowserDialog())
-                    {
-                        fbd.Description = "Select project root folder (containing .opencode folder)";
-                        if (fbd.ShowDialog() != DialogResult.OK) return;
-                        dir = fbd.SelectedPath;
-                    }
-                }
-
-                var toolDir = System.IO.Path.Combine(dir, ".opencode", "tool");
-                var count = OpenCodeToolGenerator.GenerateAllTools(toolDir);
-                MessageBox.Show($"Generated {count} tool files in:\n{toolDir}", "Tools Regenerated",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error regenerating tools: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var selected = cboReasoningEffort.SelectedItem?.ToString();
+            return string.Equals(selected, AutoReasoningEffort, StringComparison.Ordinal)
+                ? string.Empty
+                : selected ?? string.Empty;
         }
 
-        private void BtnSave_Click(object sender, EventArgs e)
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            bool isOpenCode = cboProvider.SelectedIndex == 1;
+            if (!_connectionTested)
+                return;
 
-            // Save provider selection
-            AISettings.Provider = isOpenCode ? AIProvider.OpenCode : AIProvider.OpenRouter;
+            AISettings.BaseUrl = txtBaseUrl.Text.Trim();
+            AISettings.ApiKey = txtApiKey.Password.Trim();
+            AISettings.Model = cboModel.Text.Trim();
+            AISettings.ImageModel = cboImageModel.Text.Trim();
+            AISettings.Protocol = GetSelectedProtocol();
+            AISettings.ReasoningEffort = GetSelectedReasoningEffort();
+            AISettings.StrictSchemas = chkStrictSchemas.IsChecked == true;
+            AISettings.AutoApplyCommands = chkAutoApply.IsChecked == true;
 
-            if (isOpenCode)
+            DialogResult = true;
+        }
+
+        private sealed class ModelChoice
+        {
+            public ModelChoice(string modelId, string source, IReadOnlyList<string> reasoningEfforts = null)
             {
-                // Save OpenCode settings
-                AISettings.OpenCodeHost = txtOpenCodeHost.Text.Trim();
-                AISettings.OpenCodePort = (int)numOpenCodePort.Value;
-                AISettings.OpenCodeModel = cboOpenCodeModel.Text.Trim();
-                AISettings.OpenCodeReasoningEffort = cboOpenCodeReasoningEffort.SelectedItem?.ToString();
-                AISettings.OpenCodeAutoStart = chkAutoStart.Checked;
-            }
-            else
-            {
-                // Save OpenRouter settings
-                AISettings.ApiKey = txtApiKey.Text.Trim();
-                AISettings.Model = cboModel.SelectedItem?.ToString() ?? AISettings.AvailableModels[0];
+                ModelId = modelId;
+                Source = source;
+                ReasoningEfforts = reasoningEfforts ?? Array.Empty<string>();
             }
 
-            this.DialogResult = DialogResult.OK;
-            this.Close();
+            public string ModelId { get; }
+            public string Source { get; }
+            public IReadOnlyList<string> ReasoningEfforts { get; }
+
+            public override string ToString()
+            {
+                return $"{Source}: {ModelId}";
+            }
         }
     }
 }

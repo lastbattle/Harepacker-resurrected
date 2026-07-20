@@ -1,0 +1,1397 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+
+    There are any number of "resheader" rows that contain simple
+    name/value pairs.
+
+    Each data row contains a name, and value. The row also contains a
+    type or mimetype. Type corresponds to a .NET class that support
+    text/value conversion through the TypeConverter architecture.
+    Classes that don't support this are serialized and stored with the
+    mimetype set.
+
+    The mimetype is used for serialized objects, and tells the
+    ResXResourceReader how to depersist the object. This is currently not
+    extensible. For a given mimetype the value must be set accordingly:
+
+    Note - application/x-microsoft.net.object.binary.base64 is the format
+    that the ResXResourceWriter will generate, however the reader can
+    read any of the formats listed below.
+
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="-" xml:space="preserve">
+    <value>-</value>
+  </data>
+  <data name="&amp;#xE711;" xml:space="preserve">
+    <value>&amp;#xE711;</value>
+  </data>
+  <data name="&amp;#xE71D;" xml:space="preserve">
+    <value>&amp;#xE71D;</value>
+  </data>
+  <data name="&amp;#xE721;" xml:space="preserve">
+    <value>&amp;#xE721;</value>
+  </data>
+  <data name="*" xml:space="preserve">
+    <value>*</value>
+  </data>
+  <data name="," xml:space="preserve">
+    <value>,</value>
+  </data>
+  <data name="..." xml:space="preserve">
+    <value>...</value>
+  </data>
+  <data name=".wz" xml:space="preserve">
+    <value>.wz</value>
+  </data>
+  <data name="_Add" xml:space="preserve">
+    <value>_新增</value>
+  </data>
+  <data name="_Copy" xml:space="preserve">
+    <value>_複製</value>
+  </data>
+  <data name="_Edit" xml:space="preserve">
+    <value>_編輯</value>
+  </data>
+  <data name="_File" xml:space="preserve">
+    <value>_檔案</value>
+  </data>
+  <data name="_Help" xml:space="preserve">
+    <value>_說明</value>
+  </data>
+  <data name="_New" xml:space="preserve">
+    <value>_新增</value>
+  </data>
+  <data name="_Open…" xml:space="preserve">
+    <value>_開啟…</value>
+  </data>
+  <data name="_Paste" xml:space="preserve">
+    <value>_貼上</value>
+  </data>
+  <data name="_Redo" xml:space="preserve">
+    <value>_重做</value>
+  </data>
+  <data name="_Remove" xml:space="preserve">
+    <value>_移除</value>
+  </data>
+  <data name="_Save" xml:space="preserve">
+    <value>_儲存</value>
+  </data>
+  <data name="_Tools" xml:space="preserve">
+    <value>_工具</value>
+  </data>
+  <data name="_Undo" xml:space="preserve">
+    <value>_復原</value>
+  </data>
+  <data name="{0} files (*.{0})|*.{0}|All files (*.*)|*.*" xml:space="preserve">
+    <value>{0} files (*.{0})|*.{0}|全部 files (*.*)|*.*</value>
+  </data>
+  <data name="0" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="0xFF" xml:space="preserve">
+    <value>0xFF</value>
+  </data>
+  <data name="1" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="1.0" xml:space="preserve">
+    <value>1.0</value>
+  </data>
+  <data name="A fork~ " xml:space="preserve">
+    <value>A fork~ </value>
+  </data>
+  <data name="Abort" xml:space="preserve">
+    <value>終止</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>關於</value>
+  </data>
+  <data name="About HaRepacker" xml:space="preserve">
+    <value>關於HaRepacker</value>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="Add new tab (Ctl + T)" xml:space="preserve">
+    <value>新增索引標籤 (Ctl + T)</value>
+  </data>
+  <data name="AES Keys (MapleShark):" xml:space="preserve">
+    <value>AES 金鑰 (MapleShark):</value>
+  </data>
+  <data name="AES Keys (Odin):" xml:space="preserve">
+    <value>AES 金鑰 (Odin):</value>
+  </data>
+  <data name="All WZ files|*.wz" xml:space="preserve">
+    <value>所有 WZ 檔案|*.wz</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>套用</value>
+  </data>
+  <data name="Are you sure you want to close this file?" xml:space="preserve">
+    <value>確定要關閉此檔案嗎?</value>
+  </data>
+  <data name="Auto-load related Wz (Map.wz, Map001.wz, Map002.wz)" xml:space="preserve">
+    <value>自動載入相關 WZ（Map.wz、Map001.wz、Map002.wz）</value>
+  </data>
+  <data name="Automatically associate WZ files with HaRepacker" xml:space="preserve">
+    <value>自動關聯WZ檔案以HaRepacker打開</value>
+  </data>
+  <data name="Binary (mp3, bin)" xml:space="preserve">
+    <value>音樂(WzSoundProperty)</value>
+  </data>
+  <data name="Browse..." xml:space="preserve">
+    <value>瀏覽...</value>
+  </data>
+  <data name="Browse…" xml:space="preserve">
+    <value>瀏覽…</value>
+  </data>
+  <data name="Brute-force WZ key" xml:space="preserve">
+    <value>暴力破解 WZ 金鑰</value>
+  </data>
+  <data name="Brute-forcing..." xml:space="preserve">
+    <value>暴力破解中…</value>
+  </data>
+  <data name="BSON" xml:space="preserve">
+    <value>BSON</value>
+  </data>
+  <data name="Byte or Float" xml:space="preserve">
+    <value>浮點數(WzByteFloatProperty)</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Cancel operation" xml:space="preserve">
+    <value>取消 作業</value>
+  </data>
+  <data name="Canvas / Image" xml:space="preserve">
+    <value>圖片(WzCanvasProperty)</value>
+  </data>
+  <data name="Canvas property" xml:space="preserve">
+    <value>畫布 屬性</value>
+  </data>
+  <data name="CASH" xml:space="preserve">
+    <value>CASH</value>
+  </data>
+  <data name="Categories to pack:" xml:space="preserve">
+    <value>要封裝的分類：</value>
+  </data>
+  <data name="Change Image" xml:space="preserve">
+    <value>變更影像</value>
+  </data>
+  <data name="Change Sound" xml:space="preserve">
+    <value>變更音效</value>
+  </data>
+  <data name="Choose the archive type and encoding options." xml:space="preserve">
+    <value>選擇封存檔類型與編碼選項。</value>
+  </data>
+  <data name="Choose the MapleStory encryption version for this import." xml:space="preserve">
+    <value>選擇此次匯入所使用的 MapleStory 加密版本。</value>
+  </data>
+  <data name="Choose the output format and WZ encoding options." xml:space="preserve">
+    <value>選擇輸出格式與 WZ 編碼選項。</value>
+  </data>
+  <data name="Choose the startup integration you want to enable." xml:space="preserve">
+    <value>選擇要啟用的啟動整合。</value>
+  </data>
+  <data name="Classic" xml:space="preserve">
+    <value>傳統</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="Collapse all" xml:space="preserve">
+    <value>收起全部</value>
+  </data>
+  <data name="Configure archive loading, export formatting, and application behavior." xml:space="preserve">
+    <value>設定封存檔載入、匯出格式與應用程式行為。</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="Convex" xml:space="preserve">
+    <value>凸面</value>
+  </data>
+  <data name="Convex property" xml:space="preserve">
+    <value>Convex 屬性</value>
+  </data>
+  <data name="Copy (Ctrl+C)" xml:space="preserve">
+    <value>複製 (Ctrl+C)</value>
+  </data>
+  <data name="Copyright" xml:space="preserve">
+    <value>版權</value>
+  </data>
+  <data name="Create WZ content" xml:space="preserve">
+    <value>建立 WZ 內容</value>
+  </data>
+  <data name="Ctrl+C" xml:space="preserve">
+    <value>Ctrl+C</value>
+  </data>
+  <data name="Ctrl+I" xml:space="preserve">
+    <value>Ctrl+I</value>
+  </data>
+  <data name="Ctrl+N" xml:space="preserve">
+    <value>Ctrl+N</value>
+  </data>
+  <data name="Ctrl+O" xml:space="preserve">
+    <value>Ctrl+O</value>
+  </data>
+  <data name="Ctrl+S" xml:space="preserve">
+    <value>Ctrl+S</value>
+  </data>
+  <data name="Ctrl+V" xml:space="preserve">
+    <value>Ctrl+V</value>
+  </data>
+  <data name="Current force value:" xml:space="preserve">
+    <value>現在的force值:</value>
+  </data>
+  <data name="Current next value:" xml:space="preserve">
+    <value>現在的next值:</value>
+  </data>
+  <data name="Current prev value:" xml:space="preserve">
+    <value>現在的prev值:</value>
+  </data>
+  <data name="DEBUG MODE" xml:space="preserve">
+    <value>DEBUG MODE</value>
+  </data>
+  <data name="Default filepath" xml:space="preserve">
+    <value>預設檔案路徑</value>
+  </data>
+  <data name="Default filepath:" xml:space="preserve">
+    <value>預設檔案路徑：</value>
+  </data>
+  <data name="Default force value" xml:space="preserve">
+    <value>預設 作用力 值</value>
+  </data>
+  <data name="Default force value:" xml:space="preserve">
+    <value>默認force值:</value>
+  </data>
+  <data name="Default next value" xml:space="preserve">
+    <value>預設 下一個 值</value>
+  </data>
+  <data name="Default next value:" xml:space="preserve">
+    <value>默認next值:</value>
+  </data>
+  <data name="Default portal type" xml:space="preserve">
+    <value>預設 傳送點 類型</value>
+  </data>
+  <data name="Default prev value" xml:space="preserve">
+    <value>預設 prev 值</value>
+  </data>
+  <data name="Default prev value:" xml:space="preserve">
+    <value>默認prev值:</value>
+  </data>
+  <data name="Default render size" xml:space="preserve">
+    <value>預設轉譯大小</value>
+  </data>
+  <data name="Default render size:" xml:space="preserve">
+    <value>預設轉譯大小：</value>
+  </data>
+  <data name="Default type:" xml:space="preserve">
+    <value>默認類型:</value>
+  </data>
+  <data name="Default X coord:" xml:space="preserve">
+    <value>默認X坐標:</value>
+  </data>
+  <data name="Default X coordinate" xml:space="preserve">
+    <value>預設 X 座標</value>
+  </data>
+  <data name="Default XML Folder:" xml:space="preserve">
+    <value>默認XML資料夾:</value>
+  </data>
+  <data name="Default Y coord:" xml:space="preserve">
+    <value>默認Y坐標:</value>
+  </data>
+  <data name="Default Y coordinate" xml:space="preserve">
+    <value>預設 Y 座標</value>
+  </data>
+  <data name="Destination" xml:space="preserve">
+    <value>目的地</value>
+  </data>
+  <data name="Destination:" xml:space="preserve">
+    <value>目的地:</value>
+  </data>
+  <data name="Developed by haha01haha01" xml:space="preserve">
+    <value>程式由haha01haha01開發</value>
+  </data>
+  <data name="Directory" xml:space="preserve">
+    <value>目錄(WzDirectory)</value>
+  </data>
+  <data name="Double" xml:space="preserve">
+    <value>雙精度浮點數(WzDoubleProperty)</value>
+  </data>
+  <data name="Double property" xml:space="preserve">
+    <value>雙精度 屬性</value>
+  </data>
+  <data name="Duration:" xml:space="preserve">
+    <value>持續時間:</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>編輯</value>
+  </data>
+  <data name="Edit foothold" xml:space="preserve">
+    <value>編輯 立足點</value>
+  </data>
+  <data name="Edit one encrypted list entry per line." xml:space="preserve">
+    <value>編輯 每行一個加密清單項目.</value>
+  </data>
+  <data name="Edit portal" xml:space="preserve">
+    <value>編輯 傳送點</value>
+  </data>
+  <data name="Encryption" xml:space="preserve">
+    <value>加密類型</value>
+  </data>
+  <data name="Encryption:" xml:space="preserve">
+    <value>加密:</value>
+  </data>
+  <data name="EQ" xml:space="preserve">
+    <value>EQ</value>
+  </data>
+  <data name="ETC" xml:space="preserve">
+    <value>ETC</value>
+  </data>
+  <data name="Expand all" xml:space="preserve">
+    <value>展開全部</value>
+  </data>
+  <data name="Export data" xml:space="preserve">
+    <value>匯出 資料</value>
+  </data>
+  <data name="Export file" xml:space="preserve">
+    <value>匯出 檔案</value>
+  </data>
+  <data name="Export File(s) to" xml:space="preserve">
+    <value>匯出檔案為</value>
+  </data>
+  <data name="Export files" xml:space="preserve">
+    <value>匯出檔案</value>
+  </data>
+  <data name="Export Selection" xml:space="preserve">
+    <value>匯出選中</value>
+  </data>
+  <data name="Extracted AES key formats for use with Odin and MapleShark tooling." xml:space="preserve">
+    <value>已擷取可供 Odin 與 MapleShark 工具使用的 AES 金鑰格式。</value>
+  </data>
+  <data name="False" xml:space="preserve">
+    <value>否</value>
+  </data>
+  <data name="FH Mapping" xml:space="preserve">
+    <value>立足處繪製</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>檔案</value>
+  </data>
+  <data name="File format selection:" xml:space="preserve">
+    <value>檔案格式選擇：</value>
+  </data>
+  <data name="First Run" xml:space="preserve">
+    <value>首次運行</value>
+  </data>
+  <data name="Float property" xml:space="preserve">
+    <value>浮點數 屬性</value>
+  </data>
+  <data name="Foothold ID" xml:space="preserve">
+    <value>立足點 ID</value>
+  </data>
+  <data name="Foothold ID:" xml:space="preserve">
+    <value>立足處ID:</value>
+  </data>
+  <data name="Foothold mapping" xml:space="preserve">
+    <value>立足點對應</value>
+  </data>
+  <data name="Footholds" xml:space="preserve">
+    <value>立足處</value>
+  </data>
+  <data name="Force" xml:space="preserve">
+    <value>作用力</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="HaRepacker" xml:space="preserve">
+    <value>HaRepacker</value>
+  </data>
+  <data name="HaRepacker - WZ extractor and repacker&#xA;Copyright (C) 2009-2015 haha01haha01" xml:space="preserve">
+    <value>HaRepacker - WZ 解包和重打包工具
+Copyright (C) 2009-2015 haha01haha01</value>
+  </data>
+  <data name="Harepacker resurrected ~ Fork of HaRepacker ;)" xml:space="preserve">
+    <value>Harepacker resurrected ~ HaRepacker 的分支版本 ;)</value>
+  </data>
+  <data name="Height" xml:space="preserve">
+    <value>高度</value>
+  </data>
+  <data name="Help" xml:space="preserve">
+    <value>幫助</value>
+  </data>
+  <data name="Hex:" xml:space="preserve">
+    <value>十六進位:</value>
+  </data>
+  <data name="Hotfix Data.wz" xml:space="preserve">
+    <value>Hotfix 資料.wz</value>
+  </data>
+  <data name="https://github.com/lastbattle/Harepacker-resurrected" xml:space="preserve">
+    <value>https://github.com/lastbattle/Harepacker-resurrected</value>
+  </data>
+  <data name="Image" xml:space="preserve">
+    <value>IMG(WzImage)</value>
+  </data>
+  <data name="Image files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff" xml:space="preserve">
+    <value>影像 files|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff</value>
+  </data>
+  <data name="Image files|*.png;*.gif;*.bmp;*.jpg;*.tif" xml:space="preserve">
+    <value>影像 files|*.png;*.gif;*.bmp;*.jpg;*.tif</value>
+  </data>
+  <data name="IMG" xml:space="preserve">
+    <value>IMG</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>匯入</value>
+  </data>
+  <data name="Indentation" xml:space="preserve">
+    <value>縮進</value>
+  </data>
+  <data name="Int" xml:space="preserve">
+    <value>整數(WzCompressedIntProperty)</value>
+  </data>
+  <data name="Integer" xml:space="preserve">
+    <value>整數</value>
+  </data>
+  <data name="Integer property" xml:space="preserve">
+    <value>整數 屬性</value>
+  </data>
+  <data name="JOBS" xml:space="preserve">
+    <value>JOBS</value>
+  </data>
+  <data name="JSON" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="Key:" xml:space="preserve">
+    <value>加密類型</value>
+  </data>
+  <data name="Line break" xml:space="preserve">
+    <value>換行格式</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>列表</value>
+  </data>
+  <data name="List file" xml:space="preserve">
+    <value>清單檔案</value>
+  </data>
+  <data name="List WZ File (*.wz)|*.wz" xml:space="preserve">
+    <value>List WZ 檔案 (*.wz)|*.wz</value>
+  </data>
+  <data name="List.wz Editor" xml:space="preserve">
+    <value>List.wz編輯器</value>
+  </data>
+  <data name="Loading…" xml:space="preserve">
+    <value>載入中…</value>
+  </data>
+  <data name="Long" xml:space="preserve">
+    <value>長整數</value>
+  </data>
+  <data name="Long property" xml:space="preserve">
+    <value>長整數 屬性</value>
+  </data>
+  <data name="Lua property" xml:space="preserve">
+    <value>Lua 屬性</value>
+  </data>
+  <data name="Lua Script" xml:space="preserve">
+    <value>Lua 指令碼</value>
+  </data>
+  <data name="Map" xml:space="preserve">
+    <value>地圖</value>
+  </data>
+  <data name="MapleStory Base.wz|Base.wz" xml:space="preserve">
+    <value>MapleStory Base.wz|Base.wz</value>
+  </data>
+  <data name="MAPS" xml:space="preserve">
+    <value>MAPS</value>
+  </data>
+  <data name="menuStrip1" xml:space="preserve">
+    <value>menuStrip1</value>
+  </data>
+  <data name="Mob ID" xml:space="preserve">
+    <value>怪物 ID</value>
+  </data>
+  <data name="Mob ID:" xml:space="preserve">
+    <value>怪物ID:</value>
+  </data>
+  <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
+    <value>MP3 audio (*.mp3)|*.mp3</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="Name:" xml:space="preserve">
+    <value>名稱:</value>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="New (Ctl + T)" xml:space="preserve">
+    <value>新建...</value>
+  </data>
+  <data name="New force value:" xml:space="preserve">
+    <value>新的force值:</value>
+  </data>
+  <data name="New name:" xml:space="preserve">
+    <value>名稱:</value>
+  </data>
+  <data name="New next value:" xml:space="preserve">
+    <value>新的next值:</value>
+  </data>
+  <data name="New prev value:" xml:space="preserve">
+    <value>新的prev值:</value>
+  </data>
+  <data name="New tab" xml:space="preserve">
+    <value>新增索引標籤</value>
+  </data>
+  <data name="New type value:" xml:space="preserve">
+    <value>新類型:</value>
+  </data>
+  <data name="New X value:" xml:space="preserve">
+    <value>新X值:</value>
+  </data>
+  <data name="New Y value:" xml:space="preserve">
+    <value>新Y值:</value>
+  </data>
+  <data name="New..." xml:space="preserve">
+    <value>新建...</value>
+  </data>
+  <data name="Next foothold" xml:space="preserve">
+    <value>下一個 立足點</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="No to all" xml:space="preserve">
+    <value>取消全部</value>
+  </data>
+  <data name="No version number" xml:space="preserve">
+    <value>沒有版本號碼</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>不換行</value>
+  </data>
+  <data name="NPC" xml:space="preserve">
+    <value>NPC</value>
+  </data>
+  <data name="Null" xml:space="preserve">
+    <value>空值(WzNullProperty)</value>
+  </data>
+  <data name="Null property" xml:space="preserve">
+    <value>空值 屬性</value>
+  </data>
+  <data name="NX" xml:space="preserve">
+    <value>NX</value>
+  </data>
+  <data name="NXFormat" xml:space="preserve">
+    <value>NXFormat</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="Open _Version Directory…" xml:space="preserve">
+    <value>開啟 _版本 目錄…</value>
+  </data>
+  <data name="Open 64-bit WZ folder  (Ctl + I)" xml:space="preserve">
+    <value>開啟 64-bit WZ 資料夾  (Ctl + I)</value>
+  </data>
+  <data name="Open New WZ _Format…" xml:space="preserve">
+    <value>開啟 新增 WZ _格式…</value>
+  </data>
+  <data name="Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)" xml:space="preserve">
+    <value>打開...</value>
+  </data>
+  <data name="Options" xml:space="preserve">
+    <value>選項</value>
+  </data>
+  <data name="Options..." xml:space="preserve">
+    <value>選項...</value>
+  </data>
+  <data name="Options…" xml:space="preserve">
+    <value>選項…</value>
+  </data>
+  <data name="Other" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="Output" xml:space="preserve">
+    <value>輸出</value>
+  </data>
+  <data name="Output Item Name" xml:space="preserve">
+    <value>輸出項目名稱</value>
+  </data>
+  <data name="Output path:" xml:space="preserve">
+    <value>輸出 路徑:</value>
+  </data>
+  <data name="Override" xml:space="preserve">
+    <value>覆寫</value>
+  </data>
+  <data name="Pack" xml:space="preserve">
+    <value>封裝</value>
+  </data>
+  <data name="Pack as Beta Data.wz" xml:space="preserve">
+    <value>封裝為 Beta Data.wz</value>
+  </data>
+  <data name="Pack IMG Files to WZ" xml:space="preserve">
+    <value>將 IMG 檔案封裝為 WZ</value>
+  </data>
+  <data name="Pack IMG filesystem" xml:space="preserve">
+    <value>封裝 IMG 檔案系統</value>
+  </data>
+  <data name="Pack IMG to WZ…" xml:space="preserve">
+    <value>將 IMG 封裝為 WZ…</value>
+  </data>
+  <data name="Package file v1.0 Copyright 2002 Wizet, ZMS" xml:space="preserve">
+    <value>Package 檔案 v1.0 Copyright 2002 Wizet, ZMS</value>
+  </data>
+  <data name="Packet encryption keys" xml:space="preserve">
+    <value>封包加密金鑰</value>
+  </data>
+  <data name="Parse images while searching" xml:space="preserve">
+    <value>搜尋時解析影像</value>
+  </data>
+  <data name="Parse images while searching (warning - can take a lot of time)" xml:space="preserve">
+    <value>搜尋時解析影像（警告：可能需要很長時間）</value>
+  </data>
+  <data name="Paste (Ctrl+V)" xml:space="preserve">
+    <value>貼上 (Ctrl+V)</value>
+  </data>
+  <data name="Patch Version (0=auto):" xml:space="preserve">
+    <value>Patch 版本 (0=auto):</value>
+  </data>
+  <data name="Path:" xml:space="preserve">
+    <value>路徑:</value>
+  </data>
+  <data name="PNG\MP3" xml:space="preserve">
+    <value>PNG\MP3</value>
+  </data>
+  <data name="PNGs" xml:space="preserve">
+    <value>PNGs</value>
+  </data>
+  <data name="Portal" xml:space="preserve">
+    <value>傳送門</value>
+  </data>
+  <data name="Portal type" xml:space="preserve">
+    <value>傳送點 類型</value>
+  </data>
+  <data name="Portal type:" xml:space="preserve">
+    <value>傳送點類型:</value>
+  </data>
+  <data name="Portals" xml:space="preserve">
+    <value>傳送點</value>
+  </data>
+  <data name="Preferences" xml:space="preserve">
+    <value>偏好設定</value>
+  </data>
+  <data name="Previous foothold" xml:space="preserve">
+    <value>上一個 立足點</value>
+  </data>
+  <data name="Private server" xml:space="preserve">
+    <value>伺服器端</value>
+  </data>
+  <data name="Private Server XML" xml:space="preserve">
+    <value>伺服器端XML</value>
+  </data>
+  <data name="Query:" xml:space="preserve">
+    <value>查詢:</value>
+  </data>
+  <data name="QUEST" xml:space="preserve">
+    <value>QUEST</value>
+  </data>
+  <data name="Raw data" xml:space="preserve">
+    <value>Raw 資料</value>
+  </data>
+  <data name="ReadMe.txt" xml:space="preserve">
+    <value>ReadMe.txt</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>就緒</value>
+  </data>
+  <data name="Redo" xml:space="preserve">
+    <value>重做</value>
+  </data>
+  <data name="Regular" xml:space="preserve">
+    <value>常規</value>
+  </data>
+  <data name="Reload all" xml:space="preserve">
+    <value>重載全部</value>
+  </data>
+  <data name="Remove (Del)" xml:space="preserve">
+    <value>移除(Del)</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>重新命名</value>
+  </data>
+  <data name="Render map" xml:space="preserve">
+    <value>轉譯 地圖</value>
+  </data>
+  <data name="Render Map (Ctl + R)" xml:space="preserve">
+    <value>渲染圖</value>
+  </data>
+  <data name="Replace" xml:space="preserve">
+    <value>取代</value>
+  </data>
+  <data name="Repository" xml:space="preserve">
+    <value>程式碼庫</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>重設</value>
+  </data>
+  <data name="Results" xml:space="preserve">
+    <value>關於</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="Save archive" xml:space="preserve">
+    <value>儲存 封存檔</value>
+  </data>
+  <data name="Save as .ms file" xml:space="preserve">
+    <value>儲存 as .ms 檔案</value>
+  </data>
+  <data name="Save as .ms file (encrypted. v220++)" xml:space="preserve">
+    <value>儲存 as .ms 檔案 (encrypted. v220++)</value>
+  </data>
+  <data name="Save as .wz file" xml:space="preserve">
+    <value>儲存 as .wz 檔案</value>
+  </data>
+  <data name="Save as 64-bit WZ format" xml:space="preserve">
+    <value>儲存 as 64-bit WZ 格式</value>
+  </data>
+  <data name="Save Image" xml:space="preserve">
+    <value>儲存 影像</value>
+  </data>
+  <data name="Save Sound" xml:space="preserve">
+    <value>儲存 音效</value>
+  </data>
+  <data name="Save..." xml:space="preserve">
+    <value>保存...</value>
+  </data>
+  <data name="Schedule.xls" xml:space="preserve">
+    <value>Schedule.xls</value>
+  </data>
+  <data name="Search (Ctrl+F)" xml:space="preserve">
+    <value>搜尋 (Ctrl+F)</value>
+  </data>
+  <data name="Search behavior" xml:space="preserve">
+    <value>搜尋 行為</value>
+  </data>
+  <data name="Search names and descriptions across loaded WZ data, then copy the matching ID bytes." xml:space="preserve">
+    <value>搜尋已載入 WZ 資料中的名稱與描述，然後複製符合的 ID 位元組。</value>
+  </data>
+  <data name="Search Options" xml:space="preserve">
+    <value>搜尋選項</value>
+  </data>
+  <data name="Search results" xml:space="preserve">
+    <value>搜尋 結果</value>
+  </data>
+  <data name="Search string values" xml:space="preserve">
+    <value>搜尋字串值</value>
+  </data>
+  <data name="Search WZ strings" xml:space="preserve">
+    <value>搜尋 WZ 字串</value>
+  </data>
+  <data name="Search WZ strings…" xml:space="preserve">
+    <value>搜尋 WZ 字串…</value>
+  </data>
+  <data name="Search…" xml:space="preserve">
+    <value>搜尋…</value>
+  </data>
+  <data name="Select a result to navigate to it." xml:space="preserve">
+    <value>選擇結果以前往該位置.</value>
+  </data>
+  <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
+    <value>選擇小型 WZ 檔案，並平行搜尋 IV 金鑰空間。</value>
+  </data>
+  <data name="Select All" xml:space="preserve">
+    <value>選擇 全部</value>
+  </data>
+  <data name="Select an image" xml:space="preserve">
+    <value>選擇 an 影像</value>
+  </data>
+  <data name="Select None" xml:space="preserve">
+    <value>選擇 無</value>
+  </data>
+  <data name="Select the sound" xml:space="preserve">
+    <value>選擇 the 音效</value>
+  </data>
+  <data name="Select the version you're importing from:" xml:space="preserve">
+    <value>選擇匯入來源版本：</value>
+  </data>
+  <data name="Select where to save the file" xml:space="preserve">
+    <value>選擇儲存檔案的位置</value>
+  </data>
+  <data name="Select where to save the image" xml:space="preserve">
+    <value>選擇 where 至 儲存 the 影像</value>
+  </data>
+  <data name="Select where to save the MP3 file" xml:space="preserve">
+    <value>選擇 where 至 儲存 the MP3 檔案</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設置</value>
+  </data>
+  <data name="Settings..." xml:space="preserve">
+    <value>設置...</value>
+  </data>
+  <data name="SETUP" xml:space="preserve">
+    <value>SETUP</value>
+  </data>
+  <data name="Short" xml:space="preserve">
+    <value>無符號短整數(WzUnsignedShortProperty)</value>
+  </data>
+  <data name="SKILLS" xml:space="preserve">
+    <value>SKILLS</value>
+  </data>
+  <data name="Sort TreeView by default (slow!)" xml:space="preserve">
+    <value>預設排序樹狀檢視（速度較慢）</value>
+  </data>
+  <data name="Sound property" xml:space="preserve">
+    <value>音效 屬性</value>
+  </data>
+  <data name="Source: Standard" xml:space="preserve">
+    <value>來源: Standard</value>
+  </data>
+  <data name="Spawnpoint" xml:space="preserve">
+    <value>召喚點</value>
+  </data>
+  <data name="Spawnpoint details" xml:space="preserve">
+    <value>生成點 詳細資料</value>
+  </data>
+  <data name="Start brute-forcing" xml:space="preserve">
+    <value>開始暴力破解</value>
+  </data>
+  <data name="String" xml:space="preserve">
+    <value>文本(WzStringProperty)</value>
+  </data>
+  <data name="String property" xml:space="preserve">
+    <value>字串 屬性</value>
+  </data>
+  <data name="Sub" xml:space="preserve">
+    <value>子目錄(WzSubProperty)</value>
+  </data>
+  <data name="Sub property" xml:space="preserve">
+    <value>Sub 屬性</value>
+  </data>
+  <data name="Sword" xml:space="preserve">
+    <value>Sword</value>
+  </data>
+  <data name="Syntax highlighting: " xml:space="preserve">
+    <value>語法醒目提示: </value>
+  </data>
+  <data name="Thanks to Snow for MapleLib&#xA;&#xA;" xml:space="preserve">
+    <value>感謝Snow提供的MapleLib</value>
+  </data>
+  <data name="Theme Color:" xml:space="preserve">
+    <value>主題色彩:</value>
+  </data>
+  <data name="Tools" xml:space="preserve">
+    <value>工具</value>
+  </data>
+  <data name="toolStrip1" xml:space="preserve">
+    <value>toolStrip1</value>
+  </data>
+  <data name="toolStripButton1" xml:space="preserve">
+    <value>toolStripButton1</value>
+  </data>
+  <data name="Tries:" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>類型</value>
+  </data>
+  <data name="Undo" xml:space="preserve">
+    <value>撤銷</value>
+  </data>
+  <data name="Unload all" xml:space="preserve">
+    <value>關閉全部</value>
+  </data>
+  <data name="Unsigned short property" xml:space="preserve">
+    <value>無號短整數 屬性</value>
+  </data>
+  <data name="Uol" xml:space="preserve">
+    <value>連結路徑(WzUolProperty)</value>
+  </data>
+  <data name="UOL property" xml:space="preserve">
+    <value>UOL 屬性</value>
+  </data>
+  <data name="USE" xml:space="preserve">
+    <value>使用</value>
+  </data>
+  <data name="Use APNG incompatibility frame" xml:space="preserve">
+    <value>使用APNG動畫不兼容顯示楨</value>
+  </data>
+  <data name="Utilities" xml:space="preserve">
+    <value>公用程式</value>
+  </data>
+  <data name="Value:" xml:space="preserve">
+    <value>值:</value>
+  </data>
+  <data name="Vector (x, y)" xml:space="preserve">
+    <value>坐標(WzVectorProperty)</value>
+  </data>
+  <data name="Vector property" xml:space="preserve">
+    <value>向量 屬性</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="Version: Unknown" xml:space="preserve">
+    <value>版本：未知</value>
+  </data>
+  <data name="View help" xml:space="preserve">
+    <value>查看幫助</value>
+  </data>
+  <data name="Welcome to HaRepacker" xml:space="preserve">
+    <value>歡迎使用 HaRepacker</value>
+  </data>
+  <data name="WZ directory" xml:space="preserve">
+    <value>WZ 目錄</value>
+  </data>
+  <data name="WZ editor and archive toolkit" xml:space="preserve">
+    <value>WZ 編輯器與封存工具組</value>
+  </data>
+  <data name="WZ encryption" xml:space="preserve">
+    <value>WZ加密</value>
+  </data>
+  <data name="WZ image" xml:space="preserve">
+    <value>WZ 影像</value>
+  </data>
+  <data name="WZ key brute force" xml:space="preserve">
+    <value>WZ 金鑰暴力破解</value>
+  </data>
+  <data name="WZ String searcher" xml:space="preserve">
+    <value>WZ 字串搜尋器</value>
+  </data>
+  <data name="X coord:" xml:space="preserve">
+    <value>X坐標:</value>
+  </data>
+  <data name="X coordinate" xml:space="preserve">
+    <value>X 座標</value>
+  </data>
+  <data name="X position" xml:space="preserve">
+    <value>X 位置</value>
+  </data>
+  <data name="X position:" xml:space="preserve">
+    <value>X位置:</value>
+  </data>
+  <data name="X:" xml:space="preserve">
+    <value>X:</value>
+  </data>
+  <data name="X: " xml:space="preserve">
+    <value>X: </value>
+  </data>
+  <data name="XML" xml:space="preserve">
+    <value>XML</value>
+  </data>
+  <data name="Y coord:" xml:space="preserve">
+    <value>Y坐標:</value>
+  </data>
+  <data name="Y coordinate" xml:space="preserve">
+    <value>Y 座標</value>
+  </data>
+  <data name="Y position" xml:space="preserve">
+    <value>Y 位置</value>
+  </data>
+  <data name="Y position:" xml:space="preserve">
+    <value>Y位置:</value>
+  </data>
+  <data name="Y:" xml:space="preserve">
+    <value>Y:</value>
+  </data>
+  <data name="Y: " xml:space="preserve">
+    <value>Y: </value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="Yes to all" xml:space="preserve">
+    <value>確認全部</value>
+  </data>
+  <data name="ZLZ AES Encryption keys" xml:space="preserve">
+    <value>ZLZ AES 加密金鑰</value>
+  </data>
+  <data name="Error">
+    <value>錯誤</value>
+  </data>
+  <data name="Warning">
+    <value>警告</value>
+  </data>
+  <data name="Success">
+    <value>成功</value>
+  </data>
+  <data name="Cancelled">
+    <value>已取消</value>
+  </data>
+  <data name="Reload">
+    <value>重新載入</value>
+  </data>
+  <data name="Unload">
+    <value>卸載</value>
+  </data>
+  <data name="Remove">
+    <value>移除</value>
+  </data>
+  <data name="Save to IMG">
+    <value>儲存至 IMG</value>
+  </data>
+  <data name="Create New IMG File">
+    <value>建立新的 IMG 檔案</value>
+  </data>
+  <data name="Delete IMG File">
+    <value>刪除 IMG 檔案</value>
+  </data>
+  <data name="Please select only one node.">
+    <value>請只選擇一個節點。</value>
+  </data>
+  <data name="Are you sure you want to unload this?">
+    <value>確定要卸載此項目嗎？</value>
+  </data>
+  <data name="Are you sure you want to reload this file?">
+    <value>確定要重新載入此檔案嗎？</value>
+  </data>
+  <data name="Sort child nodes view">
+    <value>排序子節點檢視</value>
+  </data>
+  <data name="Sort properties by name">
+    <value>依名稱排序屬性</value>
+  </data>
+  <data name="Cannot Save">
+    <value>無法儲存</value>
+  </data>
+  <data name="This item is not from an IMG filesystem directory.">
+    <value>此項目不屬於 IMG 檔案系統目錄。</value>
+  </data>
+  <data name="Saved {0} successfully.">
+    <value>已成功儲存 {0}。</value>
+  </data>
+  <data name="Failed to save {0}.">
+    <value>無法儲存 {0}。</value>
+  </data>
+  <data name="Saved {0} changed image(s) successfully.">
+    <value>已成功儲存 {0} 個已變更的影像。</value>
+  </data>
+  <data name="No changed images to save.">
+    <value>沒有已變更的影像需要儲存。</value>
+  </data>
+  <data name="Save Complete">
+    <value>儲存完成</value>
+  </data>
+  <data name="Save Failed">
+    <value>儲存失敗</value>
+  </data>
+  <data name="Save Error">
+    <value>儲存錯誤</value>
+  </data>
+  <data name="Error saving: {0}">
+    <value>儲存時發生錯誤：{0}</value>
+  </data>
+  <data name="Please select a directory from an IMG filesystem.">
+    <value>請從 IMG 檔案系統中選擇目錄。</value>
+  </data>
+  <data name="Cannot Create File">
+    <value>無法建立檔案</value>
+  </data>
+  <data name="A file named '{0}' already exists in this directory.">
+    <value>此目錄中已存在名為「{0}」的檔案。</value>
+  </data>
+  <data name="File Exists">
+    <value>檔案已存在</value>
+  </data>
+  <data name="Created '{0}' successfully.">
+    <value>已成功建立「{0}」。</value>
+  </data>
+  <data name="Failed to create '{0}'.">
+    <value>無法建立「{0}」。</value>
+  </data>
+  <data name="File Created">
+    <value>檔案已建立</value>
+  </data>
+  <data name="Creation Failed">
+    <value>建立失敗</value>
+  </data>
+  <data name="Error creating file: {0}">
+    <value>建立檔案時發生錯誤：{0}</value>
+  </data>
+  <data name="Please select an IMG file to delete.">
+    <value>請選擇要刪除的 IMG 檔案。</value>
+  </data>
+  <data name="Cannot Delete">
+    <value>無法刪除</value>
+  </data>
+  <data name="This file is not from an IMG filesystem directory.">
+    <value>此檔案不屬於 IMG 檔案系統目錄。</value>
+  </data>
+  <data name="Are you sure you want to delete '{0}'?&#xA;&#xA;This will permanently delete the file from disk.">
+    <value>確定要刪除「{0}」嗎？
+
+這會從磁碟永久刪除該檔案。</value>
+  </data>
+  <data name="Confirm Delete">
+    <value>確認刪除</value>
+  </data>
+  <data name="Deleted '{0}' successfully.">
+    <value>已成功刪除「{0}」。</value>
+  </data>
+  <data name="Failed to delete '{0}'.">
+    <value>無法刪除「{0}」。</value>
+  </data>
+  <data name="File Deleted">
+    <value>檔案已刪除</value>
+  </data>
+  <data name="Deletion Failed">
+    <value>刪除失敗</value>
+  </data>
+  <data name="Error deleting file: {0}">
+    <value>刪除檔案時發生錯誤：{0}</value>
+  </data>
+  <data name="Version: {0}">
+    <value>版本：{0}</value>
+  </data>
+  <data name="Source: Beta (single Data.wz)">
+    <value>來源：Beta（單一 Data.wz）</value>
+  </data>
+  <data name="Source: 64-bit (Data folder)">
+    <value>來源：64 位元（Data 資料夾）</value>
+  </data>
+  <data name="Source: Pre-Big Bang">
+    <value>來源：Big Bang 之前</value>
+  </data>
+  <data name="Source: Unknown">
+    <value>來源：未知</value>
+  </data>
+  <data name="Version: Unknown (no manifest.json)">
+    <value>版本：未知（沒有 manifest.json）</value>
+  </data>
+  <data name="Please select at least one category to pack.">
+    <value>請至少選擇一個要封裝的分類。</value>
+  </data>
+  <data name="No Categories Selected">
+    <value>未選擇分類</value>
+  </data>
+  <data name="Please specify an output path.">
+    <value>請指定輸出路徑。</value>
+  </data>
+  <data name="Output Path Required">
+    <value>需要輸出路徑</value>
+  </data>
+  <data name="Completed! Packed {0} images.">
+    <value>完成！已封裝 {0} 個影像。</value>
+  </data>
+  <data name="Failed: {0}">
+    <value>失敗：{0}</value>
+  </data>
+  <data name="Error: {0}">
+    <value>錯誤：{0}</value>
+  </data>
+  <data name="Packing was cancelled.">
+    <value>封裝已取消。</value>
+  </data>
+  <data name="Error during packing: {0}">
+    <value>封裝時發生錯誤：{0}</value>
+  </data>
+  <data name="Please wait for packing to complete or cancel it first.">
+    <value>請等待封裝完成，或先取消封裝。</value>
+  </data>
+  <data name="Packing in Progress">
+    <value>正在封裝</value>
+  </data>
+  <data name="Unable to load DLL library. Kernel32 GetLastError(): {0}">
+    <value>無法載入 DLL 程式庫。Kernel32 GetLastError()：{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;{0}">
+    <value>KeyGen 位置無效。此 MapleStory 版本可能不受支援。
+{0}</value>
+  </data>
+  <data name="Invalid KeyGen position. This version of MapleStory may be unsupported.&#xA;func_setEncryptionKey = {0}, encryptionKeyLoc = {1}">
+    <value>KeyGen 位置無效。此 MapleStory 版本可能不受支援。
+func_setEncryptionKey = {0}，encryptionKeyLoc = {1}</value>
+  </data>
+  <data name="An error occurred: {0}">
+    <value>發生錯誤：{0}</value>
+  </data>
+  <data name="Found the encryption key to the WZ file:">
+    <value>找到 WZ 檔案的加密金鑰：</value>
+  </data>
+  <data name="Please select one or more canvas nodes.">
+    <value>請選擇一個或多個畫布節點。</value>
+  </data>
+  <data name="Error previewing animation: {0}">
+    <value>預覽動畫時發生錯誤：{0}</value>
+  </data>
+  <data name="Error rendering map">
+    <value>轉譯地圖時發生錯誤</value>
+  </data>
+  <data name="Failed to load settings.">
+    <value>無法載入設定。</value>
+  </data>
+  <data name="You must set the render scale to a valid number.">
+    <value>轉譯比例必須設定為有效數字。</value>
+  </data>
+  <data name="Saved {0} changed image(s).">
+    <value>已儲存 {0} 個已變更的影像。</value>
+  </data>
+  <data name="No changes to save.">
+    <value>沒有變更需要儲存。</value>
+  </data>
+  <data name="Could not insert property; make sure all types are correct.">
+    <value>無法插入屬性；請確認所有類型均正確。</value>
+  </data>
+  <data name="Canvas">
+    <value>畫布</value>
+  </data>
+  <data name="Float">
+    <value>浮點數</value>
+  </data>
+  <data name="Sound">
+    <value>音效</value>
+  </data>
+  <data name="Vector">
+    <value>向量</value>
+  </data>
+  <data name="Sort">
+    <value>排序</value>
+  </data>
+  <data name="Cannot insert node &quot;{0}&quot; because a node with the same name already exists. Skipping.">
+    <value>無法插入節點「{0}」，因為已存在同名節點。將略過。</value>
+  </data>
+  <data name="Cannot insert object &quot;{0}&quot; because an object with the same name already exists. Skipping.">
+    <value>無法插入物件「{0}」，因為已存在同名物件。將略過。</value>
+  </data>
+  <data name="Skipping Node">
+    <value>略過節點</value>
+  </data>
+  <data name="Skipping Object">
+    <value>略過物件</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} ms (average: {1})">
+    <value>已完成。
+經過時間：{0} 毫秒（平均：{1}）</value>
+  </data>
+  <data name="Completed.&#xA;Elapsed time: {0} seconds (average: {1})">
+    <value>已完成。
+經過時間：{0} 秒（平均：{1}）</value>
+  </data>
+  <data name="Error initializing or rendering Spine object: {0}">
+    <value>初始化或轉譯 Spine 物件時發生錯誤：{0}</value>
+  </data>
+  <data name="Unable to upscale image:&#xA;{0}">
+    <value>無法放大影像：
+{0}</value>
+  </data>
+  <data name="The selected directory does not appear to be a valid IMG filesystem.&#xA;&#xA;Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc.">
+    <value>選取的目錄似乎不是有效的 IMG 檔案系統。
+
+請選擇包含已擷取 IMG 檔案以及 String、Map、Mob、Npc 等分類資料夾的目錄。</value>
+  </data>
+  <data name="Not found">
+    <value>找不到</value>
+  </data>
+  <data name="Map X: {0} Y: {1}">
+    <value>地圖 X：{0} Y：{1}</value>
+  </data>
+  <data name="Error overwriting WZ file: {0}">
+    <value>覆寫 WZ 檔案時發生錯誤：{0}</value>
+  </data>
+  <data name="More actions" xml:space="preserve">
+    <value>更多操作</value>
+  </data>
+</root>

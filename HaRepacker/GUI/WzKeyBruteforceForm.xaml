@@ -1,0 +1,45 @@
+<gui:ThemedDialogWindow x:Class="HaRepacker.GUI.WzKeyBruteforceForm"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:gui="clr-namespace:HaRepacker.GUI"
+        Width="560" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="{DynamicResource HareCanvasBrush}" Foreground="{DynamicResource HareTextBrush}" FontFamily="Segoe UI" FontSize="13">
+    <gui:ThemedDialogWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </gui:ThemedDialogWindow.Resources>
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Select a small WZ file and search the IV key space in parallel." Style="{StaticResource HareMutedTextStyle}" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Border Grid.Row="1" Style="{StaticResource HareCardStyle}" Margin="0,18,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Tries:"/>
+                <TextBlock x:Name="label_ivTries" Grid.Column="1" Text="0" TextAlignment="Right"/>
+                <TextBlock Grid.Row="1" Text="Duration:" Margin="0,10,0,0"/>
+                <TextBlock x:Name="label_duration" Grid.Row="1" Grid.Column="1" Text="0" TextAlignment="Right" Margin="0,10,0,0"/>
+                <TextBlock Grid.Row="2" Text="Key:" Margin="0,10,0,0"/>
+                <TextBlock x:Name="label_key" Grid.Row="2" Grid.Column="1" Text="-" TextAlignment="Right" FontFamily="Consolas" Margin="0,10,0,0"/>
+                <TextBox x:Name="versionBox" Visibility="Collapsed" InputScope="Number"/>
+            </Grid>
+        </Border>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Close" Width="100" IsCancel="True"/>
+            <Button x:Name="button_startStop" Content="Start brute-forcing" Width="160" Margin="8,0,0,0" Style="{StaticResource HarePrimaryButtonStyle}" Click="button_startStop_Click"/>
+        </StackPanel>
+    </Grid>
+</gui:ThemedDialogWindow>

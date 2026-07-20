@@ -224,7 +224,9 @@ namespace HaCreator
 
             // Program run here
             GUI.Initialization initForm = new GUI.Initialization();
-            Application.Run(initForm);
+            var wpfApplication = System.Windows.Application.Current ?? new System.Windows.Application();
+            wpfApplication.ShutdownMode = System.Windows.ShutdownMode.OnLastWindowClose;
+            wpfApplication.Run(initForm);
 
             // Shutdown
             if (initForm.editor != null)

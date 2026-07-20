@@ -1,0 +1,818 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <data name="Dialog_About_HaCreator_D7275A" xml:space="preserve">
+    <value>About HaCreator</value>
+  </data>
+  <data name="Dialog_Activity_log_A9D562" xml:space="preserve">
+    <value>Activity log</value>
+  </data>
+  <data name="Dialog_Allow_WZ_fallback_in_hybrid_mode_C01FB6" xml:space="preserve">
+    <value>Allow WZ fallback in hybrid mode</value>
+  </data>
+  <data name="Dialog_Back_76900F" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="Dialog_Background_formulae_Koolk_God_F7E779" xml:space="preserve">
+    <value>Background formulae — Koolk, God
+
+</value>
+  </data>
+  <data name="Dialog_Behavior_EDF8D3" xml:space="preserve">
+    <value>Behavior</value>
+  </data>
+  <data name="Dialog_Blank_map_8DF131" xml:space="preserve">
+    <value>Blank map</value>
+  </data>
+  <data name="Dialog_Browse_3227AA" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="Dialog_Browse_maps_75E8C8" xml:space="preserve">
+    <value>Browse maps</value>
+  </data>
+  <data name="Dialog_Browse_93C6B6" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="Dialog_Cached_images_CCAEA9" xml:space="preserve">
+    <value>Cached images</value>
+  </data>
+  <data name="Dialog_Cancel_19766E" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Dialog_Categories_to_pack_28422D" xml:space="preserve">
+    <value>Categories to pack</value>
+  </data>
+  <data name="Dialog_Change_layer_577636" xml:space="preserve">
+    <value>Change layer</value>
+  </data>
+  <data name="Dialog_Choose_a_MapleStory_installation_select_the_data_groups_528310" xml:space="preserve">
+    <value>Choose a MapleStory installation, select the data groups to extract, and create a reusable HaCreator version.</value>
+  </data>
+  <data name="Dialog_Choose_how_HaCreator_loads_and_caches_MapleStory_assets_D8EF67" xml:space="preserve">
+    <value>Choose how HaCreator loads and caches MapleStory assets.</value>
+  </data>
+  <data name="Dialog_Choose_the_categories_and_target_format_for_the_generat_4E9F07" xml:space="preserve">
+    <value>Choose the categories and target format for the generated WZ data.</value>
+  </data>
+  <data name="Dialog_Choose_the_map_ID_or_a_supported_special_map_name_624D2A" xml:space="preserve">
+    <value>Choose the map ID or a supported special map name.</value>
+  </data>
+  <data name="Dialog_Choose_tile_set_7EB655" xml:space="preserve">
+    <value>Choose tile set</value>
+  </data>
+  <data name="Dialog_Choose_which_modified_archives_to_write_B53E60" xml:space="preserve">
+    <value>Choose which modified archives to write.</value>
+  </data>
+  <data name="Dialog_Client_locale_0C3F96" xml:space="preserve">
+    <value>Client locale</value>
+  </data>
+  <data name="Dialog_Clip_text_to_bounds_C0904C" xml:space="preserve">
+    <value>Clip text to bounds</value>
+  </data>
+  <data name="Dialog_Clone_map_36503E" xml:space="preserve">
+    <value>Clone map</value>
+  </data>
+  <data name="Dialog_Close_7D9EB7" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Circle_9FABCB" xml:space="preserve">
+    <value>Color Swatch Circle</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_1_B757EF" xml:space="preserve">
+    <value>Color Swatch Square 1</value>
+  </data>
+  <data name="Dialog_Color_Swatch_Square_2_2EA9D8" xml:space="preserve">
+    <value>Color Swatch Square 2</value>
+  </data>
+  <data name="Dialog_Colors_88C45D" xml:space="preserve">
+    <value>Colors</value>
+  </data>
+  <data name="Dialog_Configure_version_BA4170" xml:space="preserve">
+    <value>Configure version</value>
+  </data>
+  <data name="Dialog_Convert_WZ_assets_automatically_DA87FF" xml:space="preserve">
+    <value>Convert WZ assets automatically</value>
+  </data>
+  <data name="Dialog_Copy_all_96E3F0" xml:space="preserve">
+    <value>Copy all</value>
+  </data>
+  <data name="Dialog_Create_a_map_AFD283" xml:space="preserve">
+    <value>Create a map</value>
+  </data>
+  <data name="Dialog_Create_blank_map_A7F938" xml:space="preserve">
+    <value>Create blank map</value>
+  </data>
+  <data name="Dialog_Create_from_map_CFB30F" xml:space="preserve">
+    <value>Create from map</value>
+  </data>
+  <data name="Dialog_Create_map_AD41DE" xml:space="preserve">
+    <value>Create map</value>
+  </data>
+  <data name="Dialog_Credits_and_attributions_8F890E" xml:space="preserve">
+    <value>Credits and attributions</value>
+  </data>
+  <data name="Dialog_Custom_objects_3DD433" xml:space="preserve">
+    <value>Custom objects</value>
+  </data>
+  <data name="Dialog_Data_source_settings_6660A7" xml:space="preserve">
+    <value>Data source settings</value>
+  </data>
+  <data name="Dialog_Delete_object_0B1BBB" xml:space="preserve">
+    <value>Delete object</value>
+  </data>
+  <data name="Dialog_Deleting_an_object_removes_it_from_the_custom_object_li_D93856" xml:space="preserve">
+    <value>Deleting an object removes it from the custom-object library. Existing map placements are not automatically repaired.</value>
+  </data>
+  <data name="Dialog_Detected_installations_EAE79D" xml:space="preserve">
+    <value>Detected installations</value>
+  </data>
+  <data name="Dialog_Display_name_2B7F6A" xml:space="preserve">
+    <value>Display name</value>
+  </data>
+  <data name="Dialog_Edit_values_stored_in_Map_Physics_img_3C88D3" xml:space="preserve">
+    <value>Edit values stored in Map/Physics.img.</value>
+  </data>
+  <data name="Dialog_Enable_automatic_backups_217ACD" xml:space="preserve">
+    <value>Enable automatic backups</value>
+  </data>
+  <data name="Dialog_Encryption_82F4E7" xml:space="preserve">
+    <value>Encryption</value>
+  </data>
+  <data name="Dialog_Export_folder_B41FF5" xml:space="preserve">
+    <value>Export folder</value>
+  </data>
+  <data name="Dialog_Extract_C15301" xml:space="preserve">
+    <value>Extract</value>
+  </data>
+  <data name="Dialog_Extract_WZ_Data_42667B" xml:space="preserve">
+    <value>Extract WZ Data</value>
+  </data>
+  <data name="Dialog_Extracting_assets_17CB7D" xml:space="preserve">
+    <value>Extracting assets</value>
+  </data>
+  <data name="Dialog_Field_limits_field_types_and_portal_types_Koolk_Fiel_Bl_54AB6B" xml:space="preserve">
+    <value>Field limits, field types and portal types — Koolk, Fiel, BluePoop, LightPepsi, Bui
+
+</value>
+  </data>
+  <data name="Dialog_Find_usages_1A0A20" xml:space="preserve">
+    <value>Find usages</value>
+  </data>
+  <data name="Dialog_Fix_foothold_mispositions_D4B68F" xml:space="preserve">
+    <value>Fix foothold mispositions</value>
+  </data>
+  <data name="Dialog_Font_name_2CD8F5" xml:space="preserve">
+    <value>Font name</value>
+  </data>
+  <data name="Dialog_General_C910D4" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Dialog_Generate_extraction_index_B7D7D5" xml:space="preserve">
+    <value>Generate extraction index</value>
+  </data>
+  <data name="Dialog_Graphics_and_GUI_Anthonywolfe_Diamondo25_Bugale_98E17C" xml:space="preserve">
+    <value>Graphics and GUI — Anthonywolfe, Diamondo25, Bugale
+
+</value>
+  </data>
+  <data name="Dialog_HaCreator_encountered_an_error_9237B9" xml:space="preserve">
+    <value>HaCreator encountered an error</value>
+  </data>
+  <data name="Dialog_HaCreator_resurrected_8AD585" xml:space="preserve">
+    <value>HaCreator resurrected</value>
+  </data>
+  <data name="Dialog_HaCreator_settings_762561" xml:space="preserve">
+    <value>HaCreator settings</value>
+  </data>
+  <data name="Dialog_Height_BFE2EC" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Dialog_Hybrid_6C67DC" xml:space="preserve">
+    <value>Hybrid</value>
+  </data>
+  <data name="Dialog_IMG_filesystem_5D40A3" xml:space="preserve">
+    <value>IMG filesystem</value>
+  </data>
+  <data name="Dialog_Input_36ECB4" xml:space="preserve">
+    <value>Input</value>
+  </data>
+  <data name="Dialog_Invert_layer_up_down_8D7820" xml:space="preserve">
+    <value>Invert layer up/down</value>
+  </data>
+  <data name="Dialog_Layer_AC9FFC" xml:space="preserve">
+    <value>Layer</value>
+  </data>
+  <data name="Dialog_Linked_to_B4B7FE" xml:space="preserve">
+    <value>Linked to </value>
+  </data>
+  <data name="Dialog_Manage_custom_objects_2FDA41" xml:space="preserve">
+    <value>Manage custom objects</value>
+  </data>
+  <data name="Dialog_Manual_folder_959DA1" xml:space="preserve">
+    <value>Manual folder</value>
+  </data>
+  <data name="Dialog_Map_data_is_unavailable_537DF8" xml:space="preserve">
+    <value>Map data is unavailable</value>
+  </data>
+  <data name="Dialog_Map_diagnostics_269074" xml:space="preserve">
+    <value>Map diagnostics</value>
+  </data>
+  <data name="Dialog_Map_editor_for_MapleStory_WZ_data_F80834" xml:space="preserve">
+    <value>Map editor for MapleStory WZ data</value>
+  </data>
+  <data name="Dialog_Map_hierarchy_E5070B" xml:space="preserve">
+    <value>Map hierarchy</value>
+  </data>
+  <data name="Dialog_Map_physics_C03020" xml:space="preserve">
+    <value>Map physics</value>
+  </data>
+  <data name="Dialog_MapleLib_Snow_0E19E4" xml:space="preserve">
+    <value>MapleLib — Snow
+
+</value>
+  </data>
+  <data name="Dialog_Memory_cache_MB_CF25E8" xml:space="preserve">
+    <value>Memory cache (MB)</value>
+  </data>
+  <data name="Dialog_Migrate_to_IMG_filesystem_53CE8F" xml:space="preserve">
+    <value>Migrate to IMG filesystem</value>
+  </data>
+  <data name="Dialog_Migrate_WZ_files_70876B" xml:space="preserve">
+    <value>Migrate WZ files</value>
+  </data>
+  <data name="Dialog_Mode_5E23EC" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Dialog_Name_2683CA" xml:space="preserve">
+    <value>Name:</value>
+  </data>
+  <data name="Dialog_NEW_A253FF" xml:space="preserve">
+    <value>NEW</value>
+  </data>
+  <data name="Dialog_New_platform_20103C" xml:space="preserve">
+    <value>New platform</value>
+  </data>
+  <data name="Dialog_Next_1FF57A" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="Dialog_OK_565339" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Dialog_Open_log_7230E6" xml:space="preserve">
+    <value>Open log</value>
+  </data>
+  <data name="Dialog_Open_project_repository_50B264" xml:space="preserve">
+    <value>Open project repository</value>
+  </data>
+  <data name="Dialog_Output_folder_998915" xml:space="preserve">
+    <value>Output folder</value>
+  </data>
+  <data name="Dialog_Output_format_93C53D" xml:space="preserve">
+    <value>Output format</value>
+  </data>
+  <data name="Dialog_Pack_80DC21" xml:space="preserve">
+    <value>Pack</value>
+  </data>
+  <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
+    <value>Pack as Beta Data.wz</value>
+  </data>
+  <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
+    <value>Pack IMG files to WZ</value>
+  </data>
+
+  <data name="Dialog_Parallel_extraction_threads_23467E" xml:space="preserve">
+    <value>Parallel extraction threads</value>
+  </data>
+  <data name="Dialog_Patch_version_0_auto_45DAB0" xml:space="preserve">
+    <value>Patch version (0 = auto)</value>
+  </data>
+  <data name="Dialog_Physics_and_character_simulation_research_Lexi_9E98C8" xml:space="preserve">
+    <value>Physics and character simulation research — Lexi
+
+</value>
+  </data>
+  <data name="Dialog_Pick_Color_9B78AB" xml:space="preserve">
+    <value>Pick Color</value>
+  </data>
+  <data name="Dialog_Pick_swatch_type_44DF7A" xml:space="preserve">
+    <value>Pick swatch type</value>
+  </data>
+  <data name="Dialog_Platform_zM_71E85E" xml:space="preserve">
+    <value>Platform (zM)</value>
+  </data>
+  <data name="Dialog_Platform_number_DD431C" xml:space="preserve">
+    <value>Platform number</value>
+  </data>
+  <data name="Dialog_Please_wait_650CFE" xml:space="preserve">
+    <value>Please wait</value>
+  </data>
+  <data name="Dialog_Preview_324B13" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="Dialog_Read_9B9A8D" xml:space="preserve">
+    <value>Read</value>
+  </data>
+  <data name="Dialog_Ready_5FA7AA" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Dialog_Repack_8D3E09" xml:space="preserve">
+    <value>Repack</value>
+  </data>
+  <data name="Dialog_Repack_changed_WZ_files_598100" xml:space="preserve">
+    <value>Repack changed WZ files</value>
+  </data>
+  <data name="Dialog_Repack_WZ_files_FE4AEF" xml:space="preserve">
+    <value>Repack WZ files</value>
+  </data>
+  <data name="Dialog_Repacker_Resurrection_LastBattle_HaCreator_Resurrection_7F3172" xml:space="preserve">
+    <value>Repacker Resurrection — LastBattle
+HaCreator Resurrection — Lapig</value>
+  </data>
+  <data name="Dialog_Reset_defaults_4542D4" xml:space="preserve">
+    <value>Reset defaults</value>
+  </data>
+  <data name="Dialog_Review_reusable_objects_created_in_this_workspace_and_f_D306AC" xml:space="preserve">
+    <value>Review reusable objects created in this workspace and find where each one is used.</value>
+  </data>
+  <data name="Dialog_Save_1509F5" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Dialog_Save_as_64_bit_WZ_format_4BC4B4" xml:space="preserve">
+    <value>Save as 64-bit WZ format</value>
+  </data>
+  <data name="Dialog_Save_changed_images_to_source_3FCA18" xml:space="preserve">
+    <value>Save changed images to source</value>
+  </data>
+  <data name="Dialog_Save_images_in_a_separate_Canvas_folder_0133B6" xml:space="preserve">
+    <value>Save images in a separate _Canvas folder</value>
+  </data>
+  <data name="Dialog_Save_map_AB74BA" xml:space="preserve">
+    <value>Save map</value>
+  </data>
+  <data name="Dialog_Scan_folder_48FCB3" xml:space="preserve">
+    <value>Scan folder</value>
+  </data>
+  <data name="Dialog_Scan_installation_D2939B" xml:space="preserve">
+    <value>Scan installation…</value>
+  </data>
+  <data name="Dialog_Search_and_select_a_tile_set_for_the_active_layer_E5FB28" xml:space="preserve">
+    <value>Search and select a tile set for the active layer.</value>
+  </data>
+  <data name="Dialog_Select_2A7802" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="Dialog_Select_a_MapleStory_installation_to_begin_1BD82A" xml:space="preserve">
+    <value>Select a MapleStory installation to begin.</value>
+  </data>
+  <data name="Dialog_Select_all_1FC9A3" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="Dialog_Select_none_41AFE0" xml:space="preserve">
+    <value>Select none</value>
+  </data>
+  <data name="Dialog_Select_source_140B76" xml:space="preserve">
+    <value>Select source</value>
+  </data>
+  <data name="Dialog_Show_error_summaries_7C99AC" xml:space="preserve">
+    <value>Show error summaries</value>
+  </data>
+  <data name="Dialog_Something_went_wrong_AB827E" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Dialog_Source_Unknown_14D3DB" xml:space="preserve">
+    <value>Source: Unknown</value>
+  </data>
+  <data name="Dialog_This_wizard_extracts_a_MapleStory_WZ_installation_into_A3FE9D" xml:space="preserve">
+    <value>This wizard extracts a MapleStory WZ installation into a versioned IMG filesystem.</value>
+  </data>
+  <data name="Dialog_Tile_sets_429FBB" xml:space="preserve">
+    <value>Tile sets</value>
+  </data>
+  <data name="Dialog_Tile_snapping_offsets_special_list_view_control_and_mob_81965C" xml:space="preserve">
+    <value>Tile snapping offsets, special list view control and mob rate — Koolk
+
+</value>
+  </data>
+  <data name="Dialog_Unknown_B764CD" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="Dialog_Use_memory_mapped_files_EDB079" xml:space="preserve">
+    <value>Use memory-mapped files</value>
+  </data>
+  <data name="Dialog_Validate_after_extraction_7FAB37" xml:space="preserve">
+    <value>Validate after extraction</value>
+  </data>
+  <data name="Dialog_Value_224A33" xml:space="preserve">
+    <value>Value:</value>
+  </data>
+  <data name="Dialog_Version_name_C5BE1C" xml:space="preserve">
+    <value>Version name</value>
+  </data>
+  <data name="Dialog_Width_301994" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Dialog_Working_A92F04" xml:space="preserve">
+    <value>Working</value>
+  </data>
+  <data name="Dialog_Write_3F0092" xml:space="preserve">
+    <value>Write</value>
+  </data>
+  <data name="Dialog_WZ_data_groups_EB7F0F" xml:space="preserve">
+    <value>WZ data groups</value>
+  </data>
+  <data name="Dialog_WZ_files_8F86F3" xml:space="preserve">
+    <value>WZ files</value>
+  </data>
+  <data name="Dialog_WZ_path_AA541C" xml:space="preserve">
+    <value>WZ path</value>
+  </data>
+<data name="Dialog_CancelTimeoutMessage" xml:space="preserve"><value>Could not stop the background action after 5000 ms. Save your work and restart if the application behaves unexpectedly.</value></data><data name="Dialog_CancelTimeoutTitle" xml:space="preserve"><value>Background action still running</value></data><data name="Dialog_ImgModeDescription" xml:space="preserve"><value>IMG filesystem mode (recommended): fast extracted assets with direct file editing.</value></data><data name="Dialog_WzModeDescription" xml:space="preserve"><value>WZ files mode (legacy): load directly from a MapleStory installation.</value></data><data name="Dialog_HybridModeDescription" xml:space="preserve"><value>Hybrid mode: use extracted IMG assets first and fall back to WZ files.</value></data><data name="Dialog_SelectMapleWzFolder" xml:space="preserve"><value>Select a MapleStory directory containing WZ files</value></data><data name="Dialog_NoWzFiles" xml:space="preserve"><value>The selected folder does not contain .wz files.</value></data><data name="Dialog_InvalidDirectory" xml:space="preserve"><value>Invalid directory</value></data><data name="Dialog_ConfirmResetDataSource" xml:space="preserve"><value>Reset all data-source settings to defaults?</value></data><data name="Dialog_ConfirmReset" xml:space="preserve"><value>Confirm reset</value></data><data name="Dialog_SpecifyWzDirectory" xml:space="preserve"><value>Please specify a WZ files directory.</value></data><data name="Dialog_ValidationError" xml:space="preserve"><value>Validation error</value></data><data name="Dialog_CacheThreadsIntegers" xml:space="preserve"><value>Cache and thread values must be integers.</value></data><data name="Dialog_LayerTileSetMismatch" xml:space="preserve"><value>The target layer cannot hold the selected items because they contain tiles from a different tile set.</value></data><data name="Dialog_CannotChangeLayer" xml:space="preserve"><value>Cannot change layer</value></data><data name="Dialog_PhysicsUnavailableBeta" xml:space="preserve"><value>Physics editing is unavailable for beta MapleStory data.</value></data><data name="Dialog_NoDataSource" xml:space="preserve"><value>No data source is available.</value></data><data name="Dialog_PhysicsLoadFailed" xml:space="preserve"><value>Map/Physics.img could not be loaded.
+{0}</value></data><data name="Dialog_PhysicsUpdated" xml:space="preserve"><value>Physics values were updated. Repack WZ files to persist the change.</value></data><data name="Dialog_Success" xml:space="preserve"><value>Success</value></data><data name="Dialog_PositiveDimensions" xml:space="preserve"><value>Enter positive numeric dimensions.</value></data><data name="Dialog_InvalidMapSize" xml:space="preserve"><value>Invalid map size</value></data><data name="Dialog_SelectedMapLoadFailed" xml:space="preserve"><value>The selected map could not be loaded.</value></data><data name="Dialog_InvalidSettingValue" xml:space="preserve"><value>A setting has an invalid value.
+{0}</value></data><data name="Dialog_InvalidSettings" xml:space="preserve"><value>Invalid settings</value></data><data name="Dialog_EnterValidInteger" xml:space="preserve"><value>Please enter a valid integer value.</value></data><data name="Dialog_InvalidInput" xml:space="preserve"><value>Invalid input</value></data><data name="Dialog_ValidationFailed" xml:space="preserve"><value>Validation failed</value></data><data name="Dialog_NextButton" xml:space="preserve"><value>Next &gt;</value></data><data name="Dialog_StartExtraction" xml:space="preserve"><value>Start extraction</value></data><data name="Dialog_Cancel" xml:space="preserve"><value>Cancel</value></data><data name="Dialog_WizardStep" xml:space="preserve"><value>Step {0} of {1}</value></data><data name="Dialog_ConfirmCancelExtraction" xml:space="preserve"><value>Are you sure you want to cancel the extraction?</value></data><data name="Dialog_SelectScanFolder" xml:space="preserve"><value>Select a folder to scan for MapleStory installations</value></data><data name="Dialog_NoMapleInstallations" xml:space="preserve"><value>No MapleStory installations were found in the selected folder.</value></data><data name="Dialog_ScanComplete" xml:space="preserve"><value>Scan complete</value></data><data name="Dialog_InvalidVersionNameChars" xml:space="preserve"><value>Version name can only contain letters, numbers, underscores, and hyphens.</value></data><data name="Dialog_VersionExists" xml:space="preserve"><value>A version with this name already exists.</value></data><data name="Dialog_StartingExtraction" xml:space="preserve"><value>Starting extraction...</value></data><data name="Dialog_LogStartingCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] Starting: {1}</value></data><data name="Dialog_LogCompletedCategory" xml:space="preserve"><value>[{0:HH:mm:ss}] Completed: {1} ({2} images)</value></data><data name="Dialog_ExtractionSuccess" xml:space="preserve"><value>Extraction completed successfully!</value></data><data name="Dialog_Finish" xml:space="preserve"><value>Finish</value></data><data name="Dialog_ExtractionSuccessSummary" xml:space="preserve"><value>Extraction completed successfully!
+
+Categories extracted: {0}
+Images extracted: {1}
+Time elapsed: {2:mm\:ss}</value></data><data name="Dialog_ExtractionCompletedErrors" xml:space="preserve"><value>Extraction completed with errors.</value></data><data name="Dialog_Back" xml:space="preserve"><value>Back</value></data><data name="Dialog_ExtractionCancelled" xml:space="preserve"><value>Extraction cancelled.</value></data><data name="Dialog_ErrorWithMessage" xml:space="preserve"><value>Error: {0}</value></data><data name="Dialog_ExtractionException" xml:space="preserve"><value>An error occurred during extraction:
+
+{0}</value></data><data name="Dialog_Error" xml:space="preserve"><value>Error</value></data><data name="Dialog_RepackNotNeededImg" xml:space="preserve"><value>Repacking is not needed in IMG filesystem mode.
+
+Changes are saved directly to the IMG files on disk.</value></data><data name="Dialog_ImgFilesystemMode" xml:space="preserve"><value>IMG filesystem mode</value></data><data name="Dialog_RepackSuccess" xml:space="preserve"><value>Repacked successfully.</value></data><data name="Dialog_RepackSuccessReplace" xml:space="preserve"><value>Repacked successfully. Please replace the files in HaCreator\Output.</value></data><data name="Dialog_RepackSaveAborted" xml:space="preserve"><value>ERROR while saving {0}; aborted.</value></data><data name="Dialog_RepackPermissionError" xml:space="preserve"><value>An error occurred while saving. You may not have permission to the destination folder, or the files may be in use.
+
+Select OK to view the error details.</value></data><data name="Dialog_DeletingBackups" xml:space="preserve"><value>Deleting old backups...</value></data><data name="Dialog_SavingFile" xml:space="preserve"><value>Saving {0}...</value></data><data name="Dialog_Finished" xml:space="preserve"><value>Finished</value></data><data name="Dialog_SavingXml" xml:space="preserve"><value>Saving XML files...</value></data><data name="Dialog_ChooseMapId" xml:space="preserve"><value>Please choose an ID.</value></data><data name="Dialog_NumericMapId" xml:space="preserve"><value>Enter a numeric map ID.</value></data><data name="Dialog_MapIdRange" xml:space="preserve"><value>Select an ID between {0} and {1}.</value></data><data name="Dialog_MapIdExists" xml:space="preserve"><value>That ID already exists; choose an empty ID.</value></data><data name="Dialog_MapOverwriteWarning" xml:space="preserve"><value>This will overwrite the existing map.</value></data><data name="Dialog_UnsavedObjectsPrompt" xml:space="preserve"><value>Unsaved user objects will be written to the WZ file:
+
+{0}
+
+Proceed?</value></data><data name="Dialog_UnsavedObjectsTitle" xml:space="preserve"><value>Unsaved objects</value></data><data name="Dialog_SavedMapId" xml:space="preserve"><value>Saved map with ID: {0}</value></data><data name="Dialog_SavedMapName" xml:space="preserve"><value>Saved map: {0}</value></data><data name="Dialog_ConfirmDeleteObject" xml:space="preserve"><value>This action cannot be undone. Remove this object?</value></data><data name="Dialog_DeleteCustomObject" xml:space="preserve"><value>Delete custom object</value></data><data name="Dialog_SearchAllMapsPrompt" xml:space="preserve"><value>Search every loaded map for this object? This may take a while.</value></data><data name="Dialog_FindUsages" xml:space="preserve"><value>Find usages</value></data><data name="Dialog_Searching" xml:space="preserve"><value>Searching...</value></data><data name="Dialog_OpenMapResult" xml:space="preserve"><value>{0} (open)</value></data><data name="Dialog_ObjectNotUsed" xml:space="preserve"><value>This object is not used in any maps.</value></data><data name="Dialog_ObjectUsageMaps" xml:space="preserve"><value>Used by the following maps:
+
+{0}</value></data><data name="Dialog_UsageResults" xml:space="preserve"><value>Usage results</value></data><data name="Dialog_CrashBeforeEditing" xml:space="preserve"><value>HaCreator stopped before map editing began. No map work was lost. A detailed error log was saved to {0}. Please include it when reporting the issue.</value></data><data name="Dialog_RestartHaCreator" xml:space="preserve"><value>Restart HaCreator</value></data><data name="Dialog_CrashDuringEditing" xml:space="preserve"><value>HaCreator encountered an unexpected error while editing. The recovery manager will preserve available map work before restart. A detailed error log was saved to {0}.</value></data><data name="Dialog_SaveRecoveryRestart" xml:space="preserve"><value>Save recovery data and restart</value></data><data name="Dialog_NoChangedImages" xml:space="preserve"><value>No changed images to save</value></data><data name="Dialog_SelectWzOutputFolder" xml:space="preserve"><value>Select an output folder for WZ files</value></data><data name="Dialog_SelectPackCategory" xml:space="preserve"><value>Select at least one category to pack.</value></data><data name="Dialog_NoCategoriesSelected" xml:space="preserve"><value>No categories selected</value></data><data name="Dialog_SpecifyOutputPath" xml:space="preserve"><value>Specify an output path.</value></data><data name="Dialog_OutputPathRequired" xml:space="preserve"><value>Output path required</value></data><data name="Dialog_SavingChangedImages" xml:space="preserve"><value>Saving {0} changed image(s) to the source...</value></data><data name="Dialog_SavedChangedImages" xml:space="preserve"><value>Saved {0} image(s) to the source.</value></data><data name="Dialog_PartialImageSave" xml:space="preserve"><value>Only {0} of {1} changed images were saved successfully.</value></data><data name="Dialog_PartialSave" xml:space="preserve"><value>Partial save</value></data><data name="Dialog_PackCompletedStatus" xml:space="preserve"><value>Completed! Packed {0} images.</value></data><data name="Dialog_PackSuccessSummary" xml:space="preserve"><value>Successfully packed {0} images into {1} WZ files.
+
+Output: {2}
+Total size: {3}
+Duration: {4:F1} seconds</value></data><data name="Dialog_PackingComplete" xml:space="preserve"><value>Packing complete</value></data><data name="Dialog_FailedWithMessage" xml:space="preserve"><value>Failed: {0}</value></data><data name="Dialog_PackingFailedMessage" xml:space="preserve"><value>Packing failed: {0}</value></data><data name="Dialog_PackingFailed" xml:space="preserve"><value>Packing failed</value></data><data name="Dialog_Cancelled" xml:space="preserve"><value>Cancelled</value></data><data name="Dialog_PackingCancelled" xml:space="preserve"><value>Packing was cancelled.</value></data><data name="Dialog_PackingException" xml:space="preserve"><value>An error occurred during packing: {0}</value></data><data name="Dialog_WaitForPacking" xml:space="preserve"><value>Wait for packing to complete or cancel it first.</value></data><data name="Dialog_PackingInProgress" xml:space="preserve"><value>Packing in progress</value></data><data name="Dialog_ImmediateStringMapSavePrompt" xml:space="preserve"><value>Saving is immediate for the current data source.
+
+Yes: write String/Map.img now.
+No: keep it modified in memory and save it manually later.</value></data><data name="Dialog_ResolveMissingMaps" xml:space="preserve"><value>Resolve missing maps</value></data><data name="Dialog_Copy" xml:space="preserve"><value>Copy</value></data><data name="Dialog_SelectAll" xml:space="preserve"><value>Select all</value></data><data name="Dialog_CopyAll" xml:space="preserve"><value>Copy all</value></data><data name="Dialog_SelectExportFolder" xml:space="preserve"><value>Select export folder</value></data><data name="Dialog_Extract" xml:space="preserve"><value>Extract</value></data><data name="Dialog_AutoDetect" xml:space="preserve"><value>Auto-detect</value></data><data name="Dialog_AutoDetectedEncryption" xml:space="preserve"><value>Auto-detected encryption: {0} (64-bit: {1})</value></data><data name="Dialog_AutoDetectDefault" xml:space="preserve"><value>Could not auto-detect; defaulting to: {0}</value></data><data name="Dialog_SelectValidOutputFolder" xml:space="preserve"><value>Select a valid output folder.</value></data><data name="Dialog_ScanWzFirst" xml:space="preserve"><value>Scan WZ files first.</value></data><data name="Dialog_SelectWzToExtract" xml:space="preserve"><value>Select at least one WZ file to extract.</value></data><data name="Dialog_VersionFolderExists" xml:space="preserve"><value>Version folder '{0}' already exists. Overwrite it?</value></data><data name="Dialog_ConfirmOverwrite" xml:space="preserve"><value>Confirm overwrite</value></data><data name="Dialog_StartingWzExtraction" xml:space="preserve"><value>Starting extraction of {0} WZ files...</value></data><data name="Dialog_SelectedCategories" xml:space="preserve"><value>Selected {0} categories: {1}</value></data><data name="Dialog_ExtractionCompleteStatus" xml:space="preserve"><value>Extraction complete! {0} images extracted.</value></data><data name="Dialog_ExtractionCompleteLog" xml:space="preserve"><value>=== Extraction complete ===</value></data><data name="Dialog_TotalImages" xml:space="preserve"><value>Total images: {0}</value></data><data name="Dialog_TotalSize" xml:space="preserve"><value>Total size: {0}</value></data><data name="Dialog_LinksResolved" xml:space="preserve"><value>Links resolved: {0}</value></data><data name="Dialog_LinksFailed" xml:space="preserve"><value>Links failed: {0} (missing in original WZ)</value></data><data name="Dialog_DurationSeconds" xml:space="preserve"><value>Duration: {0:F1}s</value></data><data name="Dialog_OutputPath" xml:space="preserve"><value>Output: {0}</value></data><data name="Dialog_UnpackSuccessSummary" xml:space="preserve"><value>Extraction complete!
+
+Images extracted: {0}
+Total size: {1}
+Links resolved: {2}
+Links missing: {3}
+Duration: {4:F1} seconds
+Output: {5}
+
+The version was added to HaCreator's version selector.</value></data><data name="Dialog_ExtractionFailedStatus" xml:space="preserve"><value>Extraction failed: {0}</value></data><data name="Dialog_ErrorLog" xml:space="preserve"><value>ERROR: {0}</value></data><data name="Dialog_ExtractionFailedMessage" xml:space="preserve"><value>Extraction failed:
+{0}</value></data><data name="Dialog_ExtractionCancelledByUser" xml:space="preserve"><value>Extraction was cancelled by the user.</value></data><data name="Dialog_ErrorOccurred" xml:space="preserve"><value>An error occurred:
+{0}</value></data><data name="Dialog_ProgressPhaseFile" xml:space="preserve"><value>{0}: {1}</value></data><data name="Dialog_StartingCategory" xml:space="preserve"><value>Starting: {0}</value></data><data name="Dialog_LinksResolvedSuffix" xml:space="preserve"><value>, {0} links resolved</value></data><data name="Dialog_CategoryCompleted" xml:space="preserve"><value>  Completed: {0} - {1} images ({2}{3})</value></data><data name="Dialog_WarningLog" xml:space="preserve"><value>    Warning: {0}</value></data><data name="Dialog_MoreWarnings" xml:space="preserve"><value>    ... and {0} more warnings</value></data><data name="Dialog_WzFileFilter" xml:space="preserve"><value>MapleStory WZ|Base.wz;Base_000.wz;Data.wz|All WZ files (*.wz)|*.wz|All files (*.*)|*.*</value></data><data name="Dialog_SelectBaseWzTitle" xml:space="preserve"><value>Select Base.wz, Data.wz (beta), or Base_000.wz (64-bit) from the MapleStory installation</value></data><data name="Dialog_HotfixDataWzSelected" xml:space="preserve"><value>This appears to be a hotfix Data.wz file, not a beta MapleStory installation.
+Select Base.wz for standard installations.</value></data><data name="Dialog_CannotDetectFromSelectedWz" xml:space="preserve"><value>Could not detect the MapleStory installation directory from the selected file.
+Select Base.wz for standard installations or Base_000.wz from a 64-bit installation's Data/Base folder.</value></data><data name="Dialog_CannotDetectMapleDirectory" xml:space="preserve"><value>Could not detect the MapleStory installation directory.
+Select Base.wz for a standard installation or any .wz file from a 64-bit installation's Data folder.</value></data><data name="Dialog_SelectSupportedBaseWz" xml:space="preserve"><value>Select Base.wz (standard), Data.wz (beta), or Base_000.wz (64-bit from Data/Base).</value></data><data name="Dialog_DetectedBetaDataWz" xml:space="preserve"><value>Detected beta Data.wz format ({0}, encryption: {1})</value></data><data name="Dialog_DataWzParseFailed" xml:space="preserve"><value>Failed to parse Data.wz: {0}</value></data><data name="Dialog_DataWzParseFailedTryEncryption" xml:space="preserve"><value>Failed to parse Data.wz: {0}
+
+Try a different encryption version.</value></data><data name="Dialog_ParseError" xml:space="preserve"><value>Parse error</value></data><data name="Dialog_DataWzReadError" xml:space="preserve"><value>Error reading Data.wz: {0}</value></data><data name="Dialog_DataWzReadErrorTryEncryption" xml:space="preserve"><value>Error reading Data.wz: {0}
+
+Try a different encryption version.</value></data><data name="Dialog_DataWzCategoryDisplay" xml:space="preserve"><value>{0} ({1} images) [from Data.wz]</value></data><data name="Dialog_WzCategoryCanvasDisplay" xml:space="preserve"><value>{0} ({1}, {2} + {3} canvas files)</value></data><data name="Dialog_WzCategoryDisplay" xml:space="preserve"><value>{0} ({1}, {2} files)</value></data><data name="Dialog_PacksDisplay" xml:space="preserve"><value>Packs ({0}, {1} .ms files)</value></data><data name="Dialog_VersionAdded" xml:space="preserve"><value>Added version '{0}' to the version selector</value></data><data name="Dialog_VersionAlreadyInSelector" xml:space="preserve"><value>Version already exists in the selector</value></data><data name="Dialog_VersionAddWarning" xml:space="preserve"><value>Warning: Could not add to version selector: {0}</value></data><data name="Dialog_SourceBeta" xml:space="preserve"><value>Source: Beta (single Data.wz)</value></data><data name="Dialog_Source64Bit" xml:space="preserve"><value>Source: 64-bit (Data folder)</value></data><data name="Dialog_SourcePreBigBang" xml:space="preserve"><value>Source: Pre-Big Bang</value></data><data name="Dialog_SourceStandard" xml:space="preserve"><value>Source: Standard</value></data><data name="Dialog_SourceUnknown" xml:space="preserve"><value>Source: Unknown</value></data><data name="Dialog_VersionUnknownManifest" xml:space="preserve"><value>Version: Unknown (no manifest.json)</value></data><data name="Dialog_SaveChangedBeforePacking" xml:space="preserve"><value>Save {0} changed image(s) to the source before packing</value></data><data name="Dialog_OutputPathLabel" xml:space="preserve"><value>Output path:</value></data><data name="Dialog_PatchVersionLabel" xml:space="preserve"><value>Patch version (0 = auto):</value></data><data name="Dialog_FormatStandard" xml:space="preserve"><value>Format: Standard</value></data><data name="Dialog_RecommendedSuffix" xml:space="preserve"><value> (Recommended)</value></data></root>

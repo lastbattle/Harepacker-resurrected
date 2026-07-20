@@ -7,7 +7,7 @@ using HaRepacker.GUI;
 
 namespace HaRepacker
 {
-    public partial class Settings : Form
+    public partial class Settings : ThemedDialogWindow
     {
         public List<Object> settings;
         public FHMapper.FHMapper main;
@@ -19,21 +19,21 @@ namespace HaRepacker
         private void Settings_Load(object sender, EventArgs e)
         {
             PrevTBox.Text = settings.ToArray()[0].ToString();
-            PrevCBox.Checked = (bool)settings.ToArray()[1];
+            PrevCBox.IsChecked = (bool)settings.ToArray()[1];
             NextTBox.Text = settings.ToArray()[2].ToString();
-            NextCBox.Checked = (bool)settings.ToArray()[3];
+            NextCBox.IsChecked = (bool)settings.ToArray()[3];
             ForceTBox.Text = settings.ToArray()[4].ToString();
-            ForceCBox.Checked = (bool)settings.ToArray()[5];
+            ForceCBox.IsChecked = (bool)settings.ToArray()[5];
             XTBox.Text = settings.ToArray()[6].ToString();
-            XCBox.Checked = (bool)settings.ToArray()[7];
+            XCBox.IsChecked = (bool)settings.ToArray()[7];
             YTBox.Text = settings.ToArray()[8].ToString();
-            YCBox.Checked = (bool)settings.ToArray()[9];
+            YCBox.IsChecked = (bool)settings.ToArray()[9];
             TypeTBox.Text = settings.ToArray()[10].ToString();
-            TypeCBox.Checked = (bool)settings.ToArray()[11];
+            TypeCBox.IsChecked = (bool)settings.ToArray()[11];
             FilepathTBox.Text = settings.ToArray()[12].ToString();
-            FilepathCBox.Checked = (bool)settings.ToArray()[13];
+            FilepathCBox.IsChecked = (bool)settings.ToArray()[13];
             SizeTBox.Text = settings.ToArray()[14].ToString();
-            SizeCBox.Checked = (bool)settings.ToArray()[15];
+            SizeCBox.IsChecked = (bool)settings.ToArray()[15];
         }
 
         private void CancelBtn_Click(object sender, EventArgs e)
@@ -70,49 +70,49 @@ namespace HaRepacker
                 theSettings= Regex.Replace(theSettings, @"(?<=!DPt:)-?\d*(?=!)", PrevTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DPt:)-?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DPt:)-?\d*(?=!)").Length);// Regex: One or zero -, Any number of digits with the prefix !DPt: and suffix !
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DPt:)!").Index, PrevTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DPc:)\w+(?=!)", PrevCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DPc:)\w+(?=!)", (PrevCBox.IsChecked == true).ToString());
               /*  theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DPc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DPc:)\w+(?=!)").Length);// Regex: One or more number of alphanumeric chars with the prefix !DPc: and suffix !
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DPc:)!").Index, PrevCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DNt:)-?\d*(?=!)", NextTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DNt:)-?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DNt:)-?\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DNt:)!").Index, NextTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DNc:)\w+(?=!)", NextCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DNc:)\w+(?=!)", (NextCBox.IsChecked == true).ToString());
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DNc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DNc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DNc:)!").Index, NextCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DFt:)-?\d*(?=!)",ForceTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DFt:)-?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DFt:)-?\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DFt:)!").Index, ForceTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DFc:)\w+(?=!)", ForceCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DFc:)\w+(?=!)", (ForceCBox.IsChecked == true).ToString());
                /* theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DFc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DFc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DFc:)!").Index, ForceCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DXt:)-?\d*(?=!)", XTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DXt:)-?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DXt:)-?\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DXt:)!").Index, XTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DXc:)\w+(?=!)", XCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DXc:)\w+(?=!)", (XCBox.IsChecked == true).ToString());
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DXc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DXc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DXc:)!").Index, XCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DYt:)-?\d*(?=!)", YTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DYt:)-?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DYt:)-?\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DYt:)!").Index, YTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DYc:)\w+(?=!)", YCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DYc:)\w+(?=!)", (YCBox.IsChecked == true).ToString());
                /* theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DYc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DYc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DYc:)!").Index, YCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DTt:)-?\d*(?=!)", TypeTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DTt:)\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DTt:)\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DTt:)!").Index, TypeTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DTc:)\w+(?=!)", TypeCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DTc:)\w+(?=!)", (TypeCBox.IsChecked == true).ToString());
                /* theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DTc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DTc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DTc:)!").Index, TypeCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DFPt:)C:(%\w+)+.wz(?=!)", FilepathTBox.Text.Replace('/','%'));
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DFPt:)C:(%\w+)+.wz(?=!)").Index, Regex.Match(theSettings, @"(?<=!DFPt:)C:(%\w+)+.wz(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DFPt:)!").Index, FilepathTBox.Text.Replace('/', '%'));*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DFPc:)\w+(?=!)", FilepathCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DFPc:)\w+(?=!)", (FilepathCBox.IsChecked == true).ToString());
                /* theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DFPc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DFPc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DFPc:)!").Index, FilepathCBox.Checked.ToString());*/
                 theSettings = Regex.Replace(theSettings, @"(?<=!DSt:)\d*,?\d*(?=!)", SizeTBox.Text);
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DSt:)\d*,?\d*(?=!)").Index, Regex.Match(theSettings, @"(?<=!DSt:)\d*,?\d*(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DSt:)!").Index, SizeTBox.Text);*/
-                theSettings = Regex.Replace(theSettings, @"(?<=!DSc:)\w+(?=!)", SizeCBox.Checked.ToString());
+                theSettings = Regex.Replace(theSettings, @"(?<=!DSc:)\w+(?=!)", (SizeCBox.IsChecked == true).ToString());
                 /*theSettings = theSettings.Remove(Regex.Match(theSettings, @"(?<=!DSc:)\w+(?=!)").Index, Regex.Match(theSettings, @"(?<=!DSc:)\w+(?=!)").Length);
                 theSettings = theSettings.Insert(Regex.Match(theSettings, @"(?<=!DSc:)!").Index, SizeCBox.Checked.ToString());*/
 
@@ -128,7 +128,7 @@ namespace HaRepacker
         private void OpenFileBtn_Click(object sender, EventArgs e)
         {
             OpenFileDialog openFile = new OpenFileDialog();
-            openFile.Filter = "All wz files | *.wz";
+            openFile.Filter = UiLocalization.Translate("All WZ files|*.wz");
             openFile.ShowDialog();
             string buf = openFile.FileName;
             buf= buf.Replace('\\','/');

@@ -71,7 +71,9 @@ namespace HaRepacker
             string wzToLoad = null;
             if (args.Length > 0)
                 wzToLoad = args[0];
-            Application.Run(new MainForm(wzToLoad, true, firstRun));
+            var app = System.Windows.Application.Current ?? new System.Windows.Application();
+            app.ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
+            app.Run(new MainForm(wzToLoad, true, firstRun));
             EndApplication(true, true);
         }
 

@@ -39,10 +39,16 @@ using MapleLib.WzLib.Serializer;
 using static HaSharedLibrary.Util.AssemblyBitnessDetector;
 using MapleLib.Img;
 using MapleLib.Helpers;
+using System.Windows;
+using System.Windows.Controls;
+using Forms = System.Windows.Forms;
+using MessageBox = System.Windows.Forms.MessageBox;
+using DialogResult = System.Windows.Forms.DialogResult;
+using Application = System.Windows.Forms.Application;
 
 namespace HaRepacker.GUI
 {
-    public partial class MainForm : Form
+    public partial class MainForm : Window
     {
         private readonly bool mainFormLoaded = false;
 
@@ -62,6 +68,7 @@ namespace HaRepacker.GUI
         public MainForm(string wzPathToLoad, bool usingPipes, bool firstrun)
         {
             InitializeComponent();
+            ApplyLocalizedShellText();
 
             AddTabsInternal("Default");
 
@@ -74,18 +81,18 @@ namespace HaRepacker.GUI
             SetWzEncryptionBoxSelectionByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
 
 
-            WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
-            Size = new Size(
-                Program.ConfigurationManager.ApplicationSettings.Width,
-                Program.ConfigurationManager.ApplicationSettings.Height);
+            WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? System.Windows.WindowState.Maximized : System.Windows.WindowState.Normal;
+            Width = Program.ConfigurationManager.ApplicationSettings.Width;
+            Height = Program.ConfigurationManager.ApplicationSettings.Height;
             
             // Drag and drop file
-            this.DragEnter += MainForm_DragEnter;
-            this.DragDrop += MainForm_DragDrop;
+            PreviewDragOver += MainWindow_DragOver;
+            Drop += MainWindow_Drop;
 
             // Drag and drop at the data tree
             this.MainPanel.DataTree.DragEnter += MainForm_DragEnter;
             this.MainPanel.DataTree.DragDrop += MainForm_DragDrop;
+            this.MainPanel.NativeFilesDropped += (_, files) => OpenFileInternal(files);
 
             // Set default selected main panel
             UpdateSelectedMainPanelTab();
@@ -145,6 +152,34 @@ namespace HaRepacker.GUI
             mainFormLoaded = true;
         }
 
+        private void ApplyLocalizedShellText()
+        {
+            var resources = new ComponentResourceManager(typeof(MainForm));
+            ApplyLocalizedShellText(this, resources);
+            string localizedTitle = resources.GetString("$this.Text");
+            if (!string.IsNullOrWhiteSpace(localizedTitle)) Title = localizedTitle;
+            UiLocalization.Apply(this);
+        }
+
+        private static void ApplyLocalizedShellText(DependencyObject parent, ComponentResourceManager resources)
+        {
+            foreach (object child in LogicalTreeHelper.GetChildren(parent))
+            {
+                if (child is FrameworkElement element && !string.IsNullOrEmpty(element.Name))
+                {
+                    string text = resources.GetString(element.Name + ".Text");
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        text = UiLocalization.Translate(text);
+                        if (element is System.Windows.Controls.MenuItem menuItem) menuItem.Header = text;
+                        else if (element is System.Windows.Controls.Button button) button.Content = text;
+                        else if (element is TextBlock textBlock) textBlock.Text = text;
+                    }
+                }
+                if (child is DependencyObject dependencyObject) ApplyLocalizedShellText(dependencyObject, resources);
+            }
+        }
+
         #region Hot-Swap
         /// <summary>
         /// Initializes the hot-swap functionality
@@ -154,9 +189,7 @@ namespace HaRepacker.GUI
             _hotSwapManager = new HotSwapManager(this);
 
             // Add notification bar to the form (below the menu bar)
-            _hotSwapManager.NotificationBar.Dock = System.Windows.Forms.DockStyle.Top;
-            this.Controls.Add(_hotSwapManager.NotificationBar);
-            _hotSwapManager.NotificationBar.BringToFront();
+            hotSwapHost.Content = _hotSwapManager.NotificationBar;
 
             // Subscribe to events
             _hotSwapManager.ImgFileReloaded += OnImgFileReloaded;
@@ -207,9 +240,9 @@ namespace HaRepacker.GUI
         /// <param name="sender"></param>
         /// <param name="e"></param>
         /// <exception cref="NotImplementedException"></exception>
-        private void MainForm_DragEnter(object sender, DragEventArgs e) {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop)) {
-                e.Effect = DragDropEffects.Move; // Allow the file to be copied
+        private void MainForm_DragEnter(object sender, Forms.DragEventArgs e) {
+            if (e.Data.GetDataPresent(Forms.DataFormats.FileDrop)) {
+                e.Effect = Forms.DragDropEffects.Move; // Allow the file to be copied
             }
         }
 
@@ -218,9 +251,9 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void MainForm_DragDrop(object sender, DragEventArgs e) {
-            if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop)) {
-                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+        private void MainForm_DragDrop(object sender, Forms.DragEventArgs e) {
+            if (e.Data != null && e.Data.GetDataPresent(Forms.DataFormats.FileDrop)) {
+                string[] files = (string[])e.Data.GetData(Forms.DataFormats.FileDrop);
 
                 // process the drag and dropped files
                 OpenFileInternal(files);
@@ -384,92 +417,76 @@ namespace HaRepacker.GUI
         /// Unload the loaded WZ file
         /// </summary>
         /// <param name="file"></param>
-        public async void UnloadWzFile(WzFile file, Dispatcher currentDispatcher = null)
+        public void UnloadWzFile(WzFile file, Dispatcher currentDispatcher = null)
         {
-            WzNode node = (WzNode)file.HRTag; // get the ref first
+            UnloadWzFile(file, currentDispatcher, true);
+        }
 
-            // unload the wz file
-            Program.WzFileManager.UnloadWzFile(file, file.FilePath);
+        private void UnloadWzFile(WzFile file, Dispatcher currentDispatcher, bool refreshNativeTree)
+        {
+            if (file == null)
+                return;
 
-            // remove from treeview
-            if (node != null) 
+            WzNode node = file.HRTag as WzNode;
+            string filePath = file.FilePath;
+            Action unload = () =>
             {
-                if (currentDispatcher != null)
-                {
-                    await currentDispatcher.BeginInvoke((Action)(() =>
-                    {
-                        node.DeleteWzNode();
-                    }));
-                } else
+                // Dispose clears FilePath. A stale native-tree node can therefore point to
+                // a file which was already unloaded before the WPF tree was refreshed.
+                if (!file.IsUnloaded && !string.IsNullOrEmpty(filePath))
+                    Program.WzFileManager.UnloadWzFile(file, filePath);
+
+                if (node?.TreeView != null)
                     node.DeleteWzNode();
-            }
+
+                if (refreshNativeTree)
+                    MainPanel.RefreshNativeDataTree();
+            };
+
+            Dispatcher dispatcher = currentDispatcher ?? Dispatcher;
+            if (dispatcher.CheckAccess())
+                unload();
+            else
+                dispatcher.Invoke(unload);
         }
 
         /// <summary>
         /// Unload the loaded WZ image file
         /// </summary>
         /// <param name="file"></param>
-        public async void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher = null)
+        public void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher = null)
         {
-            WzNode node = (WzNode)wzImage.HRTag; // get the ref first
+            UnloadWzImageFile(wzImage, currentDispatcher, true);
+        }
 
-            // unload the wz file
-            Program.WzFileManager.UnloadWzImgFile(wzImage);
+        private void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher, bool refreshNativeTree)
+        {
+            if (wzImage == null)
+                return;
 
-            // remove from treeview
-            if (node != null)
+            WzNode node = wzImage.HRTag as WzNode;
+            Action unload = () =>
             {
-                if (currentDispatcher != null)
-                {
-                    await currentDispatcher.BeginInvoke((Action)(() =>
-                    {
-                        node.DeleteWzNode();
-                    }));
-                }
-                else
+                Program.WzFileManager.UnloadWzImgFile(wzImage);
+                if (node?.TreeView != null)
                     node.DeleteWzNode();
-            }
+
+                if (refreshNativeTree)
+                    MainPanel.RefreshNativeDataTree();
+            };
+
+            Dispatcher dispatcher = currentDispatcher ?? Dispatcher;
+            if (dispatcher.CheckAccess())
+                unload();
+            else
+                dispatcher.Invoke(unload);
         }
         #endregion
 
         #region Theme colors
         public void SetThemeColor()
         {
-            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int)UserSettingsThemeColor.Dark)//black
-            {
-                this.BackColor = Color.Black;
-                mainMenu.BackColor = Color.Black;
-                mainMenu.ForeColor = Color.White;
-
-                /*for (int i = 0; i < mainMenu.Items.Count; i++)
-                {
-                    try
-                    {
-                        foreach (ToolStripMenuItem item in ((ToolStripMenuItem)mainMenu.Items[i]).DropDownItems)
-                        {
-                            item.BackColor = Color.Black;
-                            item.ForeColor = Color.White;
-                            MessageBox.Show(item.Name);
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        continue;
-                        //throw;
-                    }
-                }*/
-                button_addTab.ForeColor = Color.White;
-                button_addTab.BackColor = Color.Black;
-            }
-            else
-            {
-                this.BackColor = DefaultBackColor;
-                mainMenu.BackColor = DefaultBackColor;
-                mainMenu.ForeColor = Color.Black;
-
-                button_addTab.ForeColor = Color.Black;
-                button_addTab.BackColor = Color.White;
-            }
+            Background = (System.Windows.Media.Brush)FindResource("HareCanvasBrush");
         }
         #endregion
 
@@ -514,6 +531,43 @@ namespace HaRepacker.GUI
             {
                 MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
+        }
+
+        private void MainWindow_DragOver(object sender, System.Windows.DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void MainWindow_Drop(object sender, System.Windows.DragEventArgs e)
+        {
+            if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is string[] files) OpenFileInternal(files);
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            bool ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+            if (!ctrl) return;
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.N: newToolStripMenuItem_Click(this, EventArgs.Empty); break;
+                case System.Windows.Input.Key.O: openToolStripMenuItem_Click(this, EventArgs.Empty); break;
+                case System.Windows.Input.Key.I: toolStripMenuItem_newWzFormat_Click(this, EventArgs.Empty); break;
+                case System.Windows.Input.Key.S: SaveToolStripMenuItem_Click(this, EventArgs.Empty); break;
+                case System.Windows.Input.Key.T: AddTabsInternal(); break;
+                case System.Windows.Input.Key.C: MainPanel?.DoCopy(); break;
+                case System.Windows.Input.Key.V: MainPanel?.DoPaste(); MainPanel?.RefreshNativeDataTree(); break;
+                case System.Windows.Input.Key.F: searchToolStripMenuItem_Click(this, EventArgs.Empty); break;
+                default:
+                    if (e.Key >= System.Windows.Input.Key.D0 && e.Key <= System.Windows.Input.Key.D9)
+                    {
+                        int index = e.Key == System.Windows.Input.Key.D0 ? 9 : e.Key - System.Windows.Input.Key.D1;
+                        if (index < tabControl_MainPanels.Items.Count) tabControl_MainPanels.SelectedIndex = index;
+                    }
+                    else return;
+                    break;
+            }
+            e.Handled = true;
         }
 
         private WzMapleVersion GetSelectedEncryptionVersion()
@@ -608,20 +662,19 @@ namespace HaRepacker.GUI
         #endregion
 
         #region Win32 API interop
-        private delegate void SetWindowStateDelegate(FormWindowState state);
-        private void SetWindowStateCallback(FormWindowState state)
+        private delegate void SetWindowStateDelegate(System.Windows.WindowState state);
+        private void SetWindowStateCallback(System.Windows.WindowState state)
         {
             WindowState = state;
-            user32.SetWindowPos(Handle, user32.HWND_TOPMOST, 0, 0, 0, 0, user32.SWP_NOMOVE | user32.SWP_NOSIZE);
-            user32.SetWindowPos(Handle, user32.HWND_NOTOPMOST, 0, 0, 0, 0, user32.SWP_NOMOVE | user32.SWP_NOSIZE);
+            nint handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            user32.SetWindowPos(handle, user32.HWND_TOPMOST, 0, 0, 0, 0, user32.SWP_NOMOVE | user32.SWP_NOSIZE);
+            user32.SetWindowPos(handle, user32.HWND_NOTOPMOST, 0, 0, 0, 0, user32.SWP_NOMOVE | user32.SWP_NOSIZE);
         }
 
-        private void SetWindowStateThreadSafe(FormWindowState state)
+        private void SetWindowStateThreadSafe(System.Windows.WindowState state)
         {
-            if (InvokeRequired)
-                Invoke(new SetWindowStateDelegate(SetWindowStateCallback), state);
-            else
-                SetWindowStateCallback(state);
+            if (!Dispatcher.CheckAccess()) Dispatcher.Invoke(() => SetWindowStateCallback(state));
+            else SetWindowStateCallback(state);
         }
         #endregion
 
@@ -631,7 +684,7 @@ namespace HaRepacker.GUI
             {
                 LoadWzFileCallback(requestPath);
             }
-            SetWindowStateThreadSafe(FormWindowState.Normal);
+            SetWindowStateThreadSafe(System.Windows.WindowState.Normal);
             return "OK";
         }
 
@@ -663,7 +716,7 @@ namespace HaRepacker.GUI
             /*   int mainControlHeight = this.Size.Height;
                int mainControlWidth = this.Size.Width;
 
-               foreach (TabPage page in tabControl_MainPanels.TabPages)
+               foreach (TabItem page in tabControl_MainPanels.Items)
                {
                    page.Size = new Size(mainControlWidth, mainControlHeight);
                }*/
@@ -674,13 +727,13 @@ namespace HaRepacker.GUI
             if (!mainFormLoaded)
                 return;
 
-            if (this.Size.Width * this.Size.Height != 0)
+            if (ActualWidth * ActualHeight != 0)
             {
                 RedockControls();
 
-                Program.ConfigurationManager.ApplicationSettings.Height = this.Size.Height;
-                Program.ConfigurationManager.ApplicationSettings.Width = this.Size.Width;
-                Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == FormWindowState.Maximized;
+                Program.ConfigurationManager.ApplicationSettings.Height = (int)ActualHeight;
+                Program.ConfigurationManager.ApplicationSettings.Width = (int)ActualWidth;
+                Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == System.Windows.WindowState.Maximized;
             }
         }
 
@@ -701,7 +754,7 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
         {
-            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
+            byte countTabs = Convert.ToByte(tabControl_MainPanels.Items.Count);
 
             if (e.Control)
             {
@@ -727,43 +780,43 @@ namespace HaRepacker.GUI
 
                     // Switch between tabs
                     case Keys.NumPad1:
-                        tabControl_MainPanels.SelectTab(0);
+                        tabControl_MainPanels.SelectedIndex = 0;
                         break;
                     case Keys.NumPad2:
                         if (countTabs < 2) return;
-                        tabControl_MainPanels.SelectTab(1);
+                        tabControl_MainPanels.SelectedIndex = 1;
                         break;
                     case Keys.NumPad3:
                         if (countTabs < 3) return;
-                        tabControl_MainPanels.SelectTab(2);
+                        tabControl_MainPanels.SelectedIndex = 2;
                         break;
                     case Keys.NumPad4:
                         if (countTabs < 4) return;
-                        tabControl_MainPanels.SelectTab(3);
+                        tabControl_MainPanels.SelectedIndex = 3;
                         break;
                     case Keys.NumPad5:
                         if (countTabs < 5) return;
-                        tabControl_MainPanels.SelectTab(4);
+                        tabControl_MainPanels.SelectedIndex = 4;
                         break;
                     case Keys.NumPad6:
                         if (countTabs < 6) return;
-                        tabControl_MainPanels.SelectTab(5);
+                        tabControl_MainPanels.SelectedIndex = 5;
                         break;
                     case Keys.NumPad7:
                         if (countTabs < 7) return;
-                        tabControl_MainPanels.SelectTab(6);
+                        tabControl_MainPanels.SelectedIndex = 6;
                         break;
                     case Keys.NumPad8:
                         if (countTabs < 8) return;
-                        tabControl_MainPanels.SelectTab(7);
+                        tabControl_MainPanels.SelectedIndex = 7;
                         break;
                     case Keys.NumPad9:
                         if (countTabs < 9) return;
-                        tabControl_MainPanels.SelectTab(8);
+                        tabControl_MainPanels.SelectedIndex = 8;
                         break;
                     case Keys.NumPad0:
                         if (countTabs < 10) return;
-                        tabControl_MainPanels.SelectTab(9);
+                        tabControl_MainPanels.SelectedIndex = 9;
                         break;
                 }
             }
@@ -771,13 +824,7 @@ namespace HaRepacker.GUI
 
         private void UpdateSelectedMainPanelTab()
         {
-            TabPage selectedTab = tabControl_MainPanels.SelectedTab;
-            if (selectedTab != null && selectedTab.Controls.Count > 0)
-            {
-                System.Windows.Forms.Integration.ElementHost elemntHost = (System.Windows.Forms.Integration.ElementHost)selectedTab.Controls[0];
-
-                MainPanel = (MainPanel)elemntHost?.Child;
-            }
+            if (tabControl_MainPanels.SelectedItem is TabItem selectedTab && selectedTab.Content is MainPanel panel) MainPanel = panel;
         }
 
         /// <summary>
@@ -795,21 +842,13 @@ namespace HaRepacker.GUI
         /// </summary>
         private void AddTabsInternal(string defaultName = null)
         {
-            if (tabControl_MainPanels.TabCount > 10)
+            if (tabControl_MainPanels.Items.Count > 10)
             {
                 return;
             }
 
-            TabPage tabPage = new TabPage()
-            {
-                Margin = new Padding(1, 1, 1, 1)
-            };
-            System.Windows.Forms.Integration.ElementHost elemHost = new System.Windows.Forms.Integration.ElementHost
-            {
-                Dock = DockStyle.Fill,
-                Child = new MainPanel(this)
-            };
-            tabPage.Controls.Add(elemHost);
+            MainPanel panel = new MainPanel(this);
+            TabItem tabPage = new TabItem { Content = panel };
 
 
             string tabName = null;
@@ -823,12 +862,12 @@ namespace HaRepacker.GUI
             }
             else
             {
-                MainPanel = (MainPanel)elemHost.Child;
+                MainPanel = panel;
             }
 
-            tabPage.Text = defaultName;
-
-            tabControl_MainPanels.TabPages.Add(tabPage);
+            tabPage.Header = defaultName;
+            tabControl_MainPanels.Items.Add(tabPage);
+            tabControl_MainPanels.SelectedItem = tabPage;
 
             // Focus on that tab control
             tabControl_MainPanels.Focus();
@@ -1083,7 +1122,7 @@ namespace HaRepacker.GUI
                 Multiselect = true,
             })
             {
-                if (dialog.ShowDialog() != DialogResult.OK)
+                if (dialog.ShowDialog() != Forms.DialogResult.OK)
                     return;
 
                 // Opens the selected file
@@ -1107,7 +1146,7 @@ namespace HaRepacker.GUI
             })
             {
                 DialogResult result = fbd.ShowDialog();
-                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                if (result != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
                     return;
 
                 // Validate directory has IMG files or manifest.json
@@ -1272,7 +1311,7 @@ namespace HaRepacker.GUI
             })
             {
                 DialogResult result = fbd.ShowDialog();
-                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                if (result != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
                     return;
 
                 string[] iniFilesPath = Directory.GetFiles(fbd.SelectedPath, "*.ini", SearchOption.AllDirectories);
@@ -1346,17 +1385,11 @@ namespace HaRepacker.GUI
                 // Unload WZ files if WzFileManager is initialized
                 if (Program.WzFileManager != null)
                 {
-                    var wzFiles = Program.WzFileManager.WzFileList;
-                    Parallel.ForEach(wzFiles, wzFile =>
-                    {
-                        UnloadWzFile(wzFile, currentThread);
-                    });
+                    foreach (WzFile wzFile in Program.WzFileManager.WzFileList)
+                        UnloadWzFile(wzFile, currentThread, false);
 
-                    var wzImages = Program.WzFileManager.WzImagesList;
-                    Parallel.ForEach(wzImages, wzImage =>
-                    {
-                        UnloadWzImageFile(wzImage, currentThread);
-                    });
+                    foreach (WzImage wzImage in Program.WzFileManager.WzImagesList)
+                        UnloadWzImageFile(wzImage, currentThread, false);
                 }
 
                 // Unload VirtualWzDirectory nodes (IMG filesystem)
@@ -1378,6 +1411,8 @@ namespace HaRepacker.GUI
                     {
                         node.Remove();
                     }
+
+                    MainPanel.RefreshNativeDataTree();
                 });
             }
         }
@@ -1430,7 +1465,7 @@ namespace HaRepacker.GUI
 
             if (MainPanel.DataTree.SelectedNode.Tag is WzImage)
             {
-                double zoomLevel = double.Parse(zoomTextBox.TextBox.Text);
+            double zoomLevel = double.Parse(zoomTextBox.Text);
                 WzImage img = (WzImage)MainPanel.DataTree.SelectedNode.Tag;
                 string mapName = img.Name.Substring(0, img.Name.Length - 4);
 
@@ -1456,12 +1491,12 @@ namespace HaRepacker.GUI
                             sb.AppendLine();
                             i++;
                         }
-                        MessageBox.Show(sb.ToString(), "Error rendering map");
+                        MessageBox.Show(sb.ToString(), UiLocalization.Translate("Error rendering map"));
                     }
                 }
                 catch (ArgumentException argExp)
                 {
-                    MessageBox.Show(argExp.Message, "Error rendering map");
+                    MessageBox.Show(argExp.Message, UiLocalization.Translate("Error rendering map"));
                 }
             }
         }
@@ -1549,11 +1584,11 @@ namespace HaRepacker.GUI
                     int savedCount = virtualDir.SaveAllChangedImages();
                     if (savedCount > 0)
                     {
-                        MessageBox.Show($"Saved {savedCount} changed image(s).", "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(string.Format(UiLocalization.Translate("Saved {0} changed image(s)."), savedCount), UiLocalization.Translate("Save Complete"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
                     {
-                        MessageBox.Show("No changes to save.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(UiLocalization.Translate("No changes to save."), UiLocalization.Translate("Save"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
                 finally
@@ -1575,9 +1610,9 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        private void MainForm_FormClosing(object sender, CancelEventArgs e)
         {
-            Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == FormWindowState.Maximized;
+            Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == System.Windows.WindowState.Maximized;
             e.Cancel = !Warning.Warn(HaRepacker.Properties.Resources.MainConfirmExit);
 
             // Save app settings quickly
@@ -1594,6 +1629,9 @@ namespace HaRepacker.GUI
         {
             RemoveSelectedNodes();
         }
+
+        private void UndoMenu_Click(object sender, EventArgs e) { MainPanel?.UndoRedoMan.Undo(); MainPanel?.RefreshNativeDataTree(); }
+        private void RedoMenu_Click(object sender, EventArgs e) { MainPanel?.UndoRedoMan.Redo(); MainPanel?.RefreshNativeDataTree(); }
 
         private void RemoveSelectedNodes()
         {
@@ -1713,15 +1751,15 @@ namespace HaRepacker.GUI
         private delegate void ChangeAppStateDelegate(bool enabled);
         private void ChangeApplicationStateCallback(bool enabled)
         {
-            mainMenu.Enabled = enabled;
+            mainMenu.IsEnabled = enabled;
             MainPanel.IsEnabled = enabled;
-            button_addTab.Enabled = enabled;
-            tabControl_MainPanels.Enabled = enabled;
-            AbortButton.Visible = !enabled;
+            button_addTab.IsEnabled = enabled;
+            tabControl_MainPanels.IsEnabled = enabled;
+            AbortButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         }
         private void ChangeApplicationState(bool enabled)
         {
-            Invoke(new ChangeAppStateDelegate(ChangeApplicationStateCallback), new object[] { enabled });
+            Dispatcher.Invoke(() => ChangeApplicationStateCallback(enabled));
         }
 
         private void xMLToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1733,13 +1771,13 @@ namespace HaRepacker.GUI
                 Multiselect = true
             };
 
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
             FolderBrowserDialog folderDialog = new FolderBrowserDialog()
             {
                 Description = HaRepacker.Properties.Resources.SelectOutDir
             };
-            if (folderDialog.ShowDialog() != DialogResult.OK)
+            if (folderDialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
 
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
@@ -1813,7 +1851,7 @@ namespace HaRepacker.GUI
         private void rawDataToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog() { Title = HaRepacker.Properties.Resources.SelectWz, Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter), Multiselect = true };
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
 
             string outPath = GetOutputDirectory();
@@ -1843,7 +1881,7 @@ namespace HaRepacker.GUI
                 Multiselect = true
             };
 
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
 
             string outPath = GetOutputDirectory();
@@ -1969,9 +2007,9 @@ namespace HaRepacker.GUI
             }
 
             DialogResult dlgResult = MessageBox.Show(Properties.Resources.MainWzExportJson_IncludeBase64, Properties.Resources.MainWzExportJson_IncludeBase64_Title, MessageBoxButtons.YesNoCancel);
-            if (dlgResult == DialogResult.Cancel)
+            if (dlgResult == Forms.DialogResult.Cancel)
                 return;
-            bool bIncludeBase64BinData = dlgResult == DialogResult.Yes;
+            bool bIncludeBase64BinData = dlgResult == Forms.DialogResult.Yes;
 
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
@@ -2084,7 +2122,7 @@ namespace HaRepacker.GUI
                 Title = HaRepacker.Properties.Resources.SelectOutXml,
                 Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter)
             };
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
             List<WzObject> objs = new List<WzObject>();
 
@@ -2132,7 +2170,7 @@ namespace HaRepacker.GUI
                 Multiselect = true
             };
 
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
             WzXmlDeserializer deserializer = new WzXmlDeserializer(true, WzTool.GetIvByMapleVersion(wzFile.MapleVersion));
             yesToAll = false;
@@ -2187,7 +2225,7 @@ namespace HaRepacker.GUI
 
         private void searchToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            //MainPanel.findStrip.Visible = true;
+            MainPanel?.ShowSearchPanel();
         }
 
         /// <summary>
@@ -2199,7 +2237,7 @@ namespace HaRepacker.GUI
             {
                 folderDialog.Description = "Select the IMG filesystem version directory to pack";
 
-                if (folderDialog.ShowDialog() == DialogResult.OK)
+                if (folderDialog.ShowDialog() == Forms.DialogResult.OK)
                 {
                     string versionPath = folderDialog.SelectedPath;
 
@@ -2213,9 +2251,8 @@ namespace HaRepacker.GUI
 
                         if (!hasCategories)
                         {
-                            Warning.Error("The selected directory does not appear to be a valid IMG filesystem.\n\n" +
-                                "Please select a directory containing extracted IMG files with category folders like:\n" +
-                                "String, Map, Mob, Npc, etc.");
+                            Warning.Error(UiLocalization.Translate("The selected directory does not appear to be a valid IMG filesystem.\n\n" +
+                                "Please select a directory containing extracted IMG files with category folders such as String, Map, Mob, and Npc."));
                             return;
                         }
                     }
@@ -2232,9 +2269,9 @@ namespace HaRepacker.GUI
         private static readonly string HelpFile = "Help.htm";
         private void ViewHelpToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string helpPath = Path.Combine(Application.StartupPath, HelpFile);
+            string helpPath = Path.Combine(AppContext.BaseDirectory, HelpFile);
             if (File.Exists(helpPath))
-                Help.ShowHelp(this, HelpFile);
+                Process.Start(new ProcessStartInfo(helpPath) { UseShellExecute = true });
             else
                 Warning.Error(string.Format(HaRepacker.Properties.Resources.MainHelpOpenFail, HelpFile));
         }
@@ -2564,7 +2601,7 @@ namespace HaRepacker.GUI
                 Multiselect = true
             };
 
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return;
 
             string outPath = GetOutputDirectory();

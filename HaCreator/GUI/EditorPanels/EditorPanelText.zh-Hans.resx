@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name=". . ." xml:space="preserve"><value>. . .</value></data>
+  <data name="_MCP Connection" xml:space="preserve"><value>_MCP Connection</value></data>
+  <data name="_Run Tests" xml:space="preserve"><value>_Run Tests</value></data>
+  <data name="_Settings" xml:space="preserve"><value>_Settings</value></data>
+  <data name="_Tools" xml:space="preserve"><value>_Tools</value></data>
+  <data name="Add" xml:space="preserve"><value>添加</value></data>
+  <data name="Add custom background…" xml:space="preserve"><value>添加自定义背景…</value></data>
+  <data name="Add custom object…" xml:space="preserve"><value>添加自定义对象…</value></data>
+  <data name="Additional properties" xml:space="preserve"><value>附加属性</value></data>
+  <data name="AI endpoint settings" xml:space="preserve"><value>AI 端点设置</value></data>
+  <data name="AI Image Upscale" xml:space="preserve"><value>AI 图像放大</value></data>
+  <data name="AI Map Editor" xml:space="preserve"><value>AI 地图编辑器</value></data>
+  <data name="AI upscale…" xml:space="preserve"><value>AI 放大…</value></data>
+  <data name="Allowed items" xml:space="preserve"><value>允许的物品</value></data>
+  <data name="Animated" xml:space="preserve"><value>动画</value></data>
+  <data name="API dialect" xml:space="preserve"><value>API 协议</value></data>
+  <data name="API key" xml:space="preserve"><value>API 密钥</value></data>
+  <data name="Apply" xml:space="preserve"><value>应用</value></data>
+  <data name="Apply generated map edits automatically" xml:space="preserve"><value>自动应用生成的地图编辑</value></data>
+  <data name="Apply Latest Commands" xml:space="preserve"><value>应用最新命令</value></data>
+  <data name="Apply the commands from the last AI response" xml:space="preserve"><value>应用上一次 AI 回复中的命令</value></data>
+  <data name="Ask" xml:space="preserve"><value>提问</value></data>
+  <data name="Ask message (Enter)" xml:space="preserve"><value>输入问题（Enter）</value></data>
+  <data name="Auto lie detector" xml:space="preserve"><value>自动测谎仪</value></data>
+  <data name="Background assets" xml:space="preserve"><value>背景资源</value></data>
+  <data name="BACKGROUND SET" xml:space="preserve"><value>背景集</value></data>
+  <data name="Base URL" xml:space="preserve"><value>基础 URL</value></data>
+  <data name="BGM" xml:space="preserve"><value>背景音乐</value></data>
+  <data name="Black borders" xml:space="preserve"><value>黑边</value></data>
+  <data name="Bottom (LBBottom)" xml:space="preserve"><value>底部（LBBottom）</value></data>
+  <data name="Built-in and endpoint models share one list. Type a custom model ID if needed." xml:space="preserve"><value>内置模型与端点模型共用一个列表；需要时可输入自定义模型 ID。</value></data>
+  <data name="Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Cannot return" xml:space="preserve"><value>禁止返回</value></data>
+  <data name="Category" xml:space="preserve"><value>类别</value></data>
+  <data name="Chat Completions" xml:space="preserve"><value>Chat Completions</value></data>
+  <data name="Choose a portal, then place it on the active map." xml:space="preserve"><value>选择传送门，然后将其放置到当前地图。</value></data>
+  <data name="Choose a set and background type, then select an asset to place it." xml:space="preserve"><value>选择资源集和背景类型，再选择要放置的资源。</value></data>
+  <data name="Choose a structural tool, then draw it directly on the map." xml:space="preserve"><value>选择结构工具，然后直接在地图上绘制。</value></data>
+  <data name="Choose…" xml:space="preserve"><value>选择…</value></data>
+  <data name="Compare the source with the AI-enhanced result before applying it." xml:space="preserve"><value>应用前请比较原图与 AI 增强结果。</value></data>
+  <data name="Configure an OpenAI-compatible endpoint and verify it before saving." xml:space="preserve"><value>配置兼容 OpenAI 的端点，并在保存前验证。</value></data>
+  <data name="Configure the OpenAI-compatible API endpoint, key, and model" xml:space="preserve"><value>配置兼容 OpenAI 的 API 端点、密钥和模型</value></data>
+  <data name="Custom hours" xml:space="preserve"><value>自定义小时</value></data>
+  <data name="Custom interval" xml:space="preserve"><value>自定义间隔</value></data>
+  <data name="Define the hidden map edges used by older maps at modern resolutions." xml:space="preserve"><value>定义旧版地图在现代分辨率下使用的隐藏边界。</value></data>
+  <data name="Delete object" xml:space="preserve"><value>删除对象</value></data>
+  <data name="Drop expiration" xml:space="preserve"><value>掉落物过期时间</value></data>
+  <data name="Drop rate" xml:space="preserve"><value>掉落率</value></data>
+  <data name="Edit map identity, scripts, gameplay rules, limits, and client behavior." xml:space="preserve"><value>编辑地图标识、脚本、游戏规则、限制和客户端行为。</value></data>
+  <data name="Effect" xml:space="preserve"><value>效果</value></data>
+  <data name="Enable HP decrease" xml:space="preserve"><value>启用 HP 减少</value></data>
+  <data name="Endpoint" xml:space="preserve"><value>端点</value></data>
+  <data name="Enhanced" xml:space="preserve"><value>增强后</value></data>
+  <data name="Essential" xml:space="preserve"><value>基本信息</value></data>
+  <data name="Field type" xml:space="preserve"><value>场景类型</value></data>
+  <data name="Filter assets by name" xml:space="preserve"><value>按名称筛选资源</value></data>
+  <data name="First-user script" xml:space="preserve"><value>首位用户脚本</value></data>
+  <data name="Forced return here" xml:space="preserve"><value>强制返回此处</value></data>
+  <data name="Force-move level" xml:space="preserve"><value>强制移动等级</value></data>
+  <data name="Friction" xml:space="preserve"><value>摩擦力</value></data>
+  <data name="Gameplay" xml:space="preserve"><value>游戏规则</value></data>
+  <data name="Generated Commands" xml:space="preserve"><value>生成的命令</value></data>
+  <data name="Help text" xml:space="preserve"><value>帮助文本</value></data>
+  <data name="HP decrease" xml:space="preserve"><value>HP 减少</value></data>
+  <data name="Internal map name" xml:space="preserve"><value>内部地图名称</value></data>
+  <data name="Internal street name" xml:space="preserve"><value>内部街道名称</value></data>
+  <data name="Level limit" xml:space="preserve"><value>等级限制</value></data>
+  <data name="Life type" xml:space="preserve"><value>生命类型</value></data>
+  <data name="Hide entries without images" xml:space="preserve"><value>隐藏无图像的条目</value></data>
+  <data name="Manage…" xml:space="preserve"><value>管理…</value></data>
+  <data name="Map context" xml:space="preserve"><value>地图上下文</value></data>
+  <data name="Map description" xml:space="preserve"><value>地图说明</value></data>
+  <data name="Map editing behavior" xml:space="preserve"><value>地图编辑行为</value></data>
+  <data name="Map height" xml:space="preserve"><value>地图高度</value></data>
+  <data name="Map hierarchy" xml:space="preserve"><value>地图层级</value></data>
+  <data name="Map ID" xml:space="preserve"><value>地图 ID</value></data>
+  <data name="Map Info" xml:space="preserve"><value>地图信息</value></data>
+  <data name="Map information" xml:space="preserve"><value>地图信息</value></data>
+  <data name="Map mark" xml:space="preserve"><value>地图标记</value></data>
+  <data name="Map name" xml:space="preserve"><value>地图名称</value></data>
+  <data name="Map structures" xml:space="preserve"><value>地图结构</value></data>
+  <data name="Map width" xml:space="preserve"><value>地图宽度</value></data>
+  <data name="Message" xml:space="preserve"><value>消息</value></data>
+  <data name="Mob ID" xml:space="preserve"><value>怪物 ID</value></data>
+  <data name="Mob mass settings" xml:space="preserve"><value>怪物批量设置</value></data>
+  <data name="Mob rate" xml:space="preserve"><value>怪物生成率</value></data>
+  <data name="Mobs" xml:space="preserve"><value>怪物</value></data>
+  <data name="Model catalog" xml:space="preserve"><value>模型目录</value></data>
+  <data name="Move limit" xml:space="preserve"><value>移动限制</value></data>
+  <data name="New Chat" xml:space="preserve"><value>新建对话</value></data>
+  <data name="NPCs" xml:space="preserve"><value>NPC</value></data>
+  <data name="Object set" xml:space="preserve"><value>对象集</value></data>
+  <data name="Optional properties" xml:space="preserve"><value>可选属性</value></data>
+  <data name="Original" xml:space="preserve"><value>原图</value></data>
+  <data name="Pixels" xml:space="preserve"><value>像素</value></data>
+  <data name="Portal types" xml:space="preserve"><value>传送门类型</value></data>
+  <data name="Preview" xml:space="preserve"><value>预览</value></data>
+  <data name="Preview the result in Map Simulator after changing border dimensions." xml:space="preserve"><value>更改边框尺寸后，请在地图模拟器中预览结果。</value></data>
+  <data name="Processing…" xml:space="preserve"><value>处理中…</value></data>
+  <data name="Protected items" xml:space="preserve"><value>受保护物品</value></data>
+  <data name="Reactors" xml:space="preserve"><value>反应堆</value></data>
+  <data name="Reasoning effort" xml:space="preserve"><value>推理强度</value></data>
+  <data name="Recovery" xml:space="preserve"><value>恢复率</value></data>
+  <data name="Refresh" xml:space="preserve"><value>刷新</value></data>
+  <data name="Refresh map context after making changes" xml:space="preserve"><value>更改后刷新地图上下文</value></data>
+  <data name="Remove" xml:space="preserve"><value>移除</value></data>
+  <data name="Responses" xml:space="preserve"><value>Responses</value></data>
+  <data name="Review enhanced image" xml:space="preserve"><value>查看增强图像</value></data>
+  <data name="Rules &amp; limits" xml:space="preserve"><value>规则和限制</value></data>
+  <data name="Run automated tests to verify AI agent capabilities" xml:space="preserve"><value>运行自动测试以验证 AI 代理能力</value></data>
+  <data name="Save" xml:space="preserve"><value>保存</value></data>
+  <data name="Save image…" xml:space="preserve"><value>保存图像…</value></data>
+  <data name="Search and select objects currently placed on the active map." xml:space="preserve"><value>搜索并选择当前地图上已放置的对象。</value></data>
+  <data name="Search by type, asset path, name, or coordinates" xml:space="preserve"><value>按类型、资源路径、名称或坐标搜索</value></data>
+  <data name="Selected 0" xml:space="preserve"><value>已选 0</value></data>
+  <data name="Show the local MCP endpoint and authorization token for external clients" xml:space="preserve"><value>显示供外部客户端使用的本地 MCP 端点和授权令牌</value></data>
+  <data name="Shuffle name" xml:space="preserve"><value>随机名称</value></data>
+  <data name="Shuffle reactors" xml:space="preserve"><value>随机反应堆</value></data>
+  <data name="Sides (LBSide)" xml:space="preserve"><value>两侧（LBSide）</value></data>
+  <data name="Spine" xml:space="preserve"><value>Spine</value></data>
+  <data name="Start a new conversation" xml:space="preserve"><value>开始新对话</value></data>
+  <data name="Static" xml:space="preserve"><value>静态</value></data>
+  <data name="Street name" xml:space="preserve"><value>街道名称</value></data>
+  <data name="Test connection" xml:space="preserve"><value>测试连接</value></data>
+  <data name="The original asset is unchanged until you choose Use enhanced image." xml:space="preserve"><value>在选择“使用增强图像”前，原始资源不会改变。</value></data>
+  <data name="Thinking" xml:space="preserve"><value>思考中</value></data>
+  <data name="Tile set" xml:space="preserve"><value>图块集</value></data>
+  <data name="Time limit" xml:space="preserve"><value>时间限制</value></data>
+  <data name="Timed mob" xml:space="preserve"><value>定时怪物</value></data>
+  <data name="Top (LBTop)" xml:space="preserve"><value>顶部（LBTop）</value></data>
+  <data name="Total 0" xml:space="preserve"><value>总计 0</value></data>
+  <data name="TYPE" xml:space="preserve"><value>类型</value></data>
+  <data name="Use enhanced image" xml:space="preserve"><value>使用增强图像</value></data>
+  <data name="Use strict tool schemas" xml:space="preserve"><value>使用严格工具架构</value></data>
+  <data name="User-enter script" xml:space="preserve"><value>用户进入脚本</value></data>
+  <data name="Variant" xml:space="preserve"><value>变体</value></data>
+  <data name="Status_Ready" xml:space="preserve"><value>就绪</value></data>
+  <data name="Status_UpscaleFailed" xml:space="preserve"><value>放大失败：{0}</value></data>
+  <data name="Confirm_ChangeTileSet" xml:space="preserve"><value>这将更改当前图层的图块集。是否继续？</value></data>
+  <data name="Title_ChangeTileSet" xml:space="preserve"><value>更改图块集</value></data>
+  <data name="Menu_SelectOnBoard" xml:space="preserve"><value>在画布上选择</value></data>
+  <data name="Menu_JumpToObject" xml:space="preserve"><value>跳转到对象</value></data>
+  <data name="Menu_EditProperties" xml:space="preserve"><value>编辑属性…</value></data>
+  <data name="Menu_Delete" xml:space="preserve"><value>删除</value></data>
+  <data name="Menu_SelectAllOfType" xml:space="preserve"><value>选择同类型的全部对象</value></data>
+  <data name="Menu_SelectAllInLayer" xml:space="preserve"><value>选择图层中的全部对象</value></data>
+  <data name="Format_Layer" xml:space="preserve"><value> • 图层 {0}</value></data>
+  <data name="Format_ObjectSummary" xml:space="preserve"><value>{0}{1} • {2} @ ({3}, {4})</value></data>
+  <data name="ObjectType_Tile" xml:space="preserve"><value>图块</value></data>
+  <data name="ObjectType_Object" xml:space="preserve"><value>对象</value></data>
+  <data name="ObjectType_Background" xml:space="preserve"><value>背景</value></data>
+  <data name="ObjectType_Mob" xml:space="preserve"><value>怪物</value></data>
+  <data name="ObjectType_Reactor" xml:space="preserve"><value>反应堆</value></data>
+  <data name="ObjectType_Portal" xml:space="preserve"><value>传送门</value></data>
+  <data name="ObjectType_Foothold" xml:space="preserve"><value>立足点</value></data>
+  <data name="ObjectType_RopeLadder" xml:space="preserve"><value>绳索/梯子</value></data>
+  <data name="ObjectType_Chair" xml:space="preserve"><value>椅子</value></data>
+  <data name="ObjectType_Tooltip" xml:space="preserve"><value>提示</value></data>
+  <data name="ObjectType_MirrorField" xml:space="preserve"><value>镜像区域</value></data>
+  <data name="ObjectType_Misc" xml:space="preserve"><value>其他</value></data>
+  <data name="Format_Total" xml:space="preserve"><value>总计 {0}</value></data>
+  <data name="Format_Selected" xml:space="preserve"><value>已选 {0}</value></data>
+  <data name="Prompt_EnterItemId" xml:space="preserve"><value>输入物品 ID</value></data>
+  <data name="Error_ValueNotZero" xml:space="preserve"><value>值不能为 0。</value></data>
+  <data name="Prompt_InsertItemId" xml:space="preserve"><value>输入物品 ID</value></data>
+  <data name="Title_AddAllowedItem" xml:space="preserve"><value>添加允许的物品</value></data>
+  <data name="AI_UnknownMap" xml:space="preserve"><value>未知</value></data>
+  <data name="AI_DefaultMapName" xml:space="preserve"><value>地图 {0}</value></data>
+  <data name="AI_WindowTitle" xml:space="preserve"><value>AI 地图编辑器 - {0} ({1})</value></data>
+  <data name="AI_NoMapLoaded" xml:space="preserve"><value>当前未加载地图。</value></data>
+  <data name="AI_NoMapContext" xml:space="preserve"><value># 未加载地图</value></data>
+  <data name="AI_MapLoadError" xml:space="preserve"><value># 加载地图时出错：{0}</value></data>
+  <data name="AI_ClearChatConfirm" xml:space="preserve"><value>要开始新对话吗？当前聊天记录将被清除。</value></data>
+  <data name="AI_ExecuteCommandsTitle" xml:space="preserve"><value>执行命令</value></data>
+  <data name="AI_NoCommands" xml:space="preserve"><value>没有可执行的命令。请先发送消息生成命令。</value></data>
+  <data name="AI_NoValidCommands" xml:space="preserve"><value>生成的输出中没有有效命令。</value></data>
+  <data name="AI_ExecutionSummary" xml:space="preserve"><value>执行完成：成功 {0}，失败 {1}</value></data>
+  <data name="AI_ExecutionResultTitle" xml:space="preserve"><value>执行结果</value></data>
+  <data name="AI_ExecutionError" xml:space="preserve"><value>执行命令时出错：{0}</value></data>
+  <data name="AI_ExecutionErrorTitle" xml:space="preserve"><value>执行错误</value></data>
+  <data name="AI_McpConnectionDetails" xml:space="preserve"><value>MCP 端点：\n{0}\n\n授权标头：\nBearer {1}\n\n此地图窗口打开期间端点保持活动。</value></data>
+  <data name="AI_McpConnectionTitle" xml:space="preserve"><value>MCP 连接</value></data>
+  <data name="AI_RunTestsTitle" xml:space="preserve"><value>运行测试</value></data>
+  <data name="AISettings_EnterBaseUrl" xml:space="preserve"><value>输入基础 URL 以发现端点模型。</value></data>
+  <data name="AISettings_DiscoveringModels" xml:space="preserve"><value>正在从端点发现模型…</value></data>
+  <data name="AISettings_NoEndpointModels" xml:space="preserve"><value>端点未返回模型，仍可使用内置预设。</value></data>
+  <data name="AISettings_ModelsDiscovered" xml:space="preserve"><value>发现 {0} 个端点模型并与内置预设合并。</value></data>
+  <data name="AISettings_DiscoveryError" xml:space="preserve"><value>无法发现端点模型：{0}</value></data>
+  <data name="AISettings_EndpointReasoning" xml:space="preserve"><value>端点声明：{0}</value></data>
+  <data name="AISettings_DetectedReasoning" xml:space="preserve"><value>从模型系列检测：{0}</value></data>
+  <data name="AISettings_AutoReasoningOnly" xml:space="preserve"><value>仅自动；此模型未声明推理等级。</value></data>
+  <data name="AISettings_TestRequired" xml:space="preserve"><value>保存前必须测试连接。</value></data>
+  <data name="AISettings_Configured" xml:space="preserve"><value>已配置：{0}</value></data>
+  <data name="AISettings_NotConfigured" xml:space="preserve"><value>未配置。</value></data>
+  <data name="AISettings_Testing" xml:space="preserve"><value>正在测试连接…</value></data>
+  <data name="AISettings_BaseUrlRequired" xml:space="preserve"><value>请先输入 API 基础 URL。</value></data>
+  <data name="AISettings_ModelRequired" xml:space="preserve"><value>请先选择或输入模型。</value></data>
+  <data name="AISettings_ConnectionSuccessful" xml:space="preserve"><value>连接成功！</value></data>
+  <data name="AISettings_ConnectionFailed" xml:space="preserve"><value>连接失败。请检查端点、模型和 API 密钥。</value></data>
+  <data name="AISettings_Error" xml:space="preserve"><value>错误：{0}</value></data>
+  <data name="Error_AddingImage" xml:space="preserve"><value>添加图像时出错：{0}</value></data>
+  <data name="Common_Error" xml:space="preserve"><value>错误</value></data>
+  <data name="Dialog_SaveImage" xml:space="preserve"><value>选择图像保存位置…</value></data>
+  <data name="Dialog_SaveObjectImage" xml:space="preserve"><value>保存对象图像</value></data>
+  <data name="MapOption_Clouds" xml:space="preserve"><value>云</value></data>
+  <data name="MapOption_Snow" xml:space="preserve"><value>雪</value></data>
+  <data name="MapOption_Rain" xml:space="preserve"><value>雨</value></data>
+  <data name="MapOption_Swim" xml:space="preserve"><value>游泳</value></data>
+  <data name="MapOption_Fly" xml:space="preserve"><value>飞行</value></data>
+  <data name="MapOption_Town" xml:space="preserve"><value>城镇</value></data>
+  <data name="MapOption_PartyOnly" xml:space="preserve"><value>仅限组队</value></data>
+  <data name="MapOption_ExpeditionOnly" xml:space="preserve"><value>仅限远征队</value></data>
+  <data name="MapOption_NoMapCommands" xml:space="preserve"><value>禁用地图命令</value></data>
+  <data name="MapOption_HideMinimap" xml:space="preserve"><value>隐藏小地图</value></data>
+  <data name="MapOption_MinimapToggle" xml:space="preserve"><value>小地图开关</value></data>
+  <data name="MapOption_PersonalShops" xml:space="preserve"><value>个人商店</value></data>
+  <data name="MapOption_EntrustedShops" xml:space="preserve"><value>雇佣商店</value></data>
+  <data name="MapOption_NoRegeneration" xml:space="preserve"><value>禁止再生</value></data>
+  <data name="MapOption_BlockPartyBossChange" xml:space="preserve"><value>禁止更换队长</value></data>
+  <data name="MapOption_Everlast" xml:space="preserve"><value>永久掉落</value></data>
+  <data name="MapOption_DamageCheckFree" xml:space="preserve"><value>免伤害检查</value></data>
+  <data name="MapOption_DisableScrolls" xml:space="preserve"><value>禁用卷轴</value></data>
+  <data name="MapOption_FlySkillRequired" xml:space="preserve"><value>飞行需要技能</value></data>
+  <data name="MapOption_ZakumAntiHack" xml:space="preserve"><value>扎昆-2 跳跳任务防作弊</value></data>
+  <data name="MapOption_CheckAllMoves" xml:space="preserve"><value>检查所有移动（防作弊）</value></data>
+  <data name="MapOption_UseVrAsLimits" xml:space="preserve"><value>使用 VR 作为边界</value></data>
+  <data name="MapOption_MirrorBottom" xml:space="preserve"><value>镜像底部（反射）</value></data>
+  <data name="Dialog_SelectImage" xml:space="preserve"><value>选择要添加的图像</value></data>
+  <data name="Dialog_ImageOpenFilter" xml:space="preserve"><value>图像文件 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg</value></data>
+  <data name="Dialog_ImageSaveFilterLong" xml:space="preserve"><value>便携式网络图形 (*.png)|*.png|GIF 图像 (*.gif)|*.gif|位图 (*.bmp)|*.bmp|JPEG 图像 (*.jpg)|*.jpg|TIFF 图像 (*.tif)|*.tif</value></data>
+  <data name="Dialog_ImageSaveFilterShort" xml:space="preserve"><value>PNG (*.png)|*.png|GIF (*.gif)|*.gif|位图 (*.bmp)|*.bmp|JPEG (*.jpg)|*.jpg|TIFF (*.tif)|*.tif</value></data>
+  <data name="Message_BackgroundAdded" xml:space="preserve"><value>图像“{0}”已成功添加为“{1}”。</value></data>
+  <data name="Title_ImageAdded" xml:space="preserve"><value>图像已添加</value></data>
+  <data name="Confirm_DeleteBackground" xml:space="preserve"><value>删除所选背景吗？</value></data>
+  <data name="Title_ConfirmDelete" xml:space="preserve"><value>确认删除</value></data>
+  <data name="Prompt_SelectObjectCategory" xml:space="preserve"><value>请先选择对象类别。</value></data>
+  <data name="Title_NoCategorySelected" xml:space="preserve"><value>未选择类别</value></data>
+  <data name="Message_ObjectAdded" xml:space="preserve"><value>已将 {0} 添加为 {1}。</value></data>
+  <data name="Title_ObjectAdded" xml:space="preserve"><value>对象已添加</value></data>
+  <data name="Confirm_DeleteObject" xml:space="preserve"><value>删除此对象吗？</value></data>
+  <data name="Title_DeleteObject" xml:space="preserve"><value>删除对象</value></data>
+  <data name="Chat / reasoning model" xml:space="preserve"><value>聊天/推理模型</value></data>
+  <data name="Image model" xml:space="preserve"><value>图像模型</value></data>
+  <data name="Used by the animation editor for frame generation and reference edits." xml:space="preserve"><value>供动画编辑器生成帧和参考图编辑使用。</value></data>
+  <data name="AISettings_ModelSourceBuiltIn" xml:space="preserve"><value>内置</value></data>
+  <data name="AISettings_ModelSourceBuiltInEndpoint" xml:space="preserve"><value>内置 + 端点</value></data>
+  <data name="AISettings_ModelSourceEndpoint" xml:space="preserve"><value>端点</value></data>
+  <data name="AISettings_AutoReasoningEffort" xml:space="preserve"><value>自动（模型默认值）</value></data>
+  <data name="AISettings_BuiltInPresetsPending" xml:space="preserve"><value>{0} 个内置预设。端点发现将自动开始。</value></data>
+  <data name="AISettings_BuiltInPresetsOnly" xml:space="preserve"><value>有 {0} 个内置预设可用。未发现端点模型。</value></data>
+  <data name="AISettings_ModelCatalogSummary" xml:space="preserve"><value>{0} 个内置模型 + {1} 个端点模型；共 {2} 个唯一模型。</value></data>
+</root>
