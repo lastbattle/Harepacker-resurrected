@@ -317,8 +317,10 @@
         <!-- Menu Bar -->
         <Menu Grid.Row="0" Height="36" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
             <MenuItem Header="_Tools">
+                <MenuItem x:Name="menuAISettings" Header="_AI Settings..." Click="BtnAISettings_Click"
+                          ToolTip="Configure the AI endpoint, model, and API key"/>
                 <MenuItem x:Name="menuMcpConnection" Header="_MCP Connection" Click="BtnMcpConnection_Click"
-                    ToolTip="Show the local MCP endpoint and authorization token for external clients"/>
+                          ToolTip="Show the local MCP endpoint and authorization token for external clients"/>
                 <Separator/>
                 <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
                           ToolTip="Run automated tests to verify AI agent capabilities"/>

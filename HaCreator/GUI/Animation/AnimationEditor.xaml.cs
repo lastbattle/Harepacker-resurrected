@@ -931,6 +931,12 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             }
 
+            if (!EnsureAIConfiguration())
+            {
+                aiStatusText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AINotConfigured");
+                return;
+            }
+
             CancelAIWork();
             _aiCancellation = new CancellationTokenSource();
             SetAIBusy(true, AnimationEditorTextExtension.Get("AnimationEditor_AISuggesting"));
@@ -947,6 +953,7 @@ namespace HaCreator.GUI.FrameAnimation
             catch (Exception ex)
             {
                 aiStatusText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AIError", ex.Message);
+                MaybeOpenAISettingsForError(ex);
             }
             finally
             {
@@ -956,8 +963,7 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void AISettings_Click(object sender, RoutedEventArgs e)
         {
-            new AISettingsDialog { Owner = this }.ShowDialog();
-            UpdateAIState();
+            OpenAISettingsDialog();
         }
 
         private void AICancel_Click(object sender, RoutedEventArgs e) => CancelAIWork();
@@ -976,6 +982,12 @@ namespace HaCreator.GUI.FrameAnimation
             if (string.IsNullOrWhiteSpace(userPrompt))
             {
                 aiStatusText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AIEnterPrompt");
+                return;
+            }
+
+            if (!EnsureAIConfiguration())
+            {
+                aiStatusText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AINotConfigured");
                 return;
             }
 
@@ -1063,6 +1075,7 @@ namespace HaCreator.GUI.FrameAnimation
             catch (Exception ex)
             {
                 aiStatusText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AIError", ex.Message);
+                MaybeOpenAISettingsForError(ex);
             }
             finally
             {
@@ -1172,6 +1185,38 @@ namespace HaCreator.GUI.FrameAnimation
             using var stream = new MemoryStream();
             bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
             return stream.ToArray();
+        }
+
+
+        private bool EnsureAIConfiguration()
+        {
+            if (AISettings.IsConfigured)
+                return true;
+
+            OpenAISettingsDialog();
+            return AISettings.IsConfigured;
+        }
+
+        private void MaybeOpenAISettingsForError(Exception ex)
+        {
+            if (!AISettings.IsConfigurationRelatedError(ex))
+                return;
+
+            var result = MessageBox.Show(
+                this,
+                AnimationEditorTextExtension.Get("AnimationEditor_AIOpenSettingsAfterError", ex.Message),
+                AnimationEditorTextExtension.Get("AnimationEditor_AISettings"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+                OpenAISettingsDialog();
+        }
+
+        private void OpenAISettingsDialog()
+        {
+            new AISettingsDialog { Owner = this }.ShowDialog();
+            UpdateAIState();
         }
 
         private void SetAIBusy(bool busy, string status = null)
