@@ -255,6 +255,8 @@
                             </StackPanel>
                         </Grid>
                         <ListBox x:Name="timelineListBox" Grid.Row="1" SelectionChanged="Timeline_SelectionChanged"
+                                 AllowDrop="True" PreviewDragOver="Timeline_PreviewDragOver" Drop="Timeline_Drop"
+                                 ToolTip="{local:AnimationEditorText AnimationEditor_TimelineClipboardTooltip}"
                                  AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TimelineFrames}"
                                  ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
                             <ListBox.ItemsPanel>

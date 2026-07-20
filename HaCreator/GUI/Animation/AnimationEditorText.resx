@@ -7,6 +7,14 @@
   <data name="AnimationEditor_Title" xml:space="preserve"><value>Animation Frame Editor</value></data>
   <data name="AnimationEditor_Save" xml:space="preserve"><value>Save</value></data>
   <data name="AnimationEditor_Import" xml:space="preserve"><value>Import frames</value></data>
+  <data name="AnimationEditor_TimelineClipboardTooltip" xml:space="preserve"><value>Ctrl+C copies the selected frame image. Ctrl+V inserts a clipboard image after it. Drop image files here to add frames.</value></data>
+  <data name="AnimationEditor_FrameCopied" xml:space="preserve"><value>Selected frame image copied to the clipboard.</value></data>
+  <data name="AnimationEditor_ClipboardHasNoImage" xml:space="preserve"><value>The clipboard does not contain an image.</value></data>
+  <data name="AnimationEditor_PasteFrame" xml:space="preserve"><value>Paste frame</value></data>
+  <data name="AnimationEditor_FramePasted" xml:space="preserve"><value>Clipboard image inserted after the selected frame.</value></data>
+  <data name="AnimationEditor_DropFrames" xml:space="preserve"><value>Drop frames</value></data>
+  <data name="AnimationEditor_FramesAdded" xml:space="preserve"><value>Added {0} image frame(s).</value></data>
+  <data name="AnimationEditor_NoImagesAdded" xml:space="preserve"><value>No supported image files could be added.</value></data>
   <data name="AnimationEditor_Export" xml:space="preserve"><value>Export frame</value></data>
   <data name="AnimationEditor_Undo" xml:space="preserve"><value>Undo (Ctrl+Z)</value></data>
   <data name="AnimationEditor_Redo" xml:space="preserve"><value>Redo (Ctrl+Y)</value></data>

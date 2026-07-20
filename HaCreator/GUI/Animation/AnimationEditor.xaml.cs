@@ -36,6 +36,9 @@ namespace HaCreator.GUI.FrameAnimation
 {
     public partial class AnimationEditor : Window
     {
+        private const string ClipboardPngFormat = "PNG";
+        private const string AnimationClipboardPngFormat = "HaCreator.AnimationFrame.Png";
+        private const string AnimationClipboardTokenFormat = "HaCreator.AnimationFrame.Token";
         private sealed record EditOperation(Action Undo, Action Redo, string Description);
         private sealed record AIChoice<T>(T Value, string Name)
         {
@@ -71,6 +74,9 @@ namespace HaCreator.GUI.FrameAnimation
         private bool _hasUntrackedDirty;
         private bool _suppressRawPropertyTracking;
         private bool _updatingResizeFields;
+        private DrawingBitmap _copiedFrameBitmap;
+        private WzPngProperty _copiedFramePngProperty;
+        private string _copiedFrameClipboardToken;
 
         public AnimationEditor()
         {
@@ -393,7 +399,8 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void ImportFrame()
         {
-            if (_document == null || _document.Track.IsSingleCanvas)
+            AnimationFrameModel template = _document?.SelectedFrame;
+            if (template == null || _document.Track.IsSingleCanvas)
                 return;
             OpenFileDialog dialog = new()
             {
@@ -403,22 +410,291 @@ namespace HaCreator.GUI.FrameAnimation
             };
             if (dialog.ShowDialog(this) != true)
                 return;
-            foreach (string file in dialog.FileNames)
+            InsertImageFiles(dialog.FileNames, _document.Frames.Count, template,
+                AnimationEditorTextExtension.Get("AnimationEditor_Import"));
+        }
+
+        private void CopySelectedFrameToClipboard()
+        {
+            AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
+            WzCanvasProperty canvas = layer?.Canvas ?? layer?.SourceCanvas;
+            if (canvas == null)
+                return;
+            try
             {
-                using DrawingBitmap source = new(file);
-                DrawingBitmap bitmap = new(source);
-                WzCanvasProperty canvas = new(_document.Frames.Count.ToString(CultureInfo.InvariantCulture)) { PngProperty = new WzPngProperty() };
-                canvas.PngProperty.PNG = bitmap;
-                canvas.AddProperty(new WzVectorProperty("origin", bitmap.Width / 2, bitmap.Height));
-                canvas.AddProperty(new WzIntProperty("delay", 100));
-                AnimationFrameModel frame = new(canvas, canvas, _document.Frames.Count, _document.MarkDirty);
-                int index = _document.Frames.Count;
-                Execute(new EditOperation(
-                    () => { _document.Frames.Remove(frame); _document.Reindex(); SelectFrame(Math.Min(index - 1, _document.Frames.Count - 1)); },
-                    () => { _document.Frames.Insert(Math.Min(index, _document.Frames.Count), frame); _document.Reindex(); SelectFrame(index); },
-                    AnimationEditorTextExtension.Get("AnimationEditor_Import")));
+                using DrawingBitmap source = canvas.GetLinkedWzCanvasBitmap();
+                if (source == null)
+                    return;
+                byte[] png = EncodePng(source);
+                _copiedFrameBitmap?.Dispose();
+                _copiedFrameBitmap = CloneBitmapWithAlpha(source);
+                _copiedFramePngProperty?.Dispose();
+                _copiedFramePngProperty = canvas.PngProperty?.Width > 0 && canvas.PngProperty.Height > 0
+                    ? (WzPngProperty)canvas.PngProperty.DeepClone()
+                    : null;
+                _copiedFrameClipboardToken = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+                DataObject data = new();
+                data.SetData(AnimationClipboardPngFormat, png, false);
+                data.SetData(ClipboardPngFormat, new MemoryStream(png, writable: false), false);
+                data.SetData(AnimationClipboardTokenFormat, _copiedFrameClipboardToken, false);
+                data.SetImage(source.ToWpfBitmap());
+                Clipboard.SetDataObject(data, true);
+                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FrameCopied"), false);
+            }
+            catch (Exception ex) { SetError(ex.Message); }
+        }
+
+        private void PasteClipboardImage()
+        {
+            AnimationFrameModel template = _document?.SelectedFrame;
+            if (template == null || _document.Track.IsSingleCanvas)
+                return;
+            try
+            {
+                IDataObject clipboard = Clipboard.GetDataObject();
+                if (_copiedFramePngProperty != null && HasMatchingCopiedFrameToken(clipboard))
+                {
+                    if (InsertCopiedWzFrame(template, template.Index + 1,
+                        AnimationEditorTextExtension.Get("AnimationEditor_PasteFrame")) > 0)
+                        SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramePasted"), false);
+                    return;
+                }
+                DrawingBitmap bitmap = TryGetCopiedFrameBitmap(clipboard) ?? TryGetClipboardPng(clipboard);
+                if (bitmap == null && Clipboard.ContainsImage())
+                {
+                    BitmapSource source = Clipboard.GetImage();
+                    if (source != null)
+                        bitmap = BitmapSourceToDrawingBitmap(source);
+                }
+                if (bitmap == null)
+                {
+                    SetError(AnimationEditorTextExtension.Get("AnimationEditor_ClipboardHasNoImage"));
+                    return;
+                }
+                using (bitmap)
+                {
+                    if (InsertRawImages(new[] { bitmap }, template.Index + 1, template,
+                        AnimationEditorTextExtension.Get("AnimationEditor_PasteFrame")) > 0)
+                        SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramePasted"), false);
+                }
+            }
+            catch (Exception ex) { SetError(ex.Message); }
+        }
+
+        private void Timeline_PreviewDragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = CanInsertDroppedImages(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void Timeline_Drop(object sender, DragEventArgs e)
+        {
+            AnimationFrameModel template = _document?.SelectedFrame;
+            if (template == null || _document.Track.IsSingleCanvas ||
+                e.Data.GetData(DataFormats.FileDrop) is not string[] files)
+                return;
+            int index = GetTimelineDropIndex(e);
+            int inserted = InsertImageFiles(files, index, template,
+                AnimationEditorTextExtension.Get("AnimationEditor_DropFrames"));
+            if (inserted > 0)
+                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramesAdded", inserted), false);
+            e.Handled = true;
+        }
+
+        private bool CanInsertDroppedImages(IDataObject data)
+        {
+            if (_document?.SelectedFrame == null || _document.Track.IsSingleCanvas ||
+                !data.GetDataPresent(DataFormats.FileDrop) || data.GetData(DataFormats.FileDrop) is not string[] files)
+                return false;
+            return files.Any(IsSupportedImageFile);
+        }
+
+        private int GetTimelineDropIndex(DragEventArgs e)
+        {
+            if (ItemsControl.ContainerFromElement(timelineListBox, e.OriginalSource as DependencyObject) is not ListBoxItem item)
+                return _document?.Frames.Count ?? 0;
+            int index = timelineListBox.ItemContainerGenerator.IndexFromContainer(item);
+            return e.GetPosition(item).X > item.ActualWidth / 2 ? index + 1 : index;
+        }
+
+        private int InsertImageFiles(IEnumerable<string> files, int index, AnimationFrameModel template, string description)
+        {
+            List<DrawingBitmap> bitmaps = new();
+            try
+            {
+                foreach (string file in files.Where(IsSupportedImageFile))
+                {
+                    try
+                    {
+                        using DrawingBitmap loaded = new(file);
+                        bitmaps.Add(new DrawingBitmap(loaded));
+                    }
+                    catch
+                    {
+                        // Ignore individual invalid or inaccessible files while accepting the remaining images.
+                    }
+                }
+                if (bitmaps.Count == 0)
+                {
+                    SetError(AnimationEditorTextExtension.Get("AnimationEditor_NoImagesAdded"));
+                    return 0;
+                }
+                return InsertRawImages(bitmaps, index, template, description);
+            }
+            finally
+            {
+                foreach (DrawingBitmap bitmap in bitmaps)
+                    bitmap.Dispose();
             }
         }
+
+        private int InsertRawImages(IEnumerable<DrawingBitmap> bitmaps, int index, AnimationFrameModel template, string description)
+        {
+            if (_document == null || template == null)
+                return 0;
+            string layerName = template.SelectedLayer?.Name ?? template.Layers.FirstOrDefault()?.Name;
+            List<AnimationFrameModel> frames = bitmaps.Select((bitmap, offset) =>
+                CreateFrameFromRawImage(template, layerName, bitmap, index + offset)).Where(frame => frame != null).ToList();
+            return InsertFrames(frames, index, description);
+        }
+
+        private int InsertCopiedWzFrame(AnimationFrameModel template, int index, string description)
+        {
+            string layerName = template.SelectedLayer?.Name ?? template.Layers.FirstOrDefault()?.Name;
+            WzImageProperty property = template.BuildCommittedFrame(index.ToString(CultureInfo.InvariantCulture), materializeLink: true);
+            var temporary = new AnimationFrameModel(property, property, index, () => { });
+            AnimationLayerModel layer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layerName)
+                ?? temporary.Layers.FirstOrDefault();
+            if (layer?.Canvas == null || _copiedFramePngProperty == null)
+                return 0;
+            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.InlinkPropertyName);
+            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.OutlinkPropertyName);
+            layer.Canvas.PngProperty = (WzPngProperty)_copiedFramePngProperty.DeepClone();
+            AnimationFrameModel frame = new(property, property, index, _document.MarkDirty);
+            return InsertFrames(new List<AnimationFrameModel> { frame }, index, description);
+        }
+
+        private int InsertFrames(List<AnimationFrameModel> frames, int index, string description)
+        {
+            if (frames.Count == 0)
+                return 0;
+            int insertionIndex = Math.Clamp(index, 0, _document.Frames.Count);
+            Execute(new EditOperation(
+                () =>
+                {
+                    foreach (AnimationFrameModel frame in frames)
+                        _document.Frames.Remove(frame);
+                    _document.Reindex();
+                    SelectFrame(Math.Clamp(insertionIndex - 1, 0, _document.Frames.Count - 1));
+                },
+                () =>
+                {
+                    for (int offset = 0; offset < frames.Count; offset++)
+                        _document.Frames.Insert(Math.Min(insertionIndex + offset, _document.Frames.Count), frames[offset]);
+                    _document.Reindex();
+                    SelectFrame(insertionIndex + frames.Count - 1);
+                },
+                description));
+            return frames.Count;
+        }
+
+        private AnimationFrameModel CreateFrameFromRawImage(AnimationFrameModel template, string layerName,
+            DrawingBitmap bitmap, int index)
+        {
+            WzImageProperty property = template.BuildCommittedFrame(index.ToString(CultureInfo.InvariantCulture), materializeLink: true);
+            var temporary = new AnimationFrameModel(property, property, index, () => { });
+            AnimationLayerModel layer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layerName)
+                ?? temporary.Layers.FirstOrDefault();
+            if (layer?.Canvas == null)
+                return null;
+            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.InlinkPropertyName);
+            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.OutlinkPropertyName);
+            layer.ReplaceBitmap(CloneBitmapWithAlpha(bitmap));
+            return new AnimationFrameModel(property, property, index, _document.MarkDirty);
+        }
+
+        private static DrawingBitmap BitmapSourceToDrawingBitmap(BitmapSource source)
+        {
+            byte[] png = EncodeBitmapSourceToPng(source);
+            using MemoryStream stream = new(png, writable: false);
+            using DrawingBitmap loaded = new(stream);
+            return CloneBitmapWithAlpha(loaded);
+        }
+
+        private static byte[] EncodeBitmapSourceToPng(BitmapSource source)
+        {
+            PngBitmapEncoder encoder = new();
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            using MemoryStream stream = new();
+            encoder.Save(stream);
+            return stream.ToArray();
+        }
+
+        private static DrawingBitmap TryGetClipboardPng(IDataObject data)
+        {
+            if (data == null)
+                return null;
+            foreach (string format in new[] { AnimationClipboardPngFormat, ClipboardPngFormat })
+            {
+                if (!data.GetDataPresent(format, false))
+                    continue;
+                object value = data.GetData(format, false);
+                if (value is byte[] bytes)
+                {
+                    using MemoryStream stream = new(bytes, writable: false);
+                    using DrawingBitmap loaded = new(stream);
+                    return CloneBitmapWithAlpha(loaded);
+                }
+                if (value is Stream source)
+                {
+                    long position = source.CanSeek ? source.Position : 0;
+                    try
+                    {
+                        if (source.CanSeek)
+                            source.Position = 0;
+                        using DrawingBitmap loaded = new(source);
+                        return CloneBitmapWithAlpha(loaded);
+                    }
+                    finally
+                    {
+                        if (source.CanSeek)
+                            source.Position = position;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private DrawingBitmap TryGetCopiedFrameBitmap(IDataObject data)
+        {
+            if (_copiedFrameBitmap == null || !HasMatchingCopiedFrameToken(data))
+                return null;
+            return CloneBitmapWithAlpha(_copiedFrameBitmap);
+        }
+
+        private bool HasMatchingCopiedFrameToken(IDataObject data)
+        {
+            if (string.IsNullOrEmpty(_copiedFrameClipboardToken) || data == null ||
+                !data.GetDataPresent(AnimationClipboardTokenFormat, false))
+                return false;
+            string token = data.GetData(AnimationClipboardTokenFormat, false) as string;
+            return string.Equals(token, _copiedFrameClipboardToken, StringComparison.Ordinal);
+        }
+
+        private static DrawingBitmap CloneBitmapWithAlpha(DrawingBitmap source)
+        {
+            DrawingBitmap result = new(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(result);
+            graphics.Clear(System.Drawing.Color.Transparent);
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            graphics.DrawImage(source, new System.Drawing.Rectangle(0, 0, source.Width, source.Height),
+                new System.Drawing.Rectangle(0, 0, source.Width, source.Height), System.Drawing.GraphicsUnit.Pixel);
+            return result;
+        }
+
+        private static bool IsSupportedImageFile(string file) =>
+            File.Exists(file) && new[] { ".png", ".bmp", ".gif", ".jpg", ".jpeg" }
+                .Contains(IOPath.GetExtension(file), StringComparer.OrdinalIgnoreCase);
 
         private void DuplicateFrame_Click(object sender, RoutedEventArgs e)
         {
@@ -1026,6 +1302,10 @@ namespace HaCreator.GUI.FrameAnimation
                 e.Cancel = true;
                 return;
             }
+            _copiedFrameBitmap?.Dispose();
+            _copiedFrameBitmap = null;
+            _copiedFramePngProperty?.Dispose();
+            _copiedFramePngProperty = null;
             _closingAfterSave = true;
         }
 
@@ -1460,6 +1740,19 @@ namespace HaCreator.GUI.FrameAnimation
             bool timelineFocused = IsDescendantOf(focused, timelineRegionBorder);
             if (!previewFocused && !timelineFocused)
                 return;
+
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.C)
+            {
+                CopySelectedFrameToClipboard();
+                e.Handled = true;
+                return;
+            }
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.V)
+            {
+                PasteClipboardImage();
+                e.Handled = true;
+                return;
+            }
 
             if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.D) { DuplicateFrame_Click(null, null); e.Handled = true; return; }
             if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.Left) { MoveSelectedFrame(-1); e.Handled = true; return; }
