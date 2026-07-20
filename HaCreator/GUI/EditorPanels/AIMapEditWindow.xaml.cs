@@ -268,17 +268,9 @@ namespace HaCreator.GUI.EditorPanels
                 return;
             }
 
-            // Check API configuration
-            if (!AISettings.IsConfigured)
+            if (!EnsureAIConfiguration())
             {
-                var dialog = new AISettingsDialog();
-                dialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-                dialog.ShowDialog();
-
-                if (!AISettings.IsConfigured)
-                {
-                    return;
-                }
+                return;
             }
 
             if (board == null)
@@ -342,6 +334,8 @@ namespace HaCreator.GUI.EditorPanels
                     _chatSession.LastAssistantMessage.HasError = true;
                     _chatSession.LastAssistantMessage.ErrorMessage = BuildAIErrorMessage(ex);
                 }
+
+                MaybeOpenAISettingsForError(ex);
             }
             finally
             {
@@ -550,16 +544,9 @@ namespace HaCreator.GUI.EditorPanels
                 return;
             }
 
-            if (!AISettings.IsConfigured)
+            if (!EnsureAIConfiguration())
             {
-                var dialog = new AISettingsDialog();
-                dialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-                dialog.ShowDialog();
-
-                if (!AISettings.IsConfigured)
-                {
-                    return;
-                }
+                return;
             }
 
             if (board == null)
@@ -614,6 +601,8 @@ namespace HaCreator.GUI.EditorPanels
                     _chatSession.LastAssistantMessage.HasError = true;
                     _chatSession.LastAssistantMessage.ErrorMessage = BuildAIErrorMessage(ex, "Test error");
                 }
+
+                MaybeOpenAISettingsForError(ex);
             }
             finally
             {
@@ -761,6 +750,51 @@ namespace HaCreator.GUI.EditorPanels
             if (results.TooltipAdded) count++;
             if (results.BgmSet) count++;
             return count;
+        }
+
+
+        private void BtnAISettings_Click(object sender, RoutedEventArgs e)
+        {
+            OpenAISettingsDialog();
+        }
+
+        private bool EnsureAIConfiguration()
+        {
+            if (AISettings.IsConfigured)
+                return true;
+
+            OpenAISettingsDialog();
+            return AISettings.IsConfigured;
+        }
+
+        private void MaybeOpenAISettingsForError(Exception ex)
+        {
+            if (!AISettings.IsConfigurationRelatedError(ex))
+                return;
+
+            var result = MessageBox.Show(
+                string.Format(
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    EditorPanelLocalizer.Text(
+                        "AI_OpenSettingsAfterError",
+                        "The AI request failed with a configuration or connection problem:\n\n{0}\n\nOpen AI Settings now?"),
+                    ex.Message),
+                EditorPanelLocalizer.Text("AI_OpenSettingsTitle", "AI Settings"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+                OpenAISettingsDialog();
+        }
+
+        private void OpenAISettingsDialog()
+        {
+            var dialog = new AISettingsDialog
+            {
+                Owner = this,
+                StartPosition = System.Windows.Forms.FormStartPosition.CenterParent
+            };
+            dialog.ShowDialog();
         }
 
         private static string BuildAIErrorMessage(Exception ex, string prefix = "Error")

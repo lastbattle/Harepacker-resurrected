@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Reflection;
 using Newtonsoft.Json.Linq;
 
 namespace HaCreator.MapEditor.AI
@@ -52,7 +55,14 @@ namespace HaCreator.MapEditor.AI
             get
             {
                 EnsureLoaded();
-                return !string.IsNullOrWhiteSpace(baseUrl) && !string.IsNullOrWhiteSpace(model);
+                if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(model))
+                    return false;
+
+                // Cloud endpoints need a key. Local/dev endpoints may authenticate elsewhere.
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                    return true;
+
+                return IsLocalEndpoint(baseUrl);
             }
         }
 
@@ -188,6 +198,138 @@ namespace HaCreator.MapEditor.AI
             return string.IsNullOrWhiteSpace(apiKey)
                 ? $"{protocol} ({model}, key not set)"
                 : $"{protocol} ({model}) @ {baseUrl}";
+        }
+
+        /// <summary>
+        /// True when the failure is likely fixed by correcting endpoint/key settings.
+        /// </summary>
+        public static bool IsConfigurationRelatedError(Exception ex)
+        {
+            for (var current = ex; current != null; current = current.InnerException)
+            {
+                if (TryGetStatusCode(current, out var statusCode) &&
+                    IsConfigurationStatusCode(statusCode))
+                {
+                    return true;
+                }
+
+                if (current is HttpRequestException ||
+                    current is UriFormatException ||
+                    current is WebException)
+                {
+                    return true;
+                }
+
+                if (current is InvalidOperationException &&
+                    ContainsConfigurationHint(current.Message))
+                {
+                    return true;
+                }
+
+                if (ContainsConfigurationHint(current.Message))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsLocalEndpoint(string candidateBaseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(candidateBaseUrl))
+                return false;
+
+            if (!Uri.TryCreate(candidateBaseUrl.Trim(), UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                return false;
+            }
+
+            if (uri.IsLoopback)
+                return true;
+
+            var host = uri.Host;
+            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+                   host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) ||
+                   host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryGetStatusCode(Exception ex, out HttpStatusCode statusCode)
+        {
+            statusCode = default;
+
+            if (ex is OpenAICompatibleApiException apiEx)
+            {
+                statusCode = apiEx.StatusCode;
+                return true;
+            }
+
+            var property = ex.GetType().GetProperty("StatusCode", BindingFlags.Instance | BindingFlags.Public);
+            if (property == null)
+                return false;
+
+            var value = property.GetValue(ex);
+            if (value is HttpStatusCode code)
+            {
+                statusCode = code;
+                return true;
+            }
+
+            if (value is HttpStatusCode?)
+            {
+                var nullable = (HttpStatusCode?)value;
+                if (!nullable.HasValue)
+                    return false;
+
+                statusCode = nullable.Value;
+                return true;
+            }
+
+            if (value is int numeric)
+            {
+                statusCode = (HttpStatusCode)numeric;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsConfigurationStatusCode(HttpStatusCode statusCode)
+        {
+            var code = (int)statusCode;
+            return statusCode == HttpStatusCode.Unauthorized ||
+                   statusCode == HttpStatusCode.Forbidden ||
+                   statusCode == HttpStatusCode.NotFound ||
+                   statusCode == HttpStatusCode.BadGateway ||
+                   statusCode == HttpStatusCode.ServiceUnavailable ||
+                   statusCode == HttpStatusCode.GatewayTimeout ||
+                   code == 418 ||
+                   code == 421;
+        }
+
+        private static bool ContainsConfigurationHint(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return false;
+
+            var text = message.ToLowerInvariant();
+            return text.Contains("api key") ||
+                   text.Contains("apikey") ||
+                   text.Contains("unauthorized") ||
+                   text.Contains("authentication") ||
+                   text.Contains("authorization") ||
+                   text.Contains("invalid token") ||
+                   text.Contains("base url") ||
+                   text.Contains("endpoint") ||
+                   text.Contains("model is required") ||
+                   text.Contains("ai model is required") ||
+                   text.Contains("image model is required") ||
+                   text.Contains("could not resolve") ||
+                   text.Contains("nodename nor servname") ||
+                   text.Contains("no such host") ||
+                   text.Contains("connection refused") ||
+                   text.Contains("actively refused") ||
+                   text.Contains("ssl connection") ||
+                   text.Contains("certificate");
         }
 
         private static void EnsureLoaded()

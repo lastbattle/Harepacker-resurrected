@@ -147,4 +147,10 @@
   <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} ms</value></data>
   <data name="AnimationEditor_Items" xml:space="preserve"><value>Item animations</value></data>
   <data name="AnimationEditor_Equipment" xml:space="preserve"><value>Equipment animations</value></data>
+  <data name="AnimationEditor_AINotConfigured" xml:space="preserve"><value>AI settings are incomplete. Configure the endpoint and API key, then try again.</value></data>
+  <data name="AnimationEditor_AIOpenSettingsAfterError" xml:space="preserve"><value>The AI request failed with a configuration or connection problem:
+
+{0}
+
+Open AI Settings now?</value></data>
 </root>
