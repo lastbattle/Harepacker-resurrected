@@ -151,23 +151,23 @@
 
             <Grid Grid.Column="2" Margin="8,12">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="64"/>
+                    <RowDefinition Height="40"/>
                     <RowDefinition Height="*" MinHeight="280"/>
                     <RowDefinition Height="5"/>
                     <RowDefinition Height="245" MinHeight="190"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}">
-                    <Grid Margin="8,4">
+                    <Grid Margin="8,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="5*"/>
+                            <ColumnDefinition Width="5*"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                             <CheckBox x:Name="gridCheckBox" IsChecked="True" Content="{local:AnimationEditorText AnimationEditor_Grid}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
                             <CheckBox x:Name="originCheckBox" IsChecked="True" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Origin}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
                             <CheckBox x:Name="boundsCheckBox" Margin="12,0,0,0" Content="{local:AnimationEditorText AnimationEditor_Bounds}" Checked="Overlay_Changed" Unchecked="Overlay_Changed"/>
@@ -176,7 +176,7 @@
                                       ToolTip="{local:AnimationEditorText AnimationEditor_AllFramesTooltip}"
                                       Checked="TemporalOverlay_Changed" Unchecked="TemporalOverlay_Changed"/>
                         </StackPanel>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4,12,0">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,4,12,0">
                             <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"
                                        Text="{local:AnimationEditorText AnimationEditor_ArrowKeyMode}"/>
                             <RadioButton x:Name="panArrowKeysRadioButton" GroupName="PreviewArrowKeyMode" Margin="8,0,0,0" IsChecked="True"
