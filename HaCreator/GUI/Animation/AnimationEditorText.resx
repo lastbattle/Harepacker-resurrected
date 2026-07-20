@@ -53,6 +53,13 @@
   <data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>Alpha end</value></data>
   <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>Make linked frame independent</value></data>
   <data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>Replace layer bitmap…</value></data>
+  <data name="AnimationEditor_ResizeBitmap" xml:space="preserve"><value>RESIZE BITMAP</value></data>
+  <data name="AnimationEditor_ResizeDescription" xml:space="preserve"><value>Changes the frame's actual pixel size. Preview zoom is unaffected.</value></data>
+  <data name="AnimationEditor_Width" xml:space="preserve"><value>Width</value></data>
+  <data name="AnimationEditor_Height" xml:space="preserve"><value>Height</value></data>
+  <data name="AnimationEditor_LockAspectRatio" xml:space="preserve"><value>Lock aspect ratio</value></data>
+  <data name="AnimationEditor_ApplyResize" xml:space="preserve"><value>Apply resize</value></data>
+  <data name="AnimationEditor_InvalidResizeSize" xml:space="preserve"><value>Width and height must be whole numbers between 1 and 16384 pixels.</value></data>
   <data name="AnimationEditor_RawFrameProperties" xml:space="preserve"><value>RAW FRAME PROPERTIES</value></data>
   <data name="AnimationEditor_Property" xml:space="preserve"><value>Property</value></data>
   <data name="AnimationEditor_Type" xml:space="preserve"><value>Type</value></data>

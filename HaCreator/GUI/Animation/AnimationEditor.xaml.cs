@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -69,6 +70,7 @@ namespace HaCreator.GUI.FrameAnimation
         private int _trackedEditDepth;
         private bool _hasUntrackedDirty;
         private bool _suppressRawPropertyTracking;
+        private bool _updatingResizeFields;
 
         public AnimationEditor()
         {
@@ -262,6 +264,7 @@ namespace HaCreator.GUI.FrameAnimation
             frameCounterText.Text = "0 / 0";
             frameIndexText.Text = string.Empty;
             sizeText.Text = string.Empty;
+            SetResizeFields(null);
             _undo.Clear();
             _redo.Clear();
             _hasUntrackedDirty = false;
@@ -299,6 +302,7 @@ namespace HaCreator.GUI.FrameAnimation
             bool editable = layer?.Canvas != null && !layer.IsLinked;
             transformEditorGrid.IsEnabled = editable;
             replaceBitmapButton.IsEnabled = editable;
+            SetResizeFields(layer);
             TrackRawPropertyRows(layer?.Properties);
             RenderPreview();
             UpdateAIState();
@@ -505,6 +509,115 @@ namespace HaCreator.GUI.FrameAnimation
         {
             if (canvas?[propertyName] is WzImageProperty property)
                 canvas.RemoveProperty(property);
+        }
+
+        private void SetResizeFields(AnimationLayerModel layer)
+        {
+            if (resizeWidthTextBox == null)
+                return;
+            _updatingResizeFields = true;
+            try
+            {
+                resizeWidthTextBox.Text = layer?.Width.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+                resizeHeightTextBox.Text = layer?.Height.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+                bool editable = layer?.Canvas != null && !layer.IsLinked;
+                resizeWidthTextBox.IsEnabled = editable;
+                resizeHeightTextBox.IsEnabled = editable;
+                lockAspectRatioCheckBox.IsEnabled = editable;
+                applyResizeButton.IsEnabled = editable;
+            }
+            finally { _updatingResizeFields = false; }
+        }
+
+        private void ResizeWidth_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_updatingResizeFields || lockAspectRatioCheckBox?.IsChecked != true ||
+                _document?.SelectedFrame?.SelectedLayer is not AnimationLayerModel layer || layer.Width <= 0 || layer.Height <= 0 ||
+                !TryGetResizeDimension(resizeWidthTextBox.Text, out int width))
+                return;
+            SetResizeDimension(resizeHeightTextBox, (int)Math.Round(width * layer.Height / (double)layer.Width));
+        }
+
+        private void ResizeHeight_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_updatingResizeFields || lockAspectRatioCheckBox?.IsChecked != true ||
+                _document?.SelectedFrame?.SelectedLayer is not AnimationLayerModel layer || layer.Width <= 0 || layer.Height <= 0 ||
+                !TryGetResizeDimension(resizeHeightTextBox.Text, out int height))
+                return;
+            SetResizeDimension(resizeWidthTextBox, (int)Math.Round(height * layer.Width / (double)layer.Height));
+        }
+
+        private void SetResizeDimension(TextBox textBox, int value)
+        {
+            _updatingResizeFields = true;
+            try { textBox.Text = Math.Clamp(value, 1, 16384).ToString(CultureInfo.InvariantCulture); }
+            finally { _updatingResizeFields = false; }
+        }
+
+        private static bool TryGetResizeDimension(string text, out int value) =>
+            int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value) && value is >= 1 and <= 16384;
+
+        private void ResizeSize_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter)
+                return;
+            ApplyResize_Click(sender, e);
+            e.Handled = true;
+        }
+
+        private void ApplyResize_Click(object sender, RoutedEventArgs e)
+        {
+            AnimationFrameModel frame = _document?.SelectedFrame;
+            AnimationLayerModel layer = frame?.SelectedLayer;
+            if (frame == null || layer?.Canvas == null || layer.IsLinked)
+                return;
+            if (!TryGetResizeDimension(resizeWidthTextBox.Text, out int width) ||
+                !TryGetResizeDimension(resizeHeightTextBox.Text, out int height))
+            {
+                SetError(AnimationEditorTextExtension.Get("AnimationEditor_InvalidResizeSize"));
+                return;
+            }
+            if (width == layer.Width && height == layer.Height)
+                return;
+
+            WzImageProperty before = frame.WorkingFrame.DeepClone();
+            WzImageProperty after = before.DeepClone();
+            var temporary = new AnimationFrameModel(after, after, frame.Index, () => { });
+            AnimationLayerModel resizedLayer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layer.Name)
+                ?? temporary.Layers.FirstOrDefault();
+            if (resizedLayer?.Canvas == null || resizedLayer.Bitmap == null)
+                return;
+
+            int oldWidth = resizedLayer.Width;
+            int oldHeight = resizedLayer.Height;
+            using DrawingBitmap source = resizedLayer.Canvas.GetLinkedWzCanvasBitmap();
+            if (source == null)
+                return;
+            using DrawingBitmap resized = ResizeBitmap(source, width, height);
+            int originX = (int)Math.Round(resizedLayer.OriginX * width / (double)Math.Max(1, oldWidth));
+            int originY = (int)Math.Round(resizedLayer.OriginY * height / (double)Math.Max(1, oldHeight));
+            resizedLayer.ReplaceBitmap(new DrawingBitmap(resized));
+            resizedLayer.OriginX = originX;
+            resizedLayer.OriginY = originY;
+
+            Execute(new EditOperation(
+                () => ReplaceFrameProperty(frame, before.DeepClone()),
+                () => ReplaceFrameProperty(frame, after.DeepClone()),
+                AnimationEditorTextExtension.Get("AnimationEditor_ResizeBitmap")));
+        }
+
+        private static DrawingBitmap ResizeBitmap(DrawingBitmap source, int width, int height)
+        {
+            DrawingBitmap result = new(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(result);
+            graphics.Clear(System.Drawing.Color.Transparent);
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.DrawImage(source, new System.Drawing.Rectangle(0, 0, width, height),
+                new System.Drawing.Rectangle(0, 0, source.Width, source.Height), System.Drawing.GraphicsUnit.Pixel);
+            return result;
         }
 
         private void ExportFrame_Click(object sender, RoutedEventArgs e)

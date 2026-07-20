@@ -336,6 +336,31 @@
                                         Content="{local:AnimationEditorText AnimationEditor_ReplaceBitmap}" Click="ReplaceBitmap_Click"/>
 
                                 <Separator Margin="0,12"/>
+                                <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_ResizeBitmap}"/>
+                                <TextBlock Margin="0,5,0,8" Foreground="{DynamicResource HareMutedTextBrush}" TextWrapping="Wrap"
+                                           Text="{local:AnimationEditorText AnimationEditor_ResizeDescription}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Width}"/>
+                                    <TextBox x:Name="resizeWidthTextBox" Grid.Column="1" Margin="0,0,10,0" InputScope="Number"
+                                             TextChanged="ResizeWidth_TextChanged" KeyDown="ResizeSize_KeyDown"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Width}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_Height}"/>
+                                    <TextBox x:Name="resizeHeightTextBox" Grid.Column="3" InputScope="Number"
+                                             TextChanged="ResizeHeight_TextChanged" KeyDown="ResizeSize_KeyDown"
+                                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Height}"/>
+                                </Grid>
+                                <CheckBox x:Name="lockAspectRatioCheckBox" Margin="0,8,0,0" IsChecked="True"
+                                          Content="{local:AnimationEditorText AnimationEditor_LockAspectRatio}"/>
+                                <Button x:Name="applyResizeButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_ApplyResize}" Click="ApplyResize_Click"/>
+
+                                <Separator Margin="0,12"/>
                                 <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_RawFrameProperties}"/>
                                 <DataGrid x:Name="framePropertiesGrid" Margin="0,8,0,0" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" RowHeaderWidth="0"
                                           BeginningEdit="PropertyGrid_BeginningEdit"
