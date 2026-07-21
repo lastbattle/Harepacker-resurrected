@@ -1048,4 +1048,10 @@
   <data name="Editor_AIMapEditorTitle" xml:space="preserve">
     <value>AI 地圖編輯器</value>
   </data>
-<data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI 設定</value></data><data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>動畫影格編輯器</value></data><data name="Editor_Animations_2D94A1" xml:space="preserve"><value>動畫</value></data><data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>開啟動畫影格編輯器</value></data></root>
+<data name="Editor_AI_Settings_2E1A45" xml:space="preserve"><value>AI 設定</value></data><data name="Editor_Animation_editor_6F43C2" xml:space="preserve"><value>動畫影格編輯器</value></data><data name="Editor_Animations_2D94A1" xml:space="preserve"><value>動畫</value></data><data name="Editor_Open_Animation_Editor_7B921E" xml:space="preserve"><value>開啟動畫影格編輯器</value></data>  <data name="Editor_Preview_resolution_tooltip_6B44C8" xml:space="preserve">
+    <value>地圖預覽使用的螢幕解析度</value>
+  </data>
+  <data name="Editor_Resolution_0F91A2" xml:space="preserve">
+    <value>解析度</value>
+  </data>
+</root>

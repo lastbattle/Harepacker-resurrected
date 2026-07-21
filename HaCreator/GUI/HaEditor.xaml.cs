@@ -1,4 +1,5 @@
 using HaCreator.GUI.EditorPanels;
+using HaSharedLibrary.Render.DX;
 using HaCreator.GUI.Localization;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Input;
@@ -28,6 +29,7 @@ namespace HaCreator.GUI
         private string _mapLoadErrorsLogFilePath;
         private bool _syncingInspectorControls;
         private bool _syncingVisibilityControls;
+        private bool _syncingPreviewResolution;
 
         public HaEditor()
         {
@@ -97,6 +99,7 @@ namespace HaCreator.GUI
             LayerViewChanged += Ribbon_LayerViewChanged;
             SnappingToggled += Ribbon_SnappingToggled;
             txtSnapState.Text = LocExtension.Get(UserSettings.useSnapping ? "Editor_SnapOn" : "Editor_SnapOff");
+            InitializePreviewResolutionSelector();
 
             tilePanel.Initialize(hcsm);
             objPanel.Initialize(hcsm);
@@ -181,6 +184,65 @@ namespace HaCreator.GUI
         {
             if (!_syncingInspectorControls)
                 SetSnappingFromShell(inspectorSnapCheckBox.IsChecked == true);
+        }
+
+        private sealed class PreviewResolutionOption
+        {
+            public PreviewResolutionOption(RenderResolution resolution, string displayName)
+            {
+                Resolution = resolution;
+                DisplayName = displayName;
+            }
+
+            public RenderResolution Resolution { get; }
+            public string DisplayName { get; }
+            public override string ToString() => DisplayName;
+        }
+
+        private void InitializePreviewResolutionSelector()
+        {
+            if (previewResolutionComboBox == null)
+                return;
+
+            _syncingPreviewResolution = true;
+            previewResolutionComboBox.ItemsSource = new[]
+            {
+                new PreviewResolutionOption(RenderResolution.Res_800x600, "800 x 600"),
+                new PreviewResolutionOption(RenderResolution.Res_1024x768, "1024 x 768"),
+                new PreviewResolutionOption(RenderResolution.Res_1280x720, "1280 x 720"),
+                new PreviewResolutionOption(RenderResolution.Res_1366x768, "1366 x 768"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080, "1920 x 1080"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080_120PercScaled, "1920 x 1080 (120%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080_150PercScaled, "1920 x 1080 (150%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200, "1920 x 1200"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200_120PercScaled, "1920 x 1200 (120%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200_150PercScaled, "1920 x 1200 (150%)"),
+            };
+
+            RenderResolution current = UserSettings.SimulateResolution;
+            int selectedIndex = 0;
+            for (int i = 0; i < previewResolutionComboBox.Items.Count; i++)
+            {
+                if (previewResolutionComboBox.Items[i] is PreviewResolutionOption option &&
+                    option.Resolution == current)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+
+            previewResolutionComboBox.SelectedIndex = selectedIndex;
+            if (previewResolutionComboBox.SelectedItem is PreviewResolutionOption selected)
+                UserSettings.SimulateResolution = selected.Resolution;
+            _syncingPreviewResolution = false;
+        }
+
+        private void PreviewResolutionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_syncingPreviewResolution)
+                return;
+            if (previewResolutionComboBox?.SelectedItem is PreviewResolutionOption option)
+                UserSettings.SimulateResolution = option.Resolution;
         }
 
         private void RefreshInspectorVisibilityControls()
