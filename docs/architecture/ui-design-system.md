@@ -135,6 +135,13 @@ Keep commands, status, filters, inspectors, and every non-renderer surface in
 native WPF. Any new host exception must be documented here with the concrete
 lifecycle constraint that requires it.
 
+The hosted map editor renderer is demand-driven: static maps sleep until an edit
+or viewport change invalidates them. Moving backgrounds and Spine previews are
+capped at 30 FPS, while ordinary WZ animations wake at their current frame's
+declared delay. It presents with vertical synchronization and runs below the WPF
+UI thread's priority. Preserve this scheduling unless profiling shows a better
+policy; continuous full-map redraws contend with WPF for the GPU and board locks.
+
 ## Review checklist
 
 - Uses the canonical palette and shared styles.

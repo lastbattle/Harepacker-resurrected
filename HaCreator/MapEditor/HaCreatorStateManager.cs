@@ -699,11 +699,13 @@ namespace HaCreator.MapEditor
         void Ribbon_InfoModeToggled(bool pressed)
         {
             ApplicationSettings.InfoMode = pressed;
+            multiBoard.RequestRender();
         }
 
         void Ribbon_MapObjectPreviewAnimationToggled(bool pressed)
         {
             ApplicationSettings.AnimateMapObjectPreviews = pressed;
+            multiBoard.RequestRender();
         }
 
         void Ribbon_RegenerateMinimapClicked()
