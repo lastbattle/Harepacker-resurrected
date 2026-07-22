@@ -249,7 +249,10 @@ namespace HaCreator.MapEditor
         /// </summary>
         public void Start()
         {
-            if (DeviceReady) 
+            // DeviceReady is also cleared temporarily while MapSimulator owns the GPU. The
+            // renderer is still alive in that state, so using DeviceReady as the startup guard
+            // can create a second render thread that shares this SpriteBatch.
+            if (renderer != null)
                 return;
 
             //if (selectedBoard == null) 
