@@ -11,6 +11,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -35,6 +36,10 @@ namespace HaCreator.GUI.EditorPanels
         private readonly BitmapSource placeholderSource;
         private int thumbnailLoadVersion;
         private bool initializingImageFilter;
+        private readonly Queue<(AssetGalleryItem Item, int Version)> thumbnailQueue = new();
+        private readonly HashSet<AssetGalleryItem> queuedThumbnails = new();
+        private readonly HashSet<AssetGalleryItem> loadedThumbnails = new();
+        private bool thumbnailPumpScheduled;
 
         public LifePanel()
         {
@@ -42,6 +47,7 @@ namespace HaCreator.GUI.EditorPanels
             EditorPanelLocalizer.Attach(this);
             placeholderBitmap = global::HaCreator.Properties.Resources.placeholder;
             placeholderSource = ConvertBitmap(placeholderBitmap);
+            lifeGallery.ItemRealized += LifeGallery_ItemRealized;
             initializingImageFilter = true;
             hideEntriesWithoutImagesCheckBox.IsChecked = ApplicationSettings.HideLifeEntriesWithoutImages;
             initializingImageFilter = false;
@@ -70,41 +76,70 @@ namespace HaCreator.GUI.EditorPanels
 
         private void ReloadLifeList()
         {
-            int loadVersion = ++thumbnailLoadVersion;
-            lifeGallery.Clear();
+            thumbnailLoadVersion++;
+            thumbnailQueue.Clear();
+            queuedThumbnails.Clear();
+            loadedThumbnails.Clear();
+            thumbnailPumpScheduled = false;
 
             IEnumerable<LifeEntry> entries = reactorRButton.IsChecked == true
                 ? reactors
                 : npcRButton.IsChecked == true ? npcs : mobs;
 
-            List<(LifeEntry Entry, AssetGalleryItem Item)> pendingThumbnails = new();
-            foreach (LifeEntry entry in entries.OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase))
-                pendingThumbnails.Add((entry, lifeGallery.Add(placeholderSource, entry.DisplayName, entry)));
+            using (lifeGallery.DeferUpdates())
+            {
+                lifeGallery.Clear();
+                foreach (LifeEntry entry in entries)
+                    lifeGallery.Add(placeholderSource, entry.DisplayName, entry);
+            }
             lifePreview.Source = null;
-            _ = LoadThumbnailsAsync(pendingThumbnails, loadVersion);
         }
 
-        private async System.Threading.Tasks.Task LoadThumbnailsAsync(
-            IReadOnlyList<(LifeEntry Entry, AssetGalleryItem Item)> pendingThumbnails, int loadVersion)
+        private void LifeGallery_ItemRealized(object sender, AssetGalleryItemEventArgs e)
         {
-            for (int index = 0; index < pendingThumbnails.Count; index++)
+            AssetGalleryItem item = e.Item;
+            if (item?.Tag is not LifeEntry || loadedThumbnails.Contains(item) || !queuedThumbnails.Add(item))
+                return;
+
+            thumbnailQueue.Enqueue((item, thumbnailLoadVersion));
+            ScheduleThumbnailPump();
+        }
+
+        private void ScheduleThumbnailPump()
+        {
+            if (thumbnailPumpScheduled || thumbnailQueue.Count == 0)
+                return;
+
+            thumbnailPumpScheduled = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(ProcessNextThumbnail));
+        }
+
+        private void ProcessNextThumbnail()
+        {
+            thumbnailPumpScheduled = false;
+            while (thumbnailQueue.Count > 0)
             {
-                if (loadVersion != thumbnailLoadVersion)
-                    return;
+                (AssetGalleryItem item, int version) = thumbnailQueue.Dequeue();
+                queuedThumbnails.Remove(item);
+                if (version != thumbnailLoadVersion || item.Tag is not LifeEntry entry ||
+                    !lifeGallery.IsRealized(item))
+                {
+                    continue;
+                }
 
-                (LifeEntry entry, AssetGalleryItem item) = pendingThumbnails[index];
                 bool hasImage = TryLoadThumbnail(entry, out BitmapSource thumbnail);
-                if (loadVersion != thumbnailLoadVersion)
+                if (version != thumbnailLoadVersion)
                     return;
 
+                loadedThumbnails.Add(item);
                 if (!hasImage && ApplicationSettings.HideLifeEntriesWithoutImages)
                     lifeGallery.Remove(item);
                 else
                     item.Image = thumbnail;
-
-                if ((index + 1) % 8 == 0)
-                    await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                break;
             }
+
+            ScheduleThumbnailPump();
         }
 
         private bool TryLoadThumbnail(LifeEntry entry, out BitmapSource thumbnail)
@@ -266,35 +301,40 @@ namespace HaCreator.GUI.EditorPanels
         private void RefreshMobSource()
         {
             mobs.Clear();
-            foreach (KeyValuePair<string, string> entry in Program.InfoManager.MobNameCache.ToList())
-                mobs.Add(new LifeEntry(entry.Key, $"{entry.Key} - {entry.Value}", LifeEntryType.Mob));
+            mobs.AddRange(Program.InfoManager.MobNameCache.ToArray()
+                .Select(entry => new LifeEntry(entry.Key, $"{entry.Key} - {entry.Value}", LifeEntryType.Mob))
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
         }
 
         private void RefreshNpcSource()
         {
             npcs.Clear();
-            foreach (KeyValuePair<string, Tuple<string, string>> entry in Program.InfoManager.NpcNameCache.ToList())
-            {
-                string description = string.IsNullOrEmpty(entry.Value.Item2)
-                    ? string.Empty
-                    : $" ({entry.Value.Item2})";
-                npcs.Add(new LifeEntry(
-                    entry.Key,
-                    $"{entry.Key} - {entry.Value.Item1}{description}",
-                    LifeEntryType.Npc));
-            }
+            npcs.AddRange(Program.InfoManager.NpcNameCache.ToArray()
+                .Select(entry =>
+                {
+                    string description = string.IsNullOrEmpty(entry.Value.Item2)
+                        ? string.Empty
+                        : $" ({entry.Value.Item2})";
+                    return new LifeEntry(
+                        entry.Key,
+                        $"{entry.Key} - {entry.Value.Item1}{description}",
+                        LifeEntryType.Npc);
+                })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
         }
 
         private void RefreshReactorSource()
         {
             reactors.Clear();
-            foreach (KeyValuePair<string, ReactorInfo> entry in Program.InfoManager.Reactors.ToList())
-            {
-                string name = string.IsNullOrEmpty(entry.Value.Name)
-                    ? entry.Value.ID
-                    : $"{entry.Value.ID} ({entry.Value.Name})";
-                reactors.Add(new LifeEntry(entry.Key, name, LifeEntryType.Reactor));
-            }
+            reactors.AddRange(Program.InfoManager.Reactors.ToArray()
+                .Select(entry =>
+                {
+                    string name = string.IsNullOrEmpty(entry.Value.Name)
+                        ? entry.Value.ID
+                        : $"{entry.Value.ID} ({entry.Value.Name})";
+                    return new LifeEntry(entry.Key, name, LifeEntryType.Reactor);
+                })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
         }
 
         private static BitmapSource ConvertBitmap(Bitmap bitmap)

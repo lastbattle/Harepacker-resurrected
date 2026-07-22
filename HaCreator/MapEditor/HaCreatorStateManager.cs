@@ -199,7 +199,7 @@ namespace HaCreator.MapEditor
                 ww.EndWait();
             }
             selectedBoard.BoardItems.Add(oi.CreateInstance(selectedBoard.SelectedLayer, selectedBoard, pos.X, pos.Y, 0, false), true);
-            objPanel.OnL1Changed(UserObjectsManager.l1);
+            objPanel?.OnL1Changed(UserObjectsManager.l1);
         }
 
         /// <summary>
@@ -495,7 +495,7 @@ namespace HaCreator.MapEditor
         public void UpdateEditorPanelVisibility()
         {
             editorPanel.IsEnabled = tabs.Items.Count > 0; // at least 1 tabs for now.
-            blackBorderPanel.UpdateBoardData();
+            blackBorderPanel?.UpdateBoardData();
         }
 
         private void Tabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -520,7 +520,7 @@ namespace HaCreator.MapEditor
                     editorShell.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
 
                     // LBTop LBBottom LBSide
-                    blackBorderPanel.UpdateBoardData();
+                    blackBorderPanel?.UpdateBoardData();
 
                     // Notify object viewer of board change
                     objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
@@ -610,7 +610,7 @@ namespace HaCreator.MapEditor
             lock (multiBoard)
             {
                 new ManageUserObjects(multiBoard.UserObjects).ShowDialog();
-                objPanel.OnL1Changed(UserObjectsManager.l1);
+                objPanel?.OnL1Changed(UserObjectsManager.l1);
             }
         }
 
@@ -699,11 +699,13 @@ namespace HaCreator.MapEditor
         void Ribbon_InfoModeToggled(bool pressed)
         {
             ApplicationSettings.InfoMode = pressed;
+            multiBoard.RequestRender();
         }
 
         void Ribbon_MapObjectPreviewAnimationToggled(bool pressed)
         {
             ApplicationSettings.AnimateMapObjectPreviews = pressed;
+            multiBoard.RequestRender();
         }
 
         void Ribbon_RegenerateMinimapClicked()
@@ -1232,7 +1234,7 @@ namespace HaCreator.MapEditor
             // Update tilePanel to navigate to that selected tileLayer
             if (tileSet != null)
             {
-                tilePanel.SetSelectedTileSet(tileSet);
+                tilePanel?.SetSelectedTileSet(tileSet);
             }
         }
         #endregion
@@ -1356,6 +1358,7 @@ namespace HaCreator.MapEditor
         public void SetTilePanel(TilePanel tp)
         {
             this.tilePanel = tp;
+            tp?.SubscribeToHotSwap(_hotSwapService);
         }
         /// <summary>
         /// Sets the object panel while initialising the ObjPanel UserControl
@@ -1364,6 +1367,7 @@ namespace HaCreator.MapEditor
         public void SetObjPanel(ObjPanel op)
         {
             this.objPanel = op;
+            op?.SubscribeToHotSwap(_hotSwapService);
         }
         /// <summary>
         /// Sets the black border panel while initialising the BlackBorderPanel UserControl
@@ -1381,6 +1385,7 @@ namespace HaCreator.MapEditor
         public void SetBackgroundPanel(BackgroundPanel bp)
         {
             this.backgroundPanel = bp;
+            bp?.SubscribeToHotSwap(_hotSwapService);
         }
 
         /// <summary>
@@ -1390,6 +1395,7 @@ namespace HaCreator.MapEditor
         public void SetLifePanel(LifePanel lp)
         {
             this.lifePanel = lp;
+            lp?.SubscribeToHotSwap(_hotSwapService);
         }
 
         /// <summary>

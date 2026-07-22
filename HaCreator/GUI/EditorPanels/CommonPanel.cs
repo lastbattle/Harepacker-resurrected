@@ -24,13 +24,15 @@ namespace HaCreator.GUI.EditorPanels
         public void Initialize(HaCreatorStateManager stateManager)
         {
             hcsm = stateManager;
-            miscItemsContainer.Clear();
-
-            AddTool("Foothold", WzInfoTools.XNAToDrawingColor(UserSettings.FootholdColor));
-            AddTool("Rope", WzInfoTools.XNAToDrawingColor(UserSettings.RopeColor));
-            AddTool("Chair", WzInfoTools.XNAToDrawingColor(UserSettings.ChairColor));
-            AddTool("Tooltip", WzInfoTools.XNAToDrawingColor(UserSettings.ToolTipColor));
-            AddTool("Clock", WzInfoTools.XNAToDrawingColor(UserSettings.MiscColor));
+            using (miscItemsContainer.DeferUpdates())
+            {
+                miscItemsContainer.Clear();
+                AddTool("Foothold", WzInfoTools.XNAToDrawingColor(UserSettings.FootholdColor));
+                AddTool("Rope", WzInfoTools.XNAToDrawingColor(UserSettings.RopeColor));
+                AddTool("Chair", WzInfoTools.XNAToDrawingColor(UserSettings.ChairColor));
+                AddTool("Tooltip", WzInfoTools.XNAToDrawingColor(UserSettings.ToolTipColor));
+                AddTool("Clock", WzInfoTools.XNAToDrawingColor(UserSettings.MiscColor));
+            }
             commonItems = miscItemsContainer.Items;
         }
 

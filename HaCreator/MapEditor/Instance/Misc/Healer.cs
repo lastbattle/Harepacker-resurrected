@@ -57,6 +57,7 @@ namespace HaCreator.MapEditor.Instance.Misc
                 int offs = y - Y;
                 yMax += offs;
                 yMin += offs;
+                board.ParentControl.RequestRender();
             }
         }
 

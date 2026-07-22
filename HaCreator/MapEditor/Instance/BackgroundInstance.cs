@@ -288,6 +288,7 @@ namespace HaCreator.MapEditor.Instance
         {
             X = x;
             Y = y;
+            board.ParentControl.RequestRender();
         }
 
         public void MoveBase(int x, int y)

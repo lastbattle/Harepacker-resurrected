@@ -137,6 +137,7 @@ namespace HaCreator.MapEditor
                 {
                     tempParent.boundItems[this] = new XNA.Point(this.X - tempParent.X, this.Y - tempParent.Y);
                 }
+                Board.ParentControl.RequestRender();
             }
         }
 
@@ -158,6 +159,7 @@ namespace HaCreator.MapEditor
                 {
                     tempParent.boundItems[this] = new XNA.Point(this.X - tempParent.X, this.Y - tempParent.Y);
                 }
+                Board.ParentControl.RequestRender();
             }
         }
 
@@ -324,6 +326,7 @@ namespace HaCreator.MapEditor
                         board.ParentControl.OnSelectedItemChanged(board.SelectedItems[0]);
                     else if (board.SelectedItems.Count == 0)
                         board.ParentControl.OnSelectedItemChanged(null);
+                    board.ParentControl.RequestRender();
                 }
             }
         }

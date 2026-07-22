@@ -135,6 +135,24 @@ Keep commands, status, filters, inspectors, and every non-renderer surface in
 native WPF. Any new host exception must be documented here with the concrete
 lifecycle constraint that requires it.
 
+The hosted map editor renderer is demand-driven: static maps sleep until an edit
+or viewport change invalidates them. Moving backgrounds and Spine previews are
+capped at 30 FPS, while ordinary WZ animations wake at their current frame's
+declared delay. It presents with vertical synchronization and runs below the WPF
+UI thread's priority. Preserve this scheduling unless profiling shows a better
+policy; continuous full-map redraws contend with WPF for the GPU and board locks.
+
+HaEditor asset panels are initialized when their expander is first opened. Keep
+global WZ enumeration, image decoding, and thumbnail creation out of window and
+map-load paths. Asset galleries use `VirtualizingWrapPanel`, batch collection
+notifications, and load life thumbnails only for realized viewport items. The map
+browser binds a virtualized collection view and refreshes its filter as one view
+operation; do not restore per-item `Items.Add` loops or an ordinary `WrapPanel` for
+large sources. Town-only metadata discovery runs incrementally at dispatcher idle
+priority instead of parsing the entire map catalog in one UI-thread operation.
+These rules are required for current versions with tens of thousands of maps,
+mobs, and NPCs.
+
 ## Review checklist
 
 - Uses the canonical palette and shared styles.

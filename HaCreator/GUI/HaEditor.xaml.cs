@@ -1,4 +1,5 @@
 using HaCreator.GUI.EditorPanels;
+using HaSharedLibrary.Render.DX;
 using HaCreator.GUI.Localization;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Input;
@@ -28,10 +29,25 @@ namespace HaCreator.GUI
         private string _mapLoadErrorsLogFilePath;
         private bool _syncingInspectorControls;
         private bool _syncingVisibilityControls;
+        private bool _syncingPreviewResolution;
+        private readonly HashSet<Expander> _initializedAssetExpanders = new();
+        private readonly System.Windows.Threading.DispatcherTimer _mapExplorerSearchTimer;
 
         public HaEditor()
         {
             InitializeComponent();
+
+            _mapExplorerSearchTimer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(175)
+            };
+            _mapExplorerSearchTimer.Tick += (_, _) =>
+            {
+                _mapExplorerSearchTimer.Stop();
+                if (_isMapExplorerInitialized)
+                    mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+            };
 
             Program.HaEditorWindow = this;
 
@@ -97,17 +113,9 @@ namespace HaCreator.GUI
             LayerViewChanged += Ribbon_LayerViewChanged;
             SnappingToggled += Ribbon_SnappingToggled;
             txtSnapState.Text = LocExtension.Get(UserSettings.useSnapping ? "Editor_SnapOn" : "Editor_SnapOff");
+            InitializePreviewResolutionSelector();
 
-            tilePanel.Initialize(hcsm);
-            objPanel.Initialize(hcsm);
-            lifePanel.Initialize(hcsm);
-            portalPanel.Initialize(hcsm);
-            bgPanel.Initialize(hcsm);
-            bgBlackBorderPanel.Initialize(hcsm);
-            commonPanel.Initialize(hcsm);
-            InitializeMapExplorer();
-
-            // Initialize hot swap after all panels are registered
+            // Panels with large WZ-backed item sources initialize only when expanded.
             hcsm.InitializeHotSwap();
 
             if (!hcsm.backupMan.AttemptRestore())
@@ -181,6 +189,65 @@ namespace HaCreator.GUI
         {
             if (!_syncingInspectorControls)
                 SetSnappingFromShell(inspectorSnapCheckBox.IsChecked == true);
+        }
+
+        private sealed class PreviewResolutionOption
+        {
+            public PreviewResolutionOption(RenderResolution resolution, string displayName)
+            {
+                Resolution = resolution;
+                DisplayName = displayName;
+            }
+
+            public RenderResolution Resolution { get; }
+            public string DisplayName { get; }
+            public override string ToString() => DisplayName;
+        }
+
+        private void InitializePreviewResolutionSelector()
+        {
+            if (previewResolutionComboBox == null)
+                return;
+
+            _syncingPreviewResolution = true;
+            previewResolutionComboBox.ItemsSource = new[]
+            {
+                new PreviewResolutionOption(RenderResolution.Res_800x600, "800 x 600"),
+                new PreviewResolutionOption(RenderResolution.Res_1024x768, "1024 x 768"),
+                new PreviewResolutionOption(RenderResolution.Res_1280x720, "1280 x 720"),
+                new PreviewResolutionOption(RenderResolution.Res_1366x768, "1366 x 768"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080, "1920 x 1080"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080_120PercScaled, "1920 x 1080 (120%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1080_150PercScaled, "1920 x 1080 (150%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200, "1920 x 1200"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200_120PercScaled, "1920 x 1200 (120%)"),
+                new PreviewResolutionOption(RenderResolution.Res_1920x1200_150PercScaled, "1920 x 1200 (150%)"),
+            };
+
+            RenderResolution current = UserSettings.SimulateResolution;
+            int selectedIndex = 0;
+            for (int i = 0; i < previewResolutionComboBox.Items.Count; i++)
+            {
+                if (previewResolutionComboBox.Items[i] is PreviewResolutionOption option &&
+                    option.Resolution == current)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+
+            previewResolutionComboBox.SelectedIndex = selectedIndex;
+            if (previewResolutionComboBox.SelectedItem is PreviewResolutionOption selected)
+                UserSettings.SimulateResolution = selected.Resolution;
+            _syncingPreviewResolution = false;
+        }
+
+        private void PreviewResolutionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_syncingPreviewResolution)
+                return;
+            if (previewResolutionComboBox?.SelectedItem is PreviewResolutionOption option)
+                UserSettings.SimulateResolution = option.Resolution;
         }
 
         private void RefreshInspectorVisibilityControls()
@@ -325,6 +392,7 @@ namespace HaCreator.GUI
             if (target != null)
             {
                 target.IsExpanded = true;
+                EnsureAssetPanelInitialized(target);
                 target.BringIntoView();
             }
 
@@ -611,7 +679,8 @@ namespace HaCreator.GUI
                 return;
             }
 
-            mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+            _mapExplorerSearchTimer.Stop();
+            _mapExplorerSearchTimer.Start();
         }
 
         private void MapExplorerTownOnlyCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -621,8 +690,10 @@ namespace HaCreator.GUI
                 return;
             }
 
-            mapExplorerBrowser.TownOnlyFilter = mapExplorerTownOnlyCheckBox.IsChecked == true;
-            mapExplorerBrowser.ApplySearch(mapExplorerSearchTextBox.Text);
+            _mapExplorerSearchTimer.Stop();
+            mapExplorerBrowser.ApplyFilters(
+                mapExplorerSearchTextBox.Text,
+                mapExplorerTownOnlyCheckBox.IsChecked == true);
         }
 
         private void MapExplorerReloadButton_Click(object sender, RoutedEventArgs e)
@@ -984,11 +1055,34 @@ namespace HaCreator.GUI
             UIElement childContent = expanderSrc.Content as UIElement;
 
             childContent.Visibility = Visibility.Visible;
+            EnsureAssetPanelInitialized(expanderSrc);
+        }
 
-            if (expanderSrc == expander_bgBlackBorderPanel)
+        private void EnsureAssetPanelInitialized(Expander expander)
+        {
+            if (hcsm == null || expander == null)
+                return;
+
+            if (_initializedAssetExpanders.Add(expander))
             {
-                bgBlackBorderPanel.Initialize(hcsm); // re-initialize the panel to ensure it has the correct data
+                if (expander == tileExpander)
+                    tilePanel.Initialize(hcsm);
+                else if (expander == objectExpander)
+                    objPanel.Initialize(hcsm);
+                else if (expander == lifeExpander)
+                    lifePanel.Initialize(hcsm);
+                else if (expander == portalExpander)
+                    portalPanel.Initialize(hcsm);
+                else if (expander == backgroundExpander)
+                    bgPanel.Initialize(hcsm);
+                else if (expander == expander_bgBlackBorderPanel)
+                    bgBlackBorderPanel.Initialize(hcsm);
+                else if (expander == commonExpander)
+                    commonPanel.Initialize(hcsm);
             }
+
+            if (expander == expander_bgBlackBorderPanel)
+                bgBlackBorderPanel.UpdateBoardData();
         }
 
         private void Expander_Collapsed(object sender, RoutedEventArgs e)

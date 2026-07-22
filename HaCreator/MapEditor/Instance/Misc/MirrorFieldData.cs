@@ -55,6 +55,7 @@ namespace HaCreator.MapEditor.Instance.Misc
         public override void Move(int x, int y)
         {
             this.rect = new Rectangle(x, y, this.Rectangle.Width, this.Rectangle.Height);
+            board.ParentControl.RequestRender();
         }
 
         public override string Name

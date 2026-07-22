@@ -92,6 +92,7 @@ namespace HaCreator.Collections
             {
                 itemList.Clear();
             }
+            board.ParentControl.RequestRender();
         }
 
         public void Remove(BoardItem item)
@@ -130,11 +131,13 @@ namespace HaCreator.Collections
                         if (listType.FullName == itemType.FullName)
                         {
                             itemList.Remove(item);
+                            board.ParentControl.RequestRender();
                             return;
                         }
                     }
                     throw new Exception("unknown type at boarditems.remove");
                 }
+                board.ParentControl.RequestRender();
             }
         }
 
@@ -180,11 +183,13 @@ namespace HaCreator.Collections
                         if (listType.FullName == itemType.FullName)
                         {
                             itemList.Add(item);
+                            board.ParentControl.RequestRender();
                             return;
                         }
                     }
                     throw new Exception("unknown type at boarditems.add");
                 }
+                board.ParentControl.RequestRender();
             }
         }
 

@@ -97,8 +97,26 @@ namespace HaCreator.MapEditor
         private int _cachedPortalCount = -1;
         private bool _portalPairCacheDirty = true;
 
-        public ItemTypes VisibleTypes { get { return visibleTypes; } set { visibleTypes = value; } }
-        public ItemTypes EditedTypes { get { return editedTypes; } set { editedTypes = value; } }
+        public ItemTypes VisibleTypes
+        {
+            get { return visibleTypes; }
+            set
+            {
+                if (visibleTypes == value) return;
+                visibleTypes = value;
+                parent?.RequestRender();
+            }
+        }
+        public ItemTypes EditedTypes
+        {
+            get { return editedTypes; }
+            set
+            {
+                if (editedTypes == value) return;
+                editedTypes = value;
+                parent?.RequestRender();
+            }
+        }
 
         /// <summary>
         /// Constructor
@@ -523,7 +541,7 @@ namespace HaCreator.MapEditor
         public int mag
         {
             get { return _mag; }
-            set { lock (parent) { _mag = value; } }
+            set { lock (parent) { _mag = value; parent.RequestRender(); } }
         }
 
         /// <summary>
@@ -536,8 +554,11 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
-                    _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    float zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    if (_zoom == zoom) return;
+                    _zoom = zoom;
                     parent.AdjustScrollBars();
+                    parent.RequestRender();
                 }
             }
         }
@@ -590,13 +611,13 @@ namespace HaCreator.MapEditor
         public System.Drawing.Bitmap MiniMap
         {
             get { return miniMap; }
-            set { lock (parent) { miniMap = value; miniMapTexture = null; } }
+            set { lock (parent) { miniMap = value; miniMapTexture = null; parent.RequestRender(); } }
         }
 
         public System.Drawing.Point MinimapPosition
         {
             get { return miniMapPos; }
-            set { miniMapPos = value; }
+            set { miniMapPos = value; parent?.RequestRender(); }
         }
 
         public int hScroll
@@ -609,8 +630,10 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
+                    if (_hScroll == value) return;
                     _hScroll = value;
                     parent.SetHScrollbarValue(_hScroll);
+                    parent.RequestRender();
                 }
             }
         }
@@ -618,7 +641,7 @@ namespace HaCreator.MapEditor
         public Point CenterPoint
         {
             get { return centerPoint; }
-            internal set { centerPoint = value; }
+            internal set { centerPoint = value; parent?.RequestRender(); }
         }
 
         public int vScroll
@@ -631,8 +654,10 @@ namespace HaCreator.MapEditor
             {
                 lock (parent)
                 {
+                    if (_vScroll == value) return;
                     _vScroll = value;
                     parent.SetVScrollbarValue(_vScroll);
+                    parent.RequestRender();
                 }
             }
         }
@@ -664,6 +689,7 @@ namespace HaCreator.MapEditor
             {
                 mapSize = value;
                 minimapArea = new Rectangle(0, 0, mapSize.X / _mag, mapSize.Y / _mag);
+                parent?.RequestRender();
             }
         }
 
@@ -679,6 +705,7 @@ namespace HaCreator.MapEditor
             { 
                 vrRect = value;
                 ((System.Windows.Controls.MenuItem) menu.Items[1]).IsEnabled = value == null;
+                parent.RequestRender();
             }
         }
 
@@ -690,6 +717,7 @@ namespace HaCreator.MapEditor
                 mmRect = value;
                 ((System.Windows.Controls.MenuItem)menu.Items[2]).IsEnabled = value == null;
                 parent.OnMinimapStateChanged(this, mmRect != null);
+                parent.RequestRender();
             }
         }
 
@@ -748,6 +776,7 @@ namespace HaCreator.MapEditor
                 lock (parent)
                 {
                     selectedLayerIndex = value;
+                    parent.RequestRender();
                 }
             }
         }
@@ -755,7 +784,7 @@ namespace HaCreator.MapEditor
         public bool SelectedAllLayers
         {
             get { return selectedAllLayers; }
-            set { selectedAllLayers = value; }
+            set { selectedAllLayers = value; parent.RequestRender(); }
         }
 
         public System.Windows.Controls.ContextMenu Menu
@@ -771,13 +800,13 @@ namespace HaCreator.MapEditor
         public int SelectedPlatform
         {
             get { return selectedPlatform; }
-            set { selectedPlatform = value; }
+            set { selectedPlatform = value; parent.RequestRender(); }
         }
 
         public bool SelectedAllPlatforms
         {
             get { return selectedAllPlats; }
-            set { selectedAllPlats = value; }
+            set { selectedAllPlats = value; parent.RequestRender(); }
         }
 
         public SelectionInfo GetUserSelectionInfo()

@@ -75,26 +75,39 @@ namespace HaCreator.GUI.EditorPanels
 
         private void LoadSelectedCategory()
         {
-            objImagesContainer.Clear();
             button_addImage.IsEnabled = false;
             if (hcsm == null || objSetListBox.SelectedItem is not string setName ||
                 objL0ListBox.SelectedItem is not string l0 || objL1ListBox.SelectedItem is not string l1)
+            {
+                objImagesContainer.Clear();
                 return;
+            }
 
             lock (hcsm.MultiBoard)
             {
                 WzImageProperty property = Program.InfoManager.GetObjectSet(setName)?[l0]?[l1];
                 if (property == null)
-                    return;
-                foreach (WzSubProperty l2 in property.WzProperties.OfType<WzSubProperty>())
                 {
-                    try
+                    objImagesContainer.Clear();
+                    return;
+                }
+                using (objImagesContainer.DeferUpdates())
+                {
+                    objImagesContainer.Clear();
+                    foreach (WzSubProperty l2 in property.WzProperties.OfType<WzSubProperty>())
                     {
-                        ObjectInfo info = ObjectInfo.Get(setName, l0, l1, l2.Name);
-                        objImagesContainer.Add(info.Image, l2.Name, info);
-                    }
-                    catch (InvalidCastException)
-                    {
+                        objImagesContainer.AddLazy(l2.Name, () =>
+                        {
+                            try
+                            {
+                                ObjectInfo info = ObjectInfo.Get(setName, l0, l1, l2.Name);
+                                return (info.Image, (object)info);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                return (null, null);
+                            }
+                        });
                     }
                 }
             }
