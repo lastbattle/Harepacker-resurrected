@@ -20,22 +20,24 @@ namespace HaCreator.GUI.EditorPanels
         public void Initialize(HaCreatorStateManager stateManager)
         {
             hcsm = stateManager;
-            portalImageContainer.Clear();
-
-            foreach (PortalType portalType in Program.InfoManager.PortalEditor_TypeById)
+            using (portalImageContainer.DeferUpdates())
             {
-                try
+                portalImageContainer.Clear();
+                foreach (PortalType portalType in Program.InfoManager.PortalEditor_TypeById)
                 {
-                    PortalInfo info = PortalInfo.GetPortalInfoByType(portalType);
-                    if (info?.Image != null)
-                        portalImageContainer.Add(info.Image, PortalTypeExtensions.GetFriendlyName(portalType), info);
-                }
-                catch (KeyNotFoundException)
-                {
-                }
-                catch (Exception)
-                {
-                    // A broken portal asset should not prevent the remaining types from loading.
+                    try
+                    {
+                        PortalInfo info = PortalInfo.GetPortalInfoByType(portalType);
+                        if (info?.Image != null)
+                            portalImageContainer.Add(info.Image, PortalTypeExtensions.GetFriendlyName(portalType), info);
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                    }
+                    catch (Exception)
+                    {
+                        // A broken portal asset should not prevent the remaining types from loading.
+                    }
                 }
             }
         }

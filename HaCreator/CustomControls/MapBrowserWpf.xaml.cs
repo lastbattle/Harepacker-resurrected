@@ -4,7 +4,9 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data.SQLite;
 using System.Drawing;
 using System.IO;
@@ -12,8 +14,10 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace HaCreator.CustomControls
 {
@@ -22,12 +26,15 @@ namespace HaCreator.CustomControls
         private bool bLoadMapEnabled = false;
         private bool _bMapsLoaded = false;
         private readonly List<string> maps = new List<string>();
-        private readonly Dictionary<string, Tuple<WzImage, MapInfo>> mapsMapInfo = new Dictionary<string, Tuple<WzImage, MapInfo>>();
+        private ICollectionView visibleMapsView;
         private bool _bTownOnlyFilter = false;
         private bool _bIsHistoryMapBrowser = false;
         private bool _previewPanelVisible = true;
-        private string _searchText = string.Empty;
+        private string _normalizedSearchText = string.Empty;
         private readonly Dictionary<string, bool> townLookup = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private Queue<string> pendingTownMapIds;
+        private DispatcherTimer townScanTimer;
+        private int townMatchesSinceRefresh;
 
         private static readonly string PrimaryHistoryDatabasePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hacreator.db");
@@ -57,11 +64,7 @@ namespace HaCreator.CustomControls
         public bool TownOnlyFilter
         {
             get { return _bTownOnlyFilter; }
-            set
-            {
-                _bTownOnlyFilter = value;
-                RefreshVisibleItems();
-            }
+            set => ApplyFilters(_normalizedSearchText, value);
         }
 
         public bool PreviewPanelVisible
@@ -89,11 +92,31 @@ namespace HaCreator.CustomControls
 
         public void ApplySearch(string searchText)
         {
-            _searchText = searchText ?? string.Empty;
+            ApplyFilters(searchText, _bTownOnlyFilter);
+        }
+
+        public void ApplyFilters(string searchText, bool townOnly)
+        {
+            string normalizedSearchText = (searchText ?? string.Empty).Trim();
+            bool searchChanged = !string.Equals(
+                _normalizedSearchText, normalizedSearchText, StringComparison.Ordinal);
+            bool townFilterChanged = _bTownOnlyFilter != townOnly;
+            if (!searchChanged && !townFilterChanged)
+                return;
+
+            _normalizedSearchText = normalizedSearchText;
+            _bTownOnlyFilter = townOnly;
+            if (townFilterChanged)
+            {
+                if (townOnly)
+                    StartIncrementalTownScan();
+                else
+                    StopIncrementalTownScan();
+            }
             RefreshVisibleItems();
         }
 
-        private WzImage LoadMapImageOnDemand(string mapId)
+        private static WzImage FindMapImageOnDemand(string mapId)
         {
             if (Program.DataSource == null)
                 return null;
@@ -107,9 +130,6 @@ namespace HaCreator.CustomControls
             {
                 mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
             }
-
-            if (mapImage != null)
-                mapImage.ParseImage();
 
             return mapImage;
         }
@@ -155,7 +175,6 @@ namespace HaCreator.CustomControls
             {
                 string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, map.Value.Item2, map.Value.Item3);
                 maps.Add(displayMapNameString);
-                mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(map.Value.Item1, map.Value.Item5));
             }
 
             maps.Sort();
@@ -169,15 +188,18 @@ namespace HaCreator.CustomControls
                     maps.Insert(0, mapLogin.Replace(".img", ""));
             }
 
-            RefreshVisibleItems();
+            RebuildVisibleItems();
+            if (_bTownOnlyFilter)
+                StartIncrementalTownScan();
         }
 
         public void ReloadMapsListboxItem(bool special)
         {
             maps.Clear();
-            mapsMapInfo.Clear();
             townLookup.Clear();
-            mapNamesBox.Items.Clear();
+            StopIncrementalTownScan();
+            mapNamesBox.ItemsSource = null;
+            visibleMapsView = null;
             ClearPreview();
             bLoadMapEnabled = false;
             _bMapsLoaded = false;
@@ -188,8 +210,9 @@ namespace HaCreator.CustomControls
         public void ReloadHistoryListboxItem()
         {
             maps.Clear();
-            mapsMapInfo.Clear();
-            mapNamesBox.Items.Clear();
+            StopIncrementalTownScan();
+            mapNamesBox.ItemsSource = null;
+            visibleMapsView = null;
             ClearPreview();
             bLoadMapEnabled = false;
             _bMapsLoaded = false;
@@ -233,16 +256,11 @@ namespace HaCreator.CustomControls
 
                         maps.Add(OpenedMapName);
 
-                        if (TryGetCachedMapInfo(OpenedMapName, out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
-                        {
-                            if (!mapsMapInfo.ContainsKey(OpenedMapName))
-                                mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5));
-                        }
                     }
                 }
             }
 
-            RefreshVisibleItems();
+            RebuildVisibleItems();
         }
 
         public void AddLoadedMapToHistory(string loadedMapName)
@@ -263,13 +281,7 @@ namespace HaCreator.CustomControls
                 maps.Add(loadedMapName);
             }
 
-            if (TryGetCachedMapInfo(loadedMapName, out Tuple<WzImage, string, string, string, MapInfo> loadedMap) &&
-                !mapsMapInfo.ContainsKey(loadedMapName))
-            {
-                mapsMapInfo.Add(loadedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5));
-            }
-
-            RefreshVisibleItems();
+            RebuildVisibleItems();
         }
 
         public void ClearLoadedMapHistory()
@@ -288,7 +300,7 @@ namespace HaCreator.CustomControls
             }
 
             maps.Clear();
-            RefreshVisibleItems();
+            RebuildVisibleItems();
         }
 
         public bool RemoveSelectedMapFromHistory()
@@ -316,42 +328,47 @@ namespace HaCreator.CustomControls
             }
 
             maps.Remove(selectedItem);
-            if (!maps.Contains(selectedItem))
-            {
-                mapsMapInfo.Remove(selectedItem);
-            }
-
-            RefreshVisibleItems();
+            RebuildVisibleItems();
             return true;
         }
 
         private void RefreshVisibleItems()
         {
             if (mapNamesBox == null)
+                return;
+
+            if (visibleMapsView == null)
             {
+                RebuildVisibleItems();
                 return;
             }
 
             string selectedItem = SelectedItem;
-            string searchText = _searchText.Trim();
-            IEnumerable<string> visibleItems = maps.Where(ShouldShowMapItem);
+            visibleMapsView.Refresh();
+            RestoreSelection(selectedItem);
+        }
 
-            if (!string.IsNullOrEmpty(searchText))
+        private void RebuildVisibleItems()
+        {
+            if (mapNamesBox == null)
+                return;
+
+            string selectedItem = SelectedItem;
+            visibleMapsView = new ListCollectionView(new ArrayList(maps))
             {
-                visibleItems = visibleItems.Where(item => item.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0);
-            }
+                Filter = candidate => candidate is string item && ShouldShowMapItem(item)
+            };
+            mapNamesBox.ItemsSource = visibleMapsView;
+            RestoreSelection(selectedItem);
+        }
 
-            mapNamesBox.Items.Clear();
-            foreach (string item in visibleItems)
-            {
-                mapNamesBox.Items.Add(item);
-            }
-
+        private void RestoreSelection(string selectedItem)
+        {
             if (!string.IsNullOrEmpty(selectedItem) && mapNamesBox.Items.Contains(selectedItem))
             {
                 mapNamesBox.SelectedItem = selectedItem;
             }
-            else if (!string.IsNullOrEmpty(searchText) && mapNamesBox.Items.Count > 0)
+            else if (!string.IsNullOrEmpty(_normalizedSearchText) && mapNamesBox.Items.Count > 0)
             {
                 mapNamesBox.SelectedIndex = 0;
             }
@@ -365,58 +382,126 @@ namespace HaCreator.CustomControls
 
         private bool ShouldShowMapItem(string itemName)
         {
+            if (!string.IsNullOrEmpty(_normalizedSearchText) &&
+                itemName.IndexOf(_normalizedSearchText, StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+
             if (!_bTownOnlyFilter)
-            {
                 return true;
-            }
 
-            if (!mapsMapInfo.TryGetValue(itemName, out Tuple<WzImage, MapInfo> mapTupleInfo))
-            {
-                return TryGetMapId(itemName, out string uncachedMapId) && IsTownMap(uncachedMapId, null, null);
-            }
+            if (!TryGetMapId(itemName, out string mapId))
+                return false;
 
-            return TryGetMapId(itemName, out string mapId) && IsTownMap(mapId, mapTupleInfo.Item1, mapTupleInfo.Item2);
+            if (Program.InfoManager.MapsCache.TryGetValue(mapId,
+                out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
+                return IsKnownTownMap(mapId, loadedMap.Item5);
+
+            return false;
         }
 
-        private bool IsTownMap(string mapId, WzImage mapImage, MapInfo mapInfo)
+        private bool IsKnownTownMap(string mapId, MapInfo mapInfo)
         {
             if (townLookup.TryGetValue(mapId, out bool isTown))
-            {
                 return isTown;
+
+            if (mapInfo != null)
+            {
+                townLookup[mapId] = mapInfo.town;
+                return mapInfo.town;
             }
 
-            if (mapInfo?.town == true)
+            return false;
+        }
+
+        private void StartIncrementalTownScan()
+        {
+            StopIncrementalTownScan();
+
+            pendingTownMapIds = new Queue<string>(maps.Count);
+            foreach (string mapItem in maps)
             {
-                townLookup[mapId] = true;
-                return true;
+                if (TryGetMapId(mapItem, out string mapId) && !townLookup.ContainsKey(mapId))
+                    pendingTownMapIds.Enqueue(mapId);
             }
 
-            if (Program.InfoManager.MapsCache.TryGetValue(mapId, out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
-            {
-                if (loadedMap.Item5?.town == true)
-                {
-                    townLookup[mapId] = true;
-                    return true;
-                }
+            if (pendingTownMapIds.Count == 0)
+                return;
 
-                mapImage = mapImage ?? loadedMap.Item1;
+            townMatchesSinceRefresh = 0;
+            townScanTimer ??= new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(1)
+            };
+            townScanTimer.Tick -= TownScanTimer_Tick;
+            townScanTimer.Tick += TownScanTimer_Tick;
+            townScanTimer.Start();
+        }
+
+        private void StopIncrementalTownScan()
+        {
+            townScanTimer?.Stop();
+            pendingTownMapIds?.Clear();
+            pendingTownMapIds = null;
+            townMatchesSinceRefresh = 0;
+        }
+
+        private void TownScanTimer_Tick(object sender, EventArgs e)
+        {
+            if (!_bTownOnlyFilter || pendingTownMapIds == null || pendingTownMapIds.Count == 0)
+            {
+                bool refresh = _bTownOnlyFilter && townMatchesSinceRefresh > 0;
+                StopIncrementalTownScan();
+                if (refresh)
+                    RefreshVisibleItems();
+                return;
+            }
+
+            string mapId = pendingTownMapIds.Dequeue();
+            bool isTown = ResolveTownMap(mapId);
+            townLookup[mapId] = isTown;
+
+            if (isTown && ++townMatchesSinceRefresh >= 8)
+            {
+                townMatchesSinceRefresh = 0;
+                RefreshVisibleItems();
+            }
+        }
+
+        private static bool ResolveTownMap(string mapId)
+        {
+            WzImage mapImage = null;
+            if (Program.InfoManager.MapsCache.TryGetValue(mapId,
+                out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
+            {
+                if (loadedMap.Item5 != null)
+                    return loadedMap.Item5.town;
+
+                mapImage = loadedMap.Item1;
             }
 
             if (mapImage == null)
-            {
-                mapImage = LoadMapImageOnDemand(mapId);
-            }
+                mapImage = FindMapImageOnDemand(mapId);
 
-            if (mapImage != null)
-            {
-                MapInfo resolvedInfo = new MapInfo(mapImage, null, null, null);
-                isTown = resolvedInfo.town;
-                townLookup[mapId] = isTown;
-                return isTown;
-            }
+            if (mapImage == null)
+                return false;
 
-            townLookup[mapId] = false;
-            return false;
+            bool wasParsed = mapImage.Parsed;
+            try
+            {
+                if (!wasParsed)
+                    mapImage.ParseImage();
+
+                return mapImage["info"]?["town"].GetBool() == true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (!wasParsed && mapImage.Parsed && !mapImage.Changed)
+                    mapImage.UnparseImage();
+            }
         }
 
         private void UpdatePreviewVisibility()
@@ -451,21 +536,18 @@ namespace HaCreator.CustomControls
             }
             else
             {
-                string mapid = selectedName.Substring(0, 9);
-
-                Tuple<WzImage, MapInfo> mapTupleInfo = null;
-                if (mapsMapInfo.ContainsKey(selectedName))
+                if (!TryGetMapId(selectedName, out string mapid))
                 {
-                    mapTupleInfo = mapsMapInfo[selectedName];
-                }
-                else if (_bIsHistoryMapBrowser &&
-                         TryGetCachedMapInfo(selectedName, out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
-                {
-                    mapTupleInfo = new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5);
-                    mapsMapInfo[selectedName] = mapTupleInfo;
+                    panel_linkWarning.Visibility = Visibility.Collapsed;
+                    panel_mapExistWarning.Visibility = Visibility.Visible;
+                    ClearPreview();
+                    bLoadMapEnabled = false;
+                    SelectionChanged?.Invoke();
+                    return;
                 }
 
-                if (mapTupleInfo == null)
+                if (!TryGetCachedMapInfo(selectedName,
+                    out Tuple<WzImage, string, string, string, MapInfo> loadedMap))
                 {
                     panel_linkWarning.Visibility = Visibility.Collapsed;
                     panel_mapExistWarning.Visibility = Visibility.Visible;
@@ -474,15 +556,7 @@ namespace HaCreator.CustomControls
                 }
                 else
                 {
-                    WzImage mapImage = mapTupleInfo.Item1;
-                    if (mapImage == null && Program.DataSource != null)
-                    {
-                        mapImage = LoadMapImageOnDemand(mapid);
-                        if (mapImage != null)
-                        {
-                            mapsMapInfo[selectedName] = new Tuple<WzImage, MapInfo>(mapImage, mapTupleInfo.Item2);
-                        }
-                    }
+                    WzImage mapImage = loadedMap.Item1 ?? FindMapImageOnDemand(mapid);
 
                     if (mapImage == null)
                     {

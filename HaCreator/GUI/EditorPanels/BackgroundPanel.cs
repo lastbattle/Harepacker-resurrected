@@ -104,21 +104,33 @@ namespace HaCreator.GUI.EditorPanels
 
         private void LoadSelectedBackgroundSet()
         {
-            backgroundGallery.Clear();
             if (hcsm == null || bgSetListBox.SelectedItem is not string setName)
+            {
+                backgroundGallery.Clear();
                 return;
+            }
 
             BackgroundInfoType infoType = SelectedBackgroundType();
             WzImage setImage = Program.InfoManager.GetBackgroundSet(setName);
             WzImageProperty parent = setImage?[infoType.ToPropertyString()];
             if (parent?.WzProperties == null)
-                return;
-
-            foreach (WzImageProperty property in parent.WzProperties)
             {
-                BackgroundInfo info = BackgroundInfo.Get(hcsm.MultiBoard.GraphicsDevice, setName, infoType, property.Name);
-                if (info != null)
-                    backgroundGallery.Add(info.Image, property.Name, info);
+                backgroundGallery.Clear();
+                return;
+            }
+
+            using (backgroundGallery.DeferUpdates())
+            {
+                backgroundGallery.Clear();
+                foreach (WzImageProperty property in parent.WzProperties)
+                {
+                    backgroundGallery.AddLazy(property.Name, () =>
+                    {
+                        BackgroundInfo info = BackgroundInfo.Get(
+                            hcsm.MultiBoard.GraphicsDevice, setName, infoType, property.Name);
+                        return (info?.Image, (object)info);
+                    });
+                }
             }
         }
 

@@ -33,6 +33,10 @@ namespace HaCreator.GUI.EditorPanels
             hcsm = stateManager;
             hcsm.SetTilePanel(this);
             tileSetList.ItemsSource = Program.InfoManager.TileSets.Keys.OrderBy(name => name).ToList();
+
+            string activeTileSet = hcsm.MultiBoard.SelectedBoard?.SelectedLayer?.tS;
+            if (activeTileSet != null)
+                SetSelectedTileSet(activeTileSet);
         }
 
         public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
@@ -113,33 +117,45 @@ namespace HaCreator.GUI.EditorPanels
                     !Program.InfoManager.TileSets.ContainsKey(selectedSetName))
                     return;
 
-                tileImagesContainer.Clear();
                 WzImage tileSetImage = Program.InfoManager.GetTileSet(selectedSetName);
                 if (tileSetImage == null)
+                {
+                    tileImagesContainer.Clear();
                     return;
+                }
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
 
-                foreach (WzSubProperty category in tileSetImage.WzProperties.OfType<WzSubProperty>())
+                using (tileImagesContainer.DeferUpdates())
                 {
-                    if (category.Name == "info")
-                        continue;
-
-                    if (ApplicationSettings.randomTiles)
+                    tileImagesContainer.Clear();
+                    foreach (WzSubProperty category in tileSetImage.WzProperties.OfType<WzSubProperty>())
                     {
-                        WzCanvasProperty canvas = category["0"] as WzCanvasProperty;
-                        if (canvas == null)
+                        if (category.Name == "info")
                             continue;
-                        TileInfo[] randomInfos = category.WzProperties
-                            .Select(tile => TileInfo.Get(selectedSetName, category.Name, tile.Name, mag))
-                            .ToArray();
-                        tileImagesContainer.Add(canvas.GetLinkedWzCanvasBitmap(), category.Name, randomInfos);
-                    }
-                    else
-                    {
-                        foreach (WzCanvasProperty tile in category.WzProperties.OfType<WzCanvasProperty>())
+
+                        if (ApplicationSettings.randomTiles)
                         {
-                            TileInfo info = TileInfo.Get(selectedSetName, category.Name, tile.Name, mag);
-                            tileImagesContainer.Add(tile.GetLinkedWzCanvasBitmap(), $"{category.Name}/{tile.Name}", info);
+                            WzCanvasProperty canvas = category["0"] as WzCanvasProperty;
+                            if (canvas == null)
+                                continue;
+                            tileImagesContainer.AddLazy(category.Name, () =>
+                            {
+                                TileInfo[] randomInfos = category.WzProperties
+                                    .Select(tile => TileInfo.Get(selectedSetName, category.Name, tile.Name, mag))
+                                    .ToArray();
+                                return (canvas.GetLinkedWzCanvasBitmap(), (object)randomInfos);
+                            });
+                        }
+                        else
+                        {
+                            foreach (WzCanvasProperty tile in category.WzProperties.OfType<WzCanvasProperty>())
+                            {
+                                tileImagesContainer.AddLazy($"{category.Name}/{tile.Name}", () =>
+                                {
+                                    TileInfo info = TileInfo.Get(selectedSetName, category.Name, tile.Name, mag);
+                                    return (tile.GetLinkedWzCanvasBitmap(), (object)info);
+                                });
+                            }
                         }
                     }
                 }
