@@ -21,24 +21,64 @@
         <TabControl x:Name="tabControl1" Grid.Row="1">
             <TabItem Header="Essential">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="16">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                    <TextBlock Text="Map ID"/><TextBlock x:Name="IDLabel" Grid.Column="1" FontWeight="SemiBold"/>
-                    <TextBlock Grid.Row="1" Text="Map name"/><TextBox x:Name="nameBox" Grid.Row="1" Grid.Column="1" Margin="0,3"/>
-                    <TextBlock Grid.Row="2" Text="Street name"/><TextBox x:Name="streetBox" Grid.Row="2" Grid.Column="1" Margin="0,3"/>
-                    <TextBlock Grid.Row="3" Text="Category"/><TextBox x:Name="categoryBox" Grid.Row="3" Grid.Column="1" Margin="0,3"/>
-                    <TextBlock Grid.Row="4" Text="BGM"/><ComboBox x:Name="bgmBox" Grid.Row="4" Grid.Column="1" Margin="0,3" IsEditable="True" IsReadOnly="True" Text="{Binding SelectedItem, RelativeSource={RelativeSource Self}, Mode=OneWay}" SelectionChanged="bgmBox_SelectedIndexChanged"/>
-                    <shared:SoundPlayer x:Name="soundPlayer1" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8,12,8"/>
-                    <TextBlock Grid.Column="2" Text="Map mark"/><ComboBox x:Name="markBox" Grid.Column="3" Margin="0,3" SelectionChanged="markBox_SelectedIndexChanged"/>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Map ID"/>
+                    <TextBlock x:Name="IDLabel" Grid.Column="1" FontWeight="SemiBold"/>
+
+                    <TextBlock Grid.Row="1" Text="Map name"/>
+                    <TextBox x:Name="nameBox" Grid.Row="1" Grid.Column="1" Margin="0,3"/>
+
+                    <TextBlock Grid.Row="2" Text="Street name"/>
+                    <TextBox x:Name="streetBox" Grid.Row="2" Grid.Column="1" Margin="0,3"/>
+
+                    <TextBlock Grid.Row="3" Text="Category"/>
+                    <TextBox x:Name="categoryBox" Grid.Row="3" Grid.Column="1" Margin="0,3"/>
+
+                    <TextBlock Grid.Row="8" Text="BGM"/>
+                        <ComboBox x:Name="bgmBox" Grid.Row="8" Grid.Column="1" Margin="0,3" IsEditable="True" IsReadOnly="True" Text="{Binding SelectedItem, RelativeSource={RelativeSource Self}, Mode=OneWay}" SelectionChanged="bgmBox_SelectedIndexChanged"/>
+                        <shared:SoundPlayer x:Name="soundPlayer1" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2" Margin="0,8,12,0"/>
+
+                    <TextBlock Grid.Column="2" Text="Map mark"/>
+                    <ComboBox x:Name="markBox" Grid.Column="3" Margin="0,3" SelectionChanged="markBox_SelectedIndexChanged"/>
+
                     <Image x:Name="markImage" Grid.Row="1" Grid.Column="2" Grid.RowSpan="2" Width="48" Height="48" Stretch="Uniform"/>
+
                     <local:CheckBox x:Name="cannotReturnCBX" Grid.Row="3" Grid.Column="2" Content="Cannot return" Checked="cannotReturnCBX_CheckedChanged" Unchecked="cannotReturnCBX_CheckedChanged"/>
-                    <StackPanel Grid.Row="3" Grid.Column="3" Orientation="Horizontal"><local:NumericUpDown x:Name="returnBox"/><Button Content="Choose…" Margin="8,0,0,0" Click="button_selectReturnMap_Click"/></StackPanel>
+                    <StackPanel Grid.Row="3" Grid.Column="3" Orientation="Horizontal">
+                        <local:NumericUpDown x:Name="returnBox"/>
+                        <Button Content="Choose…" Margin="8,0,0,0" Click="button_selectReturnMap_Click"/>
+                    </StackPanel>
+
                     <local:CheckBox x:Name="returnHereCBX" Grid.Row="4" Grid.Column="2" Content="Forced return here" Checked="returnHereCBX_CheckedChanged" Unchecked="returnHereCBX_CheckedChanged"/>
-                    <StackPanel Grid.Row="4" Grid.Column="3" Orientation="Horizontal"><local:NumericUpDown x:Name="forcedRet"/><Button Content="Choose…" Margin="8,0,0,0" Click="button_selectForcedReturnMap_Click"/></StackPanel>
-                    <TextBlock Grid.Row="5" Grid.Column="2" Text="Mob rate"/><local:NumericUpDown x:Name="mobRate" Grid.Row="5" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowDecimal="True" AllowNegative="False" Minimum="0" Maximum="5"/>
-                    <TextBlock Grid.Row="6" Grid.Column="2" Text="Map width"/><local:NumericUpDown x:Name="xBox" Grid.Row="6" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowNegative="False" Minimum="1" Maximum="20000"/>
-                    <TextBlock Grid.Row="7" Grid.Column="2" Text="Map height"/><local:NumericUpDown x:Name="yBox" Grid.Row="7" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowNegative="False" Minimum="1" Maximum="20000"/>
-                </Grid></ScrollViewer>
+                    <StackPanel Grid.Row="4" Grid.Column="3" Orientation="Horizontal">
+                        <local:NumericUpDown x:Name="forcedRet"/>
+                        <Button Content="Choose…" Margin="8,0,0,0" Click="button_selectForcedReturnMap_Click"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="6" Grid.Column="2" Text="Mob rate"/>
+                    <local:NumericUpDown x:Name="mobRate" Grid.Row="6" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowDecimal="True" AllowNegative="False" Minimum="0" Maximum="5"/>
+                    <TextBlock Grid.Row="7" Grid.Column="2" Text="Map width"/>
+                    <local:NumericUpDown x:Name="xBox" Grid.Row="7" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowNegative="False" Minimum="1" Maximum="20000"/>
+                    <TextBlock Grid.Row="8" Grid.Column="2" Text="Map height"/>
+                    <local:NumericUpDown x:Name="yBox" Grid.Row="8" Grid.Column="3" Width="180" MinWidth="0" HorizontalAlignment="Left" AllowNegative="False" Minimum="1" Maximum="20000"/>
+                    </Grid>
+                </ScrollViewer>
             </TabItem>
             <TabItem Header="Optional properties">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="16">
