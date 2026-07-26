@@ -109,13 +109,31 @@ namespace HaCreator.CustomControls
                     if (child == null)
                         continue;
 
-                    if (newlyRealized)
+                    int currentChildIndex = InternalChildren.IndexOf(child);
+                    if (currentChildIndex < 0)
                     {
                         if (childIndex >= InternalChildren.Count)
                             AddInternalChild(child);
                         else
                             InsertInternalChild(childIndex, child);
                         generator.PrepareItemContainer(child);
+                    }
+                    else
+                    {
+                        // The generator and visual collection must have identical realized-item
+                        // ordering. A recycled container can otherwise remain at its former visual
+                        // index and later become an orphan that is never arranged or cleaned up.
+                        if (currentChildIndex != childIndex)
+                        {
+                            RemoveInternalChildRange(currentChildIndex, 1);
+                            if (childIndex >= InternalChildren.Count)
+                                AddInternalChild(child);
+                            else
+                                InsertInternalChild(childIndex, child);
+                        }
+
+                        if (newlyRealized)
+                            generator.PrepareItemContainer(child);
                     }
 
                     child.Measure(childSize);
@@ -125,16 +143,26 @@ namespace HaCreator.CustomControls
 
         private void CleanupItems(int firstItemIndex, int lastItemIndex)
         {
-            if (ItemsControl.GetItemsOwner(this)?.ItemContainerGenerator is not IRecyclingItemContainerGenerator generator)
+            ItemsControl owner = ItemsControl.GetItemsOwner(this);
+            if (owner?.ItemContainerGenerator is not IRecyclingItemContainerGenerator generator)
                 return;
 
             for (int childIndex = InternalChildren.Count - 1; childIndex >= 0; childIndex--)
             {
-                GeneratorPosition position = new(childIndex, 0);
-                int itemIndex = generator.IndexFromGeneratorPosition(position);
+                DependencyObject child = InternalChildren[childIndex];
+                int itemIndex = owner.ItemContainerGenerator.IndexFromContainer(child);
+                if (itemIndex < 0)
+                {
+                    // There is no generator position to recycle once the mapping is gone. Leaving
+                    // the visual in InternalChildren produces the stale tiles seen over the list.
+                    RemoveInternalChildRange(childIndex, 1);
+                    continue;
+                }
+
                 if (itemIndex >= firstItemIndex && itemIndex <= lastItemIndex)
                     continue;
 
+                GeneratorPosition position = generator.GeneratorPositionFromIndex(itemIndex);
                 generator.Recycle(position, 1);
                 RemoveInternalChildRange(childIndex, 1);
             }

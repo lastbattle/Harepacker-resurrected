@@ -81,12 +81,14 @@ namespace HaCreator.GUI
         private void Minimap_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             _minimapEnabled = !_minimapEnabled;
+            RefreshViewMenuCheckStates();
             ShowMinimapToggled?.Invoke(_minimapEnabled);
         }
 
         private void Parallax_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             _parallaxEnabled = !_parallaxEnabled;
+            RefreshViewMenuCheckStates();
             ParallaxToggled?.Invoke(_parallaxEnabled);
         }
 
@@ -98,18 +100,21 @@ namespace HaCreator.GUI
         private void InfoMode_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             _infoModeEnabled = !_infoModeEnabled;
+            RefreshViewMenuCheckStates();
             InfoModeToggled?.Invoke(_infoModeEnabled);
         }
 
         private void Random_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             _randomTilesEnabled = !_randomTilesEnabled;
+            RefreshViewMenuCheckStates();
             RandomTilesToggled?.Invoke(_randomTilesEnabled);
         }
 
         private void AnimateMapObjectPreviews_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             _animateMapObjectPreviews = !_animateMapObjectPreviews;
+            RefreshViewMenuCheckStates();
             MapObjectPreviewAnimationToggled?.Invoke(_animateMapObjectPreviews);
         }
 
@@ -163,7 +168,21 @@ namespace HaCreator.GUI
         public void SetSnappingFromShell(bool enabled)
         {
             _snappingEnabled = enabled;
+            RefreshViewMenuCheckStates();
             SnappingToggled?.Invoke(enabled);
+        }
+
+        private void RefreshViewMenuCheckStates()
+        {
+            if (minimapMenuItem == null)
+                return;
+
+            minimapMenuItem.IsChecked = _minimapEnabled;
+            snappingMenuItem.IsChecked = _snappingEnabled;
+            randomTilesMenuItem.IsChecked = _randomTilesEnabled;
+            parallaxMenuItem.IsChecked = _parallaxEnabled;
+            infoModeMenuItem.IsChecked = _infoModeEnabled;
+            animatePreviewsMenuItem.IsChecked = _animateMapObjectPreviews;
         }
 
         public void SetLayers(ReadOnlyCollection<Layer> layers) => RefreshInspectorLayerControls();
@@ -236,6 +255,7 @@ namespace HaCreator.GUI
             _randomTilesEnabled = random;
             _infoModeEnabled = infoMode;
             _animateMapObjectPreviews = ApplicationSettings.AnimateMapObjectPreviews;
+            RefreshViewMenuCheckStates();
             RefreshInspectorLayerControls();
         }
 

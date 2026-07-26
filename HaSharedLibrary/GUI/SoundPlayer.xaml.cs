@@ -27,7 +27,13 @@ namespace HaSharedLibrary.GUI
 
         private readonly DispatcherTimer timer;
 
-        private bool isPlaying = false;
+        private static readonly DependencyPropertyKey IsPlayingPropertyKey = DependencyProperty.RegisterReadOnly(
+            nameof(IsPlaying), typeof(bool), typeof(SoundPlayer), new PropertyMetadata(false));
+
+        public static readonly DependencyProperty IsPlayingProperty = IsPlayingPropertyKey.DependencyProperty;
+
+        public bool IsPlaying => (bool)GetValue(IsPlayingProperty);
+
         private bool isUpdatingTimeLabel = false;
 
         public SoundPlayer()
@@ -79,30 +85,28 @@ namespace HaSharedLibrary.GUI
 
         private void PauseButton_Click(object sender, RoutedEventArgs e)
         {
-            if (isPlaying)
+            if (IsPlaying)
             {
-                timer.Stop();
-
-                if (currAudio != null)
+                if (currAudio != null && !currAudio.Disposed)
                 {
                     currAudio.Pause();
                 }
 
-                PauseButton.Content = SharedUiText.Get("Sound_Play");
-            } else
-            {
-                if (soundProp == null)
-                {
-                    return;
-                }
-                PrepareAudioForPlayback();
-
-                currAudio.Play();
-                timer.Start();
-
-                PauseButton.Content = SharedUiText.Get("Sound_Pause");
+                SetPlaybackState(false);
+                return;
             }
-            isPlaying = !isPlaying;
+
+            if (soundProp == null)
+            {
+                return;
+            }
+
+            PrepareAudioForPlayback();
+            if (currAudio == null || currAudio.Disposed)
+                return;
+
+            currAudio.Play();
+            SetPlaybackState(true);
         }
         #endregion
 
@@ -125,7 +129,7 @@ namespace HaSharedLibrary.GUI
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if (!isPlaying)
+            if (!IsPlaying)
             {
                 return;
             }
@@ -156,12 +160,21 @@ namespace HaSharedLibrary.GUI
                 };
             }
         }
+
+        private void SetPlaybackState(bool playing)
+        {
+            SetValue(IsPlayingPropertyKey, playing);
+            if (playing)
+                timer.Start();
+            else
+                timer.Stop();
+        }
         #endregion
 
         #region Export fields
         public void Stop()
         {
-            timer.Stop();
+            SetPlaybackState(false);
 
             try
             {
@@ -185,9 +198,8 @@ namespace HaSharedLibrary.GUI
                 {
                     currAudio.Dispose();
                 }
-                isPlaying = false;
                 currAudio = null;
-                PauseButton.Content = SharedUiText.Get("Sound_Play");
+                SetPlaybackState(false);
 
                 if (soundProp != null)
                 {

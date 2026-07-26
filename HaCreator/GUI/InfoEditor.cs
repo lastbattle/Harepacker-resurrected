@@ -407,12 +407,24 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, SelectionChangedEventArgs e)
         {
-            string bgm = (string)bgmBox.SelectedItem;
+            if (bgmBox.SelectedItem is not string bgm)
+                return;
+
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() => LoadSelectedBgmPreview(bgm)));
+        }
+
+        private void LoadSelectedBgmPreview(string bgm)
+        {
+            if (!string.Equals(bgmBox.SelectedItem as string, bgm, StringComparison.Ordinal))
+                return;
+
             WzBinaryProperty soundProperty = Program.InfoManager.GetBgm(bgm);
             if (soundProperty != null)
             {
                 soundPlayer1.SoundProperty = soundProperty;
-            } else
+            }
+            else
             {
                 string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", bgm, this.info.id);
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
@@ -469,6 +481,10 @@ namespace HaCreator.GUI
 
         protected override void okButton_Click(object sender, EventArgs e)
         {
+            mobRate.NormalizeValue();
+            xBox.NormalizeValue();
+            yBox.NormalizeValue();
+
             lock (multiBoard)
             {
                 if (info.mapType != MapType.CashShopPreview && info.mapType != MapType.ITCPreview)

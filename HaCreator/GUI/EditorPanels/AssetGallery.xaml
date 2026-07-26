@@ -15,7 +15,6 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-            <EventSetter Event="Loaded" Handler="AssetTile_Loaded"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -53,9 +52,10 @@
                  ToolTip="Filter assets by name"
                  TextChanged="SearchBox_TextChanged"/>
 
-        <ListBox x:Name="AssetList" Grid.Row="1" Margin="4"
+        <local:AssetGalleryListBox x:Name="AssetList" Grid.Row="1" Margin="4"
                  Background="Transparent" BorderThickness="0"
                  ItemContainerStyle="{StaticResource AssetTileStyle}"
+                 ContainerPrepared="AssetList_ContainerPrepared"
                  SelectionChanged="AssetList_SelectionChanged"
                  PreviewMouseLeftButtonDown="AssetList_PreviewMouseLeftButtonDown"
                  PreviewMouseRightButtonDown="AssetList_PreviewMouseRightButtonDown"
@@ -111,6 +111,6 @@
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
-        </ListBox>
+        </local:AssetGalleryListBox>
     </Grid>
 </UserControl>

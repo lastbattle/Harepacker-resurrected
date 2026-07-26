@@ -347,12 +347,12 @@
                         <MenuItem Header="{loc:Loc Editor_Assets_BD1273}" Click="ShowAssets_Click"/>
                         <MenuItem Header="{loc:Loc Editor_Hierarchy_23BE56}" Click="ShowHierarchy_Click"/>
                         <Separator/>
-                        <MenuItem Header="{loc:Loc Editor_Toggle_minimap_357182}" Command="{x:Static local:HaEditor.Minimap}"/>
-                        <MenuItem Header="{loc:Loc Editor_Toggle_snapping_13C561}" Command="{x:Static local:HaEditor.Snapping}"/>
-                        <MenuItem Header="{loc:Loc Editor_Random_Tiles_1ED7F5}" Command="{x:Static local:HaEditor.Random}"/>
-                        <MenuItem Header="{loc:Loc Editor_Parallax_backgrounds_69E70D}" Command="{x:Static local:HaEditor.Parallax}"/>
-                        <MenuItem Header="{loc:Loc Editor_Information_overlays_1CC00F}" Command="{x:Static local:HaEditor.InfoMode}"/>
-                        <MenuItem Header="{loc:Loc Editor_Animate_asset_previews_E74DF1}" Command="{x:Static local:HaEditor.AnimateMapObjectPreviews}"/>
+                        <MenuItem x:Name="minimapMenuItem" Header="{loc:Loc Editor_Toggle_minimap_357182}" Command="{x:Static local:HaEditor.Minimap}" IsCheckable="True"/>
+                        <MenuItem x:Name="snappingMenuItem" Header="{loc:Loc Editor_Toggle_snapping_13C561}" Command="{x:Static local:HaEditor.Snapping}" IsCheckable="True"/>
+                        <MenuItem x:Name="randomTilesMenuItem" Header="{loc:Loc Editor_Random_Tiles_1ED7F5}" Command="{x:Static local:HaEditor.Random}" IsCheckable="True"/>
+                        <MenuItem x:Name="parallaxMenuItem" Header="{loc:Loc Editor_Parallax_backgrounds_69E70D}" Command="{x:Static local:HaEditor.Parallax}" IsCheckable="True"/>
+                        <MenuItem x:Name="infoModeMenuItem" Header="{loc:Loc Editor_Information_overlays_1CC00F}" Command="{x:Static local:HaEditor.InfoMode}" IsCheckable="True"/>
+                        <MenuItem x:Name="animatePreviewsMenuItem" Header="{loc:Loc Editor_Animate_asset_previews_E74DF1}" Command="{x:Static local:HaEditor.AnimateMapObjectPreviews}" IsCheckable="True"/>
                     </MenuItem>
                     <MenuItem Header="{loc:Loc Editor_Map_BE176B}">
                         <MenuItem Header="{loc:Loc Editor_Preview_324B13}" Command="{x:Static local:HaEditor.MapSim}"/>
@@ -432,13 +432,13 @@
                             <TextBlock Margin="7,0,0,0" Text="{loc:Loc Editor_Validate_40611A}"/>
                         </StackPanel>
                     </Button>
-                    <Border Margin="0,0,8,0"
+                    <Border Margin="0,0,0,0"
                             VerticalAlignment="Center"
                             Background="White"
                             BorderBrush="{StaticResource DividerBrush}"
                             BorderThickness="1"
                             CornerRadius="5"
-                            Padding="10,0"
+                            Padding="5,0"
                             Height="34"
                             ToolTip="{loc:Loc Editor_Preview_resolution_tooltip_6B44C8}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

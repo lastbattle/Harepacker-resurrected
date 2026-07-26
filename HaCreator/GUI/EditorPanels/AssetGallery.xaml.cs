@@ -46,6 +46,42 @@ namespace HaCreator.GUI.EditorPanels
         public AssetGalleryItem Item { get; }
     }
 
+    public sealed class AssetGalleryListBox : ListBox
+    {
+        public event EventHandler<AssetGalleryItemEventArgs> ContainerPrepared;
+
+        protected override DependencyObject GetContainerForItemOverride()
+            => new AssetGalleryListBoxItem();
+
+        protected override bool IsItemItsOwnContainerOverride(object item)
+            => item is AssetGalleryListBoxItem;
+
+        internal void NotifyContainerPrepared(AssetGalleryItem item)
+            => ContainerPrepared?.Invoke(this, new AssetGalleryItemEventArgs(item));
+    }
+
+    public sealed class AssetGalleryListBoxItem : ListBoxItem
+    {
+        public AssetGalleryListBoxItem()
+        {
+            DataContextChanged += AssetGalleryListBoxItem_DataContextChanged;
+        }
+
+        private void AssetGalleryListBoxItem_DataContextChanged(
+            object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.NewValue is not AssetGalleryItem item)
+                return;
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                if (ReferenceEquals(DataContext, item) &&
+                    ItemsControl.ItemsControlFromItemContainer(this) is AssetGalleryListBox owner)
+                    owner.NotifyContainerPrepared(item);
+            }));
+        }
+    }
+
     public partial class AssetGallery : UserControl
     {
         private readonly BulkObservableCollection<AssetGalleryItem> items = new();
@@ -187,13 +223,10 @@ namespace HaCreator.GUI.EditorPanels
                 (query.Length == 0 || item.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        private void AssetTile_Loaded(object sender, RoutedEventArgs e)
+        private void AssetList_ContainerPrepared(object sender, AssetGalleryItemEventArgs e)
         {
-            if (sender is ListBoxItem { DataContext: AssetGalleryItem item })
-            {
-                QueueContentLoad(item);
-                ItemRealized?.Invoke(this, new AssetGalleryItemEventArgs(item));
-            }
+            QueueContentLoad(e.Item);
+            ItemRealized?.Invoke(this, e);
         }
 
         private void QueueContentLoad(AssetGalleryItem item)
