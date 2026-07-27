@@ -470,6 +470,7 @@ namespace HaRepacker.GUI.Panels
         private void DataTreeView_Drop(object sender, System.Windows.DragEventArgs e)
         {
             if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) NativeFilesDropped?.Invoke(this, paths);
+            e.Handled = true;
         }
 
         public event EventHandler<string[]> NativeFilesDropped;
