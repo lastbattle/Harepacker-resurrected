@@ -114,7 +114,7 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Foreground="{DynamicResource HareMutedTextBrush}" VerticalAlignment="Center"
                                Text="{local:AnimationEditorText AnimationEditor_Zoom}"/>
-                    <Slider x:Name="zoomSlider" Width="110" Minimum="0.25" Maximum="4" Value="1.5" Margin="8,0"
+                    <Slider x:Name="zoomSlider" Width="110" Minimum="0.25" Maximum="4" Value="1.5" Margin="8,8"
                             TickFrequency="0.25" ValueChanged="Zoom_ValueChanged"
                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Zoom}"/>
                     <TextBlock x:Name="zoomText" Width="48" VerticalAlignment="Center" Text="150%"/>
@@ -139,9 +139,9 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="5*"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="160"/>
+                        <RowDefinition Height="5*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Assets}"/>
                     <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" SelectionChanged="Kind_SelectionChanged"
