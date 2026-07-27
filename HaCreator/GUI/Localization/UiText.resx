@@ -141,6 +141,7 @@ Choose Extract new to extract WZ files to IMG format, or Browse to add an existi
 Check that the directory is valid and the file is not in use.</value></data>
   <data name="Init_SelectMapleFolderDialog" xml:space="preserve"><value>Select the MapleStory folder.</value></data>
   <data name="Init_ExtractedFormat" xml:space="preserve"><value>Extracted: {0:yyyy-MM-dd HH:mm}</value></data>
+  <data name="Init_DirectoryPathFormat" xml:space="preserve"><value>Path: {0}</value></data>
   <data name="Init_EncryptionFormat" xml:space="preserve"><value>Encryption: {0}</value></data>
   <data name="Init_FormatFormat" xml:space="preserve"><value>Format: {0}</value></data>
   <data name="Init_TotalImagesFormat" xml:space="preserve"><value>Total Images: {0:N0}</value></data>

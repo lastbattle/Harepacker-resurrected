@@ -68,4 +68,13 @@
   <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} 毫秒</value></data>
   <data name="AnimationEditor_Items" xml:space="preserve"><value>物品动画</value></data>
   <data name="AnimationEditor_Equipment" xml:space="preserve"><value>装备动画</value></data>
+  <data name="AnimationEditor_Characters" xml:space="preserve"><value>角色动画</value></data>
+  <data name="AnimationEditor_Effects" xml:space="preserve"><value>特效动画</value></data>
+  <data name="AnimationEditor_Morphs" xml:space="preserve"><value>变身动画</value></data>
+  <data name="AnimationEditor_UI" xml:space="preserve"><value>UI动画</value></data>
+  <data name="AnimationEditor_Etc" xml:space="preserve"><value>其他动画</value></data>
+  <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>地图图块</value></data>
+  <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>地图粒子</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>AI 放大所选图层…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>增强所选帧图层，与原图比较，并仅在接受结果后应用。</value></data>
 </root>

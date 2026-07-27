@@ -40,6 +40,7 @@ namespace HaCreator.GUI.FrameAnimation
         private const string ClipboardPngFormat = "PNG";
         private const string AnimationClipboardPngFormat = "HaCreator.AnimationFrame.Png";
         private const string AnimationClipboardTokenFormat = "HaCreator.AnimationFrame.Token";
+        private const string AnimationTimelineFrameFormat = "HaCreator.AnimationFrame.TimelineItem";
         private sealed record EditOperation(Action Undo, Action Redo, string Description);
         private sealed record AIChoice<T>(T Value, string Name)
         {
@@ -76,8 +77,10 @@ namespace HaCreator.GUI.FrameAnimation
         private bool _suppressRawPropertyTracking;
         private bool _updatingResizeFields;
         private DrawingBitmap _copiedFrameBitmap;
-        private WzPngProperty _copiedFramePngProperty;
+        private WzImageProperty _copiedFrameProperty;
         private string _copiedFrameClipboardToken;
+        private System.Windows.Point _timelineDragStart;
+        private AnimationFrameModel _timelineDragFrame;
 
         public AnimationEditor()
         {
@@ -86,12 +89,19 @@ namespace HaCreator.GUI.FrameAnimation
             {
                 new KindItem(AnimationAssetKind.Monster, AnimationEditorTextExtension.Get("AnimationEditor_Monsters")),
                 new KindItem(AnimationAssetKind.Npc, AnimationEditorTextExtension.Get("AnimationEditor_Npcs")),
+                new KindItem(AnimationAssetKind.Character, AnimationEditorTextExtension.Get("AnimationEditor_Characters")),
+                new KindItem(AnimationAssetKind.Effect, AnimationEditorTextExtension.Get("AnimationEditor_Effects")),
+                new KindItem(AnimationAssetKind.Morph, AnimationEditorTextExtension.Get("AnimationEditor_Morphs")),
+                new KindItem(AnimationAssetKind.UI, AnimationEditorTextExtension.Get("AnimationEditor_UI")),
+                new KindItem(AnimationAssetKind.Etc, AnimationEditorTextExtension.Get("AnimationEditor_Etc")),
                 new KindItem(AnimationAssetKind.Reactor, AnimationEditorTextExtension.Get("AnimationEditor_Reactors")),
                 new KindItem(AnimationAssetKind.Skill, AnimationEditorTextExtension.Get("AnimationEditor_Skills")),
                 new KindItem(AnimationAssetKind.Item, AnimationEditorTextExtension.Get("AnimationEditor_Items")),
                 new KindItem(AnimationAssetKind.Equipment, AnimationEditorTextExtension.Get("AnimationEditor_Equipment")),
                 new KindItem(AnimationAssetKind.MapObject, AnimationEditorTextExtension.Get("AnimationEditor_MapObjects")),
-                new KindItem(AnimationAssetKind.MapBackground, AnimationEditorTextExtension.Get("AnimationEditor_Backgrounds"))
+                new KindItem(AnimationAssetKind.MapBackground, AnimationEditorTextExtension.Get("AnimationEditor_Backgrounds")),
+                new KindItem(AnimationAssetKind.MapTile, AnimationEditorTextExtension.Get("AnimationEditor_MapTiles")),
+                new KindItem(AnimationAssetKind.MapParticle, AnimationEditorTextExtension.Get("AnimationEditor_MapParticles"))
             };
             kindComboBox.DisplayMemberPath = nameof(KindItem.Name);
             assetListBox.ItemsSource = _visibleAssets;
@@ -136,6 +146,7 @@ namespace HaCreator.GUI.FrameAnimation
                 ApplyAssetFilter();
                 trackListBox.ItemsSource = null;
                 ClearDocument();
+                SetCurrentPath(null);
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_AssetsLoaded", _allAssets.Count), false);
             }
             catch (Exception ex)
@@ -187,6 +198,7 @@ namespace HaCreator.GUI.FrameAnimation
                 _selectedTrack = null;
                 ClearDocument();
                 previewPathText.Text = asset.WzPath;
+                SetCurrentPath(asset.WzPath);
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_AnimationsLoaded", tracks.Count), loaded.linkedOwner);
                 if (tracks.Count > 0)
                     trackListBox.SelectedIndex = 0;
@@ -245,11 +257,13 @@ namespace HaCreator.GUI.FrameAnimation
             _document = document;
             _document.DirtyChanged += Document_DirtyChanged;
             timelineListBox.ItemsSource = _document.Frames;
-            animationPropertiesGrid.ItemsSource = _document.AnimationProperties;
+            animationPropertyTree.ItemsSource = _document.AnimationProperties;
             AttachRawPropertyTracking();
             timelineListBox.SelectedIndex = 0;
             scrubSlider.Maximum = Math.Max(0, _document.Frames.Count - 1);
-            previewPathText.Text = $"{document.Category}/{document.ImageLookupName}/{document.Track.Path}";
+            string currentPath = $"{document.Category}/{document.ImageLookupName}/{document.Track.Path}";
+            previewPathText.Text = currentPath;
+            SetCurrentPath(currentPath);
             _undo.Clear();
             _redo.Clear();
             _hasUntrackedDirty = false;
@@ -266,7 +280,7 @@ namespace HaCreator.GUI.FrameAnimation
             timelineListBox.ItemsSource = null;
             layerComboBox.ItemsSource = null;
             framePropertiesGrid.ItemsSource = null;
-            animationPropertiesGrid.ItemsSource = null;
+            animationPropertyTree.ItemsSource = null;
             previewCanvas.Children.Clear();
             frameCounterText.Text = "0 / 0";
             frameIndexText.Text = string.Empty;
@@ -309,6 +323,7 @@ namespace HaCreator.GUI.FrameAnimation
             bool editable = layer?.Canvas != null && !layer.IsLinked;
             transformEditorGrid.IsEnabled = editable;
             replaceBitmapButton.IsEnabled = editable;
+            aiUpscaleButton.IsEnabled = editable;
             SetResizeFields(layer);
             TrackRawPropertyRows(layer?.Properties);
             RenderPreview();
@@ -463,22 +478,22 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void CopySelectedFrameToClipboard()
         {
-            AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
+            AnimationFrameModel frame = _document?.SelectedFrame;
+            AnimationLayerModel layer = frame?.SelectedLayer;
             WzCanvasProperty canvas = layer?.Canvas ?? layer?.SourceCanvas;
-            if (canvas == null)
+            if (frame == null || canvas == null)
                 return;
             try
             {
                 using DrawingBitmap source = canvas.GetLinkedWzCanvasBitmap();
                 if (source == null)
                     return;
+                WzImageProperty copiedFrame = frame.BuildCommittedFrame(frame.WorkingFrame.Name, materializeLink: true);
                 byte[] png = EncodePng(source);
                 _copiedFrameBitmap?.Dispose();
                 _copiedFrameBitmap = CloneBitmapWithAlpha(source);
-                _copiedFramePngProperty?.Dispose();
-                _copiedFramePngProperty = canvas.PngProperty?.Width > 0 && canvas.PngProperty.Height > 0
-                    ? (WzPngProperty)canvas.PngProperty.DeepClone()
-                    : null;
+                _copiedFrameProperty?.Dispose();
+                _copiedFrameProperty = copiedFrame;
                 _copiedFrameClipboardToken = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
                 DataObject data = new();
                 data.SetData(AnimationClipboardPngFormat, png, false);
@@ -499,9 +514,9 @@ namespace HaCreator.GUI.FrameAnimation
             try
             {
                 IDataObject clipboard = Clipboard.GetDataObject();
-                if (_copiedFramePngProperty != null && HasMatchingCopiedFrameToken(clipboard))
+                if (_copiedFrameProperty != null && HasMatchingCopiedFrameToken(clipboard))
                 {
-                    if (InsertCopiedWzFrame(template, template.Index + 1,
+                    if (InsertCopiedWzFrame(_copiedFrameProperty, template.Index + 1,
                         AnimationEditorTextExtension.Get("AnimationEditor_PasteFrame")) > 0)
                         SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramePasted"), false);
                     return;
@@ -528,14 +543,55 @@ namespace HaCreator.GUI.FrameAnimation
             catch (Exception ex) { SetError(ex.Message); }
         }
 
+        private void Timeline_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _timelineDragStart = e.GetPosition(timelineListBox);
+            _timelineDragFrame = GetTimelineFrame(e.OriginalSource as DependencyObject);
+        }
+
+        private void Timeline_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _timelineDragFrame == null ||
+                _document == null || _document.Track.IsSingleCanvas || !_document.Frames.Contains(_timelineDragFrame))
+                return;
+
+            Vector delta = e.GetPosition(timelineListBox) - _timelineDragStart;
+            if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            AnimationFrameModel frame = _timelineDragFrame;
+            _timelineDragFrame = null;
+            DataObject data = new();
+            data.SetData(AnimationTimelineFrameFormat, frame, false);
+            DragDrop.DoDragDrop(timelineListBox, data, DragDropEffects.Move);
+        }
+
         private void Timeline_PreviewDragOver(object sender, DragEventArgs e)
         {
+            AnimationFrameModel frame = GetTimelineFrame(e.Data);
+            if (frame != null)
+            {
+                e.Effects = _document?.Track.IsSingleCanvas != true && _document?.Frames.Contains(frame) == true
+                    ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
             e.Effects = CanInsertDroppedImages(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
         }
 
         private void Timeline_Drop(object sender, DragEventArgs e)
         {
+            AnimationFrameModel draggedFrame = GetTimelineFrame(e.Data);
+            if (draggedFrame != null)
+            {
+                if (_document?.Track.IsSingleCanvas != true && _document?.Frames.Contains(draggedFrame) == true)
+                    ReorderTimelineFrame(draggedFrame, GetTimelineDropIndex(e));
+                e.Handled = true;
+                return;
+            }
+
             AnimationFrameModel template = _document?.SelectedFrame;
             if (template == null || _document.Track.IsSingleCanvas ||
                 e.Data.GetData(DataFormats.FileDrop) is not string[] files)
@@ -546,6 +602,37 @@ namespace HaCreator.GUI.FrameAnimation
             if (inserted > 0)
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramesAdded", inserted), false);
             e.Handled = true;
+        }
+
+        private AnimationFrameModel GetTimelineFrame(DependencyObject source)
+        {
+            if (ItemsControl.ContainerFromElement(timelineListBox, source) is not ListBoxItem item)
+                return null;
+            return item.DataContext as AnimationFrameModel;
+        }
+
+        private AnimationFrameModel GetTimelineFrame(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(AnimationTimelineFrameFormat, false))
+                return null;
+            return data.GetData(AnimationTimelineFrameFormat, false) as AnimationFrameModel;
+        }
+
+        private void ReorderTimelineFrame(AnimationFrameModel frame, int insertionIndex)
+        {
+            if (_document == null || frame == null || !_document.Frames.Contains(frame))
+                return;
+            int from = frame.Index;
+            int to = Math.Clamp(insertionIndex, 0, _document.Frames.Count);
+            if (from < to)
+                to--;
+            if (from == to)
+                return;
+
+            Execute(new EditOperation(
+                () => MoveFrame(frame, to, from),
+                () => MoveFrame(frame, from, to),
+                AnimationEditorTextExtension.Get("AnimationEditor_MoveFrame")));
         }
 
         private bool CanInsertDroppedImages(IDataObject data)
@@ -605,18 +692,12 @@ namespace HaCreator.GUI.FrameAnimation
             return InsertFrames(frames, index, description);
         }
 
-        private int InsertCopiedWzFrame(AnimationFrameModel template, int index, string description)
+        private int InsertCopiedWzFrame(WzImageProperty copiedFrame, int index, string description)
         {
-            string layerName = template.SelectedLayer?.Name ?? template.Layers.FirstOrDefault()?.Name;
-            WzImageProperty property = template.BuildCommittedFrame(index.ToString(CultureInfo.InvariantCulture), materializeLink: true);
-            var temporary = new AnimationFrameModel(property, property, index, () => { });
-            AnimationLayerModel layer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layerName)
-                ?? temporary.Layers.FirstOrDefault();
-            if (layer?.Canvas == null || _copiedFramePngProperty == null)
+            if (_document == null || copiedFrame == null)
                 return 0;
-            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.InlinkPropertyName);
-            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.OutlinkPropertyName);
-            layer.Canvas.PngProperty = (WzPngProperty)_copiedFramePngProperty.DeepClone();
+            WzImageProperty property = copiedFrame.DeepClone();
+            property.Name = index.ToString(CultureInfo.InvariantCulture);
             AnimationFrameModel frame = new(property, property, index, _document.MarkDirty);
             return InsertFrames(new List<AnimationFrameModel> { frame }, index, description);
         }
@@ -834,6 +915,43 @@ namespace HaCreator.GUI.FrameAnimation
                 () => ReplaceFrameProperty(frame, before.DeepClone()),
                 () => ReplaceFrameProperty(frame, after.DeepClone()),
                 AnimationEditorTextExtension.Get("AnimationEditor_ReplaceBitmap")));
+        }
+
+        private void AIUpscale_Click(object sender, RoutedEventArgs e)
+        {
+            AnimationFrameModel frame = _document?.SelectedFrame;
+            AnimationLayerModel layer = frame?.SelectedLayer;
+            if (frame == null || layer?.Canvas == null || layer.IsLinked)
+                return;
+
+            using DrawingBitmap source = layer.Canvas.GetLinkedWzCanvasBitmap();
+            if (source == null)
+            {
+                SetError(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
+                return;
+            }
+
+            UpscaleImageForm dialog = new(source) { Owner = this };
+            dialog.ShowDialog();
+            if (!dialog.UserAcceptedImage || dialog.UpscaledImage == null)
+                return;
+            using DrawingBitmap upscaled = dialog.UpscaledImage;
+
+            WzImageProperty before = frame.WorkingFrame.DeepClone();
+            WzImageProperty after = before.DeepClone();
+            var temporary = new AnimationFrameModel(after, after, frame.Index, () => { });
+            AnimationLayerModel upscaledLayer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layer.Name)
+                ?? temporary.Layers.FirstOrDefault();
+            if (upscaledLayer?.Canvas == null)
+                return;
+
+            RemoveCanvasLink(upscaledLayer.Canvas, WzCanvasProperty.InlinkPropertyName);
+            RemoveCanvasLink(upscaledLayer.Canvas, WzCanvasProperty.OutlinkPropertyName);
+            upscaledLayer.ReplaceBitmap(new DrawingBitmap(upscaled));
+            Execute(new EditOperation(
+                () => ReplaceFrameProperty(frame, before.DeepClone()),
+                () => ReplaceFrameProperty(frame, after.DeepClone()),
+                AnimationEditorTextExtension.Get("AnimationEditor_AIUpscale")));
         }
 
         private static void RemoveCanvasLink(WzCanvasProperty canvas, string propertyName)
@@ -1370,7 +1488,7 @@ namespace HaCreator.GUI.FrameAnimation
                 WzImageProperty saved = _repository.Commit(_document);
                 _document.AcceptSaved(saved);
                 timelineListBox.ItemsSource = _document.Frames;
-                animationPropertiesGrid.ItemsSource = _document.AnimationProperties;
+                animationPropertyTree.ItemsSource = _document.AnimationProperties;
                 AttachRawPropertyTracking();
                 timelineListBox.SelectedIndex = 0;
                 _undo.Clear();
@@ -1416,8 +1534,8 @@ namespace HaCreator.GUI.FrameAnimation
             }
             _copiedFrameBitmap?.Dispose();
             _copiedFrameBitmap = null;
-            _copiedFramePngProperty?.Dispose();
-            _copiedFramePngProperty = null;
+            _copiedFrameProperty?.Dispose();
+            _copiedFrameProperty = null;
             _closingAfterSave = true;
         }
 
@@ -1500,7 +1618,7 @@ namespace HaCreator.GUI.FrameAnimation
         {
             if (_document == null)
                 return;
-            TrackRawPropertyRows(_document.AnimationProperties);
+            TrackRawPropertyNodes(_document.AnimationProperties);
             foreach (AnimationFrameModel frame in _document.Frames)
             foreach (AnimationLayerModel layer in frame.Layers)
                 TrackRawPropertyRows(layer.Properties);
@@ -1518,6 +1636,18 @@ namespace HaCreator.GUI.FrameAnimation
                 row.ValueChanging += RawProperty_ValueChanging;
                 row.ValueChanged -= RawProperty_ValueChanged;
                 row.ValueChanged += RawProperty_ValueChanged;
+            }
+        }
+
+        private void TrackRawPropertyNodes(IEnumerable<AnimationPropertyNode> nodes)
+        {
+            foreach (AnimationPropertyNode node in nodes ?? Enumerable.Empty<AnimationPropertyNode>())
+            {
+                node.ValueChanging -= RawAnimationPropertyNode_ValueChanging;
+                node.ValueChanging += RawAnimationPropertyNode_ValueChanging;
+                node.ValueChanged -= RawAnimationPropertyNode_ValueChanged;
+                node.ValueChanged += RawAnimationPropertyNode_ValueChanged;
+                TrackRawPropertyNodes(node.Children);
             }
         }
 
@@ -1558,11 +1688,126 @@ namespace HaCreator.GUI.FrameAnimation
             RenderPreview();
         }
 
+        private void RawAnimationPropertyNode_ValueChanging(object sender, AnimationPropertyValueChangedEventArgs e)
+        {
+            if (!_suppressRawPropertyTracking)
+                BeginTrackedEdit();
+        }
+
+        private void RawAnimationPropertyNode_ValueChanged(object sender, AnimationPropertyValueChangedEventArgs e)
+        {
+            if (_suppressRawPropertyTracking || sender is not AnimationPropertyNode node)
+                return;
+            try
+            {
+                PushExecuted(new EditOperation(
+                    () => SetAnimationPropertyNodeValue(node, e.OldValue),
+                    () => SetAnimationPropertyNodeValue(node, e.NewValue),
+                    GetAnimationPropertyNodePath(node)));
+            }
+            finally
+            {
+                EndTrackedEdit();
+            }
+            RenderPreview();
+        }
+
+        private void SetAnimationPropertyNodeValue(AnimationPropertyNode node, string value)
+        {
+            _suppressRawPropertyTracking = true;
+            try { node.Value = value; }
+            finally { _suppressRawPropertyTracking = false; }
+        }
+
+        private static string GetAnimationPropertyNodePath(AnimationPropertyNode node)
+        {
+            List<string> segments = new();
+            for (AnimationPropertyNode current = node; current != null; current = current.ParentNode)
+                segments.Add(current.Name);
+            segments.Reverse();
+            return string.Join("/", segments);
+        }
+
         private void SetRawPropertyValue(AnimationPropertyRow row, string value)
         {
             _suppressRawPropertyTracking = true;
             try { row.Value = value; }
             finally { _suppressRawPropertyTracking = false; }
+        }
+
+        private void AddPropertyFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null)
+                return;
+
+            string name = newPropertyNameTextBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                name = "newFolder";
+            if (name.Contains('/') || name is "." or "..")
+            {
+                MessageBox.Show(this, AnimationEditorTextExtension.Get("AnimationEditor_InvalidFolderName"),
+                    AnimationEditorTextExtension.Get("AnimationEditor_AnimationProperties"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            AnimationPropertyNode selected = animationPropertyTree.SelectedItem as AnimationPropertyNode;
+            IPropertyContainer parent = selected?.IsContainer == true
+                ? selected.Property as IPropertyContainer
+                : selected?.Property.Parent as IPropertyContainer;
+            parent ??= _document.WorkingTrack as IPropertyContainer;
+            if (parent == null)
+                return;
+            if (parent.WzProperties.Any(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(this, AnimationEditorTextExtension.Get("AnimationEditor_FolderAlreadyExists", name),
+                    AnimationEditorTextExtension.Get("AnimationEditor_AnimationProperties"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            WzSubProperty folder = new(name);
+            int index = parent.WzProperties.Count;
+            Execute(new EditOperation(
+                () =>
+                {
+                    parent.RemoveProperty(folder);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                () =>
+                {
+                    parent.WzProperties.Insert(index, folder);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                AnimationEditorTextExtension.Get("AnimationEditor_AddFolder")));
+            newPropertyNameTextBox.SelectAll();
+            SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FolderAdded", name), false);
+        }
+
+        private void DeleteProperty_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null || animationPropertyTree.SelectedItem is not AnimationPropertyNode selected || !selected.CanDelete)
+                return;
+            if (selected.Property.Parent is not IPropertyContainer parent)
+                return;
+
+            WzImageProperty property = selected.Property;
+            int index = parent.WzProperties.IndexOf(property);
+            Execute(new EditOperation(
+                () =>
+                {
+                    parent.WzProperties.Insert(Math.Max(0, index), property);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                () =>
+                {
+                    parent.RemoveProperty(property);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                AnimationEditorTextExtension.Get("AnimationEditor_DeleteProperty")));
+            SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_PropertyDeleted", property.Name), false);
         }
 
         private void PropertyGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
@@ -1820,7 +2065,7 @@ namespace HaCreator.GUI.FrameAnimation
             if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
             {
                 if (aiPromptTextBox.IsKeyboardFocusWithin || framePropertiesGrid.IsKeyboardFocusWithin ||
-                    animationPropertiesGrid.IsKeyboardFocusWithin)
+                    animationPropertyTree.IsKeyboardFocusWithin)
                     return;
                 if (Keyboard.FocusedElement is DependencyObject escapeFocus)
                 {
@@ -1947,6 +2192,14 @@ namespace HaCreator.GUI.FrameAnimation
             assetListBox.SelectedItem = _selectedAsset;
             trackListBox.SelectedItem = _selectedTrack;
             _suppressSelection = false;
+        }
+
+        private void SetCurrentPath(string path)
+        {
+            currentPathText.Text = path ?? string.Empty;
+            Visibility visibility = string.IsNullOrEmpty(path) ? Visibility.Collapsed : Visibility.Visible;
+            currentPathSeparator.Visibility = visibility;
+            currentPathText.Visibility = visibility;
         }
 
         private void SetStatus(string message, bool warning)

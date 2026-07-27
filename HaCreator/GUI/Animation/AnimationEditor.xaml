@@ -65,6 +65,22 @@
                 <Setter Property="VerticalAlignment" Value="Center"/>
                 <Setter Property="Margin" Value="0,4,8,4"/>
             </Style>
+
+            <DrawingImage x:Key="AIUpscaleIcon">
+                <DrawingImage.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="#2563EB"
+                                         Geometry="M 10,2 L 12,7.5 L 17.5,9.5 L 12,11.5 L 10,17 L 8,11.5 L 2.5,9.5 L 8,7.5 Z"/>
+                        <GeometryDrawing Brush="#8B5CF6"
+                                         Geometry="M 5,15 L 6,18 L 9,19 L 6,20 L 5,23 L 4,20 L 1,19 L 4,18 Z"/>
+                        <GeometryDrawing Geometry="M 16,3 L 22,3 L 22,9 M 22,3 L 15,10">
+                            <GeometryDrawing.Pen>
+                                <Pen Brush="#7C3AED" Thickness="1.8" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+                            </GeometryDrawing.Pen>
+                        </GeometryDrawing>
+                    </DrawingGroup>
+                </DrawingImage.Drawing>
+            </DrawingImage>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -114,7 +130,7 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Foreground="{DynamicResource HareMutedTextBrush}" VerticalAlignment="Center"
                                Text="{local:AnimationEditorText AnimationEditor_Zoom}"/>
-                    <Slider x:Name="zoomSlider" Width="110" Minimum="0.25" Maximum="4" Value="1.5" Margin="8,0"
+                    <Slider x:Name="zoomSlider" Width="110" Minimum="0.25" Maximum="4" Value="1.5" Margin="8,8"
                             TickFrequency="0.25" ValueChanged="Zoom_ValueChanged"
                             AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Zoom}"/>
                     <TextBlock x:Name="zoomText" Width="48" VerticalAlignment="Center" Text="150%"/>
@@ -139,12 +155,12 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="5*"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="160"/>
+                        <RowDefinition Height="5*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Assets}"/>
-                    <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" SelectionChanged="Kind_SelectionChanged"
+                    <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" MaxDropDownHeight="520" SelectionChanged="Kind_SelectionChanged"
                               AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetType}"/>
                     <TextBox x:Name="assetSearchBox" Grid.Row="2" Margin="0,0,0,8"
                              ToolTip="{local:AnimationEditorText AnimationEditor_SearchTooltip}"
@@ -157,8 +173,18 @@
                     <TextBlock Grid.Row="4" Margin="0,12,0,6" Style="{StaticResource HareSectionTitleStyle}"
                                Text="{local:AnimationEditorText AnimationEditor_Animations}"/>
                     <ListBox x:Name="trackListBox" Grid.Row="5" SelectionChanged="Track_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TrackList}"
-                             MouseDoubleClick="Track_MouseDoubleClick"/>
+                             MouseDoubleClick="Track_MouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
+                                    <TextBlock Text="{Binding Name}"/>
+                                    <TextBlock Text="{Binding FrameCount, StringFormat={}  ({0})}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
@@ -272,7 +298,9 @@
                             </StackPanel>
                         </Grid>
                         <ListBox x:Name="timelineListBox" Grid.Row="1" SelectionChanged="Timeline_SelectionChanged"
-                                 AllowDrop="True" PreviewDragOver="Timeline_PreviewDragOver" Drop="Timeline_Drop"
+                                 AllowDrop="True" PreviewMouseLeftButtonDown="Timeline_PreviewMouseLeftButtonDown"
+                                 PreviewMouseMove="Timeline_PreviewMouseMove" PreviewDragOver="Timeline_PreviewDragOver"
+                                 Drop="Timeline_Drop"
                                  ToolTip="{local:AnimationEditorText AnimationEditor_TimelineClipboardTooltip}"
                                  AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TimelineFrames}"
                                  ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -353,6 +381,14 @@
                                         Content="{local:AnimationEditorText AnimationEditor_MakeIndependent}" Click="Materialize_Click" Visibility="Collapsed"/>
                                 <Button x:Name="replaceBitmapButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
                                         Content="{local:AnimationEditorText AnimationEditor_ReplaceBitmap}" Click="ReplaceBitmap_Click"/>
+                                <Button x:Name="aiUpscaleButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}" IsEnabled="False"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_AIUpscaleTooltip}"
+                                        Click="AIUpscale_Click">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Image Width="20" Height="20" Margin="0,0,8,0" Source="{StaticResource AIUpscaleIcon}"/>
+                                        <TextBlock VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_AIUpscale}"/>
+                                    </StackPanel>
+                                </Button>
 
                                 <Separator Margin="0,12"/>
                                 <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_ResizeBitmap}"/>
@@ -394,15 +430,48 @@
                         </ScrollViewer>
                     </TabItem>
                     <TabItem Header="{local:AnimationEditorText AnimationEditor_AnimationProperties}">
-                        <DataGrid x:Name="animationPropertiesGrid" Margin="4,10" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" RowHeaderWidth="0"
-                                  BeginningEdit="PropertyGrid_BeginningEdit"
-                                  AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AnimationPropertiesGrid}">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Property}" Binding="{Binding Name}" IsReadOnly="True" Width="*"/>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Type}" Binding="{Binding Type}" IsReadOnly="True" Width="84"/>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Value}" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="120"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Grid Margin="4,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{local:AnimationEditorText AnimationEditor_AnimationPropertyTreeDescription}"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource HareMutedTextBrush}"/>
+                            <TreeView x:Name="animationPropertyTree" Grid.Row="1" Margin="0,8,0,8"
+                                      AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AnimationPropertiesGrid}">
+                                <TreeView.Resources>
+                                    <HierarchicalDataTemplate DataType="{x:Type local:AnimationPropertyNode}" ItemsSource="{Binding Children}">
+                                        <Grid MinWidth="300">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="82"/>
+                                                <ColumnDefinition Width="112"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Type}" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource HareMutedTextBrush}" Margin="0,0,6,0"/>
+                                            <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=LostFocus}"
+                                                     IsReadOnly="{Binding IsReadOnly}" Padding="4,2"/>
+                                        </Grid>
+                                    </HierarchicalDataTemplate>
+                                </TreeView.Resources>
+                            </TreeView>
+                            <Grid Grid.Row="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="newPropertyNameTextBox" Margin="0,0,6,0"
+                                         ToolTip="{local:AnimationEditorText AnimationEditor_NewFolderTooltip}"
+                                         Text="newFolder"/>
+                                <Button Grid.Column="1" Margin="0,0,6,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_AddFolder}" Click="AddPropertyFolder_Click"/>
+                                <Button Grid.Column="2" Style="{StaticResource HareDangerButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_DeleteProperty}" Click="DeleteProperty_Click"/>
+                            </Grid>
+                        </Grid>
                     </TabItem>
                     <TabItem Header="{local:AnimationEditorText AnimationEditor_AI}">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -469,12 +538,23 @@
 
         <Border Grid.Row="2" Background="{DynamicResource HareSurfaceBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="{DynamicResource HareSuccessBrush}" VerticalAlignment="Center"/>
                 <TextBlock x:Name="statusText" Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Ready}"
                            AutomationProperties.LiveSetting="Polite"/>
-                <TextBlock x:Name="coordinateText" Grid.Column="2" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"/>
-                <TextBlock x:Name="dirtyText" Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <Separator x:Name="currentPathSeparator" Grid.Column="2" Margin="4,5" Visibility="Collapsed"/>
+                <TextBlock x:Name="currentPathText" Grid.Column="3" Margin="8,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource HareMutedTextBrush}" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" Visibility="Collapsed"/>
+                <TextBlock x:Name="coordinateText" Grid.Column="4" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"/>
+                <TextBlock x:Name="dirtyText" Grid.Column="5" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
             </Grid>
         </Border>
     </Grid>

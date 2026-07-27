@@ -68,4 +68,13 @@
   <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0} 毫秒</value></data>
   <data name="AnimationEditor_Items" xml:space="preserve"><value>道具動畫</value></data>
   <data name="AnimationEditor_Equipment" xml:space="preserve"><value>裝備動畫</value></data>
+  <data name="AnimationEditor_Characters" xml:space="preserve"><value>角色動畫</value></data>
+  <data name="AnimationEditor_Effects" xml:space="preserve"><value>特效動畫</value></data>
+  <data name="AnimationEditor_Morphs" xml:space="preserve"><value>變身動畫</value></data>
+  <data name="AnimationEditor_UI" xml:space="preserve"><value>UI動畫</value></data>
+  <data name="AnimationEditor_Etc" xml:space="preserve"><value>其他動畫</value></data>
+  <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>地圖圖塊</value></data>
+  <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>地圖粒子</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>AI 放大所選圖層…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>增強所選畫格圖層，與原圖比較，並僅在接受結果後套用。</value></data>
 </root>

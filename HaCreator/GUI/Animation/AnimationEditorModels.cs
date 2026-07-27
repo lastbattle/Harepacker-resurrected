@@ -29,12 +29,19 @@ namespace HaCreator.GUI.FrameAnimation
     {
         Monster,
         Npc,
+        Character,
+        Effect,
+        Morph,
+        UI,
+        Etc,
         Reactor,
         Skill,
         Item,
         Equipment,
         MapObject,
-        MapBackground
+        MapBackground,
+        MapTile,
+        MapParticle
     }
 
     public sealed class AnimationAssetDescriptor
@@ -158,6 +165,84 @@ namespace HaCreator.GUI.FrameAnimation
                 }
             }
             return false;
+        }
+
+        private void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public sealed class AnimationPropertyNode : INotifyPropertyChanged
+    {
+        private string _value;
+
+        public AnimationPropertyNode(WzImageProperty property, AnimationPropertyNode parent, Action changed)
+        {
+            Property = property ?? throw new ArgumentNullException(nameof(property));
+            ParentNode = parent;
+            Changed = changed;
+            Name = property.Name;
+            Type = property.PropertyType.ToString();
+            IsReadOnly = !AnimationPropertyRow.CanEdit(property);
+            RefreshValue();
+            RefreshChildren();
+        }
+
+        private Action Changed { get; }
+        public WzImageProperty Property { get; }
+        public AnimationPropertyNode ParentNode { get; }
+        public string Name { get; }
+        public string Type { get; }
+        public bool IsReadOnly { get; }
+        public bool IsContainer => Property is IPropertyContainer && Property.WzProperties != null;
+        public bool CanDelete => Property.Parent is IPropertyContainer;
+        public ObservableCollection<AnimationPropertyNode> Children { get; } = new();
+
+        public string Value
+        {
+            get => _value;
+            set
+            {
+                if (IsReadOnly || _value == value)
+                    return;
+                string oldValue = _value;
+                if (!AnimationPropertyRow.TrySetValue(Property, value))
+                    return;
+                RefreshValue();
+                ValueChanging?.Invoke(this, new AnimationPropertyValueChangedEventArgs(oldValue, _value));
+                OnPropertyChanged();
+                Changed?.Invoke();
+                ValueChanged?.Invoke(this, new AnimationPropertyValueChangedEventArgs(oldValue, _value));
+            }
+        }
+
+        public event EventHandler<AnimationPropertyValueChangedEventArgs> ValueChanging;
+        public event EventHandler<AnimationPropertyValueChangedEventArgs> ValueChanged;
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public void RefreshChildren()
+        {
+            Children.Clear();
+            if (!IsContainer)
+                return;
+
+            foreach (WzImageProperty child in Property.WzProperties.Where(child => !AnimationAssetRepository.IsFrameProperty(child)))
+                Children.Add(new AnimationPropertyNode(child, this, Changed));
+            OnPropertyChanged(nameof(Children));
+        }
+
+        private void RefreshValue()
+        {
+            if (!IsContainer)
+            {
+                _value = AnimationPropertyRow.FormatValue(Property);
+                return;
+            }
+
+            int childCount = Property.WzProperties?.Count ?? 0;
+            int frameCount = Property.WzProperties?.Count(AnimationAssetRepository.IsFrameProperty) ?? 0;
+            _value = frameCount > 0
+                ? $"{childCount} children ({frameCount} frame(s))"
+                : $"{childCount} children";
         }
 
         private void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
@@ -453,7 +538,7 @@ namespace HaCreator.GUI.FrameAnimation
             WorkingTrack.Name = sourceTrack.Name;
             IsLinkedOwner = linkedOwner;
             Frames = new ObservableCollection<AnimationFrameModel>();
-            AnimationProperties = new ObservableCollection<AnimationPropertyRow>();
+            AnimationProperties = new ObservableCollection<AnimationPropertyNode>();
             LoadFrames();
             LoadAnimationProperties();
             IsDirty = false;
@@ -468,7 +553,7 @@ namespace HaCreator.GUI.FrameAnimation
         public WzImageProperty WorkingTrack { get; private set; }
         public bool IsLinkedOwner { get; }
         public ObservableCollection<AnimationFrameModel> Frames { get; }
-        public ObservableCollection<AnimationPropertyRow> AnimationProperties { get; }
+        public ObservableCollection<AnimationPropertyNode> AnimationProperties { get; }
 
         public AnimationFrameModel SelectedFrame
         {
@@ -497,11 +582,19 @@ namespace HaCreator.GUI.FrameAnimation
             if (result is not IPropertyContainer container)
                 return result;
 
+            List<int> currentFrameIndices = _workingFrameProperties
+                .Select(frame => container.WzProperties.IndexOf(frame))
+                .Where(index => index >= 0)
+                .Distinct()
+                .ToList();
+            if (currentFrameIndices.Count == 0)
+                currentFrameIndices = _framePropertyIndices.Where(index => index >= 0).Distinct().ToList();
+
             int insertionIndex = container.WzProperties.Count;
-            if (_framePropertyIndices.Count > 0)
+            if (currentFrameIndices.Count > 0)
             {
-                insertionIndex = _framePropertyIndices.Min();
-                foreach (int frameIndex in _framePropertyIndices.Distinct().OrderByDescending(index => index))
+                insertionIndex = currentFrameIndices.Min();
+                foreach (int frameIndex in currentFrameIndices.OrderByDescending(index => index))
                 {
                     if (frameIndex >= 0 && frameIndex < container.WzProperties.Count)
                         container.RemoveProperty(container.WzProperties[frameIndex]);
@@ -545,6 +638,8 @@ namespace HaCreator.GUI.FrameAnimation
             if (wasDirty)
                 DirtyChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        public void RefreshAnimationProperties() => LoadAnimationProperties();
 
         public void Reindex()
         {
@@ -606,11 +701,7 @@ namespace HaCreator.GUI.FrameAnimation
             if (WorkingTrack is not IPropertyContainer container)
                 return;
             foreach (WzImageProperty property in container.WzProperties.Where(property => !_workingFrameProperties.Contains(property)))
-            {
-                AnimationPropertyRow row = new(property);
-                row.ValueChanged += (_, _) => MarkDirty();
-                AnimationProperties.Add(row);
-            }
+                AnimationProperties.Add(new AnimationPropertyNode(property, null, MarkDirty));
         }
 
         public event EventHandler DirtyChanged;

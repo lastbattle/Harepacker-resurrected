@@ -79,6 +79,7 @@
                     <Border x:Name="panel_versionDetails" Grid.Column="2" Padding="16" Style="{StaticResource HareCardStyle}" Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock x:Name="label_versionName" Style="{StaticResource HareSectionTitleStyle}" Text="{loc:Loc Init_VersionName}"/>
+                            <TextBlock x:Name="label_directoryPath" Margin="0,4,0,12" Style="{StaticResource HareMutedTextStyle}" TextWrapping="Wrap"/>
                             <TextBlock x:Name="label_extractedDate" Margin="0,4,0,12" Style="{StaticResource HareMutedTextStyle}"/>
                             <TextBlock x:Name="label_encryptionInfo" Margin="0,3"/>
                             <TextBlock x:Name="label_format" Margin="0,3" TextWrapping="Wrap"/>

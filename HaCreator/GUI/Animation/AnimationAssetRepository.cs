@@ -4,16 +4,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 namespace HaCreator.GUI.FrameAnimation
 {
     public sealed class AnimationAssetRepository
     {
-        private static readonly Regex EffectCanvasName = new(
-            "^(effect|effect\\d+|hit|hit\\d+|ball|prepare|keydown|keydownend|keydownprepare|screen|summon|affected|mob|attack)$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         private static readonly string[] ItemSubdirectories =
         {
             "Cash", "Consume", "Etc", "Install", "Pet", "Special"
@@ -22,7 +17,8 @@ namespace HaCreator.GUI.FrameAnimation
         private static readonly string[] EquipmentSubdirectories =
         {
             "Accessory", "Afterimage", "Android", "Bits", "Cap", "Cape", "Coat", "Dragon", "Face", "Glove",
-            "Hair", "Longcoat", "Mechanic", "Pants", "PetEquip", "Ring", "Shield", "Shoes", "TamingMob", "Weapon"
+            "Hair", "Jewel", "Longcoat", "Mechanic", "Pants", "PetEquip", "Ring", "Shield", "Shoes",
+            "SkillSkin", "TamingMob", "Totem", "Weapon", "ArcaneForce", "AuthenticForce"
         };
 
         public IReadOnlyList<AnimationAssetDescriptor> GetAssets(AnimationAssetKind kind)
@@ -35,10 +31,8 @@ namespace HaCreator.GUI.FrameAnimation
                     names = Program.InfoManager.ObjectSets.Keys;
                 else if (kind == AnimationAssetKind.MapBackground && Program.InfoManager?.BackgroundSets != null)
                     names = Program.InfoManager.BackgroundSets.Keys;
-                else if (Program.DataSource != null)
-                    names = Program.DataSource.GetImageNamesInDirectory(category, subdirectory ?? string.Empty);
                 else
-                    names = GetLegacyImageNames(category, subdirectory);
+                    names = GetImageNames(category, subdirectory);
 
                 assets.AddRange(names.Where(name => !string.IsNullOrWhiteSpace(name))
                     .Select(name => name.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ? name : name + ".img")
@@ -95,7 +89,18 @@ namespace HaCreator.GUI.FrameAnimation
                 case AnimationAssetKind.Monster:
                 case AnimationAssetKind.Npc:
                     foreach (WzImageProperty property in image.WzProperties.Where(property => !property.Name.Equals("info", StringComparison.OrdinalIgnoreCase)))
-                        AddContainerTrack(result, property.Name, property.Name, property);
+                        DiscoverFlexibleTracks(result, property, property.Name, 0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                    break;
+
+                case AnimationAssetKind.Character:
+                case AnimationAssetKind.Effect:
+                case AnimationAssetKind.Morph:
+                case AnimationAssetKind.UI:
+                case AnimationAssetKind.Etc:
+                case AnimationAssetKind.MapTile:
+                case AnimationAssetKind.MapParticle:
+                    foreach (WzImageProperty property in image.WzProperties.Where(property => !property.Name.Equals("info", StringComparison.OrdinalIgnoreCase)))
+                        DiscoverFlexibleTracks(result, property, property.Name, 0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                     break;
 
                 case AnimationAssetKind.Reactor:
@@ -137,7 +142,8 @@ namespace HaCreator.GUI.FrameAnimation
                     if (image["skill"] is WzImageProperty skillRoot)
                     {
                         foreach (WzImageProperty skill in skillRoot.WzProperties ?? Enumerable.Empty<WzImageProperty>())
-                            DiscoverSkillTracks(result, skill, $"skill/{skill.Name}", skill.Name, 0);
+                            DiscoverFlexibleTracks(result, skill, $"skill/{skill.Name}", 0,
+                                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                     }
                     break;
 
@@ -368,7 +374,7 @@ namespace HaCreator.GUI.FrameAnimation
             WzImageProperty source, string prefix, int depth)
         {
             List<(string path, WzCanvasProperty working, WzCanvasProperty source, bool linked)> result = new();
-            if (source == null || depth > 3)
+            if (source == null || depth > 32)
                 return result;
             if (source is WzCanvasProperty canvas)
             {
@@ -391,7 +397,7 @@ namespace HaCreator.GUI.FrameAnimation
             WzImageProperty working, WzImageProperty source, string prefix, int depth)
         {
             List<(string path, WzCanvasProperty working, WzCanvasProperty source, bool linked)> result = new();
-            if (working?.WzProperties == null || depth > 3)
+            if (working?.WzProperties == null || depth > 32)
                 return result;
             foreach (WzImageProperty child in working.WzProperties)
             {
@@ -410,33 +416,56 @@ namespace HaCreator.GUI.FrameAnimation
             return result;
         }
 
-        private static void DiscoverSkillTracks(List<AnimationTrackDescriptor> result, WzImageProperty property,
-            string path, string skillId, int depth)
+        private static void DiscoverFlexibleTracks(List<AnimationTrackDescriptor> result, WzImageProperty property,
+            string path, int depth, HashSet<string> discoveredPaths)
         {
-            if (depth > 6)
+            if (property == null || depth > 32 || !discoveredPaths.Add(path))
                 return;
+
             int count = CountDirectFrames(property);
             if (count > 0)
             {
-                result.Add(new AnimationTrackDescriptor { Name = $"{skillId} / {property.Name}", Path = path, FrameCount = count });
-                return;
+                result.Add(new AnimationTrackDescriptor
+                {
+                    Name = FormatTrackName(path),
+                    Path = path,
+                    FrameCount = count
+                });
             }
-            if (property is WzCanvasProperty && EffectCanvasName.IsMatch(property.Name))
+            else if (ResolveCanvas(property) != null || HasDirectCanvasLayers(property))
             {
-                result.Add(new AnimationTrackDescriptor { Name = $"{skillId} / {property.Name}", Path = path, FrameCount = 1, IsSingleCanvas = true });
-                return;
+                result.Add(new AnimationTrackDescriptor
+                {
+                    Name = FormatTrackName(path),
+                    Path = path,
+                    FrameCount = 1,
+                    IsSingleCanvas = true
+                });
             }
+
             foreach (WzImageProperty child in property.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
-                if (!child.Name.Equals("info", StringComparison.OrdinalIgnoreCase) && !child.Name.StartsWith("icon", StringComparison.OrdinalIgnoreCase))
-                    DiscoverSkillTracks(result, child, $"{path}/{child.Name}", skillId, depth + 1);
+                // Numeric children which are already animation frames are handled by the
+                // parent track. Non-frame branches (for example attack1/info/effectFlash)
+                // must still be traversed so auxiliary animations remain editable.
+                if (IsFrameProperty(child) || ResolveCanvas(child) != null)
+                    continue;
+                DiscoverFlexibleTracks(result, child, $"{path}/{child.Name}", depth + 1, discoveredPaths);
             }
+        }
+
+        private static string FormatTrackName(string path)
+        {
+            string displayPath = path.StartsWith("skill/", StringComparison.OrdinalIgnoreCase)
+                ? path["skill/".Length..]
+                : path;
+            return displayPath.Replace("/", " / ", StringComparison.Ordinal);
         }
 
         private static void DiscoverNestedTracks(List<AnimationTrackDescriptor> result, WzImageProperty property,
             string path, int depth, bool skipMetadataContainers)
         {
-            if (property == null || depth > 8)
+            if (property == null || depth > 32)
                 return;
             if (skipMetadataContainers && (property.Name.Equals("info", StringComparison.OrdinalIgnoreCase) ||
                 property.Name.Equals("spec", StringComparison.OrdinalIgnoreCase) ||
@@ -521,19 +550,79 @@ namespace HaCreator.GUI.FrameAnimation
         private static IEnumerable<(string category, string subdirectory)> GetLocations(AnimationAssetKind kind)
         {
             if (kind == AnimationAssetKind.Item)
-                return ItemSubdirectories.Select(subdirectory => ("Item", subdirectory));
+                return GetCategoryLocations("Item", ItemSubdirectories, includeRoot: false, discoverSubdirectories: true);
             if (kind == AnimationAssetKind.Equipment)
-                return EquipmentSubdirectories.Select(subdirectory => ("Character", subdirectory));
+                return GetCategoryLocations("Character", EquipmentSubdirectories, includeRoot: false, discoverSubdirectories: true);
             return kind switch
             {
                 AnimationAssetKind.Monster => new[] { ("Mob", string.Empty) },
                 AnimationAssetKind.Npc => new[] { ("Npc", string.Empty) },
+                AnimationAssetKind.Character => new[] { ("Character", string.Empty) },
+                AnimationAssetKind.Effect => GetCategoryLocations("Effect", Array.Empty<string>(), includeRoot: true, discoverSubdirectories: true),
+                AnimationAssetKind.Morph => new[] { ("Morph", string.Empty) },
+                AnimationAssetKind.UI => new[] { ("UI", string.Empty) },
+                AnimationAssetKind.Etc => GetCategoryLocations("Etc", Array.Empty<string>(), includeRoot: true, discoverSubdirectories: true),
                 AnimationAssetKind.Reactor => new[] { ("Reactor", string.Empty) },
-                AnimationAssetKind.Skill => new[] { ("Skill", string.Empty) },
+                AnimationAssetKind.Skill => GetCategoryLocations("Skill", Array.Empty<string>(), includeRoot: true, discoverSubdirectories: true),
                 AnimationAssetKind.MapObject => new[] { ("Map", "Obj") },
                 AnimationAssetKind.MapBackground => new[] { ("Map", "Back") },
+                AnimationAssetKind.MapTile => new[] { ("Map", "Tile") },
+                AnimationAssetKind.MapParticle => new[] { ("Map", "Particle") },
                 _ => throw new ArgumentOutOfRangeException(nameof(kind))
             };
+        }
+
+        private static IEnumerable<(string category, string subdirectory)> GetCategoryLocations(
+            string category, IEnumerable<string> fallbackSubdirectories, bool includeRoot, bool discoverSubdirectories)
+        {
+            HashSet<string> subdirectories = new(StringComparer.OrdinalIgnoreCase);
+            if (includeRoot)
+                subdirectories.Add(string.Empty);
+
+            foreach (string subdirectory in fallbackSubdirectories ?? Enumerable.Empty<string>())
+                if (!string.IsNullOrWhiteSpace(subdirectory))
+                    subdirectories.Add(subdirectory);
+
+            if (discoverSubdirectories)
+            {
+                foreach (string subdirectory in GetAvailableSubdirectories(category))
+                    subdirectories.Add(subdirectory);
+            }
+
+            return subdirectories.OrderBy(subdirectory => subdirectory, StringComparer.OrdinalIgnoreCase)
+                .Select(subdirectory => (category, subdirectory));
+        }
+
+        private static IEnumerable<string> GetAvailableSubdirectories(string category)
+        {
+            if (Program.DataSource != null)
+            {
+                return Program.DataSource.GetSubdirectories(category)
+                    .Where(subdirectory => IsDirectSubdirectory(subdirectory) && !IsGeneratedSubdirectory(subdirectory))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            return Program.GetDirectories(category.ToLowerInvariant())
+                .SelectMany(directory => directory.WzDirectories?.Select(subdirectory => subdirectory.Name) ?? Enumerable.Empty<string>())
+                .Where(subdirectory => !IsGeneratedSubdirectory(subdirectory))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static bool IsDirectSubdirectory(string subdirectory) =>
+            !string.IsNullOrWhiteSpace(subdirectory) && subdirectory.IndexOf('/') < 0 && subdirectory.IndexOf('\\') < 0;
+
+        private static bool IsGeneratedSubdirectory(string subdirectory) =>
+            string.IsNullOrWhiteSpace(subdirectory) || subdirectory.StartsWith("_Canvas", StringComparison.OrdinalIgnoreCase);
+
+        private static IEnumerable<string> GetImageNames(string category, string subdirectory)
+        {
+            if (Program.DataSource != null)
+                // Keep asset enumeration lazy; accessing GetDirectory(...).WzImages parses every image in the category.
+                return Program.DataSource.GetImageNamesInDirectory(category, subdirectory);
+
+            return GetLegacyImageNames(category, subdirectory);
         }
 
         private static IEnumerable<string> GetLegacyImageNames(string category, string subdirectory)
@@ -555,7 +644,9 @@ namespace HaCreator.GUI.FrameAnimation
                 return $"{id} — {mobName}";
             if (kind == AnimationAssetKind.Npc && Program.InfoManager?.NpcNameCache.TryGetValue(id, out var npcName) == true)
                 return $"{id} — {npcName.Item1}";
-            if ((kind == AnimationAssetKind.Item || kind == AnimationAssetKind.Equipment) && !string.IsNullOrEmpty(subdirectory))
+            if (!string.IsNullOrEmpty(subdirectory) && (kind == AnimationAssetKind.Item || kind == AnimationAssetKind.Equipment ||
+                kind == AnimationAssetKind.Skill || kind == AnimationAssetKind.Effect || kind == AnimationAssetKind.Etc ||
+                kind == AnimationAssetKind.MapTile || kind == AnimationAssetKind.MapParticle))
                 return $"{subdirectory} / {id}";
             return id;
         }
