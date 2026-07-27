@@ -88,11 +88,13 @@
                             <TextBlock x:Name="label_validationStatus" Margin="0,12,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
+                    <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
                         <Button x:Name="button_extractNew" MinWidth="104" ToolTip="{loc:Loc Init_ExtractTooltip}" Click="button_extractNew_Click" Content="{loc:Loc Init_ExtractNewEllipsis}"/>
                         <Button x:Name="button_browseVersion" MinWidth="88" Margin="8,0,0,0" ToolTip="{loc:Loc Init_AddVersionTooltip}" Click="button_browseVersion_Click" Content="{loc:Loc Common_BrowseEllipsis}"/>
                         <Button x:Name="button_refreshVersions" MinWidth="88" Margin="8,0,0,0" Click="button_refreshVersions_Click" Content="{loc:Loc Common_Refresh}"/>
-                        <Button x:Name="button_renameVersion" MinWidth="88" Margin="20,0,0,0" IsEnabled="False" Click="button_renameVersion_Click" Content="{loc:Loc Common_Rename}"/>
+                    </WrapPanel>
+                    <WrapPanel Grid.Row="1" Grid.Column="2" Margin="0,12,0,0">
+                        <Button x:Name="button_renameVersion" MinWidth="88" Margin="0,0,0,0" IsEnabled="False" Click="button_renameVersion_Click" Content="{loc:Loc Common_Rename}"/>
                         <Button x:Name="button_deleteVersion" MinWidth="88" Margin="8,0,0,0" IsEnabled="False" Style="{StaticResource HareDangerButtonStyle}" Click="button_deleteVersion_Click" Content="{loc:Loc Common_Delete}"/>
                     </WrapPanel>
                 </Grid>
