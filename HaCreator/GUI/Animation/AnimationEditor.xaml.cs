@@ -1652,9 +1652,12 @@ namespace HaCreator.GUI.FrameAnimation
                     Height = layer.Height,
                     Opacity = opacity * Math.Clamp(layer.AlphaStart / 255.0, 0, 1),
                     Stretch = Stretch.None,
+                    SnapsToDevicePixels = true,
+                    UseLayoutRounding = true,
                     IsHitTestVisible = false
                 };
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
+                RenderOptions.SetEdgeMode(image, EdgeMode.Aliased);
                 double left = centerX - layer.OriginX;
                 double top = centerY - layer.OriginY;
                 Canvas.SetLeft(image, left);

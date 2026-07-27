@@ -211,6 +211,7 @@
                     <ScrollViewer x:Name="previewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                                   PreviewMouseWheel="Preview_MouseWheel">
                         <Canvas x:Name="previewCanvas" Width="1600" Height="1000" Background="Transparent" Focusable="True"
+                                SnapsToDevicePixels="True" UseLayoutRounding="True" RenderOptions.EdgeMode="Aliased"
                                 AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Preview}"
                                 MouseMove="Preview_MouseMove" MouseLeftButtonDown="Preview_MouseLeftButtonDown" MouseLeftButtonUp="Preview_MouseLeftButtonUp"/>
                     </ScrollViewer>
