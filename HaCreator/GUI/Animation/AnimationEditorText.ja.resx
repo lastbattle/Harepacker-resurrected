@@ -75,4 +75,6 @@
   <data name="AnimationEditor_Etc" xml:space="preserve"><value>その他のアニメーション</value></data>
   <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>マップタイル</value></data>
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>マップパーティクル</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>選択レイヤーを AI 高画質化…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>選択したフレームレイヤーを高画質化し、元画像と比較して、承認した場合のみ適用します。</value></data>
 </root>

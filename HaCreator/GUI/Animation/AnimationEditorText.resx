@@ -69,6 +69,8 @@
   <data name="AnimationEditor_AlphaEnd" xml:space="preserve"><value>Alpha end</value></data>
   <data name="AnimationEditor_MakeIndependent" xml:space="preserve"><value>Make linked frame independent</value></data>
   <data name="AnimationEditor_ReplaceBitmap" xml:space="preserve"><value>Replace layer bitmap…</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>AI upscale selected layer…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>Enhance the selected frame layer, compare the result with the original, and apply it only if accepted.</value></data>
   <data name="AnimationEditor_ResizeBitmap" xml:space="preserve"><value>RESIZE BITMAP</value></data>
   <data name="AnimationEditor_ResizeDescription" xml:space="preserve"><value>Changes the frame's actual pixel size. Preview zoom is unaffected.</value></data>
   <data name="AnimationEditor_Width" xml:space="preserve"><value>Width</value></data>

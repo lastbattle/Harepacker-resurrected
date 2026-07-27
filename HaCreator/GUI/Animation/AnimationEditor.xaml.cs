@@ -319,6 +319,7 @@ namespace HaCreator.GUI.FrameAnimation
             bool editable = layer?.Canvas != null && !layer.IsLinked;
             transformEditorGrid.IsEnabled = editable;
             replaceBitmapButton.IsEnabled = editable;
+            aiUpscaleButton.IsEnabled = editable;
             SetResizeFields(layer);
             TrackRawPropertyRows(layer?.Properties);
             RenderPreview();
@@ -910,6 +911,43 @@ namespace HaCreator.GUI.FrameAnimation
                 () => ReplaceFrameProperty(frame, before.DeepClone()),
                 () => ReplaceFrameProperty(frame, after.DeepClone()),
                 AnimationEditorTextExtension.Get("AnimationEditor_ReplaceBitmap")));
+        }
+
+        private void AIUpscale_Click(object sender, RoutedEventArgs e)
+        {
+            AnimationFrameModel frame = _document?.SelectedFrame;
+            AnimationLayerModel layer = frame?.SelectedLayer;
+            if (frame == null || layer?.Canvas == null || layer.IsLinked)
+                return;
+
+            using DrawingBitmap source = layer.Canvas.GetLinkedWzCanvasBitmap();
+            if (source == null)
+            {
+                SetError(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
+                return;
+            }
+
+            UpscaleImageForm dialog = new(source) { Owner = this };
+            dialog.ShowDialog();
+            if (!dialog.UserAcceptedImage || dialog.UpscaledImage == null)
+                return;
+            using DrawingBitmap upscaled = dialog.UpscaledImage;
+
+            WzImageProperty before = frame.WorkingFrame.DeepClone();
+            WzImageProperty after = before.DeepClone();
+            var temporary = new AnimationFrameModel(after, after, frame.Index, () => { });
+            AnimationLayerModel upscaledLayer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layer.Name)
+                ?? temporary.Layers.FirstOrDefault();
+            if (upscaledLayer?.Canvas == null)
+                return;
+
+            RemoveCanvasLink(upscaledLayer.Canvas, WzCanvasProperty.InlinkPropertyName);
+            RemoveCanvasLink(upscaledLayer.Canvas, WzCanvasProperty.OutlinkPropertyName);
+            upscaledLayer.ReplaceBitmap(new DrawingBitmap(upscaled));
+            Execute(new EditOperation(
+                () => ReplaceFrameProperty(frame, before.DeepClone()),
+                () => ReplaceFrameProperty(frame, after.DeepClone()),
+                AnimationEditorTextExtension.Get("AnimationEditor_AIUpscale")));
         }
 
         private static void RemoveCanvasLink(WzCanvasProperty canvas, string propertyName)

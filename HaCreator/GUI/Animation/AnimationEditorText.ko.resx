@@ -75,4 +75,6 @@
   <data name="AnimationEditor_Etc" xml:space="preserve"><value>기타 애니메이션</value></data>
   <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>맵 타일</value></data>
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>맵 파티클</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>선택한 레이어 AI 업스케일…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>선택한 프레임 레이어를 향상하고 원본과 비교한 뒤, 승인한 경우에만 적용합니다.</value></data>
 </root>

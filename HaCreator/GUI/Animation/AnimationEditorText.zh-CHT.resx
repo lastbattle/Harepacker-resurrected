@@ -75,4 +75,6 @@
   <data name="AnimationEditor_Etc" xml:space="preserve"><value>其他動畫</value></data>
   <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>地圖圖塊</value></data>
   <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>地圖粒子</value></data>
+  <data name="AnimationEditor_AIUpscale" xml:space="preserve"><value>AI 放大所選圖層…</value></data>
+  <data name="AnimationEditor_AIUpscaleTooltip" xml:space="preserve"><value>增強所選畫格圖層，與原圖比較，並僅在接受結果後套用。</value></data>
 </root>

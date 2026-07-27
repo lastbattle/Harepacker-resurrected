@@ -65,6 +65,22 @@
                 <Setter Property="VerticalAlignment" Value="Center"/>
                 <Setter Property="Margin" Value="0,4,8,4"/>
             </Style>
+
+            <DrawingImage x:Key="AIUpscaleIcon">
+                <DrawingImage.Drawing>
+                    <DrawingGroup>
+                        <GeometryDrawing Brush="#2563EB"
+                                         Geometry="M 10,2 L 12,7.5 L 17.5,9.5 L 12,11.5 L 10,17 L 8,11.5 L 2.5,9.5 L 8,7.5 Z"/>
+                        <GeometryDrawing Brush="#8B5CF6"
+                                         Geometry="M 5,15 L 6,18 L 9,19 L 6,20 L 5,23 L 4,20 L 1,19 L 4,18 Z"/>
+                        <GeometryDrawing Geometry="M 16,3 L 22,3 L 22,9 M 22,3 L 15,10">
+                            <GeometryDrawing.Pen>
+                                <Pen Brush="#7C3AED" Thickness="1.8" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/>
+                            </GeometryDrawing.Pen>
+                        </GeometryDrawing>
+                    </DrawingGroup>
+                </DrawingImage.Drawing>
+            </DrawingImage>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -355,6 +371,14 @@
                                         Content="{local:AnimationEditorText AnimationEditor_MakeIndependent}" Click="Materialize_Click" Visibility="Collapsed"/>
                                 <Button x:Name="replaceBitmapButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
                                         Content="{local:AnimationEditorText AnimationEditor_ReplaceBitmap}" Click="ReplaceBitmap_Click"/>
+                                <Button x:Name="aiUpscaleButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}" IsEnabled="False"
+                                        ToolTip="{local:AnimationEditorText AnimationEditor_AIUpscaleTooltip}"
+                                        Click="AIUpscale_Click">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Image Width="20" Height="20" Margin="0,0,8,0" Source="{StaticResource AIUpscaleIcon}"/>
+                                        <TextBlock VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_AIUpscale}"/>
+                                    </StackPanel>
+                                </Button>
 
                                 <Separator Margin="0,12"/>
                                 <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_ResizeBitmap}"/>
