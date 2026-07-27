@@ -451,7 +451,7 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             OpenFileDialog dialog = new()
             {
-                Filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter"),
+                Filter = GetImageFileFilter(),
                 Multiselect = true,
                 Title = AnimationEditorTextExtension.Get("AnimationEditor_ImportTitle")
             };
@@ -573,7 +573,7 @@ namespace HaCreator.GUI.FrameAnimation
                 {
                     try
                     {
-                        using DrawingBitmap loaded = new(file);
+                        using DrawingBitmap loaded = AnimationImageFileCodec.Load(file);
                         bitmaps.Add(new DrawingBitmap(loaded));
                     }
                     catch
@@ -740,8 +740,16 @@ namespace HaCreator.GUI.FrameAnimation
         }
 
         private static bool IsSupportedImageFile(string file) =>
-            File.Exists(file) && new[] { ".png", ".bmp", ".gif", ".jpg", ".jpeg" }
+            File.Exists(file) && new[] { ".png", ".bmp", ".gif", ".jpg", ".jpeg", ".webp" }
                 .Contains(IOPath.GetExtension(file), StringComparer.OrdinalIgnoreCase);
+
+        private static string GetImageFileFilter()
+        {
+            string filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter");
+            if (filter.Contains("*.webp", StringComparison.OrdinalIgnoreCase))
+                return filter;
+            return $"{filter}|{AnimationEditorTextExtension.Get("AnimationEditor_WebpFilter")}";
+        }
 
         private void DuplicateFrame_Click(object sender, RoutedEventArgs e)
         {
@@ -808,10 +816,10 @@ namespace HaCreator.GUI.FrameAnimation
             AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
             if (frame == null || layer?.Canvas == null)
                 return;
-            OpenFileDialog dialog = new() { Filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter") };
+            OpenFileDialog dialog = new() { Filter = GetImageFileFilter() };
             if (dialog.ShowDialog(this) != true)
                 return;
-            using DrawingBitmap loaded = new(dialog.FileName);
+            using DrawingBitmap loaded = AnimationImageFileCodec.Load(dialog.FileName);
             WzImageProperty before = frame.WorkingFrame.DeepClone();
             WzImageProperty after = before.DeepClone();
             var temporary = new AnimationFrameModel(after, after, frame.Index, () => { });
@@ -950,7 +958,7 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             SaveFileDialog dialog = new()
             {
-                Filter = AnimationEditorTextExtension.Get("AnimationEditor_PngFilter"),
+                Filter = $"{AnimationEditorTextExtension.Get("AnimationEditor_PngFilter")}|{AnimationEditorTextExtension.Get("AnimationEditor_WebpFilter")}",
                 FileName = $"{IOPath.GetFileNameWithoutExtension(_document.Asset.ImageName)}_{Sanitize(_document.Track.Name)}_{_document.SelectedFrame.Index}.png"
             };
             if (dialog.ShowDialog(this) != true)
@@ -960,11 +968,23 @@ namespace HaCreator.GUI.FrameAnimation
                 BitmapSource bitmap = layer.Bitmap;
                 if (bitmap == null)
                     throw new InvalidOperationException(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
-                PngBitmapEncoder encoder = new();
-                encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                using FileStream stream = File.Create(dialog.FileName);
-                encoder.Save(stream);
-                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_Exported", dialog.FileName), false);
+                string outputPath = dialog.FileName;
+                bool exportWebp = dialog.FilterIndex == 2 ||
+                    string.Equals(IOPath.GetExtension(outputPath), ".webp", StringComparison.OrdinalIgnoreCase);
+                outputPath = IOPath.ChangeExtension(outputPath, exportWebp ? ".webp" : ".png");
+                if (exportWebp)
+                {
+                    using DrawingBitmap source = BitmapSourceToDrawingBitmap(bitmap);
+                    AnimationImageFileCodec.SaveWebp(source, outputPath);
+                }
+                else
+                {
+                    PngBitmapEncoder encoder = new();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using FileStream stream = File.Create(outputPath);
+                    encoder.Save(stream);
+                }
+                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_Exported", outputPath), false);
             }
             catch (Exception ex) { SetError(ex.Message); }
         }

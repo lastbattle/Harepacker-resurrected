@@ -1,6 +1,8 @@
+using HaCreator.GUI.FrameAnimation;
 using HaCreator.GUI.FrameAnimation.AI;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace UnitTest_AnimationEditor;
@@ -176,6 +178,35 @@ public class AnimationImageProcessorTests
         Point worldAnchor = new(bounds.Left + bounds.Width / 2 - result.Origin.X,
             bounds.Bottom - 1 - result.Origin.Y);
         Assert.Equal(Point.Empty, worldAnchor);
+    }
+
+    [Fact]
+    public void WebpRoundTripPreservesArgbPixels()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"harepacker-webp-{Guid.NewGuid():N}.webp");
+        try
+        {
+            using var source = new Bitmap(2, 2, PixelFormat.Format32bppArgb);
+            source.SetPixel(0, 0, Color.FromArgb(255, 255, 0, 0));
+            source.SetPixel(1, 0, Color.FromArgb(128, 0, 255, 0));
+            source.SetPixel(0, 1, Color.FromArgb(64, 0, 0, 255));
+            source.SetPixel(1, 1, Color.FromArgb(0, 255, 255, 255));
+
+            AnimationImageFileCodec.SaveWebp(source, path);
+
+            using Bitmap result = AnimationImageFileCodec.Load(path);
+            Assert.Equal(source.Width, result.Width);
+            Assert.Equal(source.Height, result.Height);
+            Assert.Equal(source.GetPixel(0, 0).ToArgb(), result.GetPixel(0, 0).ToArgb());
+            Assert.Equal(source.GetPixel(1, 0).ToArgb(), result.GetPixel(1, 0).ToArgb());
+            Assert.Equal(source.GetPixel(0, 1).ToArgb(), result.GetPixel(0, 1).ToArgb());
+            Assert.Equal(source.GetPixel(1, 1).A, result.GetPixel(1, 1).A);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 
     [Fact]
