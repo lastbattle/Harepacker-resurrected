@@ -136,7 +136,13 @@ namespace HaCreator
             // Fall back to WzManager
             if (WzManager != null)
             {
-                WzManager.SetWzFileUpdated(category.ToLower(), image);
+                // In legacy Data.wz layouts, the image's logical category (for example,
+                // "skill") is a directory inside Data.wz rather than a top-level WZ file.
+                // Use the actual owner so marking the image dirty works for both layouts.
+                string ownerName = image.WzFileParent?.Name;
+                WzManager.SetWzFileUpdated(
+                    string.IsNullOrWhiteSpace(ownerName) ? category.ToLower() : ownerName,
+                    image);
             }
         }
 
