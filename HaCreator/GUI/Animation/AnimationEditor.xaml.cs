@@ -1,6 +1,7 @@
 using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.FrameAnimation.AI;
 using HaCreator.MapEditor.AI;
+using HaSharedLibrary.GUI;
 using MapleLib.Converters;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -363,7 +364,6 @@ namespace HaCreator.GUI.FrameAnimation
         private void UpdatePlaybackButtons()
         {
             string glyph = _isPlaying ? "\uE769" : "\uE768";
-            if (playToolbarButton != null) playToolbarButton.Content = glyph;
             if (playTimelineButton != null) playTimelineButton.Content = glyph;
         }
 
@@ -396,6 +396,53 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void AddFrame_Click(object sender, RoutedEventArgs e) => ImportFrame();
         private void ImportFrame_Click(object sender, RoutedEventArgs e) => ImportFrame();
+
+        private void Preview_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null || _document.Frames.Count == 0)
+                return;
+
+            List<ImageAnimationPreviewFrame> previewFrames = new();
+            string previewPath = previewPathText.Text;
+            foreach (AnimationFrameModel frame in _document.Frames)
+            {
+                List<ImageAnimationPreviewLayer> layers = new();
+                foreach (AnimationLayerModel layer in frame.Layers)
+                {
+                    WzCanvasProperty canvas = layer.Canvas ?? layer.SourceCanvas;
+                    if (canvas != null)
+                        layers.Add(new ImageAnimationPreviewLayer(canvas, $"{previewPath}/{frame.Index}/{layer.Name}"));
+                }
+
+                if (layers.Count > 0)
+                    previewFrames.Add(new ImageAnimationPreviewFrame(layers));
+            }
+
+            if (previewFrames.Count == 0)
+            {
+                SetError(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
+                return;
+            }
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    using ImageAnimationPreviewWindow previewWindow = new(previewFrames, previewPath);
+                    previewWindow.Run();
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                            SetError(ex.Message);
+                    }));
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+        }
 
         private void ImportFrame()
         {

@@ -1127,7 +1127,8 @@ namespace HaRepacker.GUI.Panels
             {
                 try
                 {
-                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(selectedNodes, path_title);
+                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(
+                        selectedNodes.Select(node => (WzObject)node.Tag), path_title);
                     previewWnd.Run();
                 }
                 catch (Exception ex)

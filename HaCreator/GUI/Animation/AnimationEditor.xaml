@@ -44,6 +44,22 @@
                 <Setter Property="FontSize" Value="15"/>
             </Style>
 
+            <Style x:Key="PlayIconButton" TargetType="Button" BasedOn="{StaticResource CompactIconButton}">
+                <Setter Property="Background" Value="#DCFCE7"/>
+                <Setter Property="BorderBrush" Value="#86EFAC"/>
+                <Setter Property="Foreground" Value="#166534"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#BBF7D0"/>
+                        <Setter Property="BorderBrush" Value="#4ADE80"/>
+                        <Setter Property="Foreground" Value="#14532D"/>
+                    </Trigger>
+                    <Trigger Property="IsPressed" Value="True">
+                        <Setter Property="Background" Value="#86EFAC"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
             <Style x:Key="InspectorLabel" TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{DynamicResource HareMutedTextBrush}"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
@@ -83,8 +99,8 @@
                     <Button x:Name="redoButton" Style="{StaticResource CompactIconButton}" Content="&#xE7A6;"
                             ToolTip="{local:AnimationEditorText AnimationEditor_Redo}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Redo}" Click="Redo_Click"/>
                     <Separator Margin="8"/>
-                    <Button x:Name="playToolbarButton" Style="{StaticResource CompactIconButton}" Content="&#xE768;"
-                            ToolTip="{local:AnimationEditorText AnimationEditor_PlayPause}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_PlayPause}" Click="PlayPause_Click"/>
+                    <Button x:Name="previewToolbarButton" Style="{StaticResource PlayIconButton}" Content="&#xE768;"
+                            ToolTip="{local:AnimationEditorText AnimationEditor_Preview}" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Preview}" Click="Preview_Click"/>
                     <TextBlock Margin="10,0,6,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Speed}"/>
                     <ComboBox x:Name="speedComboBox" Width="78" SelectedIndex="2" SelectionChanged="Speed_SelectionChanged"
                               AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_Speed}">
