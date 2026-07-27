@@ -18,8 +18,10 @@ using System.Threading.Tasks;
 using System.Transactions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.Quest
 {
@@ -2056,6 +2058,42 @@ namespace HaCreator.GUI.Quest
             // TODO: detect unsaved quest
 
             SelectedQuest = e.AddedItems[0] as QuestEditorModel;
+            QueueFirstVisibleQuestConversationSelection();
+        }
+
+        /// <summary>
+        /// Selects the first item in the active quest data grid after the new quest has
+        /// propagated through the bindings. This also refreshes the conversation studio
+        /// because its conversation is bound to the grid's selected item.
+        /// </summary>
+        private void QueueFirstVisibleQuestConversationSelection()
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ContextIdle,
+                new Action(SelectFirstVisibleQuestConversation));
+        }
+
+        private void SelectFirstVisibleQuestConversation()
+        {
+            DataGrid dataGrid = FindVisibleDescendant<DataGrid>(this);
+            if (dataGrid == null || dataGrid.Items.Count == 0 ||
+                dataGrid.Items[0] == CollectionView.NewItemPlaceholder)
+            {
+                return;
+            }
+
+            object firstItem = dataGrid.Items[0];
+            if (firstItem is QuestEditorSayModel sayModel)
+            {
+                sayModel.SelectedPreviewLine = sayModel.PreviewLines.FirstOrDefault();
+            }
+            else if (firstItem is QuestEditorSayEndQuestModel stopConversation)
+            {
+                stopConversation.SelectedResponse = stopConversation.Responses.FirstOrDefault();
+            }
+
+            dataGrid.SelectedItem = firstItem;
+            dataGrid.ScrollIntoView(firstItem);
         }
 
         /// <summary>
@@ -4628,6 +4666,29 @@ namespace HaCreator.GUI.Quest
                         return descendant;
                 }
             }
+            return null;
+        }
+
+        /// <summary>
+        /// Helper method to find the first visible descendant of a specific type.
+        /// </summary>
+        private static T FindVisibleDescendant<T>(DependencyObject parent) where T : FrameworkElement
+        {
+            if (parent is T visibleElement && visibleElement.IsVisible)
+            {
+                return visibleElement;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                T descendant = FindVisibleDescendant<T>(VisualTreeHelper.GetChild(parent, i));
+                if (descendant != null)
+                {
+                    return descendant;
+                }
+            }
+
             return null;
         }
         #endregion
