@@ -40,6 +40,7 @@ namespace HaCreator.GUI.FrameAnimation
         private const string ClipboardPngFormat = "PNG";
         private const string AnimationClipboardPngFormat = "HaCreator.AnimationFrame.Png";
         private const string AnimationClipboardTokenFormat = "HaCreator.AnimationFrame.Token";
+        private const string AnimationTimelineFrameFormat = "HaCreator.AnimationFrame.TimelineItem";
         private sealed record EditOperation(Action Undo, Action Redo, string Description);
         private sealed record AIChoice<T>(T Value, string Name)
         {
@@ -76,8 +77,10 @@ namespace HaCreator.GUI.FrameAnimation
         private bool _suppressRawPropertyTracking;
         private bool _updatingResizeFields;
         private DrawingBitmap _copiedFrameBitmap;
-        private WzPngProperty _copiedFramePngProperty;
+        private WzImageProperty _copiedFrameProperty;
         private string _copiedFrameClipboardToken;
+        private System.Windows.Point _timelineDragStart;
+        private AnimationFrameModel _timelineDragFrame;
 
         public AnimationEditor()
         {
@@ -463,22 +466,22 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void CopySelectedFrameToClipboard()
         {
-            AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
+            AnimationFrameModel frame = _document?.SelectedFrame;
+            AnimationLayerModel layer = frame?.SelectedLayer;
             WzCanvasProperty canvas = layer?.Canvas ?? layer?.SourceCanvas;
-            if (canvas == null)
+            if (frame == null || canvas == null)
                 return;
             try
             {
                 using DrawingBitmap source = canvas.GetLinkedWzCanvasBitmap();
                 if (source == null)
                     return;
+                WzImageProperty copiedFrame = frame.BuildCommittedFrame(frame.WorkingFrame.Name, materializeLink: true);
                 byte[] png = EncodePng(source);
                 _copiedFrameBitmap?.Dispose();
                 _copiedFrameBitmap = CloneBitmapWithAlpha(source);
-                _copiedFramePngProperty?.Dispose();
-                _copiedFramePngProperty = canvas.PngProperty?.Width > 0 && canvas.PngProperty.Height > 0
-                    ? (WzPngProperty)canvas.PngProperty.DeepClone()
-                    : null;
+                _copiedFrameProperty?.Dispose();
+                _copiedFrameProperty = copiedFrame;
                 _copiedFrameClipboardToken = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
                 DataObject data = new();
                 data.SetData(AnimationClipboardPngFormat, png, false);
@@ -499,9 +502,9 @@ namespace HaCreator.GUI.FrameAnimation
             try
             {
                 IDataObject clipboard = Clipboard.GetDataObject();
-                if (_copiedFramePngProperty != null && HasMatchingCopiedFrameToken(clipboard))
+                if (_copiedFrameProperty != null && HasMatchingCopiedFrameToken(clipboard))
                 {
-                    if (InsertCopiedWzFrame(template, template.Index + 1,
+                    if (InsertCopiedWzFrame(_copiedFrameProperty, template.Index + 1,
                         AnimationEditorTextExtension.Get("AnimationEditor_PasteFrame")) > 0)
                         SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramePasted"), false);
                     return;
@@ -528,14 +531,55 @@ namespace HaCreator.GUI.FrameAnimation
             catch (Exception ex) { SetError(ex.Message); }
         }
 
+        private void Timeline_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _timelineDragStart = e.GetPosition(timelineListBox);
+            _timelineDragFrame = GetTimelineFrame(e.OriginalSource as DependencyObject);
+        }
+
+        private void Timeline_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _timelineDragFrame == null ||
+                _document == null || _document.Track.IsSingleCanvas || !_document.Frames.Contains(_timelineDragFrame))
+                return;
+
+            Vector delta = e.GetPosition(timelineListBox) - _timelineDragStart;
+            if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+                return;
+
+            AnimationFrameModel frame = _timelineDragFrame;
+            _timelineDragFrame = null;
+            DataObject data = new();
+            data.SetData(AnimationTimelineFrameFormat, frame, false);
+            DragDrop.DoDragDrop(timelineListBox, data, DragDropEffects.Move);
+        }
+
         private void Timeline_PreviewDragOver(object sender, DragEventArgs e)
         {
+            AnimationFrameModel frame = GetTimelineFrame(e.Data);
+            if (frame != null)
+            {
+                e.Effects = _document?.Track.IsSingleCanvas != true && _document?.Frames.Contains(frame) == true
+                    ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
             e.Effects = CanInsertDroppedImages(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
         }
 
         private void Timeline_Drop(object sender, DragEventArgs e)
         {
+            AnimationFrameModel draggedFrame = GetTimelineFrame(e.Data);
+            if (draggedFrame != null)
+            {
+                if (_document?.Track.IsSingleCanvas != true && _document?.Frames.Contains(draggedFrame) == true)
+                    ReorderTimelineFrame(draggedFrame, GetTimelineDropIndex(e));
+                e.Handled = true;
+                return;
+            }
+
             AnimationFrameModel template = _document?.SelectedFrame;
             if (template == null || _document.Track.IsSingleCanvas ||
                 e.Data.GetData(DataFormats.FileDrop) is not string[] files)
@@ -546,6 +590,37 @@ namespace HaCreator.GUI.FrameAnimation
             if (inserted > 0)
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FramesAdded", inserted), false);
             e.Handled = true;
+        }
+
+        private AnimationFrameModel GetTimelineFrame(DependencyObject source)
+        {
+            if (ItemsControl.ContainerFromElement(timelineListBox, source) is not ListBoxItem item)
+                return null;
+            return item.DataContext as AnimationFrameModel;
+        }
+
+        private AnimationFrameModel GetTimelineFrame(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(AnimationTimelineFrameFormat, false))
+                return null;
+            return data.GetData(AnimationTimelineFrameFormat, false) as AnimationFrameModel;
+        }
+
+        private void ReorderTimelineFrame(AnimationFrameModel frame, int insertionIndex)
+        {
+            if (_document == null || frame == null || !_document.Frames.Contains(frame))
+                return;
+            int from = frame.Index;
+            int to = Math.Clamp(insertionIndex, 0, _document.Frames.Count);
+            if (from < to)
+                to--;
+            if (from == to)
+                return;
+
+            Execute(new EditOperation(
+                () => MoveFrame(frame, to, from),
+                () => MoveFrame(frame, from, to),
+                AnimationEditorTextExtension.Get("AnimationEditor_MoveFrame")));
         }
 
         private bool CanInsertDroppedImages(IDataObject data)
@@ -605,18 +680,12 @@ namespace HaCreator.GUI.FrameAnimation
             return InsertFrames(frames, index, description);
         }
 
-        private int InsertCopiedWzFrame(AnimationFrameModel template, int index, string description)
+        private int InsertCopiedWzFrame(WzImageProperty copiedFrame, int index, string description)
         {
-            string layerName = template.SelectedLayer?.Name ?? template.Layers.FirstOrDefault()?.Name;
-            WzImageProperty property = template.BuildCommittedFrame(index.ToString(CultureInfo.InvariantCulture), materializeLink: true);
-            var temporary = new AnimationFrameModel(property, property, index, () => { });
-            AnimationLayerModel layer = temporary.Layers.FirstOrDefault(candidate => candidate.Name == layerName)
-                ?? temporary.Layers.FirstOrDefault();
-            if (layer?.Canvas == null || _copiedFramePngProperty == null)
+            if (_document == null || copiedFrame == null)
                 return 0;
-            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.InlinkPropertyName);
-            RemoveCanvasLink(layer.Canvas, WzCanvasProperty.OutlinkPropertyName);
-            layer.Canvas.PngProperty = (WzPngProperty)_copiedFramePngProperty.DeepClone();
+            WzImageProperty property = copiedFrame.DeepClone();
+            property.Name = index.ToString(CultureInfo.InvariantCulture);
             AnimationFrameModel frame = new(property, property, index, _document.MarkDirty);
             return InsertFrames(new List<AnimationFrameModel> { frame }, index, description);
         }
@@ -1416,8 +1485,8 @@ namespace HaCreator.GUI.FrameAnimation
             }
             _copiedFrameBitmap?.Dispose();
             _copiedFrameBitmap = null;
-            _copiedFramePngProperty?.Dispose();
-            _copiedFramePngProperty = null;
+            _copiedFrameProperty?.Dispose();
+            _copiedFrameProperty = null;
             _closingAfterSave = true;
         }
 

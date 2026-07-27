@@ -7,7 +7,7 @@
   <data name="AnimationEditor_Title" xml:space="preserve"><value>Animation Frame Editor</value></data>
   <data name="AnimationEditor_Save" xml:space="preserve"><value>Save</value></data>
   <data name="AnimationEditor_Import" xml:space="preserve"><value>Import frames</value></data>
-  <data name="AnimationEditor_TimelineClipboardTooltip" xml:space="preserve"><value>Ctrl+C copies the selected frame image. Ctrl+V inserts a clipboard image after it. Drop image files here to add frames.</value></data>
+  <data name="AnimationEditor_TimelineClipboardTooltip" xml:space="preserve"><value>Ctrl+C copies the selected frame. Ctrl+V inserts it after the selected frame. Drag frames to reorder them. Drop image files here to add frames.</value></data>
   <data name="AnimationEditor_FrameCopied" xml:space="preserve"><value>Selected frame image copied to the clipboard.</value></data>
   <data name="AnimationEditor_ClipboardHasNoImage" xml:space="preserve"><value>The clipboard does not contain an image.</value></data>
   <data name="AnimationEditor_PasteFrame" xml:space="preserve"><value>Paste frame</value></data>
