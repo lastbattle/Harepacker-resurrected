@@ -394,15 +394,48 @@
                         </ScrollViewer>
                     </TabItem>
                     <TabItem Header="{local:AnimationEditorText AnimationEditor_AnimationProperties}">
-                        <DataGrid x:Name="animationPropertiesGrid" Margin="4,10" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" RowHeaderWidth="0"
-                                  BeginningEdit="PropertyGrid_BeginningEdit"
-                                  AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AnimationPropertiesGrid}">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Property}" Binding="{Binding Name}" IsReadOnly="True" Width="*"/>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Type}" Binding="{Binding Type}" IsReadOnly="True" Width="84"/>
-                                <DataGridTextColumn Header="{local:AnimationEditorText AnimationEditor_Value}" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="120"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Grid Margin="4,10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{local:AnimationEditorText AnimationEditor_AnimationPropertyTreeDescription}"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource HareMutedTextBrush}"/>
+                            <TreeView x:Name="animationPropertyTree" Grid.Row="1" Margin="0,8,0,8"
+                                      AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AnimationPropertiesGrid}">
+                                <TreeView.Resources>
+                                    <HierarchicalDataTemplate DataType="{x:Type local:AnimationPropertyNode}" ItemsSource="{Binding Children}">
+                                        <Grid MinWidth="300">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="82"/>
+                                                <ColumnDefinition Width="112"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Type}" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource HareMutedTextBrush}" Margin="0,0,6,0"/>
+                                            <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=LostFocus}"
+                                                     IsReadOnly="{Binding IsReadOnly}" Padding="4,2"/>
+                                        </Grid>
+                                    </HierarchicalDataTemplate>
+                                </TreeView.Resources>
+                            </TreeView>
+                            <Grid Grid.Row="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="newPropertyNameTextBox" Margin="0,0,6,0"
+                                         ToolTip="{local:AnimationEditorText AnimationEditor_NewFolderTooltip}"
+                                         Text="newFolder"/>
+                                <Button Grid.Column="1" Margin="0,0,6,0" Style="{StaticResource HareButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_AddFolder}" Click="AddPropertyFolder_Click"/>
+                                <Button Grid.Column="2" Style="{StaticResource HareDangerButtonStyle}"
+                                        Content="{local:AnimationEditorText AnimationEditor_DeleteProperty}" Click="DeleteProperty_Click"/>
+                            </Grid>
+                        </Grid>
                     </TabItem>
                     <TabItem Header="{local:AnimationEditorText AnimationEditor_AI}">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

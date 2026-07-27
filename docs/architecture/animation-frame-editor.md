@@ -13,15 +13,16 @@ HaCreator's Animation Frame Editor is a native WPF editor for WZ sprite animatio
 | Equipment | `Character/<slot>/<itemId>.img/<action>/<frame>/<layer>` |
 | Map objects | `Map/Obj/<oS>.img/<l0>/<l1>/<l2>/<frame>` |
 | Map backgrounds | `Map/Back/<bS>.img/ani/<no>/<frame>` and static `back/<no>` |
-| Skill effects | `Skill/<job>.img/skill/<skillId>/<effect channel>/<frame>` |
+| Skill effects | `Skill/<job>.img/skill/<skillId>/<any nested effect folder>/<frame>` |
 
-Track discovery is structural. A timeline-capable node has numerically named Canvas, UOL, or composite layer children, so effect and equipment action names do not need to be hard-coded. Item metadata/icon branches are excluded, while nested cash-item effects and pet actions are discovered recursively. Equipment is grouped by its physical Character WZ directory; owner-image slot metadata such as `islot` and `vslot` is preserved unchanged for specialized weapon, accessory, mechanic, dragon, android, saddle, and pet-equipment variants. Nonnumeric sibling properties such as `zigzag`, `flip`, and `z` remain in the animation property inspector.
+Track discovery is structural. A timeline-capable node has numerically named Canvas, UOL, or composite layer children, so effect and equipment action names do not need to be hard-coded. Skill, monster, and NPC tracks recursively follow nested WZ folders, including metadata paths such as `attack1/info/effectFlash`; canvas layers are not exposed as duplicate tracks. Item metadata/icon branches are excluded, while nested cash-item effects and pet actions are discovered recursively. Equipment is grouped by its physical Character WZ directory; owner-image slot metadata such as `islot` and `vslot` is preserved unchanged for specialized weapon, accessory, mechanic, dragon, android, saddle, and pet-equipment variants. Nonnumeric sibling properties such as `zigzag`, `flip`, and `z` remain in the animation property inspector.
 
 ## Editing model
 
 - The editor works on a detached clone of the selected animation track. Browsing, previewing, undoing, and cancelling do not mutate the live image.
 - **Save** atomically replaces only the selected track, marks the owner image changed, and persists it through the active `IDataSource` using the exact category-relative IMG path. A failed write restores the tree, changed flag, and cache tag.
 - Numeric frames are serialized in timeline order as `0..n-1`. Unknown frame and animation properties are preserved.
+- The Animation Properties tab recursively exposes non-frame folders and scalar metadata, including `info`. Numeric, floating-point, string, and vector values can be edited; **Add folder** creates an undoable `WzSubProperty` under the selected folder or animation root, and **Delete property** removes the selected node.
 - UOL frames remain links by default. **Make linked frame independent** materializes a direct Canvas copy before editing its pixels or metadata.
 - Reactor `info/link` assets are opened against their linked owner image and show a warning in the status bar.
 

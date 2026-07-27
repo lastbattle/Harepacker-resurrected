@@ -245,7 +245,7 @@ namespace HaCreator.GUI.FrameAnimation
             _document = document;
             _document.DirtyChanged += Document_DirtyChanged;
             timelineListBox.ItemsSource = _document.Frames;
-            animationPropertiesGrid.ItemsSource = _document.AnimationProperties;
+            animationPropertyTree.ItemsSource = _document.AnimationProperties;
             AttachRawPropertyTracking();
             timelineListBox.SelectedIndex = 0;
             scrubSlider.Maximum = Math.Max(0, _document.Frames.Count - 1);
@@ -266,7 +266,7 @@ namespace HaCreator.GUI.FrameAnimation
             timelineListBox.ItemsSource = null;
             layerComboBox.ItemsSource = null;
             framePropertiesGrid.ItemsSource = null;
-            animationPropertiesGrid.ItemsSource = null;
+            animationPropertyTree.ItemsSource = null;
             previewCanvas.Children.Clear();
             frameCounterText.Text = "0 / 0";
             frameIndexText.Text = string.Empty;
@@ -1370,7 +1370,7 @@ namespace HaCreator.GUI.FrameAnimation
                 WzImageProperty saved = _repository.Commit(_document);
                 _document.AcceptSaved(saved);
                 timelineListBox.ItemsSource = _document.Frames;
-                animationPropertiesGrid.ItemsSource = _document.AnimationProperties;
+                animationPropertyTree.ItemsSource = _document.AnimationProperties;
                 AttachRawPropertyTracking();
                 timelineListBox.SelectedIndex = 0;
                 _undo.Clear();
@@ -1500,7 +1500,7 @@ namespace HaCreator.GUI.FrameAnimation
         {
             if (_document == null)
                 return;
-            TrackRawPropertyRows(_document.AnimationProperties);
+            TrackRawPropertyNodes(_document.AnimationProperties);
             foreach (AnimationFrameModel frame in _document.Frames)
             foreach (AnimationLayerModel layer in frame.Layers)
                 TrackRawPropertyRows(layer.Properties);
@@ -1518,6 +1518,18 @@ namespace HaCreator.GUI.FrameAnimation
                 row.ValueChanging += RawProperty_ValueChanging;
                 row.ValueChanged -= RawProperty_ValueChanged;
                 row.ValueChanged += RawProperty_ValueChanged;
+            }
+        }
+
+        private void TrackRawPropertyNodes(IEnumerable<AnimationPropertyNode> nodes)
+        {
+            foreach (AnimationPropertyNode node in nodes ?? Enumerable.Empty<AnimationPropertyNode>())
+            {
+                node.ValueChanging -= RawAnimationPropertyNode_ValueChanging;
+                node.ValueChanging += RawAnimationPropertyNode_ValueChanging;
+                node.ValueChanged -= RawAnimationPropertyNode_ValueChanged;
+                node.ValueChanged += RawAnimationPropertyNode_ValueChanged;
+                TrackRawPropertyNodes(node.Children);
             }
         }
 
@@ -1558,11 +1570,126 @@ namespace HaCreator.GUI.FrameAnimation
             RenderPreview();
         }
 
+        private void RawAnimationPropertyNode_ValueChanging(object sender, AnimationPropertyValueChangedEventArgs e)
+        {
+            if (!_suppressRawPropertyTracking)
+                BeginTrackedEdit();
+        }
+
+        private void RawAnimationPropertyNode_ValueChanged(object sender, AnimationPropertyValueChangedEventArgs e)
+        {
+            if (_suppressRawPropertyTracking || sender is not AnimationPropertyNode node)
+                return;
+            try
+            {
+                PushExecuted(new EditOperation(
+                    () => SetAnimationPropertyNodeValue(node, e.OldValue),
+                    () => SetAnimationPropertyNodeValue(node, e.NewValue),
+                    GetAnimationPropertyNodePath(node)));
+            }
+            finally
+            {
+                EndTrackedEdit();
+            }
+            RenderPreview();
+        }
+
+        private void SetAnimationPropertyNodeValue(AnimationPropertyNode node, string value)
+        {
+            _suppressRawPropertyTracking = true;
+            try { node.Value = value; }
+            finally { _suppressRawPropertyTracking = false; }
+        }
+
+        private static string GetAnimationPropertyNodePath(AnimationPropertyNode node)
+        {
+            List<string> segments = new();
+            for (AnimationPropertyNode current = node; current != null; current = current.ParentNode)
+                segments.Add(current.Name);
+            segments.Reverse();
+            return string.Join("/", segments);
+        }
+
         private void SetRawPropertyValue(AnimationPropertyRow row, string value)
         {
             _suppressRawPropertyTracking = true;
             try { row.Value = value; }
             finally { _suppressRawPropertyTracking = false; }
+        }
+
+        private void AddPropertyFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null)
+                return;
+
+            string name = newPropertyNameTextBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                name = "newFolder";
+            if (name.Contains('/') || name is "." or "..")
+            {
+                MessageBox.Show(this, AnimationEditorTextExtension.Get("AnimationEditor_InvalidFolderName"),
+                    AnimationEditorTextExtension.Get("AnimationEditor_AnimationProperties"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            AnimationPropertyNode selected = animationPropertyTree.SelectedItem as AnimationPropertyNode;
+            IPropertyContainer parent = selected?.IsContainer == true
+                ? selected.Property as IPropertyContainer
+                : selected?.Property.Parent as IPropertyContainer;
+            parent ??= _document.WorkingTrack as IPropertyContainer;
+            if (parent == null)
+                return;
+            if (parent.WzProperties.Any(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(this, AnimationEditorTextExtension.Get("AnimationEditor_FolderAlreadyExists", name),
+                    AnimationEditorTextExtension.Get("AnimationEditor_AnimationProperties"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            WzSubProperty folder = new(name);
+            int index = parent.WzProperties.Count;
+            Execute(new EditOperation(
+                () =>
+                {
+                    parent.RemoveProperty(folder);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                () =>
+                {
+                    parent.WzProperties.Insert(index, folder);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                AnimationEditorTextExtension.Get("AnimationEditor_AddFolder")));
+            newPropertyNameTextBox.SelectAll();
+            SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_FolderAdded", name), false);
+        }
+
+        private void DeleteProperty_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null || animationPropertyTree.SelectedItem is not AnimationPropertyNode selected || !selected.CanDelete)
+                return;
+            if (selected.Property.Parent is not IPropertyContainer parent)
+                return;
+
+            WzImageProperty property = selected.Property;
+            int index = parent.WzProperties.IndexOf(property);
+            Execute(new EditOperation(
+                () =>
+                {
+                    parent.WzProperties.Insert(Math.Max(0, index), property);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                () =>
+                {
+                    parent.RemoveProperty(property);
+                    _document.RefreshAnimationProperties();
+                    AttachRawPropertyTracking();
+                },
+                AnimationEditorTextExtension.Get("AnimationEditor_DeleteProperty")));
+            SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_PropertyDeleted", property.Name), false);
         }
 
         private void PropertyGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
@@ -1820,7 +1947,7 @@ namespace HaCreator.GUI.FrameAnimation
             if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
             {
                 if (aiPromptTextBox.IsKeyboardFocusWithin || framePropertiesGrid.IsKeyboardFocusWithin ||
-                    animationPropertiesGrid.IsKeyboardFocusWithin)
+                    animationPropertyTree.IsKeyboardFocusWithin)
                     return;
                 if (Keyboard.FocusedElement is DependencyObject escapeFocus)
                 {

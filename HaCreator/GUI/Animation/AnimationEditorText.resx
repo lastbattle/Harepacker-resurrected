@@ -49,6 +49,14 @@
   <data name="AnimationEditor_Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="AnimationEditor_Properties" xml:space="preserve"><value>Properties</value></data>
   <data name="AnimationEditor_AnimationProperties" xml:space="preserve"><value>Animation / Raw WZ</value></data>
+  <data name="AnimationEditor_AnimationPropertyTreeDescription" xml:space="preserve"><value>Browse and edit every non-frame property under this animation. Select a folder to add a WzSubProperty child.</value></data>
+  <data name="AnimationEditor_NewFolderTooltip" xml:space="preserve"><value>New WzSubProperty name; the folder is added under the selected folder or animation root.</value></data>
+  <data name="AnimationEditor_AddFolder" xml:space="preserve"><value>Add folder</value></data>
+  <data name="AnimationEditor_DeleteProperty" xml:space="preserve"><value>Delete property</value></data>
+  <data name="AnimationEditor_InvalidFolderName" xml:space="preserve"><value>Folder names cannot contain '/' or be '.' or '..'.</value></data>
+  <data name="AnimationEditor_FolderAlreadyExists" xml:space="preserve"><value>A property named "{0}" already exists in this folder.</value></data>
+  <data name="AnimationEditor_FolderAdded" xml:space="preserve"><value>Added WzSubProperty "{0}".</value></data>
+  <data name="AnimationEditor_PropertyDeleted" xml:space="preserve"><value>Deleted property "{0}".</value></data>
   <data name="AnimationEditor_Frame" xml:space="preserve"><value>CURRENT FRAME</value></data>
   <data name="AnimationEditor_FrameIndex" xml:space="preserve"><value>Frame</value></data>
   <data name="AnimationEditor_Layer" xml:space="preserve"><value>Layer</value></data>
