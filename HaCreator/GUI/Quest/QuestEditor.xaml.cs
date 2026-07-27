@@ -33,6 +33,7 @@ namespace HaCreator.GUI.Quest
         // etc
         private bool _isLoading = false;
         private bool _unsavedChanges = false;
+        private GridLength _conversationStudioHeight = new(2, GridUnitType.Star);
 
         /// <summary>
         /// Constructor
@@ -2070,7 +2071,11 @@ namespace HaCreator.GUI.Quest
         {
             Dispatcher.BeginInvoke(
                 DispatcherPriority.ContextIdle,
-                new Action(SelectFirstVisibleQuestConversation));
+                new Action(() =>
+                {
+                    SelectFirstVisibleQuestConversation();
+                    RefreshConversationStudio();
+                }));
         }
 
         private void SelectFirstVisibleQuestConversation()
@@ -2094,6 +2099,91 @@ namespace HaCreator.GUI.Quest
 
             dataGrid.SelectedItem = firstItem;
             dataGrid.ScrollIntoView(firstItem);
+        }
+
+        private void ConversationGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ConversationStudio != null && sender is DataGrid dataGrid && dataGrid.IsVisible)
+            {
+                ShowConversationStudio(dataGrid);
+            }
+        }
+
+        private void QuestEditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                new Action(RefreshConversationStudio));
+        }
+
+        private void RefreshConversationStudio()
+        {
+            if (QuestEditorTabs == null || ConversationStudio == null)
+            {
+                return;
+            }
+
+            DataGrid conversationGrid = FindVisibleDescendant<DataGrid>(
+                QuestEditorTabs,
+                dataGrid => Equals(dataGrid.Tag, "ConversationStudioSource"));
+
+            if (conversationGrid == null)
+            {
+                HideConversationStudio();
+                return;
+            }
+
+            ShowConversationStudio(conversationGrid);
+        }
+
+        private void ShowConversationStudio(DataGrid conversationGrid)
+        {
+            BindingOperations.ClearBinding(ConversationStudio, NpcConversationPreview.ConversationProperty);
+            ConversationStudio.ConversationGroup = null;
+
+            if (conversationGrid.SelectedItem is QuestEditorSayModel sayModel)
+            {
+                ConversationStudio.SetBinding(
+                    NpcConversationPreview.ConversationProperty,
+                    new Binding($"{nameof(QuestEditorSayModel.SelectedPreviewLine)}.{nameof(QuestEditorConversationPreviewLine.Conversation)}")
+                    {
+                        Source = sayModel
+                    });
+                ConversationStudio.ConversationGroup = sayModel;
+            }
+            else if (conversationGrid.SelectedItem is QuestEditorSayEndQuestModel stopConversation)
+            {
+                ConversationStudio.SetBinding(
+                    NpcConversationPreview.ConversationProperty,
+                    new Binding(nameof(QuestEditorSayEndQuestModel.SelectedResponse))
+                    {
+                        Source = stopConversation
+                    });
+            }
+
+            ConversationStudioSplitterRow.Height = new GridLength(6);
+            if (ConversationStudio.Visibility != Visibility.Visible)
+            {
+                ConversationStudioRow.Height = _conversationStudioHeight;
+            }
+            ConversationStudioSplitter.Visibility = Visibility.Visible;
+            ConversationStudio.Visibility = Visibility.Visible;
+        }
+
+        private void HideConversationStudio()
+        {
+            if (ConversationStudioRow.Height.Value > 0)
+            {
+                _conversationStudioHeight = ConversationStudioRow.Height;
+            }
+
+            BindingOperations.ClearBinding(ConversationStudio, NpcConversationPreview.ConversationProperty);
+            ConversationStudio.Conversation = null;
+            ConversationStudio.ConversationGroup = null;
+            ConversationStudioSplitter.Visibility = Visibility.Collapsed;
+            ConversationStudio.Visibility = Visibility.Collapsed;
+            ConversationStudioSplitterRow.Height = new GridLength(0);
+            ConversationStudioRow.Height = new GridLength(0);
         }
 
         /// <summary>
@@ -4683,6 +4773,26 @@ namespace HaCreator.GUI.Quest
             for (int i = 0; i < childCount; i++)
             {
                 T descendant = FindVisibleDescendant<T>(VisualTreeHelper.GetChild(parent, i));
+                if (descendant != null)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
+        }
+
+        private static T FindVisibleDescendant<T>(DependencyObject parent, Predicate<T> predicate) where T : FrameworkElement
+        {
+            if (parent is T visibleElement && visibleElement.IsVisible && predicate(visibleElement))
+            {
+                return visibleElement;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                T descendant = FindVisibleDescendant(VisualTreeHelper.GetChild(parent, i), predicate);
                 if (descendant != null)
                 {
                     return descendant;
