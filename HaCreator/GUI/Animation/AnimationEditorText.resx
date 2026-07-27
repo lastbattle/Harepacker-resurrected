@@ -114,6 +114,7 @@
   <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>Frame property table</value></data>
   <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>Animation property table</value></data>
   <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG image (*.png)|*.png</value></data>
+  <data name="AnimationEditor_WebpFilter" xml:space="preserve"><value>WebP image (*.webp)|*.webp</value></data>
   <data name="AnimationEditor_AI" xml:space="preserve"><value>AI</value></data>
   <data name="AnimationEditor_AIGenerateFrames" xml:space="preserve"><value>AI frame studio</value></data>
   <data name="AnimationEditor_AIDescription" xml:space="preserve"><value>Generate new frames or edit the selected frame. Results stay detached and undoable until you save the animation.</value></data>

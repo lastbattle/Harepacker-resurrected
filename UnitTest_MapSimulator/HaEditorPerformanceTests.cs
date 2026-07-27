@@ -1,12 +1,16 @@
 using System.Collections.Specialized;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using HaCreator;
 using HaCreator.CustomControls;
+using HaCreator.GUI;
 using HaCreator.GUI.EditorPanels;
 using HaCreator.Wz;
+using HaSharedLibrary.GUI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure;
 
@@ -63,10 +67,55 @@ public class HaEditorPerformanceTests
     }
 
     [Fact]
+    public void SoundPlayerButtonReflectsPlaybackState()
+    {
+        RunOnSta(() =>
+        {
+            SoundPlayer player = new();
+            System.Windows.Controls.Button button = Assert.IsType<System.Windows.Controls.Button>(
+                player.FindName("PauseButton"));
+            MethodInfo setPlaybackState = Assert.IsAssignableFrom<MethodInfo>(typeof(SoundPlayer).GetMethod(
+                "SetPlaybackState", BindingFlags.Instance | BindingFlags.NonPublic));
+
+            setPlaybackState.Invoke(player, [true]);
+            Assert.Equal("Pause", button.Content);
+
+            setPlaybackState.Invoke(player, [false]);
+            Assert.Equal("Play", button.Content);
+        });
+    }
+
+    [Fact]
+    public void MapInfoLocalizationPreservesSoundPlayerButtonState()
+    {
+        RunOnSta(() =>
+        {
+            Grid root = new();
+            SoundPlayer player = new();
+            root.Children.Add(player);
+
+            Type localizerType = typeof(InfoEditor).Assembly.GetType(
+                "HaCreator.GUI.EditorPanels.EditorPanelLocalizer", throwOnError: true)!;
+            MethodInfo applyLocalization = Assert.IsAssignableFrom<MethodInfo>(localizerType.GetMethod(
+                "Apply", BindingFlags.Static | BindingFlags.NonPublic));
+            applyLocalization.Invoke(null, [root]);
+
+            MethodInfo setPlaybackState = Assert.IsAssignableFrom<MethodInfo>(typeof(SoundPlayer).GetMethod(
+                "SetPlaybackState", BindingFlags.Instance | BindingFlags.NonPublic));
+            setPlaybackState.Invoke(player, [true]);
+
+            System.Windows.Controls.Button button = Assert.IsType<System.Windows.Controls.Button>(
+                player.FindName("PauseButton"));
+            Assert.Equal("Pause", button.Content);
+        });
+    }
+
+    [Fact]
     public void AssetGalleryLoadsOnlyVisibleLazyThumbnails()
     {
         Exception? failure = null;
         int loadCount = 0;
+        HashSet<int> loadedIndices = new();
         Thread thread = new(() =>
         {
             try
@@ -76,9 +125,11 @@ public class HaEditorPerformanceTests
                 {
                     for (int index = 0; index < 15_000; index++)
                     {
-                        gallery.AddLazy(index.ToString(), () =>
+                        int assetIndex = index;
+                        gallery.AddLazy(assetIndex.ToString(), () =>
                         {
                             loadCount++;
+                            loadedIndices.Add(assetIndex);
                             return (null, new object());
                         });
                     }
@@ -96,6 +147,9 @@ public class HaEditorPerformanceTests
                 window.Show();
                 window.UpdateLayout();
 
+                window.Width = 640;
+                window.UpdateLayout();
+
                 DispatcherFrame frame = new();
                 Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
                     new Action(() => frame.Continue = false));
@@ -103,12 +157,18 @@ public class HaEditorPerformanceTests
 
                 VirtualizingWrapPanel panel = Assert.IsType<VirtualizingWrapPanel>(
                     FindVisualChild<VirtualizingWrapPanel>(gallery));
-                panel.SetVerticalOffset(112 * 1_000);
-                window.UpdateLayout();
-                frame = new DispatcherFrame();
-                Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-                    new Action(() => frame.Continue = false));
-                Dispatcher.PushFrame(frame);
+                for (int iteration = 0; iteration < 50; iteration++)
+                {
+                    window.Width = iteration % 2 == 0 ? 320 : 640;
+                    panel.SetVerticalOffset(iteration % 4 < 2 ? 112 * 1_000 : 0);
+                    window.UpdateLayout();
+                    frame = new DispatcherFrame();
+                    Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                        new Action(() => frame.Continue = false));
+                    Dispatcher.PushFrame(frame);
+
+                    AssertRealizedContainersAreConsistent(panel);
+                }
 
                 window.Close();
             }
@@ -122,7 +182,8 @@ public class HaEditorPerformanceTests
         Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "WPF gallery test timed out.");
 
         Assert.Null(failure);
-        Assert.InRange(loadCount, 2, 50);
+        Assert.InRange(loadCount, 2, 100);
+        Assert.Contains(loadedIndices, index => index >= 1_000);
     }
 
     [Fact]
@@ -193,6 +254,22 @@ public class HaEditorPerformanceTests
                 return descendant;
         }
         return null;
+    }
+
+    private static void AssertRealizedContainersAreConsistent(VirtualizingWrapPanel panel)
+    {
+        ItemsControl owner = Assert.IsAssignableFrom<ItemsControl>(ItemsControl.GetItemsOwner(panel));
+        List<int> itemIndices = new();
+        for (int childIndex = 0; childIndex < VisualTreeHelper.GetChildrenCount(panel); childIndex++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(panel, childIndex);
+            itemIndices.Add(owner.ItemContainerGenerator.IndexFromContainer(child));
+        }
+
+        Assert.All(itemIndices, itemIndex => Assert.InRange(itemIndex, 0, owner.Items.Count - 1));
+        Assert.Equal(itemIndices.Count, itemIndices.Distinct().Count());
+        Assert.Equal(itemIndices.OrderBy(itemIndex => itemIndex), itemIndices);
+        Assert.InRange(itemIndices.Count, 1, 100);
     }
 }
 

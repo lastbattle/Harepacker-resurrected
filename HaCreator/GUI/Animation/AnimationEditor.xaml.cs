@@ -1,6 +1,7 @@
 using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.FrameAnimation.AI;
 using HaCreator.MapEditor.AI;
+using HaSharedLibrary.GUI;
 using MapleLib.Converters;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -363,7 +364,6 @@ namespace HaCreator.GUI.FrameAnimation
         private void UpdatePlaybackButtons()
         {
             string glyph = _isPlaying ? "\uE769" : "\uE768";
-            if (playToolbarButton != null) playToolbarButton.Content = glyph;
             if (playTimelineButton != null) playTimelineButton.Content = glyph;
         }
 
@@ -397,6 +397,53 @@ namespace HaCreator.GUI.FrameAnimation
         private void AddFrame_Click(object sender, RoutedEventArgs e) => ImportFrame();
         private void ImportFrame_Click(object sender, RoutedEventArgs e) => ImportFrame();
 
+        private void Preview_Click(object sender, RoutedEventArgs e)
+        {
+            if (_document == null || _document.Frames.Count == 0)
+                return;
+
+            List<ImageAnimationPreviewFrame> previewFrames = new();
+            string previewPath = previewPathText.Text;
+            foreach (AnimationFrameModel frame in _document.Frames)
+            {
+                List<ImageAnimationPreviewLayer> layers = new();
+                foreach (AnimationLayerModel layer in frame.Layers)
+                {
+                    WzCanvasProperty canvas = layer.Canvas ?? layer.SourceCanvas;
+                    if (canvas != null)
+                        layers.Add(new ImageAnimationPreviewLayer(canvas, $"{previewPath}/{frame.Index}/{layer.Name}"));
+                }
+
+                if (layers.Count > 0)
+                    previewFrames.Add(new ImageAnimationPreviewFrame(layers));
+            }
+
+            if (previewFrames.Count == 0)
+            {
+                SetError(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
+                return;
+            }
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    using ImageAnimationPreviewWindow previewWindow = new(previewFrames, previewPath);
+                    previewWindow.Run();
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                            SetError(ex.Message);
+                    }));
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+        }
+
         private void ImportFrame()
         {
             AnimationFrameModel template = _document?.SelectedFrame;
@@ -404,7 +451,7 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             OpenFileDialog dialog = new()
             {
-                Filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter"),
+                Filter = GetImageFileFilter(),
                 Multiselect = true,
                 Title = AnimationEditorTextExtension.Get("AnimationEditor_ImportTitle")
             };
@@ -526,7 +573,7 @@ namespace HaCreator.GUI.FrameAnimation
                 {
                     try
                     {
-                        using DrawingBitmap loaded = new(file);
+                        using DrawingBitmap loaded = AnimationImageFileCodec.Load(file);
                         bitmaps.Add(new DrawingBitmap(loaded));
                     }
                     catch
@@ -693,8 +740,16 @@ namespace HaCreator.GUI.FrameAnimation
         }
 
         private static bool IsSupportedImageFile(string file) =>
-            File.Exists(file) && new[] { ".png", ".bmp", ".gif", ".jpg", ".jpeg" }
+            File.Exists(file) && new[] { ".png", ".bmp", ".gif", ".jpg", ".jpeg", ".webp" }
                 .Contains(IOPath.GetExtension(file), StringComparer.OrdinalIgnoreCase);
+
+        private static string GetImageFileFilter()
+        {
+            string filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter");
+            if (filter.Contains("*.webp", StringComparison.OrdinalIgnoreCase))
+                return filter;
+            return $"{filter}|{AnimationEditorTextExtension.Get("AnimationEditor_WebpFilter")}";
+        }
 
         private void DuplicateFrame_Click(object sender, RoutedEventArgs e)
         {
@@ -761,10 +816,10 @@ namespace HaCreator.GUI.FrameAnimation
             AnimationLayerModel layer = _document?.SelectedFrame?.SelectedLayer;
             if (frame == null || layer?.Canvas == null)
                 return;
-            OpenFileDialog dialog = new() { Filter = AnimationEditorTextExtension.Get("AnimationEditor_ImageFilter") };
+            OpenFileDialog dialog = new() { Filter = GetImageFileFilter() };
             if (dialog.ShowDialog(this) != true)
                 return;
-            using DrawingBitmap loaded = new(dialog.FileName);
+            using DrawingBitmap loaded = AnimationImageFileCodec.Load(dialog.FileName);
             WzImageProperty before = frame.WorkingFrame.DeepClone();
             WzImageProperty after = before.DeepClone();
             var temporary = new AnimationFrameModel(after, after, frame.Index, () => { });
@@ -903,7 +958,7 @@ namespace HaCreator.GUI.FrameAnimation
                 return;
             SaveFileDialog dialog = new()
             {
-                Filter = AnimationEditorTextExtension.Get("AnimationEditor_PngFilter"),
+                Filter = $"{AnimationEditorTextExtension.Get("AnimationEditor_PngFilter")}|{AnimationEditorTextExtension.Get("AnimationEditor_WebpFilter")}",
                 FileName = $"{IOPath.GetFileNameWithoutExtension(_document.Asset.ImageName)}_{Sanitize(_document.Track.Name)}_{_document.SelectedFrame.Index}.png"
             };
             if (dialog.ShowDialog(this) != true)
@@ -913,11 +968,23 @@ namespace HaCreator.GUI.FrameAnimation
                 BitmapSource bitmap = layer.Bitmap;
                 if (bitmap == null)
                     throw new InvalidOperationException(AnimationEditorTextExtension.Get("AnimationEditor_MissingCanvas"));
-                PngBitmapEncoder encoder = new();
-                encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                using FileStream stream = File.Create(dialog.FileName);
-                encoder.Save(stream);
-                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_Exported", dialog.FileName), false);
+                string outputPath = dialog.FileName;
+                bool exportWebp = dialog.FilterIndex == 2 ||
+                    string.Equals(IOPath.GetExtension(outputPath), ".webp", StringComparison.OrdinalIgnoreCase);
+                outputPath = IOPath.ChangeExtension(outputPath, exportWebp ? ".webp" : ".png");
+                if (exportWebp)
+                {
+                    using DrawingBitmap source = BitmapSourceToDrawingBitmap(bitmap);
+                    AnimationImageFileCodec.SaveWebp(source, outputPath);
+                }
+                else
+                {
+                    PngBitmapEncoder encoder = new();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using FileStream stream = File.Create(outputPath);
+                    encoder.Save(stream);
+                }
+                SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_Exported", outputPath), false);
             }
             catch (Exception ex) { SetError(ex.Message); }
         }
@@ -1605,9 +1672,12 @@ namespace HaCreator.GUI.FrameAnimation
                     Height = layer.Height,
                     Opacity = opacity * Math.Clamp(layer.AlphaStart / 255.0, 0, 1),
                     Stretch = Stretch.None,
+                    SnapsToDevicePixels = true,
+                    UseLayoutRounding = true,
                     IsHitTestVisible = false
                 };
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
+                RenderOptions.SetEdgeMode(image, EdgeMode.Aliased);
                 double left = centerX - layer.OriginX;
                 double top = centerY - layer.OriginY;
                 Canvas.SetLeft(image, left);

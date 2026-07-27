@@ -101,6 +101,11 @@ namespace HaCreator.GUI.EditorPanels
                             try
                             {
                                 ObjectInfo info = ObjectInfo.Get(setName, l0, l1, l2.Name);
+                                if (info == null)
+                                {
+                                    return (null, null);
+                                }
+
                                 return (info.Image, (object)info);
                             }
                             catch (InvalidCastException)

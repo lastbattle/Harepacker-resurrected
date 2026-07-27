@@ -81,9 +81,11 @@ The dictionary also supplies restrained implicit styles for standard buttons, te
 - Icon-only buttons require a tooltip and an automation/accessibility name.
 - Enter accepts and Escape cancels in modal dialogs unless a multiline editor owns the key.
 - Filtering should update results immediately and must not destroy selection silently.
+- Toggle commands exposed through menus use checkable menu items whose check state stays synchronized with every other control for the same setting.
 - Validation labels belong next to the affected input; full-operation errors belong in the status/error surface.
 - Disabled controls remain visible when they teach the user what becomes available; hide controls only when they are irrelevant.
 - Preserve numeric-input behavior when migrating WinForms controls. Mark integer `TextBox` controls with `InputScope="Number"`; the shared input registration enforces typing and paste validation. Use `HaSharedLibrary.GUI.NumericTextBox` with `AllowDecimal="True"` for floating-point or decimal values, and set `UseInvariantCulture="True"` when the backing parser uses invariant formatting.
+- Embedded shared controls must stretch to their available host width instead of relying on a fixed width that can be clipped by a narrower dialog column.
 
 ## Localization
 

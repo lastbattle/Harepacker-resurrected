@@ -470,6 +470,7 @@ namespace HaRepacker.GUI.Panels
         private void DataTreeView_Drop(object sender, System.Windows.DragEventArgs e)
         {
             if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) NativeFilesDropped?.Invoke(this, paths);
+            e.Handled = true;
         }
 
         public event EventHandler<string[]> NativeFilesDropped;
@@ -1126,7 +1127,8 @@ namespace HaRepacker.GUI.Panels
             {
                 try
                 {
-                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(selectedNodes, path_title);
+                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(
+                        selectedNodes.Select(node => (WzObject)node.Tag), path_title);
                     previewWnd.Run();
                 }
                 catch (Exception ex)

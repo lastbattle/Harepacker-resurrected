@@ -63,6 +63,13 @@ namespace HaCreator.MapEditor.Info
                 }
                 catch (KeyNotFoundException)
                 {
+                    string logError = string.Format(
+                        "Object Map.wz/Obj/{0}/{1}/{2}/{3} could not be loaded because a required property was missing.",
+                        oS,
+                        l0,
+                        l1,
+                        l2);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, logError);
                     return null;
                 }
             }

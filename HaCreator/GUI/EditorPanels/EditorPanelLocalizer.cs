@@ -33,7 +33,8 @@ namespace HaCreator.GUI.EditorPanels
             if (element is TextBlock textBlock && !string.IsNullOrWhiteSpace(textBlock.Text))
                 textBlock.Text = Text(textBlock.Text, textBlock.Text);
 
-            if (element is ContentControl contentControl && contentControl.Content is string content)
+            if (element is ContentControl contentControl &&
+                contentControl.ReadLocalValue(ContentControl.ContentProperty) is string content)
                 contentControl.Content = Text(content, content);
 
             if (element is HeaderedContentControl headeredControl && headeredControl.Header is string header)

@@ -467,18 +467,30 @@ namespace HaCreator.GUI.Quest
             if (MarkupEditor == null || EditorStatusText == null || EditorHintText == null)
                 return;
 
-            int caretIndex = Math.Min(MarkupEditor.CaretIndex, MarkupEditor.Text.Length);
+            string editorText = MarkupEditor.Text ?? string.Empty;
+            int caretIndex = Math.Clamp(MarkupEditor.CaretIndex, 0, editorText.Length);
+            int tokenCount = Regex.Matches(editorText, @"#[A-Za-z]").Count;
+
+            // WPF reports no lines while the TextBox is being initialized or cleared.
+            // Avoid asking for line 0 in that state; the editor is still at line 1,
+            // column 1 from the user's perspective.
+            if (MarkupEditor.LineCount <= 0)
+            {
+                EditorStatusText.Text = $"Ln 1, Col 1   {editorText.Length} chars   {tokenCount} tokens";
+                return;
+            }
+
             int lineIndex = MarkupEditor.GetLineIndexFromCharacterIndex(caretIndex);
-            if (lineIndex < 0)
-                lineIndex = 0;
+            if (lineIndex < 0 || lineIndex >= MarkupEditor.LineCount)
+                lineIndex = MarkupEditor.LineCount - 1;
+
             int lineStart = MarkupEditor.GetCharacterIndexFromLineIndex(lineIndex);
             if (lineStart < 0)
                 lineStart = 0;
             int column = caretIndex - lineStart + 1;
-            int tokenCount = Regex.Matches(MarkupEditor.Text, @"#[A-Za-z]").Count;
-            EditorStatusText.Text = $"Ln {lineIndex + 1}, Col {column}   {MarkupEditor.Text.Length} chars   {tokenCount} tokens";
+            EditorStatusText.Text = $"Ln {lineIndex + 1}, Col {column}   {editorText.Length} chars   {tokenCount} tokens";
 
-            if (caretIndex > 0 && MarkupEditor.Text[caretIndex - 1] == '#')
+            if (caretIndex > 0 && editorText[caretIndex - 1] == '#')
             {
                 EditorHintText.Text = "Token hint: b blue, r red, d purple, e bold, L menu, i item icon, p NPC, m map, o mob, s skill icon, f WZ image";
             }
