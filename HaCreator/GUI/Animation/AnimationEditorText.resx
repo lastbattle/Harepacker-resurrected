@@ -162,4 +162,11 @@
 {0}
 
 Open AI Settings now?</value></data>
+  <data name="AnimationEditor_Characters" xml:space="preserve"><value>Character animations</value></data>
+  <data name="AnimationEditor_Effects" xml:space="preserve"><value>Effect animations</value></data>
+  <data name="AnimationEditor_Morphs" xml:space="preserve"><value>Morph animations</value></data>
+  <data name="AnimationEditor_UI" xml:space="preserve"><value>UI animations</value></data>
+  <data name="AnimationEditor_Etc" xml:space="preserve"><value>Other animations</value></data>
+  <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>Map tiles</value></data>
+  <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>Map particles</value></data>
 </root>

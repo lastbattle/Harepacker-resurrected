@@ -68,4 +68,11 @@
   <data name="AnimationEditor_FrameDelay" xml:space="preserve"><value>{0}ms</value></data>
   <data name="AnimationEditor_Items" xml:space="preserve"><value>아이템 애니메이션</value></data>
   <data name="AnimationEditor_Equipment" xml:space="preserve"><value>장비 애니메이션</value></data>
+  <data name="AnimationEditor_Characters" xml:space="preserve"><value>캐릭터 애니메이션</value></data>
+  <data name="AnimationEditor_Effects" xml:space="preserve"><value>이펙트 애니메이션</value></data>
+  <data name="AnimationEditor_Morphs" xml:space="preserve"><value>모프 애니메이션</value></data>
+  <data name="AnimationEditor_UI" xml:space="preserve"><value>UI 애니메이션</value></data>
+  <data name="AnimationEditor_Etc" xml:space="preserve"><value>기타 애니메이션</value></data>
+  <data name="AnimationEditor_MapTiles" xml:space="preserve"><value>맵 타일</value></data>
+  <data name="AnimationEditor_MapParticles" xml:space="preserve"><value>맵 파티클</value></data>
 </root>

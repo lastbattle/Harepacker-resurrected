@@ -29,12 +29,19 @@ namespace HaCreator.GUI.FrameAnimation
     {
         Monster,
         Npc,
+        Character,
+        Effect,
+        Morph,
+        UI,
+        Etc,
         Reactor,
         Skill,
         Item,
         Equipment,
         MapObject,
-        MapBackground
+        MapBackground,
+        MapTile,
+        MapParticle
     }
 
     public sealed class AnimationAssetDescriptor

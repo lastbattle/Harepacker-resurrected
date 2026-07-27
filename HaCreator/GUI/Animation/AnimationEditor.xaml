@@ -144,7 +144,7 @@
                         <RowDefinition Height="5*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Assets}"/>
-                    <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" SelectionChanged="Kind_SelectionChanged"
+                    <ComboBox x:Name="kindComboBox" Grid.Row="1" Margin="0,10,0,8" MaxDropDownHeight="520" SelectionChanged="Kind_SelectionChanged"
                               AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetType}"/>
                     <TextBox x:Name="assetSearchBox" Grid.Row="2" Margin="0,0,0,8"
                              ToolTip="{local:AnimationEditorText AnimationEditor_SearchTooltip}"

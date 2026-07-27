@@ -89,12 +89,19 @@ namespace HaCreator.GUI.FrameAnimation
             {
                 new KindItem(AnimationAssetKind.Monster, AnimationEditorTextExtension.Get("AnimationEditor_Monsters")),
                 new KindItem(AnimationAssetKind.Npc, AnimationEditorTextExtension.Get("AnimationEditor_Npcs")),
+                new KindItem(AnimationAssetKind.Character, AnimationEditorTextExtension.Get("AnimationEditor_Characters")),
+                new KindItem(AnimationAssetKind.Effect, AnimationEditorTextExtension.Get("AnimationEditor_Effects")),
+                new KindItem(AnimationAssetKind.Morph, AnimationEditorTextExtension.Get("AnimationEditor_Morphs")),
+                new KindItem(AnimationAssetKind.UI, AnimationEditorTextExtension.Get("AnimationEditor_UI")),
+                new KindItem(AnimationAssetKind.Etc, AnimationEditorTextExtension.Get("AnimationEditor_Etc")),
                 new KindItem(AnimationAssetKind.Reactor, AnimationEditorTextExtension.Get("AnimationEditor_Reactors")),
                 new KindItem(AnimationAssetKind.Skill, AnimationEditorTextExtension.Get("AnimationEditor_Skills")),
                 new KindItem(AnimationAssetKind.Item, AnimationEditorTextExtension.Get("AnimationEditor_Items")),
                 new KindItem(AnimationAssetKind.Equipment, AnimationEditorTextExtension.Get("AnimationEditor_Equipment")),
                 new KindItem(AnimationAssetKind.MapObject, AnimationEditorTextExtension.Get("AnimationEditor_MapObjects")),
-                new KindItem(AnimationAssetKind.MapBackground, AnimationEditorTextExtension.Get("AnimationEditor_Backgrounds"))
+                new KindItem(AnimationAssetKind.MapBackground, AnimationEditorTextExtension.Get("AnimationEditor_Backgrounds")),
+                new KindItem(AnimationAssetKind.MapTile, AnimationEditorTextExtension.Get("AnimationEditor_MapTiles")),
+                new KindItem(AnimationAssetKind.MapParticle, AnimationEditorTextExtension.Get("AnimationEditor_MapParticles"))
             };
             kindComboBox.DisplayMemberPath = nameof(KindItem.Name);
             assetListBox.ItemsSource = _visibleAssets;
