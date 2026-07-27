@@ -853,6 +853,7 @@ namespace HaCreator.GUI
 
                 var v = item.Version;
                 label_versionName.Text = v.DisplayName ?? v.Version;
+                label_directoryPath.Text = Loc.Format("Init_DirectoryPathFormat", v.DirectoryPath);
                 label_extractedDate.Text = Loc.Format("Init_ExtractedFormat", v.ExtractedDate);
                 label_encryptionInfo.Text = Loc.Format("Init_EncryptionFormat", v.Encryption);
 

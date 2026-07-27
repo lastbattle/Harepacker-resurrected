@@ -409,6 +409,9 @@
   <data name="Init_ExtractedFormat" xml:space="preserve">
     <value>提取时间：{0:yyyy-MM-dd HH:mm}</value>
   </data>
+  <data name="Init_DirectoryPathFormat" xml:space="preserve">
+    <value>路径：{0}</value>
+  </data>
   <data name="Init_EncryptionFormat" xml:space="preserve">
     <value>加密：{0}</value>
   </data>
