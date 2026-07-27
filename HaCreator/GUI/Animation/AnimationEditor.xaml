@@ -173,8 +173,18 @@
                     <TextBlock Grid.Row="4" Margin="0,12,0,6" Style="{StaticResource HareSectionTitleStyle}"
                                Text="{local:AnimationEditorText AnimationEditor_Animations}"/>
                     <ListBox x:Name="trackListBox" Grid.Row="5" SelectionChanged="Track_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_TrackList}"
-                             MouseDoubleClick="Track_MouseDoubleClick"/>
+                             MouseDoubleClick="Track_MouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
+                                    <TextBlock Text="{Binding Name}"/>
+                                    <TextBlock Text="{Binding FrameCount, StringFormat={}  ({0})}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
@@ -528,12 +538,23 @@
 
         <Border Grid.Row="2" Background="{DynamicResource HareSurfaceBrush}" BorderBrush="{DynamicResource HareBorderBrush}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <Ellipse x:Name="statusDot" Width="8" Height="8" Fill="{DynamicResource HareSuccessBrush}" VerticalAlignment="Center"/>
                 <TextBlock x:Name="statusText" Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Text="{local:AnimationEditorText AnimationEditor_Ready}"
                            AutomationProperties.LiveSetting="Polite"/>
-                <TextBlock x:Name="coordinateText" Grid.Column="2" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"/>
-                <TextBlock x:Name="dirtyText" Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <Separator x:Name="currentPathSeparator" Grid.Column="2" Margin="4,5" Visibility="Collapsed"/>
+                <TextBlock x:Name="currentPathText" Grid.Column="3" Margin="8,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource HareMutedTextBrush}" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" Visibility="Collapsed"/>
+                <TextBlock x:Name="coordinateText" Grid.Column="4" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource HareMutedTextBrush}"/>
+                <TextBlock x:Name="dirtyText" Grid.Column="5" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
             </Grid>
         </Border>
     </Grid>

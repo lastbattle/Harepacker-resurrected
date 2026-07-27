@@ -146,6 +146,7 @@ namespace HaCreator.GUI.FrameAnimation
                 ApplyAssetFilter();
                 trackListBox.ItemsSource = null;
                 ClearDocument();
+                SetCurrentPath(null);
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_AssetsLoaded", _allAssets.Count), false);
             }
             catch (Exception ex)
@@ -197,6 +198,7 @@ namespace HaCreator.GUI.FrameAnimation
                 _selectedTrack = null;
                 ClearDocument();
                 previewPathText.Text = asset.WzPath;
+                SetCurrentPath(asset.WzPath);
                 SetStatus(AnimationEditorTextExtension.Get("AnimationEditor_AnimationsLoaded", tracks.Count), loaded.linkedOwner);
                 if (tracks.Count > 0)
                     trackListBox.SelectedIndex = 0;
@@ -259,7 +261,9 @@ namespace HaCreator.GUI.FrameAnimation
             AttachRawPropertyTracking();
             timelineListBox.SelectedIndex = 0;
             scrubSlider.Maximum = Math.Max(0, _document.Frames.Count - 1);
-            previewPathText.Text = $"{document.Category}/{document.ImageLookupName}/{document.Track.Path}";
+            string currentPath = $"{document.Category}/{document.ImageLookupName}/{document.Track.Path}";
+            previewPathText.Text = currentPath;
+            SetCurrentPath(currentPath);
             _undo.Clear();
             _redo.Clear();
             _hasUntrackedDirty = false;
@@ -2188,6 +2192,14 @@ namespace HaCreator.GUI.FrameAnimation
             assetListBox.SelectedItem = _selectedAsset;
             trackListBox.SelectedItem = _selectedTrack;
             _suppressSelection = false;
+        }
+
+        private void SetCurrentPath(string path)
+        {
+            currentPathText.Text = path ?? string.Empty;
+            Visibility visibility = string.IsNullOrEmpty(path) ? Visibility.Collapsed : Visibility.Visible;
+            currentPathSeparator.Visibility = visibility;
+            currentPathText.Visibility = visibility;
         }
 
         private void SetStatus(string message, bool warning)
