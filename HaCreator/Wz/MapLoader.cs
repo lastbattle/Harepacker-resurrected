@@ -86,7 +86,6 @@ namespace HaCreator.Wz
                     case "tokyoBossParty": // Neo Tokyo 802000801.img
                     case "skyWhale":
                     case "rectInfo":
-                    case "directionInfo":
                     case "particle":
                     case "respawn":
                     case "enterUI":

@@ -1,0 +1,220 @@
+<Window x:Class="HaCreator.GUI.Cutscene.CutsceneWorkspace"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HaCreator.GUI.Cutscene"
+        Title="{local:CutsceneEditorText Cutscene_Title}"
+        Width="1440" Height="900" MinWidth="1080" MinHeight="680"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/HaSharedLibrary;component/GUI/Themes/HarepackerTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="InspectorLabel" TargetType="TextBlock" BasedOn="{StaticResource HareMutedTextStyle}">
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,5,8,5"/>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Background="{StaticResource HareCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="350"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource HareToolbarStyle}" Margin="12,12,12,8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button Style="{StaticResource HarePrimaryButtonStyle}" Content="{local:CutsceneEditorText Cutscene_Save}" Click="Save_Click"/>
+                    <Button Margin="8,0,0,0" Content="{local:CutsceneEditorText Cutscene_ValidateScene}" Click="ValidateScene_Click"/>
+                    <Button Margin="8,0,0,0" Content="{local:CutsceneEditorText Cutscene_ValidateAll}" Click="ValidateAll_Click"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource HareMutedTextStyle}" Text="{local:CutsceneEditorText Cutscene_PreviewResolution}"/>
+                    <ComboBox x:Name="resolutionComboBox" Width="110" Margin="8,0,0,0" SelectionChanged="Resolution_Changed">
+                        <ComboBoxItem Content="800 × 600" IsSelected="True"/>
+                        <ComboBoxItem Content="1024 × 768"/>
+                        <ComboBoxItem Content="1366 × 768"/>
+                    </ComboBox>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="12,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="270"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="330"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource HareCardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="150"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_SceneExplorer}"/>
+                    <ComboBox x:Name="sceneImageComboBox" Grid.Row="1" Margin="0,8,0,0" DisplayMemberPath="Path" SelectionChanged="SceneImage_SelectionChanged" ToolTip="{local:CutsceneEditorText Cutscene_SceneExplorer}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_SceneExplorer}"/>
+                    <TextBox x:Name="sceneSearchBox" Grid.Row="2" Margin="0,8,0,8" ToolTip="{local:CutsceneEditorText Cutscene_SearchTooltip}" TextChanged="SceneSearch_Changed"/>
+                    <ListBox x:Name="sceneListBox" Grid.Row="3" DisplayMemberPath="Path" SelectionChanged="Scene_SelectionChanged"/>
+                    <TextBlock Grid.Row="4" Margin="0,12,0,6" Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_MapTriggers}"/>
+                    <DockPanel Grid.Row="5">
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Content="{local:CutsceneEditorText Cutscene_Add}" Click="AddTrigger_Click"/>
+                            <Button Margin="6,0,0,0" Style="{StaticResource HareDangerButtonStyle}" Content="{local:CutsceneEditorText Cutscene_Delete}" Click="DeleteTrigger_Click"/>
+                        </StackPanel>
+                        <ListBox x:Name="triggerListBox" DisplayMemberPath="Name" SelectionChanged="Trigger_SelectionChanged"/>
+                    </DockPanel>
+                </Grid>
+            </Border>
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"/>
+
+            <Border Grid.Column="2" Style="{StaticResource HareCardStyle}" Padding="0">
+                <Grid ClipToBounds="True">
+                    <Canvas x:Name="previewCanvas" Background="#172033" MouseLeftButtonDown="Preview_MouseLeftButtonDown" MouseMove="Preview_MouseMove" MouseLeftButtonUp="Preview_MouseLeftButtonUp" SizeChanged="Preview_SizeChanged"/>
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="8,5" Background="#CC0F172A" CornerRadius="4">
+                        <TextBlock x:Name="previewCaption" Foreground="White"/>
+                    </Border>
+                </Grid>
+            </Border>
+            <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch"/>
+
+            <Border Grid.Column="4" Style="{StaticResource HareCardStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_Properties}"/>
+                        <Grid Margin="0,8,0,0" DataContext="{Binding SelectedItem, ElementName=timelineGrid}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="105"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Type}"/><ComboBox Grid.Column="1" ItemsSource="{Binding ElementName=timelineGrid, Path=Tag}" SelectedValuePath="Value" DisplayMemberPath="Name" SelectedValue="{Binding Type, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Start}"/><TextBox Grid.Row="1" Grid.Column="1" InputScope="Number" Text="{Binding Start, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Duration}"/><TextBox Grid.Row="2" Grid.Column="1" InputScope="Number" Text="{Binding Duration, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="X"/><TextBox Grid.Row="3" Grid.Column="1" InputScope="Number" Text="{Binding X, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabel}" Text="Y"/><TextBox Grid.Row="4" Grid.Column="1" InputScope="Number" Text="{Binding Y, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabel}" Text="X1"/><TextBox Grid.Row="5" Grid.Column="1" InputScope="Number" Text="{Binding X1, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabel}" Text="Y1"/><TextBox Grid.Row="6" Grid.Column="1" InputScope="Number" Text="{Binding Y1, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabel}" Text="Z"/><TextBox Grid.Row="7" Grid.Column="1" InputScope="Number" Text="{Binding Z, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="8" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Visual}"/>
+                            <Grid Grid.Row="8" Grid.Column="1">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding Visual, UpdateSourceTrigger=LostFocus}"/>
+                                <Button Grid.Column="1" Margin="6,0,0,0" Content="{local:CutsceneEditorText Cutscene_Browse}" Click="BrowseVisual_Click"/>
+                            </Grid>
+                            <TextBlock Grid.Row="9" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Sound}"/>
+                            <Grid Grid.Row="9" Grid.Column="1">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding Sound, UpdateSourceTrigger=LostFocus}"/>
+                                <Button Grid.Column="1" Margin="6,0,0,0" Content="{local:CutsceneEditorText Cutscene_Browse}" Click="BrowseSound_Click"/>
+                            </Grid>
+                            <TextBlock Grid.Row="10" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Action}"/><ComboBox Grid.Row="10" Grid.Column="1" IsEditable="True" ItemsSource="{Binding ActionCatalogue, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Action, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="11" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Field}"/><TextBox Grid.Row="11" Grid.Column="1" InputScope="Number" Text="{Binding Field, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="12" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Appearance}"/><TextBox Grid.Row="12" Grid.Column="1" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="54" Text="{Binding Appearance, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="13" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Raw}"/><TextBox Grid.Row="13" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" MinHeight="54" Text="{Binding RawProperties, Mode=OneWay}"/>
+                        </Grid>
+                        <Separator Margin="0,12"/>
+                        <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_TriggerBindings}"/>
+                        <TextBlock Margin="0,8,0,3" Style="{StaticResource HareMutedTextStyle}" Text="onUserEnter"/><TextBox x:Name="onUserEnterTextBox" TextChanged="TriggerBinding_Changed"/>
+                        <TextBlock Margin="0,8,0,3" Style="{StaticResource HareMutedTextStyle}" Text="onFirstUserEnter"/><TextBox x:Name="onFirstUserEnterTextBox" TextChanged="TriggerBinding_Changed"/>
+                        <Grid Margin="0,10,0,0" DataContext="{Binding SelectedItem, ElementName=triggerListBox}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource InspectorLabel}" Text="X"/><TextBox Grid.Column="1" InputScope="Number" Text="{Binding X, UpdateSourceTrigger=LostFocus}" TextChanged="TriggerProperty_Changed"/>
+                            <TextBlock Grid.Column="2" Margin="8,5" Style="{StaticResource InspectorLabel}" Text="Y"/><TextBox Grid.Column="3" InputScope="Number" Text="{Binding Y, UpdateSourceTrigger=LostFocus}" TextChanged="TriggerProperty_Changed"/>
+                        </Grid>
+                        <DockPanel Margin="0,6,0,0" DataContext="{Binding SelectedItem, ElementName=triggerListBox}">
+                            <TextBlock Width="105" Style="{StaticResource InspectorLabel}" Text="forcedInput"/>
+                            <TextBox InputScope="Number" Text="{Binding ForcedInput, UpdateSourceTrigger=LostFocus}" TextChanged="TriggerProperty_Changed"/>
+                        </DockPanel>
+                        <TextBlock Margin="0,8,0,3" Style="{StaticResource HareMutedTextStyle}" Text="{local:CutsceneEditorText Cutscene_EventQueue}"/><TextBox x:Name="eventQueueTextBox" AcceptsReturn="True" MinHeight="60" TextChanged="EventQueue_Changed"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch"/>
+        <Border Grid.Row="3" Margin="12,0" Style="{StaticResource HareCardStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="170"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel>
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource HareSectionTitleStyle}" Text="{local:CutsceneEditorText Cutscene_Timeline}"/>
+
+                    <Grid Grid.Row="1" Margin="20,8,0,0" DockPanel.Dock="Right">
+                        <StackPanel HorizontalAlignment="Left" Orientation="Horizontal">
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="&#xE768;" FontFamily="Segoe MDL2 Assets" ToolTip="{local:CutsceneEditorText Cutscene_Play}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_Play}" Click="Play_Click"/>
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="&#xE769;" FontFamily="Segoe MDL2 Assets" ToolTip="{local:CutsceneEditorText Cutscene_Pause}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_Pause}" Click="Pause_Click"/>
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="&#xE71A;" FontFamily="Segoe MDL2 Assets" ToolTip="{local:CutsceneEditorText Cutscene_Stop}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_Stop}" Click="Stop_Click"/>
+                            <Button Style="{StaticResource HareIconButtonStyle}" Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" ToolTip="{local:CutsceneEditorText Cutscene_Step}" AutomationProperties.Name="{local:CutsceneEditorText Cutscene_Step}" Click="Step_Click"/>
+                            <CheckBox x:Name="loopCheckBox" Margin="12,0,0,0" VerticalAlignment="Center" Content="{local:CutsceneEditorText Cutscene_Loop}"/>
+                        </StackPanel>
+
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                            <Button Content="{local:CutsceneEditorText Cutscene_Add}" Click="AddEvent_Click"/>
+                            <Button Margin="6,0,0,0" Content="{local:CutsceneEditorText Cutscene_Duplicate}" Click="DuplicateEvent_Click"/>
+                            <Button Margin="6,0,0,0" Style="{StaticResource HareDangerButtonStyle}" Content="{local:CutsceneEditorText Cutscene_Delete}" Click="DeleteEvent_Click"/>
+                        </StackPanel>
+                    </Grid>
+
+                </DockPanel>
+                <Slider x:Name="playheadSlider" Grid.Row="2" Margin="0,8" Minimum="0" ValueChanged="Playhead_Changed" PreviewMouseLeftButtonDown="Playhead_PreviewMouseLeftButtonDown"/>
+                <Border Grid.Row="3" Margin="0,0,0,8" Background="White"
+                        BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="127"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="0,0,1,0">
+                            <StackPanel x:Name="timelineTrackLabels" VerticalAlignment="Top"/>
+                        </Border>
+                        <ScrollViewer x:Name="timelineScrollViewer" Grid.Column="1"
+                                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                      BorderThickness="0" Padding="0"
+                                      SizeChanged="TimelineViewport_SizeChanged">
+                            <Canvas x:Name="timelineTrackCanvas" Height="144" Background="White"
+                                    VerticalAlignment="Top"
+                                    MouseLeftButtonDown="TimelineCanvas_MouseLeftButtonDown"
+                                    MouseMove="TimelineCanvas_MouseMove"
+                                    MouseLeftButtonUp="TimelineCanvas_MouseLeftButtonUp"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+                <DataGrid x:Name="timelineGrid" Grid.Row="4" AutoGenerateColumns="False" CanUserAddRows="False" SelectionChanged="Timeline_SelectionChanged">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding Id}" IsReadOnly="True" Width="55"/>
+                        <DataGridTextColumn Header="{local:CutsceneEditorText Cutscene_Type}" Binding="{Binding TypeName}" IsReadOnly="True" Width="150"/>
+                        <DataGridTextColumn Header="{local:CutsceneEditorText Cutscene_Start}" Binding="{Binding Start}" Width="90"/>
+                        <DataGridTextColumn Header="{local:CutsceneEditorText Cutscene_Duration}" Binding="{Binding Duration}" Width="90"/>
+                        <DataGridTextColumn Header="{local:CutsceneEditorText Cutscene_Track}" Binding="{Binding Summary}" IsReadOnly="True" Width="*"/>
+                        <DataGridTextColumn Header="X" Binding="{Binding X}" Width="75"/>
+                        <DataGridTextColumn Header="Y" Binding="{Binding Y}" Width="75"/>
+                        <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="75"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+        <Border Grid.Row="4" Margin="12,8,12,12" Padding="10,6" Background="White" BorderBrush="{StaticResource HareBorderBrush}" BorderThickness="1" CornerRadius="4">
+            <StackPanel>
+                <TextBlock x:Name="statusTextBlock" Text="{local:CutsceneEditorText Cutscene_Ready}"/>
+                <ListBox x:Name="validationListBox" Margin="0,6,0,0" MaxHeight="105"
+                         DisplayMemberPath="Message" Visibility="Collapsed"
+                         SelectionChanged="ValidationList_SelectionChanged"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

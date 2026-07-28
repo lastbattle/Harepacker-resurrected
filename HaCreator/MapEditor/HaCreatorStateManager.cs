@@ -6,6 +6,7 @@ using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.GUI.Quest;
 using HaCreator.GUI.FrameAnimation;
+using HaCreator.GUI.Cutscene;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
@@ -110,6 +111,7 @@ namespace HaCreator.MapEditor
             // Etc
             this.editorShell.ShowQuestEditorWindowClicked += Ribbon_ShowQuestEditorWindowClicked;
             this.editorShell.ShowAnimationEditorWindowClicked += Ribbon_ShowAnimationEditorWindowClicked;
+            this.editorShell.ShowCutsceneEditorWindowClicked += Ribbon_ShowCutsceneEditorWindowClicked;
             //
 
             // Debug
@@ -554,6 +556,15 @@ namespace HaCreator.MapEditor
                 Owner = editorShell
             };
             animationEditor.ShowDialog();
+        }
+
+        private void Ribbon_ShowCutsceneEditorWindowClicked()
+        {
+            CutsceneWorkspace workspace = new(multiBoard.SelectedBoard)
+            {
+                Owner = editorShell
+            };
+            workspace.ShowDialog();
         }
         #endregion
 

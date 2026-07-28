@@ -21,6 +21,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using HaSharedLibrary.GUI;
+using HaCreator.GUI.Cutscene;
 using CheckBox = HaCreator.GUI.InfoEditorControls.CheckBox;
 using NumericUpDown = HaCreator.GUI.InfoEditorControls.NumericUpDown;
 
@@ -412,6 +413,16 @@ namespace HaCreator.GUI
 
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
                 new Action(() => LoadSelectedBgmPreview(bgm)));
+        }
+
+        private void OpenCutsceneEditor_Click(object sender, RoutedEventArgs e)
+        {
+            info.onFirstUserEnter = GetOptionalString(firstUserEnter, firstUserEnable);
+            info.onUserEnter = GetOptionalString(userEnter, userEnterEnable);
+            CutsceneWorkspace workspace = new(board) { Owner = this };
+            workspace.ShowDialog();
+            LoadOptionalString(info.onFirstUserEnter, firstUserEnter, firstUserEnable);
+            LoadOptionalString(info.onUserEnter, userEnter, userEnterEnable);
         }
 
         private void LoadSelectedBgmPreview(string bgm)

@@ -133,6 +133,9 @@ namespace HaCreator.Wz
             board.MapInfo.Save(image,
                 board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
 
+            if (board.MapInfo.directionInfo != null)
+                image["directionInfo"] = board.MapInfo.directionInfo.ToProperty();
+
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
                 // Use Program.FindImage for dual-mode support (IMG filesystem and WZ files)

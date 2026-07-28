@@ -4,6 +4,7 @@
     xmlns:gui="clr-namespace:HaCreator.GUI"
     xmlns:local="clr-namespace:HaCreator.GUI.InfoEditorControls"
     xmlns:shared="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+    xmlns:cutscene="clr-namespace:HaCreator.GUI.Cutscene"
     Title="Map Info" Width="940" Height="720" MinWidth="760" MinHeight="560" Background="{DynamicResource HareCanvasBrush}"
     Closing="InfoEditor_FormClosing">
     <gui:EditorBase.Resources>
@@ -83,7 +84,7 @@
             <TabItem Header="Optional properties">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="16">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                     <local:CheckBox x:Name="timeLimitEnable" Content="Time limit" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="timeLimit" Grid.Column="1"/>
                     <local:CheckBox x:Name="lvLimitEnable" Grid.Row="1" Content="Level limit" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="lvLimit" Grid.Row="1" Grid.Column="1"/>
                     <local:CheckBox x:Name="lvForceMoveUse" Grid.Row="2" Content="Force-move level" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="lvForceMove" Grid.Row="2" Grid.Column="1"/>
@@ -95,6 +96,7 @@
                     <local:CheckBox x:Name="mapDescEnable" Grid.Row="8" Content="Map description" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="mapDesc" Grid.Row="8" Grid.Column="1"/>
                     <local:CheckBox x:Name="streetNameEnable" Grid.Row="9" Content="Internal street name" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="streetNameBox" Grid.Row="9" Grid.Column="1"/>
                     <local:CheckBox x:Name="effectEnable" Grid.Row="10" Content="Effect" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><TextBox x:Name="effectBox" Grid.Row="10" Grid.Column="1"/>
+                    <Button Grid.Row="11" Grid.ColumnSpan="2" Margin="0,8,12,0" Content="{cutscene:CutsceneEditorText Cutscene_Title}" Click="OpenCutsceneEditor_Click"/>
                     <local:CheckBox x:Name="dropExpireEnable" Grid.Column="2" Content="Drop expiration" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="dropExpire" Grid.Column="3"/>
                     <local:CheckBox x:Name="dropRateEnable" Grid.Row="1" Grid.Column="2" Content="Drop rate" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="dropRate" Grid.Row="1" Grid.Column="3" AllowDecimal="True"/>
                     <local:CheckBox x:Name="recoveryEnable" Grid.Row="2" Grid.Column="2" Content="Recovery" Checked="enablingCheckBox_CheckChanged" Unchecked="enablingCheckBox_CheckChanged"/><local:NumericUpDown x:Name="recovery" Grid.Row="2" Grid.Column="3" AllowDecimal="True"/>
