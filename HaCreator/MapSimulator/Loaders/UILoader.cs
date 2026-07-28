@@ -948,7 +948,7 @@ namespace HaCreator.MapSimulator.Loaders
                 UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMax.X = (objUIBtBig?.X ?? objUIBtMap.X) - objUIBtMax.CanvasSnapshotWidth; // BtBig is absent in some post-BB clients, including GMS v95.
 
                 UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
