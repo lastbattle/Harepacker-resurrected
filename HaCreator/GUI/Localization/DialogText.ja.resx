@@ -622,6 +622,12 @@
   <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
     <value>Beta Data.wz としてパック</value>
   </data>
+  <data name="Dialog_Pack_as_Pre_Big_Bang_WZ_format" xml:space="preserve">
+    <value>プレビッグバン WZ 形式でパック</value>
+  </data>
+  <data name="Dialog_PreBigBangFormatDescription" xml:space="preserve">
+    <value>抽出元の形式がデフォルトで選択されます。標準 WZ ファイルとしてパックする場合はチェックを外してください。</value>
+  </data>
   <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
     <value>IMG ファイルを WZ にパック</value>
   </data>

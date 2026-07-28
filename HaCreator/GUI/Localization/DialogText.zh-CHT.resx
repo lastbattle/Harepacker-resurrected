@@ -622,6 +622,12 @@
   <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
     <value>封裝為 Beta Data.wz</value>
   </data>
+  <data name="Dialog_Pack_as_Pre_Big_Bang_WZ_format" xml:space="preserve">
+    <value>封裝為 Big Bang 前 WZ 格式</value>
+  </data>
+  <data name="Dialog_PreBigBangFormatDescription" xml:space="preserve">
+    <value>預設會選取提取來源的格式；若要封裝為標準 WZ 檔案，請取消勾選。</value>
+  </data>
   <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
     <value>將 IMG 檔案封裝為 WZ</value>
   </data>

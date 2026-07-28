@@ -622,6 +622,12 @@
   <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
     <value>Pack as Beta Data.wz</value>
   </data>
+  <data name="Dialog_Pack_as_Pre_Big_Bang_WZ_format" xml:space="preserve">
+    <value>Pack as pre-Big Bang WZ format</value>
+  </data>
+  <data name="Dialog_PreBigBangFormatDescription" xml:space="preserve">
+    <value>The extracted source format is selected by default; uncheck this to pack standard WZ files.</value>
+  </data>
   <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
     <value>Pack IMG files to WZ</value>
   </data>

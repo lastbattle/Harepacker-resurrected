@@ -36,6 +36,12 @@ Loads data from extracted `.img` files in the filesystem. Benefits:
 - Easy modification via file system
 - Hot-swap support for live editing
 
+When packing IMG files back to WZ, the Pack IMG files to WZ dialog uses the
+manifest's `isPreBBDataWzFormat` value as the initial suggestion. The user can
+change the pre-Big-Bang checkbox; selecting it produces split category WZ
+files and preserves `List.wz` when the List category is selected. Beta
+packing remains the separate single `Data.wz` format.
+
 ---
 
 ## Architecture Components
@@ -177,6 +183,7 @@ Each extracted version has a `manifest.json`:
   "extractedDate": "2025-01-15T10:30:00Z",
   "encryption": "GMS",
   "is64Bit": false,
+  "isPreBBDataWzFormat": true,
   "categories": {
     "String": { "fileCount": 8 },
     "Map": { "fileCount": 1250 },

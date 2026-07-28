@@ -38,6 +38,8 @@
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"><StackPanel>
                 <TextBlock Text="{dialogLoc:DialogText Dialog_Output_format_93C53D}" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 <controls:CheckBox x:Name="checkBox_betaFormat" Content="{dialogLoc:DialogText Dialog_Pack_as_Beta_Data_wz_D2F012}" Checked="checkBox_betaFormat_CheckedChanged" Unchecked="checkBox_betaFormat_CheckedChanged"/>
+                <controls:CheckBox x:Name="checkBox_preBBFormat" Content="{dialogLoc:DialogText Dialog_Pack_as_Pre_Big_Bang_WZ_format}" Checked="checkBox_preBBFormat_CheckedChanged" Unchecked="checkBox_preBBFormat_CheckedChanged" Margin="0,2,0,0"/>
+                <TextBlock Text="{dialogLoc:DialogText Dialog_PreBigBangFormatDescription}" Margin="18,0,0,8" TextWrapping="Wrap" Opacity="0.72"/>
                 <controls:CheckBox x:Name="checkBox_64bit" Content="{dialogLoc:DialogText Dialog_Save_as_64_bit_WZ_format_4BC4B4}" Checked="checkBox_64bit_CheckedChanged" Unchecked="checkBox_64bit_CheckedChanged"/>
                 <controls:CheckBox x:Name="checkBox_separateCanvas" Content="{dialogLoc:DialogText Dialog_Save_images_in_a_separate_Canvas_folder_0133B6}" Margin="18,2,0,8"/>
                 <TextBlock Text="{dialogLoc:DialogText Dialog_Patch_version_0_auto_45DAB0}" Margin="0,8,0,4"/>
