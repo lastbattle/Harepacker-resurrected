@@ -573,8 +573,9 @@ namespace HaCreator.GUI
 
             UpdateImgButtonStates();
 
-            // Select appropriate default tab based on config
-            if (config.DataSourceMode == DataSourceMode.ImgFileSystem && listBox_imgVersions.Items.Count > 0)
+            // Keep an explicitly selected legacy mode, but guide new IMG-mode users through
+            // extraction even when they do not have a version yet.
+            if (config.DataSourceMode == DataSourceMode.ImgFileSystem)
             {
                 tabControl_dataSource.SelectedItem = tabPage_imgVersions;
             }

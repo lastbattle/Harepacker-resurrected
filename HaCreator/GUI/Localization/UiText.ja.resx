@@ -12,6 +12,15 @@
   <data name="Init_WzFilesTab" xml:space="preserve">
     <value>WZ ファイル</value>
   </data>
+  <data name="Init_LegacyBadge" xml:space="preserve">
+    <value>レガシー</value>
+  </data>
+  <data name="Init_WzLegacyTitle" xml:space="preserve">
+    <value>レガシーワークフロー</value>
+  </data>
+  <data name="Init_WzLegacyHint" xml:space="preserve">
+    <value>WZ ファイルの直接読み込みは低速で、サポートも限定的です。将来のリリースで廃止される予定です。新しい環境では IMG バージョンを使用してください。</value>
+  </data>
   <data name="Init_MapleStoryFolder" xml:space="preserve">
     <value>MapleStory フォルダー</value>
   </data>
@@ -29,6 +38,15 @@
   </data>
   <data name="Init_ImgVersionsTab" xml:space="preserve">
     <value>IMG バージョン</value>
+  </data>
+  <data name="Init_RecommendedBadge" xml:space="preserve">
+    <value>推奨</value>
+  </data>
+  <data name="Init_ImgRecommendedTitle" xml:space="preserve">
+    <value>最適な環境：IMG バージョンを使用</value>
+  </data>
+  <data name="Init_ImgRecommendedHint" xml:space="preserve">
+    <value>一度抽出すれば、起動が高速になり、安定した編集と HaCreator で最も充実したサポートを利用できます。</value>
   </data>
   <data name="Init_NoVersions" xml:space="preserve">
     <value>バージョンが見つかりません。
