@@ -481,7 +481,8 @@
                                            Text="{local:AnimationEditorText AnimationEditor_AIDescription}"/>
                                 <TextBlock Margin="0,12,0,4" Text="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
                                 <TextBox x:Name="aiPromptTextBox" MinHeight="112" AcceptsReturn="True" TextWrapping="Wrap"
-                                         VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
+                                         VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIPrompt}"
+                                         TextChanged="AIPrompt_TextChanged"/>
                                 <Button x:Name="aiSuggestButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
                                         Content="{local:AnimationEditorText AnimationEditor_AISuggestPrompt}" Click="AISuggest_Click"/>
 
@@ -525,7 +526,7 @@
                                 <Grid Margin="0,12,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <Button x:Name="aiGenerateButton" Style="{StaticResource HarePrimaryButtonStyle}"
-                                            Content="{local:AnimationEditorText AnimationEditor_AIGenerate}" Click="AIGenerate_Click"/>
+                                            Content="{local:AnimationEditorText AnimationEditor_AIGenerate}" Click="AIGenerate_Click" IsEnabled="False"/>
                                     <Button x:Name="aiCancelButton" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource HareButtonStyle}"
                                             Content="{local:AnimationEditorText AnimationEditor_AICancel}" Click="AICancel_Click" IsEnabled="False"/>
                                 </Grid>
