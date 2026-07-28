@@ -157,6 +157,8 @@ namespace HaCreator.GUI.FrameAnimation
 
         private void AssetSearch_TextChanged(object sender, TextChangedEventArgs e) => ApplyAssetFilter();
 
+        private void AIPrompt_TextChanged(object sender, TextChangedEventArgs e) => UpdateAIState();
+
         private void ApplyAssetFilter()
         {
             string filter = assetSearchBox.Text?.Trim() ?? string.Empty;
@@ -1407,7 +1409,8 @@ namespace HaCreator.GUI.FrameAnimation
         private void SetAIBusy(bool busy, string status = null)
         {
             aiProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-            aiGenerateButton.IsEnabled = !busy && _document?.SelectedFrame?.SelectedLayer?.Canvas != null;
+            aiGenerateButton.IsEnabled = !busy && _document?.SelectedFrame?.SelectedLayer?.Canvas != null &&
+                !string.IsNullOrWhiteSpace(aiPromptTextBox.Text);
             aiSuggestButton.IsEnabled = !busy;
             aiSettingsButton.IsEnabled = !busy;
             aiCancelButton.IsEnabled = busy;
@@ -1438,7 +1441,8 @@ namespace HaCreator.GUI.FrameAnimation
             aiFrameCountComboBox.IsEnabled = hasFrame && operation == AIFrameOperation.AddAfter && _document?.Track.IsSingleCanvas != true;
             aiOperationComboBox.IsEnabled = hasFrame && _document?.Track.IsSingleCanvas != true;
             aiUseReferenceCheckBox.IsEnabled = hasFrame;
-            aiGenerateButton.IsEnabled = hasFrame && _aiCancellation == null;
+            bool hasPrompt = !string.IsNullOrWhiteSpace(aiPromptTextBox.Text);
+            aiGenerateButton.IsEnabled = hasFrame && hasPrompt && _aiCancellation == null;
             aiModelText.Text = AnimationEditorTextExtension.Get("AnimationEditor_AIModel", AISettings.ImageModel);
         }
 

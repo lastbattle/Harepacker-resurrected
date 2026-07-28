@@ -265,8 +265,9 @@ namespace HaCreator.GUI
             Program.WzManager = new WzFileManager(wzPath, false);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
-            // for old maplestory with only Data.wz
-            if (Program.WzManager.IsPreBBDataWzFormat) //currently always false
+            // For the earliest MapleStory clients with only Data.wz.
+            // Pre-Big Bang clients can also use separate category WZ files.
+            if (Program.WzManager.IsBetaDataWzFormat)
             {
                 UpdateUI_CurrentLoadingWzFile(Loc.Get("Init_DataArchive"), true);
 
@@ -573,8 +574,9 @@ namespace HaCreator.GUI
 
             UpdateImgButtonStates();
 
-            // Select appropriate default tab based on config
-            if (config.DataSourceMode == DataSourceMode.ImgFileSystem && listBox_imgVersions.Items.Count > 0)
+            // Keep an explicitly selected legacy mode, but guide new IMG-mode users through
+            // extraction even when they do not have a version yet.
+            if (config.DataSourceMode == DataSourceMode.ImgFileSystem)
             {
                 tabControl_dataSource.SelectedItem = tabPage_imgVersions;
             }
@@ -1615,7 +1617,7 @@ namespace HaCreator.GUI
 
             foreach (WzDirectory soundWzDir in soundWzDirs)
             {
-                if (Program.WzManager.IsPreBBDataWzFormat && !Program.WzManager.Is64Bit)
+                if (Program.WzManager.IsBetaDataWzFormat && !Program.WzManager.Is64Bit)
                 {
                     WzDirectory x = (WzDirectory)soundWzDir["Sound"];
                 }

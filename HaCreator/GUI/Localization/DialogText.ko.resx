@@ -622,6 +622,12 @@
   <data name="Dialog_Pack_as_Beta_Data_wz_D2F012" xml:space="preserve">
     <value>Beta Data.wz로 패킹</value>
   </data>
+  <data name="Dialog_Pack_as_Pre_Big_Bang_WZ_format" xml:space="preserve">
+    <value>Pre-Big Bang WZ 형식으로 패킹</value>
+  </data>
+  <data name="Dialog_PreBigBangFormatDescription" xml:space="preserve">
+    <value>추출된 원본 형식이 기본값으로 선택됩니다. 표준 WZ 파일로 패킹하려면 이 옵션의 체크를 해제하세요.</value>
+  </data>
   <data name="Dialog_Pack_IMG_files_to_WZ_11907C" xml:space="preserve">
     <value>IMG 파일을 WZ로 패킹</value>
   </data>

@@ -62,7 +62,7 @@
   <data name="AnimationEditor_Layer" xml:space="preserve"><value>Layer</value></data>
   <data name="AnimationEditor_Size" xml:space="preserve"><value>Sprite size</value></data>
   <data name="AnimationEditor_Transform" xml:space="preserve"><value>TRANSFORM &amp; TIMING</value></data>
-  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>Origin X</value></data>
+  <data name="AnimationEditor_OriginX" xml:space="preserve"><value>X</value></data>
   <data name="AnimationEditor_ZOrder" xml:space="preserve"><value>Z order</value></data>
   <data name="AnimationEditor_Delay" xml:space="preserve"><value>Delay (ms)</value></data>
   <data name="AnimationEditor_AlphaStart" xml:space="preserve"><value>Alpha start</value></data>
@@ -120,7 +120,7 @@
   <data name="AnimationEditor_Preview" xml:space="preserve"><value>Animation preview</value></data>
   <data name="AnimationEditor_TimelineScrubber" xml:space="preserve"><value>Scrub animation timeline</value></data>
   <data name="AnimationEditor_TimelineFrames" xml:space="preserve"><value>Animation timeline frames</value></data>
-  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>Origin Y</value></data>
+  <data name="AnimationEditor_OriginY" xml:space="preserve"><value>Y</value></data>
   <data name="AnimationEditor_FramePropertiesGrid" xml:space="preserve"><value>Frame property table</value></data>
   <data name="AnimationEditor_AnimationPropertiesGrid" xml:space="preserve"><value>Animation property table</value></data>
   <data name="AnimationEditor_PngFilter" xml:space="preserve"><value>PNG image (*.png)|*.png</value></data>

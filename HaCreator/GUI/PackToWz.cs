@@ -62,6 +62,7 @@ namespace HaCreator.GUI
             if (_versionInfo != null)
             {
                 label_versionInfo.Text = $"{_versionInfo.DisplayName ?? _versionInfo.Version}";
+                checkBox_preBBFormat.IsChecked = IsManifestPreBBDataWzFormat();
                 checkBox_64bit.IsChecked = _versionInfo.Is64Bit;
 
                 // Set format label based on detected format and pre-select beta checkbox if applicable
@@ -75,7 +76,7 @@ namespace HaCreator.GUI
                 {
                     label_format.Text = DialogTextExtension.Get("Dialog_Source64Bit");
                 }
-                else if (_versionInfo.IsPreBB)
+                else if (IsManifestPreBBDataWzFormat())
                 {
                     label_format.Text = DialogTextExtension.Get("Dialog_SourcePreBigBang");
                 }
@@ -200,6 +201,16 @@ namespace HaCreator.GUI
             }
             // Default to BMS (IV {0,0,0,0}) so IMG/WZ workflows stay consistent across versions/localizations.
             return WzMapleVersion.BMS;
+        }
+
+        private bool IsManifestPreBBDataWzFormat()
+        {
+            return _versionInfo?.IsPreBBDataWzFormat == true || _versionInfo?.IsPreBB == true;
+        }
+
+        private bool IsPreBBDataWzFormatSelected()
+        {
+            return checkBox_preBBFormat.IsChecked == true;
         }
 
         /// <summary>
@@ -681,15 +692,32 @@ namespace HaCreator.GUI
             UpdateFormatOptionsState();
         }
 
+        private void checkBox_preBBFormat_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            UpdateFormatOptionsState();
+        }
+
         /// <summary>
         /// Updates the enabled state of format options based on checkbox selections.
-        /// Beta format and 64-bit format are mutually exclusive.
+        /// Beta, pre-Big Bang, and 64-bit formats have mutually exclusive output options.
         /// </summary>
         private void UpdateFormatOptionsState()
         {
             if (checkBox_betaFormat.IsChecked == true)
             {
-                // Beta format - disable 64-bit options
+                // Beta format is a single Data.wz variant of the pre-Big Bang format.
+                checkBox_preBBFormat.IsChecked = true;
+                checkBox_preBBFormat.Enabled = false;
+                checkBox_64bit.IsChecked = false;
+                checkBox_64bit.Enabled = false;
+                checkBox_separateCanvas.IsChecked = false;
+                checkBox_separateCanvas.Enabled = false;
+            }
+            else if (IsPreBBDataWzFormatSelected())
+            {
+                // Pre-Big Bang uses the standard split category WZ layout, including
+                // List.wz when that category is selected; it is not a 64-bit layout.
+                checkBox_preBBFormat.Enabled = true;
                 checkBox_64bit.IsChecked = false;
                 checkBox_64bit.Enabled = false;
                 checkBox_separateCanvas.IsChecked = false;
@@ -698,6 +726,7 @@ namespace HaCreator.GUI
             else
             {
                 // Standard/64-bit format
+                checkBox_preBBFormat.Enabled = true;
                 checkBox_64bit.Enabled = true;
                 checkBox_separateCanvas.Enabled = checkBox_64bit.IsChecked == true;
                 if (checkBox_64bit.IsChecked != true)
@@ -729,6 +758,8 @@ namespace HaCreator.GUI
                 _versionInfo.Encryption = GetSelectedEncryption().ToString();
                 _versionInfo.Is64Bit = checkBox_64bit.IsChecked == true;
                 _versionInfo.IsBetaMs = checkBox_betaFormat.IsChecked == true;
+                _versionInfo.IsPreBBDataWzFormat = IsPreBBDataWzFormatSelected();
+                _versionInfo.IsPreBB = _versionInfo.IsPreBBDataWzFormat;
 
                 _versionInfo.PatchVersion = (short)numericUpDown_patchVersion.Value;
 
@@ -813,6 +844,7 @@ namespace HaCreator.GUI
             checkBox_64bit.Enabled = false;
             checkBox_separateCanvas.Enabled = false;
             checkBox_betaFormat.Enabled = false;
+            checkBox_preBBFormat.Enabled = false;
             checkBox_saveChangedImages.Enabled = false;
             numericUpDown_patchVersion.IsEnabled = false;
 
@@ -848,7 +880,7 @@ namespace HaCreator.GUI
                         _versionPath,
                         outputPath,
                         selectedCategories,
-                        checkBox_64bit.IsChecked == true,
+                        checkBox_64bit.IsChecked == true && !IsPreBBDataWzFormatSelected(),
                         _cancellationTokenSource.Token,
                         progress,
                         (short)numericUpDown_patchVersion.Value,
@@ -894,6 +926,7 @@ namespace HaCreator.GUI
                 textBox_outputPath.IsEnabled = true;
                 button_browse.IsEnabled = true;
                 checkBox_betaFormat.Enabled = true;
+                checkBox_preBBFormat.Enabled = true;
                 numericUpDown_patchVersion.IsEnabled = true;
                 // Re-enable format options based on current checkbox state
                 UpdateFormatOptionsState();

@@ -516,19 +516,13 @@
 
         <!-- Define a reusable DataGridTemplate -->
         <DataTemplate x:Key="ConversationDataGridTemplate">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="3*" MinHeight="220"/>
-                    <RowDefinition Height="6"/>
-                    <RowDefinition Height="2*" MinHeight="285"/>
-                </Grid.RowDefinitions>
-
                 <DataGrid x:Name="ConversationGrid"
-                  Grid.Row="0"
+                  Tag="ConversationStudioSource"
                   MinHeight="220"
                   ItemsSource="{Binding}"
                   SelectedIndex="0"
                   SelectionMode="Single"
+                  SelectionChanged="ConversationGrid_SelectionChanged"
                   AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                 <DataGrid.Resources>
                     <!-- Define common resources here if needed -->
@@ -603,41 +597,16 @@
                     </DataGridTemplateColumn>
                 </DataGrid.Columns>
                 </DataGrid>
-
-                <GridSplitter Grid.Row="1"
-                              Height="6"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              Background="#D8DEE8"
-                              ResizeDirection="Rows"
-                              ResizeBehavior="PreviousAndNext"
-                              ShowsPreview="True"/>
-
-                <local:NpcConversationPreview Grid.Row="2"
-                                              MinHeight="285"
-                                              Margin="0,8,0,0"
-                                              HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Bottom"
-                                              Conversation="{Binding SelectedItem.SelectedPreviewLine.Conversation, ElementName=ConversationGrid}"
-                                              ConversationGroup="{Binding SelectedItem, ElementName=ConversationGrid}"
-                                              Quest="{Binding DataContext.SelectedQuest, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
-            </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="StopConversationDataGridTemplate">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="3*" MinHeight="220"/>
-                    <RowDefinition Height="6"/>
-                    <RowDefinition Height="2*" MinHeight="285"/>
-                </Grid.RowDefinitions>
-
                 <DataGrid x:Name="StopConversationGrid"
-                          Grid.Row="0"
+                          Tag="ConversationStudioSource"
                           MinHeight="220"
                           ItemsSource="{Binding}"
                           SelectedIndex="0"
                           SelectionMode="Single"
+                          SelectionChanged="ConversationGrid_SelectionChanged"
                           AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                 <DataGrid.Columns>
                     <!-- Conversation Type Column -->
@@ -699,24 +668,6 @@
 
                 </DataGrid.Columns>
                 </DataGrid>
-
-                <GridSplitter Grid.Row="1"
-                              Height="6"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              Background="#D8DEE8"
-                              ResizeDirection="Rows"
-                              ResizeBehavior="PreviousAndNext"
-                              ShowsPreview="True"/>
-
-                <local:NpcConversationPreview Grid.Row="2"
-                                              MinHeight="285"
-                                              Margin="0,8,0,0"
-                                              HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Bottom"
-                                              Conversation="{Binding SelectedItem.SelectedResponse, ElementName=StopConversationGrid}"
-                                              Quest="{Binding DataContext.SelectedQuest, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
-            </Grid>
         </DataTemplate>
 
         <!-- Act rewards template-->
@@ -3047,10 +2998,14 @@
             <GroupBox Header="{local:QuestText QuestEditor_QuestDetails}" Grid.Column="2" Margin="0" FontWeight="Bold">
             <Grid Background="{StaticResource QuestSurfaceBrush}">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="3*"/>
+                    <RowDefinition x:Name="ConversationStudioSplitterRow" Height="0"/>
+                    <RowDefinition x:Name="ConversationStudioRow" Height="0"/>
                 </Grid.RowDefinitions>
 
-                <TabControl Grid.Row="0">
+                <TabControl x:Name="QuestEditorTabs"
+                            Grid.Row="0"
+                            SelectionChanged="QuestEditorTabs_SelectionChanged">
                     <!-- Quest Info Tab -->
                         <TabItem Header="{local:QuestText QuestEditor_QuestInfoTab}" FontWeight="Normal">
                         <Grid Background="{StaticResource QuestSurfaceBrush}">
@@ -3472,6 +3427,26 @@
                         </Grid>
                     </TabItem>
                 </TabControl>
+
+                <GridSplitter x:Name="ConversationStudioSplitter"
+                              Grid.Row="1"
+                              Height="6"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              Background="#D8DEE8"
+                              ResizeDirection="Rows"
+                              ResizeBehavior="PreviousAndNext"
+                              ShowsPreview="True"
+                              Visibility="Collapsed"/>
+
+                <local:NpcConversationPreview x:Name="ConversationStudio"
+                                              Grid.Row="2"
+                                              MinHeight="320"
+                                              Margin="0,8,0,0"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"
+                                              Quest="{Binding SelectedQuest}"
+                                              Visibility="Collapsed"/>
 
             </Grid>
         </GroupBox>

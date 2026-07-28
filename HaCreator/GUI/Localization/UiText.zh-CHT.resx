@@ -12,6 +12,15 @@
   <data name="Init_WzFilesTab" xml:space="preserve">
     <value>WZ 檔案</value>
   </data>
+  <data name="Init_LegacyBadge" xml:space="preserve">
+    <value>舊版</value>
+  </data>
+  <data name="Init_WzLegacyTitle" xml:space="preserve">
+    <value>舊版工作流程</value>
+  </data>
+  <data name="Init_WzLegacyHint" xml:space="preserve">
+    <value>直接載入 WZ 的速度較慢、支援有限，並將在未來版本中棄用。新設定請優先使用 IMG 版本。</value>
+  </data>
   <data name="Init_MapleStoryFolder" xml:space="preserve">
     <value>MapleStory 資料夾</value>
   </data>
@@ -29,6 +38,15 @@
   </data>
   <data name="Init_ImgVersionsTab" xml:space="preserve">
     <value>IMG 版本</value>
+  </data>
+  <data name="Init_RecommendedBadge" xml:space="preserve">
+    <value>建議</value>
+  </data>
+  <data name="Init_ImgRecommendedTitle" xml:space="preserve">
+    <value>最佳體驗：使用 IMG 版本</value>
+  </data>
+  <data name="Init_ImgRecommendedHint" xml:space="preserve">
+    <value>只需擷取一次，即可享有更快的啟動速度、可靠的編輯體驗，以及 HaCreator 支援最完善的工作流程。</value>
   </data>
   <data name="Init_NoVersions" xml:space="preserve">
     <value>找不到任何版本。

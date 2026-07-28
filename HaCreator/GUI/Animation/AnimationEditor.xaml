@@ -149,7 +149,7 @@
                 <ColumnDefinition Width="350" MinWidth="300"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Margin="12,12,0,12" Style="{StaticResource HareCardStyle}">
+            <Border Grid.Column="0" Margin="6,6,0,6" Style="{StaticResource HareCardStyle}">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -191,7 +191,7 @@
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
                           AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AssetBrowserSplitter}"/>
 
-            <Grid Grid.Column="2" Margin="8,12">
+            <Grid Grid.Column="2" Margin="6,6,6,6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
                     <RowDefinition Height="*" MinHeight="280"/>
@@ -331,8 +331,8 @@
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="Transparent"
                           AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_InspectorSplitter}"/>
 
-            <Border Grid.Column="4" Margin="0,12,12,12" Style="{StaticResource HareCardStyle}">
-                <TabControl x:Name="inspectorTabs" Margin="8">
+            <Border Grid.Column="4" Margin="0,6,6,6" Style="{StaticResource HareCardStyle}">
+                <TabControl x:Name="inspectorTabs" Margin="0">
                     <TabItem Header="{local:AnimationEditorText AnimationEditor_Properties}">
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Margin="4,10,4,18">
@@ -354,14 +354,23 @@
                                 <Separator Margin="0,12"/>
                                 <TextBlock Style="{StaticResource HareSectionTitleStyle}" Text="{local:AnimationEditorText AnimationEditor_Transform}"/>
                                 <Grid x:Name="transformEditorGrid" Margin="0,8,0,0" DataContext="{Binding SelectedItem, ElementName=layerComboBox}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="35"/>
+                                        <ColumnDefinition Width="90"/>
+                                    </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_OriginX}"/>
                                     <TextBox x:Name="originXTextBox" Grid.Column="1" InputScope="Number" Text="{Binding OriginX, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="OriginX"
                                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_OriginX}"/>
-                                    <TextBlock Grid.Column="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_OriginY}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_OriginY}" HorizontalAlignment="Center"/>
                                     <TextBox x:Name="originYTextBox" Grid.Column="3" InputScope="Number" Text="{Binding OriginY, UpdateSourceTrigger=LostFocus}" GotKeyboardFocus="Editable_GotKeyboardFocus" LostKeyboardFocus="Editable_LostKeyboardFocus" Tag="OriginY"
                                              AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_OriginY}"/>
                                     <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:AnimationEditorText AnimationEditor_ZOrder}"/>
@@ -481,7 +490,8 @@
                                            Text="{local:AnimationEditorText AnimationEditor_AIDescription}"/>
                                 <TextBlock Margin="0,12,0,4" Text="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
                                 <TextBox x:Name="aiPromptTextBox" MinHeight="112" AcceptsReturn="True" TextWrapping="Wrap"
-                                         VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIPrompt}"/>
+                                         VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{local:AnimationEditorText AnimationEditor_AIPrompt}"
+                                         TextChanged="AIPrompt_TextChanged"/>
                                 <Button x:Name="aiSuggestButton" Margin="0,8,0,0" Style="{StaticResource HareButtonStyle}"
                                         Content="{local:AnimationEditorText AnimationEditor_AISuggestPrompt}" Click="AISuggest_Click"/>
 
@@ -525,7 +535,7 @@
                                 <Grid Margin="0,12,0,0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <Button x:Name="aiGenerateButton" Style="{StaticResource HarePrimaryButtonStyle}"
-                                            Content="{local:AnimationEditorText AnimationEditor_AIGenerate}" Click="AIGenerate_Click"/>
+                                            Content="{local:AnimationEditorText AnimationEditor_AIGenerate}" Click="AIGenerate_Click" IsEnabled="False"/>
                                     <Button x:Name="aiCancelButton" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource HareButtonStyle}"
                                             Content="{local:AnimationEditorText AnimationEditor_AICancel}" Click="AICancel_Click" IsEnabled="False"/>
                                 </Grid>

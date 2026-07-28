@@ -467,6 +467,10 @@ namespace HaCreator.GUI
                     ConfigureCustomEncryptionFromSettings();
                 }
 
+                bool isPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFileFormat(
+                    _mapleStoryPath,
+                    mapleVer);
+
                 string outputFolder = textBox_path.Text;
                 string versionName = textBox_versionName.Text;
 
@@ -530,9 +534,10 @@ namespace HaCreator.GUI
                     mapleVer,
                     selectedCategories,
                     resolveLinks: true,
-                    _cancellationTokenSource.Token,
-                    progress,
-                    writeEncryption);
+                    cancellationToken: _cancellationTokenSource.Token,
+                    progress: progress,
+                    outputEncryption: writeEncryption,
+                    sourceIsPreBBDataWzFormat: isPreBBDataWzFormat);
 
                 // Show result
                 if (extractionResult.Success)

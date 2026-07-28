@@ -4,12 +4,18 @@
   <data name="Init_Heading" xml:space="preserve"><value>Open HaCreator</value></data>
   <data name="Init_Subheading" xml:space="preserve"><value>Choose the MapleStory data source for this editing session.</value></data>
   <data name="Init_WzFilesTab" xml:space="preserve"><value>WZ files</value></data>
+  <data name="Init_LegacyBadge" xml:space="preserve"><value>Legacy</value></data>
+  <data name="Init_WzLegacyTitle" xml:space="preserve"><value>Legacy workflow</value></data>
+  <data name="Init_WzLegacyHint" xml:space="preserve"><value>Direct WZ loading is slower, has limited support, and will be deprecated in a future release. Prefer an IMG version for new setups.</value></data>
   <data name="Init_MapleStoryFolder" xml:space="preserve"><value>MapleStory folder</value></data>
   <data name="Common_BrowseEllipsis" xml:space="preserve"><value>Browse...</value></data>
   <data name="Init_WzEncryption" xml:space="preserve"><value>WZ encryption</value></data>
   <data name="Init_ClientLocalisation" xml:space="preserve"><value>Client localisation</value></data>
   <data name="Init_LocalisationHint" xml:space="preserve"><value>Choose the matching localisation because saved WZ parameters can differ between clients.</value></data>
   <data name="Init_ImgVersionsTab" xml:space="preserve"><value>IMG versions</value></data>
+  <data name="Init_RecommendedBadge" xml:space="preserve"><value>Recommended</value></data>
+  <data name="Init_ImgRecommendedTitle" xml:space="preserve"><value>Best experience: use an IMG version</value></data>
+  <data name="Init_ImgRecommendedHint" xml:space="preserve"><value>Extract once, then enjoy faster startup, reliable editing, and the best-supported workflow in HaCreator.</value></data>
   <data name="Init_NoVersions" xml:space="preserve"><value>No versions found.
 
 Choose Extract new to extract WZ files to IMG format, or Browse to add an existing folder.</value></data>
