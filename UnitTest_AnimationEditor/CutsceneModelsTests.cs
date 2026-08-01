@@ -1,12 +1,168 @@
 using HaCreator.GUI.Cutscene;
+using HaCreator.MapSimulator.Character;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.MapStructure;
+using DrawingPoint = System.Drawing.Point;
 
 namespace UnitTest_AnimationEditor;
 
 public sealed class CutsceneModelsTests
 {
+    [Fact]
+    public void CharacterComposition_UsesTheSameEquipmentAnchorRulesAsMapSimulator()
+    {
+        Dictionary<string, DrawingPoint> bodyMap = new()
+        {
+            ["navel"] = new DrawingPoint(100, 200),
+            ["hand"] = new DrawingPoint(125, 160)
+        };
+        Dictionary<string, DrawingPoint> equipmentMap = new()
+        {
+            ["hand"] = new DrawingPoint(5, 10)
+        };
+
+        DrawingPoint offset = CharacterCompositionMath.CalculateEquipmentOffset(
+            CharacterPartType.Weapon,
+            bodyMap,
+            DrawingPoint.Empty,
+            equipmentMap,
+            DrawingPoint.Empty,
+            new DrawingPoint(-100, -200));
+
+        Assert.Equal(new DrawingPoint(20, -50), offset);
+
+        DrawingPoint capOffset = CharacterCompositionMath.CalculateEquipmentOffset(
+            CharacterPartType.Cap,
+            bodyMap,
+            DrawingPoint.Empty,
+            new Dictionary<string, DrawingPoint> { ["brow"] = new DrawingPoint(4, 6) },
+            DrawingPoint.Empty,
+            new DrawingPoint(-100, -200),
+            new Dictionary<string, DrawingPoint> { ["brow"] = new DrawingPoint(10, 20) },
+            new DrawingPoint(0, 0));
+
+        Assert.Equal(new DrawingPoint(6, 14), capOffset);
+    }
+
+    [Fact]
+    public void CharacterComposition_RecognizesMedalAccessoryImages()
+    {
+        Assert.Equal("Accessory", CharacterWzComposition.GetEquipmentFolder(1142158));
+        Assert.Equal(CharacterPartType.Accessory, CharacterWzComposition.GetPartType("Accessory"));
+    }
+
+    [Fact]
+    public void PlaybackTiming_UsesSameStartSpatialVisualForUnpositionedAppearance()
+    {
+        WzSubProperty appearanceSource = new("0");
+        appearanceSource.AddProperty(new WzIntProperty("type", 3));
+        appearanceSource.AddProperty(new WzIntProperty("start", 0));
+        CutsceneEventModel appearance = CutsceneEventModel.FromProperty(appearanceSource);
+
+        WzSubProperty visualSource = new("3");
+        visualSource.AddProperty(new WzIntProperty("type", 0));
+        visualSource.AddProperty(new WzIntProperty("start", 0));
+        visualSource.AddProperty(new WzIntProperty("x", 0));
+        visualSource.AddProperty(new WzIntProperty("y", 30));
+        visualSource.AddProperty(new WzIntProperty("z", 11));
+        CutsceneEventModel visual = CutsceneEventModel.FromProperty(visualSource);
+
+        Assert.Equal((0, 30), CutscenePlaybackTiming.FindCharacterPosition(new[] { appearance, visual }, appearance));
+    }
+
+    [Fact]
+    public void PlaybackTiming_PrefersCharacterActionSpatialVisualForUnpositionedAppearance()
+    {
+        WzSubProperty appearanceSource = new("0");
+        appearanceSource.AddProperty(new WzIntProperty("type", 3));
+        appearanceSource.AddProperty(new WzIntProperty("start", 0));
+        CutsceneEventModel appearance = CutsceneEventModel.FromProperty(appearanceSource);
+
+        CutsceneEventModel action = new()
+        {
+            Id = "4",
+            Type = (int)ReservedSceneEventType.CharacterAction,
+            Start = 500,
+            Action = "flameWheel"
+        };
+        CutsceneEventModel characterMarker = new()
+        {
+            Id = "5",
+            Type = (int)ReservedSceneEventType.Visual,
+            Start = 500,
+            X = 279,
+            Y = 112,
+            Z = 1
+        };
+        CutsceneEventModel effectMarker = new()
+        {
+            Id = "6",
+            Type = (int)ReservedSceneEventType.Visual,
+            Start = 500,
+            X = 0,
+            Y = 130,
+            Z = 2
+        };
+        CutsceneEventModel unrelatedSceneVisual = new()
+        {
+            Id = "3",
+            Type = (int)ReservedSceneEventType.Visual,
+            Start = 0,
+            X = 0,
+            Y = 30,
+            Z = 11
+        };
+
+        Assert.Equal((279, 112), CutscenePlaybackTiming.FindCharacterPosition(
+            new[] { appearance, unrelatedSceneVisual, action, characterMarker, effectMarker }, appearance));
+    }
+
+    [Fact]
+    public void PlaybackTiming_PrefersExplicitAppearancePosition()
+    {
+        WzSubProperty appearanceSource = new("0");
+        appearanceSource.AddProperty(new WzIntProperty("type", 3));
+        appearanceSource.AddProperty(new WzIntProperty("start", 0));
+        appearanceSource.AddProperty(new WzIntProperty("x", -40));
+        appearanceSource.AddProperty(new WzIntProperty("y", 25));
+        CutsceneEventModel appearance = CutsceneEventModel.FromProperty(appearanceSource);
+
+        CutsceneEventModel visual = new()
+        {
+            Id = "3",
+            Type = (int)ReservedSceneEventType.Visual,
+            Start = 0,
+            X = 0,
+            Y = 30,
+            Z = 11
+        };
+
+        Assert.Equal((-40, 25), CutscenePlaybackTiming.FindCharacterPosition(new[] { appearance, visual }, appearance));
+    }
+
+    [Fact]
+    public void AppearanceEquipment_RejectsDuplicateSlotsAndHidesUsedSlots()
+    {
+        WzSubProperty source = new("0");
+        source.AddProperty(new WzIntProperty("type", 3));
+        source.AddProperty(new WzIntProperty("start", 0));
+        CutsceneEventModel appearance = CutsceneEventModel.FromProperty(source);
+        CutsceneEquipmentEntry cap = new(1, 1003029);
+        CutsceneEquipmentEntry coat = new(5, 1052226);
+
+        appearance.Equipment.Add(cap);
+        appearance.Equipment.Add(coat);
+
+        Assert.DoesNotContain(coat.SlotOptions, option => option.Slot == cap.Slot);
+        cap.Slot = coat.Slot;
+        Assert.Equal(1, cap.Slot);
+
+        appearance.Equipment.Add(new CutsceneEquipmentEntry(1, 1003030));
+        Assert.Equal(2, appearance.Equipment.Count);
+        Assert.Equal(new[] { 1, 5 }, appearance.Equipment.Select(item => item.Slot));
+    }
+
     [Fact]
     public void SceneDiscovery_IgnoresScalarPropertiesWithNoChildren()
     {
@@ -136,6 +292,41 @@ public sealed class CutsceneModelsTests
 
         Assert.Null(source["-5"]);
         Assert.Equal("keep", Assert.IsType<WzStringProperty>(source["metadata"]).Value);
+    }
+
+    [Fact]
+    public void AppearanceEditor_RemovesEquipmentAddedByAnEarlierSave()
+    {
+        WzSubProperty source = new("3");
+        source.AddProperty(new WzIntProperty("type", 3));
+        source.AddProperty(new WzIntProperty("start", 0));
+        CutsceneEventModel model = CutsceneEventModel.FromProperty(source);
+
+        model.Appearance = "1=1003029";
+        model.Save();
+        model.Appearance = string.Empty;
+        model.Save();
+
+        Assert.Null(source["1"]);
+    }
+
+    [Fact]
+    public void UnknownFieldEditor_RemovesRenamedFieldAddedByAnEarlierSave()
+    {
+        WzSubProperty source = new("0");
+        source.AddProperty(new WzIntProperty("type", 0));
+        source.AddProperty(new WzIntProperty("start", 0));
+        source.AddProperty(new WzStringProperty("futureField", "keep"));
+        CutsceneEventModel model = CutsceneEventModel.FromProperty(source);
+
+        CutsceneUnknownFieldEntry field = Assert.Single(model.UnknownFields);
+        field.Name = "renamedField";
+        model.Save();
+        model.UnknownFields.Clear();
+        model.Save();
+
+        Assert.Null(source["futureField"]);
+        Assert.Null(source["renamedField"]);
     }
 
     [Fact]

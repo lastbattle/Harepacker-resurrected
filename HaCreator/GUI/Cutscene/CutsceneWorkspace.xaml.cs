@@ -1,10 +1,12 @@
 using HaCreator.MapEditor;
 using HaCreator.GUI.InstanceEditor;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data.MapStructure;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,6 +20,9 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
+using DrawingBitmap = System.Drawing.Bitmap;
+using DrawingGraphics = System.Drawing.Graphics;
+using DrawingColor = System.Drawing.Color;
 
 namespace HaCreator.GUI.Cutscene
 {
@@ -31,6 +36,7 @@ namespace HaCreator.GUI.Cutscene
         private readonly SoundManager _previewSoundManager = new();
         private readonly HashSet<CutsceneSceneModel> _dirtyScenes = new();
         private readonly Dictionary<WzCanvasProperty, BitmapSource> _visualCache = new();
+        private readonly Dictionary<CutsceneEventModel, CharacterPreviewImage> _characterPreviewCache = new();
         private readonly MapDirectionInfo _initialDirectionInfo;
         private readonly bool _initialBoardDirty;
         private readonly BitmapSource _mapPreviewSource;
@@ -46,6 +52,7 @@ namespace HaCreator.GUI.Cutscene
         private Point _previewOrigin;
         private bool _hasChanges;
         private bool _syncingSelection;
+        private bool _suppressSceneTabSwitch;
         private Line _timelinePlayhead;
         private CutsceneEventModel _draggedTimelineEvent;
         private Border _draggedTimelineBlock;
@@ -137,6 +144,168 @@ namespace HaCreator.GUI.Cutscene
                 eventModel.Field = (int)adapter.Value;
         }
 
+        private void AddEquipment_Click(object sender, RoutedEventArgs e)
+        {
+            if (timelineGrid.SelectedItem is not CutsceneEventModel eventModel
+                || !eventModel.IsCharacterAppearance)
+                return;
+
+            LoadItemSelector itemSelector = new(0, InventoryType.EQUIP) { Owner = this };
+            itemSelector.ShowDialog();
+            if (itemSelector.SelectedItemId == 0)
+                return;
+
+            int slot = CutsceneEventModel.GuessEquipmentSlot(itemSelector.SelectedItemId);
+            CutsceneEquipmentEntry existing = eventModel.Equipment.FirstOrDefault(item => item.Slot == slot && slot > 0);
+            if (existing != null)
+                existing.ItemId = itemSelector.SelectedItemId;
+            else
+            {
+                CutsceneEquipmentEntry equipment = new(slot, itemSelector.SelectedItemId);
+                eventModel.Equipment.Add(equipment);
+                equipmentListBox.SelectedItem = equipment;
+            }
+        }
+
+        private void DeleteEquipment_Click(object sender, RoutedEventArgs e)
+        {
+            if (timelineGrid.SelectedItem is CutsceneEventModel eventModel
+                && (sender as FrameworkElement)?.DataContext is CutsceneEquipmentEntry equipment)
+                eventModel.Equipment.Remove(equipment);
+        }
+
+        private void AddUnknownField_Click(object sender, RoutedEventArgs e)
+        {
+            if (timelineGrid.SelectedItem is not CutsceneEventModel eventModel)
+                return;
+
+            CutsceneUnknownFieldEntry field = new(string.Empty, string.Empty, null);
+            eventModel.UnknownFields.Add(field);
+            unknownFieldsListBox.SelectedItem = field;
+        }
+
+        private void DeleteUnknownField_Click(object sender, RoutedEventArgs e)
+        {
+            if (timelineGrid.SelectedItem is CutsceneEventModel eventModel
+                && (sender as FrameworkElement)?.DataContext is CutsceneUnknownFieldEntry field)
+                eventModel.UnknownFields.Remove(field);
+        }
+
+        private void RenderCharacterPreview(CutsceneEventModel eventModel)
+        {
+            characterPreviewImage.Source = null;
+            if (eventModel == null || !eventModel.IsCharacterAppearance)
+                return;
+
+            try
+            {
+                characterPreviewImage.Source = GetCharacterPreview(eventModel)?.Source;
+            }
+            catch
+            {
+                // Character assets vary considerably between client versions. The
+                // equipment editor remains usable when a preview asset is missing.
+            }
+        }
+
+        private CharacterPreviewImage GetCharacterPreview(CutsceneEventModel eventModel)
+        {
+            if (eventModel == null || !eventModel.IsCharacterAppearance)
+                return null;
+            if (_characterPreviewCache.TryGetValue(eventModel, out CharacterPreviewImage cached))
+                return cached;
+
+            CharacterPreviewImage preview = BuildCharacterPreview(eventModel);
+            _characterPreviewCache[eventModel] = preview;
+            return preview;
+        }
+
+        private static CharacterPreviewImage BuildCharacterPreview(CutsceneEventModel eventModel)
+        {
+            List<CharacterPreviewLayer> layers = new();
+            try
+            {
+                WzImage bodyImage = Program.FindImage("Character", "00002000.img");
+                WzImage headImage = Program.FindImage("Character", "00012000.img");
+                if (bodyImage == null || headImage == null)
+                    return null;
+
+                WzImage faceImage = Program.FindImage("Character", "Face/00020000.img");
+                WzImage hairImage = Program.FindImage("Character", "Hair/00030000.img");
+                IEnumerable<(int ItemId, WzImage Image)> equipmentImages = eventModel.Equipment
+                    .Where(item => item.ItemId > 0)
+                    .Select(item =>
+                    {
+                        string folder = CharacterWzComposition.GetEquipmentFolder(item.ItemId);
+                        return (item.ItemId, Image: folder == null
+                            ? null
+                            : Program.FindImage("Character", $"{folder}/{item.ItemId:D8}.img"));
+                    });
+
+                IReadOnlyList<CharacterWzLayer> composition = CharacterWzComposition.ComposeStanding(
+                    bodyImage,
+                    headImage,
+                    faceImage,
+                    hairImage,
+                    equipmentImages);
+                foreach (CharacterWzLayer layer in composition)
+                {
+                    DrawingBitmap bitmap = null;
+                    try
+                    {
+                        bitmap = layer.Canvas.GetLinkedWzCanvasBitmap();
+                    }
+                    catch
+                    {
+                        // A missing or malformed canvas should not disable the editor.
+                    }
+
+                    if (bitmap != null)
+                        layers.Add(new CharacterPreviewLayer(bitmap, layer.X, layer.Y, layer.ZIndex));
+                }
+
+                layers.RemoveAll(layer => layer.Bitmap == null);
+                if (layers.Count == 0)
+                    return null;
+
+                int minX = layers.Min(layer => layer.X);
+                int minY = layers.Min(layer => layer.Y);
+                int maxX = layers.Max(layer => layer.X + layer.Bitmap.Width);
+                int maxY = layers.Max(layer => layer.Y + layer.Bitmap.Height);
+                const int padding = 6;
+                const int scale = 2;
+                using DrawingBitmap output = new(
+                    Math.Max(1, (maxX - minX + padding * 2) * scale),
+                    Math.Max(1, (maxY - minY + padding * 2) * scale),
+                    System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                using (DrawingGraphics graphics = DrawingGraphics.FromImage(output))
+                {
+                    graphics.Clear(DrawingColor.Transparent);
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                    graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                    foreach (CharacterPreviewLayer layer in layers.OrderBy(item => item.ZIndex))
+                    {
+                        graphics.DrawImage(
+                            layer.Bitmap,
+                            (layer.X - minX + padding) * scale,
+                            (layer.Y - minY + padding) * scale,
+                            layer.Bitmap.Width * scale,
+                            layer.Bitmap.Height * scale);
+                    }
+                }
+                BitmapSource source = SelectorDialogSupport.ToBitmapSource(output);
+                source?.Freeze();
+                return source == null
+                    ? null
+                    : new CharacterPreviewImage(source, -minX + padding, -minY + padding);
+            }
+            finally
+            {
+                foreach (CharacterPreviewLayer layer in layers)
+                    layer.Dispose();
+            }
+        }
+
         private void SceneImage_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             CutsceneImageModel nextImage = sceneImageComboBox.SelectedItem as CutsceneImageModel;
@@ -145,6 +314,7 @@ namespace HaCreator.GUI.Cutscene
 
             ReleaseSelectedSceneImage();
             _visualCache.Clear();
+            _characterPreviewCache.Clear();
             _selectedSceneImage = nextImage;
             _visibleScenes.Clear();
             validationListBox.ItemsSource = null;
@@ -165,7 +335,17 @@ namespace HaCreator.GUI.Cutscene
                     ApplySceneFilter();
                     statusTextBlock.Text = CutsceneEditorTextExtension.Get("Cutscene_ScenesLoaded", scenes.Count);
                     if (_visibleScenes.Count > 0)
-                        sceneListBox.SelectedIndex = 0;
+                    {
+                        _suppressSceneTabSwitch = true;
+                        try
+                        {
+                            sceneListBox.SelectedIndex = 0;
+                        }
+                        finally
+                        {
+                            _suppressSceneTabSwitch = false;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -205,6 +385,8 @@ namespace HaCreator.GUI.Cutscene
                 cutsceneEvent.PropertyChanged -= Event_PropertyChanged;
             _selectedScene = sceneListBox.SelectedItem as CutsceneSceneModel;
             _timelineEvents.Clear();
+            _characterPreviewCache.Clear();
+            RenderCharacterPreview(null);
             if (_selectedScene != null)
             {
                 foreach (CutsceneEventModel cutsceneEvent in _selectedScene.Events.OrderBy(item => item.Start).ThenBy(item => ParseIndex(item.Id)))
@@ -217,6 +399,8 @@ namespace HaCreator.GUI.Cutscene
             playheadSlider.Value = 0;
             if (_timelineEvents.Count > 0)
                 timelineGrid.SelectedIndex = 0;
+            if (!_suppressSceneTabSwitch && _selectedScene != null && _timelineEvents.Count > 0)
+                selectedEventTab.IsSelected = true;
             RenderTimelineTracks();
             RenderPreview();
         }
@@ -226,9 +410,12 @@ namespace HaCreator.GUI.Cutscene
             if (_selectedScene != null)
                 _dirtyScenes.Add(_selectedScene);
             _hasChanges = true;
+            if (sender is CutsceneEventModel changedEvent)
+                _characterPreviewCache.Remove(changedEvent);
             UpdateTimelineRange();
             if (!_draggingTimelineEvent)
                 RenderTimelineTracks();
+            RenderCharacterPreview(sender as CutsceneEventModel);
             RenderPreview();
         }
 
@@ -239,8 +426,11 @@ namespace HaCreator.GUI.Cutscene
                 _syncingSelection = true;
                 triggerListBox.SelectedItem = null;
                 _syncingSelection = false;
+                if (!_suppressSceneTabSwitch)
+                    selectedEventTab.IsSelected = true;
             }
             RenderTimelineTracks();
+            RenderCharacterPreview(timelineGrid.SelectedItem as CutsceneEventModel);
             RenderPreview();
         }
 
@@ -483,6 +673,7 @@ namespace HaCreator.GUI.Cutscene
             _playbackTimer.Stop();
             _previewSoundManager.Dispose();
             _visualCache.Clear();
+            _characterPreviewCache.Clear();
             foreach (CutsceneImageModel image in _sceneImages.Where(image => image.Scenes != null
                 && !image.Scenes.Any(scene => _dirtyScenes.Contains(scene))))
                 CutsceneRepository.ReleaseScenes(image);
@@ -907,6 +1098,7 @@ namespace HaCreator.GUI.Cutscene
 
             DrawMapBackground();
             DrawAxis(left, top, width, height);
+            DrawActiveCharacter();
             foreach (MapDirectionEvent trigger in _board?.MapInfo.directionInfo?.Events ?? Enumerable.Empty<MapDirectionEvent>())
                 DrawMarker(ToMapCanvas(trigger.X, trigger.Y), Brushes.Gold, trigger.Name, trigger.X, trigger.Y, ReferenceEquals(triggerListBox.SelectedItem, trigger));
             foreach (CutsceneEventModel item in _timelineEvents.Where(item => item.Type is 0 or 6))
@@ -916,6 +1108,41 @@ namespace HaCreator.GUI.Cutscene
                 DrawMarker(ToScreenCanvas(item.X, item.Y), Brushes.DeepSkyBlue, item.Id, item.X, item.Y, ReferenceEquals(timelineGrid.SelectedItem, item));
             }
             DrawActiveVisuals();
+        }
+
+        private void DrawActiveCharacter()
+        {
+            CutsceneEventModel appearance = _timelineEvents
+                .Where(item => item.IsCharacterAppearance && item.Start <= playheadSlider.Value)
+                .OrderBy(item => item.Start)
+                .ThenBy(item => ParseIndex(item.Id))
+                .LastOrDefault();
+            if (appearance == null && timelineGrid.SelectedItem is CutsceneEventModel selectedAppearance
+                && selectedAppearance.IsCharacterAppearance)
+            {
+                appearance = selectedAppearance;
+            }
+
+            CharacterPreviewImage character = GetCharacterPreview(appearance);
+            if (character?.Source == null)
+                return;
+
+            const double SourceScale = 2;
+            double characterScale = _screenScale / SourceScale;
+            (int characterX, int characterY) = CutscenePlaybackTiming.FindCharacterPosition(_timelineEvents, appearance);
+            Point position = ToScreenCanvas(characterX, characterY);
+            System.Windows.Controls.Image image = new()
+            {
+                Source = character.Source,
+                Width = character.Source.PixelWidth * characterScale,
+                Height = character.Source.PixelHeight * characterScale,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false,
+                Opacity = 0.98
+            };
+            previewCanvas.Children.Add(image);
+            Canvas.SetLeft(image, position.X - character.AnchorX * characterScale);
+            Canvas.SetTop(image, position.Y - character.AnchorY * characterScale);
         }
 
         private void DrawAxis(double left, double top, double width, double height)
@@ -1187,5 +1414,36 @@ namespace HaCreator.GUI.Cutscene
         private static int ParseIndex(string value) => int.TryParse(value, out int index) ? index : int.MaxValue;
         private sealed record Choice(int Value, string Name);
         private sealed record TimelineTrack(string Name, Func<CutsceneEventModel, bool> Matches);
+
+        private sealed class CharacterPreviewLayer : IDisposable
+        {
+            public CharacterPreviewLayer(DrawingBitmap bitmap, int x, int y, int zIndex)
+            {
+                Bitmap = bitmap;
+                X = x;
+                Y = y;
+                ZIndex = zIndex;
+            }
+
+            public DrawingBitmap Bitmap { get; }
+            public int X { get; }
+            public int Y { get; }
+            public int ZIndex { get; }
+            public void Dispose() => Bitmap?.Dispose();
+        }
+
+        private sealed class CharacterPreviewImage
+        {
+            public CharacterPreviewImage(BitmapSource source, int anchorX, int anchorY)
+            {
+                Source = source;
+                AnchorX = anchorX;
+                AnchorY = anchorY;
+            }
+
+            public BitmapSource Source { get; }
+            public int AnchorX { get; }
+            public int AnchorY { get; }
+        }
     }
 }

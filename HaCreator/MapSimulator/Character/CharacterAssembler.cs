@@ -5,6 +5,7 @@ using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using DrawingPoint = System.Drawing.Point;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -324,7 +325,7 @@ namespace HaCreator.MapSimulator.Character
                 var equipFrame = GetPartFrame(kv.Value, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
-                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, baseOffset, kv.Value.Type);
+                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, baseOffset, kv.Value.Type, headFrame);
                 AddPart(parts, equipFrame, equipOffset, kv.Value.Type);
             }
 
@@ -432,81 +433,29 @@ namespace HaCreator.MapSimulator.Character
             return expr.Frames[idx];
         }
 
-        private Point CalculateEquipOffset(CharacterFrame equipFrame, CharacterFrame bodyFrame, Point baseOffset, CharacterPartType type)
+        private Point CalculateEquipOffset(CharacterFrame equipFrame, CharacterFrame bodyFrame, Point baseOffset, CharacterPartType type, CharacterFrame headFrame)
         {
-            // Different equipment types connect at different map points
-            string mapPoint = type switch
+            static Dictionary<string, DrawingPoint> ToDrawingMap(Dictionary<string, Point> map)
             {
-                CharacterPartType.Weapon or CharacterPartType.WeaponOverGlove or CharacterPartType.WeaponOverHand
-                    => MAP_HAND,
-                CharacterPartType.Glove => MAP_HAND,
-                CharacterPartType.Coat or CharacterPartType.Longcoat or CharacterPartType.Pants or CharacterPartType.Shoes
-                    => MAP_NAVEL,
-                CharacterPartType.Cape => MAP_NAVEL,
-                _ => MAP_NAVEL
-            };
-
-            Point bodyAnchor;
-            Point equipAnchor;
-            string usedBodyAnchor = "";
-            string usedEquipAnchor = "";
-
-            // For weapons, try multiple map points in order of preference
-            if (type == CharacterPartType.Weapon || type == CharacterPartType.WeaponOverGlove || type == CharacterPartType.WeaponOverHand)
-            {
-                // Try "hand" first, then "handMove", then "navel"
-                if (bodyFrame.Map.ContainsKey(MAP_HAND))
-                {
-                    bodyAnchor = bodyFrame.Map[MAP_HAND];
-                    usedBodyAnchor = "hand";
-                }
-                else if (bodyFrame.Map.ContainsKey(MAP_HAND_MOVE))
-                {
-                    bodyAnchor = bodyFrame.Map[MAP_HAND_MOVE];
-                    usedBodyAnchor = "handMove";
-                }
-                else if (bodyFrame.Map.ContainsKey(MAP_NAVEL))
-                {
-                    // Use navel as fallback but offset for approximate hand position
-                    var navel = bodyFrame.Map[MAP_NAVEL];
-                    bodyAnchor = new Point(navel.X + 10, navel.Y - 15);
-                    usedBodyAnchor = "navel+offset";
-                }
-                else
-                {
-                    bodyAnchor = bodyFrame.Origin;
-                    usedBodyAnchor = "origin";
-                }
-
-                // For weapon anchor, use "hand" or "handMove"
-                if (equipFrame.Map.ContainsKey(MAP_HAND))
-                {
-                    equipAnchor = equipFrame.Map[MAP_HAND];
-                    usedEquipAnchor = "hand";
-                }
-                else if (equipFrame.Map.ContainsKey(MAP_HAND_MOVE))
-                {
-                    equipAnchor = equipFrame.Map[MAP_HAND_MOVE];
-                    usedEquipAnchor = "handMove";
-                }
-                else
-                {
-                    equipAnchor = equipFrame.Origin;
-                    usedEquipAnchor = "origin";
-                }
-
-                // Debug: Log weapon positioning info (once per animation load)
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Weapon positioning: body.{usedBodyAnchor}={bodyAnchor}, weapon.{usedEquipAnchor}={equipAnchor}, z={equipFrame.Z}");
-            }
-            else
-            {
-                bodyAnchor = bodyFrame.GetMapPoint(mapPoint);
-                equipAnchor = equipFrame.GetMapPoint(mapPoint);
+                return map.ToDictionary(
+                    pair => pair.Key,
+                    pair => new DrawingPoint(pair.Value.X, pair.Value.Y));
             }
 
-            return new Point(
-                baseOffset.X + bodyAnchor.X - equipAnchor.X,
-                baseOffset.Y + bodyAnchor.Y - equipAnchor.Y);
+            DrawingPoint offset = CharacterCompositionMath.CalculateEquipmentOffset(
+                type,
+                ToDrawingMap(bodyFrame.Map),
+                new DrawingPoint(bodyFrame.Origin.X, bodyFrame.Origin.Y),
+                ToDrawingMap(equipFrame.Map),
+                new DrawingPoint(equipFrame.Origin.X, equipFrame.Origin.Y),
+                new DrawingPoint(baseOffset.X, baseOffset.Y),
+                headFrame == null ? null : ToDrawingMap(headFrame.Map),
+                headFrame == null ? null : new DrawingPoint(
+                    baseOffset.X + bodyFrame.GetMapPoint(MAP_NECK).X - headFrame.GetMapPoint(MAP_NECK).X,
+                    baseOffset.Y + bodyFrame.GetMapPoint(MAP_NECK).Y - headFrame.GetMapPoint(MAP_NECK).Y),
+                headFrame == null ? DrawingPoint.Empty : new DrawingPoint(headFrame.Origin.X, headFrame.Origin.Y));
+
+            return new Point(offset.X, offset.Y);
         }
 
         private void CalculateBounds(AssembledFrame frame)

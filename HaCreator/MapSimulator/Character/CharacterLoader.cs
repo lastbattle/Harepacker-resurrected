@@ -863,68 +863,17 @@ namespace HaCreator.MapSimulator.Character
 
         private string GetEquipmentFolder(int itemId)
         {
-            // Equipment ID ranges
-            int category = itemId / 10000;
-            return category switch
-            {
-                100 => "Cap",
-                101 => "Accessory",  // Face accessory
-                102 => "Accessory",  // Eye accessory
-                103 => "Earrings",
-                104 => "Coat",
-                105 => "Longcoat",
-                106 => "Pants",
-                107 => "Shoes",
-                108 => "Glove",
-                109 => "Shield",
-                110 => "Cape",
-                111 => "Ring",
-                >= 130 and < 170 => "Weapon",
-                180 => "TamingMob",
-                _ => null
-            };
+            return CharacterWzComposition.GetEquipmentFolder(itemId);
         }
 
         private EquipSlot GetEquipSlot(int itemId)
         {
-            int category = itemId / 10000;
-            return category switch
-            {
-                100 => EquipSlot.Cap,
-                101 => EquipSlot.FaceAccessory,
-                102 => EquipSlot.EyeAccessory,
-                103 => EquipSlot.Earrings,
-                104 => EquipSlot.Coat,
-                105 => EquipSlot.Longcoat,
-                106 => EquipSlot.Pants,
-                107 => EquipSlot.Shoes,
-                108 => EquipSlot.Glove,
-                109 => EquipSlot.Shield,
-                110 => EquipSlot.Cape,
-                >= 130 and < 170 => EquipSlot.Weapon,
-                180 => EquipSlot.TamingMob,
-                _ => EquipSlot.None
-            };
+            return CharacterWzComposition.GetEquipSlot(itemId);
         }
 
         private CharacterPartType GetPartType(string folder)
         {
-            return folder switch
-            {
-                "Cap" => CharacterPartType.Cap,
-                "Accessory" => CharacterPartType.Accessory,
-                "Earrings" => CharacterPartType.Earrings,
-                "Coat" => CharacterPartType.Coat,
-                "Longcoat" => CharacterPartType.Longcoat,
-                "Pants" => CharacterPartType.Pants,
-                "Shoes" => CharacterPartType.Shoes,
-                "Glove" => CharacterPartType.Glove,
-                "Shield" => CharacterPartType.Shield,
-                "Cape" => CharacterPartType.Cape,
-                "Weapon" => CharacterPartType.Weapon,
-                "TamingMob" => CharacterPartType.TamingMob,
-                _ => CharacterPartType.Body
-            };
+            return CharacterWzComposition.GetPartType(folder);
         }
 
         #endregion
