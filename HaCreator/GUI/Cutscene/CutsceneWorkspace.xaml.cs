@@ -17,6 +17,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Forms = System.Windows.Forms;
 
 namespace HaCreator.GUI.Cutscene
 {
@@ -119,6 +120,22 @@ namespace HaCreator.GUI.Cutscene
         }
 
         private void SceneSearch_Changed(object sender, TextChangedEventArgs e) => ApplySceneFilter();
+
+        private void ChooseMap_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not CutsceneEventModel eventModel)
+                return;
+
+            using var adapter = new Forms.NumericUpDown
+            {
+                Minimum = int.MinValue,
+                Maximum = int.MaxValue,
+                Value = eventModel.Field
+            };
+            LoadMapSelector selector = new(adapter) { Owner = this };
+            if (selector.ShowDialog() == true)
+                eventModel.Field = (int)adapter.Value;
+        }
 
         private void SceneImage_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
