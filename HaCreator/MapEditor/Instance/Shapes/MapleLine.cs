@@ -155,7 +155,8 @@ namespace HaCreator.MapEditor.Instance.Shapes
 
         public virtual void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
         {
-            if (!Selected)
+            bool isFootholdPreview = this is FootholdLine && secondDot is Mouse && board.Mouse.State == MouseState.Footholds;
+            if (!Selected && !isFootholdPreview)
                 color *= 0.42f;
 
             board.ParentControl.DrawLine(sprite, new XNA.Vector2(firstDot.X + xShift, firstDot.Y + yShift), new XNA.Vector2(secondDot.X + xShift, secondDot.Y + yShift), color);

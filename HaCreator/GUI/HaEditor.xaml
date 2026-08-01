@@ -516,7 +516,7 @@
                     <Path Width="20" Height="20" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="2"
                           Data="M10,1 A9,9 0 1 1 9.9,1 M10,6 A4,4 0 1 1 9.9,6"/>
                 </RadioButton>
-                <RadioButton GroupName="EditorTools" Tag="Foothold" Checked="EditorTool_Checked"
+                <RadioButton GroupName="EditorTools" Tag="Foothold" Checked="EditorTool_Checked" Click="EditorTool_Click"
                              Style="{StaticResource ToolRailButtonStyle}" ToolTip="{loc:Loc Editor_Draw_footholds_91FC09}">
                     <Path Width="21" Height="18" Stretch="Fill" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="2"
                           Data="M1,15 L6,9 L11,13 L20,3 M4,17 L18,17"/>

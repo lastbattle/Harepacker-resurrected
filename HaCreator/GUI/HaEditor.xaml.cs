@@ -404,6 +404,17 @@ namespace HaCreator.GUI
             }
         }
 
+        private void EditorTool_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not RadioButton button || !string.Equals(button.Tag as string, "Foothold", StringComparison.Ordinal))
+                return;
+
+            // Clicking the active rail button is useful after Escape: RadioButton
+            // does not raise Checked again when it is already selected.
+            if (multiBoard?.SelectedBoard?.Mouse.State != MouseState.Footholds)
+                commonPanel?.ActivateTool("Foothold");
+        }
+
         /// <summary>
         /// Mouse wheel
         /// </summary>

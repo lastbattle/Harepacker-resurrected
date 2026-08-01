@@ -589,10 +589,6 @@ namespace HaCreator.MapEditor.Input
                     target.Selected = true;
                     parentBoard.EditInstanceClicked(target);
                 }
-                else if (selectedBoard.Mouse.State == MouseState.Footholds)
-                {
-                    selectedBoard.Mouse.CreateFhAnchor();
-                }
             }
         }
 
@@ -645,7 +641,10 @@ namespace HaCreator.MapEditor.Input
                 }
                 else if (selectedBoard.Mouse.State == MouseState.Footholds)
                 {
-                    selectedBoard.Mouse.TryConnectFoothold();
+                    // A normal click starts the next foothold point. Clicking an
+                    // existing anchor continues the current polyline.
+                    if (!selectedBoard.Mouse.TryConnectFoothold())
+                        selectedBoard.Mouse.CreateFhAnchor();
                 }
             }
         }

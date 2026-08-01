@@ -311,6 +311,13 @@ See [img-hot-swap.md](./img-hot-swap.md) Part 2 for details.
 `HaCreator/MapSimulator` now treats `Mob.img/attackN/info` as structured attack data instead of only generic attack animations.
 The loader carries `range`, `effectAfter`, `attackAfter`, `areaCount`, `attackCount`, `start`, `areaWarning`, `effect`, and numbered `effect0/effect1/...` nodes into the simulator so boss attacks can place telegraphs and delayed ground effects on footholds with client-style timing.
 
+### Foothold Editing
+
+With the Foothold tool active, a normal left click creates the next anchor and
+clicking an existing anchor continues the current polyline. Press `Escape` to
+cancel the unfinished segment; clicking the Foothold tool button again
+re-enters the mode even when the button is already selected.
+
 ---
 
 ## See Also
