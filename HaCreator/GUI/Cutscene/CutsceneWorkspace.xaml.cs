@@ -1635,15 +1635,23 @@ namespace HaCreator.GUI.Cutscene
             {
                 string normalized = soundPath.Replace('\\', '/').Trim('/');
                 string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                int offset = segments.Length > 0 && string.Equals(segments[0], "Sound", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                string category = "Sound";
+                int offset = 0;
+                if (segments.Length > 0 && string.Equals(segments[0], "Sound", StringComparison.OrdinalIgnoreCase))
+                    offset = 1;
+                else if (segments.Length > 0 && string.Equals(segments[0], "Effect", StringComparison.OrdinalIgnoreCase))
+                {
+                    category = "Effect";
+                    offset = 1;
+                }
                 if (segments.Length <= offset)
                     return null;
                 int imageEnd = Array.FindIndex(segments, offset, segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
                 if (imageEnd < offset)
                     imageEnd = offset;
                 string imageName = string.Join('/', segments.Skip(offset).Take(imageEnd - offset + 1));
-                WzImage image = Program.FindImage("Sound", imageName)
-                    ?? Program.FindImage("Sound", imageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ? imageName : imageName + ".img");
+                WzImage image = Program.FindImage(category, imageName)
+                    ?? Program.FindImage(category, imageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ? imageName : imageName + ".img");
                 if (image == null)
                     return null;
                 string propertyPath = string.Join('/', segments.Skip(imageEnd + 1));

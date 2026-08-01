@@ -81,30 +81,52 @@ namespace HaCreator.GUI.Cutscene
 
         public static IReadOnlyList<string> LoadSoundImageIndex()
         {
+            List<string> imagePaths = new();
             if (Program.DataSource is ImgFileSystemDataSource imgSource)
             {
                 string soundPath = Path.Combine(imgSource.Manager.VersionPath, "Sound");
-                if (!Directory.Exists(soundPath))
-                    return Array.Empty<string>();
-                return Directory.EnumerateFiles(soundPath, "*.img", SearchOption.AllDirectories)
-                    .Select(file => Path.GetRelativePath(soundPath, file).Replace('\\', '/'))
+                if (Directory.Exists(soundPath))
+                    imagePaths.AddRange(Directory.EnumerateFiles(soundPath, "*.img", SearchOption.AllDirectories)
+                        .Select(file => Path.GetRelativePath(soundPath, file).Replace('\\', '/')));
+
+                string effectPath = Path.Combine(imgSource.Manager.VersionPath, "Effect");
+                if (Directory.Exists(effectPath))
+                    imagePaths.AddRange(Directory.EnumerateFiles(effectPath, "Direction*.img", SearchOption.AllDirectories)
+                        .Select(file => $"Effect/{Path.GetRelativePath(effectPath, file).Replace('\\', '/')}"));
+
+                return imagePaths
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
 
             if (Program.DataSource != null)
             {
-                return Program.DataSource.GetImageNamesInDirectory("Sound", string.Empty)
+                imagePaths.AddRange(Program.DataSource.GetImageNamesInDirectory("Sound", string.Empty)
                     .Select(EnsureImgExtension)
+                    .ToList());
+                imagePaths.AddRange(Program.DataSource.GetImageNamesInDirectory("Effect", string.Empty)
+                    .Select(EnsureImgExtension)
+                    .Where(IsDirectionImagePath)
+                    .Select(path => $"Effect/{path}")
+                    .ToList());
+                return imagePaths
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
 
             if (Program.FindWzObject("Sound", string.Empty) is WzDirectory soundDirectory)
-                return EnumerateImagePaths(soundDirectory, string.Empty).ToList();
+                imagePaths.AddRange(EnumerateImagePaths(soundDirectory, string.Empty));
+            if (Program.FindWzObject("Effect", string.Empty) is WzDirectory effectDirectory)
+                imagePaths.AddRange(EnumerateImagePaths(effectDirectory, string.Empty)
+                    .Where(IsDirectionImagePath)
+                    .Select(path => $"Effect/{path}"));
 
-            return Array.Empty<string>();
+            return imagePaths
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         public static IReadOnlyList<string> LoadSoundPaths(string imagePath)
@@ -113,8 +135,9 @@ namespace HaCreator.GUI.Cutscene
             if (string.IsNullOrWhiteSpace(normalizedImagePath))
                 return Array.Empty<string>();
 
-            WzImage image = Program.FindImage("Sound", normalizedImagePath)
-                ?? Program.FindImage("Sound", EnsureImgExtension(normalizedImagePath));
+            (string category, string relativeImagePath) = SplitSoundImagePath(normalizedImagePath);
+            WzImage image = Program.FindImage(category, relativeImagePath)
+                ?? Program.FindImage(category, EnsureImgExtension(relativeImagePath));
             if (image == null)
                 return Array.Empty<string>();
 
@@ -123,7 +146,7 @@ namespace HaCreator.GUI.Cutscene
             {
                 image.ParseImage();
                 List<string> paths = new();
-                CollectSoundPaths(image, $"Sound/{EnsureImgExtension(normalizedImagePath)}", paths);
+                CollectSoundPaths(image, $"{category}/{EnsureImgExtension(relativeImagePath)}", paths);
                 return paths;
             }
             finally
@@ -185,6 +208,23 @@ namespace HaCreator.GUI.Cutscene
         private static string EnsureImgExtension(string name) => name.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
             ? name
             : name + ".img";
+
+        private static bool IsDirectionImagePath(string path)
+        {
+            string fileName = path?.Replace('\\', '/').Split('/').LastOrDefault();
+            return fileName?.StartsWith("Direction", StringComparison.OrdinalIgnoreCase) == true
+                && fileName.EndsWith(".img", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static (string Category, string RelativeImagePath) SplitSoundImagePath(string imagePath)
+        {
+            string[] segments = imagePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length > 1 && string.Equals(segments[0], "Effect", StringComparison.OrdinalIgnoreCase))
+                return ("Effect", string.Join('/', segments.Skip(1)));
+            if (segments.Length > 1 && string.Equals(segments[0], "Sound", StringComparison.OrdinalIgnoreCase))
+                return ("Sound", string.Join('/', segments.Skip(1)));
+            return ("Sound", imagePath);
+        }
 
         internal static IReadOnlyList<CutsceneSceneModel> DiscoverScenes(WzImage image)
         {
