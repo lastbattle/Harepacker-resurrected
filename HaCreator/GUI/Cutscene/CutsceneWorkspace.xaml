@@ -99,32 +99,32 @@
                             </Grid.RowDefinitions>
                             <TextBlock Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Type}"/><ComboBox Grid.Column="1" ItemsSource="{Binding ElementName=timelineGrid, Path=Tag}" SelectedValuePath="Value" DisplayMemberPath="Name" SelectedValue="{Binding Type, UpdateSourceTrigger=PropertyChanged}"/>
                             <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Start}"/><TextBox Grid.Row="1" Grid.Column="1" InputScope="Number" Text="{Binding Start, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Duration}"/><TextBox Grid.Row="2" Grid.Column="1" InputScope="Number" Text="{Binding Duration, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="X"/><TextBox Grid.Row="3" Grid.Column="1" InputScope="Number" Text="{Binding X, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabel}" Text="Y"/><TextBox Grid.Row="4" Grid.Column="1" InputScope="Number" Text="{Binding Y, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabel}" Text="X1"/><TextBox Grid.Row="5" Grid.Column="1" InputScope="Number" Text="{Binding X1, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabel}" Text="Y1"/><TextBox Grid.Row="6" Grid.Column="1" InputScope="Number" Text="{Binding Y1, UpdateSourceTrigger=LostFocus}"/>
-                            <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabel}" Text="Z"/><TextBox Grid.Row="7" Grid.Column="1" InputScope="Number" Text="{Binding Z, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Duration}"/><TextBox Grid.Row="2" Grid.Column="1" InputScope="Number" IsEnabled="{Binding IsVisualEvent}" Text="{Binding Duration, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabel}" Text="X"/><TextBox Grid.Row="3" Grid.Column="1" InputScope="Number" IsEnabled="{Binding SupportsX}" Text="{Binding X, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabel}" Text="Y"/><TextBox Grid.Row="4" Grid.Column="1" InputScope="Number" IsEnabled="{Binding IsVisualEvent}" Text="{Binding Y, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabel}" Text="X1"/><TextBox Grid.Row="5" Grid.Column="1" InputScope="Number" IsEnabled="{Binding IsVisualEvent}" Text="{Binding X1, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabel}" Text="Y1"/><TextBox Grid.Row="6" Grid.Column="1" InputScope="Number" IsEnabled="{Binding IsVisualEvent}" Text="{Binding Y1, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabel}" Text="Z"/><TextBox Grid.Row="7" Grid.Column="1" InputScope="Number" IsEnabled="{Binding IsVisualEvent}" Text="{Binding Z, UpdateSourceTrigger=LostFocus}"/>
                             <TextBlock Grid.Row="8" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Visual}"/>
-                            <Grid Grid.Row="8" Grid.Column="1">
+                            <Grid Grid.Row="8" Grid.Column="1" IsEnabled="{Binding IsVisualEvent}">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBox Text="{Binding Visual, UpdateSourceTrigger=LostFocus}"/>
                                 <Button Grid.Column="1" Margin="6,0,0,0" Content="{local:CutsceneEditorText Cutscene_Browse}" Click="BrowseVisual_Click"/>
                             </Grid>
                             <TextBlock Grid.Row="9" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Sound}"/>
-                            <Grid Grid.Row="9" Grid.Column="1">
+                            <Grid Grid.Row="9" Grid.Column="1" IsEnabled="{Binding SupportsSound}">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBox Text="{Binding Sound, UpdateSourceTrigger=LostFocus}"/>
                                 <Button Grid.Column="1" Margin="6,0,0,0" Content="{local:CutsceneEditorText Cutscene_Browse}" Click="BrowseSound_Click"/>
                             </Grid>
-                            <TextBlock Grid.Row="10" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Action}"/><ComboBox Grid.Row="10" Grid.Column="1" IsEditable="True" ItemsSource="{Binding ActionCatalogue, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Action, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="10" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Action}"/><ComboBox Grid.Row="10" Grid.Column="1" IsEditable="True" IsEnabled="{Binding IsCharacterAction}" ItemsSource="{Binding ActionCatalogue, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Action, UpdateSourceTrigger=LostFocus}"/>
                             <TextBlock Grid.Row="11" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Field}"/>
-                            <Grid Grid.Row="11" Grid.Column="1">
+                            <Grid Grid.Row="11" Grid.Column="1" IsEnabled="{Binding IsFieldTransition}">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBox Text="{Binding Field, UpdateSourceTrigger=LostFocus}"/>
                                 <Button Grid.Column="1" Margin="6,0,0,0" Content="Choose..." Click="ChooseMap_Click"/>
                             </Grid>
-                            <TextBlock Grid.Row="12" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Appearance}"/><TextBox Grid.Row="12" Grid.Column="1" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="54" Text="{Binding Appearance, UpdateSourceTrigger=LostFocus}"/>
+                            <TextBlock Grid.Row="12" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Appearance}"/><TextBox Grid.Row="12" Grid.Column="1" IsEnabled="{Binding IsCharacterAppearance}" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="54" Text="{Binding Appearance, UpdateSourceTrigger=LostFocus}"/>
                             <TextBlock Grid.Row="13" Style="{StaticResource InspectorLabel}" Text="{local:CutsceneEditorText Cutscene_Raw}"/><TextBox Grid.Row="13" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" MinHeight="54" Text="{Binding RawProperties, Mode=OneWay}"/>
                         </Grid>
                         <Separator Margin="0,12"/>

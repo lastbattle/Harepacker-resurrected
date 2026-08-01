@@ -112,6 +112,14 @@ namespace HaCreator.GUI.Cutscene
         public string Sound { get => _sound; set => Set(ref _sound, value); }
         public string Action { get => _action; set => Set(ref _action, value); }
         public string Appearance { get => _appearance; set => Set(ref _appearance, value); }
+        public bool IsVisualEvent => Type == (int)ReservedSceneEventType.Visual;
+        public bool IsFieldTransition => Type == (int)ReservedSceneEventType.FieldTransition;
+        public bool IsCharacterAppearance => Type == (int)ReservedSceneEventType.CharacterAppearance;
+        public bool IsCharacterAction => Type == (int)ReservedSceneEventType.CharacterAction;
+        public bool IsSoundEvent => Type == (int)ReservedSceneEventType.Sound;
+        public bool IsFacialExpression => Type == (int)ReservedSceneEventType.FacialExpression;
+        public bool SupportsSound => IsVisualEvent || IsSoundEvent;
+        public bool SupportsX => IsVisualEvent || IsFacialExpression;
         public string TypeName => Enum.IsDefined(typeof(ReservedSceneEventType), Type)
             ? ((ReservedSceneEventType)Type).ToString()
             : $"Unsupported ({Type})";
@@ -231,6 +239,11 @@ namespace HaCreator.GUI.Cutscene
                 return false;
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            if (propertyName == nameof(Type))
+            {
+                foreach (string dependentProperty in TypeDependentProperties)
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(dependentProperty));
+            }
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TypeName)));
             return true;
@@ -239,6 +252,12 @@ namespace HaCreator.GUI.Cutscene
         private static readonly HashSet<string> KnownProperties = new(StringComparer.OrdinalIgnoreCase)
         {
             "type", "start", "duration", "x", "y", "x1", "y1", "z", "field", "visual", "sound", "action"
+        };
+        private static readonly string[] TypeDependentProperties =
+        {
+            nameof(IsVisualEvent), nameof(IsFieldTransition), nameof(IsCharacterAppearance),
+            nameof(IsCharacterAction), nameof(IsSoundEvent), nameof(IsFacialExpression),
+            nameof(SupportsSound), nameof(SupportsX)
         };
         private readonly HashSet<string> _appearancePropertyNames = new(StringComparer.OrdinalIgnoreCase);
     }
