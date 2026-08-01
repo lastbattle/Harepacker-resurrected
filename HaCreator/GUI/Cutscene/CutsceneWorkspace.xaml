@@ -27,9 +27,9 @@
     <Grid Background="{StaticResource HareCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="5*"/>
             <RowDefinition Height="6"/>
-            <RowDefinition Height="350"/>
+            <RowDefinition Height="5*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
