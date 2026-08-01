@@ -55,11 +55,12 @@ The workspace exposes separate **Validate scene** and **Validate all** scopes. R
 1. Load a compatible data set containing `Effect/Direction*.img`, open a map, and launch **Cutscene Workspace**.
 2. Confirm scene filtering, selection, timeline scrubbing, looping, and resolution changes remain responsive.
 3. Drag event blocks horizontally, click empty timeline space to scrub, and confirm the detail grid and preview remain synchronized.
-4. Use the visual and sound Browse buttons, confirm visual thumbnail selection updates the event path, then switch among `Sound` images such as `Bgm00.img` and `Field.img` and filter their complete audio entries.
-5. Edit one event of each supported type, save, then reopen it and confirm the values persist.
-6. Open a type-3 appearance event, add or remove equipment through the item selector, choose named slots such as Cap, Weapon, and Medal from the slot combobox, confirm the character preview updates, and verify unknown fields remain separate.
-7. Confirm the workspace opens on Scene explorer, then selects Selected event after a scene/event is loaded; switch back through the tab header and confirm scene browsing remains available.
-8. Add and drag a map trigger, enter multiple `EventQ` scripts, save the map, reopen it, and confirm coordinates, `forcedInput`, queue order, and unknown fields round-trip.
-9. Open the workspace from Map Info and confirm both user-enter script fields remain synchronized.
-10. Check the window at 100%, 125%, and 150% DPI and at its minimum size.
-11. Preview `Direction4.img/promotion/Scene3` and confirm its layered characters and logo remain aligned around the client-screen center as their animation frames advance.
+4. Edit or retime an event, press `Ctrl+Z` to undo it, then press `Ctrl+Y` to redo it; confirm a complete timeline drag is treated as one history step and that redo is cleared after a new edit.
+5. Use the visual and sound Browse buttons, confirm visual thumbnail selection updates the event path, then switch among `Sound` images such as `Bgm00.img` and `Field.img` and filter their complete audio entries.
+6. Edit one event of each supported type, save, then reopen it and confirm the values persist.
+7. Open a type-3 appearance event, add or remove equipment through the item selector, choose named slots such as Cap, Weapon, and Medal from the slot combobox, confirm the character preview updates, and verify unknown fields remain separate.
+8. Confirm the workspace opens on Scene explorer, then selects Selected event after a scene/event is loaded; switch back through the tab header and confirm scene browsing remains available.
+9. Add and drag a map trigger, enter multiple `EventQ` scripts, save the map, reopen it, and confirm coordinates, `forcedInput`, queue order, and unknown fields round-trip.
+10. Open the workspace from Map Info and confirm both user-enter script fields remain synchronized.
+11. Check the window at 100%, 125%, and 150% DPI and at its minimum size.
+12. Preview `Direction4.img/promotion/Scene3` and confirm its layered characters and logo remain aligned around the client-screen center as their animation frames advance.

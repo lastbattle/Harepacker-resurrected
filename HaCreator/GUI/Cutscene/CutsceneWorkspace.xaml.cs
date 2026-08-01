@@ -58,10 +58,16 @@ namespace HaCreator.GUI.Cutscene
         private Border _draggedTimelineBlock;
         private double _timelineDragOffsetX;
         private bool _draggingTimelineEvent;
+        private readonly Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> _undoHistory = new();
+        private readonly Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> _redoHistory = new();
+        private CutsceneHistorySnapshot _historySnapshot;
+        private CutsceneHistorySnapshot _historyTransactionStart;
+        private bool _restoringHistory;
 
         private const double TimelineRulerHeight = 24;
         private const double TimelineLaneHeight = 24;
         private const double TimelinePixelsPerMillisecond = 0.08;
+        private const int MaxHistoryEntries = 100;
 
         public IReadOnlyList<string> ActionCatalogue { get; } = new[]
         {
@@ -72,6 +78,10 @@ namespace HaCreator.GUI.Cutscene
         public CutsceneWorkspace(Board board)
         {
             InitializeComponent();
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, Undo_Executed, History_CanExecute));
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, Redo_Executed, History_CanExecute));
+            InputBindings.Add(new System.Windows.Input.KeyBinding(ApplicationCommands.Undo, Key.Z, ModifierKeys.Control));
+            InputBindings.Add(new System.Windows.Input.KeyBinding(ApplicationCommands.Redo, Key.Y, ModifierKeys.Control));
             _board = board;
             sceneImageComboBox.ItemsSource = _sceneImages;
             sceneListBox.ItemsSource = _visibleScenes;
@@ -156,14 +166,22 @@ namespace HaCreator.GUI.Cutscene
                 return;
 
             int slot = CutsceneEventModel.GuessEquipmentSlot(itemSelector.SelectedItemId);
-            CutsceneEquipmentEntry existing = eventModel.Equipment.FirstOrDefault(item => item.Slot == slot && slot > 0);
-            if (existing != null)
-                existing.ItemId = itemSelector.SelectedItemId;
-            else
+            BeginHistoryEdit();
+            try
             {
-                CutsceneEquipmentEntry equipment = new(slot, itemSelector.SelectedItemId);
-                eventModel.Equipment.Add(equipment);
-                equipmentListBox.SelectedItem = equipment;
+                CutsceneEquipmentEntry existing = eventModel.Equipment.FirstOrDefault(item => item.Slot == slot && slot > 0);
+                if (existing != null)
+                    existing.ItemId = itemSelector.SelectedItemId;
+                else
+                {
+                    CutsceneEquipmentEntry equipment = new(slot, itemSelector.SelectedItemId);
+                    eventModel.Equipment.Add(equipment);
+                    equipmentListBox.SelectedItem = equipment;
+                }
+            }
+            finally
+            {
+                EndHistoryEdit();
             }
         }
 
@@ -171,7 +189,17 @@ namespace HaCreator.GUI.Cutscene
         {
             if (timelineGrid.SelectedItem is CutsceneEventModel eventModel
                 && (sender as FrameworkElement)?.DataContext is CutsceneEquipmentEntry equipment)
-                eventModel.Equipment.Remove(equipment);
+            {
+                BeginHistoryEdit();
+                try
+                {
+                    eventModel.Equipment.Remove(equipment);
+                }
+                finally
+                {
+                    EndHistoryEdit();
+                }
+            }
         }
 
         private void AddUnknownField_Click(object sender, RoutedEventArgs e)
@@ -180,15 +208,33 @@ namespace HaCreator.GUI.Cutscene
                 return;
 
             CutsceneUnknownFieldEntry field = new(string.Empty, string.Empty, null);
-            eventModel.UnknownFields.Add(field);
-            unknownFieldsListBox.SelectedItem = field;
+            BeginHistoryEdit();
+            try
+            {
+                eventModel.UnknownFields.Add(field);
+                unknownFieldsListBox.SelectedItem = field;
+            }
+            finally
+            {
+                EndHistoryEdit();
+            }
         }
 
         private void DeleteUnknownField_Click(object sender, RoutedEventArgs e)
         {
             if (timelineGrid.SelectedItem is CutsceneEventModel eventModel
                 && (sender as FrameworkElement)?.DataContext is CutsceneUnknownFieldEntry field)
-                eventModel.UnknownFields.Remove(field);
+            {
+                BeginHistoryEdit();
+                try
+                {
+                    eventModel.UnknownFields.Remove(field);
+                }
+                finally
+                {
+                    EndHistoryEdit();
+                }
+            }
         }
 
         private void RenderCharacterPreview(CutsceneEventModel eventModel)
@@ -363,7 +409,10 @@ namespace HaCreator.GUI.Cutscene
 
             sceneListBox.SelectedItem = null;
             foreach (CutsceneSceneModel scene in _selectedSceneImage.Scenes)
+            {
+                ClearHistory(scene);
                 _allScenes.Remove(scene);
+            }
             CutsceneRepository.ReleaseScenes(_selectedSceneImage);
         }
 
@@ -403,10 +452,17 @@ namespace HaCreator.GUI.Cutscene
                 selectedEventTab.IsSelected = true;
             RenderTimelineTracks();
             RenderPreview();
+            if (!_restoringHistory)
+            {
+                _historySnapshot = CaptureHistorySnapshot();
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         private void Event_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
+            if (_restoringHistory)
+                return;
             if (_selectedScene != null)
                 _dirtyScenes.Add(_selectedScene);
             _hasChanges = true;
@@ -417,6 +473,7 @@ namespace HaCreator.GUI.Cutscene
                 RenderTimelineTracks();
             RenderCharacterPreview(sender as CutsceneEventModel);
             RenderPreview();
+            RecordHistoryMutation();
         }
 
         private void Timeline_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -432,6 +489,8 @@ namespace HaCreator.GUI.Cutscene
             RenderTimelineTracks();
             RenderCharacterPreview(timelineGrid.SelectedItem as CutsceneEventModel);
             RenderPreview();
+            if (!_restoringHistory && _historyTransactionStart == null)
+                _historySnapshot = CaptureHistorySnapshot();
         }
 
         private void Trigger_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -488,51 +547,250 @@ namespace HaCreator.GUI.Cutscene
         {
             if (_selectedScene == null)
                 return;
-            string id = NextId(_selectedScene.Events.Select(item => item.Id));
-            WzSubProperty property = new(id);
-            CutsceneEventModel cutsceneEvent = CutsceneEventModel.FromProperty(property);
-            cutsceneEvent.Type = (int)ReservedSceneEventType.Visual;
-            cutsceneEvent.Start = (int)playheadSlider.Value;
-            cutsceneEvent.PropertyChanged += Event_PropertyChanged;
-            _selectedScene.Events.Add(cutsceneEvent);
-            _dirtyScenes.Add(_selectedScene);
-            _hasChanges = true;
-            _timelineEvents.Add(cutsceneEvent);
-            timelineGrid.SelectedItem = cutsceneEvent;
-            UpdateTimelineRange();
-            RenderTimelineTracks();
+            BeginHistoryEdit();
+            try
+            {
+                string id = NextId(_selectedScene.Events.Select(item => item.Id));
+                WzSubProperty property = new(id);
+                CutsceneEventModel cutsceneEvent = CutsceneEventModel.FromProperty(property);
+                cutsceneEvent.Type = (int)ReservedSceneEventType.Visual;
+                cutsceneEvent.Start = (int)playheadSlider.Value;
+                cutsceneEvent.PropertyChanged += Event_PropertyChanged;
+                _selectedScene.Events.Add(cutsceneEvent);
+                _dirtyScenes.Add(_selectedScene);
+                _hasChanges = true;
+                _timelineEvents.Add(cutsceneEvent);
+                timelineGrid.SelectedItem = cutsceneEvent;
+                UpdateTimelineRange();
+                RenderTimelineTracks();
+            }
+            finally
+            {
+                EndHistoryEdit();
+            }
         }
 
         private void DuplicateEvent_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedScene == null || timelineGrid.SelectedItem is not CutsceneEventModel selected)
                 return;
-            string id = NextId(_selectedScene.Events.Select(item => item.Id));
-            WzSubProperty clone = (WzSubProperty)selected.Source.DeepClone();
-            clone.Name = id;
-            CutsceneEventModel duplicate = CutsceneEventModel.FromProperty(clone);
-            duplicate.Start = selected.Start + Math.Max(1, selected.Duration);
-            duplicate.PropertyChanged += Event_PropertyChanged;
-            _selectedScene.Events.Add(duplicate);
-            _dirtyScenes.Add(_selectedScene);
-            _hasChanges = true;
-            _timelineEvents.Add(duplicate);
-            timelineGrid.SelectedItem = duplicate;
-            UpdateTimelineRange();
-            RenderTimelineTracks();
+            BeginHistoryEdit();
+            try
+            {
+                string id = NextId(_selectedScene.Events.Select(item => item.Id));
+                WzSubProperty clone = (WzSubProperty)selected.Source.DeepClone();
+                clone.Name = id;
+                CutsceneEventModel duplicate = CutsceneEventModel.FromProperty(clone);
+                duplicate.Start = selected.Start + Math.Max(1, selected.Duration);
+                duplicate.PropertyChanged += Event_PropertyChanged;
+                _selectedScene.Events.Add(duplicate);
+                _dirtyScenes.Add(_selectedScene);
+                _hasChanges = true;
+                _timelineEvents.Add(duplicate);
+                timelineGrid.SelectedItem = duplicate;
+                UpdateTimelineRange();
+                RenderTimelineTracks();
+            }
+            finally
+            {
+                EndHistoryEdit();
+            }
         }
 
         private void DeleteEvent_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedScene == null || timelineGrid.SelectedItem is not CutsceneEventModel selected)
                 return;
-            _selectedScene.Events.Remove(selected);
-            _dirtyScenes.Add(_selectedScene);
-            _hasChanges = true;
-            _timelineEvents.Remove(selected);
-            UpdateTimelineRange();
-            RenderTimelineTracks();
-            RenderPreview();
+            BeginHistoryEdit();
+            try
+            {
+                _selectedScene.Events.Remove(selected);
+                _dirtyScenes.Add(_selectedScene);
+                _hasChanges = true;
+                _timelineEvents.Remove(selected);
+                UpdateTimelineRange();
+                RenderTimelineTracks();
+                RenderPreview();
+            }
+            finally
+            {
+                EndHistoryEdit();
+            }
+        }
+
+        private void History_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> history = e.Command == ApplicationCommands.Undo
+                ? _undoHistory
+                : _redoHistory;
+            List<CutsceneHistoryEntry> entries = GetHistory(history, create: false);
+            e.CanExecute = entries?.Count > 0;
+            e.Handled = e.CanExecute;
+        }
+
+        private void Undo_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ApplyHistory(_undoHistory, _redoHistory, undo: true))
+                e.Handled = true;
+        }
+
+        private void Redo_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ApplyHistory(_redoHistory, _undoHistory, undo: false))
+                e.Handled = true;
+        }
+
+        private bool ApplyHistory(
+            Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> sourceHistory,
+            Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> destinationHistory,
+            bool undo)
+        {
+            List<CutsceneHistoryEntry> sourceEntries = GetHistory(sourceHistory, create: false);
+            if (sourceEntries == null || sourceEntries.Count == 0)
+                return false;
+
+            CutsceneHistoryEntry entry = sourceEntries[^1];
+            RestoreHistorySnapshot(undo ? entry.Before : entry.After);
+            sourceEntries.RemoveAt(sourceEntries.Count - 1);
+            GetHistory(destinationHistory, create: true).Add(entry);
+            CommandManager.InvalidateRequerySuggested();
+            return true;
+        }
+
+        private List<CutsceneHistoryEntry> GetHistory(
+            Dictionary<CutsceneSceneModel, List<CutsceneHistoryEntry>> history,
+            bool create)
+        {
+            if (_selectedScene == null)
+                return null;
+            if (history.TryGetValue(_selectedScene, out List<CutsceneHistoryEntry> entries))
+                return entries;
+            if (!create)
+                return null;
+            entries = new List<CutsceneHistoryEntry>();
+            history[_selectedScene] = entries;
+            return entries;
+        }
+
+        private void BeginHistoryEdit()
+        {
+            if (_restoringHistory || _selectedScene == null || _historyTransactionStart != null)
+                return;
+            _historyTransactionStart = CaptureHistorySnapshot();
+        }
+
+        private void EndHistoryEdit()
+        {
+            if (_historyTransactionStart == null)
+                return;
+            CutsceneHistorySnapshot before = _historyTransactionStart;
+            _historyTransactionStart = null;
+            CommitHistoryMutation(before);
+        }
+
+        private void RecordHistoryMutation()
+        {
+            if (_restoringHistory || _historyTransactionStart != null || _selectedScene == null)
+                return;
+            CutsceneHistorySnapshot before = _historySnapshot;
+            if (before == null || !ReferenceEquals(before.Scene, _selectedScene))
+                before = CaptureHistorySnapshot();
+            CommitHistoryMutation(before);
+        }
+
+        private void CommitHistoryMutation(CutsceneHistorySnapshot before)
+        {
+            CutsceneHistorySnapshot after = CaptureHistorySnapshot();
+            _historySnapshot = after;
+            if (HistoryContentEquals(before, after))
+                return;
+
+            List<CutsceneHistoryEntry> undoEntries = GetHistory(_undoHistory, create: true);
+            undoEntries.Add(new CutsceneHistoryEntry(before, after));
+            if (undoEntries.Count > MaxHistoryEntries)
+                undoEntries.RemoveAt(0);
+            GetHistory(_redoHistory, create: true).Clear();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private CutsceneHistorySnapshot CaptureHistorySnapshot()
+        {
+            return new CutsceneHistorySnapshot(
+                _selectedScene,
+                _selectedScene?.Events.Select(CutsceneEventHistorySnapshot.FromModel).ToList() ?? new List<CutsceneEventHistorySnapshot>(),
+                (timelineGrid.SelectedItem as CutsceneEventModel)?.Id);
+        }
+
+        private static bool HistoryContentEquals(CutsceneHistorySnapshot left, CutsceneHistorySnapshot right)
+        {
+            if (left == null || right == null)
+                return ReferenceEquals(left, right);
+            if (!ReferenceEquals(left?.Scene, right?.Scene)
+                || left.Events.Count != right.Events.Count)
+                return false;
+            return left.Events.Zip(right.Events, (before, after) => before.ContentEquals(after)).All(equal => equal);
+        }
+
+        private void RestoreHistorySnapshot(CutsceneHistorySnapshot snapshot)
+        {
+            if (snapshot?.Scene == null)
+                return;
+
+            _restoringHistory = true;
+            try
+            {
+                CutsceneSceneModel scene = snapshot.Scene;
+                List<CutsceneEventModel> available = scene.Events.ToList();
+                List<CutsceneEventModel> restored = new();
+                foreach (CutsceneEventHistorySnapshot eventSnapshot in snapshot.Events)
+                {
+                    int existingIndex = available.FindIndex(item => string.Equals(item.Id, eventSnapshot.Id, StringComparison.Ordinal));
+                    CutsceneEventModel eventModel;
+                    if (existingIndex >= 0)
+                    {
+                        eventModel = available[existingIndex];
+                        available.RemoveAt(existingIndex);
+                        eventSnapshot.ApplyTo(eventModel);
+                    }
+                    else
+                        eventModel = eventSnapshot.CreateModel();
+                    restored.Add(eventModel);
+                }
+
+                foreach (CutsceneEventModel eventModel in _timelineEvents)
+                    eventModel.PropertyChanged -= Event_PropertyChanged;
+                scene.Events.Clear();
+                scene.Events.AddRange(restored);
+                _selectedScene = scene;
+
+                _timelineEvents.Clear();
+                foreach (CutsceneEventModel eventModel in scene.Events
+                    .OrderBy(item => item.Start)
+                    .ThenBy(item => ParseIndex(item.Id)))
+                {
+                    eventModel.PropertyChanged += Event_PropertyChanged;
+                    _timelineEvents.Add(eventModel);
+                }
+
+                _characterPreviewCache.Clear();
+                UpdateTimelineRange();
+                timelineGrid.SelectedItem = snapshot.SelectedEventId == null
+                    ? null
+                    : _timelineEvents.FirstOrDefault(item => string.Equals(item.Id, snapshot.SelectedEventId, StringComparison.Ordinal));
+                if (timelineGrid.SelectedItem != null)
+                    timelineGrid.ScrollIntoView(timelineGrid.SelectedItem);
+                RenderTimelineTracks();
+                RenderCharacterPreview(timelineGrid.SelectedItem as CutsceneEventModel);
+                RenderPreview();
+                _dirtyScenes.Add(scene);
+                _hasChanges = true;
+            }
+            finally
+            {
+                _restoringHistory = false;
+            }
+
+            _historySnapshot = CaptureHistorySnapshot();
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -1004,6 +1262,7 @@ namespace HaCreator.GUI.Cutscene
             timelineGrid.SelectedItem = item;
             playheadSlider.Value = item.Start;
             timelineGrid.ScrollIntoView(item);
+            BeginHistoryEdit();
             _draggedTimelineEvent = item;
             _draggedTimelineBlock = block;
             _timelineDragOffsetX = e.GetPosition(block).X;
@@ -1038,6 +1297,7 @@ namespace HaCreator.GUI.Cutscene
             _draggedTimelineBlock = null;
             timelineTrackCanvas.ReleaseMouseCapture();
             RenderTimelineTracks();
+            EndHistoryEdit();
             e.Handled = true;
         }
 
@@ -1190,6 +1450,7 @@ namespace HaCreator.GUI.Cutscene
         {
             if (timelineGrid.SelectedItem is null && triggerListBox.SelectedItem is null)
                 return;
+            BeginHistoryEdit();
             _draggingMarker = true;
             previewCanvas.CaptureMouse();
             UpdateDraggedPosition(e.GetPosition(previewCanvas));
@@ -1203,8 +1464,11 @@ namespace HaCreator.GUI.Cutscene
 
         private void Preview_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            if (!_draggingMarker)
+                return;
             _draggingMarker = false;
             previewCanvas.ReleaseMouseCapture();
+            EndHistoryEdit();
         }
 
         private void UpdateDraggedPosition(Point point)
@@ -1410,10 +1674,223 @@ namespace HaCreator.GUI.Cutscene
                     return index.ToString();
         }
 
+        private void ClearHistory(CutsceneSceneModel scene)
+        {
+            if (scene == null)
+                return;
+            _undoHistory.Remove(scene);
+            _redoHistory.Remove(scene);
+            if (ReferenceEquals(_historySnapshot?.Scene, scene))
+                _historySnapshot = null;
+            if (ReferenceEquals(_historyTransactionStart?.Scene, scene))
+                _historyTransactionStart = null;
+            CommandManager.InvalidateRequerySuggested();
+        }
+
         private static string EmptyToNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         private static int ParseIndex(string value) => int.TryParse(value, out int index) ? index : int.MaxValue;
         private sealed record Choice(int Value, string Name);
         private sealed record TimelineTrack(string Name, Func<CutsceneEventModel, bool> Matches);
+
+        private sealed record CutsceneHistoryEntry(
+            CutsceneHistorySnapshot Before,
+            CutsceneHistorySnapshot After);
+
+        private sealed class CutsceneHistorySnapshot
+        {
+            public CutsceneHistorySnapshot(
+                CutsceneSceneModel scene,
+                IReadOnlyList<CutsceneEventHistorySnapshot> events,
+                string selectedEventId)
+            {
+                Scene = scene;
+                Events = events;
+                SelectedEventId = selectedEventId;
+            }
+
+            public CutsceneSceneModel Scene { get; }
+            public IReadOnlyList<CutsceneEventHistorySnapshot> Events { get; }
+            public string SelectedEventId { get; }
+        }
+
+        private sealed class CutsceneEventHistorySnapshot
+        {
+            private CutsceneEventHistorySnapshot(
+                string id,
+                WzSubProperty source,
+                int type,
+                int start,
+                int duration,
+                int x,
+                int y,
+                int x1,
+                int y1,
+                int z,
+                int field,
+                string visual,
+                string sound,
+                string action,
+                IReadOnlyList<CutsceneEquipmentHistorySnapshot> equipment,
+                IReadOnlyList<CutsceneUnknownFieldHistorySnapshot> unknownFields)
+            {
+                Id = id;
+                Source = source;
+                Type = type;
+                Start = start;
+                Duration = duration;
+                X = x;
+                Y = y;
+                X1 = x1;
+                Y1 = y1;
+                Z = z;
+                Field = field;
+                Visual = visual;
+                Sound = sound;
+                Action = action;
+                Equipment = equipment;
+                UnknownFields = unknownFields;
+            }
+
+            public string Id { get; }
+            public WzSubProperty Source { get; }
+            public int Type { get; }
+            public int Start { get; }
+            public int Duration { get; }
+            public int X { get; }
+            public int Y { get; }
+            public int X1 { get; }
+            public int Y1 { get; }
+            public int Z { get; }
+            public int Field { get; }
+            public string Visual { get; }
+            public string Sound { get; }
+            public string Action { get; }
+            public IReadOnlyList<CutsceneEquipmentHistorySnapshot> Equipment { get; }
+            public IReadOnlyList<CutsceneUnknownFieldHistorySnapshot> UnknownFields { get; }
+
+            public static CutsceneEventHistorySnapshot FromModel(CutsceneEventModel model)
+            {
+                return new CutsceneEventHistorySnapshot(
+                    model.Id,
+                    model.Source == null ? null : (WzSubProperty)model.Source.DeepClone(),
+                    model.Type,
+                    model.Start,
+                    model.Duration,
+                    model.X,
+                    model.Y,
+                    model.X1,
+                    model.Y1,
+                    model.Z,
+                    model.Field,
+                    model.Visual,
+                    model.Sound,
+                    model.Action,
+                    model.Equipment
+                        .Select(item => new CutsceneEquipmentHistorySnapshot(item.Slot, item.ItemId, item.SourceName))
+                        .ToList(),
+                    model.UnknownFields
+                        .Select(field => new CutsceneUnknownFieldHistorySnapshot(
+                            field.Name,
+                            field.Value,
+                            field.SourceProperty == null ? null : (WzImageProperty)field.SourceProperty.DeepClone(),
+                            field.WrittenName))
+                        .ToList());
+            }
+
+            public bool ContentEquals(CutsceneEventHistorySnapshot other)
+            {
+                if (other == null
+                    || !string.Equals(Id, other.Id, StringComparison.Ordinal)
+                    || Type != other.Type
+                    || Start != other.Start
+                    || Duration != other.Duration
+                    || X != other.X
+                    || Y != other.Y
+                    || X1 != other.X1
+                    || Y1 != other.Y1
+                    || Z != other.Z
+                    || Field != other.Field
+                    || !string.Equals(Visual, other.Visual, StringComparison.Ordinal)
+                    || !string.Equals(Sound, other.Sound, StringComparison.Ordinal)
+                    || !string.Equals(Action, other.Action, StringComparison.Ordinal)
+                    || Equipment.Count != other.Equipment.Count
+                    || UnknownFields.Count != other.UnknownFields.Count)
+                    return false;
+
+                return Equipment.Zip(other.Equipment, (left, right) => left.Equals(right)).All(equal => equal)
+                    && UnknownFields.Zip(other.UnknownFields, (left, right) => left.ContentEquals(right)).All(equal => equal);
+            }
+
+            public CutsceneEventModel CreateModel()
+            {
+                WzSubProperty source = Source == null
+                    ? new WzSubProperty(Id)
+                    : (WzSubProperty)Source.DeepClone();
+                CutsceneEventModel result = CutsceneEventModel.FromProperty(source);
+                ApplyTo(result);
+                return result;
+            }
+
+            public void ApplyTo(CutsceneEventModel target)
+            {
+                target.Type = Type;
+                target.Start = Start;
+                target.Duration = Duration;
+                target.X = X;
+                target.Y = Y;
+                target.X1 = X1;
+                target.Y1 = Y1;
+                target.Z = Z;
+                target.Field = Field;
+                target.Visual = Visual;
+                target.Sound = Sound;
+                target.Action = Action;
+
+                target.Equipment.Clear();
+                foreach (CutsceneEquipmentHistorySnapshot item in Equipment)
+                    target.Equipment.Add(new CutsceneEquipmentEntry(item.Slot, item.ItemId, item.SourceName));
+
+                target.UnknownFields.Clear();
+                foreach (CutsceneUnknownFieldHistorySnapshot fieldSnapshot in UnknownFields)
+                {
+                    WzImageProperty sourceProperty = fieldSnapshot.SourceProperty == null
+                        ? null
+                        : (WzImageProperty)fieldSnapshot.SourceProperty.DeepClone();
+                    CutsceneUnknownFieldEntry field = new(fieldSnapshot.Name, fieldSnapshot.Value, sourceProperty)
+                    {
+                        WrittenName = fieldSnapshot.WrittenName
+                    };
+                    target.UnknownFields.Add(field);
+                }
+            }
+        }
+
+        private sealed record CutsceneEquipmentHistorySnapshot(int Slot, int ItemId, string SourceName);
+
+        private sealed class CutsceneUnknownFieldHistorySnapshot
+        {
+            public CutsceneUnknownFieldHistorySnapshot(
+                string name,
+                string value,
+                WzImageProperty sourceProperty,
+                string writtenName)
+            {
+                Name = name;
+                Value = value;
+                SourceProperty = sourceProperty;
+                WrittenName = writtenName;
+            }
+
+            public string Name { get; }
+            public string Value { get; }
+            public WzImageProperty SourceProperty { get; }
+            public string WrittenName { get; }
+
+            public bool ContentEquals(CutsceneUnknownFieldHistorySnapshot other) => other != null
+                && string.Equals(Name, other.Name, StringComparison.Ordinal)
+                && string.Equals(Value, other.Value, StringComparison.Ordinal)
+                && string.Equals(WrittenName, other.WrittenName, StringComparison.Ordinal);
+        }
 
         private sealed class CharacterPreviewLayer : IDisposable
         {
