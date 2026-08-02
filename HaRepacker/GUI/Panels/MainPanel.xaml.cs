@@ -1182,7 +1182,9 @@ namespace HaRepacker.GUI.Panels
             if (obj is WzLuaProperty luaProp)
             {
                 string setText = textEditor.textEditor.Text;
-                byte[] encBytes = luaProp.EncodeDecode(Encoding.ASCII.GetBytes(setText));
+                // Lua payloads are UTF-8 after decryption; preserve non-ASCII
+                // characters when converting edited text back to bytes.
+                byte[] encBytes = luaProp.EncodeDecode(Encoding.UTF8.GetBytes(setText));
                 luaProp.Value = encBytes;
 
                 // highlight node to the user
