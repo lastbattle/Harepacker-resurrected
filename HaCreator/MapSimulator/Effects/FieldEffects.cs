@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using HaCreator.MapSimulator.Character;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -36,6 +37,7 @@ namespace HaCreator.MapSimulator.Effects
 
         // Field obstacles
         private readonly Dictionary<string, FieldObstacle> _obstacles = new();
+        private readonly Dictionary<string, PublishedFieldObjectState> _publishedObjectStates = new(StringComparer.OrdinalIgnoreCase);
 
         // Screen flash for field effects
         private bool _screenFlashActive = false;
@@ -156,14 +158,24 @@ namespace HaCreator.MapSimulator.Effects
             // Add weather message if provided
             if (!string.IsNullOrEmpty(message))
             {
-                AddWeatherMessage(message, weatherType, currentTimeMs);
+                AddWeatherMessage(
+                    message,
+                    weatherType,
+                    currentTimeMs,
+                    WeatherMessageOwnerKind.WeatherOverlay);
             }
         }
 
         /// <summary>
         /// Add a weather message (WEATHERMSGINFO)
         /// </summary>
-        public void AddWeatherMessage(string message, WeatherEffectType weatherType, int currentTimeMs)
+        public void AddWeatherMessage(
+            string message,
+            WeatherEffectType weatherType,
+            int currentTimeMs,
+            WeatherMessageOwnerKind ownerKind = WeatherMessageOwnerKind.WeatherOverlay,
+            int ownerSkillId = 0,
+            WeatherMessageOwnerSourceKind ownerSourceKind = WeatherMessageOwnerSourceKind.Unknown)
         {
             var msgInfo = new WeatherMessageInfo
             {
@@ -172,9 +184,48 @@ namespace HaCreator.MapSimulator.Effects
                 StartTime = currentTimeMs,
                 Duration = 5000, // 5 seconds display
                 FadeIn = true,
-                Alpha = 0f
+                Alpha = 0f,
+                OwnerKind = ownerKind,
+                OwnerSkillId = ownerSkillId,
+                OwnerSourceKind = ownerSourceKind,
+                OwnerIdentity = AllocateWeatherMessageOwnerIdentity(ownerKind)
             };
             _weatherMessages.Add(msgInfo);
+        }
+
+        internal static bool ShouldDrawWeatherMessageForClientParity(WeatherMessageInfo message)
+        {
+            return message != null && message.OwnerKind == WeatherMessageOwnerKind.WeatherOverlay;
+        }
+
+        public void ClearStatusBarItemMsgOwnersForClientParity()
+        {
+            for (int i = _weatherMessages.Count - 1; i >= 0; i--)
+            {
+                if (_weatherMessages[i]?.OwnerKind == WeatherMessageOwnerKind.StatusBarItemMsg)
+                {
+                    _weatherMessages.RemoveAt(i);
+                }
+            }
+        }
+
+        private int _nextWeatherMessageOwnerIdentity = 1;
+
+        private int AllocateWeatherMessageOwnerIdentity(WeatherMessageOwnerKind ownerKind)
+        {
+            if (ownerKind == WeatherMessageOwnerKind.WeatherOverlay)
+            {
+                return 0;
+            }
+
+            int ownerIdentity = _nextWeatherMessageOwnerIdentity;
+            _nextWeatherMessageOwnerIdentity++;
+            if (_nextWeatherMessageOwnerIdentity <= 0)
+            {
+                _nextWeatherMessageOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
         }
 
         /// <summary>
@@ -242,7 +293,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (!_fearEffectActive) return;
 
-            int elapsed = currentTimeMs - _fearStartTime;
+            int elapsed = ResolveFearEffectElapsedMs(currentTimeMs, _fearStartTime);
 
             // Fade in during first 500ms
             if (elapsed < 500)
@@ -261,7 +312,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Check if fear effect has ended
-            if (_fearDuration > 0 && elapsed >= _fearDuration)
+            if (HasFearEffectDurationElapsed(currentTimeMs, _fearStartTime, _fearDuration))
             {
                 _fearEffectActive = false;
                 _fearAlpha = 0f;
@@ -319,6 +370,26 @@ namespace HaCreator.MapSimulator.Effects
             _fearEyes.Clear();
         }
 
+        internal static int ResolveFearEffectElapsedMsForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveFearEffectElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static bool HasFearEffectDurationElapsedForTesting(int currentTimeMs, int startTimeMs, int durationMs)
+        {
+            return HasFearEffectDurationElapsed(currentTimeMs, startTimeMs, durationMs);
+        }
+
+        private static int ResolveFearEffectElapsedMs(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        private static bool HasFearEffectDurationElapsed(int currentTimeMs, int startTimeMs, int durationMs)
+        {
+            return durationMs > 0 && ResolveFearEffectElapsedMs(currentTimeMs, startTimeMs) >= durationMs;
+        }
+
         #endregion
 
         #region Field Obstacles
@@ -368,6 +439,97 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsObstacleOn(string obstacleName)
         {
             return _obstacles.TryGetValue(obstacleName, out var obstacle) && obstacle.TargetState;
+        }
+
+        /// <summary>
+        /// Try to read the current target state for an obstacle-backed object toggle.
+        /// Returns false when the field has not published a state for that tag yet.
+        /// </summary>
+        public bool TryIsObstacleOn(string obstacleName, out bool isOn)
+        {
+            if (_obstacles.TryGetValue(obstacleName, out var obstacle))
+            {
+                isOn = obstacle.TargetState;
+                return true;
+            }
+
+            isOn = false;
+            return false;
+        }
+
+        /// <summary>
+        /// Clear a published obstacle-backed object toggle so tagged objects fall back
+        /// to their authored map state until another runtime update arrives.
+        /// </summary>
+        public bool ClearObstacleState(string obstacleName)
+        {
+            if (string.IsNullOrWhiteSpace(obstacleName))
+            {
+                return false;
+            }
+
+            return _obstacles.Remove(obstacleName);
+        }
+
+        /// <summary>
+        /// Publish an object-tag visibility state without routing through the obstacle runtime.
+        /// This mirrors the client distinction between generic object-state updates and obstacle
+        /// packets while keeping the simulator seam reusable for simple scripted toggles.
+        /// </summary>
+        public void PublishObjectState(string objectTag, bool isOn, int transitionTimeMs, int currentTimeMs, int? stateIndex = null)
+        {
+            if (string.IsNullOrWhiteSpace(objectTag))
+            {
+                return;
+            }
+
+            if (!_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                objectState = new PublishedFieldObjectState { Name = objectTag };
+                _publishedObjectStates[objectTag] = objectState;
+            }
+
+            objectState.TargetState = isOn;
+            objectState.TransitionDuration = transitionTimeMs;
+            objectState.TransitionStartTime = currentTimeMs;
+            objectState.IsTransitioning = transitionTimeMs > 0;
+            objectState.StateIndex = stateIndex;
+        }
+
+        public bool TryGetPublishedObjectState(string objectTag, out bool isOn)
+        {
+            if (_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                isOn = objectState.TargetState;
+                return true;
+            }
+
+            isOn = false;
+            return false;
+        }
+
+        public bool TryGetPublishedObjectState(string objectTag, out bool isOn, out int? stateIndex)
+        {
+            if (_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                isOn = objectState.TargetState;
+                stateIndex = objectState.StateIndex;
+                return true;
+            }
+
+            isOn = false;
+            stateIndex = null;
+            return false;
+        }
+
+        public bool ClearPublishedObjectState(string objectTag)
+        {
+            if (string.IsNullOrWhiteSpace(objectTag))
+            {
+                return false;
+            }
+
+            return _publishedObjectStates.Remove(objectTag);
         }
 
         #endregion
@@ -492,7 +654,7 @@ namespace HaCreator.MapSimulator.Effects
                 var msg = _weatherMessages[i];
                 int elapsed = currentTimeMs - msg.StartTime;
 
-                if (elapsed >= msg.Duration)
+                if (ShouldExpireWeatherMessageForClientParity(msg, currentTimeMs))
                 {
                     _weatherMessages.RemoveAt(i);
                     continue;
@@ -512,6 +674,24 @@ namespace HaCreator.MapSimulator.Effects
                     msg.Alpha = 1f;
                 }
             }
+        }
+
+        internal static bool ShouldExpireWeatherMessageForClientParity(WeatherMessageInfo message, int currentTimeMs)
+        {
+            if (message == null || message.Duration <= 0 || message.StartTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(currentTimeMs - message.StartTime);
+            if (message.OwnerKind == WeatherMessageOwnerKind.StatusBarItemMsg)
+            {
+                // Client evidence: CUIStatusBar::Update deletes m_itemMsg only after
+                // the timer has overflowed (`timeGetTime() > m_dwItemMsg`).
+                return elapsed > message.Duration;
+            }
+
+            return elapsed >= message.Duration;
         }
 
         #endregion
@@ -578,7 +758,7 @@ namespace HaCreator.MapSimulator.Effects
             int elapsed = Environment.TickCount;
             foreach (var eye in _fearEyes)
             {
-                if (elapsed - _fearStartTime < eye.AppearDelay) continue;
+                if (ResolveFearEffectElapsedMs(elapsed, _fearStartTime) < eye.AppearDelay) continue;
                 if (eye.IsBlinking) continue;
 
                 int eyeX = (int)(eye.X * screenWidth);
@@ -615,6 +795,7 @@ namespace HaCreator.MapSimulator.Effects
             int yOffset = 100;
             foreach (var msg in _weatherMessages)
             {
+                if (!ShouldDrawWeatherMessageForClientParity(msg)) continue;
                 if (msg.Alpha <= 0) continue;
 
                 Vector2 textSize = font.MeasureString(msg.Message);
@@ -665,6 +846,7 @@ namespace HaCreator.MapSimulator.Effects
             _damageMistActive = false;
             _objectEffects.Clear();
             _obstacles.Clear();
+            _publishedObjectStates.Clear();
         }
 
         /// <summary>
@@ -711,6 +893,19 @@ namespace HaCreator.MapSimulator.Effects
         Custom = 99     // Custom item-based weather
     }
 
+    public enum WeatherMessageOwnerKind
+    {
+        WeatherOverlay = 0,
+        StatusBarItemMsg = 1
+    }
+
+    public enum WeatherMessageOwnerSourceKind
+    {
+        Unknown = 0,
+        SkillCooldownNotice = 1,
+        FieldRuleMessage = 2
+    }
+
     /// <summary>
     /// Weather message info (WEATHERMSGINFO)
     /// </summary>
@@ -718,6 +913,10 @@ namespace HaCreator.MapSimulator.Effects
     {
         public string Message;
         public WeatherEffectType WeatherType;
+        public WeatherMessageOwnerKind OwnerKind;
+        public WeatherMessageOwnerSourceKind OwnerSourceKind;
+        public int OwnerSkillId;
+        public int OwnerIdentity;
         public int StartTime;
         public int Duration;
         public bool FadeIn;
@@ -748,6 +947,16 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTransitioning;
         public int TransitionStartTime;
         public int TransitionDuration;
+    }
+
+    public class PublishedFieldObjectState
+    {
+        public string Name;
+        public bool TargetState;
+        public bool IsTransitioning;
+        public int TransitionStartTime;
+        public int TransitionDuration;
+        public int? StateIndex;
     }
 
     /// <summary>

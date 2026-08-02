@@ -184,6 +184,12 @@ namespace HaCreator.MapSimulator.Core
         /// </summary>
         public double JumpSpeed => 555.0;  // Tuned value, ignore raw
 
+        /// <summary>
+        /// Scale factor from raw Physics.img jump values into the simulator's tuned jump model.
+        /// Keep raw-client formulas proportional when the simulator intentionally uses softer jumps/gravity.
+        /// </summary>
+        public double JumpSpeedTuningScale => _rawJumpSpeed <= 0.0 ? 1.0 : JumpSpeed / _rawJumpSpeed;
+
         // Friction limits
         public double MaxFriction => _rawMaxFriction;
         public double MinFriction => _rawMinFriction;
@@ -214,13 +220,9 @@ namespace HaCreator.MapSimulator.Core
         /// Swim speed multiplier applied on top of walk speed
         /// </summary>
         public double SwimSpeedMultiplier => SwimSpeedDec;
-
         #endregion
-
         #region Loading
-
         public bool IsLoaded { get; private set; }
-
         /// <summary>
         /// Load physics constants from Physics.img WzImage
         /// </summary>

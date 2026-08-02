@@ -400,6 +400,10 @@ HaEditor.xaml.cs
 
 The HaRepacker hot-swap system monitors currently-opened `.img` directories for external modifications and **automatically applies changes** with a brief notification. External file changes (add, remove, modify, rename) from Windows Explorer are assumed to be intentional and are immediately reflected in the UI.
 
+When HaRepacker opens a version directory, watcher registration uses lazy file-state tracking. It does not recursively enumerate or hash every existing `.img` file. `FileSystemWatcher` begins observing each category immediately, and size/timestamp/hash state is captured only when a file is opened or changed. This keeps opening very large extracted versions proportional to the number of top-level categories instead of total file count or byte size. Delete and rename events remain authoritative even when the affected file did not yet have a cached state.
+
+The version-directory loader batches all root tree nodes into one UI-thread update. Filesystem manager construction and watcher setup run on the worker thread; only the WinForms tree mutation is dispatched to the UI thread.
+
 **Note:** This system only supports loose `.img` file directories (extracted/unpacked format), not packed `.wz` files.
 
 ### Design Philosophy

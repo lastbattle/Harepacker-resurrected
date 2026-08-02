@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Entities;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -192,32 +193,12 @@ namespace HaCreator.MapSimulator.UI
                 var bitmap = canvas.GetLinkedWzCanvasBitmap();
                 if (bitmap != null)
                 {
-                    return BitmapToTexture2D(bitmap, device);
+                    return bitmap.ToTexture2DAndDispose(device);
                 }
             }
             catch { }
 
             return null;
-        }
-
-        private Texture2D BitmapToTexture2D(System.Drawing.Bitmap bitmap, GraphicsDevice device)
-        {
-            if (bitmap == null) return null;
-
-            var texture = new Texture2D(device, bitmap.Width, bitmap.Height);
-            var data = new Color[bitmap.Width * bitmap.Height];
-
-            for (int y = 0; y < bitmap.Height; y++)
-            {
-                for (int x = 0; x < bitmap.Width; x++)
-                {
-                    var pixel = bitmap.GetPixel(x, y);
-                    data[y * bitmap.Width + x] = new Color(pixel.R, pixel.G, pixel.B, pixel.A);
-                }
-            }
-
-            texture.SetData(data);
-            return texture;
         }
 
         /// <summary>
@@ -679,7 +660,7 @@ namespace HaCreator.MapSimulator.UI
 
             // Use smaller font scale
             float fontScale = 0.6f;
-            Vector2 textSize = _font.MeasureString(hpText) * fontScale;
+            Vector2 textSize = ClientTextDrawing.Measure(spriteBatch, hpText, fontScale, _font);
 
             // Center text horizontally under the icon
             Vector2 textPos = new Vector2(
@@ -688,9 +669,9 @@ namespace HaCreator.MapSimulator.UI
             );
 
             // Shadow
-            spriteBatch.DrawString(_font, hpText, textPos + Vector2.One, Color.Black * alpha, 0f, Vector2.Zero, fontScale, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(spriteBatch, hpText, textPos + Vector2.One, Color.Black * alpha, fontScale, _font);
             // Text
-            spriteBatch.DrawString(_font, hpText, textPos, Color.White * alpha, 0f, Vector2.Zero, fontScale, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(spriteBatch, hpText, textPos, Color.White * alpha, fontScale, _font);
         }
 
         private void DrawBossNameTooltip(SpriteBatch spriteBatch, BossDisplayInfo info, int x, int y, float alpha)
@@ -699,7 +680,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             string nameText = info.Level > 0 ? $"Lv. {info.Level}  {info.BossName}" : info.BossName;
-            Vector2 nameSize = _font.MeasureString(nameText);
+            Vector2 nameSize = ClientTextDrawing.Measure(spriteBatch, nameText, 1f, _font);
 
             int padding = 4;
 
@@ -715,8 +696,8 @@ namespace HaCreator.MapSimulator.UI
                 borderColor * alpha);
 
             // Text
-            spriteBatch.DrawString(_font, nameText, new Vector2(x + 1, y + 1), Color.Black * alpha);
-            spriteBatch.DrawString(_font, nameText, new Vector2(x, y), new Color(255, 220, 100) * alpha);
+            ClientTextDrawing.Draw(spriteBatch, nameText, new Vector2(x + 1, y + 1), Color.Black * alpha, 1f, _font);
+            ClientTextDrawing.Draw(spriteBatch, nameText, new Vector2(x, y), new Color(255, 220, 100) * alpha, 1f, _font);
         }
 
         private Color GetHpTagColor(short hpTagColor)

@@ -1,12 +1,23 @@
 using System;
+using System.Collections.Generic;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.Pools;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Character
 {
     /// <summary>
@@ -41,12 +52,848 @@ namespace HaCreator.MapSimulator.Character
         ProneStab   // Prone stab
     }
 
+    public readonly struct PlayerLandingInfo
+    {
+        public PlayerLandingInfo(float fallStartY, float landingY, float impactVelocityY)
+        {
+            FallStartY = fallStartY;
+            LandingY = landingY;
+            ImpactVelocityY = impactVelocityY;
+        }
+
+        public float FallStartY { get; }
+        public float LandingY { get; }
+        public float ImpactVelocityY { get; }
+        public float FallDistance => Math.Max(0f, LandingY - FallStartY);
+    }
+
+    internal readonly record struct PacketOwnedEmotionState(
+        int EmotionId,
+        string EmotionName,
+        int DurationMs,
+        int AppliedAt,
+        int ExpireTime,
+        bool ByItemOption)
+    {
+        public bool HasFiniteDuration => DurationMs > 0 && ExpireTime != 0;
+
+        public bool IsExpired(int currentTime)
+        {
+            return ExpireTime != 0
+                   && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, ExpireTime);
+        }
+    }
+
     /// <summary>
     /// Player Character Controller - Handles physics, input, and animation
     /// Equivalent to CUserLocal in the MapleStory client
     /// </summary>
     public class PlayerCharacter
     {
+        private sealed class PlayerSkillBlockingStatusState
+        {
+            public int ExpireTime { get; set; }
+        }
+
+        private sealed class SkillAvatarTransformState
+        {
+            public int SkillId { get; init; }
+            public int SourceId { get; init; }
+            public CharacterPart AvatarPart { get; init; }
+            public IReadOnlyList<string> StandActionNames { get; init; }
+            public IReadOnlyList<string> WalkActionNames { get; init; }
+            public IReadOnlyList<string> JumpActionNames { get; init; }
+            public IReadOnlyList<string> SitActionNames { get; init; }
+            public IReadOnlyList<string> ProneActionNames { get; init; }
+            public IReadOnlyList<string> AttackActionNames { get; init; }
+            public IReadOnlyList<string> LadderActionNames { get; init; }
+            public IReadOnlyList<string> RopeActionNames { get; init; }
+            public IReadOnlyList<string> FlyActionNames { get; init; }
+            public IReadOnlyList<string> AirborneMoveActionNames { get; init; }
+            public IReadOnlyList<string> AirborneAttackActionNames { get; init; }
+            public IReadOnlyList<string> SwimActionNames { get; init; }
+            public IReadOnlyList<string> HitActionNames { get; init; }
+            public IReadOnlyList<string> DeadActionNames { get; init; }
+            public string ExitActionName { get; init; }
+            public bool LocksMovement { get; init; }
+        }
+
+        private sealed class MountedActionLayerState
+        {
+            public string ActionName { get; init; }
+            public string PersistentBodyActionName { get; init; }
+            public string PersistentTamingMobActionName { get; init; }
+            public string PersistentBodyOwnerName { get; init; }
+            public string PersistentTamingMobOwnerName { get; init; }
+            public string CurrentBodyActionName { get; set; }
+            public string CurrentTamingMobActionName { get; set; }
+            public string CurrentBodyOwnerName { get; set; }
+            public string CurrentTamingMobOwnerName { get; set; }
+            public string CharacterOneTimeActionName { get; set; }
+            public string TamingMobOneTimeActionName { get; set; }
+            public int BodyPreparedDurationMs { get; init; }
+            public int TamingMobPreparedDurationMs { get; init; }
+            public int TotalPreparedDurationMs { get; init; }
+            public int BodyFrameIndex { get; set; } = -1;
+            public int BodyFrameRemainingMs { get; set; }
+            public int TamingMobFrameIndex { get; set; } = -1;
+            public int TamingMobFrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
+            public int BodyLastAnimationElapsedMs { get; set; }
+            public int BodyLastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double BodyLastCharacterPositionY { get; set; }
+            public int TamingMobLastAnimationElapsedMs { get; set; }
+            public int TamingMobLastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double TamingMobLastCharacterPositionY { get; set; }
+            public int ActionSpeedDegree { get; init; }
+            public int WalkSpeed { get; init; }
+            public bool HeldActionFrameDelay { get; init; }
+            public bool CharacterOneTimeActionFrameHeld { get; set; }
+        }
+
+        private sealed class AvatarActionLayerState
+        {
+            public string ActionName { get; init; }
+            public string ActionOwnerName { get; init; }
+            public int FrameIndex { get; set; } = -1;
+            public int FrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
+            public int ActionSpeedDegree { get; init; }
+            public int WalkSpeed { get; init; }
+            public bool HeldActionFrameDelay { get; init; }
+            public bool AllowLoop { get; init; }
+        }
+
+        private sealed class ActionLayerOwnerCounterState
+        {
+            public string ActionName { get; set; }
+            public int ActionSpeedDegree { get; set; }
+            public int WalkSpeed { get; set; }
+            public bool HeldActionFrameDelay { get; set; }
+            public bool AllowLoop { get; set; }
+            public int FrameIndex { get; set; }
+            public int FrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
+        }
+
+        private sealed class AuxiliaryLayerOwnerCounterState
+        {
+            public int SkillId { get; set; }
+            public string ActionName { get; set; }
+            public bool FacingRight { get; set; }
+            public int AnimationElapsedMs { get; set; }
+            public int LastUpdateTimeMs { get; set; } = int.MinValue;
+        }
+
+        internal readonly record struct MountedActionLayerStateForTesting(
+            string ActionName,
+            string PersistentBodyActionName,
+            string PersistentTamingMobActionName,
+            string CurrentBodyActionName,
+            string CurrentTamingMobActionName,
+            string CharacterOneTimeActionName,
+            string TamingMobOneTimeActionName,
+            int BodyPreparedDurationMs,
+            int TamingMobPreparedDurationMs,
+            int TotalPreparedDurationMs,
+            int BodyFrameIndex,
+            int BodyFrameRemainingMs,
+            int TamingMobFrameIndex,
+            int TamingMobFrameRemainingMs,
+            int LastAnimationElapsedMs,
+            int LastClockUpdateTimeMs,
+            int BodyLastAnimationElapsedMs,
+            int BodyLastClockUpdateTimeMs,
+            int TamingMobLastAnimationElapsedMs,
+            int TamingMobLastClockUpdateTimeMs);
+
+        internal readonly record struct SkillAvatarTransformResolutionForTesting(
+            IReadOnlyList<string> StandActionNames,
+            IReadOnlyList<string> WalkActionNames,
+            IReadOnlyList<string> JumpActionNames,
+            IReadOnlyList<string> AttackActionNames,
+            IReadOnlyList<string> LadderActionNames,
+            IReadOnlyList<string> RopeActionNames,
+            IReadOnlyList<string> FlyActionNames,
+            IReadOnlyList<string> SwimActionNames,
+            IReadOnlyList<string> HitActionNames,
+            IReadOnlyList<string> ProneActionNames,
+            string ExitActionName,
+            bool LocksMovement);
+
+        internal readonly record struct MorphAvatarTransformResolutionForTesting(
+            IReadOnlyList<string> StandActionNames,
+            IReadOnlyList<string> WalkActionNames,
+            IReadOnlyList<string> JumpActionNames,
+            IReadOnlyList<string> FlyActionNames,
+            IReadOnlyList<string> AirborneMoveActionNames,
+            IReadOnlyList<string> AirborneAttackActionNames,
+            IReadOnlyList<string> LadderActionNames,
+            IReadOnlyList<string> RopeActionNames,
+            IReadOnlyList<string> SwimActionNames,
+            IReadOnlyList<string> AttackActionNames,
+            IReadOnlyList<string> HitActionNames,
+            IReadOnlyList<string> DeadActionNames);
+
+        private enum SkillAvatarEffectMode
+        {
+            Ground,
+            LadderOrRope
+        }
+
+        private enum SkillAvatarEffectPlane
+        {
+            BehindCharacter,
+            UnderFace,
+            OverFace,
+            OverCharacter
+        }
+
+        private sealed class SkillAvatarEffectState
+        {
+            private readonly List<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> _energyChargeAdditionalLayerMutations = new();
+
+            public int SkillId { get; init; }
+            public SkillAnimation GroundOverlayAnimation { get; init; }
+            public SkillAnimation GroundOverlaySecondaryAnimation { get; init; }
+            public SkillAnimation GroundUnderFaceAnimation { get; init; }
+            public SkillAnimation GroundUnderFaceSecondaryAnimation { get; init; }
+            public SkillAnimation LadderOverlayAnimation { get; init; }
+            public SkillAnimation GroundOverlayFinishAnimation { get; init; }
+            public SkillAnimation GroundUnderFaceFinishAnimation { get; init; }
+            public SkillAnimation LadderOverlayFinishAnimation { get; init; }
+            public bool HideOnLadderOrRope { get; init; }
+            public bool HideOnRotateAction { get; init; }
+            public string ClientLayerOwnerName { get; init; }
+            public int ClientLayerReplayGateMs { get; init; }
+            public ClientOwnedAvatarEffectLayerTrace ClientOwnedLayerTrace { get; set; }
+            public bool UsesEnergyChargeAdditionalLayer { get; init; }
+            public int EnergyChargeAdditionalLayerIndex { get; init; }
+            public int EnergyChargeAdditionalLayerAlpha { get; init; }
+            public string EnergyChargeAdditionalLayerAnimationMode { get; init; }
+            public string EnergyChargeAdditionalLayerSourceEffectName { get; init; }
+            public int SimulatedEnergyChargeAdditionalLayerHandleId { get; set; }
+            public int SimulatedEnergyChargeAdditionalListNodeId { get; set; }
+            public int SimulatedEnergyChargeParentUnderFaceLayerHandleId { get; set; }
+            public int SimulatedEnergyChargeAdditionalLayerHandleRefCount { get; private set; }
+            public int SimulatedEnergyChargeAdditionalListNodeRefCount { get; private set; }
+            public int SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> EnergyChargeAdditionalLayerMutations =>
+                _energyChargeAdditionalLayerMutations;
+            public int AnimationStartTime { get; set; }
+            public bool IsFinishing { get; set; }
+            public SkillAvatarEffectMode Mode { get; set; }
+
+            public bool HasLoopAnimation =>
+                GroundOverlayAnimation != null
+                || GroundOverlaySecondaryAnimation != null
+                || GroundUnderFaceAnimation != null
+                || GroundUnderFaceSecondaryAnimation != null
+                || LadderOverlayAnimation != null;
+
+            public bool HasFinishAnimation =>
+                GroundOverlayFinishAnimation != null
+                || GroundUnderFaceFinishAnimation != null
+                || LadderOverlayFinishAnimation != null;
+            public void CaptureEnergyChargeAdditionalLayerReference()
+            {
+                if (!UsesEnergyChargeAdditionalLayer
+                    || SimulatedEnergyChargeAdditionalLayerHandleId <= 0
+                    || SimulatedEnergyChargeAdditionalListNodeId <= 0)
+                {
+                    return;
+                }
+
+                SimulatedEnergyChargeAdditionalLayerHandleRefCount = 1;
+                SimulatedEnergyChargeAdditionalListNodeRefCount = 1;
+                SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount =
+                    SimulatedEnergyChargeParentUnderFaceLayerHandleId > 0 ? 1 : 0;
+                _energyChargeAdditionalLayerMutations.Add(
+                    ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.CaptureOwnerReference(
+                        EnergyChargeAdditionalLayerIndex,
+                        SimulatedEnergyChargeAdditionalLayerHandleId,
+                        SimulatedEnergyChargeAdditionalListNodeId,
+                        EnergyChargeAdditionalLayerSourceEffectName));
+                if (SimulatedEnergyChargeParentUnderFaceLayerHandleId > 0)
+                {
+                    _energyChargeAdditionalLayerMutations.Add(
+                        ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.CaptureParentUnderFaceReference(
+                            EnergyChargeAdditionalLayerIndex,
+                            SimulatedEnergyChargeAdditionalLayerHandleId,
+                            SimulatedEnergyChargeAdditionalListNodeId,
+                            SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                            EnergyChargeAdditionalLayerSourceEffectName));
+                    _energyChargeAdditionalLayerMutations.Add(
+                        ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.ReparentToUnderFace(
+                            EnergyChargeAdditionalLayerIndex,
+                            SimulatedEnergyChargeAdditionalLayerHandleId,
+                            SimulatedEnergyChargeAdditionalListNodeId,
+                            SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                            EnergyChargeAdditionalLayerSourceEffectName));
+                    _energyChargeAdditionalLayerMutations.Add(
+                        ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.RestoreAlpha(
+                            EnergyChargeAdditionalLayerIndex,
+                            SimulatedEnergyChargeAdditionalLayerHandleId,
+                            SimulatedEnergyChargeAdditionalListNodeId,
+                            SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                            EnergyChargeAdditionalLayerAlpha,
+                            EnergyChargeAdditionalLayerSourceEffectName));
+                    _energyChargeAdditionalLayerMutations.Add(
+                        ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.AnimateRepeat(
+                            EnergyChargeAdditionalLayerIndex,
+                            SimulatedEnergyChargeAdditionalLayerHandleId,
+                            SimulatedEnergyChargeAdditionalListNodeId,
+                            SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                            EnergyChargeAdditionalLayerAnimationMode,
+                            EnergyChargeAdditionalLayerSourceEffectName));
+                }
+            }
+
+            public void ReleaseEnergyChargeAdditionalLayerReference()
+            {
+                if (!UsesEnergyChargeAdditionalLayer
+                    || SimulatedEnergyChargeAdditionalLayerHandleId <= 0
+                    || (SimulatedEnergyChargeAdditionalLayerHandleRefCount == 0
+                        && SimulatedEnergyChargeAdditionalListNodeRefCount == 0
+                        && SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount == 0))
+                {
+                    return;
+                }
+
+                if (SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount > 0)
+                {
+                    _energyChargeAdditionalLayerMutations.Add(
+                        ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.ReleaseParentUnderFaceReference(
+                            EnergyChargeAdditionalLayerIndex,
+                            SimulatedEnergyChargeAdditionalLayerHandleId,
+                            SimulatedEnergyChargeAdditionalListNodeId,
+                            SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                            EnergyChargeAdditionalLayerSourceEffectName));
+                }
+
+                _energyChargeAdditionalLayerMutations.Add(
+                    ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation.ReleaseOwnerReference(
+                        EnergyChargeAdditionalLayerIndex,
+                        SimulatedEnergyChargeAdditionalLayerHandleId,
+                        SimulatedEnergyChargeAdditionalListNodeId,
+                        EnergyChargeAdditionalLayerSourceEffectName));
+                SimulatedEnergyChargeAdditionalLayerHandleRefCount = 0;
+                SimulatedEnergyChargeAdditionalListNodeRefCount = 0;
+                SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount = 0;
+            }
+        }
+
+        private sealed class ClientOwnedAvatarEffectLayerTrace
+        {
+            private readonly List<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> _mutations = new();
+
+            public int SkillId { get; }
+            public string OwnerName { get; }
+            public string SourceEffectName { get; }
+            public int SimulatedLayerHandleId { get; }
+            public int SimulatedListNodeId { get; }
+            public int SimulatedParentUnderFaceLayerHandleId { get; }
+            public int SimulatedLayerHandleRefCount { get; private set; }
+            public int SimulatedListNodeRefCount { get; private set; }
+            public int SimulatedParentUnderFaceLayerHandleRefCount { get; private set; }
+            public bool Visible { get; private set; } = true;
+            public IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> Mutations => _mutations;
+
+            public ClientOwnedAvatarEffectLayerTrace(
+                int skillId,
+                string ownerName,
+                string sourceEffectName,
+                int layerHandleId,
+                int listNodeId,
+                int parentUnderFaceLayerHandleId)
+            {
+                SkillId = skillId;
+                OwnerName = ownerName ?? string.Empty;
+                SourceEffectName = sourceEffectName ?? string.Empty;
+                SimulatedLayerHandleId = Math.Max(0, layerHandleId);
+                SimulatedListNodeId = Math.Max(0, listNodeId);
+                SimulatedParentUnderFaceLayerHandleId = Math.Max(0, parentUnderFaceLayerHandleId);
+            }
+
+            public void CaptureUnderFaceReference()
+            {
+                if (SimulatedLayerHandleId <= 0 || SimulatedListNodeId <= 0)
+                {
+                    return;
+                }
+
+                SimulatedLayerHandleRefCount = 1;
+                SimulatedListNodeRefCount = 1;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.CaptureOwnerReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SourceEffectName));
+                if (SimulatedParentUnderFaceLayerHandleId <= 0)
+                {
+                    return;
+                }
+
+                SimulatedParentUnderFaceLayerHandleRefCount = 1;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.CaptureParentUnderFaceReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SourceEffectName));
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReparentToUnderFace(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SourceEffectName));
+            }
+
+            public void SetVisible(bool visible)
+            {
+                if (SimulatedLayerHandleId <= 0 || Visible == visible)
+                {
+                    return;
+                }
+
+                Visible = visible;
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.SetVisible(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    visible,
+                    SourceEffectName));
+            }
+
+            public void Release()
+            {
+                if (SimulatedLayerHandleId <= 0
+                    || (SimulatedLayerHandleRefCount == 0
+                        && SimulatedListNodeRefCount == 0
+                        && SimulatedParentUnderFaceLayerHandleRefCount == 0))
+                {
+                    return;
+                }
+
+                Visible = false;
+                if (SimulatedParentUnderFaceLayerHandleRefCount > 0)
+                {
+                    _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReleaseParentUnderFaceReference(
+                        OwnerName,
+                        SimulatedLayerHandleId,
+                        SimulatedListNodeId,
+                        SimulatedParentUnderFaceLayerHandleId,
+                        SourceEffectName));
+                }
+
+                _mutations.Add(ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation.ReleaseOwnerReference(
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SourceEffectName));
+                SimulatedLayerHandleRefCount = 0;
+                SimulatedListNodeRefCount = 0;
+                SimulatedParentUnderFaceLayerHandleRefCount = 0;
+            }
+
+            public ClientOwnedAvatarEffectLayerSnapshot ToSnapshot()
+            {
+                return new ClientOwnedAvatarEffectLayerSnapshot(
+                    SkillId,
+                    OwnerName,
+                    SimulatedLayerHandleId,
+                    SimulatedListNodeId,
+                    SimulatedParentUnderFaceLayerHandleId,
+                    SimulatedLayerHandleRefCount,
+                    SimulatedListNodeRefCount,
+                    SimulatedParentUnderFaceLayerHandleRefCount,
+                    Visible,
+                    SourceEffectName,
+                    Mutations);
+            }
+        }
+
+        private sealed class TransientSkillAvatarEffectState
+        {
+            public int SkillId { get; init; }
+            public SkillAnimation Animation { get; init; }
+            public SkillAnimation SecondaryAnimation { get; init; }
+            public SkillAnimation FinishAnimation { get; init; }
+            public SkillAnimation FinishSecondaryAnimation { get; init; }
+            public int AnimationStartTime { get; set; }
+            public SkillAvatarEffectPlane Plane { get; init; }
+            public SkillAvatarEffectPlane SecondaryPlane { get; init; }
+            public SkillAvatarEffectPlane FinishPlane { get; init; }
+            public SkillAvatarEffectPlane FinishSecondaryPlane { get; init; }
+            public string ClientLayerOwnerName { get; init; }
+            public bool? FacingRightOverride { get; init; }
+            public ClientOwnedAvatarEffectLayerTrace ClientOwnedLayerTrace { get; set; }
+            public bool IsFinishing { get; set; }
+
+            public bool HasFinishAnimation =>
+                FinishAnimation != null
+                || FinishSecondaryAnimation != null;
+        }
+
+        private sealed class MeleeAfterImageState
+        {
+            public int SkillId { get; init; }
+            public string ActionName { get; init; }
+            public MeleeAfterImageAction AfterImageAction { get; init; }
+            public int AnimationStartTime { get; set; }
+            public int ActivationStartTime { get; init; }
+            public bool FacingRight { get; init; }
+            public int ActionDuration { get; init; }
+            public string SfxUol { get; init; }
+            public int FadeStartTime { get; set; } = -1;
+            public int LastFrameIndex { get; set; } = -1;
+            public int LastFrameElapsedMs { get; set; }
+            public IReadOnlyList<AfterimageRenderableLayer> LastResolvedLayers { get; set; } = Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        private sealed class ShadowPartnerState
+        {
+            public int SkillId { get; init; }
+            public IReadOnlyDictionary<string, SkillAnimation> ActionAnimations { get; init; }
+            public IReadOnlySet<string> SupportedRawActionNames { get; init; }
+            public int HorizontalOffsetPx { get; init; }
+            public Point CurrentClientOffsetPx { get; set; }
+            public Point ClientOffsetStartPx { get; set; }
+            public Point ClientOffsetTargetPx { get; set; }
+            public int ClientOffsetTransitionStartTime { get; set; }
+            public string CurrentActionName { get; set; }
+            public SkillAnimation CurrentPlaybackAnimation { get; set; }
+            public int CurrentActionStartTime { get; set; }
+            public bool CurrentFacingRight { get; set; }
+            public string ObservedPlayerActionName { get; set; }
+            public string PendingActionName { get; set; }
+            public SkillAnimation PendingPlaybackAnimation { get; set; }
+            public int PendingActionReadyTime { get; set; }
+            public bool PendingFacingRight { get; set; }
+            public bool PendingForceReplay { get; set; }
+            public string QueuedActionName { get; set; }
+            public SkillAnimation QueuedPlaybackAnimation { get; set; }
+            public bool QueuedFacingRight { get; set; }
+            public bool QueuedForceReplay { get; set; }
+            public bool ObservedPlayerFacingRight { get; set; }
+            public bool ObservedPlayerFloatingState { get; set; }
+            public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
+            public int? ObservedPlayerRawActionCode { get; set; }
+            public int LastForcedReplayActionTriggerTime { get; set; } = int.MinValue;
+            public bool UsesOneTimeLayerObject { get; set; }
+            public int LayerObjectId { get; set; }
+            public int LayerListNodeObjectId { get; set; }
+            public int RegisteredAnimationObjectId { get; set; }
+            public int ParentUnderFaceLayerObjectId { get; set; }
+            public IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation> LayerNativeOperations { get; set; } =
+                Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
+        }
+
+        private sealed class MirrorImageState
+        {
+            public int SkillId { get; init; }
+            public int StartTime { get; set; }
+            public string ObservedPlayerActionName { get; set; }
+            public bool ObservedPlayerFacingRight { get; set; }
+            public PlayerState ObservedPlayerState { get; set; }
+            public Point CurrentOffsetPx { get; set; }
+            public bool Visible { get; set; }
+            public string PreparedActionName { get; set; }
+            public int PreparedFrameIndex { get; set; } = -1;
+            public int PreparedFeetOffset { get; set; }
+            public int NextPreparedLayerObjectId { get; set; } = 1;
+            public MirrorImagePreparedSourceLayer[] PreparedSourceLayers { get; set; } = CreateEmptyMirrorImagePreparedSourceLayers();
+            public IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> LastPreparedLayerReleaseNativeOperations { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerReleaseNativeOperation>();
+            public IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> LastPreparedLayerReleaseNativeReferenceBalances { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            public int LastPreparedLayerReleaseNativeOperationSignature { get; set; }
+            public int LastPreparedLayerReleaseNativeReferenceBalanceSignature { get; set; }
+        }
+
+        private sealed class MirrorImagePreparedSourceLayer
+        {
+            public AvatarRenderLayer RenderLayer { get; set; }
+            public int PreparedLayerObjectId { get; set; }
+            public int PreparedLayerZ { get; set; } = MirrorImageClientLayerZ;
+            public int PreparedLayerFilter { get; set; } = MirrorImageClientDefaultLayerFilter;
+            public Color PreparedLayerColor { get; set; } = MirrorImageTint;
+            public int SourceSignature { get; set; }
+            public int LastInsertedSourceSignature { get; set; }
+            public int LastInsertedSourceCanvasSignature { get; set; }
+            public Rectangle Bounds { get; set; }
+            public Rectangle TextureSourceBounds { get; set; }
+            public Point Origin { get; set; }
+            public int PreparedCurrentTime { get; set; } = int.MinValue;
+            public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
+            public int PreparedTransitionStartTime { get; set; } = int.MinValue;
+            public int PreparedRelMoveEndTime { get; set; } = int.MinValue;
+            public int PreparedLayerNativeOperationSignature { get; set; }
+            public IReadOnlyList<MirrorImagePreparedLayerNativeOperation> PreparedLayerNativeOperations { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerNativeOperation>();
+            public int PreparedLayerNativeReferenceBalanceSignature { get; set; }
+            public IReadOnlyList<MirrorImagePreparedLayerNativeReferenceBalance> PreparedLayerNativeReferenceBalances { get; set; } =
+                Array.Empty<MirrorImagePreparedLayerNativeReferenceBalance>();
+            public int LastInsertCanvasTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasSourceLayerCurrentTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasLayerObjectId { get; set; }
+            public AvatarRenderLayer? LastInsertCanvasSourceLayer { get; set; }
+            public AvatarRenderLayer? LastInsertCanvasOverlayTargetLayer { get; set; }
+            public int LastInsertCanvasSourcePartsObjectId { get; set; }
+            public int LastInsertCanvasSourceLayerObjectId { get; set; }
+            public int LastInsertCanvasSourceLayerOriginSignature { get; set; }
+            public int LastInsertCanvasSourceLayerClockSignature { get; set; }
+            public int LastInsertCanvasSourceCanvasObjectId { get; set; }
+            public int LastInsertCanvasSourceFrameSignature { get; set; }
+            public int LastInsertCanvasOverlayParentSignature { get; set; }
+            public int LastInsertCanvasOverlayParentObjectId { get; set; }
+            public int LastInsertCanvasOverlayInsertionIndex { get; set; } = int.MinValue;
+            public int LastInsertCanvasOverlaySiblingSignature { get; set; }
+            public int LastInsertCanvasUnderFaceParentObjectId { get; set; }
+            public int LastInsertCanvasUnderFaceParentSignature { get; set; }
+            public int LastInsertCanvasPreparedLayerFilter { get; set; } = int.MinValue;
+            public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
+            public int LastInsertCanvasPreparedLayerColor { get; set; }
+            public int LastInsertCanvasPreparedLayerTargetOffsetSignature { get; set; }
+            public int LastInsertCanvasPreparedLayerRelMoveEndTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasPostReparentListNodeSignature { get; set; }
+            public int LastInsertCanvasNativeOperationSignature { get; set; }
+            public IReadOnlyList<MirrorImageLayerNativeOperation> LastInsertCanvasNativeOperations { get; set; } =
+                Array.Empty<MirrorImageLayerNativeOperation>();
+            public int LastInsertCanvasNativeReferenceBalanceSignature { get; set; }
+            public IReadOnlyList<MirrorImageLayerNativeReferenceBalance> LastInsertCanvasNativeReferenceBalances { get; set; } =
+                Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            public bool PreparedFacingRight { get; set; }
+            public Point PreparedTargetOffsetPx { get; set; }
+            public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
+            public Texture2D ComposedTexture { get; set; }
+            public IReadOnlyList<AssembledPart> Parts { get; set; } = Array.Empty<AssembledPart>();
+            public IReadOnlyList<AssembledPart> LastInsertedLiveSourceParts { get; set; } = Array.Empty<AssembledPart>();
+        }
+
+        public enum MirrorImageLayerNativeOperationKind
+        {
+            AddRefSourceLayer,
+            InitializeSourceCanvasProbeIndexZeroVariant,
+            ProbeSourceCanvasIndexZero,
+            AddRefSourceCanvasProbeLocal,
+            ReleaseSourceCanvasProbeLocal,
+            ClearSourceCanvasProbeIndexZeroVariant,
+            InitializeInsertCanvasMissingArgumentVariant,
+            InitializeSourceCanvasIndexZeroVariant,
+            GetSourceCanvasIndexZero,
+            AddRefSourceCanvasLocal,
+            InitializeInsertCanvasResultVariant,
+            InsertCanvasIntoHelperLayer,
+            ClearInsertCanvasResultVariant,
+            ReleaseSourceCanvasLocal,
+            ClearSourceCanvasIndexZeroVariant,
+            ClearInsertCanvasMissingArgumentVariant,
+            GetUnderFaceParentForRecheck,
+            GetHelperLayerParentForRecheck,
+            RecheckUnderFaceParent,
+            GetUnderFaceParentForReparent,
+            ReparentHelperLayer,
+            ReleaseHelperParentLocal,
+            ReleaseSourceLayer
+        }
+
+        public readonly record struct MirrorImageLayerNativeOperation(
+            MirrorImageLayerNativeOperationKind Kind,
+            int Sequence,
+            AvatarRenderLayer SourceLayer,
+            int ObjectId,
+            int RelatedObjectId,
+            int ReferenceDelta);
+
+        public enum MirrorImageLayerNativeReferenceKind
+        {
+            SourceLayer,
+            SourceCanvasProbeLocal,
+            SourceCanvasLocal,
+            InsertCanvasResult,
+            HelperParentLocal
+        }
+
+        public readonly record struct MirrorImageLayerNativeReferenceBalance(
+            MirrorImageLayerNativeReferenceKind Kind,
+            int ObjectId,
+            int AddRefCount,
+            int ReleaseCount,
+            int NetReferenceDelta);
+
+        public enum MirrorImagePreparedLayerNativeOperationKind
+        {
+            GetMirrorSrcLayer,
+            AddRefSourceLayer,
+            InitializeCreateLayerCanvasVariant,
+            InitializeCreateLayerFilterVariant,
+            CreateHelperLayer,
+            StoreHelperLayerSlot,
+            ReleaseCreateLayerLocal,
+            ClearCreateLayerCanvasVariant,
+            ClearCreateLayerFilterVariant,
+            AddRefUnderFaceOverlayVariant,
+            PutOverlayUnderFace,
+            ClearUnderFaceOverlayVariant,
+            PutColor,
+            GetSourceOrigin,
+            PutEmptyOrigin,
+            PutSourceOrigin,
+            InitializeRelMoveTypeMissingVariant,
+            GetSourceCurrentTime,
+            InitializeRelMoveTimeVariant,
+            RelMoveFromSourceCurrentTime,
+            ClearRelMoveTimeVariant,
+            ClearRelMoveTypeMissingVariant,
+            PutFlipFromUnderFace,
+            ReleaseSourceOriginVariant,
+            ReleaseSourceLayer
+        }
+
+        public readonly record struct MirrorImagePreparedLayerNativeOperation(
+            MirrorImagePreparedLayerNativeOperationKind Kind,
+            int Sequence,
+            AvatarRenderLayer SourceLayer,
+            int ObjectId,
+            int RelatedObjectId,
+            int ReferenceDelta);
+
+        public enum MirrorImagePreparedLayerNativeReferenceKind
+        {
+            SourceLayer,
+            CreateLayerCanvasVariant,
+            CreateLayerFilterVariant,
+            HelperLayerLocal,
+            HelperLayerSlot,
+            UnderFaceOverlayVariant,
+            SourceOriginVariant
+        }
+
+        public readonly record struct MirrorImagePreparedLayerNativeReferenceBalance(
+            MirrorImagePreparedLayerNativeReferenceKind Kind,
+            int ObjectId,
+            int AddRefCount,
+            int ReleaseCount,
+            int NetReferenceDelta);
+
+        public enum MirrorImagePreparedLayerReleaseNativeOperationKind
+        {
+            CheckMirrorLayerSlot,
+            ClearMirrorLayerSlot,
+            ReleaseMirrorLayerObject
+        }
+
+        public readonly record struct MirrorImagePreparedLayerReleaseNativeOperation(
+            MirrorImagePreparedLayerReleaseNativeOperationKind Kind,
+            int Sequence,
+            AvatarRenderLayer SourceLayer,
+            int ObjectId,
+            int RelatedObjectId,
+            int ReferenceDelta);
+
+        public enum MirrorImagePreparedLayerReleaseNativeReferenceKind
+        {
+            MirrorLayerObject
+        }
+
+        public readonly record struct MirrorImagePreparedLayerReleaseNativeReferenceBalance(
+            MirrorImagePreparedLayerReleaseNativeReferenceKind Kind,
+            int ObjectId,
+            int AddRefCount,
+            int ReleaseCount,
+            int NetReferenceDelta);
+        private readonly struct MirrorImageRenderableSourceLayer
+        {
+            public MirrorImageRenderableSourceLayer(
+                Texture2D preparedSnapshotTexture,
+                Rectangle preparedSnapshotSourceBounds,
+                Rectangle positionBounds,
+                Point origin,
+                bool facingRight,
+                Point targetOffset,
+                int transitionStartTime,
+                Color layerColor,
+                IReadOnlyList<AssembledPart> liveSourceParts = null)
+            {
+                PreparedSnapshotTexture = preparedSnapshotTexture;
+                PreparedSnapshotSourceBounds = preparedSnapshotSourceBounds;
+                PositionBounds = positionBounds;
+                Origin = origin;
+                FacingRight = facingRight;
+                TargetOffset = targetOffset;
+                TransitionStartTime = transitionStartTime;
+                LayerColor = layerColor;
+                LiveSourceParts = liveSourceParts;
+            }
+
+            public Texture2D PreparedSnapshotTexture { get; }
+            public Rectangle PreparedSnapshotSourceBounds { get; }
+            public Rectangle PositionBounds { get; }
+            public Point Origin { get; }
+            public bool FacingRight { get; }
+            public Point TargetOffset { get; }
+            public int TransitionStartTime { get; }
+            public Color LayerColor { get; }
+            public IReadOnlyList<AssembledPart> LiveSourceParts { get; }
+            public bool UsesLiveSourceParts => LiveSourceParts != null;
+        }
+
+        private readonly struct AvatarEffectRenderable
+        {
+            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane, int? positionCode, bool? facingRightOverride)
+            {
+                Frame = frame;
+                Plane = plane;
+                PositionCode = positionCode;
+                FacingRightOverride = facingRightOverride;
+            }
+
+            public SkillFrame Frame { get; }
+            public SkillAvatarEffectPlane Plane { get; }
+            public int? PositionCode { get; }
+            public bool? FacingRightOverride { get; }
+        }
+
+        internal readonly record struct PersistentSkillAvatarEffectRenderSelection(
+            SkillAnimation OverlayAnimation,
+            SkillAnimation OverlaySecondaryAnimation,
+            SkillAnimation UnderFaceAnimation,
+            SkillAnimation UnderFaceSecondaryAnimation,
+            bool OverlayUsesBehindCharacterPlane);
+        internal readonly record struct EnergyChargeAdditionalLayerSnapshot(
+            int SkillId,
+            int AdditionalLayerIndex,
+            int SimulatedLayerHandleId,
+            int SimulatedListNodeId,
+            int SimulatedParentUnderFaceLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int SimulatedListNodeRefCount,
+            int SimulatedParentUnderFaceLayerHandleRefCount,
+            int Alpha,
+            string AnimationMode,
+            string SourceEffectName,
+            IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> Mutations);
+        internal readonly record struct ClientOwnedAvatarEffectLayerSnapshot(
+            int SkillId,
+            string OwnerName,
+            int SimulatedLayerHandleId,
+            int SimulatedListNodeId,
+            int SimulatedParentUnderFaceLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int SimulatedListNodeRefCount,
+            int SimulatedParentUnderFaceLayerHandleRefCount,
+            bool Visible,
+            string SourceEffectName,
+            IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> Mutations);
+
         #region Constants
 
         // ============================================================
@@ -61,6 +908,8 @@ namespace HaCreator.MapSimulator.Character
 
         // GM Fly Mode - not in Physics.img, hardcoded for convenience
         private const float GM_FLY_SPEED = 400f; // pixels per second - fast flying for map exploration
+        private const int BattleshipTamingMobItemId = 1932000;
+        private const int MechanicTamingMobItemId = 1932016;
 
         // Hitboxes - Y position is now at feet, so hitbox extends upward from feet
         private const int HITBOX_WIDTH = 30;
@@ -69,27 +918,92 @@ namespace HaCreator.MapSimulator.Character
 
         // Attack cooldowns
         private const int MIN_ATTACK_DELAY = 300;
+        private const int FLOAT_JUMP_COOLDOWN_MS = 300;
 
         // Hit state duration (knockback stun)
         private const int HIT_STUN_DURATION = 400; // 400ms stun when hit by monster
+        private const int FACE_HIT_EXPRESSION_DURATION_MS = 450;
+        private const int FACE_BLINK_DURATION_MS = 120;
+        private const int FACE_BLINK_MIN_INTERVAL_MS = 2500;
+        private const int FACE_BLINK_MAX_INTERVAL_MS = 4500;
+        private const int PORTABLE_CHAIR_RECOVERY_INTERVAL_MS = 10000;
+        private const int ShadowPartnerAttackDelayMs = 90;
+        private const int ShadowPartnerClientSideOffsetPx = 30;
+        private const int ShadowPartnerClientBackActionOffsetYPx = 50;
+        private const int ShadowPartnerTransitionDurationMs = 200;
+        private const int MirrorImageClientSideOffsetPx = 50;
+        private const int MirrorImageClientBackActionOffsetYPx = 50;
+        private const int MirrorImageTransitionDurationMs = 200;
+        private const int MirrorImageClientSourceLayerCount = 5;
+        private const int MirrorImageClientLayerZ = -2;
+        private const int MirrorImageClientDefaultScalePercent = 100;
+        private const int MirrorImageClientDefaultLayerFilter = 0;
+        private const int MirrorImageClientScaledLayerFilter = 2;
+        private const int PacketOwnedEmotionEffectSkillId = 2099000000;
+        private const int BlinkEmotionId = 8;
+        // Float idle should ignore the tiny passive sink applied by swim physics.
+        private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
+        // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
+        private static readonly Color ShadowPartnerTint = new(255, 255, 255, 150);
+        private static readonly Color MirrorImageTint = new(128, 128, 128, 208);
+        private static readonly HashSet<int> PacketOwnedEmotionSuppressedRawActionCodes = new()
+        {
+            41,
+            42,
+            57
+        };
+        private static readonly HashSet<string> PacketOwnedEmotionSuppressedActionNames =
+            BuildPacketOwnedEmotionSuppressedActionNames();
 
         #endregion
 
         #region Properties
 
         public CharacterBuild Build { get; private set; }
+        public string Name => Build?.Name ?? string.Empty;
         public CharacterAssembler Assembler { get; private set; }
         public CVecCtrl Physics { get; private set; }
 
         // State
         public PlayerState State { get; private set; } = PlayerState.Standing;
         public CharacterAction CurrentAction { get; private set; } = CharacterAction.Stand1;
+        public string CurrentActionName { get; private set; } = CharacterPart.GetActionString(CharacterAction.Stand1);
+        public int CurrentSkillAnimationSkillId { get; private set; }
+        public int CurrentSkillAnimationStartTime { get; private set; } = int.MinValue;
+        public string CurrentFaceExpressionName { get; private set; } = "default";
         public bool FacingRight { get; set; } = true;
         public bool IsAlive => State != PlayerState.Dead;
-        public bool CanMove => State != PlayerState.Dead && State != PlayerState.Hit && State != PlayerState.Attacking;
+        public bool CanMove => !IsMovementLockedBySkillTransform
+                               && State != PlayerState.Dead
+                               && State != PlayerState.Hit
+                               && State != PlayerState.Attacking;
         public bool CanAttack => State != PlayerState.Dead && State != PlayerState.Hit &&
                                   State != PlayerState.Ladder && State != PlayerState.Rope &&
                                   State != PlayerState.Swimming; // Can't attack while swimming (official behavior)
+        public bool IsPlayingClientOwnedOneTimeAction => State == PlayerState.Attacking
+                                                         && !_sustainedSkillAnimation
+                                                         && CurrentSkillAnimationStartTime != int.MinValue;
+        public bool HasActivePassiveTransferFieldOneTimeAction()
+        {
+            // Passive transfer replay is gated by the same one-time attack owner that
+            // blocks local "Up" handling in the client handoff seam.
+            return IsPlayingClientOwnedOneTimeAction;
+        }
+        public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
+        public bool IsMovementLockedBySkillTransform => GetActiveAvatarTransform()?.LocksMovement == true;
+        public bool HasActiveMorphTransform => GetActiveAvatarTransform()?.AvatarPart?.Type == CharacterPartType.Morph;
+        public int HorizontalInputDirection => _inputLeft == _inputRight ? 0 : (_inputRight ? 1 : -1);
+
+        public int GetActiveMorphTemplateIdForQuestDemand()
+        {
+            SkillAvatarTransformState transform = GetActiveAvatarTransform();
+            if (transform?.AvatarPart?.Type != CharacterPartType.Morph)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, transform.AvatarPart.ItemId);
+        }
 
         /// <summary>
         /// GM Fly Mode - allows free flying around the map ignoring physics
@@ -101,6 +1015,38 @@ namespace HaCreator.MapSimulator.Character
         /// God Mode - prevents all damage from monsters
         /// </summary>
         public bool GodMode { get; set; }
+
+        public bool HasActiveSkillBlockingStatus(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return _activeSkillBlockingStatuses.Count > 0;
+        }
+
+        public bool HasSkillBlockingStatus(PlayerSkillBlockingStatus status, int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return _activeSkillBlockingStatuses.ContainsKey(status);
+        }
+
+        public bool IsImmovableForPassiveTransferField(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return IsMovementLockedBySkillTransform
+                   || State == PlayerState.Dead
+                   || State == PlayerState.Hit
+                   || State == PlayerState.Attacking
+                   || State == PlayerState.Sitting
+                   || State == PlayerState.Ladder
+                   || State == PlayerState.Rope
+                   || _activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.StopMotion);
+        }
+
+        public bool IsAttractLockedForPassiveTransferField(int currentTime)
+        {
+            return HasSkillBlockingStatus(PlayerSkillBlockingStatus.Attract, currentTime);
+        }
+
+        public PacketOwnedUserSummonRegistry PacketOwnedSummons { get; } = new();
 
         // Position shortcuts
         public float X => (float)Physics.X;
@@ -119,10 +1065,84 @@ namespace HaCreator.MapSimulator.Character
         private int _lastAttackTime;
         private AttackType _currentAttackType;
         private int _attackFrame;
-        private int _attackFrameTimer;
+        private string _forcedActionName;
+        private bool _sustainedSkillAnimation;
+        private int _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
+        private SkillAvatarTransformState _activeSkillAvatarTransform;
+        private SkillAvatarTransformState _activeExternalAvatarTransform;
+        private int _activeExternalAvatarTransformExpiresAt = int.MaxValue;
+        private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
+        private readonly System.Collections.Generic.List<TransientSkillAvatarEffectState> _transientSkillAvatarEffects = new();
+        private MeleeAfterImageState _activeMeleeAfterImage;
+        private readonly HashSet<int> _skillAvatarEffectRenderSuppressionSkillIds = new();
+        private readonly Random _faceExpressionRandom = new(Environment.TickCount);
+        private readonly Random _packetOwnedEmotionRandom = new(unchecked((Environment.TickCount * 397) ^ 0x232));
+        private readonly Dictionary<string, SkillAnimation> _packetOwnedEmotionEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly GraphicsDevice _graphicsDevice;
+        private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
+        private int _blinkExpressionEndTime;
+        private int _hitExpressionEndTime;
+        private int _packetOwnedEmotionId;
+        private int _packetOwnedEmotionDurationMs;
+        private int _packetOwnedEmotionAppliedAt;
+        private int _packetOwnedEmotionEndTime;
+        private int _nextPortableChairRecoveryTime = int.MaxValue;
+        private string _packetOwnedEmotionName = "default";
+        private PacketOwnedEmotionState? _lastPacketOwnedEmotionState;
+        private CharacterPart _observedTamingMobPart;
+        private bool _observedClientOwnedTamingMobActive;
+        private CharacterPart _transitionTamingMobOverridePart;
+        private CharacterPart _stateDrivenTamingMobOverridePart;
+        private CharacterPart _sharedMechanicTamingMobPart;
+        private CharacterPart _clientOwnedVehicleTamingMobPart;
+        private bool _clientOwnedVehicleTamingMobActive;
+        private bool _suppressAutomaticTamingMobTransition;
+        private const string AvatarPersistentActionOwnerName = "avatar.persistent";
+        private const string AvatarOneTimeActionOwnerName = "avatar.oneTime";
+        private const string MountedBodyPersistentActionOwnerName = "mounted.body.persistent";
+        private const string MountedBodyOneTimeActionOwnerName = "mounted.body.oneTime";
+        private const string MountedTamingMobPersistentActionOwnerName = "mounted.tamingMob.persistent";
+        private const string MountedTamingMobOneTimeActionOwnerName = "mounted.tamingMob.oneTime";
+        private const string ShadowPartnerPersistentActionOwnerName = "aux.shadowPartner.persistent";
+        private const string ShadowPartnerOneTimeActionOwnerName = "aux.shadowPartner.oneTime";
+        private const string MirrorImagePersistentActionOwnerName = "aux.mirrorImage.persistent";
+        private const string MeleeAfterImageOneTimeActionOwnerName = "aux.meleeAfterImage.oneTime";
+        private const string AuxiliaryAvatarEffectBehindCharacterPersistentActionOwnerName = "aux.avatarEffect.behindCharacter.persistent";
+        private const string AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName = "aux.avatarEffect.behindCharacter.oneTime";
+        private const string AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName = "aux.avatarEffect.underFace.persistent";
+        private const string AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName = "aux.avatarEffect.underFace.oneTime";
+        private const string AuxiliaryAvatarEffectOverFacePersistentActionOwnerName = "aux.avatarEffect.overFace.persistent";
+        private const string AuxiliaryAvatarEffectOverFaceOneTimeActionOwnerName = "aux.avatarEffect.overFace.oneTime";
+        private const string AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName = "aux.avatarEffect.overCharacter.persistent";
+        private const string AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName = "aux.avatarEffect.overCharacter.oneTime";
+        internal const string ClientOwnedFlyingWingAvatarEffectOwnerName = "aux.clientOwned.flyingWing.persistent";
+        internal const string ClientOwnedSwallowingAvatarEffectOwnerName = "aux.clientOwned.swallowing.persistent";
+        internal const string ClientOwnedDoubleJumpAvatarEffectOwnerName = "aux.clientOwned.doubleJump.oneTime";
+        internal const string ClientOwnedFinalCutAvatarEffectOwnerName = "aux.clientOwned.finalCut.persistent";
+        internal const string ClientOwnedSuddenDeathAvatarEffectOwnerName = "aux.clientOwned.suddenDeath.persistent";
+        internal const string ClientOwnedEnergyChargeAvatarEffectOwnerName = "aux.clientOwned.energyCharge.persistent";
+        private const int ClientOwnedEnergyChargeParentUnderFaceLayerHandleId = 15;
+        private int _nextClientOwnedEnergyChargeAdditionalLayerHandleId = 1;
+        private int _nextClientOwnedEnergyChargeAdditionalListNodeId = 1;
+        private int _nextClientOwnedAvatarEffectLayerHandleId = 1;
+        private int _nextClientOwnedAvatarEffectListNodeId = 1;
+        private IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting =
+            Array.Empty<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation>();
+        private IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> _lastReleasedClientOwnedAvatarEffectLayerMutationsForTesting =
+            Array.Empty<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation>();
+        private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
+            new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, AuxiliaryLayerOwnerCounterState> _auxiliaryLayerOwnerCounters =
+            new(StringComparer.OrdinalIgnoreCase);
+        private MountedActionLayerState _mountedActionLayerState;
+        private string _mountedTamingMobOneTimeActionName;
+        private AvatarActionLayerState _avatarActionLayerState;
+        private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
         // Hit state tracking
         private int _hitStateStartTime;
+        private int _hitStateDurationMs = HIT_STUN_DURATION;
+        private bool _hitExpressionSuppressedByPacketOwnedItemOption;
 
         // Input state
         private bool _inputLeft;
@@ -137,6 +1157,18 @@ namespace HaCreator.MapSimulator.Character
         // Debug
         private bool _physicsDebugLogged;
         private bool _wasInSwimMode;
+        private bool _isFloatAnimationMoving;
+        private bool _wasJumpHeldLastFrame;
+        private bool _mobUndeadRecoveryActive;
+        private bool _mobRecoveryBlocked;
+        private int _mobHpRecoveryCapPercent = 100;
+        private int _mobMpRecoveryCapPercent = 100;
+        private int _mobHpRecoveryDamagePercent = 100;
+        private bool _jumpPressedThisFrame;
+        private int _lastFloatJumpTime = int.MinValue;
+        private float _externalMoveSpeedMultiplier = 1f;
+        private bool _landingTrackingActive;
+        private float _landingTrackingStartY;
 
         // Callbacks
         public Action<PlayerCharacter, Rectangle> OnAttackHitbox;
@@ -145,11 +1177,47 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Action<int> _onClientJumpSkillCancelIngress;
+        private Action<string> _onWeaponSfxSound;
+        private Func<string> _jumpRestrictionMessageProvider;
+        private Func<string> _jumpDownRestrictionMessageProvider;
+        private Action<string> _onJumpRestricted;
+        private Func<float, float> _moveSpeedCapResolver;
+        private Action<PlayerCharacter, PlayerLandingInfo> _onLanded;
 
         // Foothold system reference
         private Func<float, float, float, FootholdLine> _findFoothold;
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
+        private Func<int, CharacterPart> _tamingMobLoader;
+        private Func<int, CharacterPart> _portableChairTamingMobLoader;
+        private Func<int, CharacterPart> _skillMorphLoader;
+        private CharacterPart _portableChairPreviousMount;
+        private bool _portableChairAppliedMount;
+        private CharacterAssembler _portableChairPairAssembler;
+        private Point _portableChairPairOffset;
+        private bool _portableChairPairFacingRight;
+        private string _portableChairPairActionName;
+        private bool _packetOwnedChairSitConfirmed;
+        private bool _portableChairExternalPairRequested;
+        private bool _portableChairHasExternalPair;
+        private Vector2 _portableChairExternalPairPosition;
+        private bool _portableChairExternalPairFacingRight;
+        private PortableChair _portableChairExternalOwnerChair;
+        private bool _portableChairHasExternalOwnerPair;
+        private Vector2 _portableChairExternalOwnerPosition;
+        private bool _portableChairExternalOwnerFacingRight;
+        private bool _packetOwnedEmotionByItemOption;
+        private ShadowPartnerState _activeShadowPartner;
+        private MirrorImageState _activeMirrorImage;
+        private int _mirrorImageAvatarScalePercent = MirrorImageClientDefaultScalePercent;
+
+        // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
+        private bool _pendingLadderRegrab;
+        private int _pendingLadderX;
+        private int _pendingLadderTop;
+        private int _pendingLadderBottom;
+        private bool _pendingLadderIsLadder;
 
         #endregion
 
@@ -160,9 +1228,8 @@ namespace HaCreator.MapSimulator.Character
             Build = build ?? throw new ArgumentNullException(nameof(build));
             Assembler = new CharacterAssembler(build);
             Physics = new CVecCtrl();
-
-            // Preload common animations
-            Assembler.PreloadStandardAnimations();
+            _observedTamingMobPart = GetEquippedTamingMobPart();
+            UpdateAssemblerAvatarOverride();
         }
 
         /// <summary>
@@ -170,20 +1237,124 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public PlayerCharacter(GraphicsDevice device, TexturePool texturePool, CharacterBuild build)
         {
+            _graphicsDevice = device;
             Build = build; // Can be null for placeholder
             Physics = new CVecCtrl();
 
             if (build != null)
             {
                 Assembler = new CharacterAssembler(build);
-                Assembler.PreloadStandardAnimations();
+                UpdateAssemblerAvatarOverride();
+                _observedTamingMobPart = GetEquippedTamingMobPart();
             }
             // If build is null, we're a placeholder - just track position
+        }
+
+        public int MirrorImageAvatarScalePercent
+        {
+            get => _mirrorImageAvatarScalePercent;
+            set => _mirrorImageAvatarScalePercent = NormalizeMirrorImageAvatarScalePercent(value);
         }
 
         public void SetPosition(float x, float y)
         {
             Physics.SetPosition(x, y);
+            ResetLandingTracking();
+        }
+
+        public void ApplyPacketOwnedPassiveMove(PassivePositionSnapshot snapshot, int currentTime, FootholdLine foothold = null)
+        {
+            Physics.X = snapshot.X;
+            Physics.Y = snapshot.Y;
+            Physics.VelocityX = snapshot.VelocityX;
+            Physics.VelocityY = snapshot.VelocityY;
+            Physics.CurrentAction = snapshot.Action;
+            FacingRight = snapshot.FacingRight;
+            Physics.FacingRight = snapshot.FacingRight;
+            Physics.SetMovePathAttribute(snapshot.MovePathAttribute, rebuildMovePath: false);
+            ApplyPacketOwnedPassiveMoveFootholdState(snapshot, foothold);
+            ResetLandingTracking();
+            ClearForcedActionName();
+            CurrentSkillAnimationSkillId = 0;
+
+            PlayerState newState = snapshot.Action switch
+            {
+                MoveAction.Walk => PlayerState.Walking,
+                MoveAction.Jump => PlayerState.Jumping,
+                MoveAction.Fall => PlayerState.Falling,
+                MoveAction.Ladder => PlayerState.Ladder,
+                MoveAction.Rope => PlayerState.Rope,
+                MoveAction.Swim => PlayerState.Swimming,
+                MoveAction.Fly => PlayerState.Flying,
+                MoveAction.Hit => PlayerState.Hit,
+                MoveAction.Die => PlayerState.Dead,
+                _ => PlayerState.Standing
+            };
+
+            string newActionName = ResolvePacketOwnedPassiveMoveActionName(newState, snapshot.Action);
+            CharacterAction newAction = newState switch
+            {
+                PlayerState.Walking => ResolveClientWalkAction(),
+                PlayerState.Jumping or PlayerState.Falling => CharacterAction.Jump,
+                PlayerState.Ladder => CharacterAction.Ladder,
+                PlayerState.Rope => CharacterAction.Rope,
+                PlayerState.Swimming => CharacterAction.Swim,
+                PlayerState.Flying => CharacterAction.Fly,
+                PlayerState.Dead => CharacterAction.Dead,
+                _ => ResolveClientStandAction()
+            };
+            if (State != newState
+                || CurrentAction != newAction
+                || !string.Equals(CurrentActionName, newActionName, StringComparison.Ordinal))
+            {
+                _animationStartTime = currentTime;
+            }
+
+            State = newState;
+            CurrentAction = newAction;
+            CurrentActionName = newActionName;
+        }
+
+        private string ResolvePacketOwnedPassiveMoveActionName(PlayerState newState, MoveAction moveAction)
+        {
+            if (Build?.ActivePortableChair != null)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return moveAction switch
+            {
+                MoveAction.Walk => CharacterPart.GetActionString(ResolveClientWalkAction()),
+                MoveAction.Jump or MoveAction.Fall => CharacterPart.GetActionString(CharacterAction.Jump),
+                MoveAction.Ladder => CharacterPart.GetActionString(CharacterAction.Ladder),
+                MoveAction.Rope => CharacterPart.GetActionString(CharacterAction.Rope),
+                MoveAction.Swim => CharacterPart.GetActionString(CharacterAction.Swim),
+                MoveAction.Fly => CharacterPart.GetActionString(CharacterAction.Fly),
+                MoveAction.Attack or MoveAction.Hit => CharacterPart.GetActionString(CharacterAction.Alert),
+                MoveAction.Die => CharacterPart.GetActionString(CharacterAction.Dead),
+                _ => CharacterPart.GetActionString(newState == PlayerState.Walking
+                    ? ResolveClientWalkAction()
+                    : ResolveClientStandAction())
+            };
+        }
+
+        private void ApplyPacketOwnedPassiveMoveFootholdState(PassivePositionSnapshot snapshot, FootholdLine foothold)
+        {
+            if (foothold != null)
+            {
+                Physics.CurrentFoothold = foothold;
+                Physics.FallStartFoothold = null;
+                Physics.IsOnLadderOrRope = false;
+                return;
+            }
+
+            if (snapshot.FootholdId != 0)
+            {
+                return;
+            }
+
+            Physics.CurrentFoothold = null;
+            Physics.FallStartFoothold = null;
         }
 
         public void SetFootholdLookup(Func<float, float, float, FootholdLine> findFoothold)
@@ -194,11 +1365,36 @@ namespace HaCreator.MapSimulator.Character
         public void SetLadderLookup(Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> findLadder)
         {
             _findLadder = findLadder;
+            Physics.SetLadderOrRopeLookup(findLadder == null
+                ? null
+                : (x, y, range) =>
+                {
+                    var ladder = findLadder(x, y, range);
+                    return ladder.HasValue
+                        ? new LadderOrRopeInfo(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder)
+                        : null;
+                });
         }
 
         public void SetSwimAreaCheck(Func<float, float, float, bool> checkSwimArea)
         {
             _checkSwimArea = checkSwimArea;
+        }
+
+        public void SetPortableChairTamingMobLoader(Func<int, CharacterPart> loader)
+        {
+            _portableChairTamingMobLoader = loader;
+        }
+
+        public void SetTamingMobLoader(Func<int, CharacterPart> loader)
+        {
+            _tamingMobLoader = loader;
+            _sharedMechanicTamingMobPart = null;
+        }
+
+        public void SetSkillMorphLoader(Func<int, CharacterPart> loader)
+        {
+            _skillMorphLoader = loader;
         }
 
         /// <summary>
@@ -207,6 +1403,36 @@ namespace HaCreator.MapSimulator.Character
         public void SetJumpSoundCallback(Action onJump)
         {
             _onJumpSound = onJump;
+        }
+
+        public void SetClientJumpSkillCancelIngressCallback(Action<int> onClientJumpSkillCancelIngress)
+        {
+            _onClientJumpSkillCancelIngress = onClientJumpSkillCancelIngress;
+        }
+
+        public void SetWeaponSfxSoundCallback(Action<string> onWeaponSfx)
+        {
+            _onWeaponSfxSound = onWeaponSfx;
+        }
+
+        public void SetLandingHandler(Action<PlayerCharacter, PlayerLandingInfo> onLanded)
+        {
+            _onLanded = onLanded;
+        }
+
+        public void SetJumpRestrictionHandler(
+            Func<string> getRestrictionMessage,
+            Func<string> getJumpDownRestrictionMessage,
+            Action<string> onJumpRestricted)
+        {
+            _jumpRestrictionMessageProvider = getRestrictionMessage;
+            _jumpDownRestrictionMessageProvider = getJumpDownRestrictionMessage;
+            _onJumpRestricted = onJumpRestricted;
+        }
+
+        public void SetMoveSpeedCapResolver(Func<float, float> moveSpeedCapResolver)
+        {
+            _moveSpeedCapResolver = moveSpeedCapResolver;
         }
 
         #endregion
@@ -227,6 +1453,103 @@ namespace HaCreator.MapSimulator.Character
             _inputPickup = pickup;
         }
 
+        public bool TryActivatePortableChair(PortableChair chair)
+        {
+            if (GetPortableChairActivationRestrictionMessage(chair) != null)
+            {
+                return false;
+            }
+
+            ClearPortableChairMountState();
+            Build.ActivePortableChair = chair;
+            ApplyPortableChairMount(chair);
+            Physics.VelocityX = 0;
+            Physics.VelocityY = 0;
+            Physics.CurrentAction = MoveAction.Stand;
+            ClearForcedActionName();
+            State = PlayerState.Sitting;
+            CurrentAction = CharacterAction.Sit;
+            CurrentActionName = ResolvePortableChairActionName(chair);
+            _animationStartTime = Environment.TickCount;
+            _nextPortableChairRecoveryTime = Environment.TickCount + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+            _packetOwnedChairSitConfirmed = false;
+            ConfigurePortableChairPairPreview(chair);
+            return true;
+        }
+
+        internal string GetPortableChairActivationRestrictionMessage(PortableChair chair)
+        {
+            return ResolvePortableChairActivationRestrictionMessage(
+                chair,
+                Build != null,
+                IsAlive,
+                Level,
+                State,
+                Physics?.IsOnFoothold() == true,
+                HasActiveMorphTransform,
+                HasPortableChairBlockedMountState());
+        }
+
+        public bool PacketOwnedChairSitConfirmed => _packetOwnedChairSitConfirmed;
+
+        public void ApplyPacketOwnedSitPlacement(float x, float y)
+        {
+            Physics.X = x;
+            Physics.Y = y;
+            Physics.VelocityX = 0;
+            Physics.VelocityY = 0;
+            Physics.CurrentAction = MoveAction.Stand;
+            ClearForcedActionName();
+            State = PlayerState.Sitting;
+            CurrentAction = CharacterAction.Sit;
+            CurrentActionName = ResolvePortableChairActionName(Build?.ActivePortableChair);
+            _animationStartTime = Environment.TickCount;
+            _packetOwnedChairSitConfirmed = true;
+        }
+
+        public void ApplyPacketOwnedChairStandCorrection()
+        {
+            _packetOwnedChairSitConfirmed = false;
+            if (Build?.ActivePortableChair != null)
+            {
+                ClearPortableChair();
+                return;
+            }
+
+            SetPortableChairPairRequestActive(false);
+            ClearPortableChairExternalOwnerPair();
+            if (State == PlayerState.Sitting)
+            {
+                State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
+                CurrentAction = CharacterAction.Stand1;
+                CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                _animationStartTime = Environment.TickCount;
+            }
+        }
+
+        public void ClearPortableChair(bool standUp = true)
+        {
+            if (Build?.ActivePortableChair == null)
+            {
+                return;
+            }
+
+            Build.ActivePortableChair = null;
+            _packetOwnedChairSitConfirmed = false;
+            ClearPortableChairPairPreview();
+            SetPortableChairPairRequestActive(false);
+            ClearPortableChairExternalOwnerPair();
+            ClearPortableChairMountState();
+            _nextPortableChairRecoveryTime = int.MaxValue;
+            if (standUp && State == PlayerState.Sitting)
+            {
+                State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
+                CurrentAction = CharacterAction.Stand1;
+                CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                _animationStartTime = Environment.TickCount;
+            }
+        }
+
         /// <summary>
         /// Clear all input
         /// </summary>
@@ -240,6 +1563,79 @@ namespace HaCreator.MapSimulator.Character
             _inputAttack = false;
             _inputPickup = false;
             _inputGmFlyToggle = false;
+            _jumpPressedThisFrame = false;
+            _wasJumpHeldLastFrame = false;
+        }
+
+        public void ApplySkillBlockingStatus(PlayerSkillBlockingStatus status, int durationMs, int currentTime)
+        {
+            if (durationMs <= 0)
+            {
+                return;
+            }
+
+            int expireTime = unchecked(currentTime + durationMs);
+            if (_activeSkillBlockingStatuses.TryGetValue(status, out PlayerSkillBlockingStatusState existingState))
+            {
+                if (ShouldRefreshSkillBlockingExpireTime(currentTime, existingState.ExpireTime, durationMs))
+                {
+                    existingState.ExpireTime = expireTime;
+                }
+
+                return;
+            }
+
+            _activeSkillBlockingStatuses[status] = new PlayerSkillBlockingStatusState
+            {
+                ExpireTime = expireTime
+            };
+        }
+
+        public string GetSkillBlockingRestrictionMessage(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Stun))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Stun);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Freeze))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Freeze);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Seal))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Seal);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.StopMotion))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.StopMotion);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Attract))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Attract);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Polymorph))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Polymorph);
+            }
+
+            return null;
+        }
+
+        public void ClearSkillBlockingStatuses()
+        {
+            _activeSkillBlockingStatuses.Clear();
+        }
+
+        public bool ClearSkillBlockingStatus(PlayerSkillBlockingStatus status)
+        {
+            return _activeSkillBlockingStatuses.Remove(status);
         }
 
         /// <summary>
@@ -276,6 +1672,11 @@ namespace HaCreator.MapSimulator.Character
             System.Diagnostics.Debug.WriteLine($"[PlayerCharacter] God Mode: {(GodMode ? "ON" : "OFF")}");
         }
 
+        public void SetExternalMoveSpeedMultiplier(float multiplier)
+        {
+            _externalMoveSpeedMultiplier = Math.Clamp(multiplier, 0.1f, 3f);
+        }
+
         #endregion
 
         #region Update
@@ -287,6 +1688,11 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
+            ExpireExternalAvatarTransformIfNeeded(currentTime);
+            _jumpPressedThisFrame = _inputJump && !_wasJumpHeldLastFrame;
+            bool wasSurfaceAttached = Physics.IsOnFoothold() || Physics.IsOnLadderOrRope;
+            float surfaceYBeforeUpdate = Y;
+
             // Handle GM fly mode toggle
             if (_inputGmFlyToggle)
             {
@@ -297,10 +1703,22 @@ namespace HaCreator.MapSimulator.Character
             // GM Fly Mode - free movement ignoring physics
             if (GmFlyMode)
             {
+                ResetLandingTracking();
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
+                UpdateOwnedTamingMobRenderState();
+                UpdateShadowPartnerRenderState(currentTime);
+                UpdateMirrorImageRenderState(currentTime);
+                UpdateAvatarEffects(currentTime);
+                StoreMeleeAfterImageOwnerCounter(currentTime);
+                UpdateFaceExpression(currentTime);
+                RecordMovementSync(currentTime);
                 return;
             }
+
+            RefreshSwimAreaState();
+            UpdateAutomaticTamingMobTransition();
+            TryRegrabLadderWhileHoldingUp();
 
             // Process input and update state (pass deltaTime for proper acceleration scaling)
             ProcessInput(currentTime, deltaTime);
@@ -324,17 +1742,79 @@ namespace HaCreator.MapSimulator.Character
                 CheckFootholdTransition();
             }
 
-            // Check swim area
-            if (_checkSwimArea != null)
+            if (wasSurfaceAttached
+                && !_landingTrackingActive
+                && !Physics.IsOnFoothold()
+                && !Physics.IsOnLadderOrRope
+                && !Physics.IsInSwimArea
+                && !Physics.IsUserFlying())
             {
-                Physics.IsInSwimArea = _checkSwimArea(X, Y, 0);
+                _landingTrackingActive = true;
+                _landingTrackingStartY = surfaceYBeforeUpdate;
             }
+
+            RefreshSwimAreaState();
 
             // Update state machine
             UpdateStateMachine(currentTime);
 
             // Update animation
             UpdateAnimation(currentTime);
+            UpdateOwnedTamingMobRenderState();
+            UpdateShadowPartnerRenderState(currentTime);
+            UpdateMirrorImageRenderState(currentTime);
+            UpdateAvatarEffects(currentTime);
+            StoreMeleeAfterImageOwnerCounter(currentTime);
+            UpdateFaceExpression(currentTime);
+            ApplyPortableChairRecovery(currentTime);
+            RecordMovementSync(currentTime);
+
+            _wasJumpHeldLastFrame = _inputJump;
+        }
+
+        private void ApplyPortableChairRecovery(int currentTime)
+        {
+            PortableChair chair = Build?.ActivePortableChair;
+            if (chair == null || State != PlayerState.Sitting)
+            {
+                _nextPortableChairRecoveryTime = int.MaxValue;
+                return;
+            }
+
+            if (_nextPortableChairRecoveryTime == int.MaxValue)
+            {
+                _nextPortableChairRecoveryTime = currentTime + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+                return;
+            }
+
+            if (currentTime < _nextPortableChairRecoveryTime)
+            {
+                return;
+            }
+
+            if (chair.RecoveryHp > 0)
+            {
+                Recover(chair.RecoveryHp, 0);
+            }
+
+            if (chair.RecoveryMp > 0)
+            {
+                Recover(0, chair.RecoveryMp);
+            }
+
+            do
+            {
+                _nextPortableChairRecoveryTime += PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+            }
+            while (_nextPortableChairRecoveryTime <= currentTime);
+        }
+
+        private void RefreshSwimAreaState()
+        {
+            if (_checkSwimArea != null)
+            {
+                Physics.IsInSwimArea = _checkSwimArea(X, Y, 0);
+            }
         }
 
         /// <summary>
@@ -375,8 +1855,14 @@ namespace HaCreator.MapSimulator.Character
 
         private void ProcessInput(int currentTime, float deltaTime)
         {
-            if (!CanMove && State != PlayerState.Attacking)
+            bool movementLockedBySkillTransform = IsMovementLockedBySkillTransform;
+            if (!CanMove && State != PlayerState.Attacking && !movementLockedBySkillTransform)
                 return;
+
+            if (Build?.ActivePortableChair != null && ShouldCancelPortableChairFromInput())
+            {
+                ClearPortableChair();
+            }
 
             // deltaTime is already in seconds (same as tSec in official client)
             float tSec = deltaTime;
@@ -386,6 +1872,12 @@ namespace HaCreator.MapSimulator.Character
             {
                 StartAttack(currentTime);
                 return; // Attack takes priority
+            }
+
+            if (movementLockedBySkillTransform)
+            {
+                Physics.VelocityX = 0;
+                return;
             }
 
             // Ladder/rope interaction - UP to grab from below
@@ -403,7 +1895,7 @@ namespace HaCreator.MapSimulator.Character
             // Jump input
             if (_inputJump)
             {
-                TryJump();
+                TryJump(currentTime);
             }
 
             // Movement input - using official physics formula from Physics.img
@@ -411,7 +1903,6 @@ namespace HaCreator.MapSimulator.Character
             float maxSpeed = GetMoveSpeed();
             float force = CVecCtrl.WalkAcceleration; // WalkForce / DefaultMass
             float drag = CVecCtrl.WalkDeceleration;  // WalkDrag / DefaultMass
-            float mass = 1.0f;                       // Already divided by mass above
 
             if (State == PlayerState.Ladder || State == PlayerState.Rope)
             {
@@ -423,10 +1914,8 @@ namespace HaCreator.MapSimulator.Character
                     // Check if at top of ladder/rope - exit onto platform
                     if (Physics.Y <= Physics.LadderTop)
                     {
-                        Physics.ReleaseLadder();
-                        // Move up slightly to land on platform above
-                        Physics.Y = Physics.LadderTop - 5;
-                        State = PlayerState.Falling;
+                        ExitLadderAtTop();
+                        return;
                     }
                     else
                     {
@@ -438,7 +1927,7 @@ namespace HaCreator.MapSimulator.Character
                     // Check if at bottom of ladder/rope - drop down
                     if (Physics.Y >= Physics.LadderBottom)
                     {
-                        Physics.ReleaseLadder();
+                        Physics.ReleaseLadder(yOverride: Physics.LadderBottom + 1);
                         State = PlayerState.Falling;
                     }
                     else
@@ -455,23 +1944,23 @@ namespace HaCreator.MapSimulator.Character
                 // Official behavior: reduced jump (50%) + horizontal force (130% walk speed)
                 if (_inputJump && (_inputLeft || _inputRight))
                 {
-                    Physics.ReleaseLadder();
-                    Physics.Jump();
-
-                    // Apply reduced vertical jump (50% of normal)
                     float jumpPower = (Build?.JumpPower ?? 100) / 100f;
-                    Physics.VelocityY = -CVecCtrl.JumpVelocity * jumpPower * 0.5f;
+                    double jumpVelocityY = -CVecCtrl.JumpVelocity * jumpPower * 0.5f;
 
                     // Apply horizontal force: walkSpeed * 1.3 in jump direction
                     // Character's Speed stat is the walk speed in px/s (100 = 100 px/s)
                     float direction = _inputRight ? 1f : -1f;
-                    float walkSpeed = Build?.Speed ?? 100f;  // Speed stat = walk speed in px/s
-                    Physics.VelocityX = walkSpeed * direction * 1.3f;
+                    double walkSpeed = Build?.Speed ?? 100f;  // Speed stat = walk speed in px/s
+                    double jumpVelocityX = walkSpeed * direction * 1.3f;
+                    Physics.JumpOffLadder(jumpVelocityX, jumpVelocityY);
 
                     // Set facing direction
                     FacingRight = _inputRight;
+                    Physics.FacingRight = FacingRight;
 
                     State = PlayerState.Jumping;
+                    NotifyClientJumpSkillCancelIngress(currentTime);
+                    _onJumpSound?.Invoke();
                     return; // Skip the facing direction code below
                 }
 
@@ -487,15 +1976,15 @@ namespace HaCreator.MapSimulator.Character
             }
             else if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && !Physics.IsOnFoothold())
             {
+                ResetLandingTracking();
                 // Swimming/Flying movement - when not on foothold
                 ProcessFloatMovement(tSec);
             }
             else if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && Physics.IsOnFoothold() && (_inputUp || _inputJump))
             {
-                // On foothold in swim area, pressing up/jump - start swimming
+                ResetLandingTracking();
+                // On foothold in a swim/fly map, up/jump transitions into float control.
                 Physics.DetachFromFoothold();
-                Physics.VelocityY = -100; // Upward push to leave ground
-                _wasInSwimMode = false; // Reset so entry clamp doesn't trigger
                 ProcessFloatMovement(tSec);
             }
             else
@@ -524,7 +2013,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _physicsDebugLogged = true;
                     System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] maxSpeed={maxSpeed:F1} px/s, walkForce={walkForce:F1}, walkDrag={walkDrag:F1}, mass={entityMass}, tSec={tSec:F4}");
-                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s², decel={walkDrag/entityMass:F1} px/s²");
+                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s・ゑｽ�E�, decel={walkDrag/entityMass:F1} px/s・ゑｽ�E�");
                 }
 
                 if (_inputLeft && !_inputRight)
@@ -573,6 +2062,11 @@ namespace HaCreator.MapSimulator.Character
         /// <param name="tSec">Time step in seconds</param>
         private void ProcessFloatMovement(float tSec)
         {
+            if (Physics.CurrentFoothold != null)
+            {
+                Physics.DetachFromFoothold();
+            }
+
             // Determine input directions
             int inputX = 0;
             int inputY = 0;
@@ -580,8 +2074,14 @@ namespace HaCreator.MapSimulator.Character
             if (_inputLeft && !_inputRight) inputX = -1;
             else if (_inputRight && !_inputLeft) inputX = 1;
 
-            if (_inputUp && !_inputDown) inputY = -1;
-            else if (_inputDown && !_inputUp) inputY = 1;
+            if (_inputUp && !_inputDown)
+            {
+                inputY = -1;
+            }
+            else if (_inputDown && !_inputUp)
+            {
+                inputY = 1;
+            }
 
             // Update facing direction
             if (inputX < 0)
@@ -612,24 +2112,15 @@ namespace HaCreator.MapSimulator.Character
             }
             else // Swimming
             {
-                // Swimming mode - official client physics
-                // Max speed, force, drag from Physics.img
+                // Swimming mode - use the raw swim vecctrl values from Physics.img.
                 maxSpeed = PhysicsConstants.Instance.SwimSpeed;
                 floatForce = PhysicsConstants.Instance.SwimForce;
                 floatDrag = PhysicsConstants.Instance.FloatDrag2;
-                // Gravity factor not used for swimming - official uses force/mass/maxSpeed formula
-                gravityFactor = 0.0;
+                gravityFactor = 0.3;
 
                 State = PlayerState.Swimming;
                 Physics.CurrentAction = MoveAction.Swim;
-
-                // Apply swim speed modifier from equipment/buffs
-                float swimSpeedMod = (Build?.Speed ?? 100) / 100f * (float)PhysicsConstants.Instance.SwimSpeedDec;
-                maxSpeed *= swimSpeedMod;
             }
-
-            // Apply CalcFloat physics
-            Physics.CalcFloat(inputX, inputY, maxSpeed, floatForce, floatDrag, entityMass, gravityFactor, tSec);
 
             // Debug output (once)
             if (!_physicsDebugLogged && (inputX != 0 || inputY != 0))
@@ -639,14 +2130,8 @@ namespace HaCreator.MapSimulator.Character
                 System.Diagnostics.Debug.WriteLine($"[PlayerCharacter {mode}] maxSpeed={maxSpeed:F1}, force={floatForce:F1}, drag={floatDrag:F1}, gravity={gravityFactor:F2}");
             }
 
-            // Detach from foothold when entering water/flying
-            if (Physics.CurrentFoothold != null)
-            {
-                Physics.DetachFromFoothold();
-            }
-
             // Handle swim mode entry - clamp velocity
-            if (!_wasInSwimMode)
+            if (!_wasInSwimMode && Physics.CurrentJumpState != JumpState.Jumping)
             {
                 // Just entered swim mode - clamp velocity to prevent jump momentum
                 double maxUpVelocity = maxSpeed * 0.3;
@@ -661,15 +2146,41 @@ namespace HaCreator.MapSimulator.Character
                     Physics.VelocityY = (float)maxDownVelocity;
                 }
             }
+
+            Physics.StepFloatMovement(
+                inputX,
+                inputY,
+                maxSpeed,
+                floatForce,
+                floatDrag,
+                entityMass,
+                gravityFactor,
+                tSec,
+                Physics.IsUserFlying() ? FloatMode.Flying : FloatMode.Swimming);
+
             _wasInSwimMode = true;
         }
 
-        private void TryJump()
+        private void TryJump(int currentTime)
         {
+            string jumpRestrictionMessage = _jumpRestrictionMessageProvider?.Invoke();
+            if (!string.IsNullOrWhiteSpace(jumpRestrictionMessage))
+            {
+                _onJumpRestricted?.Invoke(jumpRestrictionMessage);
+                return;
+            }
+
             // Check for jump down first (Down + Jump while on foothold)
             // This works even while prone - character gets up and falls through
             if (_inputDown && Physics.IsOnFoothold())
             {
+                string jumpDownRestrictionMessage = _jumpDownRestrictionMessageProvider?.Invoke();
+                if (!string.IsNullOrWhiteSpace(jumpDownRestrictionMessage))
+                {
+                    _onJumpRestricted?.Invoke(jumpDownRestrictionMessage);
+                    return;
+                }
+
                 if (State == PlayerState.Prone)
                 {
                     State = PlayerState.Standing;
@@ -681,6 +2192,35 @@ namespace HaCreator.MapSimulator.Character
             if (State == PlayerState.Prone)
             {
                 State = PlayerState.Standing;
+                return;
+            }
+
+            if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && !Physics.IsOnLadderOrRope)
+            {
+                if (Physics.IsOnFoothold())
+                {
+                    if (_jumpPressedThisFrame && CanTriggerFloatJump(currentTime))
+                    {
+                        Physics.JumpFromFloatFoothold();
+                        _lastFloatJumpTime = currentTime;
+                        State = Physics.IsUserFlying() ? PlayerState.Flying : PlayerState.Swimming;
+                        NotifyClientJumpSkillCancelIngress(currentTime);
+                        _onJumpSound?.Invoke();
+                    }
+                    else
+                    {
+                        Physics.DetachFromFoothold();
+                    }
+                }
+                else if (_jumpPressedThisFrame && CanTriggerFloatJump(currentTime) && Physics.IsSwimming())
+                {
+                    Physics.ApplySwimJumpImpulse();
+                    _lastFloatJumpTime = currentTime;
+                    State = PlayerState.Swimming;
+                    NotifyClientJumpSkillCancelIngress(currentTime);
+                    _onJumpSound?.Invoke();
+                }
+
                 return;
             }
 
@@ -698,8 +2238,24 @@ namespace HaCreator.MapSimulator.Character
                 State = PlayerState.Jumping;
 
                 // Play jump sound
+                NotifyClientJumpSkillCancelIngress(currentTime);
                 _onJumpSound?.Invoke();
             }
+        }
+
+        private void NotifyClientJumpSkillCancelIngress(int currentTime)
+        {
+            _onClientJumpSkillCancelIngress?.Invoke(currentTime);
+        }
+
+        private bool CanTriggerFloatJump(int currentTime)
+        {
+            if (_lastFloatJumpTime == int.MinValue)
+            {
+                return true;
+            }
+
+            return currentTime - _lastFloatJumpTime >= FLOAT_JUMP_COOLDOWN_MS;
         }
 
         /// <summary>
@@ -740,13 +2296,21 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private void TryGrabLadder()
         {
-            if (_findLadder == null) return;
+            const float horizontalSearchRange = 50f;
+            const float bottomGrabTolerance = 10f;
 
-            var ladder = _findLadder(X, Y, 50);
-            if (ladder.HasValue)
+            bool foundLadder = Physics.TryGetLadderOrRope(X, Y, horizontalSearchRange, out LadderOrRopeInfo ladder);
+            if (!foundLadder)
             {
-                Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
-                State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+                foundLadder = Physics.TryGetLadderOrRope(X, Y - bottomGrabTolerance, horizontalSearchRange, out ladder)
+                              && Y >= ladder.Top
+                              && Y <= ladder.Bottom + bottomGrabTolerance;
+            }
+
+            if (foundLadder)
+            {
+                Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+                State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
             }
         }
 
@@ -756,41 +2320,76 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private void TryGrabLadderDown()
         {
-            if (_findLadder == null) return;
             if (!Physics.IsOnFoothold()) return;
 
             // Search slightly below the player's current position to find ropes that start at/below their feet
             // The player stands on a platform, and the rope typically starts at or just below the platform
-            var ladder = _findLadder(X, Y + 15, 15);
-            if (ladder.HasValue)
+            if (Physics.TryGetLadderOrRope(X, Y + 15, 15f, out LadderOrRopeInfo ladder))
             {
                 // Can grab if character is at or above the rope's top (standing on platform above rope)
-                if (Y <= ladder.Value.top + 10)
+                if (Y <= ladder.Top + 10)
                 {
-                    Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
-                    State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+                    Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+                    State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
                 }
             }
+        }
+
+        private void ExitLadderAtTop()
+        {
+            double exitY = Physics.LadderTop - 4;
+            FootholdLine exitFoothold = _findFoothold?.Invoke(Physics.LadderX, (float)exitY, 24f);
+
+            Physics.ReleaseLadder(yOverride: exitY);
+
+            if (exitFoothold != null && !Physics.NoLandingMap)
+            {
+                Physics.X = Physics.LadderX;
+                Physics.LandOnFoothold(exitFoothold);
+                Physics.VelocityX = 0;
+                Physics.CurrentAction = MoveAction.Stand;
+                State = PlayerState.Standing;
+                return;
+            }
+
+            State = PlayerState.Falling;
         }
 
         private void CheckFootholdLanding()
         {
             if (_findFoothold == null || Physics.VelocityY <= 0) return;
+            if (Physics.NoLandingMap) return;
 
-            // Search for foothold at current position
-            // Use velocity-based search range: faster falling = larger search range
-            // This prevents passing through footholds at high speeds
-            float searchRange = Math.Max(20, (float)Physics.VelocityY * 0.05f);
-            var fh = _findFoothold(X, Y, searchRange);
+            float previousY = Physics.HasSavedFloatState ? (float)Physics.SavedFloatY : Y;
+            float downwardTravel = Math.Max(0f, Y - previousY);
+            float searchRange = Math.Max(20f, downwardTravel + 8f);
+            float probeY = Physics.HasSavedFloatState ? previousY : Y;
+            var fh = _findFoothold(X, probeY, searchRange);
 
             if (fh != null)
             {
+                float fhYAtX = (float)CalculateYOnFoothold(fh, X);
+                bool crossedFoothold = !Physics.HasSavedFloatState || (previousY <= fhYAtX + 1f && Y >= fhYAtX - 1f);
+
+                if (!crossedFoothold)
+                {
+                    return;
+                }
+
+                void CompleteLanding(FootholdLine footholdToLandOn)
+                {
+                    float landingY = (float)CalculateYOnFoothold(footholdToLandOn, X);
+                    float impactVelocityY = (float)Math.Max(0d, Physics.VelocityY);
+                    Physics.LandOnFoothold(footholdToLandOn);
+                    State = PlayerState.Standing;
+                    NotifyLanding(landingY, impactVelocityY);
+                }
+
                 // Check if we're falling through this foothold
                 if (Physics.FallStartFoothold != fh)
                 {
                     // Landing on a different foothold - always allowed
-                    Physics.LandOnFoothold(fh);
-                    State = PlayerState.Standing;
+                    CompleteLanding(fh);
                 }
                 else if (Physics.IsJumpingDown)
                 {
@@ -803,8 +2402,7 @@ namespace HaCreator.MapSimulator.Character
                     const float MIN_FALL_DISTANCE = 30f;
                     if (Physics.Y >= fhY + MIN_FALL_DISTANCE)
                     {
-                        Physics.LandOnFoothold(fh);
-                        State = PlayerState.Standing;
+                        CompleteLanding(fh);
                     }
                 }
                 else
@@ -813,11 +2411,10 @@ namespace HaCreator.MapSimulator.Character
                     // Calculate actual Y on the sloped foothold at current X position
                     float fhY = Physics.FallStartFoothold != null
                         ? (float)CalculateYOnFoothold(Physics.FallStartFoothold, X)
-                        : Y;
+                        : fhYAtX;
                     if (Physics.Y >= fhY)
                     {
-                        Physics.LandOnFoothold(fh);
-                        State = PlayerState.Standing;
+                        CompleteLanding(fh);
                     }
                 }
             }
@@ -912,13 +2509,17 @@ namespace HaCreator.MapSimulator.Character
             // Handle Hit state recovery (knockback stun)
             if (State == PlayerState.Hit)
             {
-                if (currentTime - _hitStateStartTime >= HIT_STUN_DURATION)
+                if (currentTime - _hitStateStartTime >= Math.Max(1, _hitStateDurationMs))
                 {
                     // Hit stun is over - return to appropriate state based on physics
                     if (Physics.IsOnLadder())
                         State = PlayerState.Ladder;
                     else if (Physics.IsOnRope())
                         State = PlayerState.Rope;
+                    else if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+                        State = PlayerState.Flying;
+                    else if (Physics.IsSwimming() && !Physics.IsOnFoothold())
+                        State = PlayerState.Swimming;
                     else if (Physics.IsAirborne())
                         State = Physics.VelocityY < 0 ? PlayerState.Jumping : PlayerState.Falling;
                     else
@@ -927,19 +2528,26 @@ namespace HaCreator.MapSimulator.Character
                 return; // Don't process other state changes while in hit stun
             }
 
+            ClearPendingLadderRegrab();
+
             // Determine state based on physics
             if (State == PlayerState.Attacking)
             {
-                // Check if attack animation is complete
-                var anim = Assembler?.GetAnimation(CurrentAction);
-                if (anim != null && anim.Length > 0)
+                if (_sustainedSkillAnimation)
                 {
-                    int attackDuration = 0;
-                    foreach (var frame in anim)
-                        attackDuration += frame.Duration;
+                    return;
+                }
 
-                    if (currentTime - _animationStartTime >= attackDuration)
+                // Check if attack animation is complete
+                UpdateMountedActionLayerFrameClock(GetMountedActionLayerState(), currentTime);
+                int attackDuration = ResolveCurrentClientActionLayerDuration();
+                if (attackDuration > 0)
+                {
+                    if (ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime) >= attackDuration
+                        && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
+                        BeginMeleeAfterImageFade(currentTime);
+                        ClearForcedActionName();
                         State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
                         System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] Attack complete, returning to {State}");
                     }
@@ -947,10 +2555,12 @@ namespace HaCreator.MapSimulator.Character
                 else
                 {
                     // No animation found - return to standing after short delay
-                    if (currentTime - _animationStartTime >= 300)
+                    if (ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime) >= 300
+                        && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
+                        ClearForcedActionName();
                         State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
-                        System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] No attack anim found for {CurrentAction}, returning to {State}");
+                        System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] No attack anim found for {CurrentActionName}, returning to {State}");
                     }
                 }
             }
@@ -962,13 +2572,17 @@ namespace HaCreator.MapSimulator.Character
             {
                 State = PlayerState.Rope;
             }
+            else if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+            {
+                State = PlayerState.Flying;
+            }
+            else if (Physics.IsSwimming() && !Physics.IsOnFoothold())
+            {
+                State = PlayerState.Swimming;
+            }
             else if (Physics.IsAirborne())
             {
                 State = Physics.VelocityY < 0 ? PlayerState.Jumping : PlayerState.Falling;
-            }
-            else if (Physics.IsSwimming())
-            {
-                State = PlayerState.Swimming;
             }
             else if (State != PlayerState.Prone && State != PlayerState.Sitting)
             {
@@ -991,8 +2605,8 @@ namespace HaCreator.MapSimulator.Character
         {
             CharacterAction newAction = State switch
             {
-                PlayerState.Standing => CharacterAction.Stand1,
-                PlayerState.Walking => CharacterAction.Walk1,
+                PlayerState.Standing => ResolveClientStandAction(),
+                PlayerState.Walking => ResolveClientWalkAction(),
                 PlayerState.Jumping or PlayerState.Falling => CharacterAction.Jump,
                 PlayerState.Ladder => CharacterAction.Ladder,
                 PlayerState.Rope => CharacterAction.Rope,
@@ -1001,16 +2615,1952 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Swimming => CharacterAction.Swim,
                 PlayerState.Flying => CharacterAction.Fly,
                 PlayerState.Attacking => GetAttackAction(),
-                PlayerState.Hit => CharacterAction.Stand1,
+                PlayerState.Hit => ResolveClientStandAction(),
                 PlayerState.Dead => CharacterAction.Dead,
-                _ => CharacterAction.Stand1
+                _ => ResolveClientStandAction()
             };
 
-            if (newAction != CurrentAction)
+            string newActionName;
+            if (State == PlayerState.Attacking && !string.IsNullOrWhiteSpace(_forcedActionName))
             {
-                CurrentAction = newAction;
+                newActionName = ResolveAvatarActionLayerCoordinatorActionName(_forcedActionName) ?? _forcedActionName;
+            }
+            else if (State == PlayerState.Sitting)
+            {
+                newActionName = ResolvePortableChairActionName(Build?.ActivePortableChair);
+            }
+            else
+            {
+                newActionName = GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction);
+            }
+
+            bool isFloatAction = IsFloatAnimationAction(newAction);
+            bool isFloatMoving = isFloatAction && ShouldAnimateFloatAction();
+
+            if (newAction != CurrentAction || !string.Equals(newActionName, CurrentActionName, StringComparison.Ordinal) || (isFloatAction && isFloatMoving != _isFloatAnimationMoving))
+            {
                 _animationStartTime = currentTime;
             }
+
+            CurrentAction = newAction;
+            CurrentActionName = newActionName;
+            if (State != PlayerState.Attacking)
+            {
+                CurrentSkillAnimationSkillId = 0;
+                CurrentSkillAnimationStartTime = int.MinValue;
+            }
+            _isFloatAnimationMoving = isFloatMoving;
+            SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
+            RefreshMountedActionLayerState();
+        }
+
+        private bool IsFloatAnimationAction(CharacterAction action)
+        {
+            return action == CharacterAction.Swim || action == CharacterAction.Fly;
+        }
+
+        private bool ShouldAnimateFloatAction()
+        {
+            if (Physics.IsOnFoothold() || Physics.IsOnLadderOrRope)
+            {
+                return false;
+            }
+
+            bool hasDirectionalInput = _inputLeft || _inputRight || _inputUp || _inputDown || _inputJump;
+            return hasDirectionalInput ||
+                   Math.Abs(Physics.VelocityX) > FLOAT_ANIMATION_MOVEMENT_THRESHOLD ||
+                   Math.Abs(Physics.VelocityY) > FLOAT_ANIMATION_MOVEMENT_THRESHOLD;
+        }
+
+        private int GetRenderAnimationTime(int currentTime)
+        {
+            if ((State == PlayerState.Rope || State == PlayerState.Ladder) && Math.Abs(Physics.VelocityY) < 0.001)
+            {
+                return 0;
+            }
+
+            if (IsFloatAnimationAction(CurrentAction) && !_isFloatAnimationMoving)
+            {
+                return 0;
+            }
+
+            return ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime);
+        }
+
+        private int ResolveCurrentClientActionLayerDuration()
+        {
+            MountedActionLayerState mountedActionLayerState = GetMountedActionLayerState();
+            if (mountedActionLayerState != null)
+            {
+                return mountedActionLayerState.TotalPreparedDurationMs;
+            }
+
+            return Assembler?.ResolveClientActionLayerDuration(CurrentActionName) ?? 0;
+        }
+
+        private AvatarActionLayerState GetAvatarActionLayerState()
+        {
+            if (_avatarActionLayerState != null
+                && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_avatarActionLayerState.ActionSpeedDegree, _avatarActionLayerState.WalkSpeed, _avatarActionLayerState.HeldActionFrameDelay)
+                && _avatarActionLayerState.AllowLoop == ShouldCurrentAvatarActionLayerLoop())
+            {
+                return _avatarActionLayerState;
+            }
+
+            RefreshAvatarActionLayerState();
+            return _avatarActionLayerState != null
+                   && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                ? _avatarActionLayerState
+                : null;
+        }
+
+        private void RefreshAvatarActionLayerState()
+        {
+            if (_avatarActionLayerState != null
+                && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_avatarActionLayerState.ActionSpeedDegree, _avatarActionLayerState.WalkSpeed, _avatarActionLayerState.HeldActionFrameDelay)
+                && _avatarActionLayerState.AllowLoop == ShouldCurrentAvatarActionLayerLoop())
+            {
+                return;
+            }
+
+            _avatarActionLayerState = null;
+            if (Assembler == null || string.IsNullOrWhiteSpace(CurrentActionName))
+            {
+                return;
+            }
+
+            if (!Assembler.TryCreateActionLayerFrameClock(
+                    CurrentActionName,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock clock))
+            {
+                return;
+            }
+
+            bool allowLoop = ShouldCurrentAvatarActionLayerLoop();
+            string ownerName = allowLoop
+                ? AvatarPersistentActionOwnerName
+                : AvatarOneTimeActionOwnerName;
+            if (!TryRestoreActionLayerOwnerCounter(
+                    ownerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredClock,
+                    out int lastAnimationElapsedMs,
+                    out int lastClockUpdateTimeMs,
+                    out double lastCharacterPositionY))
+            {
+                restoredClock = clock;
+                lastAnimationElapsedMs = 0;
+                lastClockUpdateTimeMs = _animationStartTime;
+                lastCharacterPositionY = Physics?.Y ?? 0d;
+            }
+
+            _avatarActionLayerState = new AvatarActionLayerState
+            {
+                ActionName = CurrentActionName,
+                ActionOwnerName = ownerName,
+                FrameIndex = restoredClock.FrameIndex,
+                FrameRemainingMs = restoredClock.FrameRemainingMs,
+                LastAnimationElapsedMs = lastAnimationElapsedMs,
+                LastClockUpdateTimeMs = lastClockUpdateTimeMs,
+                LastCharacterPositionY = lastCharacterPositionY,
+                ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
+                WalkSpeed = Assembler.PreparedWalkSpeed,
+                HeldActionFrameDelay = Assembler.HeldActionFrameDelay,
+                AllowLoop = allowLoop
+            };
+            StoreActionLayerOwnerCounter(
+                ownerName,
+                _avatarActionLayerState.ActionName,
+                _avatarActionLayerState.ActionSpeedDegree,
+                _avatarActionLayerState.WalkSpeed,
+                _avatarActionLayerState.HeldActionFrameDelay,
+                _avatarActionLayerState.AllowLoop,
+                restoredClock,
+                _avatarActionLayerState.LastAnimationElapsedMs,
+                _avatarActionLayerState.LastClockUpdateTimeMs,
+                _avatarActionLayerState.LastCharacterPositionY);
+        }
+
+        private void UpdateAvatarActionLayerFrameClock(AvatarActionLayerState avatarActionLayerState, int currentTime)
+        {
+            if (avatarActionLayerState == null || Assembler == null)
+            {
+                return;
+            }
+
+            int animationElapsedMs = GetRenderAnimationTime(currentTime);
+            int elapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
+                animationElapsedMs,
+                avatarActionLayerState.LastAnimationElapsedMs);
+            if (elapsedSinceLastUpdateMs <= 0)
+            {
+                avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+                StoreActionLayerOwnerCounter(
+                    avatarActionLayerState.ActionOwnerName,
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.ActionSpeedDegree,
+                    avatarActionLayerState.WalkSpeed,
+                    avatarActionLayerState.HeldActionFrameDelay,
+                    avatarActionLayerState.AllowLoop,
+                    new AvatarActionLayerCoordinator.PreparedFrameClock(
+                        avatarActionLayerState.FrameIndex,
+                        avatarActionLayerState.FrameRemainingMs),
+                    avatarActionLayerState.LastAnimationElapsedMs,
+                    avatarActionLayerState.LastClockUpdateTimeMs,
+                    avatarActionLayerState.LastCharacterPositionY);
+                return;
+            }
+
+            if (TryStallPositionGatedAvatarActionLayerClock(avatarActionLayerState, animationElapsedMs, currentTime))
+            {
+                return;
+            }
+
+            var clock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                avatarActionLayerState.FrameIndex,
+                avatarActionLayerState.FrameRemainingMs);
+            if (!Assembler.TryAdvanceActionLayerFrameClock(
+                    avatarActionLayerState.ActionName,
+                    ref clock,
+                    avatarActionLayerState.AllowLoop,
+                    elapsedSinceLastUpdateMs,
+                    out _,
+                    out _))
+            {
+                return;
+            }
+
+            avatarActionLayerState.FrameIndex = clock.FrameIndex;
+            avatarActionLayerState.FrameRemainingMs = clock.FrameRemainingMs;
+            avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+            avatarActionLayerState.LastCharacterPositionY = Physics?.Y ?? avatarActionLayerState.LastCharacterPositionY;
+            StoreActionLayerOwnerCounter(
+                avatarActionLayerState.ActionOwnerName,
+                avatarActionLayerState.ActionName,
+                avatarActionLayerState.ActionSpeedDegree,
+                avatarActionLayerState.WalkSpeed,
+                avatarActionLayerState.HeldActionFrameDelay,
+                avatarActionLayerState.AllowLoop,
+                clock,
+                avatarActionLayerState.LastAnimationElapsedMs,
+                avatarActionLayerState.LastClockUpdateTimeMs,
+                avatarActionLayerState.LastCharacterPositionY);
+        }
+
+        private bool TryStallPositionGatedAvatarActionLayerClock(
+            AvatarActionLayerState avatarActionLayerState,
+            int animationElapsedMs,
+            int currentTime)
+        {
+            if (avatarActionLayerState == null || Physics == null)
+            {
+                return false;
+            }
+
+            double currentY = Physics.Y;
+            if (!AvatarActionLayerCoordinator.ShouldStallPositionGatedFrameUpdate(
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.LastCharacterPositionY,
+                    currentY))
+            {
+                avatarActionLayerState.LastCharacterPositionY = currentY;
+                return false;
+            }
+
+            avatarActionLayerState.FrameRemainingMs = 0;
+            avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+            StoreActionLayerOwnerCounter(
+                avatarActionLayerState.ActionOwnerName,
+                avatarActionLayerState.ActionName,
+                avatarActionLayerState.ActionSpeedDegree,
+                avatarActionLayerState.WalkSpeed,
+                avatarActionLayerState.HeldActionFrameDelay,
+                avatarActionLayerState.AllowLoop,
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    avatarActionLayerState.FrameIndex,
+                    avatarActionLayerState.FrameRemainingMs),
+                avatarActionLayerState.LastAnimationElapsedMs,
+                avatarActionLayerState.LastClockUpdateTimeMs,
+                avatarActionLayerState.LastCharacterPositionY);
+            return true;
+        }
+
+        private MountedActionLayerState GetMountedActionLayerState()
+        {
+            if (_mountedActionLayerState != null
+                && State == PlayerState.Attacking
+                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_mountedActionLayerState.ActionSpeedDegree, _mountedActionLayerState.WalkSpeed, _mountedActionLayerState.HeldActionFrameDelay))
+            {
+                return _mountedActionLayerState;
+            }
+
+            RefreshMountedActionLayerState();
+            return _mountedActionLayerState != null
+                   && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                ? _mountedActionLayerState
+                : null;
+        }
+
+        internal MountedActionLayerStateForTesting? GetMountedActionLayerStateForTesting(int currentTime)
+        {
+            MountedActionLayerState state = GetMountedActionLayerState();
+            if (state == null)
+            {
+                return null;
+            }
+
+            UpdateMountedActionLayerFrameClock(state, currentTime);
+            return new MountedActionLayerStateForTesting(
+                state.ActionName,
+                state.PersistentBodyActionName,
+                state.PersistentTamingMobActionName,
+                state.CurrentBodyActionName,
+                state.CurrentTamingMobActionName,
+                state.CharacterOneTimeActionName,
+                state.TamingMobOneTimeActionName,
+                state.BodyPreparedDurationMs,
+                state.TamingMobPreparedDurationMs,
+                state.TotalPreparedDurationMs,
+                state.BodyFrameIndex,
+                state.BodyFrameRemainingMs,
+                state.TamingMobFrameIndex,
+                state.TamingMobFrameRemainingMs,
+                state.LastAnimationElapsedMs,
+                state.LastClockUpdateTimeMs,
+                state.BodyLastAnimationElapsedMs,
+                state.BodyLastClockUpdateTimeMs,
+                state.TamingMobLastAnimationElapsedMs,
+                state.TamingMobLastClockUpdateTimeMs);
+        }
+
+        internal string GetMountedTamingMobOneTimeActionNameForTesting()
+        {
+            return _mountedTamingMobOneTimeActionName;
+        }
+
+        private void RefreshMountedActionLayerState()
+        {
+            if (_mountedActionLayerState != null
+                && State == PlayerState.Attacking
+                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_mountedActionLayerState.ActionSpeedDegree, _mountedActionLayerState.WalkSpeed, _mountedActionLayerState.HeldActionFrameDelay))
+            {
+                return;
+            }
+
+            ClearMountedActionLayerState();
+            if (Assembler == null
+                || State != PlayerState.Attacking
+                || _sustainedSkillAnimation
+                || string.IsNullOrWhiteSpace(CurrentActionName))
+            {
+                return;
+            }
+
+            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
+            if (!CharacterAssembler.IsTamingMobRenderOwnershipAction(mountedPart, CurrentActionName))
+            {
+                return;
+            }
+
+            int bodyDuration = Assembler.ResolveClientCharacterActionLayerDuration(CurrentActionName);
+            if (bodyDuration <= 0
+                || !Assembler.TryResolveClientTamingMobActionLayerDuration(CurrentActionName, out int tamingMobDuration)
+                || tamingMobDuration <= 0)
+            {
+                return;
+            }
+
+            if (!Assembler.TryCreateMountedActionLayerFrameClocks(
+                    CurrentActionName,
+                    CurrentActionName,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock bodyClock,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock))
+            {
+                return;
+            }
+
+            if (!TryRestoreActionLayerOwnerCounter(
+                    MountedBodyOneTimeActionOwnerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop: false,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredBodyClock,
+                    out int restoredLastAnimationElapsedMs,
+                    out int restoredLastClockUpdateTimeMs,
+                    out double restoredLastCharacterPositionY))
+            {
+                restoredBodyClock = bodyClock;
+                restoredLastAnimationElapsedMs = 0;
+                restoredLastClockUpdateTimeMs = _animationStartTime;
+                restoredLastCharacterPositionY = Physics?.Y ?? 0d;
+            }
+
+            if (!TryRestoreActionLayerOwnerCounter(
+                    MountedTamingMobOneTimeActionOwnerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop: false,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredTamingMobClock,
+                    out int restoredTamingMobLastAnimationElapsedMs,
+                    out int restoredTamingMobLastClockUpdateTimeMs,
+                    out double restoredTamingMobLastCharacterPositionY))
+            {
+                restoredTamingMobClock = tamingMobClock;
+                restoredTamingMobLastAnimationElapsedMs = 0;
+                restoredTamingMobLastClockUpdateTimeMs = _animationStartTime;
+                restoredTamingMobLastCharacterPositionY = Physics?.Y ?? 0d;
+            }
+
+            string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
+            _mountedActionLayerState = new MountedActionLayerState
+            {
+                ActionName = CurrentActionName,
+                PersistentBodyActionName = persistentBodyActionName,
+                PersistentTamingMobActionName = persistentBodyActionName,
+                PersistentBodyOwnerName = MountedBodyPersistentActionOwnerName,
+                PersistentTamingMobOwnerName = MountedTamingMobPersistentActionOwnerName,
+                CurrentBodyActionName = CurrentActionName,
+                CurrentTamingMobActionName = CurrentActionName,
+                CurrentBodyOwnerName = MountedBodyOneTimeActionOwnerName,
+                CurrentTamingMobOwnerName = MountedTamingMobOneTimeActionOwnerName,
+                CharacterOneTimeActionName = CurrentActionName,
+                TamingMobOneTimeActionName = CurrentActionName,
+                BodyPreparedDurationMs = bodyDuration,
+                TamingMobPreparedDurationMs = tamingMobDuration,
+                TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration),
+                BodyFrameIndex = restoredBodyClock.FrameIndex,
+                BodyFrameRemainingMs = restoredBodyClock.FrameRemainingMs,
+                TamingMobFrameIndex = restoredTamingMobClock.FrameIndex,
+                TamingMobFrameRemainingMs = restoredTamingMobClock.FrameRemainingMs,
+                LastAnimationElapsedMs = restoredLastAnimationElapsedMs,
+                LastClockUpdateTimeMs = restoredLastClockUpdateTimeMs,
+                LastCharacterPositionY = restoredLastCharacterPositionY,
+                BodyLastAnimationElapsedMs = restoredLastAnimationElapsedMs,
+                BodyLastClockUpdateTimeMs = restoredLastClockUpdateTimeMs,
+                BodyLastCharacterPositionY = restoredLastCharacterPositionY,
+                TamingMobLastAnimationElapsedMs = restoredTamingMobLastAnimationElapsedMs,
+                TamingMobLastClockUpdateTimeMs = restoredTamingMobLastClockUpdateTimeMs,
+                TamingMobLastCharacterPositionY = restoredTamingMobLastCharacterPositionY,
+                ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
+                WalkSpeed = Assembler.PreparedWalkSpeed,
+                HeldActionFrameDelay = Assembler.HeldActionFrameDelay
+            };
+            StoreActionLayerOwnerCounter(
+                MountedBodyOneTimeActionOwnerName,
+                _mountedActionLayerState.CurrentBodyActionName,
+                _mountedActionLayerState.ActionSpeedDegree,
+                _mountedActionLayerState.WalkSpeed,
+                _mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: false,
+                restoredBodyClock,
+                _mountedActionLayerState.BodyLastAnimationElapsedMs,
+                _mountedActionLayerState.BodyLastClockUpdateTimeMs,
+                _mountedActionLayerState.BodyLastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                MountedTamingMobOneTimeActionOwnerName,
+                _mountedActionLayerState.CurrentTamingMobActionName,
+                _mountedActionLayerState.ActionSpeedDegree,
+                _mountedActionLayerState.WalkSpeed,
+                _mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: false,
+                restoredTamingMobClock,
+                _mountedActionLayerState.TamingMobLastAnimationElapsedMs,
+                _mountedActionLayerState.TamingMobLastClockUpdateTimeMs,
+                _mountedActionLayerState.TamingMobLastCharacterPositionY);
+            _mountedTamingMobOneTimeActionName = CurrentActionName;
+        }
+
+        private bool HasCurrentActionLayerContext(int actionSpeedDegree, int walkSpeed, bool heldActionFrameDelay)
+        {
+            return Assembler != null
+                   && actionSpeedDegree == Assembler.PreparedActionSpeedDegree
+                   && walkSpeed == Assembler.PreparedWalkSpeed
+                   && heldActionFrameDelay == Assembler.HeldActionFrameDelay;
+        }
+
+        private bool TryRestoreActionLayerOwnerCounter(
+            string ownerName,
+            string actionName,
+            int actionSpeedDegree,
+            int walkSpeed,
+            bool heldActionFrameDelay,
+            bool allowLoop,
+            out AvatarActionLayerCoordinator.PreparedFrameClock clock,
+            out int lastAnimationElapsedMs,
+            out int lastClockUpdateTimeMs,
+            out double lastCharacterPositionY)
+        {
+            clock = default;
+            lastAnimationElapsedMs = 0;
+            lastClockUpdateTimeMs = int.MinValue;
+            lastCharacterPositionY = Physics?.Y ?? 0d;
+            if (string.IsNullOrWhiteSpace(ownerName)
+                || !_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter)
+                || ownerCounter == null
+                || !string.Equals(ownerCounter.ActionName, actionName, StringComparison.OrdinalIgnoreCase)
+                || ownerCounter.ActionSpeedDegree != actionSpeedDegree
+                || ownerCounter.WalkSpeed != walkSpeed
+                || ownerCounter.HeldActionFrameDelay != heldActionFrameDelay
+                || ownerCounter.AllowLoop != allowLoop)
+            {
+                return false;
+            }
+
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                ownerCounter.FrameIndex,
+                ownerCounter.FrameRemainingMs);
+            lastAnimationElapsedMs = ownerCounter.LastAnimationElapsedMs;
+            lastClockUpdateTimeMs = ownerCounter.LastClockUpdateTimeMs;
+            lastCharacterPositionY = ownerCounter.LastCharacterPositionY;
+            return true;
+        }
+
+        private void StoreActionLayerOwnerCounter(
+            string ownerName,
+            string actionName,
+            int actionSpeedDegree,
+            int walkSpeed,
+            bool heldActionFrameDelay,
+            bool allowLoop,
+            AvatarActionLayerCoordinator.PreparedFrameClock clock,
+            int lastAnimationElapsedMs,
+            int lastClockUpdateTimeMs,
+            double lastCharacterPositionY)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            if (!_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter))
+            {
+                ownerCounter = new ActionLayerOwnerCounterState();
+                _actionLayerOwnerCounters[ownerName] = ownerCounter;
+            }
+
+            ownerCounter.ActionName = actionName;
+            ownerCounter.ActionSpeedDegree = actionSpeedDegree;
+            ownerCounter.WalkSpeed = walkSpeed;
+            ownerCounter.HeldActionFrameDelay = heldActionFrameDelay;
+            ownerCounter.AllowLoop = allowLoop;
+            ownerCounter.FrameIndex = clock.FrameIndex;
+            ownerCounter.FrameRemainingMs = clock.FrameRemainingMs;
+            ownerCounter.LastAnimationElapsedMs = lastAnimationElapsedMs;
+            ownerCounter.LastClockUpdateTimeMs = lastClockUpdateTimeMs;
+            ownerCounter.LastCharacterPositionY = lastCharacterPositionY;
+        }
+
+        private static string ResolveShadowPartnerActionOwnerName(string actionName)
+        {
+            return IsShadowPartnerBlockingAction(actionName)
+                ? ShadowPartnerOneTimeActionOwnerName
+                : ShadowPartnerPersistentActionOwnerName;
+        }
+
+        private static string ResolveMirrorImageActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                ? actionName
+                : CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private static string ResolveMeleeAfterImageActionName(int skillId, string actionName)
+        {
+            if (!string.IsNullOrWhiteSpace(actionName))
+            {
+                return actionName;
+            }
+
+            return $"skill:{Math.Max(0, skillId)}";
+        }
+
+        private static string ResolveAuxiliaryAvatarEffectActionOwnerName(
+            SkillAvatarEffectPlane plane,
+            bool oneTime,
+            string explicitOwnerName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitOwnerName))
+            {
+                return explicitOwnerName;
+            }
+
+            return plane switch
+            {
+                SkillAvatarEffectPlane.BehindCharacter => oneTime
+                    ? AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectBehindCharacterPersistentActionOwnerName,
+                SkillAvatarEffectPlane.UnderFace => oneTime
+                    ? AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName,
+                SkillAvatarEffectPlane.OverFace => oneTime
+                    ? AuxiliaryAvatarEffectOverFaceOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectOverFacePersistentActionOwnerName,
+                _ => oneTime
+                    ? AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName
+            };
+        }
+
+        private static bool IsAuxiliaryAvatarEffectOneTime(SkillAnimation animation)
+        {
+            return animation?.Loop != true;
+        }
+
+        private static string ResolveAuxiliaryAvatarEffectActionName(int skillId, SkillAnimation animation)
+        {
+            if (!string.IsNullOrWhiteSpace(animation?.Name))
+            {
+                return animation.Name;
+            }
+
+            return $"skill:{Math.Max(0, skillId)}";
+        }
+
+        private static bool IsAuxiliaryLayerOwnerCounterContextMatch(
+            AuxiliaryLayerOwnerCounterState ownerCounter,
+            int skillId,
+            string actionName,
+            bool facingRight)
+        {
+            return ownerCounter != null
+                   && ownerCounter.SkillId == skillId
+                   && ownerCounter.FacingRight == facingRight
+                   && string.Equals(ownerCounter.ActionName, actionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryRestoreAuxiliaryLayerOwnerCounter(
+            string ownerName,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int animationElapsedMs,
+            int replayGateMs = 0,
+            int currentTime = int.MinValue)
+        {
+            animationElapsedMs = 0;
+            if (string.IsNullOrWhiteSpace(ownerName)
+                || !_auxiliaryLayerOwnerCounters.TryGetValue(ownerName, out AuxiliaryLayerOwnerCounterState ownerCounter)
+                || !IsAuxiliaryLayerOwnerCounterContextMatch(ownerCounter, skillId, actionName, facingRight))
+            {
+                return false;
+            }
+
+            if (ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(ownerCounter, replayGateMs, currentTime))
+            {
+                return false;
+            }
+
+            animationElapsedMs = Math.Max(0, ownerCounter.AnimationElapsedMs);
+            return true;
+        }
+
+        private static bool ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(
+            AuxiliaryLayerOwnerCounterState ownerCounter,
+            int replayGateMs,
+            int currentTime)
+        {
+            return replayGateMs > 0
+                   && currentTime != int.MinValue
+                   && ownerCounter?.LastUpdateTimeMs != int.MinValue
+                   && ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, ownerCounter.LastUpdateTimeMs) >= replayGateMs;
+        }
+
+        private void StoreAuxiliaryLayerOwnerCounter(
+            string ownerName,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            int animationElapsedMs,
+            int lastUpdateTimeMs)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            if (!_auxiliaryLayerOwnerCounters.TryGetValue(ownerName, out AuxiliaryLayerOwnerCounterState ownerCounter))
+            {
+                ownerCounter = new AuxiliaryLayerOwnerCounterState();
+                _auxiliaryLayerOwnerCounters[ownerName] = ownerCounter;
+            }
+
+            ownerCounter.SkillId = skillId;
+            ownerCounter.ActionName = actionName;
+            ownerCounter.FacingRight = facingRight;
+            ownerCounter.AnimationElapsedMs = Math.Max(0, animationElapsedMs);
+            ownerCounter.LastUpdateTimeMs = lastUpdateTimeMs;
+        }
+
+        private bool TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            int skillId,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            bool facingRight,
+            out int animationStartTime,
+            string explicitOwnerName = null,
+            int replayGateMs = 0)
+        {
+            animationStartTime = currentTime;
+            if (skillId <= 0
+                || animation?.Frames == null
+                || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            string ownerName = ResolveAuxiliaryAvatarEffectActionOwnerName(
+                plane,
+                IsAuxiliaryAvatarEffectOneTime(animation),
+                explicitOwnerName);
+            string actionName = ResolveAuxiliaryAvatarEffectActionName(skillId, animation);
+            if (!TryRestoreAuxiliaryLayerOwnerCounter(
+                    ownerName,
+                    skillId,
+                    actionName,
+                    facingRight,
+                    out int animationElapsedMs,
+                    replayGateMs,
+                    currentTime))
+            {
+                return false;
+            }
+
+            animationStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
+            return true;
+        }
+
+        private void StoreAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            int skillId,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            bool facingRight,
+            int animationStartTime,
+            string explicitOwnerName = null)
+        {
+            if (skillId <= 0
+                || animation?.Frames == null
+                || animation.Frames.Count == 0)
+            {
+                return;
+            }
+
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, animationStartTime);
+            StoreAuxiliaryLayerOwnerCounter(
+                ResolveAuxiliaryAvatarEffectActionOwnerName(
+                    plane,
+                    IsAuxiliaryAvatarEffectOneTime(animation),
+                    explicitOwnerName),
+                skillId,
+                ResolveAuxiliaryAvatarEffectActionName(skillId, animation),
+                facingRight,
+                animationElapsedMs,
+                currentTime);
+        }
+
+        private static int ResolveClientOwnedAvatarEffectTickElapsedMs(int currentTime, int startTime)
+        {
+            if (currentTime == int.MinValue || startTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            long elapsed = unchecked((uint)(currentTime - startTime));
+            return elapsed >= int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
+        }
+
+        private static int ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+            int currentTime,
+            int elapsedMs)
+        {
+            return unchecked(currentTime - Math.Max(0, elapsedMs));
+        }
+
+        private static int ResolveActionLayerTickElapsedMs(int currentTime, int lastUpdateTime)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, lastUpdateTime);
+        }
+
+        internal static int ResolveActionLayerTickElapsedMsForTesting(int currentTime, int lastUpdateTime)
+        {
+            return ResolveActionLayerTickElapsedMs(currentTime, lastUpdateTime);
+        }
+
+        internal static (int BodyElapsedMs, int TamingMobElapsedMs) ResolveMountedActionLayerOwnerElapsedMsForTesting(
+            int currentTime,
+            int bodyLastUpdateTime,
+            int tamingMobLastUpdateTime)
+        {
+            return (
+                ResolveActionLayerTickElapsedMs(currentTime, bodyLastUpdateTime),
+                ResolveActionLayerTickElapsedMs(currentTime, tamingMobLastUpdateTime));
+        }
+
+        internal static int ResolveClientOwnedAvatarEffectTickElapsedMsForTesting(int currentTime, int startTime)
+        {
+            return ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, startTime);
+        }
+
+        internal static int ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsedForTesting(
+            int currentTime,
+            int elapsedMs)
+        {
+            return ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(currentTime, elapsedMs);
+        }
+
+        internal static bool ShouldRestartAuxiliaryLayerOwnerCounterForReplayGateForTesting(
+            int replayGateMs,
+            int currentTime,
+            int lastUpdateTimeMs)
+        {
+            return ShouldRestartAuxiliaryLayerOwnerCounterForReplayGate(
+                new AuxiliaryLayerOwnerCounterState { LastUpdateTimeMs = lastUpdateTimeMs },
+                replayGateMs,
+                currentTime);
+        }
+
+        private static bool TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(
+            TransientSkillAvatarEffectState effectState,
+            out SkillAnimation animation,
+            out SkillAvatarEffectPlane plane)
+        {
+            animation = null;
+            plane = SkillAvatarEffectPlane.OverCharacter;
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            animation = effectState.IsFinishing ? effectState.FinishAnimation : effectState.Animation;
+            plane = effectState.IsFinishing ? effectState.FinishPlane : effectState.Plane;
+            if (animation?.Frames != null && animation.Frames.Count > 0)
+            {
+                return true;
+            }
+
+            animation = effectState.IsFinishing ? effectState.FinishSecondaryAnimation : effectState.SecondaryAnimation;
+            plane = effectState.IsFinishing ? effectState.FinishSecondaryPlane : effectState.SecondaryPlane;
+            return animation?.Frames != null && animation.Frames.Count > 0;
+        }
+
+        private bool TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            TransientSkillAvatarEffectState effectState,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            return effectState != null
+                   && TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane)
+                   && TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+                       currentTime,
+                       effectState.SkillId,
+                       animation,
+                       plane,
+                       effectState.FacingRightOverride ?? FacingRight,
+                       out animationStartTime,
+                        effectState.ClientLayerOwnerName);
+        }
+
+        private void StoreTransientAuxiliaryAvatarEffectOwnerCounter(TransientSkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null
+                || !TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane))
+            {
+                return;
+            }
+
+            StoreAuxiliaryAvatarEffectOwnerCounter(
+                currentTime,
+                effectState.SkillId,
+                animation,
+                plane,
+                effectState.FacingRightOverride ?? FacingRight,
+                effectState.AnimationStartTime,
+                effectState.ClientLayerOwnerName);
+        }
+
+        private static bool TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(
+            SkillAvatarEffectState effectState,
+            out SkillAnimation animation,
+            out SkillAvatarEffectPlane plane)
+        {
+            animation = null;
+            plane = SkillAvatarEffectPlane.OverCharacter;
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            PersistentSkillAvatarEffectRenderSelection selection = ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                effectState.IsFinishing,
+                effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                effectState.HideOnLadderOrRope,
+                effectState.LadderOverlayAnimation,
+                effectState.GroundOverlayAnimation,
+                effectState.GroundOverlaySecondaryAnimation,
+                effectState.GroundUnderFaceAnimation,
+                effectState.GroundUnderFaceSecondaryAnimation,
+                effectState.LadderOverlayFinishAnimation,
+                effectState.GroundOverlayFinishAnimation,
+                effectState.GroundUnderFaceFinishAnimation);
+
+            if (selection.OverlayAnimation?.Frames != null && selection.OverlayAnimation.Frames.Count > 0)
+            {
+                animation = selection.OverlayAnimation;
+                plane = ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                    selection.OverlayAnimation,
+                    selection.OverlayUsesBehindCharacterPlane);
+                return true;
+            }
+
+            if (selection.OverlaySecondaryAnimation?.Frames != null && selection.OverlaySecondaryAnimation.Frames.Count > 0)
+            {
+                animation = selection.OverlaySecondaryAnimation;
+                plane = ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                    selection.OverlaySecondaryAnimation,
+                    selection.OverlayUsesBehindCharacterPlane);
+                return true;
+            }
+
+            if (selection.UnderFaceAnimation?.Frames != null && selection.UnderFaceAnimation.Frames.Count > 0)
+            {
+                animation = selection.UnderFaceAnimation;
+                plane = SkillAvatarEffectPlane.UnderFace;
+                return true;
+            }
+
+            if (selection.UnderFaceSecondaryAnimation?.Frames != null && selection.UnderFaceSecondaryAnimation.Frames.Count > 0)
+            {
+                animation = selection.UnderFaceSecondaryAnimation;
+                plane = SkillAvatarEffectPlane.UnderFace;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static SkillAvatarEffectPlane ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+            SkillAnimation animation,
+            bool overlayUsesBehindCharacterPlane)
+        {
+            if (overlayUsesBehindCharacterPlane)
+            {
+                return SkillAvatarEffectPlane.BehindCharacter;
+            }
+
+            if (ClientOwnedAvatarEffectParity.PrefersOverFaceAvatarEffectPlane(animation))
+            {
+                return SkillAvatarEffectPlane.OverFace;
+            }
+
+            return SkillAvatarEffectPlane.OverCharacter;
+        }
+
+        private bool TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            SkillAvatarEffectState effectState,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            return effectState != null
+                   && TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane)
+                   && TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+                       currentTime,
+                       effectState.SkillId,
+                       animation,
+                       plane,
+                       FacingRight,
+                       out animationStartTime,
+                        effectState.ClientLayerOwnerName,
+                       effectState.ClientLayerReplayGateMs);
+        }
+
+        private void StorePersistentAuxiliaryAvatarEffectOwnerCounter(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null
+                || !TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane))
+            {
+                return;
+            }
+
+            StoreAuxiliaryAvatarEffectOwnerCounter(
+                currentTime,
+                effectState.SkillId,
+                animation,
+                plane,
+                FacingRight,
+                effectState.AnimationStartTime,
+                effectState.ClientLayerOwnerName);
+        }
+
+        private bool TryRestoreShadowPartnerActionOwnerCounter(
+            int currentTime,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            bool forceRestart,
+            out int actionStartTime)
+        {
+            actionStartTime = currentTime;
+            if (forceRestart
+                || skillId <= 0
+                || string.IsNullOrWhiteSpace(actionName)
+                || !TryRestoreAuxiliaryLayerOwnerCounter(
+                    ResolveShadowPartnerActionOwnerName(actionName),
+                    skillId,
+                    actionName,
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            actionStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
+            return true;
+        }
+
+        private void StoreShadowPartnerActionOwnerCounter(int currentTime)
+        {
+            if (_activeShadowPartner == null
+                || _activeShadowPartner.SkillId <= 0
+                || string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName))
+            {
+                return;
+            }
+
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
+            StoreAuxiliaryLayerOwnerCounter(
+                ResolveShadowPartnerActionOwnerName(_activeShadowPartner.CurrentActionName),
+                _activeShadowPartner.SkillId,
+                _activeShadowPartner.CurrentActionName,
+                _activeShadowPartner.CurrentFacingRight,
+                animationElapsedMs,
+                currentTime);
+        }
+
+        private bool TryRestoreMirrorImageOwnerCounter(
+            int currentTime,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int startTime)
+        {
+            startTime = currentTime;
+            if (skillId <= 0
+                || !TryRestoreAuxiliaryLayerOwnerCounter(
+                    MirrorImagePersistentActionOwnerName,
+                    skillId,
+                    ResolveMirrorImageActionName(actionName),
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            startTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
+            return true;
+        }
+
+        private void StoreMirrorImageOwnerCounter(int currentTime)
+        {
+            if (_activeMirrorImage == null || _activeMirrorImage.SkillId <= 0)
+            {
+                return;
+            }
+
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeMirrorImage.StartTime);
+            StoreAuxiliaryLayerOwnerCounter(
+                MirrorImagePersistentActionOwnerName,
+                _activeMirrorImage.SkillId,
+                ResolveMirrorImageActionName(_activeMirrorImage.ObservedPlayerActionName),
+                _activeMirrorImage.ObservedPlayerFacingRight,
+                animationElapsedMs,
+                currentTime);
+        }
+
+        private bool TryRestoreMeleeAfterImageOwnerCounter(
+            int currentTime,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            if (skillId <= 0
+                || !TryRestoreAuxiliaryLayerOwnerCounter(
+                    MeleeAfterImageOneTimeActionOwnerName,
+                    skillId,
+                    ResolveMeleeAfterImageActionName(skillId, actionName),
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            animationStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
+            return true;
+        }
+
+        private void StoreMeleeAfterImageOwnerCounter(int currentTime)
+        {
+            if (_activeMeleeAfterImage == null || _activeMeleeAfterImage.SkillId <= 0)
+            {
+                return;
+            }
+
+            StoreAuxiliaryLayerOwnerCounter(
+                MeleeAfterImageOneTimeActionOwnerName,
+                _activeMeleeAfterImage.SkillId,
+                ResolveMeleeAfterImageActionName(_activeMeleeAfterImage.SkillId, _activeMeleeAfterImage.ActionName),
+                _activeMeleeAfterImage.FacingRight,
+                ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime),
+                currentTime);
+        }
+
+        private bool TryResolveMountedOwnerClock(
+            string ownerName,
+            int fallbackFrameIndex,
+            int fallbackFrameRemainingMs,
+            out AvatarActionLayerCoordinator.PreparedFrameClock clock)
+        {
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(fallbackFrameIndex, fallbackFrameRemainingMs);
+            if (string.IsNullOrWhiteSpace(ownerName)
+                || !_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter)
+                || ownerCounter == null)
+            {
+                return false;
+            }
+
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(ownerCounter.FrameIndex, ownerCounter.FrameRemainingMs);
+            return true;
+        }
+
+        private void SyncMountedActionLayerStateClockFromOwnerCounters(MountedActionLayerState mountedActionLayerState)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return;
+            }
+
+            if (_actionLayerOwnerCounters.TryGetValue(mountedActionLayerState.CurrentBodyOwnerName ?? string.Empty, out ActionLayerOwnerCounterState bodyOwner)
+                && bodyOwner != null)
+            {
+                mountedActionLayerState.BodyFrameIndex = bodyOwner.FrameIndex;
+                mountedActionLayerState.BodyFrameRemainingMs = bodyOwner.FrameRemainingMs;
+                mountedActionLayerState.BodyLastAnimationElapsedMs = bodyOwner.LastAnimationElapsedMs;
+                mountedActionLayerState.BodyLastClockUpdateTimeMs = bodyOwner.LastClockUpdateTimeMs;
+                mountedActionLayerState.BodyLastCharacterPositionY = bodyOwner.LastCharacterPositionY;
+            }
+
+            if (_actionLayerOwnerCounters.TryGetValue(mountedActionLayerState.CurrentTamingMobOwnerName ?? string.Empty, out ActionLayerOwnerCounterState tamingMobOwner)
+                && tamingMobOwner != null)
+            {
+                mountedActionLayerState.TamingMobFrameIndex = tamingMobOwner.FrameIndex;
+                mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobOwner.FrameRemainingMs;
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs = tamingMobOwner.LastAnimationElapsedMs;
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs = tamingMobOwner.LastClockUpdateTimeMs;
+                mountedActionLayerState.TamingMobLastCharacterPositionY = tamingMobOwner.LastCharacterPositionY;
+            }
+        }
+
+        private bool ShouldCurrentAvatarActionLayerLoop()
+        {
+            return State != PlayerState.Attacking;
+        }
+
+        private void UpdateMountedActionLayerFrameClock(MountedActionLayerState mountedActionLayerState, int currentTime)
+        {
+            if (mountedActionLayerState == null || Assembler == null)
+            {
+                return;
+            }
+
+            int animationElapsedMs = GetRenderAnimationTime(currentTime);
+            SyncMountedActionLayerStateClockFromOwnerCounters(mountedActionLayerState);
+            int bodyElapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
+                animationElapsedMs,
+                mountedActionLayerState.BodyLastAnimationElapsedMs);
+            int tamingMobElapsedSinceLastUpdateMs = ResolveActionLayerTickElapsedMs(
+                animationElapsedMs,
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs);
+            if (bodyElapsedSinceLastUpdateMs <= 0 && tamingMobElapsedSinceLastUpdateMs <= 0)
+            {
+                mountedActionLayerState.BodyLastClockUpdateTimeMs = currentTime;
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs = currentTime;
+                mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+                StoreMountedActionLayerOwnerCounters(mountedActionLayerState);
+                return;
+            }
+
+            bool stalledBodyClock = TryStallPositionGatedMountedActionLayerClock(
+                mountedActionLayerState,
+                advanceBodyClock: true);
+            bool stalledTamingMobClock = TryStallPositionGatedMountedActionLayerClock(
+                mountedActionLayerState,
+                advanceBodyClock: false);
+            if (!stalledBodyClock && bodyElapsedSinceLastUpdateMs > 0)
+            {
+                if (!mountedActionLayerState.CharacterOneTimeActionFrameHeld)
+                {
+                    AdvanceMountedActionLayerClockOwner(
+                        mountedActionLayerState,
+                        advanceBodyClock: true,
+                        ref bodyElapsedSinceLastUpdateMs);
+                }
+            }
+
+            if (!stalledTamingMobClock && tamingMobElapsedSinceLastUpdateMs > 0)
+            {
+                AdvanceMountedActionLayerClockOwner(
+                    mountedActionLayerState,
+                    advanceBodyClock: false,
+                    ref tamingMobElapsedSinceLastUpdateMs);
+            }
+
+            double currentY = Physics?.Y ?? mountedActionLayerState.LastCharacterPositionY;
+            mountedActionLayerState.BodyLastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.BodyLastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.BodyLastCharacterPositionY = currentY;
+            mountedActionLayerState.TamingMobLastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.TamingMobLastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.TamingMobLastCharacterPositionY = currentY;
+            mountedActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.LastCharacterPositionY = currentY;
+            StoreMountedActionLayerOwnerCounters(mountedActionLayerState);
+        }
+
+        private void StoreMountedActionLayerOwnerCounters(MountedActionLayerState mountedActionLayerState)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return;
+            }
+
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                mountedActionLayerState.CurrentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.BodyFrameIndex,
+                    mountedActionLayerState.BodyFrameRemainingMs),
+                mountedActionLayerState.BodyLastAnimationElapsedMs,
+                mountedActionLayerState.BodyLastClockUpdateTimeMs,
+                mountedActionLayerState.BodyLastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                mountedActionLayerState.CurrentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.TamingMobFrameIndex,
+                    mountedActionLayerState.TamingMobFrameRemainingMs),
+                mountedActionLayerState.TamingMobLastAnimationElapsedMs,
+                mountedActionLayerState.TamingMobLastClockUpdateTimeMs,
+                mountedActionLayerState.TamingMobLastCharacterPositionY);
+        }
+
+        private bool TryStallPositionGatedMountedActionLayerClock(
+            MountedActionLayerState mountedActionLayerState,
+            bool advanceBodyClock)
+        {
+            if (mountedActionLayerState == null || Physics == null)
+            {
+                return false;
+            }
+
+            string actionName = advanceBodyClock
+                ? mountedActionLayerState.CurrentBodyActionName
+                : mountedActionLayerState.CurrentTamingMobActionName;
+            double lastCharacterPositionY = advanceBodyClock
+                ? mountedActionLayerState.BodyLastCharacterPositionY
+                : mountedActionLayerState.TamingMobLastCharacterPositionY;
+            if (!AvatarActionLayerCoordinator.ShouldStallPositionGatedFrameUpdate(
+                    actionName,
+                    lastCharacterPositionY,
+                    Physics.Y))
+            {
+                return false;
+            }
+
+            if (advanceBodyClock)
+            {
+                mountedActionLayerState.BodyFrameRemainingMs = 0;
+            }
+            else
+            {
+                mountedActionLayerState.TamingMobFrameRemainingMs = 0;
+            }
+
+            return true;
+        }
+
+        private void AdvanceMountedActionLayerClockOwner(
+            MountedActionLayerState mountedActionLayerState,
+            bool advanceBodyClock,
+            ref int elapsedSinceLastUpdateMs)
+        {
+            if (mountedActionLayerState == null || Assembler == null)
+            {
+                return;
+            }
+
+            TryResolveMountedOwnerClock(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                mountedActionLayerState.BodyFrameIndex,
+                mountedActionLayerState.BodyFrameRemainingMs,
+                out AvatarActionLayerCoordinator.PreparedFrameClock bodyClock);
+            TryResolveMountedOwnerClock(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                mountedActionLayerState.TamingMobFrameIndex,
+                mountedActionLayerState.TamingMobFrameRemainingMs,
+                out AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock);
+
+            string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName ?? mountedActionLayerState.ActionName;
+            string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName ?? mountedActionLayerState.ActionName;
+            bool allowLoop = !IsMountedOneTimeLayerActive(mountedActionLayerState, advanceBodyClock);
+            if (!Assembler.TryAdvanceMountedActionLayerFrameClock(
+                    currentBodyActionName,
+                    ref bodyClock,
+                    currentTamingMobActionName,
+                    ref tamingMobClock,
+                    advanceBodyClock,
+                    allowLoop,
+                    elapsedSinceLastUpdateMs,
+                    out bool completedAction,
+                    out int remainingElapsedMs))
+            {
+                return;
+            }
+
+            mountedActionLayerState.BodyFrameIndex = bodyClock.FrameIndex;
+            mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
+            mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
+            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                currentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                bodyClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                currentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                tamingMobClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+
+            if (!completedAction)
+            {
+                return;
+            }
+
+            string persistentActionName = advanceBodyClock
+                ? mountedActionLayerState.PersistentBodyActionName
+                : mountedActionLayerState.PersistentTamingMobActionName;
+            if (string.IsNullOrWhiteSpace(persistentActionName))
+            {
+                return;
+            }
+
+            if (advanceBodyClock)
+            {
+                if (AvatarActionLayerCoordinator.ShouldKeepCompletedCharacterOneTimeActionFrame(
+                        mountedActionLayerState.CharacterOneTimeActionName ?? currentBodyActionName))
+                {
+                    mountedActionLayerState.CharacterOneTimeActionName = null;
+                    mountedActionLayerState.CharacterOneTimeActionFrameHeld = true;
+                    StoreActionLayerOwnerCounter(
+                        mountedActionLayerState.CurrentBodyOwnerName,
+                        currentBodyActionName,
+                        mountedActionLayerState.ActionSpeedDegree,
+                        mountedActionLayerState.WalkSpeed,
+                        mountedActionLayerState.HeldActionFrameDelay,
+                        allowLoop: false,
+                        bodyClock,
+                        mountedActionLayerState.LastAnimationElapsedMs,
+                        mountedActionLayerState.LastClockUpdateTimeMs,
+                        mountedActionLayerState.LastCharacterPositionY);
+                    elapsedSinceLastUpdateMs = remainingElapsedMs;
+                    return;
+                }
+
+                mountedActionLayerState.CharacterOneTimeActionName = null;
+                mountedActionLayerState.CurrentBodyActionName = persistentActionName;
+                mountedActionLayerState.CurrentBodyOwnerName = mountedActionLayerState.PersistentBodyOwnerName;
+            }
+            else
+            {
+                mountedActionLayerState.TamingMobOneTimeActionName = null;
+                mountedActionLayerState.CurrentTamingMobActionName = persistentActionName;
+                mountedActionLayerState.CurrentTamingMobOwnerName = mountedActionLayerState.PersistentTamingMobOwnerName;
+                _mountedTamingMobOneTimeActionName = null;
+            }
+
+            if (!Assembler.TryCreateMountedActionLayerFrameClocks(
+                    mountedActionLayerState.CurrentBodyActionName,
+                    mountedActionLayerState.CurrentTamingMobActionName,
+                    out bodyClock,
+                    out tamingMobClock))
+            {
+                return;
+            }
+
+            if (advanceBodyClock)
+            {
+                tamingMobClock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.TamingMobFrameIndex,
+                    mountedActionLayerState.TamingMobFrameRemainingMs);
+            }
+            else
+            {
+                bodyClock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.BodyFrameIndex,
+                    mountedActionLayerState.BodyFrameRemainingMs);
+            }
+
+            mountedActionLayerState.BodyFrameIndex = bodyClock.FrameIndex;
+            mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
+            mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
+            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                mountedActionLayerState.CurrentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                bodyClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                mountedActionLayerState.CurrentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                tamingMobClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            elapsedSinceLastUpdateMs = remainingElapsedMs;
+            if (remainingElapsedMs <= 0)
+            {
+                return;
+            }
+
+            AdvanceMountedActionLayerClockOwner(
+                mountedActionLayerState,
+                advanceBodyClock,
+                ref elapsedSinceLastUpdateMs);
+        }
+
+        private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
+        {
+            return TryResolveMountedTransitionCurrentFrame(currentTime, out frame, out _);
+        }
+
+        private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame, out int currentFrameIndex)
+        {
+            frame = null;
+            currentFrameIndex = -1;
+            if (Assembler == null
+                || State != PlayerState.Attacking
+                || _sustainedSkillAnimation)
+            {
+                return false;
+            }
+
+            MountedActionLayerState mountedActionLayerState = GetMountedActionLayerState();
+            if (mountedActionLayerState == null)
+            {
+                return false;
+            }
+
+            UpdateMountedActionLayerFrameClock(mountedActionLayerState, currentTime);
+            string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName;
+            string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName;
+            if (string.IsNullOrWhiteSpace(currentBodyActionName)
+                || string.IsNullOrWhiteSpace(currentTamingMobActionName))
+            {
+                return false;
+            }
+
+            frame = Assembler.GetMountedFrameAtIndices(
+                currentBodyActionName,
+                mountedActionLayerState.BodyFrameIndex,
+                currentTamingMobActionName,
+                mountedActionLayerState.TamingMobFrameIndex);
+            if (frame == null)
+            {
+                return false;
+            }
+
+            currentFrameIndex = mountedActionLayerState.BodyFrameIndex;
+            return true;
+        }
+
+        private string ResolveMountedTransitionPersistentBodyActionName()
+        {
+            if (Physics == null)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Stand1);
+            }
+
+            if (Physics.IsOnLadder())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Ladder);
+            }
+
+            if (Physics.IsOnRope())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Rope);
+            }
+
+            if (Physics.IsInSwimArea && !Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Swim);
+            }
+
+            if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Fly);
+            }
+
+            if (!Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Jump);
+            }
+
+            return CharacterPart.GetActionString(ResolveClientStandAction());
+        }
+
+        private bool IsMountedOneTimeLayerActive(
+            MountedActionLayerState mountedActionLayerState,
+            bool bodyLayer)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return false;
+            }
+
+            string oneTimeActionName = bodyLayer
+                ? mountedActionLayerState.CharacterOneTimeActionName
+                : _mountedTamingMobOneTimeActionName ?? mountedActionLayerState.TamingMobOneTimeActionName;
+            return AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(oneTimeActionName);
+        }
+
+        private void UpdateFaceExpression(int currentTime)
+        {
+            string expressionName = "default";
+
+            bool packetOwnedEmotionActive = TryGetActivePacketOwnedEmotionName(currentTime, out string packetOwnedEmotionName);
+            bool hitExpressionActive = State == PlayerState.Hit || currentTime < _hitExpressionEndTime;
+            if (!hitExpressionActive)
+            {
+                _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            }
+
+            if (ShouldUsePacketOwnedHitFaceExpression(
+                    hitExpressionActive,
+                    _hitExpressionSuppressedByPacketOwnedItemOption,
+                    packetOwnedEmotionActive,
+                    _hitStateStartTime,
+                    _packetOwnedEmotionAppliedAt))
+            {
+                expressionName = "hit";
+            }
+            else if (packetOwnedEmotionActive)
+            {
+                expressionName = packetOwnedEmotionName;
+            }
+            else if (State != PlayerState.Dead)
+            {
+                if (_blinkExpressionEndTime > 0 && currentTime >= _blinkExpressionEndTime)
+                {
+                    _blinkExpressionEndTime = 0;
+                    ScheduleNextBlink(currentTime);
+                }
+
+                if (_blinkExpressionEndTime == 0 && currentTime >= _nextBlinkTime)
+                {
+                    _blinkExpressionEndTime = currentTime + FACE_BLINK_DURATION_MS;
+                }
+
+                if (_blinkExpressionEndTime > 0 && currentTime < _blinkExpressionEndTime)
+                {
+                    expressionName = "blink";
+                }
+            }
+
+            CurrentFaceExpressionName = expressionName;
+            if (Assembler != null)
+            {
+                Assembler.FaceExpressionName = expressionName;
+            }
+        }
+
+        public bool TryApplyPacketOwnedEmotion(int emotionId, int durationMs, bool byItemOption, int currentTime, out string message)
+        {
+            message = null;
+
+            if (!PacketOwnedAvatarEmotionResolver.TryResolveEmotionName(emotionId, out string emotionName))
+            {
+                message = $"Packet-owned emotion id {emotionId} is not supported by the simulator emotion catalog.";
+                return false;
+            }
+
+            SkillAnimation emotionEffectAnimation = LoadPacketOwnedEmotionEffectAnimation(emotionName);
+            int faceLookDuration = 0;
+            if (Assembler?.TryGetFaceLookDuration(emotionName, out int resolvedFaceLookDuration) == true)
+            {
+                faceLookDuration = resolvedFaceLookDuration;
+            }
+
+            int resolvedDurationMs = ResolvePacketOwnedEmotionDuration(
+                durationMs,
+                byItemOption,
+                emotionEffectAnimation?.TotalDuration ?? 0,
+                faceLookDuration,
+                out bool usedFaceLookDurationFallback);
+            _packetOwnedEmotionByItemOption = byItemOption;
+
+            if (string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                    emotionId,
+                    emotionName,
+                    0,
+                    currentTime,
+                    0,
+                    byItemOption);
+                ResetPacketOwnedEmotionState(clearVisualEffect: true);
+                message = "Cleared packet-owned avatar emotion state.";
+                return true;
+            }
+
+            if (ShouldSuppressPacketOwnedEmotionApplication(emotionId))
+            {
+                _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                    emotionId,
+                    emotionName,
+                    resolvedDurationMs,
+                    currentTime,
+                    resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0,
+                    byItemOption);
+                message = HasActiveMorphTransform
+                    ? $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because a morph transform is active."
+                    : $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because the current client raw action suppresses blink emotion while the one-time action is active.";
+                return true;
+            }
+
+            _packetOwnedEmotionId = emotionId;
+            _packetOwnedEmotionDurationMs = resolvedDurationMs;
+            _packetOwnedEmotionAppliedAt = currentTime;
+            _packetOwnedEmotionName = emotionName;
+            _packetOwnedEmotionEndTime = resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0;
+            _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                emotionId,
+                emotionName,
+                resolvedDurationMs,
+                currentTime,
+                _packetOwnedEmotionEndTime,
+                byItemOption);
+
+            if (Assembler != null)
+            {
+                Assembler.FaceExpressionName = emotionName;
+            }
+
+            if (emotionEffectAnimation?.Frames.Count > 0 == true)
+            {
+                ApplyTransientSkillAvatarEffect(PacketOwnedEmotionEffectSkillId, emotionEffectAnimation, null, currentTime);
+            }
+            else
+            {
+                ClearTransientSkillAvatarEffect(PacketOwnedEmotionEffectSkillId);
+            }
+
+            string durationText = resolvedDurationMs > 0
+                ? $"{resolvedDurationMs} ms"
+                : "until cleared";
+            if (usedFaceLookDurationFallback)
+            {
+                durationText += " (face-look fallback)";
+            }
+            string sourceText = byItemOption ? "item-option" : "packet";
+            message = $"Applied packet-owned avatar emotion '{emotionName}' ({emotionId}) for {durationText} via {sourceText}.";
+            return true;
+        }
+
+        internal static int ResolvePacketOwnedEmotionDuration(
+            int durationMs,
+            bool byItemOption,
+            int emotionEffectDurationMs,
+            int faceLookDurationMs,
+            out bool usedFaceLookDurationFallback)
+        {
+            usedFaceLookDurationFallback = false;
+            _ = byItemOption;
+
+            int resolvedDurationMs = Math.Max(0, durationMs);
+            if (resolvedDurationMs > 0)
+            {
+                return resolvedDurationMs;
+            }
+
+            if (emotionEffectDurationMs > 0)
+            {
+                return emotionEffectDurationMs;
+            }
+
+            if (faceLookDurationMs > 0)
+            {
+                usedFaceLookDurationFallback = true;
+                return faceLookDurationMs;
+            }
+
+            return 0;
+        }
+
+        internal static bool ShouldUsePacketOwnedHitFaceExpression(
+            bool hitExpressionActive,
+            bool hitExpressionSuppressedByItemOption,
+            bool packetOwnedEmotionActive,
+            int hitExpressionStartedAt,
+            int packetOwnedEmotionAppliedAt)
+        {
+            if (!hitExpressionActive || hitExpressionSuppressedByItemOption)
+            {
+                return false;
+            }
+
+            return !packetOwnedEmotionActive || hitExpressionStartedAt >= packetOwnedEmotionAppliedAt;
+        }
+
+        private bool ShouldSuppressPacketOwnedEmotionApplication(int emotionId)
+        {
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ShouldSuppressPacketOwnedEmotionApplication(
+                HasActiveMorphTransform,
+                emotionId,
+                rawActionCode,
+                _forcedActionName,
+                CurrentActionName,
+                CharacterPart.GetActionString(CurrentAction));
+        }
+
+        internal static bool ShouldSuppressPacketOwnedEmotionApplication(
+            bool hasActiveMorphTransform,
+            int emotionId,
+            int? rawActionCode,
+            params string[] actionNames)
+        {
+            if (hasActiveMorphTransform)
+            {
+                return true;
+            }
+
+            if (emotionId != BlinkEmotionId)
+            {
+                return false;
+            }
+
+            if (rawActionCode.HasValue && PacketOwnedEmotionSuppressedRawActionCodes.Contains(rawActionCode.Value))
+            {
+                return true;
+            }
+
+            if (actionNames == null || actionNames.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionNames.Length; i++)
+            {
+                string actionName = actionNames[i];
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && PacketOwnedEmotionSuppressedActionNames.Contains(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static HashSet<string> BuildPacketOwnedEmotionSuppressedActionNames()
+        {
+            var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int rawActionCode in PacketOwnedEmotionSuppressedRawActionCodes)
+            {
+                if (CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    actionNames.Add(actionName);
+                }
+            }
+
+            return actionNames;
+        }
+
+        internal bool TryGetPacketOwnedEmotionState(int currentTime, out PacketOwnedEmotionState state)
+        {
+            state = default;
+            if (!TryGetActivePacketOwnedEmotionName(currentTime, out _))
+            {
+                return false;
+            }
+
+            state = new PacketOwnedEmotionState(
+                _packetOwnedEmotionId,
+                _packetOwnedEmotionName,
+                _packetOwnedEmotionDurationMs,
+                _packetOwnedEmotionAppliedAt,
+                _packetOwnedEmotionEndTime,
+                _packetOwnedEmotionByItemOption);
+            return true;
+        }
+
+        internal bool TryGetLastPacketOwnedEmotionState(out PacketOwnedEmotionState state)
+        {
+            if (_lastPacketOwnedEmotionState.HasValue)
+            {
+                state = _lastPacketOwnedEmotionState.Value;
+                return true;
+            }
+
+            state = default;
+            return false;
+        }
+
+        public bool TryApplyPacketOwnedRandomEmotion(int areaBuffItemId, int currentTime, out string message)
+        {
+            message = null;
+            if (!PacketOwnedAvatarEmotionResolver.TryResolveRandomEmotion(
+                    areaBuffItemId,
+                    _packetOwnedEmotionRandom.Next(),
+                    out PacketOwnedAvatarEmotionSelection selection,
+                    out string error))
+            {
+                message = error ?? $"Area-buff item {areaBuffItemId} did not resolve a packet-owned random emotion.";
+                return false;
+            }
+
+            if (!TryApplyPacketOwnedEmotion(selection.EmotionId, durationMs: 0, byItemOption: false, currentTime, out string applyMessage))
+            {
+                message = applyMessage;
+                return false;
+            }
+
+            message = $"Resolved area-buff item {areaBuffItemId} to packet-owned emotion '{selection.EmotionName}' ({selection.EmotionId}) with roll {selection.RandomRoll}/{selection.TotalWeight}. {applyMessage}";
+            return true;
+        }
+
+        private void ScheduleNextBlink(int currentTime)
+        {
+            _nextBlinkTime = currentTime + _faceExpressionRandom.Next(FACE_BLINK_MIN_INTERVAL_MS, FACE_BLINK_MAX_INTERVAL_MS + 1);
+        }
+
+        private void RecordMovementSync(int currentTime)
+        {
+            if (!Physics.IsRecordingPath)
+            {
+                Physics.StartPathRecording(currentTime);
+                return;
+            }
+
+            Physics.MakeContinuousMovePath(currentTime);
+        }
+
+        public PlayerMovementSyncSnapshot GetMovementSyncSnapshot(int currentTime, bool flushPath = true)
+        {
+            RecordMovementSync(currentTime);
+
+            PassivePositionSnapshot passivePosition = Physics.MakePassivePositionSnapshot(currentTime);
+            var movePath = flushPath
+                ? Physics.FlushMovePath(currentTime)
+                : Physics.GetMovePathSnapshot(currentTime);
+
+            if (movePath.Count == 0)
+            {
+                movePath = Physics.MakeMovePath(currentTime);
+            }
+
+            if (flushPath && Physics.IsRecordingPath)
+            {
+                Physics.StartPathRecording(currentTime);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
+        }
+
+        public PlayerMovementSyncSnapshot GetMovementSyncSnapshotFromRecordedPath(
+            int currentTime,
+            bool appendLatestState = true)
+        {
+            PassivePositionSnapshot passivePosition = Physics.MakePassivePositionSnapshot(currentTime);
+            var movePath = appendLatestState
+                ? Physics.GetMovePathSnapshot(currentTime)
+                : Physics.GetMovePathPacketSnapshot(currentTime);
+
+            if (movePath.Count == 0)
+            {
+                movePath = Physics.MakeMovePath(currentTime);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
         }
 
         #endregion
@@ -1019,6 +4569,8 @@ namespace HaCreator.MapSimulator.Character
 
         private void StartAttack(int currentTime)
         {
+            PlayerState previousState = State;
+            ClearPortableChair(standUp: false);
             State = PlayerState.Attacking;
             _lastAttackTime = currentTime;
             _animationStartTime = currentTime;
@@ -1026,34 +4578,63 @@ namespace HaCreator.MapSimulator.Character
 
             // Determine attack type based on weapon
             var weapon = Build?.GetWeapon();
-            if (State == PlayerState.Prone)
-            {
-                _currentAttackType = AttackType.ProneStab;
-            }
-            else if (weapon != null)
-            {
-                // Weapon type determines attack animation
-                _currentAttackType = weapon.WeaponType switch
-                {
-                    "bow" or "crossbow" or "gun" => AttackType.Shoot,
-                    "dagger" or "claw" => AttackType.Stab,
-                    _ => AttackType.Swing
-                };
-            }
-            else
-            {
-                _currentAttackType = AttackType.Swing;
-            }
+            _currentAttackType = ResolveClientBasicAttackType(previousState, weapon);
 
             CurrentAction = GetAttackAction();
+            CurrentActionName = CharacterPart.GetActionString(CurrentAction);
+            _forcedActionName = null;
+            _avatarActionLayerState = null;
+            ClearMountedActionLayerState();
+            PlayEffectiveWeaponSfx();
 
             // Trigger hitbox callback on attack frame
             var hitbox = GetAttackHitbox();
             OnAttackHitbox?.Invoke(this, hitbox);
         }
 
+        internal static AttackType ResolveClientBasicAttackType(PlayerState previousState, string weaponType)
+        {
+            if (previousState == PlayerState.Prone)
+            {
+                return AttackType.ProneStab;
+            }
+
+            return ResolveClientBasicAttackType(weaponType);
+        }
+
+        internal static AttackType ResolveClientBasicAttackType(PlayerState previousState, WeaponPart weapon)
+        {
+            if (previousState == PlayerState.Prone)
+            {
+                return AttackType.ProneStab;
+            }
+
+            return weapon?.AttackFrameCount switch
+            {
+                3 or 4 or 9 or 11 or 12 => AttackType.Shoot,
+                _ => ResolveClientBasicAttackType(weapon?.WeaponType)
+            };
+        }
+
+        private static AttackType ResolveClientBasicAttackType(string weaponType)
+        {
+            string normalizedWeaponType = weaponType?.Trim().ToLowerInvariant();
+            return normalizedWeaponType switch
+            {
+                "bow" or "crossbow" or "gun" or "double bowgun" or "cannon" => AttackType.Shoot,
+                "dagger" or "claw" => AttackType.Stab,
+                _ => AttackType.Swing
+            };
+        }
+
         private CharacterAction GetAttackAction()
         {
+            if (_currentAttackType != AttackType.None
+                && Build?.GetEffectiveAttackActionWeapon() is WeaponPart weapon)
+            {
+                return CharacterPart.ParseActionString(weapon.ResolveClientBasicAttackActionName(_currentAttackType));
+            }
+
             return _currentAttackType switch
             {
                 AttackType.Stab => CharacterAction.StabO1,
@@ -1064,13 +4645,25 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
+        private CharacterAction ResolveClientWalkAction()
+        {
+            return Build?.ResolveClientWalkAction() ?? CharacterAction.Walk1;
+        }
+
+        private CharacterAction ResolveClientStandAction()
+        {
+            return Build?.ResolveClientStandAction() ?? CharacterAction.Stand1;
+        }
+
         private int GetAttackCooldown()
         {
-            var weapon = Build?.GetWeapon();
-            if (weapon == null) return 500;
+            if (Build == null)
+            {
+                return 500;
+            }
 
             // Attack speed: 2 (fast) to 9 (slow)
-            int speed = weapon.AttackSpeed;
+            int speed = Build.GetEffectiveWeaponAttackSpeed();
             return MIN_ATTACK_DELAY + (speed - 2) * 50;
         }
 
@@ -1078,39 +4671,1169 @@ namespace HaCreator.MapSimulator.Character
         {
             if (Assembler == null)
                 return new Rectangle((int)X - 50, (int)Y - 50, 100, 50);
+            SyncAssemblerActionLayerContext();
             return Assembler.GetAttackHitbox(CurrentAction, _attackFrame, FacingRight);
         }
 
         /// <summary>
         /// Trigger a specific skill animation (called by SkillManager)
         /// </summary>
-        public void TriggerSkillAnimation(string actionName)
+        public void TriggerSkillAnimation(
+            string actionName,
+            int skillId = 0,
+            int currentTime = int.MinValue,
+            bool playEffectiveWeaponSfx = false,
+            int minimumDurationMs = 0)
         {
             // Map action name to CharacterAction
+            ClearPortableChair(standUp: false);
             State = PlayerState.Attacking;
+            _sustainedSkillAnimation = false;
+
+            actionName = ResolveActiveSkillSpecificActionName(actionName);
+            actionName = ResolveAvatarActionLayerCoordinatorActionName(actionName) ?? actionName;
 
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
 
-            CurrentAction = actionName.ToLower() switch
-            {
-                "attack1" or "stabo1" => CharacterAction.StabO1,
-                "attack2" or "stabo2" => CharacterAction.StabO2,
-                "swingo1" => CharacterAction.SwingO1,
-                "swingo2" => CharacterAction.SwingO2,
-                "swingo3" => CharacterAction.SwingO3,
-                "swingof" => CharacterAction.SwingOF,
-                "shoot1" => CharacterAction.Shoot1,
-                "shoot2" => CharacterAction.Shoot2,
-                "pronestab" => CharacterAction.ProneStab,
-                _ => CharacterAction.SwingO1
-            };
+            _forcedActionName = actionName;
+            CurrentAction = GetCharacterActionForActionName(actionName);
+            CurrentActionName = actionName;
+            CurrentSkillAnimationSkillId = skillId;
+            CurrentSkillAnimationStartTime = currentTime;
+            StoreMeleeAfterImageOwnerCounter(currentTime == int.MinValue ? Environment.TickCount : currentTime);
+            _activeMeleeAfterImage = null;
 
             _attackFrame = 0;
-            _attackFrameTimer = 0;
-            _animationStartTime = Environment.TickCount; // Set animation start time for completion check
+            _animationStartTime = currentTime == int.MinValue
+                ? Environment.TickCount
+                : currentTime;
+            _clientOwnedOneTimeActionMinimumEndTime = ResolveClientOwnedOneTimeActionMinimumEndTime(
+                _animationStartTime,
+                minimumDurationMs);
+            SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
+            RefreshMountedActionLayerState();
+            if (playEffectiveWeaponSfx)
+            {
+                PlayEffectiveWeaponSfx();
+            }
 
-            System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentAction}, State={State}");
+            System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
+        }
+
+        public void BeginSustainedSkillAnimation(
+            string actionName,
+            int skillId = 0,
+            int currentTime = int.MinValue,
+            bool playEffectiveWeaponSfx = false)
+        {
+            if (string.IsNullOrEmpty(actionName))
+                actionName = "attack1";
+
+            ClearPortableChair(standUp: false);
+            actionName = ResolveAvatarActionLayerCoordinatorActionName(actionName) ?? actionName;
+
+            bool isSameAction = _sustainedSkillAnimation
+                && State == PlayerState.Attacking
+                && string.Equals(_forcedActionName, actionName, StringComparison.OrdinalIgnoreCase);
+
+            State = PlayerState.Attacking;
+            _sustainedSkillAnimation = true;
+            _forcedActionName = actionName;
+            CurrentAction = GetCharacterActionForActionName(actionName);
+            CurrentActionName = actionName;
+            CurrentSkillAnimationSkillId = skillId;
+            CurrentSkillAnimationStartTime = currentTime;
+            _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
+            StoreMeleeAfterImageOwnerCounter(currentTime == int.MinValue ? Environment.TickCount : currentTime);
+            _activeMeleeAfterImage = null;
+
+            if (!isSameAction)
+            {
+                _attackFrame = 0;
+                _animationStartTime = currentTime == int.MinValue
+                    ? Environment.TickCount
+                    : currentTime;
+            }
+
+            SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
+            ClearMountedActionLayerState();
+
+            if (playEffectiveWeaponSfx && !isSameAction)
+            {
+                PlayEffectiveWeaponSfx();
+            }
+        }
+
+        public void EndSustainedSkillAnimation()
+        {
+            _sustainedSkillAnimation = false;
+            _avatarActionLayerState = null;
+        }
+
+        public void ApplyMeleeAfterImage(int skillId, string actionName, MeleeAfterImageAction afterImageAction, int currentTime)
+        {
+            if (afterImageAction == null
+                || string.IsNullOrWhiteSpace(actionName)
+                || ((afterImageAction.FrameSets == null || afterImageAction.FrameSets.Count == 0) && !afterImageAction.HasRange))
+            {
+                _activeMeleeAfterImage = null;
+                return;
+            }
+
+            int activationDelayMs = ClientMeleeAfterimageRangeResolver.ResolveActivationDelayMs(
+                afterImageAction,
+                Assembler?.GetAnimation(actionName));
+            int resolvedAnimationStartTime = currentTime;
+            if (TryRestoreMeleeAfterImageOwnerCounter(
+                    currentTime,
+                    skillId,
+                    actionName,
+                    FacingRight,
+                    out int restoredAnimationStartTime))
+            {
+                resolvedAnimationStartTime = restoredAnimationStartTime;
+            }
+
+            _activeMeleeAfterImage = new MeleeAfterImageState
+            {
+                SkillId = skillId,
+                ActionName = actionName,
+                AfterImageAction = afterImageAction,
+                AnimationStartTime = resolvedAnimationStartTime,
+                ActivationStartTime = resolvedAnimationStartTime + activationDelayMs,
+                FacingRight = FacingRight,
+                ActionDuration = GetMeleeAfterImageActionDuration(actionName),
+                SfxUol = Build?.GetAfterimageSfxUol()
+            };
+
+            StoreMeleeAfterImageOwnerCounter(currentTime);
+        }
+
+        public void PlayEffectiveWeaponSfx()
+        {
+            string sfx = Build?.GetEffectiveWeaponSfx();
+            if (!string.IsNullOrWhiteSpace(sfx))
+            {
+                _onWeaponSfxSound?.Invoke(sfx);
+            }
+        }
+
+        public void ClearMeleeAfterImage()
+        {
+            StoreMeleeAfterImageOwnerCounter(Environment.TickCount);
+            _activeMeleeAfterImage = null;
+        }
+
+        private void BeginMeleeAfterImageFade(int currentTime)
+        {
+            if (_activeMeleeAfterImage == null || _activeMeleeAfterImage.FadeStartTime >= 0)
+            {
+                return;
+            }
+
+            int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeMeleeAfterImage.AnimationStartTime);
+            int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+            int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
+            IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
+            MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
+                Assembler,
+                _activeMeleeAfterImage.ActionName,
+                _activeMeleeAfterImage.AfterImageAction,
+                animationTime,
+                ref lastFrameIndex,
+                ref lastFrameElapsedMs,
+                ref lastResolvedLayers);
+            _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+            _activeMeleeAfterImage.LastFrameElapsedMs = lastFrameElapsedMs;
+            _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
+
+            _activeMeleeAfterImage.FadeStartTime = currentTime;
+        }
+
+        private int GetMeleeAfterImageActionDuration(string actionName)
+        {
+            AssembledFrame[] animation = Assembler?.GetAnimation(actionName);
+            if (animation == null || animation.Length == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            foreach (AssembledFrame frame in animation)
+            {
+                duration += Math.Max(0, frame?.Duration ?? 0);
+            }
+
+            return duration;
+        }
+
+        public bool ApplySkillAvatarTransform(int skillId, string actionName, int morphTemplateId = 0)
+        {
+            if (!TryCreateSkillAvatarTransform(skillId, actionName, morphTemplateId, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            _activeSkillAvatarTransform = transform;
+            UpdateAssemblerAvatarOverride();
+            return true;
+        }
+
+        public bool ApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0, int expirationTime = int.MaxValue)
+        {
+            if (!TryCreateExternalAvatarTransform(sourceId, actionName, morphTemplateId, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            _activeExternalAvatarTransform = transform;
+            _activeExternalAvatarTransformExpiresAt = expirationTime > 0 ? expirationTime : int.MaxValue;
+            UpdateAssemblerAvatarOverride();
+            return true;
+        }
+
+        public bool CanApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0)
+        {
+            return TryCreateExternalAvatarTransform(sourceId, actionName, morphTemplateId, out _);
+        }
+
+        public void ClearSkillAvatarTransform()
+        {
+            _activeSkillAvatarTransform = null;
+            UpdateAssemblerAvatarOverride();
+        }
+
+        public void ClearExternalAvatarTransform()
+        {
+            _activeExternalAvatarTransform = null;
+            _activeExternalAvatarTransformExpiresAt = int.MaxValue;
+            UpdateAssemblerAvatarOverride();
+        }
+
+        public void ClearSkillAvatarTransformAndPlayExitAction()
+        {
+            if (_activeSkillAvatarTransform == null)
+            {
+                return;
+            }
+
+            string exitActionName = _activeSkillAvatarTransform.ExitActionName;
+            ClearSkillAvatarTransform();
+
+            if (!string.IsNullOrWhiteSpace(exitActionName) && IsAlive)
+            {
+                TriggerSkillAnimation(exitActionName);
+            }
+        }
+
+        public void ClearSkillAvatarTransform(int skillId)
+        {
+            if (_activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId)
+            {
+                ClearSkillAvatarTransformAndPlayExitAction();
+            }
+        }
+
+        public void ClearExternalAvatarTransform(int sourceId)
+        {
+            if (_activeExternalAvatarTransform != null && _activeExternalAvatarTransform.SourceId == sourceId)
+            {
+                ClearExternalAvatarTransform();
+            }
+        }
+
+        public bool HasSkillAvatarTransform(int skillId)
+        {
+            return _activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId;
+        }
+
+        public bool HasExternalAvatarTransform(int sourceId)
+        {
+            return _activeExternalAvatarTransform != null && _activeExternalAvatarTransform.SourceId == sourceId;
+        }
+
+        private void ExpireExternalAvatarTransformIfNeeded(int currentTime)
+        {
+            if (_activeExternalAvatarTransform == null ||
+                _activeExternalAvatarTransformExpiresAt == int.MaxValue ||
+                !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, _activeExternalAvatarTransformExpiresAt))
+            {
+                return;
+            }
+
+            ClearExternalAvatarTransform();
+        }
+
+        public bool ApplyShadowPartner(int skillId, SkillData skill, int currentTime)
+        {
+            if (skillId <= 0 || skill?.HasShadowPartnerActionAnimations != true)
+            {
+                return false;
+            }
+
+            string resolvedActionName = ResolveShadowPartnerActionName(
+                skill.ShadowPartnerActionAnimations,
+                skill.ShadowPartnerSupportedRawActionNames,
+                CurrentActionName,
+                null);
+            SkillAnimation resolvedPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
+                skill.ShadowPartnerActionAnimations,
+                resolvedActionName,
+                CurrentActionName,
+                skill.ShadowPartnerSupportedRawActionNames);
+            string spawnActionName = ResolveShadowPartnerCreateActionName(skill.ShadowPartnerActionAnimations);
+            bool useSpawnAction = !string.IsNullOrWhiteSpace(spawnActionName);
+            int observedAttackTriggerTime = GetShadowPartnerObservedActionTriggerTime();
+            bool observedAttackAction = ShouldUseShadowPartnerAttackObservationGate(CurrentActionName, State);
+            bool observedAttackActionResolved = !observedAttackAction;
+            string resolvedAttackActionName = null;
+            SkillAnimation resolvedAttackPlaybackAnimation = null;
+            if (observedAttackAction
+                && TryResolveShadowPartnerAttackAction(
+                    skill.ShadowPartnerActionAnimations,
+                    skill.ShadowPartnerSupportedRawActionNames,
+                    CurrentActionName,
+                    out resolvedAttackActionName,
+                    out resolvedAttackPlaybackAnimation))
+            {
+                observedAttackActionResolved = true;
+            }
+
+            string queuedActionName = resolvedActionName;
+            SkillAnimation queuedPlaybackAnimation = resolvedPlaybackAnimation;
+            bool queuedForceReplay = false;
+            int initialForceReplayTriggerTime = int.MinValue;
+            if (useSpawnAction && observedAttackAction)
+            {
+                if (observedAttackActionResolved)
+                {
+                    queuedActionName = resolvedAttackActionName;
+                    queuedPlaybackAnimation = resolvedAttackPlaybackAnimation;
+                    queuedForceReplay = ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                        observedAttackTriggerTime,
+                        int.MinValue);
+                    initialForceReplayTriggerTime = queuedForceReplay
+                        ? observedAttackTriggerTime
+                        : int.MinValue;
+                }
+                else
+                {
+                    queuedActionName = null;
+                    queuedPlaybackAnimation = null;
+                }
+            }
+
+            int? initialRawActionCode = TryGetCurrentClientRawActionCode(out int initialObservedRawActionCode)
+                ? initialObservedRawActionCode
+                : null;
+            Point initialClientOffset = ResolveShadowPartnerClientOffset(
+                CurrentActionName,
+                State,
+                FacingRight,
+                initialRawActionCode,
+                HasActiveMorphTransform,
+                HasActiveGhostActionTransform(CurrentActionName));
+
+            _activeShadowPartner = new ShadowPartnerState
+            {
+                SkillId = skillId,
+                ActionAnimations = skill.ShadowPartnerActionAnimations,
+                SupportedRawActionNames = skill.ShadowPartnerSupportedRawActionNames,
+                HorizontalOffsetPx = skill.ShadowPartnerHorizontalOffsetPx,
+                CurrentClientOffsetPx = initialClientOffset,
+                ClientOffsetStartPx = initialClientOffset,
+                ClientOffsetTargetPx = initialClientOffset,
+                ClientOffsetTransitionStartTime = currentTime,
+                CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
+                CurrentPlaybackAnimation = useSpawnAction
+                    ? ResolveShadowPartnerPlaybackAnimation(
+                        skill.ShadowPartnerActionAnimations,
+                        spawnActionName,
+                        null,
+                        skill.ShadowPartnerSupportedRawActionNames)
+                    : resolvedPlaybackAnimation,
+                CurrentActionStartTime = currentTime,
+                CurrentFacingRight = FacingRight,
+                ObservedPlayerActionName = CurrentActionName,
+                QueuedActionName = useSpawnAction ? queuedActionName : null,
+                QueuedPlaybackAnimation = useSpawnAction ? queuedPlaybackAnimation : null,
+                QueuedFacingRight = FacingRight,
+                QueuedForceReplay = useSpawnAction && queuedForceReplay,
+                ObservedPlayerFacingRight = FacingRight,
+                ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
+                ObservedPlayerActionTriggerTime = observedAttackTriggerTime,
+                ObservedPlayerRawActionCode = initialRawActionCode,
+                LastForcedReplayActionTriggerTime = initialForceReplayTriggerTime
+            };
+
+            if (TryRestoreShadowPartnerActionOwnerCounter(
+                    currentTime,
+                    _activeShadowPartner.SkillId,
+                    _activeShadowPartner.CurrentActionName,
+                    _activeShadowPartner.CurrentFacingRight,
+                    forceRestart: false,
+                    out int restoredActionStartTime))
+            {
+                _activeShadowPartner.CurrentActionStartTime = restoredActionStartTime;
+            }
+
+            StoreShadowPartnerActionOwnerCounter(currentTime);
+            return !string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName);
+        }
+
+        public void ClearShadowPartner(int skillId)
+        {
+            if (_activeShadowPartner != null && _activeShadowPartner.SkillId == skillId)
+            {
+                StoreShadowPartnerActionOwnerCounter(Environment.TickCount);
+                _activeShadowPartner = null;
+            }
+        }
+
+        public bool ApplyMirrorImage(int skillId, int currentTime)
+        {
+            if (skillId != SkillData.MirrorImageSkillId)
+            {
+                return false;
+            }
+
+            _activeMirrorImage = new MirrorImageState
+            {
+                SkillId = skillId,
+                StartTime = currentTime,
+                ObservedPlayerActionName = CurrentActionName,
+                ObservedPlayerFacingRight = FacingRight,
+                ObservedPlayerState = State,
+                CurrentOffsetPx = Point.Zero,
+                Visible = false
+            };
+
+            if (TryRestoreMirrorImageOwnerCounter(
+                    currentTime,
+                    skillId,
+                    _activeMirrorImage.ObservedPlayerActionName,
+                    _activeMirrorImage.ObservedPlayerFacingRight,
+                    out int restoredStartTime))
+            {
+                _activeMirrorImage.StartTime = restoredStartTime;
+            }
+
+            UpdateMirrorImageRenderState(currentTime);
+            StoreMirrorImageOwnerCounter(currentTime);
+            return _activeMirrorImage.Visible;
+        }
+
+        public void ClearMirrorImage(int skillId)
+        {
+            if (_activeMirrorImage != null && _activeMirrorImage.SkillId == skillId)
+            {
+                StoreMirrorImageOwnerCounter(Environment.TickCount);
+                DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
+                _activeMirrorImage = null;
+            }
+        }
+
+        private void CaptureEnergyChargeAdditionalLayerReference(SkillAvatarEffectState effectState)
+        {
+            if (effectState?.UsesEnergyChargeAdditionalLayer != true)
+            {
+                return;
+            }
+
+            effectState.SimulatedEnergyChargeAdditionalLayerHandleId = NextClientOwnedEnergyChargeAdditionalLayerHandleId();
+            effectState.SimulatedEnergyChargeAdditionalListNodeId = NextClientOwnedEnergyChargeAdditionalListNodeId();
+            effectState.SimulatedEnergyChargeParentUnderFaceLayerHandleId = ClientOwnedEnergyChargeParentUnderFaceLayerHandleId;
+            effectState.CaptureEnergyChargeAdditionalLayerReference();
+        }
+
+        private int NextClientOwnedEnergyChargeAdditionalLayerHandleId()
+        {
+            return _nextClientOwnedEnergyChargeAdditionalLayerHandleId == int.MaxValue
+                ? _nextClientOwnedEnergyChargeAdditionalLayerHandleId = 1
+                : _nextClientOwnedEnergyChargeAdditionalLayerHandleId++;
+        }
+
+        private int NextClientOwnedEnergyChargeAdditionalListNodeId()
+        {
+            return _nextClientOwnedEnergyChargeAdditionalListNodeId == int.MaxValue
+                ? _nextClientOwnedEnergyChargeAdditionalListNodeId = 1
+                : _nextClientOwnedEnergyChargeAdditionalListNodeId++;
+        }
+
+        private int NextClientOwnedAvatarEffectLayerHandleId()
+        {
+            return _nextClientOwnedAvatarEffectLayerHandleId == int.MaxValue
+                ? _nextClientOwnedAvatarEffectLayerHandleId = 1
+                : _nextClientOwnedAvatarEffectLayerHandleId++;
+        }
+
+        private int NextClientOwnedAvatarEffectListNodeId()
+        {
+            return _nextClientOwnedAvatarEffectListNodeId == int.MaxValue
+                ? _nextClientOwnedAvatarEffectListNodeId = 1
+                : _nextClientOwnedAvatarEffectListNodeId++;
+        }
+
+        private ClientOwnedAvatarEffectLayerTrace CreateClientOwnedAvatarLayerTrace(
+            int skillId,
+            string ownerName,
+            string sourceEffectName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return null;
+            }
+
+            var trace = new ClientOwnedAvatarEffectLayerTrace(
+                skillId,
+                ownerName,
+                sourceEffectName,
+                NextClientOwnedAvatarEffectLayerHandleId(),
+                NextClientOwnedAvatarEffectListNodeId(),
+                ResolveClientOwnedAvatarLayerParentUnderFaceHandleId(ownerName));
+            trace.CaptureUnderFaceReference();
+            return trace;
+        }
+
+        private static bool UsesClientOwnedAvatarLayerTrace(string ownerName)
+        {
+            return string.Equals(ownerName, ClientOwnedFlyingWingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(ownerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(ownerName, ClientOwnedDoubleJumpAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ResolveClientOwnedAvatarLayerParentUnderFaceHandleId(string ownerName)
+        {
+            return string.Equals(ownerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(ownerName, ClientOwnedDoubleJumpAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase)
+                ? ClientOwnedEnergyChargeParentUnderFaceLayerHandleId
+                : 0;
+        }
+
+        internal IReadOnlyList<ClientOwnedAvatarEffectParity.EnergyChargeAdditionalLayerMutation> GetLastReleasedEnergyChargeAdditionalLayerMutationsForTesting()
+        {
+            return _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting;
+        }
+
+        internal IReadOnlyList<ClientOwnedAvatarEffectParity.ClientOwnedAvatarLayerMutation> GetLastReleasedClientOwnedAvatarEffectLayerMutationsForTesting()
+        {
+            return _lastReleasedClientOwnedAvatarEffectLayerMutationsForTesting;
+        }
+
+        private void ReleaseClientOwnedAvatarLayerTrace(ClientOwnedAvatarEffectLayerTrace trace)
+        {
+            if (trace == null)
+            {
+                return;
+            }
+
+            trace.Release();
+            _lastReleasedClientOwnedAvatarEffectLayerMutationsForTesting = trace.Mutations.ToArray();
+        }
+
+        internal EnergyChargeAdditionalLayerSnapshot? GetEnergyChargeAdditionalLayerSnapshotForTesting(int skillId)
+        {
+            SkillAvatarEffectState effectState = _activeSkillAvatarEffects.FirstOrDefault(state => state.SkillId == skillId);
+            if (effectState == null || !effectState.UsesEnergyChargeAdditionalLayer)
+            {
+                return null;
+            }
+
+            return new EnergyChargeAdditionalLayerSnapshot(
+                effectState.SkillId,
+                effectState.EnergyChargeAdditionalLayerIndex,
+                effectState.SimulatedEnergyChargeAdditionalLayerHandleId,
+                effectState.SimulatedEnergyChargeAdditionalListNodeId,
+                effectState.SimulatedEnergyChargeParentUnderFaceLayerHandleId,
+                effectState.SimulatedEnergyChargeAdditionalLayerHandleRefCount,
+                effectState.SimulatedEnergyChargeAdditionalListNodeRefCount,
+                effectState.SimulatedEnergyChargeParentUnderFaceLayerHandleRefCount,
+                effectState.EnergyChargeAdditionalLayerAlpha,
+                effectState.EnergyChargeAdditionalLayerAnimationMode,
+                effectState.EnergyChargeAdditionalLayerSourceEffectName,
+                effectState.EnergyChargeAdditionalLayerMutations);
+        }
+        internal ClientOwnedAvatarEffectLayerSnapshot? GetClientOwnedAvatarEffectLayerSnapshotForTesting(string ownerName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return null;
+            }
+
+            ClientOwnedAvatarEffectLayerTrace trace = _activeSkillAvatarEffects
+                .Select(state => state?.ClientOwnedLayerTrace)
+                .FirstOrDefault(layer => string.Equals(layer?.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            trace ??= _transientSkillAvatarEffects
+                .Select(state => state?.ClientOwnedLayerTrace)
+                .FirstOrDefault(layer => string.Equals(layer?.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            return trace?.ToSnapshot();
+        }
+
+        public bool ApplySkillAvatarEffect(int skillId, SkillData skill, int currentTime)
+        {
+            if (!TryCreateSkillAvatarEffect(skillId, skill, out SkillAvatarEffectState effectState))
+            {
+                return false;
+            }
+
+            ClearSkillAvatarEffect(skillId, currentTime, playFinish: false);
+
+            effectState.Mode = GetCurrentSkillAvatarEffectMode();
+            effectState.AnimationStartTime = currentTime;
+            if (TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(currentTime, effectState, out int restoredStartTime))
+            {
+                effectState.AnimationStartTime = restoredStartTime;
+            }
+
+            CaptureEnergyChargeAdditionalLayerReference(effectState);
+            if (UsesClientOwnedAvatarLayerTrace(effectState.ClientLayerOwnerName))
+            {
+                effectState.ClientOwnedLayerTrace = CreateClientOwnedAvatarLayerTrace(
+                    skillId,
+                    effectState.ClientLayerOwnerName,
+                    effectState.GroundUnderFaceAnimation?.Name ?? effectState.GroundOverlayAnimation?.Name ?? string.Empty);
+            }
+
+            _activeSkillAvatarEffects.Add(effectState);
+            StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
+            return true;
+        }
+
+        public void ClearSkillAvatarEffect(int skillId, int currentTime)
+        {
+            ClearSkillAvatarEffect(skillId, currentTime, playFinish: true);
+        }
+
+        public bool HasSkillAvatarEffect(int skillId)
+        {
+            return _activeSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
+        }
+
+        public bool ApplyTransientSkillAvatarEffect(
+            int skillId,
+            SkillAnimation animation,
+            SkillAnimation secondaryAnimation,
+            int currentTime,
+            SkillAnimation finishAnimation = null,
+            SkillAnimation finishSecondaryAnimation = null,
+            bool isClientMovementOwner = false,
+            string explicitClientLayerOwnerName = null,
+            bool? facingRightOverride = null)
+        {
+            bool hasPrimaryAnimation = animation?.Frames != null && animation.Frames.Count > 0;
+            bool hasSecondaryAnimation = secondaryAnimation?.Frames != null && secondaryAnimation.Frames.Count > 0;
+            if (skillId <= 0 || (!hasPrimaryAnimation && !hasSecondaryAnimation))
+            {
+                return false;
+            }
+
+            ClearTransientSkillAvatarEffect(skillId);
+            var transientEffectState = new TransientSkillAvatarEffectState
+            {
+                SkillId = skillId,
+                Animation = animation,
+                SecondaryAnimation = secondaryAnimation,
+                FinishAnimation = finishAnimation,
+                FinishSecondaryAnimation = finishSecondaryAnimation,
+                AnimationStartTime = currentTime,
+                Plane = ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner),
+                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation, isClientMovementOwner),
+                FinishPlane = ResolveTransientSkillAvatarEffectPlane(finishAnimation, isClientMovementOwner),
+                FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation, isClientMovementOwner),
+                ClientLayerOwnerName = ResolveTransientSkillAvatarEffectClientLayerOwnerName(
+                    isClientMovementOwner,
+                    explicitClientLayerOwnerName),
+                FacingRightOverride = facingRightOverride
+            };
+            if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffectState, out int restoredStartTime))
+            {
+                transientEffectState.AnimationStartTime = restoredStartTime;
+            }
+
+            if (UsesClientOwnedAvatarLayerTrace(transientEffectState.ClientLayerOwnerName))
+            {
+                transientEffectState.ClientOwnedLayerTrace = CreateClientOwnedAvatarLayerTrace(
+                    skillId,
+                    transientEffectState.ClientLayerOwnerName,
+                    transientEffectState.Animation?.Name ?? transientEffectState.SecondaryAnimation?.Name ?? string.Empty);
+            }
+
+            _transientSkillAvatarEffects.Add(transientEffectState);
+            StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffectState, currentTime);
+            return true;
+        }
+
+        public bool HasTransientSkillAvatarEffect(int skillId)
+        {
+            return _transientSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
+        }
+
+        public void SetSkillAvatarEffectRenderSuppressed(int skillId, bool suppressed)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            if (suppressed)
+            {
+                _skillAvatarEffectRenderSuppressionSkillIds.Add(skillId);
+            }
+            else
+            {
+                _skillAvatarEffectRenderSuppressionSkillIds.Remove(skillId);
+            }
+        }
+
+        public void NotifyTamingMobOwnershipHandledExternally()
+        {
+            _suppressAutomaticTamingMobTransition = true;
+            _observedTamingMobPart = ResolveAutomaticTamingMobTransitionMount(GetEquippedTamingMobPart());
+            _observedClientOwnedTamingMobActive = IsClientOwnedVehicleTamingMobStateActive(_observedTamingMobPart);
+            SetTransientTamingMobOverride(null);
+        }
+
+        public void SetClientOwnedVehicleTamingMobState(CharacterPart mountPart, bool isActive)
+        {
+            _clientOwnedVehicleTamingMobPart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            _clientOwnedVehicleTamingMobActive = isActive && _clientOwnedVehicleTamingMobPart != null;
+        }
+
+        internal int GetActiveAvatarTransformSkillId()
+        {
+            return GetActiveAvatarTransform()?.SkillId ?? 0;
+        }
+
+        public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
+        {
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (playFinish && TryBeginSkillAvatarEffectFinish(effectState, currentTime))
+                {
+                    continue;
+                }
+
+                ReleaseClientOwnedAvatarLayerTrace(effectState.ClientOwnedLayerTrace);
+                effectState.ReleaseEnergyChargeAdditionalLayerReference();
+                if (effectState.UsesEnergyChargeAdditionalLayer)
+                {
+                    _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting = effectState.EnergyChargeAdditionalLayerMutations.ToArray();
+                }
+                _activeSkillAvatarEffects.RemoveAt(i);
+            }
+        }
+
+        public void ClearSkillAvatarEffect(int skillId, int currentTime, bool playFinish)
+        {
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (playFinish && TryBeginSkillAvatarEffectFinish(effectState, currentTime))
+                {
+                    continue;
+                }
+
+                ReleaseClientOwnedAvatarLayerTrace(effectState.ClientOwnedLayerTrace);
+
+                effectState.ReleaseEnergyChargeAdditionalLayerReference();
+                if (effectState.UsesEnergyChargeAdditionalLayer)
+                {
+                    _lastReleasedEnergyChargeAdditionalLayerMutationsForTesting = effectState.EnergyChargeAdditionalLayerMutations.ToArray();
+                }
+                _activeSkillAvatarEffects.RemoveAt(i);
+            }
+        }
+
+        private void UpdateAvatarEffects(int currentTime)
+        {
+            for (int i = _transientSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                TransientSkillAvatarEffectState transientEffect = _transientSkillAvatarEffects[i];
+                if (transientEffect == null)
+                {
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                    continue;
+                }
+
+                int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transientEffect.AnimationStartTime);
+                SkillAnimation primaryAnimation = transientEffect.IsFinishing
+                    ? transientEffect.FinishAnimation
+                    : transientEffect.Animation;
+                SkillAnimation secondaryAnimation = transientEffect.IsFinishing
+                    ? transientEffect.FinishSecondaryAnimation
+                    : transientEffect.SecondaryAnimation;
+                bool primaryComplete = primaryAnimation == null || primaryAnimation.IsComplete(elapsedTime);
+                bool secondaryComplete = secondaryAnimation == null || secondaryAnimation.IsComplete(elapsedTime);
+                if (primaryComplete && secondaryComplete)
+                {
+                    if (!transientEffect.IsFinishing && transientEffect.HasFinishAnimation)
+                    {
+                        transientEffect.IsFinishing = true;
+                        transientEffect.AnimationStartTime = currentTime;
+                        if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffect, out int restoredStartTime))
+                        {
+                            transientEffect.AnimationStartTime = restoredStartTime;
+                        }
+
+                        if (string.Equals(transientEffect.ClientLayerOwnerName, ClientOwnedDoubleJumpAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            transientEffect.ClientOwnedLayerTrace?.SetVisible(true);
+                        }
+
+                        StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffect, currentTime);
+                        continue;
+                    }
+
+                    ReleaseClientOwnedAvatarLayerTrace(transientEffect.ClientOwnedLayerTrace);
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                    continue;
+                }
+
+                StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffect, currentTime);
+            }
+
+            if (_activeSkillAvatarEffects.Count == 0)
+            {
+                return;
+            }
+
+            SkillAvatarEffectMode currentMode = GetCurrentSkillAvatarEffectMode();
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.IsFinishing)
+                {
+                    if (IsSkillAvatarEffectAnimationComplete(effectState, currentTime))
+                    {
+                        ReleaseClientOwnedAvatarLayerTrace(effectState.ClientOwnedLayerTrace);
+                        effectState.ReleaseEnergyChargeAdditionalLayerReference();
+                        _activeSkillAvatarEffects.RemoveAt(i);
+                        continue;
+                    }
+
+                    StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
+                    continue;
+                }
+
+                if (effectState.Mode == currentMode)
+                {
+                    if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        effectState.ClientOwnedLayerTrace?.SetVisible(currentMode != SkillAvatarEffectMode.LadderOrRope);
+                    }
+                    else if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedFlyingWingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        effectState.ClientOwnedLayerTrace?.SetVisible(!ShouldHideRotateSensitiveAvatarEffect());
+                    }
+
+                    StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
+                    continue;
+                }
+
+                bool hasCurrentModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, currentMode);
+                bool hasPreviousModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, effectState.Mode);
+                effectState.Mode = currentMode;
+                if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedSwallowingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    effectState.ClientOwnedLayerTrace?.SetVisible(currentMode != SkillAvatarEffectMode.LadderOrRope);
+                }
+                else if (string.Equals(effectState.ClientLayerOwnerName, ClientOwnedFlyingWingAvatarEffectOwnerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    effectState.ClientOwnedLayerTrace?.SetVisible(!ShouldHideRotateSensitiveAvatarEffect());
+                }
+
+                if (hasCurrentModeAnimation || hasPreviousModeAnimation)
+                {
+                    effectState.AnimationStartTime = currentTime;
+                    if (TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(currentTime, effectState, out int restoredStartTime))
+                    {
+                        effectState.AnimationStartTime = restoredStartTime;
+                    }
+                }
+
+                StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
+            }
+        }
+
+        private SkillAvatarEffectMode GetCurrentSkillAvatarEffectMode()
+        {
+            return Physics.IsOnLadderOrRope || State == PlayerState.Ladder || State == PlayerState.Rope
+                ? SkillAvatarEffectMode.LadderOrRope
+                : SkillAvatarEffectMode.Ground;
+        }
+
+        private bool ShouldHideRotateSensitiveAvatarEffect()
+        {
+            return ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(
+                TryGetCurrentClientRawActionCode(out int rawActionCode) ? rawActionCode : null,
+                _forcedActionName,
+                CurrentActionName,
+                CharacterPart.GetActionString(CurrentAction));
+        }
+
+        private static bool HasSkillAvatarEffectAnimationForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
+        {
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            if (mode == SkillAvatarEffectMode.LadderOrRope)
+            {
+                if (effectState.HideOnLadderOrRope)
+                {
+                    return false;
+                }
+
+                return effectState.LadderOverlayAnimation != null
+                       || effectState.GroundOverlayAnimation != null
+                       || effectState.GroundOverlaySecondaryAnimation != null
+                       || effectState.GroundUnderFaceAnimation != null
+                       || effectState.GroundUnderFaceSecondaryAnimation != null;
+            }
+
+            return effectState.GroundOverlayAnimation != null
+                   || effectState.GroundOverlaySecondaryAnimation != null
+                   || effectState.GroundUnderFaceAnimation != null
+                   || effectState.GroundUnderFaceSecondaryAnimation != null;
+        }
+
+        private static bool TryCreateSkillAvatarEffect(int skillId, SkillData skill, out SkillAvatarEffectState effectState)
+        {
+            effectState = null;
+            if (skill?.HasPersistentAvatarEffect != true)
+            {
+                return false;
+            }
+
+            effectState = new SkillAvatarEffectState
+            {
+                SkillId = skillId,
+                GroundOverlayAnimation = skill.AvatarOverlayEffect,
+                GroundOverlaySecondaryAnimation = skill.AvatarOverlaySecondaryEffect,
+                GroundUnderFaceAnimation = skill.AvatarUnderFaceEffect,
+                GroundUnderFaceSecondaryAnimation = skill.AvatarUnderFaceSecondaryEffect,
+                LadderOverlayAnimation = skill.AvatarLadderEffect,
+                GroundOverlayFinishAnimation = skill.AvatarOverlayFinishEffect,
+                GroundUnderFaceFinishAnimation = skill.AvatarUnderFaceFinishEffect,
+                LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect,
+                HideOnLadderOrRope = skill.HideAvatarEffectOnLadderOrRope,
+                HideOnRotateAction = skill.HideAvatarEffectOnRotateAction,
+                ClientLayerOwnerName = skill.ClientAvatarEffectLayerOwnerName,
+                ClientLayerReplayGateMs = skill.UsesEnergyChargeAdditionalLayer
+                    ? Math.Max(0, skill.EnergyChargeAdditionalLayerReplayGateMs)
+                    : 0,
+                UsesEnergyChargeAdditionalLayer = skill.UsesEnergyChargeAdditionalLayer,
+                EnergyChargeAdditionalLayerIndex = Math.Max(0, skill.EnergyChargeAdditionalLayerIndex),
+                EnergyChargeAdditionalLayerAlpha = MathHelper.Clamp(skill.EnergyChargeAdditionalLayerAlpha, 0, 255),
+                EnergyChargeAdditionalLayerAnimationMode = skill.EnergyChargeAdditionalLayerAnimationMode,
+                EnergyChargeAdditionalLayerSourceEffectName = skill.EnergyChargeAdditionalLayerSourceEffectName
+            };
+
+            return effectState.HasLoopAnimation || effectState.HasFinishAnimation;
+        }
+
+        private bool TryBeginSkillAvatarEffectFinish(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null || effectState.IsFinishing)
+            {
+                return false;
+            }
+
+            SkillAvatarEffectMode finishMode = GetCurrentSkillAvatarEffectMode();
+            if (!HasSkillAvatarEffectFinishForMode(effectState, finishMode))
+            {
+                finishMode = effectState.Mode;
+            }
+
+            if (!HasSkillAvatarEffectFinishForMode(effectState, finishMode))
+            {
+                return false;
+            }
+
+            effectState.Mode = finishMode;
+            effectState.IsFinishing = true;
+            effectState.AnimationStartTime = currentTime;
+            return true;
+        }
+
+        private static bool HasSkillAvatarEffectFinishForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
+        {
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            if (mode == SkillAvatarEffectMode.LadderOrRope)
+            {
+                if (effectState.HideOnLadderOrRope)
+                {
+                    return false;
+                }
+
+                return effectState.LadderOverlayFinishAnimation != null
+                       || effectState.GroundOverlayFinishAnimation != null
+                       || effectState.GroundUnderFaceFinishAnimation != null;
+            }
+
+            return effectState.GroundOverlayFinishAnimation != null
+                   || effectState.GroundUnderFaceFinishAnimation != null;
+        }
+
+        private static bool IsSkillAvatarEffectAnimationComplete(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null || !effectState.IsFinishing)
+            {
+                return true;
+            }
+
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
+            bool anyAnimation = false;
+
+            foreach (SkillAnimation animation in GetSkillAvatarEffectAnimations(effectState))
+            {
+                if (animation == null)
+                {
+                    continue;
+                }
+
+                anyAnimation = true;
+                if (!animation.IsComplete(elapsedTime))
+                {
+                    return false;
+                }
+            }
+
+            return anyAnimation;
+        }
+
+        private static IEnumerable<SkillAnimation> GetSkillAvatarEffectAnimations(SkillAvatarEffectState effectState)
+        {
+            if (effectState == null)
+            {
+                yield break;
+            }
+
+            PersistentSkillAvatarEffectRenderSelection selection =
+                ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                    effectState.IsFinishing,
+                    effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                    effectState.HideOnLadderOrRope,
+                    effectState.LadderOverlayAnimation,
+                    effectState.GroundOverlayAnimation,
+                    effectState.GroundOverlaySecondaryAnimation,
+                    effectState.GroundUnderFaceAnimation,
+                    effectState.GroundUnderFaceSecondaryAnimation,
+                    effectState.LadderOverlayFinishAnimation,
+                    effectState.GroundOverlayFinishAnimation,
+                    effectState.GroundUnderFaceFinishAnimation);
+
+            if (selection.OverlayAnimation != null)
+            {
+                yield return selection.OverlayAnimation;
+            }
+
+            if (selection.OverlaySecondaryAnimation != null)
+            {
+                yield return selection.OverlaySecondaryAnimation;
+            }
+
+            if (selection.UnderFaceAnimation != null)
+            {
+                yield return selection.UnderFaceAnimation;
+            }
+
+            if (selection.UnderFaceSecondaryAnimation != null)
+            {
+                yield return selection.UnderFaceSecondaryAnimation;
+            }
+        }
+
+        internal static PersistentSkillAvatarEffectRenderSelection ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+            bool isFinishing,
+            bool onLadderOrRope,
+            bool hideOnLadderOrRope,
+            SkillAnimation ladderOverlayAnimation,
+            SkillAnimation groundOverlayAnimation,
+            SkillAnimation groundOverlaySecondaryAnimation,
+            SkillAnimation groundUnderFaceAnimation,
+            SkillAnimation groundUnderFaceSecondaryAnimation,
+            SkillAnimation ladderOverlayFinishAnimation,
+            SkillAnimation groundOverlayFinishAnimation,
+            SkillAnimation groundUnderFaceFinishAnimation)
+        {
+            if (onLadderOrRope)
+            {
+                if (hideOnLadderOrRope)
+                {
+                    return default;
+                }
+
+                if (isFinishing)
+                {
+                    if (ladderOverlayFinishAnimation != null)
+                    {
+                        return new PersistentSkillAvatarEffectRenderSelection(
+                            ladderOverlayFinishAnimation,
+                            null,
+                            null,
+                            null,
+                            OverlayUsesBehindCharacterPlane: true);
+                    }
+
+                    return new PersistentSkillAvatarEffectRenderSelection(
+                        groundOverlayFinishAnimation,
+                        null,
+                        groundUnderFaceFinishAnimation,
+                        null,
+                        OverlayUsesBehindCharacterPlane: false);
+                }
+
+                if (ladderOverlayAnimation != null)
+                {
+                    return new PersistentSkillAvatarEffectRenderSelection(
+                        ladderOverlayAnimation,
+                        null,
+                        null,
+                        null,
+                        OverlayUsesBehindCharacterPlane: true);
+                }
+
+                return new PersistentSkillAvatarEffectRenderSelection(
+                    groundOverlayAnimation,
+                    groundOverlaySecondaryAnimation,
+                    groundUnderFaceAnimation,
+                    groundUnderFaceSecondaryAnimation,
+                    OverlayUsesBehindCharacterPlane: false);
+            }
+
+            if (isFinishing)
+            {
+                return new PersistentSkillAvatarEffectRenderSelection(
+                    groundOverlayFinishAnimation,
+                    null,
+                    groundUnderFaceFinishAnimation,
+                    null,
+                    OverlayUsesBehindCharacterPlane: false);
+            }
+
+            return new PersistentSkillAvatarEffectRenderSelection(
+                groundOverlayAnimation,
+                groundOverlaySecondaryAnimation,
+                groundUnderFaceAnimation,
+                groundUnderFaceSecondaryAnimation,
+                OverlayUsesBehindCharacterPlane: false);
         }
 
         /// <summary>
@@ -1134,10 +5857,8 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            // Enter hit state (knockback stun)
-            State = PlayerState.Hit;
-            _hitStateStartTime = Environment.TickCount;
-            Physics.CurrentAction = MoveAction.Hit;
+            int currentTime = Environment.TickCount;
+            EnterHitState(currentTime, HIT_STUN_DURATION);
 
             // Apply knockback velocity
             if (knockbackX != 0 || knockbackY != 0)
@@ -1165,13 +5886,114 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
-            // Enter hit state for knockback animation
-            State = PlayerState.Hit;
-            _hitStateStartTime = Environment.TickCount;
-            Physics.CurrentAction = MoveAction.Hit;
+            EnterHitState(Environment.TickCount, HIT_STUN_DURATION);
 
             // Use Impact for immediate knockback
             Physics.Impact(knockbackX, knockbackY);
+        }
+
+        public void ApplyPacketDamageReaction(
+            int damage,
+            int hitDurationMs,
+            float knockbackX = 0,
+            float knockbackY = 0,
+            bool useQueuedImpact = false)
+        {
+            if (!IsAlive || GodMode)
+                return;
+
+            if (damage > 0)
+            {
+                HP -= damage;
+                OnDamaged?.Invoke(this, damage);
+                if (HP <= 0)
+                {
+                    Die();
+                    return;
+                }
+            }
+
+            EnterHitState(Environment.TickCount, hitDurationMs);
+            if (knockbackX != 0 || knockbackY != 0)
+            {
+                if (useQueuedImpact)
+                {
+                    Physics.SetImpactNext(knockbackX, knockbackY);
+                }
+                else
+                {
+                    Physics.Impact(knockbackX, knockbackY);
+                }
+            }
+        }
+
+        private void EnterHitState(int currentTime, int hitDurationMs)
+        {
+            ClearPortableChair(standUp: false);
+            State = PlayerState.Hit;
+            _hitStateStartTime = currentTime;
+            _hitStateDurationMs = Math.Max(1, hitDurationMs);
+            _hitExpressionEndTime = currentTime + Math.Max(FACE_HIT_EXPRESSION_DURATION_MS, _hitStateDurationMs);
+            _hitExpressionSuppressedByPacketOwnedItemOption = _packetOwnedEmotionByItemOption;
+            Physics.CurrentAction = MoveAction.Hit;
+            CacheLadderStateForRegrab();
+        }
+
+        private void CacheLadderStateForRegrab()
+        {
+            if (!Physics.IsOnLadderOrRope)
+            {
+                ClearPendingLadderRegrab();
+                return;
+            }
+
+            _pendingLadderRegrab = true;
+            _pendingLadderX = Physics.LadderX;
+            _pendingLadderTop = Physics.LadderTop;
+            _pendingLadderBottom = Physics.LadderBottom;
+            _pendingLadderIsLadder = Physics.IsLadder;
+        }
+
+        private void ClearPendingLadderRegrab()
+        {
+            _pendingLadderRegrab = false;
+            _pendingLadderX = 0;
+            _pendingLadderTop = 0;
+            _pendingLadderBottom = 0;
+            _pendingLadderIsLadder = false;
+        }
+
+        private bool TryRegrabLadderWhileHoldingUp()
+        {
+            if (State != PlayerState.Hit || !_pendingLadderRegrab || !_inputUp)
+            {
+                return false;
+            }
+
+            const float regrabHorizontalTolerance = 18f;
+            const float regrabVerticalTolerance = 6f;
+
+            bool foundLadder = Physics.TryGetLadderOrRope(X, Y, regrabHorizontalTolerance, out LadderOrRopeInfo ladder);
+            if (!foundLadder &&
+                Math.Abs(X - _pendingLadderX) <= regrabHorizontalTolerance &&
+                Y >= _pendingLadderTop - regrabVerticalTolerance &&
+                Y <= _pendingLadderBottom + regrabVerticalTolerance)
+            {
+                ladder = new LadderOrRopeInfo(_pendingLadderX, _pendingLadderTop, _pendingLadderBottom, _pendingLadderIsLadder);
+                foundLadder = true;
+            }
+
+            if (!foundLadder ||
+                Y < ladder.Top - regrabVerticalTolerance ||
+                Y > ladder.Bottom + regrabVerticalTolerance)
+            {
+                return false;
+            }
+
+            Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+            State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
+            ClearPendingLadderRegrab();
+            return true;
         }
 
         /// <summary>
@@ -1205,9 +6027,21 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
+            ClearPortableChair(standUp: false);
+            ClearSkillBlockingStatuses();
             HP = 0;
             State = PlayerState.Dead;
             CurrentAction = CharacterAction.Dead;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Dead);
+            ClearForcedActionName();
+            ClearSkillAvatarTransform();
+            ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
+            ClearAllTransientSkillAvatarEffects();
+            _blinkExpressionEndTime = 0;
+            _hitExpressionEndTime = 0;
+            _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            ResetPacketOwnedEmotionState(clearVisualEffect: true, clearDecodedItemOption: true);
+            CurrentFaceExpressionName = "default";
 
             // Completely stop all physics - velocity, knockback, and movement state
             Physics.VelocityX = 0;
@@ -1237,12 +6071,26 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void Respawn(float x, float y)
         {
+            ClearPortableChair(standUp: false);
+            ClearSkillBlockingStatuses();
             HP = MaxHP;
             MP = MaxMP;
             State = PlayerState.Standing;
             CurrentAction = CharacterAction.Stand1;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            ClearForcedActionName();
+            ClearSkillAvatarTransform();
+            ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
+            ClearAllTransientSkillAvatarEffects();
+            _blinkExpressionEndTime = 0;
+            _hitExpressionEndTime = 0;
+            _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            ResetPacketOwnedEmotionState(clearVisualEffect: true, clearDecodedItemOption: true);
+            CurrentFaceExpressionName = "default";
+            ScheduleNextBlink(Environment.TickCount);
             Physics.Reset();
             Physics.SetPosition(x, y);
+            ResetLandingTracking();
         }
 
         /// <summary>
@@ -1254,8 +6102,11 @@ namespace HaCreator.MapSimulator.Character
             if (State == PlayerState.Dead)
                 return;
 
+            ClearPortableChair(standUp: false);
             State = PlayerState.Standing;
             CurrentAction = CharacterAction.Stand1;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            ClearForcedActionName();
             Physics.VelocityX = 0;
 
             // Clear input states to prevent resuming movement
@@ -1264,6 +6115,93 @@ namespace HaCreator.MapSimulator.Character
             _inputUp = false;
             _inputDown = false;
             _inputJump = false;
+            ResetLandingTracking();
+        }
+
+        public void ResetLandingTracking()
+        {
+            _landingTrackingActive = false;
+            _landingTrackingStartY = 0f;
+        }
+
+        private void NotifyLanding(float landingY, float impactVelocityY)
+        {
+            if (!_landingTrackingActive)
+            {
+                return;
+            }
+
+            PlayerLandingInfo landingInfo = new(_landingTrackingStartY, landingY, impactVelocityY);
+            ResetLandingTracking();
+            _onLanded?.Invoke(this, landingInfo);
+        }
+
+        public void PrepareForForcedHorizontalControl()
+        {
+            if (State == PlayerState.Dead)
+            {
+                return;
+            }
+
+            if (Physics.IsOnLadderOrRope)
+            {
+                ClearPortableChair(standUp: false);
+                ClearForcedActionName();
+                Physics.ReleaseLadder(yOverride: Physics.Y);
+                State = PlayerState.Falling;
+                return;
+            }
+
+            if (State == PlayerState.Sitting || State == PlayerState.Prone)
+            {
+                ForceStand();
+            }
+        }
+
+        private void ClearExpiredSkillBlockingStatuses(int currentTime)
+        {
+            if (_activeSkillBlockingStatuses.Count == 0)
+            {
+                return;
+            }
+
+            List<PlayerSkillBlockingStatus> expiredStatuses = null;
+            foreach (KeyValuePair<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> entry in _activeSkillBlockingStatuses)
+            {
+                if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, entry.Value.ExpireTime))
+                {
+                    continue;
+                }
+
+                expiredStatuses ??= new List<PlayerSkillBlockingStatus>();
+                expiredStatuses.Add(entry.Key);
+            }
+
+            if (expiredStatuses == null)
+            {
+                return;
+            }
+
+            foreach (PlayerSkillBlockingStatus status in expiredStatuses)
+            {
+                _activeSkillBlockingStatuses.Remove(status);
+            }
+        }
+
+        private static bool ShouldRefreshSkillBlockingExpireTime(int currentTime, int existingExpireTime, int newDurationMs)
+        {
+            if (newDurationMs <= 0)
+            {
+                return false;
+            }
+
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, existingExpireTime))
+            {
+                return true;
+            }
+
+            int remainingDurationMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(existingExpireTime, currentTime);
+            return newDurationMs > remainingDurationMs;
         }
 
         #endregion
@@ -1274,7 +6212,8 @@ namespace HaCreator.MapSimulator.Character
         /// Draw the player
         /// </summary>
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
+            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime,
+            Action drawUnderFaceOverlay = null)
         {
             int screenX = (int)X - mapShiftX + centerX;
             int screenY = (int)Y - mapShiftY + centerY;
@@ -1283,19 +6222,39 @@ namespace HaCreator.MapSimulator.Character
             if (Assembler == null)
                 return;
 
-            // Get current frame
-            int animTime = currentTime - _animationStartTime;
+            SyncAssemblerActionLayerContext();
 
-            // When on rope/ladder and not moving, use still frame (frame 0)
-            if ((State == PlayerState.Rope || State == PlayerState.Ladder) && Math.Abs(Physics.VelocityY) < 0.001)
-            {
-                animTime = 0;
-            }
-
-            var frame = Assembler.GetFrameAtTime(CurrentAction, animTime);
+            AssembledFrame frame = ResolveCurrentRenderFrame(currentTime, out int currentFrameIndex);
 
             if (frame != null)
             {
+                DrawPortableChairCoupleMidpointEffects(
+                    spriteBatch,
+                    skeletonRenderer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    currentTime,
+                    drawFrontLayers: false);
+
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonRenderer,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    drawFrontLayers: false);
+
+                DrawPortableChairPairPreview(
+                    spriteBatch,
+                    skeletonRenderer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    currentTime);
+
                 // Apply hit flash effect
                 Color tint = Color.White;
                 if (State == PlayerState.Hit)
@@ -1304,8 +6263,34 @@ namespace HaCreator.MapSimulator.Character
                     tint = Color.Lerp(Color.White, Color.Red, flash);
                 }
 
-                // MapleStory sprites face LEFT by default, flip when facing right
-                frame.Draw(spriteBatch, skeletonRenderer, screenX, screenY, FacingRight, tint);
+                DrawFrameWithAvatarEffects(
+                    spriteBatch,
+                    skeletonRenderer,
+                    frame,
+                    currentFrameIndex,
+                    screenX,
+                    screenY,
+                    tint,
+                    currentTime,
+                    drawUnderFaceOverlay);
+
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonRenderer,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    drawFrontLayers: true);
+
+                DrawPortableChairCoupleMidpointEffects(
+                    spriteBatch,
+                    skeletonRenderer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    currentTime,
+                    drawFrontLayers: true);
             }
             else
             {
@@ -1313,6 +6298,231 @@ namespace HaCreator.MapSimulator.Character
                 var rect = new Rectangle(screenX - 15, screenY - 60, 30, 60);
                 spriteBatch.Draw(GetPixelTexture(spriteBatch.GraphicsDevice), rect, Color.Blue * 0.5f);
             }
+        }
+
+        public void TakeStatusDamage(int damage)
+        {
+            if (!IsAlive || GodMode || damage <= 0)
+            {
+                return;
+            }
+
+            HP -= damage;
+            OnDamaged?.Invoke(this, damage);
+
+            if (HP <= 0)
+            {
+                Die();
+            }
+        }
+
+        public void ApplyMobRecoveryModifiers(bool hpRecoveryReversed, int maxHpPercentCap, int maxMpPercentCap, int hpRecoveryDamagePercent = 100, bool recoveryBlocked = false)
+        {
+            _mobUndeadRecoveryActive = hpRecoveryReversed;
+            _mobRecoveryBlocked = recoveryBlocked;
+            _mobHpRecoveryCapPercent = Math.Clamp(maxHpPercentCap, 1, 100);
+            _mobMpRecoveryCapPercent = Math.Clamp(maxMpPercentCap, 1, 100);
+            _mobHpRecoveryDamagePercent = Math.Clamp(hpRecoveryDamagePercent, 1, 100);
+
+            int hpCap = Math.Max(1, MaxHP * _mobHpRecoveryCapPercent / 100);
+            int mpCap = Math.Max(0, MaxMP * _mobMpRecoveryCapPercent / 100);
+            if (HP > hpCap)
+            {
+                HP = hpCap;
+            }
+
+            if (MP > mpCap)
+            {
+                MP = mpCap;
+            }
+        }
+
+        public void Recover(int hp, int mp)
+        {
+            if (!IsAlive || _mobRecoveryBlocked)
+            {
+                return;
+            }
+
+            if (hp > 0)
+            {
+                if (_mobUndeadRecoveryActive)
+                {
+                    int reflectedDamage = Math.Max(1, (int)Math.Ceiling(hp * (_mobHpRecoveryDamagePercent / 100f)));
+                    TakeStatusDamage(reflectedDamage);
+                }
+                else
+                {
+                    int hpCap = Math.Max(1, MaxHP * _mobHpRecoveryCapPercent / 100);
+                    HP = Math.Min(hpCap, HP + hp);
+                }
+            }
+
+            if (mp > 0)
+            {
+                int mpCap = Math.Max(0, MaxMP * _mobMpRecoveryCapPercent / 100);
+                MP = Math.Min(mpCap, MP + mp);
+            }
+        }
+
+        private void DrawPortableChairPairPreview(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (_portableChairPairAssembler == null
+                || string.IsNullOrWhiteSpace(_portableChairPairActionName)
+                || Build?.ActivePortableChair?.IsCoupleChair != true
+                || ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair)
+                || !ShouldDrawPortableChairPairPreview())
+            {
+                return;
+            }
+
+            int partnerScreenX = (int)(X + _portableChairPairOffset.X) - mapShiftX + centerX;
+            int partnerScreenY = (int)(Y + _portableChairPairOffset.Y) - mapShiftY + centerY;
+            AssembledFrame partnerFrame = _portableChairPairAssembler.GetFrameAtTime(_portableChairPairActionName, GetRenderAnimationTime(currentTime));
+            if (partnerFrame == null)
+            {
+                return;
+            }
+
+            int adjustedY = partnerScreenY - partnerFrame.FeetOffset;
+            DrawPortableChairPairPreviewSharedLayers(
+                spriteBatch,
+                skeletonRenderer,
+                partnerScreenX,
+                partnerScreenY,
+                currentTime,
+                drawFrontLayers: false);
+            for (int i = 0; i < partnerFrame.Parts.Count; i++)
+            {
+                DrawAssembledPart(spriteBatch, skeletonRenderer, partnerFrame.Parts[i], partnerScreenX, adjustedY, _portableChairPairFacingRight, Color.White);
+            }
+
+            DrawPortableChairPairPreviewSharedLayers(
+                spriteBatch,
+                skeletonRenderer,
+                partnerScreenX,
+                partnerScreenY,
+                currentTime,
+                drawFrontLayers: true);
+        }
+
+        internal bool TryResolvePortableChairExternalPairLayerState(
+            bool partnerFacingRight,
+            float partnerX,
+            float partnerY,
+            out PortableChair chair)
+        {
+            chair = Build?.ActivePortableChair;
+            if (chair?.IsCoupleChair != true
+                || !_portableChairExternalPairRequested
+                || !_portableChairHasExternalPair)
+            {
+                chair = null;
+                return false;
+            }
+
+            return IsPortableChairActualPairActive(
+                chair,
+                FacingRight,
+                X,
+                Y,
+                partnerFacingRight,
+                partnerX,
+                partnerY);
+        }
+
+        internal const int PortableChairCoupleMidpointScreenYOffset = -20;
+
+        private void DrawPortableChairCoupleMidpointEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (!TryResolvePortableChairMidpointLayerState(
+                    out PortableChair chair,
+                    out float partnerX,
+                    out float partnerY,
+                    out bool midpointFacingRight))
+            {
+                return;
+            }
+
+            int midpointScreenX = (int)Math.Round((X + partnerX) * 0.5f) - mapShiftX + centerX;
+            int midpointScreenY = (int)Math.Round((Y + partnerY) * 0.5f) - mapShiftY + centerY + PortableChairCoupleMidpointScreenYOffset;
+            int animationTime = GetRenderAnimationTime(currentTime);
+
+            for (int i = 0; i < chair.CoupleMidpointLayers.Count; i++)
+            {
+                PortableChairLayer layer = chair.CoupleMidpointLayers[i];
+                if ((layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = GetPortableChairLayerFrameAtTime(layer, animationTime);
+                DrawPortableChairLayerFrame(spriteBatch, skeletonRenderer, frame, midpointScreenX, midpointScreenY, midpointFacingRight);
+            }
+        }
+
+        private void DrawPortableChairCoupleSharedLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (!TryResolvePortableChairSharedLayerState(out PortableChair chair))
+            {
+                return;
+            }
+
+            DrawPortableChairLayers(
+                spriteBatch,
+                skeletonRenderer,
+                chair.CoupleSharedLayers,
+                screenX,
+                screenY,
+                FacingRight,
+                GetRenderAnimationTime(currentTime),
+                drawFrontLayers);
+        }
+
+        private void DrawPortableChairPairPreviewSharedLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int partnerScreenX,
+            int partnerScreenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (!TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out bool previewPairActive)
+                || !previewPairActive)
+            {
+                return;
+            }
+
+            DrawPortableChairLayers(
+                spriteBatch,
+                skeletonRenderer,
+                chair.CoupleSharedLayers,
+                partnerScreenX,
+                partnerScreenY,
+                _portableChairPairFacingRight,
+                GetRenderAnimationTime(currentTime),
+                drawFrontLayers);
         }
 
         /// <summary>
@@ -1354,6 +6564,7363 @@ namespace HaCreator.MapSimulator.Character
 
         #endregion
 
+        private void DrawFrameWithAvatarEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int screenX,
+            int screenY,
+            Color tint,
+            int currentTime,
+            Action drawUnderFaceOverlay)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            UpdateShadowPartnerRenderState(currentTime);
+            List<AvatarEffectRenderable> avatarEffects = GetCurrentAvatarEffectRenderables(currentTime);
+            int adjustedY = screenY - frame.FeetOffset;
+
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, frame, screenX, screenY, tint);
+            DrawMeleeAfterImage(spriteBatch, skeletonRenderer, screenX, screenY, tint, currentTime);
+
+            int[] avatarLayerInsertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            int mirrorOverlayInsertionIndex = ResolveMirrorImageOverlayInsertionIndex(
+                avatarLayerInsertionIndices,
+                frame.Parts.Count);
+            bool underFaceOverlayDrawn = false;
+            bool underFaceDrawn = avatarEffects.Count == 0;
+            bool shadowPartnerDrawn = false;
+            bool mirrorImageDrawn = false;
+
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                DrawMirrorImageAtInsertionIndex(
+                    spriteBatch,
+                    skeletonRenderer,
+                    frame,
+                    currentFrameIndex,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    i,
+                    mirrorOverlayInsertionIndex,
+                    ref mirrorImageDrawn,
+                    ref underFaceOverlayDrawn,
+                    ref underFaceDrawn,
+                    ref shadowPartnerDrawn,
+                    avatarEffects,
+                    tint,
+                    drawUnderFaceOverlay);
+
+                DrawAssembledPart(spriteBatch, skeletonRenderer, frame.Parts[i], screenX, adjustedY, FacingRight, tint);
+            }
+
+            DrawMirrorImageAtInsertionIndex(
+                spriteBatch,
+                skeletonRenderer,
+                frame,
+                currentFrameIndex,
+                screenX,
+                screenY,
+                currentTime,
+                frame.Parts.Count,
+                mirrorOverlayInsertionIndex,
+                ref mirrorImageDrawn,
+                ref underFaceOverlayDrawn,
+                ref underFaceDrawn,
+                ref shadowPartnerDrawn,
+                avatarEffects,
+                tint,
+                drawUnderFaceOverlay);
+
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverFace, frame, screenX, screenY, tint);
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, frame, screenX, screenY, tint);
+        }
+
+        private void DrawMirrorImageAtInsertionIndex(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int screenX,
+            int screenY,
+            int currentTime,
+            int insertionIndex,
+            int mirrorOverlayInsertionIndex,
+            ref bool mirrorImageDrawn,
+            ref bool underFaceOverlayDrawn,
+            ref bool underFaceDrawn,
+            ref bool shadowPartnerDrawn,
+            List<AvatarEffectRenderable> avatarEffects,
+            Color tint,
+            Action drawUnderFaceOverlay)
+        {
+            if (mirrorImageDrawn || insertionIndex != mirrorOverlayInsertionIndex)
+            {
+                return;
+            }
+
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlayNow,
+                out bool drawUnderFaceEffectsNow,
+                out bool drawShadowPartnerNow);
+
+            if (drawUnderFaceOverlayNow)
+            {
+                drawUnderFaceOverlay?.Invoke();
+                underFaceOverlayDrawn = true;
+            }
+
+            if (drawUnderFaceEffectsNow)
+            {
+                DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
+                underFaceDrawn = true;
+            }
+
+            if (drawShadowPartnerNow)
+            {
+                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
+                shadowPartnerDrawn = true;
+            }
+
+            DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, AvatarRenderLayer.UnderFace);
+            mirrorImageDrawn = true;
+        }
+
+        private static void ResolveUnderFaceSeamDrawAdmissions(
+            bool underFaceOverlayDrawn,
+            bool underFaceDrawn,
+            bool shadowPartnerDrawn,
+            out bool drawUnderFaceOverlay,
+            out bool drawUnderFaceEffects,
+            out bool drawShadowPartner)
+        {
+            drawUnderFaceOverlay = !underFaceOverlayDrawn;
+            drawUnderFaceEffects = !underFaceDrawn;
+            drawShadowPartner = !shadowPartnerDrawn;
+        }
+
+        private void DrawMeleeAfterImage(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int screenX,
+            int screenY,
+            Color tint,
+            int currentTime)
+        {
+            if (_activeMeleeAfterImage?.AfterImageAction?.FrameSets == null
+                || _activeMeleeAfterImage.AfterImageAction.FrameSets.Count == 0)
+            {
+                return;
+            }
+
+            string currentActionName = State == PlayerState.Attacking
+                ? CurrentActionName
+                : null;
+            if (MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+                    currentTime,
+                    _activeMeleeAfterImage.ActivationStartTime,
+                    currentActionName,
+                    _activeMeleeAfterImage.ActionName,
+                    _activeMeleeAfterImage.AnimationStartTime,
+                    _activeMeleeAfterImage.ActionDuration,
+                    out bool shouldClear))
+            {
+                if (shouldClear)
+                {
+                    StoreMeleeAfterImageOwnerCounter(currentTime);
+                    _activeMeleeAfterImage = null;
+                }
+
+                return;
+            }
+
+            bool activeAction = _activeMeleeAfterImage.FadeStartTime < 0
+                && State == PlayerState.Attacking
+                && !MeleeAfterimagePlaybackResolver.ShouldBeginFadeForActionBoundary(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime,
+                    _activeMeleeAfterImage.ActionDuration,
+                    CurrentActionName,
+                    _activeMeleeAfterImage.ActionName);
+            if (!activeAction)
+            {
+                BeginMeleeAfterImageFade(currentTime);
+            }
+
+            int frameIndex = _activeMeleeAfterImage.LastFrameIndex;
+            IReadOnlyList<AfterimageRenderableLayer> layers = _activeMeleeAfterImage.LastResolvedLayers;
+            if (activeAction)
+            {
+                int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime);
+                int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
+                IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
+                MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
+                    Assembler,
+                    _activeMeleeAfterImage.ActionName,
+                    _activeMeleeAfterImage.AfterImageAction,
+                    animationTime,
+                    ref lastFrameIndex,
+                    ref lastFrameElapsedMs,
+                    ref lastResolvedLayers);
+                _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                _activeMeleeAfterImage.LastFrameElapsedMs = lastFrameElapsedMs;
+                _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
+                frameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                layers = _activeMeleeAfterImage.LastResolvedLayers;
+            }
+            else if (_activeMeleeAfterImage.FadeStartTime >= 0)
+            {
+                int fadeElapsed = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.FadeStartTime);
+                layers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
+                    _activeMeleeAfterImage.AfterImageAction,
+                    frameIndex,
+                    _activeMeleeAfterImage.LastFrameElapsedMs,
+                    fadeElapsed);
+                if (layers.Count == 0)
+                {
+                    StoreMeleeAfterImageOwnerCounter(currentTime);
+                    _activeMeleeAfterImage = null;
+                    return;
+                }
+            }
+
+            if (layers == null || layers.Count == 0)
+            {
+                return;
+            }
+
+            foreach (AfterimageRenderableLayer layer in layers)
+            {
+                SkillFrame frame = layer.Frame;
+                if (!MeleeAfterimagePlaybackResolver.TryResolveSpriteBatchDrawParameters(
+                        frame,
+                        screenX,
+                        screenY,
+                        _activeMeleeAfterImage.FacingRight,
+                        layer.Alpha,
+                        layer.Zoom,
+                        tint,
+                        out MeleeAfterimagePlaybackResolver.SpriteBatchDrawParameters drawParameters))
+                {
+                    continue;
+                }
+
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    drawParameters.Position,
+                    null,
+                    drawParameters.Tint,
+                    0f,
+                    drawParameters.Origin,
+                    drawParameters.Scale,
+                    drawParameters.Effects,
+                    0f);
+            }
+        }
+
+        private static void DrawAssembledPart(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledPart part,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color tint)
+        {
+            if (part?.Texture == null || !part.IsVisible)
+            {
+                return;
+            }
+
+            int partX;
+            int partY = adjustedY + part.OffsetY;
+            partX = flip
+                ? screenX - part.OffsetX - part.Texture.Width
+                : screenX + part.OffsetX;
+
+            Color partColor = part.Tint != Color.White ? part.Tint : tint;
+            part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, partColor, flip, null);
+        }
+
+        internal static CharacterFrame GetPortableChairLayerFrameAtTime(PortableChairLayer layer, int timeMs)
+        {
+            if (layer?.Animation == null)
+            {
+                return null;
+            }
+
+            return layer.Animation.GetFrameAtTime(timeMs, out _);
+        }
+
+        internal static void DrawPortableChairLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            IEnumerable<PortableChairLayer> layers,
+            int screenX,
+            int screenY,
+            bool flip,
+            int timeMs,
+            bool drawFrontLayers)
+        {
+            if (layers == null)
+            {
+                return;
+            }
+
+            foreach (PortableChairLayer layer in layers)
+            {
+                if (layer == null || (layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = GetPortableChairLayerFrameAtTime(layer, timeMs);
+                DrawPortableChairLayerFrame(spriteBatch, skeletonRenderer, frame, screenX, screenY, flip);
+            }
+        }
+
+        internal static void DrawPortableChairLayerFrame(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            CharacterFrame frame,
+            int screenX,
+            int screenY,
+            bool flip)
+        {
+            DrawPortableChairLayerFrame(
+                spriteBatch,
+                skeletonRenderer,
+                frame,
+                screenX,
+                screenY,
+                flip,
+                rotationRadians: 0f);
+        }
+
+        internal static void DrawPortableChairLayerFrame(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            CharacterFrame frame,
+            int screenX,
+            int screenY,
+            bool flip,
+            float rotationRadians)
+        {
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            if (Math.Abs(rotationRadians) > 0.0001f
+                && frame.Texture.Texture != null)
+            {
+                Vector2 origin = new(
+                    flip ? frame.Texture.Width - frame.Origin.X : frame.Origin.X,
+                    frame.Origin.Y);
+                SpriteEffects effects = flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    new Vector2(screenX, screenY),
+                    null,
+                    Color.White,
+                    rotationRadians,
+                    origin,
+                    1f,
+                    effects,
+                    0f);
+                return;
+            }
+
+            int drawX = flip
+                ? screenX + frame.Origin.X - frame.Texture.Width
+                : screenX - frame.Origin.X;
+            int drawY = screenY - frame.Origin.Y;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, Color.White, flip, null);
+        }
+
+        private void DrawShadowPartner(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int screenX,
+            int screenY,
+            int currentTime)
+        {
+            if (_activeShadowPartner?.ActionAnimations == null)
+            {
+                return;
+            }
+
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            if (!ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(
+                    _activeShadowPartner.SkillId,
+                    rawActionCode,
+                    _activeShadowPartner.SupportedRawActionNames))
+            {
+                return;
+            }
+
+            if (!TryGetShadowPartnerAnimation(currentTime, out SkillAnimation animation, out SkillFrame frame, out int frameElapsedMs, out bool facingRight))
+            {
+                return;
+            }
+
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            bool flip = facingRight ^ frame.Flip;
+            Point clientOffset = _activeShadowPartner?.CurrentClientOffsetPx ?? Point.Zero;
+            int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(animation);
+            int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
+            int anchorY = screenY + clientOffset.Y;
+            int actionElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
+            Color frameTint = ShadowPartnerTint * ResolveShadowPartnerFrameAlpha(
+                animation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
+            if (ShadowPartnerClientActionResolver.TryResolveFrameDrawTransform(
+                    frame,
+                    anchorX,
+                    anchorY,
+                    flip,
+                    out Vector2 drawPosition,
+                    out Vector2 drawOrigin,
+                    out float rotationRadians,
+                    out SpriteEffects drawEffects)
+                && frame.Texture.Texture != null)
+            {
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    drawPosition,
+                    null,
+                    frameTint,
+                    rotationRadians,
+                    drawOrigin,
+                    1f,
+                    drawEffects,
+                    0f);
+                return;
+            }
+
+            int drawX = flip
+                ? anchorX - (frame.Texture.Width - frame.Origin.X)
+                : anchorX - frame.Origin.X;
+            int drawY = anchorY - frame.Origin.Y;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, flip, null);
+        }
+
+        private void DrawMirrorImage(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int screenX,
+            int screenY,
+            int currentTime,
+            AvatarRenderLayer? overlayTargetLayer = null)
+        {
+            if (frame == null || _activeMirrorImage == null)
+            {
+                return;
+            }
+
+            UpdateMirrorImageRenderState(currentTime);
+            if (_activeMirrorImage == null || !_activeMirrorImage.Visible)
+            {
+                return;
+            }
+
+            float alpha = ResolveMirrorImageAlpha(currentTime);
+            if (alpha <= 0f)
+            {
+                return;
+            }
+
+            DrawMirrorImageSourceLayers(
+                spriteBatch,
+                skeletonRenderer,
+                frame,
+                currentFrameIndex,
+                screenX,
+                screenY,
+                currentTime,
+                overlayTargetLayer);
+        }
+
+        private void DrawMirrorImageSourceLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int screenX,
+            int screenY,
+            int currentTime,
+            AvatarRenderLayer? overlayTargetLayer)
+        {
+            if (_activeMirrorImage?.PreparedSourceLayers == null)
+            {
+                return;
+            }
+
+            MirrorImagePreparedSourceLayer[] layeredParts = _activeMirrorImage.PreparedSourceLayers;
+            if (layeredParts.Length == 0)
+            {
+                return;
+            }
+
+            for (int layerIndex = 0; layerIndex < layeredParts.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer layer = layeredParts[layerIndex];
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                if (overlayTargetLayer.HasValue && layer.OverlayTargetLayer != overlayTargetLayer.Value)
+                {
+                    continue;
+                }
+
+                MirrorImageRenderableSourceLayer? renderableLayer = TryResolveMirrorImageRenderableSourceLayer(
+                    frame,
+                    currentFrameIndex,
+                    currentTime,
+                    layer);
+                if (!renderableLayer.HasValue)
+                {
+                    continue;
+                }
+
+                int transitionStartTime = renderableLayer.Value.TransitionStartTime;
+                float alpha = ResolveMirrorImageAlpha(currentTime, transitionStartTime);
+                if (alpha <= 0f)
+                {
+                    continue;
+                }
+
+                Point layerOffset = ResolveMirrorImageLayerCurrentOffset(
+                    renderableLayer.Value.TargetOffset,
+                    currentTime,
+                    transitionStartTime);
+                int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
+                int adjustedX = screenX + layerOffset.X;
+                Color tint = ResolveMirrorImageLayerTint(renderableLayer.Value.LayerColor, alpha);
+                if (renderableLayer.Value.UsesLiveSourceParts)
+                {
+                    DrawMirrorImageLiveSourceParts(
+                        spriteBatch,
+                        skeletonRenderer,
+                        renderableLayer.Value.LiveSourceParts,
+                        adjustedX,
+                        adjustedY,
+                        renderableLayer.Value.FacingRight,
+                        tint);
+                    continue;
+                }
+
+                if (renderableLayer.Value.PreparedSnapshotTexture == null)
+                {
+                    continue;
+                }
+
+                DrawMirrorImagePreparedSnapshot(
+                    spriteBatch,
+                    renderableLayer.Value.PreparedSnapshotTexture,
+                    renderableLayer.Value.PreparedSnapshotSourceBounds,
+                    renderableLayer.Value.PositionBounds,
+                    renderableLayer.Value.Origin,
+                    adjustedX,
+                    adjustedY,
+                    renderableLayer.Value.FacingRight,
+                    tint);
+            }
+        }
+
+        private static void DrawMirrorImagePreparedSnapshot(
+            SpriteBatch spriteBatch,
+            Texture2D snapshotTexture,
+            Rectangle snapshotSourceBounds,
+            Rectangle snapshotBounds,
+            Point snapshotOrigin,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color mirrorTint)
+        {
+            if (spriteBatch == null
+                || snapshotTexture == null
+                || snapshotBounds.Width <= 0
+                || snapshotBounds.Height <= 0)
+            {
+                return;
+            }
+
+            Point drawPosition = ResolveMirrorImagePreparedSnapshotDrawPosition(screenX, adjustedY, snapshotBounds, snapshotOrigin, flip);
+            spriteBatch.Draw(
+                snapshotTexture,
+                new Vector2(drawPosition.X, drawPosition.Y),
+                snapshotSourceBounds.IsEmpty ? null : snapshotSourceBounds,
+                mirrorTint,
+                0f,
+                Vector2.Zero,
+                1f,
+                flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                0f);
+        }
+
+        private static void DrawMirrorImageLiveSourceParts(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            IReadOnlyList<AssembledPart> sourceParts,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color mirrorTint)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return;
+            }
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                int partX = flip
+                    ? screenX - part.OffsetX - part.Texture.Width
+                    : screenX + part.OffsetX;
+                int partY = adjustedY + part.OffsetY;
+                Color partTint = part.Tint != Color.White ? part.Tint * mirrorTint : mirrorTint;
+                part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, partTint, flip, null);
+            }
+        }
+
+        private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex, int currentTime)
+        {
+            if (_activeMirrorImage == null)
+            {
+                return;
+            }
+
+            if (frame?.AvatarRenderLayers == null || frame.AvatarRenderLayers.Length == 0)
+            {
+                if (CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(
+                    _activeMirrorImage.PreparedSourceLayers,
+                    FacingRight))
+                {
+                    RefreshMirrorImagePreparedSourceLayerMetadata(_activeMirrorImage.PreparedSourceLayers);
+                    return;
+                }
+
+                ResetMirrorImagePreparedSourceLayers();
+                return;
+            }
+
+            string actionName = CurrentActionName ?? string.Empty;
+            int sourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
+            bool preservesPreparedFeetOffset = CanPreserveMirrorImagePreparedFeetOffset(
+                _activeMirrorImage.PreparedSourceLayers,
+                FacingRight);
+            _activeMirrorImage.PreparedActionName = actionName;
+            _activeMirrorImage.PreparedFrameIndex = currentFrameIndex;
+            _activeMirrorImage.PreparedFeetOffset = ResolveMirrorImagePreparedFeetOffset(
+                _activeMirrorImage.PreparedFeetOffset,
+                frame.FeetOffset,
+                preservesPreparedFeetOffset);
+            _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
+                frame.AvatarRenderLayers,
+                _activeMirrorImage.PreparedSourceLayers,
+                FacingRight,
+                sourceLayerCurrentTime,
+                currentTime);
+        }
+
+        private void ResetMirrorImagePreparedSourceLayers()
+        {
+            if (_activeMirrorImage == null)
+            {
+                return;
+            }
+
+            CaptureMirrorImagePreparedLayerReleaseNativeMetadata(
+                _activeMirrorImage,
+                CollectPreparedMirrorImageLayerObjectIds(_activeMirrorImage.PreparedSourceLayers));
+            _activeMirrorImage.PreparedActionName = null;
+            _activeMirrorImage.PreparedFrameIndex = -1;
+            _activeMirrorImage.PreparedFeetOffset = 0;
+            _activeMirrorImage.NextPreparedLayerObjectId = ResolveMirrorImageNextPreparedLayerObjectIdAfterRelease();
+            DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
+            _activeMirrorImage.PreparedSourceLayers = CreateEmptyMirrorImagePreparedSourceLayers();
+        }
+
+        private static MirrorImagePreparedSourceLayer[] CreateEmptyMirrorImagePreparedSourceLayers()
+        {
+            var layers = new MirrorImagePreparedSourceLayer[MirrorImageClientSourceLayerCount];
+            for (int layerIndex = 0; layerIndex < layers.Length; layerIndex++)
+            {
+                AvatarRenderLayer renderLayer = (AvatarRenderLayer)layerIndex;
+                layers[layerIndex] = new MirrorImagePreparedSourceLayer
+                {
+                    RenderLayer = renderLayer,
+                    PreparedLayerObjectId = 0,
+                    PreparedLayerZ = ResolveMirrorImagePreparedLayerZ(),
+                    PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent),
+                    PreparedLayerColor = ResolveMirrorImagePreparedLayerColor(),
+                    SourceSignature = 0,
+                    LastInsertedSourceSignature = 0,
+                    Bounds = Rectangle.Empty,
+                    TextureSourceBounds = Rectangle.Empty,
+                    Origin = Point.Zero,
+                    PreparedCurrentTime = int.MinValue,
+                    PreparedSourceLayerCurrentTime = int.MinValue,
+                    PreparedTransitionStartTime = int.MinValue,
+                    PreparedRelMoveEndTime = int.MinValue,
+                    PreparedLayerNativeOperationSignature = 0,
+                    PreparedLayerNativeOperations = Array.Empty<MirrorImagePreparedLayerNativeOperation>(),
+                    PreparedLayerNativeReferenceBalanceSignature = 0,
+                    PreparedLayerNativeReferenceBalances = Array.Empty<MirrorImagePreparedLayerNativeReferenceBalance>(),
+                    LastInsertCanvasTime = int.MinValue,
+                    LastInsertCanvasSourceLayerCurrentTime = int.MinValue,
+                    LastInsertCanvasLayerObjectId = 0,
+                    LastInsertCanvasSourceLayer = null,
+                    LastInsertCanvasOverlayTargetLayer = null,
+                    LastInsertCanvasSourcePartsObjectId = 0,
+                    LastInsertCanvasSourceLayerObjectId = 0,
+                    LastInsertCanvasSourceLayerOriginSignature = 0,
+                    LastInsertCanvasSourceLayerClockSignature = 0,
+                    LastInsertCanvasSourceFrameSignature = 0,
+                    LastInsertCanvasOverlayParentSignature = 0,
+                    LastInsertCanvasOverlayParentObjectId = 0,
+                    LastInsertCanvasOverlayInsertionIndex = int.MinValue,
+                    LastInsertCanvasOverlaySiblingSignature = 0,
+                    LastInsertCanvasUnderFaceParentObjectId = 0,
+                    LastInsertCanvasUnderFaceParentSignature = 0,
+                    LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
+                    LastInsertCanvasPostReparentListNodeSignature = 0,
+                    LastInsertCanvasNativeOperationSignature = 0,
+                    LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>(),
+                    LastInsertCanvasNativeReferenceBalanceSignature = 0,
+                    LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>(),
+                    PreparedFacingRight = false,
+                    PreparedTargetOffsetPx = Point.Zero,
+                    OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
+                    ComposedTexture = null,
+                    Parts = Array.Empty<AssembledPart>(),
+                    LastInsertedLiveSourceParts = Array.Empty<AssembledPart>()
+                };
+            }
+
+            return layers;
+        }
+
+        private MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
+            IReadOnlyList<AssembledPart>[] sourceLayers,
+            MirrorImagePreparedSourceLayer[] existingLayers,
+            bool facingRight,
+            int sourceLayerCurrentTime,
+            int currentTime)
+        {
+            if (sourceLayers == null || sourceLayers.Length == 0)
+            {
+                if (CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(existingLayers, facingRight))
+                {
+                    RefreshMirrorImagePreparedSourceLayerMetadata(existingLayers);
+                    return existingLayers;
+                }
+
+                DisposeMirrorImagePreparedSourceLayers(existingLayers);
+                return CreateEmptyMirrorImagePreparedSourceLayers();
+            }
+
+            const int MirrorLayerCount = 5;
+            IReadOnlyList<AssembledPart> underFaceSourceParts = sourceLayers.Length > (int)AvatarRenderLayer.UnderFace
+                ? sourceLayers[(int)AvatarRenderLayer.UnderFace]
+                : null;
+            var preparedLayers = new MirrorImagePreparedSourceLayer[MirrorLayerCount];
+            int populatedLayerCount = Math.Min(sourceLayers.Length, MirrorLayerCount);
+            for (int layerIndex = 0; layerIndex < populatedLayerCount; layerIndex++)
+            {
+                IReadOnlyList<AssembledPart> sourceParts = sourceLayers[layerIndex];
+                int sourceSignature = ComputeMirrorImageSourceLayerSignature(sourceParts);
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers != null && layerIndex < existingLayers.Length
+                    ? existingLayers[layerIndex]
+                    : null;
+                preparedLayers[layerIndex] = CreatePreparedMirrorImageSourceLayer(
+                    existingLayer,
+                    (AvatarRenderLayer)layerIndex,
+                    sourceParts,
+                    sourceSignature,
+                    facingRight,
+                    CanPreserveMirrorImagePreparedSourceLayerObject(
+                        existingLayer?.PreparedLayerObjectId ?? 0,
+                        existingLayer?.PreparedFacingRight ?? false,
+                        facingRight,
+                        existingLayer?.Parts?.Count ?? 0),
+                    sourceLayerCurrentTime,
+                    currentTime,
+                    underFaceSourceParts);
+            }
+
+            for (int layerIndex = sourceLayers.Length; layerIndex < preparedLayers.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers != null && layerIndex < existingLayers.Length
+                    ? existingLayers[layerIndex]
+                    : null;
+                preparedLayers[layerIndex] = ResetPreparedMirrorImageSourceLayer(existingLayer, (AvatarRenderLayer)layerIndex);
+            }
+
+            if (existingLayers != null)
+            {
+                for (int layerIndex = MirrorLayerCount; layerIndex < existingLayers.Length; layerIndex++)
+                {
+                    DisposeMirrorImagePreparedSourceLayerTexture(existingLayers[layerIndex]);
+                }
+            }
+
+            return preparedLayers;
+        }
+
+        private MirrorImageRenderableSourceLayer? TryResolveMirrorImageRenderableSourceLayer(
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int currentTime,
+            MirrorImagePreparedSourceLayer preparedLayer)
+        {
+            if (_activeMirrorImage == null || preparedLayer == null)
+            {
+                return null;
+            }
+
+            if (TryResolveLiveMirrorImageSourceLayer(
+                    frame,
+                    currentFrameIndex,
+                    currentTime,
+                    preparedLayer,
+                    out IReadOnlyList<AssembledPart> liveSourceParts))
+            {
+                return new MirrorImageRenderableSourceLayer(
+                    preparedLayer.ComposedTexture,
+                    ResolveMirrorImagePreparedSnapshotSourceBounds(
+                        preparedLayer.TextureSourceBounds,
+                        preparedLayer.Bounds),
+                    ResolveMirrorImageRenderablePositionBounds(
+                        preparedLayer.Bounds,
+                        CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
+                    preparedLayer.Origin,
+                    FacingRight,
+                    preparedLayer.PreparedTargetOffsetPx,
+                    ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                    preparedLayer.PreparedLayerColor,
+                    liveSourceParts);
+            }
+
+            if (CanRenderLastInsertedMirrorImageSourceCanvas(preparedLayer))
+            {
+                IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts = preparedLayer.LastInsertedLiveSourceParts;
+                return new MirrorImageRenderableSourceLayer(
+                    preparedLayer.ComposedTexture,
+                    ResolveMirrorImagePreparedSnapshotSourceBounds(
+                        preparedLayer.TextureSourceBounds,
+                        preparedLayer.Bounds),
+                    ResolveMirrorImageRenderablePositionBounds(
+                        preparedLayer.Bounds,
+                        CalculateMirrorImageSourceLayerBounds(lastInsertedLiveSourceParts)),
+                    preparedLayer.Origin,
+                    ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
+                    preparedLayer.PreparedTargetOffsetPx,
+                    ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                    preparedLayer.PreparedLayerColor,
+                    lastInsertedLiveSourceParts);
+            }
+
+            if (!CanRenderPreparedMirrorImageSourceLayer(
+                    preparedLayer.ComposedTexture != null
+                    && preparedLayer.Bounds.Width > 0
+                    && preparedLayer.Bounds.Height > 0,
+                    preparedLayer.Parts))
+            {
+                return null;
+            }
+
+            return new MirrorImageRenderableSourceLayer(
+                preparedLayer.ComposedTexture,
+                ResolveMirrorImagePreparedSnapshotSourceBounds(
+                    preparedLayer.TextureSourceBounds,
+                    preparedLayer.Bounds),
+                ResolveMirrorImageRenderablePositionBounds(
+                    preparedLayer.Bounds,
+                    ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
+                preparedLayer.Origin,
+                ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
+                preparedLayer.PreparedTargetOffsetPx,
+                ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                preparedLayer.PreparedLayerColor);
+        }
+
+        private bool TryResolveLiveMirrorImageSourceLayer(
+            AssembledFrame frame,
+            int currentFrameIndex,
+            int currentTime,
+            MirrorImagePreparedSourceLayer preparedLayer,
+            out IReadOnlyList<AssembledPart> liveSourceParts)
+        {
+            liveSourceParts = null;
+            if (_activeMirrorImage == null
+                || frame?.AvatarRenderLayers == null
+                || preparedLayer == null)
+            {
+                return false;
+            }
+
+            int renderLayerIndex = (int)preparedLayer.RenderLayer;
+            if ((uint)renderLayerIndex >= (uint)frame.AvatarRenderLayers.Length)
+            {
+                return false;
+            }
+
+            liveSourceParts = frame.AvatarRenderLayers[renderLayerIndex];
+            if (!CanUseLiveMirrorImageSourceLayer(
+                _activeMirrorImage.PreparedActionName,
+                CurrentActionName,
+                _activeMirrorImage.PreparedFrameIndex,
+                currentFrameIndex,
+                preparedLayer.PreparedFacingRight,
+                FacingRight,
+                preparedLayer.SourceSignature,
+                liveSourceParts))
+            {
+                return false;
+            }
+
+            int liveSourceSignature = ComputeMirrorImageSourceLayerSignature(liveSourceParts);
+            int liveSourceCanvasSignature = ComputeMirrorImageSourceCanvasSignature(liveSourceParts);
+            int liveSourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
+            int liveSourceLayerClockSignature = ComputeMirrorImageSourceLayerClockSignature(
+                preparedLayer.RenderLayer,
+                CurrentActionName,
+                CurrentAction,
+                State,
+                _animationStartTime,
+                liveSourceLayerCurrentTime,
+                currentFrameIndex,
+                _avatarActionLayerState?.FrameRemainingMs ?? 0,
+                _avatarActionLayerState?.ActionSpeedDegree ?? (Assembler?.PreparedActionSpeedDegree ?? 0),
+                _avatarActionLayerState?.WalkSpeed ?? (Assembler?.PreparedWalkSpeed ?? 0),
+                (_avatarActionLayerState?.HeldActionFrameDelay ?? (Assembler?.HeldActionFrameDelay ?? false)) ? 1 : 0,
+                _avatarActionLayerState?.AllowLoop ?? ShouldCurrentAvatarActionLayerLoop());
+            int liveSourceFrameSignature = ComputeMirrorImageSourceFrameSignature(frame, preparedLayer.RenderLayer);
+            int liveOverlayParentSignature = ComputeMirrorImageOverlayParentSignature(
+                frame,
+                preparedLayer.OverlayTargetLayer);
+            int liveOverlayParentObjectId = ResolveMirrorImageOverlayParentObjectId(
+                frame,
+                preparedLayer.OverlayTargetLayer);
+            int liveOverlayInsertionIndex = ResolveMirrorImageOverlayInsertionIndex(
+                frame,
+                preparedLayer.OverlayTargetLayer);
+            int liveOverlaySiblingSignature = ComputeMirrorImageOverlaySiblingSignature(
+                frame,
+                preparedLayer.OverlayTargetLayer);
+            int liveUnderFaceParentObjectId = ResolveMirrorImageUnderFaceParentObjectId(frame);
+            int liveUnderFaceParentSignature = ComputeMirrorImageUnderFaceParentSignature(frame);
+            int liveSourceLayerObjectId = ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, liveSourceParts);
+            int liveSourceCanvasObjectId = ResolveMirrorImageSourceCanvasObjectId(liveSourceParts);
+            IReadOnlyList<MirrorImageLayerNativeOperation> liveNativeOperations = BuildMirrorImageLiveInsertNativeOperations(
+                preparedLayer.RenderLayer,
+                preparedLayer.PreparedLayerObjectId,
+                liveSourceLayerObjectId,
+                liveSourceCanvasObjectId,
+                liveUnderFaceParentObjectId,
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId);
+            int liveNativeOperationSignature = ComputeMirrorImageLiveInsertNativeOperationSignature(liveNativeOperations);
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> liveNativeReferenceBalances =
+                BuildMirrorImageLiveInsertNativeReferenceBalances(liveNativeOperations);
+            int liveNativeReferenceBalanceSignature = ComputeMirrorImageLiveInsertNativeReferenceBalanceSignature(
+                liveNativeReferenceBalances);
+            bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
+                preparedLayer.PreparedLayerObjectId,
+                preparedLayer.LastInsertCanvasLayerObjectId,
+                preparedLayer.RenderLayer,
+                liveSourceLayerCurrentTime,
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime,
+                ResolveMirrorImageSourcePartsObjectId(liveSourceParts),
+                preparedLayer.LastInsertCanvasSourcePartsObjectId,
+                liveSourceSignature,
+                preparedLayer.LastInsertedSourceSignature,
+                preparedLayer.LastInsertCanvasSourceLayer,
+                preparedLayer.OverlayTargetLayer,
+                preparedLayer.LastInsertCanvasOverlayTargetLayer,
+                preparedLayer.LastInsertCanvasTime,
+                currentTime,
+                liveSourceCanvasSignature,
+                preparedLayer.LastInsertedSourceCanvasSignature,
+                liveSourceLayerObjectId,
+                preparedLayer.LastInsertCanvasSourceLayerObjectId,
+                ComputeMirrorImageSourceLayerOriginSignature(liveSourceParts),
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
+                liveSourceLayerClockSignature,
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature,
+                liveSourceCanvasObjectId,
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId,
+                liveSourceFrameSignature,
+                preparedLayer.LastInsertCanvasSourceFrameSignature,
+                liveOverlayParentSignature,
+                preparedLayer.LastInsertCanvasOverlayParentSignature,
+                liveOverlayParentObjectId,
+                preparedLayer.LastInsertCanvasOverlayParentObjectId,
+                liveOverlayInsertionIndex,
+                preparedLayer.LastInsertCanvasOverlayInsertionIndex,
+                liveOverlaySiblingSignature,
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature,
+                liveUnderFaceParentObjectId,
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId,
+                liveUnderFaceParentSignature,
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature,
+                preparedLayer.PreparedLayerFilter,
+                preparedLayer.LastInsertCanvasPreparedLayerFilter,
+                preparedLayer.PreparedLayerZ,
+                preparedLayer.LastInsertCanvasPreparedLayerZ,
+                ResolveMirrorImagePreparedLayerColorSignature(preparedLayer.PreparedLayerColor),
+                preparedLayer.LastInsertCanvasPreparedLayerColor,
+                ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
+                preparedLayer.PreparedRelMoveEndTime,
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime,
+                ComputeMirrorImagePostInsertParentListNodeSignature(
+                    preparedLayer.PreparedLayerObjectId,
+                    liveOverlayParentObjectId,
+                    liveOverlayInsertionIndex,
+                    liveOverlaySiblingSignature),
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature,
+                liveNativeOperationSignature,
+                preparedLayer.LastInsertCanvasNativeOperationSignature,
+                liveNativeReferenceBalanceSignature,
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature);
+            if (shouldUseLiveSourceLayer)
+            {
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    liveSourceSignature,
+                    liveSourceCanvasSignature,
+                    currentTime,
+                    liveSourceLayerCurrentTime,
+                    hasSourceCanvas: true,
+                    sourceParts: liveSourceParts,
+                    insertsLiveSourceCanvas: true,
+                    sourceLayerClockSignature: liveSourceLayerClockSignature,
+                    sourceFrameSignature: liveSourceFrameSignature,
+                    overlayParentSignature: liveOverlayParentSignature,
+                    overlayParentObjectId: liveOverlayParentObjectId,
+                    overlayInsertionIndex: liveOverlayInsertionIndex,
+                    overlaySiblingSignature: liveOverlaySiblingSignature,
+                    underFaceParentObjectId: liveUnderFaceParentObjectId,
+                    underFaceParentSignature: liveUnderFaceParentSignature,
+                    preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime,
+                    postReparentListNodeSignature: ComputeMirrorImagePostInsertParentListNodeSignature(
+                        preparedLayer.PreparedLayerObjectId,
+                        liveOverlayParentObjectId,
+                        liveOverlayInsertionIndex,
+                        liveOverlaySiblingSignature),
+                    nativeOperations: liveNativeOperations,
+                    nativeOperationSignature: liveNativeOperationSignature,
+                    nativeReferenceBalances: liveNativeReferenceBalances,
+                    nativeReferenceBalanceSignature: liveNativeReferenceBalanceSignature);
+            }
+
+            return shouldUseLiveSourceLayer;
+        }
+
+        private MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
+            MirrorImagePreparedSourceLayer existingLayer,
+            AvatarRenderLayer renderLayer,
+            IReadOnlyList<AssembledPart> sourceParts,
+            int sourceSignature,
+            bool facingRight,
+            bool preservesExistingLayerObject,
+            int sourceLayerCurrentTime,
+            int currentTime,
+            IReadOnlyList<AssembledPart> underFaceSourceParts)
+        {
+            MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
+            int mirrorScalePercent = ResolveMirrorImageAvatarScalePercent();
+            bool recreatesLayerObjectForScaleFilter = ShouldRecreateMirrorImagePreparedSourceLayerForScaleFilter(
+                preparedLayer.PreparedLayerObjectId,
+                preparedLayer.PreparedLayerFilter,
+                mirrorScalePercent);
+            bool preservesPreparedLayerObject = preservesExistingLayerObject && !recreatesLayerObjectForScaleFilter;
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                if (CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+                    preparedLayer.PreparedLayerObjectId,
+                    preparedLayer.PreparedFacingRight,
+                    facingRight,
+                    preparedLayer.Parts?.Count ?? 0)
+                    && preservesPreparedLayerObject)
+                {
+                    preparedLayer.RenderLayer = renderLayer;
+                    ApplyMirrorImagePreparedLayerClientProperties(
+                        preparedLayer,
+                        renderLayer,
+                        recreatesLayerObject: false);
+                    return preparedLayer;
+                }
+
+                return ResetPreparedMirrorImageSourceLayer(preparedLayer, renderLayer, sourceSignature);
+            }
+
+            if (CanReuseMirrorImagePreparedSourceLayer(
+                preparedLayer.SourceSignature,
+                preparedLayer.Parts?.Count ?? 0,
+                preparedLayer.PreparedFacingRight,
+                sourceSignature,
+                facingRight)
+                && preservesPreparedLayerObject)
+            {
+                int refreshedSourceLayerCurrentTime = ResolveMirrorImagePreparedSourceLayerCurrentTime(
+                    preparedLayer.PreparedSourceLayerCurrentTime,
+                    reusesExistingSourceCanvas: true,
+                    sourceLayerCurrentTime);
+                preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.SourceSignature = sourceSignature;
+                preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                    preparedLayer.PreparedCurrentTime,
+                    reusesExistingLayer: true,
+                    preservesExistingLayerObject: true,
+                    currentTime);
+                preparedLayer.PreparedSourceLayerCurrentTime = refreshedSourceLayerCurrentTime;
+                preparedLayer.PreparedTransitionStartTime = ResolveMirrorImagePreparedSourceLayerTransitionStartTime(
+                    preparedLayer.PreparedTransitionStartTime,
+                    preservesExistingLayerObject: true,
+                    mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
+                    sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
+                    currentTime);
+                preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(refreshedSourceLayerCurrentTime);
+                preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                    preparedLayer.PreparedLayerObjectId,
+                    preservesExistingLayerObject: true);
+                preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                    preparedLayer.PreparedTargetOffsetPx,
+                    recreatesLayerObject: false,
+                    ResolveMirrorImageTargetOffsetForCurrentState());
+                bool hasSourceCanvas = HasMirrorImageInsertCanvasSource(
+                    HasMirrorImageLiveSourceCanvas(sourceParts));
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    sourceSignature,
+                    ComputeMirrorImageSourceCanvasSignature(sourceParts),
+                    currentTime,
+                    sourceLayerCurrentTime,
+                    hasSourceCanvas,
+                    sourceParts,
+                    insertsLiveSourceCanvas: false);
+                preparedLayer.PreparedFacingRight = facingRight;
+                ApplyMirrorImagePreparedLayerClientProperties(
+                    preparedLayer,
+                    renderLayer,
+                    recreatesLayerObject: false);
+                return preparedLayer;
+            }
+
+            bool hasLiveInsertCanvasSource = HasMirrorImageInsertCanvasSource(
+                HasMirrorImageLiveSourceCanvas(sourceParts));
+            if (CanPreserveMirrorImagePreparedSnapshotForLiveInsertCanvas(
+                    preservesPreparedLayerObject,
+                    hasLiveInsertCanvasSource,
+                    preparedLayer.ComposedTexture != null))
+            {
+                int refreshedSourceLayerCurrentTime = ResolveMirrorImagePreparedSourceLayerCurrentTime(
+                    preparedLayer.PreparedSourceLayerCurrentTime,
+                    reusesExistingSourceCanvas: true,
+                    sourceLayerCurrentTime);
+                preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.SourceSignature = sourceSignature;
+                preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                    preparedLayer.PreparedCurrentTime,
+                    reusesExistingLayer: true,
+                    preservesExistingLayerObject: true,
+                    currentTime);
+                preparedLayer.PreparedSourceLayerCurrentTime = refreshedSourceLayerCurrentTime;
+                preparedLayer.PreparedTransitionStartTime = ResolveMirrorImagePreparedSourceLayerTransitionStartTime(
+                    preparedLayer.PreparedTransitionStartTime,
+                    preservesExistingLayerObject: true,
+                    mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
+                    sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
+                    currentTime);
+                preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(refreshedSourceLayerCurrentTime);
+                preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                    preparedLayer.PreparedLayerObjectId,
+                    preservesExistingLayerObject: true);
+                preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                    preparedLayer.PreparedTargetOffsetPx,
+                    recreatesLayerObject: false,
+                    ResolveMirrorImageTargetOffsetForCurrentState());
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    sourceSignature,
+                    ComputeMirrorImageSourceCanvasSignature(sourceParts),
+                    currentTime,
+                    sourceLayerCurrentTime,
+                    hasLiveInsertCanvasSource,
+                    sourceParts,
+                    insertsLiveSourceCanvas: false);
+                preparedLayer.PreparedFacingRight = facingRight;
+                ApplyMirrorImagePreparedLayerClientProperties(
+                    preparedLayer,
+                    renderLayer,
+                    recreatesLayerObject: false);
+                return preparedLayer;
+            }
+
+            var clonedParts = new AssembledPart[sourceParts.Count];
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                clonedParts[partIndex] = CloneMirrorImageSourcePart(sourceParts[partIndex]);
+            }
+
+            Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
+            bool preservesPreparedPlacement = CanPreserveMirrorImagePreparedSourceLayerPlacement(
+                preservesPreparedLayerObject,
+                preparedLayer.Bounds,
+                preparedLayer.Parts?.Count ?? 0);
+            Texture2D composedTexture = CreateMirrorImageLayerTexture(
+                clonedParts,
+                bounds,
+                preparedLayer.ComposedTexture,
+                preservesPreparedLayerObject);
+            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
+            preparedLayer.RenderLayer = renderLayer;
+            preparedLayer.SourceSignature = sourceSignature;
+            preparedLayer.Bounds = ResolveMirrorImagePreparedSourceLayerPlacementBounds(
+                preparedLayer.Bounds,
+                bounds,
+                preservesPreparedPlacement);
+            preparedLayer.TextureSourceBounds = ResolveMirrorImagePreparedSnapshotSourceBounds(Rectangle.Empty, bounds);
+            preparedLayer.Origin = ResolveMirrorImagePreparedSourceLayerOrigin(
+                preparedLayer.Origin,
+                bounds,
+                preservesPreparedPlacement);
+            preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                preparedLayer.PreparedCurrentTime,
+                reusesExistingLayer: false,
+                preservesPreparedLayerObject,
+                currentTime);
+            preparedLayer.PreparedSourceLayerCurrentTime = sourceLayerCurrentTime;
+            preparedLayer.PreparedTransitionStartTime = ResolveMirrorImagePreparedSourceLayerTransitionStartTime(
+                preparedLayer.PreparedTransitionStartTime,
+                preservesPreparedLayerObject,
+                _activeMirrorImage?.StartTime ?? currentTime,
+                sourceLayerCurrentTime,
+                currentTime);
+            preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(sourceLayerCurrentTime);
+            preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                preparedLayer.PreparedLayerObjectId,
+                preservesPreparedLayerObject);
+            preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                preparedLayer.PreparedTargetOffsetPx,
+                !preservesPreparedLayerObject,
+                ResolveMirrorImageTargetOffsetForCurrentState());
+            ApplyMirrorImagePreparedLayerClientProperties(
+                preparedLayer,
+                renderLayer,
+                recreatesLayerObject: !preservesPreparedLayerObject);
+            ApplyMirrorImagePreparedLayerNativeMetadata(
+                preparedLayer,
+                sourceParts,
+                underFaceSourceParts,
+                sourceLayerCurrentTime,
+                recreatesLayerObject: !preservesPreparedLayerObject);
+            ApplyMirrorImageInsertCanvasMetadata(
+                preparedLayer,
+                sourceSignature,
+                ComputeMirrorImageSourceCanvasSignature(sourceParts),
+                currentTime,
+                sourceLayerCurrentTime,
+                HasMirrorImageInsertCanvasSource(
+                    HasMirrorImageLiveSourceCanvas(sourceParts)),
+                sourceParts,
+                insertsLiveSourceCanvas: false);
+            preparedLayer.PreparedFacingRight = facingRight;
+            preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+            preparedLayer.Parts = clonedParts;
+            return preparedLayer;
+        }
+
+        private MirrorImagePreparedSourceLayer ResetPreparedMirrorImageSourceLayer(
+            MirrorImagePreparedSourceLayer existingLayer,
+            AvatarRenderLayer renderLayer,
+            int sourceSignature = 0)
+        {
+            MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
+            DisposeMirrorImagePreparedSourceLayerTexture(preparedLayer);
+            preparedLayer.RenderLayer = renderLayer;
+            preparedLayer.PreparedLayerObjectId = 0;
+            preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(ResolveMirrorImageAvatarScalePercent());
+            preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
+            preparedLayer.SourceSignature = sourceSignature;
+            preparedLayer.LastInsertedSourceSignature = 0;
+            preparedLayer.LastInsertedSourceCanvasSignature = 0;
+            preparedLayer.Bounds = Rectangle.Empty;
+            preparedLayer.TextureSourceBounds = Rectangle.Empty;
+            preparedLayer.Origin = Point.Zero;
+            preparedLayer.PreparedCurrentTime = int.MinValue;
+            preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
+            preparedLayer.PreparedTransitionStartTime = int.MinValue;
+            preparedLayer.PreparedRelMoveEndTime = int.MinValue;
+            preparedLayer.PreparedLayerNativeOperationSignature = 0;
+            preparedLayer.PreparedLayerNativeOperations = Array.Empty<MirrorImagePreparedLayerNativeOperation>();
+            preparedLayer.PreparedLayerNativeReferenceBalanceSignature = 0;
+            preparedLayer.PreparedLayerNativeReferenceBalances = Array.Empty<MirrorImagePreparedLayerNativeReferenceBalance>();
+            preparedLayer.LastInsertCanvasTime = int.MinValue;
+            preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
+            preparedLayer.LastInsertCanvasLayerObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayer = null;
+            preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
+            preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
+            preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
+            preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+            preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
+            preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
+            preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
+            preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
+            preparedLayer.LastInsertCanvasUnderFaceParentObjectId = 0;
+            preparedLayer.LastInsertCanvasUnderFaceParentSignature = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
+            preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
+            preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
+            preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
+            preparedLayer.LastInsertCanvasNativeOperationSignature = 0;
+            preparedLayer.LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>();
+            preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = 0;
+            preparedLayer.LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            preparedLayer.PreparedFacingRight = false;
+            preparedLayer.PreparedTargetOffsetPx = Point.Zero;
+            preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+            preparedLayer.Parts = Array.Empty<AssembledPart>();
+            preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
+            return preparedLayer;
+        }
+
+        private static void ApplyMirrorImageInsertCanvasMetadata(
+            MirrorImagePreparedSourceLayer preparedLayer,
+            int sourceSignature,
+            int sourceCanvasSignature,
+            int currentTime,
+            int sourceLayerCurrentTime,
+            bool hasSourceCanvas,
+            IReadOnlyList<AssembledPart> sourceParts,
+            bool insertsLiveSourceCanvas,
+            int sourceLayerClockSignature = 0,
+            int sourceFrameSignature = 0,
+            int overlayParentSignature = 0,
+            int overlayParentObjectId = 0,
+            int overlayInsertionIndex = int.MinValue,
+            int overlaySiblingSignature = 0,
+            int underFaceParentObjectId = 0,
+            int underFaceParentSignature = 0,
+            int preparedLayerRelMoveEndTime = int.MinValue,
+            int postReparentListNodeSignature = 0,
+            IReadOnlyList<MirrorImageLayerNativeOperation> nativeOperations = null,
+            int nativeOperationSignature = 0,
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> nativeReferenceBalances = null,
+            int nativeReferenceBalanceSignature = 0)
+        {
+            if (preparedLayer == null)
+            {
+                return;
+            }
+
+            bool updatesFromLiveInsertCanvas = insertsLiveSourceCanvas && hasSourceCanvas;
+            bool resetsStaleInsertCanvasMetadataForPreparedLayerRecreation = ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
+                updatesFromLiveInsertCanvas,
+                preparedLayer.PreparedLayerObjectId,
+                preparedLayer.LastInsertCanvasLayerObjectId);
+            if (resetsStaleInsertCanvasMetadataForPreparedLayerRecreation)
+            {
+                preparedLayer.LastInsertedSourceSignature = 0;
+                preparedLayer.LastInsertedSourceCanvasSignature = 0;
+                preparedLayer.LastInsertCanvasTime = int.MinValue;
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
+                preparedLayer.LastInsertCanvasLayerObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayer = null;
+                preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
+                preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+                preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
+                preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
+                preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId = 0;
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
+                preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
+                preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature = 0;
+                preparedLayer.LastInsertCanvasNativeOperationSignature = 0;
+                preparedLayer.LastInsertCanvasNativeOperations = Array.Empty<MirrorImageLayerNativeOperation>();
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = 0;
+                preparedLayer.LastInsertCanvasNativeReferenceBalances = Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+                preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
+            }
+
+            preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
+                preparedLayer.LastInsertedSourceSignature,
+                sourceSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlayParentObjectId = ResolveMirrorImageLastInsertCanvasOverlayParentObjectId(
+                preparedLayer.LastInsertCanvasOverlayParentObjectId,
+                overlayParentObjectId,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlayInsertionIndex = ResolveMirrorImageLastInsertCanvasOverlayInsertionIndex(
+                preparedLayer.LastInsertCanvasOverlayInsertionIndex,
+                overlayInsertionIndex,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlaySiblingSignature = ResolveMirrorImageLastInsertCanvasOverlaySiblingSignature(
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature,
+                overlaySiblingSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasUnderFaceParentObjectId = ResolveMirrorImageLastInsertCanvasUnderFaceParentObjectId(
+                preparedLayer.LastInsertCanvasUnderFaceParentObjectId,
+                underFaceParentObjectId,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasUnderFaceParentSignature = ResolveMirrorImageLastInsertCanvasUnderFaceParentSignature(
+                preparedLayer.LastInsertCanvasUnderFaceParentSignature,
+                underFaceParentSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertedSourceCanvasSignature = ResolveMirrorImageLastInsertedSourceSignature(
+                preparedLayer.LastInsertedSourceCanvasSignature,
+                sourceCanvasSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
+                preparedLayer.LastInsertCanvasTime,
+                currentTime,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerCurrentTime = ResolveMirrorImageLastInsertCanvasSourceLayerCurrentTime(
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime,
+                sourceLayerCurrentTime,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasLayerObjectId = ResolveMirrorImageLastInsertCanvasLayerObjectId(
+                preparedLayer.LastInsertCanvasLayerObjectId,
+                preparedLayer.PreparedLayerObjectId,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayer = ResolveMirrorImageLastInsertCanvasSourceLayer(
+                preparedLayer.LastInsertCanvasSourceLayer,
+                preparedLayer.RenderLayer,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlayTargetLayer = ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
+                preparedLayer.LastInsertCanvasOverlayTargetLayer,
+                preparedLayer.OverlayTargetLayer,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourcePartsObjectId = ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
+                preparedLayer.LastInsertCanvasSourcePartsObjectId,
+                ResolveMirrorImageSourcePartsObjectId(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerObjectId = ResolveMirrorImageLastInsertCanvasSourceLayerObjectId(
+                preparedLayer.LastInsertCanvasSourceLayerObjectId,
+                ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerOriginSignature = ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
+                ComputeMirrorImageSourceLayerOriginSignature(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerClockSignature = ResolveMirrorImageLastInsertCanvasSourceLayerClockSignature(
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature,
+                sourceLayerClockSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceCanvasObjectId = ResolveMirrorImageLastInsertCanvasSourceCanvasObjectId(
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId,
+                ResolveMirrorImageSourceCanvasObjectId(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceFrameSignature = ResolveMirrorImageLastInsertCanvasSourceFrameSignature(
+                preparedLayer.LastInsertCanvasSourceFrameSignature,
+                sourceFrameSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlayParentSignature = ResolveMirrorImageLastInsertCanvasOverlayParentSignature(
+                preparedLayer.LastInsertCanvasOverlayParentSignature,
+                overlayParentSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerFilter = ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
+                preparedLayer.LastInsertCanvasPreparedLayerFilter,
+                preparedLayer.PreparedLayerFilter,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerZ = ResolveMirrorImageLastInsertCanvasPreparedLayerZ(
+                preparedLayer.LastInsertCanvasPreparedLayerZ,
+                preparedLayer.PreparedLayerZ,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerColor = ResolveMirrorImageLastInsertCanvasPreparedLayerColor(
+                preparedLayer.LastInsertCanvasPreparedLayerColor,
+                ResolveMirrorImagePreparedLayerColorSignature(preparedLayer.PreparedLayerColor),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = ResolveMirrorImageLastInsertCanvasPreparedLayerTargetOffsetSignature(
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
+                ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = ResolveMirrorImageLastInsertCanvasPreparedLayerRelMoveEndTime(
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime,
+                preparedLayerRelMoveEndTime,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPostReparentListNodeSignature = ResolveMirrorImageLastInsertCanvasPostReparentListNodeSignature(
+                preparedLayer.LastInsertCanvasPostReparentListNodeSignature,
+                postReparentListNodeSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeOperationSignature = ResolveMirrorImageLastInsertCanvasNativeOperationSignature(
+                preparedLayer.LastInsertCanvasNativeOperationSignature,
+                nativeOperationSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeOperations = ResolveMirrorImageLastInsertCanvasNativeOperations(
+                preparedLayer.LastInsertCanvasNativeOperations,
+                nativeOperations,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature = ResolveMirrorImageLastInsertCanvasNativeReferenceBalanceSignature(
+                preparedLayer.LastInsertCanvasNativeReferenceBalanceSignature,
+                nativeReferenceBalanceSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasNativeReferenceBalances = ResolveMirrorImageLastInsertCanvasNativeReferenceBalances(
+                preparedLayer.LastInsertCanvasNativeReferenceBalances,
+                nativeReferenceBalances,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
+                preparedLayer.LastInsertedLiveSourceParts,
+                sourceParts,
+                updatesFromLiveInsertCanvas);
+        }
+
+        internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
+        {
+            return AvatarRenderLayer.UnderFace;
+        }
+
+        private void ApplyMirrorImagePreparedLayerClientProperties(
+            MirrorImagePreparedSourceLayer preparedLayer,
+            AvatarRenderLayer renderLayer,
+            bool recreatesLayerObject = false)
+        {
+            if (preparedLayer == null)
+            {
+                return;
+            }
+
+            preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+            preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilterForPreparedLayer(
+                preparedLayer.PreparedLayerFilter,
+                preparedLayer.PreparedLayerObjectId,
+                recreatesLayerObject,
+                ResolveMirrorImageAvatarScalePercent());
+            preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
+        }
+
+        private static void ApplyMirrorImagePreparedLayerNativeMetadata(
+            MirrorImagePreparedSourceLayer preparedLayer,
+            IReadOnlyList<AssembledPart> sourceParts,
+            IReadOnlyList<AssembledPart> underFaceSourceParts,
+            int sourceLayerCurrentTime,
+            bool recreatesLayerObject)
+        {
+            if (preparedLayer == null || !recreatesLayerObject || preparedLayer.PreparedLayerObjectId <= 0)
+            {
+                return;
+            }
+
+            int sourceLayerObjectId = ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, sourceParts);
+            int sourceCanvasObjectId = ResolveMirrorImageSourceCanvasObjectId(sourceParts);
+            int underFaceLayerObjectId = ResolveMirrorImageSourceLayerObjectId(AvatarRenderLayer.UnderFace, underFaceSourceParts);
+            int sourceOriginObjectId = ComputeMirrorImageSourceLayerOriginSignature(sourceParts);
+            int createLayerFilterObjectId = ResolveMirrorImagePreparedLayerFilterObjectId(
+                preparedLayer.PreparedLayerFilter,
+                ResolveMirrorImageClientScalePercentFromFilter(preparedLayer.PreparedLayerFilter));
+            IReadOnlyList<MirrorImagePreparedLayerNativeOperation> operations = BuildMirrorImagePreparedLayerNativeOperations(
+                preparedLayer.RenderLayer,
+                preparedLayer.PreparedLayerObjectId,
+                sourceLayerObjectId,
+                sourceCanvasObjectId,
+                underFaceLayerObjectId,
+                sourceOriginObjectId,
+                createLayerFilterObjectId,
+                sourceLayerCurrentTime,
+                preparedLayer.PreparedRelMoveEndTime);
+            IReadOnlyList<MirrorImagePreparedLayerNativeReferenceBalance> balances =
+                BuildMirrorImagePreparedLayerNativeReferenceBalances(operations);
+            preparedLayer.PreparedLayerNativeOperations = operations;
+            preparedLayer.PreparedLayerNativeOperationSignature = ComputeMirrorImagePreparedLayerNativeOperationSignature(operations);
+            preparedLayer.PreparedLayerNativeReferenceBalances = balances;
+            preparedLayer.PreparedLayerNativeReferenceBalanceSignature = ComputeMirrorImagePreparedLayerNativeReferenceBalanceSignature(balances);
+        }
+        internal static int ResolveMirrorImagePreparedLayerZ()
+        {
+            return MirrorImageClientLayerZ;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilter(int scalePercent)
+        {
+            return scalePercent == MirrorImageClientDefaultScalePercent
+                ? MirrorImageClientDefaultLayerFilter
+                : MirrorImageClientScaledLayerFilter;
+        }
+
+        internal static int ResolveMirrorImageClientScalePercentFromFilter(int preparedLayerFilter)
+        {
+            return preparedLayerFilter == MirrorImageClientScaledLayerFilter
+                ? MirrorImageClientScaledLayerFilter
+                : MirrorImageClientDefaultScalePercent;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilterObjectId(int preparedLayerFilter, int scalePercent)
+        {
+            var identity = new HashCode();
+            identity.Add(nameof(MirrorImagePreparedLayerNativeReferenceKind.CreateLayerFilterVariant), StringComparer.Ordinal);
+            identity.Add(preparedLayerFilter);
+            identity.Add(NormalizeMirrorImageAvatarScalePercent(scalePercent));
+            return identity.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilterForPreparedLayer(
+            int existingLayerFilter,
+            int preparedLayerObjectId,
+            bool recreatesLayerObject,
+            int scalePercent)
+        {
+            if (!recreatesLayerObject && preparedLayerObjectId > 0)
+            {
+                return existingLayerFilter;
+            }
+
+            return ResolveMirrorImagePreparedLayerFilter(scalePercent);
+        }
+
+        internal int ResolveMirrorImageAvatarScalePercent()
+        {
+            return NormalizeMirrorImageAvatarScalePercent(_mirrorImageAvatarScalePercent);
+        }
+
+        internal static int NormalizeMirrorImageAvatarScalePercent(int scalePercent)
+        {
+            return scalePercent > 0
+                ? scalePercent
+                : MirrorImageClientDefaultScalePercent;
+        }
+
+        internal static Color ResolveMirrorImagePreparedLayerColor()
+        {
+            return MirrorImageTint;
+        }
+
+        internal static Color ResolveMirrorImageLayerTint(Color layerColor, float alpha)
+        {
+            return layerColor * MathHelper.Clamp(alpha, 0f, 1f);
+        }
+
+        internal static int ResolveMirrorImageOverlayInsertionIndex(
+            IReadOnlyList<int> avatarLayerInsertionIndices,
+            int fallbackInsertionIndex)
+        {
+            if (avatarLayerInsertionIndices == null)
+            {
+                return fallbackInsertionIndex;
+            }
+
+            int underFaceLayerIndex = (int)AvatarRenderLayer.UnderFace;
+            if ((uint)underFaceLayerIndex >= (uint)avatarLayerInsertionIndices.Count)
+            {
+                return fallbackInsertionIndex;
+            }
+
+            return avatarLayerInsertionIndices[underFaceLayerIndex];
+        }
+
+        internal static int ResolveMirrorImageOverlayInsertionIndex(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null)
+            {
+                return int.MinValue;
+            }
+
+            int[] insertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            return ResolveMirrorImageOverlayInsertionIndex(insertionIndices, frame.Parts.Count);
+        }
+
+        internal static bool CanReuseMirrorImagePreparedSourceLayer(
+            int existingSourceSignature,
+            int existingPartCount,
+            bool existingFacingRight,
+            int incomingSourceSignature,
+            bool facingRight)
+        {
+            return existingSourceSignature == incomingSourceSignature
+                   && existingPartCount > 0
+                   && existingFacingRight == facingRight;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerObject(
+            int existingLayerObjectId,
+            bool existingFacingRight,
+            bool currentFacingRight,
+            int existingPartCount)
+        {
+            return !ShouldRecreateMirrorImagePreparedSourceLayerObject(
+                existingLayerObjectId > 0 || existingPartCount > 0,
+                existingFacingRight == currentFacingRight);
+        }
+
+        internal static bool ShouldRecreateMirrorImagePreparedSourceLayerForScaleFilter(
+            int preparedLayerObjectId,
+            int existingLayerFilter,
+            int scalePercent)
+        {
+            if (preparedLayerObjectId <= 0)
+            {
+                return false;
+            }
+
+            return existingLayerFilter != ResolveMirrorImagePreparedLayerFilter(scalePercent);
+        }
+
+        private int AllocateMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            bool preservesExistingLayerObject)
+        {
+            if (_activeMirrorImage == null)
+            {
+                return ResolveMirrorImagePreparedLayerObjectId(
+                    existingLayerObjectId,
+                    preservesExistingLayerObject,
+                    nextLayerObjectId: 1);
+            }
+
+            int resolvedLayerObjectId = ResolveMirrorImagePreparedLayerObjectId(
+                existingLayerObjectId,
+                preservesExistingLayerObject,
+                _activeMirrorImage.NextPreparedLayerObjectId);
+            if (ShouldAdvanceMirrorImagePreparedLayerObjectId(
+                    existingLayerObjectId,
+                    resolvedLayerObjectId,
+                    preservesExistingLayerObject))
+            {
+                _activeMirrorImage.NextPreparedLayerObjectId++;
+            }
+
+            return resolvedLayerObjectId;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            bool preservesExistingLayerObject,
+            int nextLayerObjectId)
+        {
+            if (preservesExistingLayerObject && existingLayerObjectId > 0)
+            {
+                return existingLayerObjectId;
+            }
+
+            return Math.Max(1, nextLayerObjectId);
+        }
+
+        internal static int ResolveMirrorImageNextPreparedLayerObjectIdAfterRelease()
+        {
+            return 1;
+        }
+
+        internal static bool ShouldAdvanceMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            int resolvedLayerObjectId,
+            bool preservesExistingLayerObject)
+        {
+            return resolvedLayerObjectId > 0
+                   && (!preservesExistingLayerObject || existingLayerObjectId <= 0);
+        }
+
+        internal static bool ShouldRecreateMirrorImagePreparedSourceLayerObject(
+            bool hasExistingLayer,
+            bool existingFlipMatchesUnderFace)
+        {
+            return !hasExistingLayer || !existingFlipMatchesUnderFace;
+        }
+
+        internal static Point ResolveMirrorImagePreparedLayerTargetOffset(
+            Point existingTargetOffset,
+            bool recreatesLayerObject,
+            Point currentTargetOffset)
+        {
+            return recreatesLayerObject
+                ? currentTargetOffset
+                : existingTargetOffset;
+        }
+
+        internal static bool HasMirrorImageInsertCanvasSource(
+            bool hasLiveSourceCanvas)
+        {
+            return hasLiveSourceCanvas;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSnapshotForLiveInsertCanvas(
+            bool preservesExistingLayerObject,
+            bool hasLiveInsertCanvasSource,
+            bool hasPreparedSnapshot)
+        {
+            return preservesExistingLayerObject
+                && hasLiveInsertCanvasSource
+                && hasPreparedSnapshot;
+        }
+
+        internal static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return false;
+            }
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart sourcePart = sourceParts[partIndex];
+                if (sourcePart?.Texture != null && sourcePart.IsVisible)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static int ResolveMirrorImageLastInsertedSourceSignature(
+            int existingLastInsertedSourceSignature,
+            int sourceSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? sourceSignature
+                : existingLastInsertedSourceSignature;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasTime(
+            int existingLastInsertCanvasTime,
+            int currentTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentTime
+                : existingLastInsertCanvasTime;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerCurrentTime(
+            int existingSourceLayerCurrentTime,
+            int sourceLayerCurrentTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && sourceLayerCurrentTime != int.MinValue
+                ? sourceLayerCurrentTime
+                : existingSourceLayerCurrentTime;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasLayerObjectId(
+            int existingLayerObjectId,
+            int currentLayerObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentLayerObjectId > 0
+                ? currentLayerObjectId
+                : existingLayerObjectId;
+        }
+
+        internal static AvatarRenderLayer? ResolveMirrorImageLastInsertCanvasSourceLayer(
+            AvatarRenderLayer? existingSourceLayer,
+            AvatarRenderLayer currentSourceLayer,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentSourceLayer
+                : existingSourceLayer;
+        }
+
+        internal static AvatarRenderLayer? ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
+            AvatarRenderLayer? existingOverlayTargetLayer,
+            AvatarRenderLayer currentOverlayTargetLayer,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentOverlayTargetLayer
+                : existingOverlayTargetLayer;
+        }
+
+        internal static int ResolveMirrorImageSourcePartsObjectId(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            return sourceParts != null
+                ? RuntimeHelpers.GetHashCode(sourceParts)
+                : 0;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
+            int existingSourcePartsObjectId,
+            int currentSourcePartsObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourcePartsObjectId > 0
+                ? currentSourcePartsObjectId
+                : existingSourcePartsObjectId;
+        }
+
+        internal static int ResolveMirrorImageSourceLayerObjectId(
+            AvatarRenderLayer sourceLayer,
+            IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null)
+            {
+                return 0;
+            }
+
+            var identity = new HashCode();
+            identity.Add((int)sourceLayer);
+            identity.Add(RuntimeHelpers.GetHashCode(sourceParts));
+            return identity.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerObjectId(
+            int existingSourceLayerObjectId,
+            int currentSourceLayerObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourceLayerObjectId != 0
+                ? currentSourceLayerObjectId
+                : existingSourceLayerObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
+            int existingOriginSignature,
+            int currentOriginSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOriginSignature != 0
+                ? currentOriginSignature
+                : existingOriginSignature;
+        }
+
+        internal static int ComputeMirrorImageSourceLayerClockSignature(
+            AvatarRenderLayer sourceLayer,
+            string actionName,
+            CharacterAction action,
+            PlayerState state,
+            int actionStartTime,
+            int sourceLayerCurrentTime,
+            int frameIndex,
+            int frameRemainingMs,
+            int actionSpeedDegree,
+            int walkSpeed,
+            int heldActionFrameDelay,
+            bool allowLoop)
+        {
+            if (sourceLayerCurrentTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add((int)sourceLayer);
+            signature.Add(actionName, StringComparer.Ordinal);
+            signature.Add((int)action);
+            signature.Add((int)state);
+            signature.Add(actionStartTime);
+            signature.Add(sourceLayerCurrentTime);
+            signature.Add(frameIndex);
+            signature.Add(frameRemainingMs);
+            signature.Add(actionSpeedDegree);
+            signature.Add(walkSpeed);
+            signature.Add(heldActionFrameDelay);
+            signature.Add(allowLoop);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerClockSignature(
+            int existingClockSignature,
+            int currentClockSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentClockSignature != 0
+                ? currentClockSignature
+                : existingClockSignature;
+        }
+
+        internal static int ResolveMirrorImageSourceCanvasObjectId(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var identity = new HashCode();
+            identity.Add(sourceParts.Count);
+            bool hasCanvas = false;
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                IDXObject texture = sourceParts[partIndex]?.Texture;
+                identity.Add(RuntimeHelpers.GetHashCode(texture));
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                hasCanvas = true;
+                identity.Add(RuntimeHelpers.GetHashCode(texture.Texture));
+            }
+
+            return hasCanvas ? identity.ToHashCode() : 0;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceCanvasObjectId(
+            int existingSourceCanvasObjectId,
+            int currentSourceCanvasObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourceCanvasObjectId != 0
+                ? currentSourceCanvasObjectId
+                : existingSourceCanvasObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceFrameSignature(
+            int existingSourceFrameSignature,
+            int currentSourceFrameSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourceFrameSignature != 0
+                ? currentSourceFrameSignature
+                : existingSourceFrameSignature;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerColorSignature(Color layerColor)
+        {
+            return (int)layerColor.PackedValue;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerTargetOffsetSignature(Point targetOffset)
+        {
+            var signature = new HashCode();
+            signature.Add(targetOffset.X);
+            signature.Add(targetOffset.Y);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasOverlayParentSignature(
+            int existingOverlayParentSignature,
+            int currentOverlayParentSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlayParentSignature != 0
+                ? currentOverlayParentSignature
+                : existingOverlayParentSignature;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasOverlayParentObjectId(
+            int existingOverlayParentObjectId,
+            int currentOverlayParentObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlayParentObjectId != 0
+                ? currentOverlayParentObjectId
+                : existingOverlayParentObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasOverlayInsertionIndex(
+            int existingOverlayInsertionIndex,
+            int currentOverlayInsertionIndex,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlayInsertionIndex != int.MinValue
+                ? currentOverlayInsertionIndex
+                : existingOverlayInsertionIndex;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasOverlaySiblingSignature(
+            int existingOverlaySiblingSignature,
+            int currentOverlaySiblingSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlaySiblingSignature != 0
+                ? currentOverlaySiblingSignature
+                : existingOverlaySiblingSignature;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasUnderFaceParentObjectId(
+            int existingUnderFaceParentObjectId,
+            int currentUnderFaceParentObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentUnderFaceParentObjectId != 0
+                ? currentUnderFaceParentObjectId
+                : existingUnderFaceParentObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasUnderFaceParentSignature(
+            int existingUnderFaceParentSignature,
+            int currentUnderFaceParentSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentUnderFaceParentSignature != 0
+                ? currentUnderFaceParentSignature
+                : existingUnderFaceParentSignature;
+        }
+
+        internal static int ComputeMirrorImagePostInsertParentListNodeSignature(
+            int preparedLayerObjectId,
+            int overlayParentObjectId,
+            int overlayInsertionIndex,
+            int overlaySiblingSignature)
+        {
+            if (preparedLayerObjectId <= 0
+                || overlayParentObjectId == 0
+                || overlayInsertionIndex == int.MinValue
+                || overlaySiblingSignature == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(preparedLayerObjectId);
+            signature.Add(overlayParentObjectId);
+            signature.Add(overlayInsertionIndex);
+            signature.Add(overlaySiblingSignature);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPostReparentListNodeSignature(
+            int existingPostReparentListNodeSignature,
+            int currentPostReparentListNodeSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPostReparentListNodeSignature != 0
+                ? currentPostReparentListNodeSignature
+                : existingPostReparentListNodeSignature;
+        }
+        private static void CaptureMirrorImagePreparedLayerReleaseNativeMetadata(
+            MirrorImageState mirrorImageState,
+            IReadOnlyList<int> preparedLayerObjectIds)
+        {
+            if (mirrorImageState == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations =
+                BuildMirrorImagePreparedLayerReleaseNativeOperations(preparedLayerObjectIds);
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> balances =
+                BuildMirrorImagePreparedLayerReleaseNativeReferenceBalances(operations);
+            mirrorImageState.LastPreparedLayerReleaseNativeOperations = operations;
+            mirrorImageState.LastPreparedLayerReleaseNativeOperationSignature =
+                ComputeMirrorImagePreparedLayerReleaseNativeOperationSignature(operations);
+            mirrorImageState.LastPreparedLayerReleaseNativeReferenceBalances = balances;
+            mirrorImageState.LastPreparedLayerReleaseNativeReferenceBalanceSignature =
+                ComputeMirrorImagePreparedLayerReleaseNativeReferenceBalanceSignature(balances);
+        }
+
+        internal static IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> BuildMirrorImagePreparedLayerReleaseNativeOperations(
+            IReadOnlyList<int> preparedLayerObjectIds)
+        {
+            if (preparedLayerObjectIds == null || preparedLayerObjectIds.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeOperation>();
+            }
+
+            var operations = new List<MirrorImagePreparedLayerReleaseNativeOperation>(preparedLayerObjectIds.Count * 3);
+            int sequence = 0;
+            int layerCount = Math.Min(preparedLayerObjectIds.Count, MirrorImageClientSourceLayerCount);
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                AvatarRenderLayer sourceLayer = (AvatarRenderLayer)layerIndex;
+                int layerObjectId = preparedLayerObjectIds[layerIndex];
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.CheckMirrorLayerSlot,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: 0));
+                if (layerObjectId == 0)
+                {
+                    continue;
+                }
+
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.ClearMirrorLayerSlot,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: 0));
+                operations.Add(new MirrorImagePreparedLayerReleaseNativeOperation(
+                    MirrorImagePreparedLayerReleaseNativeOperationKind.ReleaseMirrorLayerObject,
+                    ++sequence,
+                    sourceLayer,
+                    layerObjectId,
+                    RelatedObjectId: layerIndex,
+                    ReferenceDelta: -1));
+            }
+
+            return operations;
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerReleaseNativeOperationSignature(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(operations.Count);
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeOperation operation = operations[operationIndex];
+                signature.Add((int)operation.Kind);
+                signature.Add(operation.Sequence);
+                signature.Add((int)operation.SourceLayer);
+                signature.Add(operation.ObjectId);
+                signature.Add(operation.RelatedObjectId);
+                signature.Add(operation.ReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> BuildMirrorImagePreparedLayerReleaseNativeReferenceBalances(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            }
+
+            var balances = new Dictionary<int, (int AddRefCount, int ReleaseCount, int NetReferenceDelta)>();
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeOperation operation = operations[operationIndex];
+                if (operation.Kind != MirrorImagePreparedLayerReleaseNativeOperationKind.ReleaseMirrorLayerObject
+                    || operation.ObjectId == 0
+                    || operation.ReferenceDelta == 0)
+                {
+                    continue;
+                }
+
+                (int AddRefCount, int ReleaseCount, int NetReferenceDelta) balance = balances.TryGetValue(operation.ObjectId, out var existing)
+                    ? existing
+                    : default;
+                if (operation.ReferenceDelta > 0)
+                {
+                    balance.AddRefCount += operation.ReferenceDelta;
+                }
+                else
+                {
+                    balance.ReleaseCount += -operation.ReferenceDelta;
+                }
+
+                balance.NetReferenceDelta += operation.ReferenceDelta;
+                balances[operation.ObjectId] = balance;
+            }
+
+            if (balances.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerReleaseNativeReferenceBalance>();
+            }
+
+            return balances
+                .OrderBy(static entry => entry.Key)
+                .Select(static entry => new MirrorImagePreparedLayerReleaseNativeReferenceBalance(
+                    MirrorImagePreparedLayerReleaseNativeReferenceKind.MirrorLayerObject,
+                    entry.Key,
+                    entry.Value.AddRefCount,
+                    entry.Value.ReleaseCount,
+                    entry.Value.NetReferenceDelta))
+                .ToArray();
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerReleaseNativeReferenceBalanceSignature(
+            IReadOnlyList<MirrorImagePreparedLayerReleaseNativeReferenceBalance> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(balances.Count);
+            for (int balanceIndex = 0; balanceIndex < balances.Count; balanceIndex++)
+            {
+                MirrorImagePreparedLayerReleaseNativeReferenceBalance balance = balances[balanceIndex];
+                signature.Add((int)balance.Kind);
+                signature.Add(balance.ObjectId);
+                signature.Add(balance.AddRefCount);
+                signature.Add(balance.ReleaseCount);
+                signature.Add(balance.NetReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+        internal static IReadOnlyList<MirrorImagePreparedLayerNativeOperation> BuildMirrorImagePreparedLayerNativeOperations(
+            AvatarRenderLayer sourceLayer,
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId,
+            int underFaceLayerObjectId,
+            int sourceOriginObjectId,
+            int createLayerFilterObjectId,
+            int sourceCurrentTime,
+            int relMoveEndTime)
+        {
+            var operations = new List<MirrorImagePreparedLayerNativeOperation>(25);
+            int sequence = 0;
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.GetMirrorSrcLayer,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: (int)sourceLayer,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.AddRefSourceLayer,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: sourceLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerCanvasVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerFilterVariant,
+                ++sequence,
+                sourceLayer,
+                createLayerFilterObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: createLayerFilterObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.CreateHelperLayer,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: underFaceLayerObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.StoreHelperLayerSlot,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: (int)sourceLayer,
+                ReferenceDelta: preparedLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ReleaseCreateLayerLocal,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: preparedLayerObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerCanvasVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerFilterVariant,
+                ++sequence,
+                sourceLayer,
+                createLayerFilterObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: createLayerFilterObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.AddRefUnderFaceOverlayVariant,
+                ++sequence,
+                sourceLayer,
+                underFaceLayerObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: underFaceLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.PutOverlayUnderFace,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: underFaceLayerObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ClearUnderFaceOverlayVariant,
+                ++sequence,
+                sourceLayer,
+                underFaceLayerObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: underFaceLayerObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.PutColor,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: ResolveMirrorImagePreparedLayerColorSignature(ResolveMirrorImagePreparedLayerColor()),
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.GetSourceOrigin,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: sourceOriginObjectId,
+                ReferenceDelta: sourceOriginObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.PutEmptyOrigin,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.PutSourceOrigin,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: sourceOriginObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.InitializeRelMoveTypeMissingVariant,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.GetSourceCurrentTime,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: sourceCurrentTime,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.InitializeRelMoveTimeVariant,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: relMoveEndTime,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.RelMoveFromSourceCurrentTime,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: relMoveEndTime,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ClearRelMoveTimeVariant,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: relMoveEndTime,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ClearRelMoveTypeMissingVariant,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.PutFlipFromUnderFace,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: underFaceLayerObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ReleaseSourceOriginVariant,
+                ++sequence,
+                sourceLayer,
+                sourceOriginObjectId,
+                RelatedObjectId: sourceLayerObjectId,
+                ReferenceDelta: sourceOriginObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImagePreparedLayerNativeOperation(
+                MirrorImagePreparedLayerNativeOperationKind.ReleaseSourceLayer,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: sourceLayerObjectId != 0 ? -1 : 0));
+            return operations;
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerNativeOperationSignature(
+            IReadOnlyList<MirrorImagePreparedLayerNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(operations.Count);
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerNativeOperation operation = operations[operationIndex];
+                signature.Add((int)operation.Kind);
+                signature.Add(operation.Sequence);
+                signature.Add((int)operation.SourceLayer);
+                signature.Add(operation.ObjectId);
+                signature.Add(operation.RelatedObjectId);
+                signature.Add(operation.ReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static IReadOnlyList<MirrorImagePreparedLayerNativeReferenceBalance> BuildMirrorImagePreparedLayerNativeReferenceBalances(
+            IReadOnlyList<MirrorImagePreparedLayerNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerNativeReferenceBalance>();
+            }
+
+            var balances = new Dictionary<(MirrorImagePreparedLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)>();
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImagePreparedLayerNativeOperation operation = operations[operationIndex];
+                switch (operation.Kind)
+                {
+                    case MirrorImagePreparedLayerNativeOperationKind.AddRefSourceLayer:
+                    case MirrorImagePreparedLayerNativeOperationKind.ReleaseSourceLayer:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.SourceLayer,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerCanvasVariant:
+                    case MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerCanvasVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.CreateLayerCanvasVariant,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.InitializeCreateLayerFilterVariant:
+                    case MirrorImagePreparedLayerNativeOperationKind.ClearCreateLayerFilterVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.CreateLayerFilterVariant,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.CreateHelperLayer:
+                    case MirrorImagePreparedLayerNativeOperationKind.ReleaseCreateLayerLocal:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.HelperLayerLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.StoreHelperLayerSlot:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.HelperLayerSlot,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.AddRefUnderFaceOverlayVariant:
+                    case MirrorImagePreparedLayerNativeOperationKind.ClearUnderFaceOverlayVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.UnderFaceOverlayVariant,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.GetSourceOrigin:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.SourceOriginVariant,
+                            operation.RelatedObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImagePreparedLayerNativeOperationKind.ReleaseSourceOriginVariant:
+                        AddMirrorImagePreparedNativeReferenceDelta(
+                            balances,
+                            MirrorImagePreparedLayerNativeReferenceKind.SourceOriginVariant,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                }
+            }
+
+            if (balances.Count == 0)
+            {
+                return Array.Empty<MirrorImagePreparedLayerNativeReferenceBalance>();
+            }
+
+            return balances
+                .OrderBy(static entry => entry.Key.Kind)
+                .ThenBy(static entry => entry.Key.ObjectId)
+                .Select(static entry => new MirrorImagePreparedLayerNativeReferenceBalance(
+                    entry.Key.Kind,
+                    entry.Key.ObjectId,
+                    entry.Value.AddRefCount,
+                    entry.Value.ReleaseCount,
+                    entry.Value.NetReferenceDelta))
+                .ToArray();
+        }
+
+        private static void AddMirrorImagePreparedNativeReferenceDelta(
+            Dictionary<(MirrorImagePreparedLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)> balances,
+            MirrorImagePreparedLayerNativeReferenceKind kind,
+            int objectId,
+            int referenceDelta)
+        {
+            if (balances == null || objectId == 0 || referenceDelta == 0)
+            {
+                return;
+            }
+
+            (int AddRefCount, int ReleaseCount, int NetReferenceDelta) balance = balances.TryGetValue((kind, objectId), out var existing)
+                ? existing
+                : default;
+            if (referenceDelta > 0)
+            {
+                balance.AddRefCount += referenceDelta;
+            }
+            else
+            {
+                balance.ReleaseCount += -referenceDelta;
+            }
+
+            balance.NetReferenceDelta += referenceDelta;
+            balances[(kind, objectId)] = balance;
+        }
+
+        internal static int ComputeMirrorImagePreparedLayerNativeReferenceBalanceSignature(
+            IReadOnlyList<MirrorImagePreparedLayerNativeReferenceBalance> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(balances.Count);
+            for (int balanceIndex = 0; balanceIndex < balances.Count; balanceIndex++)
+            {
+                MirrorImagePreparedLayerNativeReferenceBalance balance = balances[balanceIndex];
+                signature.Add((int)balance.Kind);
+                signature.Add(balance.ObjectId);
+                signature.Add(balance.AddRefCount);
+                signature.Add(balance.ReleaseCount);
+                signature.Add(balance.NetReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+        internal static IReadOnlyList<MirrorImageLayerNativeOperation> BuildMirrorImageLiveInsertNativeOperations(
+            AvatarRenderLayer sourceLayer,
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId,
+            int underFaceParentObjectId,
+            int lastUnderFaceParentObjectId,
+            int insertCanvasResultObjectId = 0)
+        {
+            int resolvedInsertCanvasResultObjectId = insertCanvasResultObjectId != 0
+                ? insertCanvasResultObjectId
+                : ResolveMirrorImageInsertCanvasResultObjectId(
+                    preparedLayerObjectId,
+                    sourceLayerObjectId,
+                    sourceCanvasObjectId);
+            const int insertCanvasMissingArgumentVariantCount = 5;
+            var operations = new List<MirrorImageLayerNativeOperation>(31);
+            int sequence = 0;
+            int sourceCanvasProbeVariantObjectId = ResolveMirrorImageSourceCanvasVariantObjectId(
+                preparedLayerObjectId,
+                sourceLayerObjectId,
+                sourceCanvasObjectId,
+                probeVariant: true);
+            int sourceCanvasIndexVariantObjectId = ResolveMirrorImageSourceCanvasVariantObjectId(
+                preparedLayerObjectId,
+                sourceLayerObjectId,
+                sourceCanvasObjectId,
+                probeVariant: false);
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.AddRefSourceLayer,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: sourceLayerObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.InitializeSourceCanvasProbeIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasProbeVariantObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ProbeSourceCanvasIndexZero,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: sourceCanvasProbeVariantObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.AddRefSourceCanvasProbeLocal,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: sourceLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasProbeLocal,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: sourceLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ClearSourceCanvasProbeIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasProbeVariantObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+
+            if (sourceCanvasObjectId == 0)
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.ReleaseSourceLayer,
+                    ++sequence,
+                    sourceLayer,
+                    sourceLayerObjectId,
+                    RelatedObjectId: 0,
+                    ReferenceDelta: sourceLayerObjectId != 0 ? -1 : 0));
+                return operations;
+            }
+
+            for (int argumentIndex = 0; argumentIndex < insertCanvasMissingArgumentVariantCount; argumentIndex++)
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.InitializeInsertCanvasMissingArgumentVariant,
+                    ++sequence,
+                    sourceLayer,
+                    ResolveMirrorImageInsertCanvasMissingArgumentVariantObjectId(
+                        preparedLayerObjectId,
+                        sourceLayerObjectId,
+                        sourceCanvasObjectId,
+                        argumentIndex),
+                    RelatedObjectId: argumentIndex,
+                    ReferenceDelta: 0));
+            }
+
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.InitializeSourceCanvasIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasIndexVariantObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.GetSourceCanvasIndexZero,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: sourceCanvasIndexVariantObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.AddRefSourceCanvasLocal,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: sourceLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.InitializeInsertCanvasResultVariant,
+                ++sequence,
+                sourceLayer,
+                resolvedInsertCanvasResultObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.InsertCanvasIntoHelperLayer,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: resolvedInsertCanvasResultObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 && resolvedInsertCanvasResultObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ClearInsertCanvasResultVariant,
+                ++sequence,
+                sourceLayer,
+                preparedLayerObjectId,
+                RelatedObjectId: resolvedInsertCanvasResultObjectId,
+                ReferenceDelta: preparedLayerObjectId != 0 && resolvedInsertCanvasResultObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasLocal,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasObjectId,
+                RelatedObjectId: sourceLayerObjectId,
+                ReferenceDelta: sourceCanvasObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ClearSourceCanvasIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceCanvasIndexVariantObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            for (int argumentIndex = insertCanvasMissingArgumentVariantCount - 1; argumentIndex >= 0; argumentIndex--)
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.ClearInsertCanvasMissingArgumentVariant,
+                    ++sequence,
+                    sourceLayer,
+                    ResolveMirrorImageInsertCanvasMissingArgumentVariantObjectId(
+                        preparedLayerObjectId,
+                        sourceLayerObjectId,
+                        sourceCanvasObjectId,
+                        argumentIndex),
+                    RelatedObjectId: argumentIndex,
+                    ReferenceDelta: 0));
+            }
+
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.GetUnderFaceParentForRecheck,
+                ++sequence,
+                sourceLayer,
+                underFaceParentObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.GetHelperLayerParentForRecheck,
+                ++sequence,
+                sourceLayer,
+                lastUnderFaceParentObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: lastUnderFaceParentObjectId != 0 ? 1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.RecheckUnderFaceParent,
+                ++sequence,
+                sourceLayer,
+                underFaceParentObjectId,
+                RelatedObjectId: lastUnderFaceParentObjectId,
+                ReferenceDelta: 0));
+
+            if (underFaceParentObjectId != 0
+                && (lastUnderFaceParentObjectId == 0 || underFaceParentObjectId != lastUnderFaceParentObjectId))
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.GetUnderFaceParentForReparent,
+                    ++sequence,
+                    sourceLayer,
+                    underFaceParentObjectId,
+                    RelatedObjectId: preparedLayerObjectId,
+                    ReferenceDelta: 0));
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.ReparentHelperLayer,
+                    ++sequence,
+                    sourceLayer,
+                    preparedLayerObjectId,
+                    RelatedObjectId: underFaceParentObjectId,
+                    ReferenceDelta: 0));
+            }
+
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ReleaseHelperParentLocal,
+                ++sequence,
+                sourceLayer,
+                lastUnderFaceParentObjectId,
+                RelatedObjectId: preparedLayerObjectId,
+                ReferenceDelta: lastUnderFaceParentObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ReleaseSourceLayer,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: sourceLayerObjectId != 0 ? -1 : 0));
+            return operations;
+        }
+
+        internal static int ResolveMirrorImageInsertCanvasResultObjectId(
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId)
+        {
+            if (preparedLayerObjectId == 0 || sourceCanvasObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int objectId = 17;
+                objectId = (objectId * 31) + preparedLayerObjectId;
+                objectId = (objectId * 31) + sourceLayerObjectId;
+                objectId = (objectId * 31) + sourceCanvasObjectId;
+                objectId = (objectId * 31) + 0x4331002;
+                if (objectId == 0)
+                {
+                    return 1;
+                }
+
+                return objectId == int.MinValue ? int.MaxValue : Math.Abs(objectId);
+            }
+        }
+        internal static int ResolveMirrorImageSourceCanvasVariantObjectId(
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId,
+            bool probeVariant)
+        {
+            if (sourceLayerObjectId == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int objectId = probeVariant ? 23 : 29;
+                objectId = (objectId * 31) + preparedLayerObjectId;
+                objectId = (objectId * 31) + sourceLayerObjectId;
+                objectId = (objectId * 31) + sourceCanvasObjectId;
+                objectId = (objectId * 31) + (probeVariant ? 1 : 2);
+                if (objectId == 0)
+                {
+                    return probeVariant ? 1 : 2;
+                }
+
+                return objectId == int.MinValue ? int.MaxValue : Math.Abs(objectId);
+            }
+        }
+
+        internal static int ResolveMirrorImageInsertCanvasMissingArgumentVariantObjectId(
+            int preparedLayerObjectId,
+            int sourceLayerObjectId,
+            int sourceCanvasObjectId,
+            int argumentIndex)
+        {
+            if (preparedLayerObjectId == 0 || argumentIndex < 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int objectId = 37;
+                objectId = (objectId * 31) + preparedLayerObjectId;
+                objectId = (objectId * 31) + sourceLayerObjectId;
+                objectId = (objectId * 31) + sourceCanvasObjectId;
+                objectId = (objectId * 31) + argumentIndex;
+                objectId = (objectId * 31) + 0x4331002;
+                if (objectId == 0)
+                {
+                    return argumentIndex + 1;
+                }
+
+                return objectId == int.MinValue ? int.MaxValue : Math.Abs(objectId);
+            }
+        }
+
+        internal static int ComputeMirrorImageLiveInsertNativeOperationSignature(
+            IReadOnlyList<MirrorImageLayerNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(operations.Count);
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImageLayerNativeOperation operation = operations[operationIndex];
+                signature.Add((int)operation.Kind);
+                signature.Add(operation.Sequence);
+                signature.Add((int)operation.SourceLayer);
+                signature.Add(operation.ObjectId);
+                signature.Add(operation.RelatedObjectId);
+                signature.Add(operation.ReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static IReadOnlyList<MirrorImageLayerNativeReferenceBalance> BuildMirrorImageLiveInsertNativeReferenceBalances(
+            IReadOnlyList<MirrorImageLayerNativeOperation> operations)
+        {
+            if (operations == null || operations.Count == 0)
+            {
+                return Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            }
+
+            var balances = new Dictionary<(MirrorImageLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)>();
+            for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
+            {
+                MirrorImageLayerNativeOperation operation = operations[operationIndex];
+                switch (operation.Kind)
+                {
+                    case MirrorImageLayerNativeOperationKind.AddRefSourceLayer:
+                    case MirrorImageLayerNativeOperationKind.ReleaseSourceLayer:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.SourceLayer,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.AddRefSourceCanvasProbeLocal:
+                    case MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasProbeLocal:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.SourceCanvasProbeLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.AddRefSourceCanvasLocal:
+                    case MirrorImageLayerNativeOperationKind.ReleaseSourceCanvasLocal:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.SourceCanvasLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.InsertCanvasIntoHelperLayer:
+                    case MirrorImageLayerNativeOperationKind.ClearInsertCanvasResultVariant:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.InsertCanvasResult,
+                            operation.RelatedObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                    case MirrorImageLayerNativeOperationKind.GetHelperLayerParentForRecheck:
+                    case MirrorImageLayerNativeOperationKind.ReleaseHelperParentLocal:
+                        AddMirrorImageNativeReferenceDelta(
+                            balances,
+                            MirrorImageLayerNativeReferenceKind.HelperParentLocal,
+                            operation.ObjectId,
+                            operation.ReferenceDelta);
+                        break;
+                }
+            }
+
+            if (balances.Count == 0)
+            {
+                return Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+            }
+
+            return balances
+                .OrderBy(static entry => entry.Key.Kind)
+                .ThenBy(static entry => entry.Key.ObjectId)
+                .Select(static entry => new MirrorImageLayerNativeReferenceBalance(
+                    entry.Key.Kind,
+                    entry.Key.ObjectId,
+                    entry.Value.AddRefCount,
+                    entry.Value.ReleaseCount,
+                    entry.Value.NetReferenceDelta))
+                .ToArray();
+        }
+
+        private static void AddMirrorImageNativeReferenceDelta(
+            Dictionary<(MirrorImageLayerNativeReferenceKind Kind, int ObjectId), (int AddRefCount, int ReleaseCount, int NetReferenceDelta)> balances,
+            MirrorImageLayerNativeReferenceKind kind,
+            int objectId,
+            int referenceDelta)
+        {
+            if (balances == null || objectId == 0 || referenceDelta == 0)
+            {
+                return;
+            }
+
+            (int AddRefCount, int ReleaseCount, int NetReferenceDelta) balance = balances.TryGetValue((kind, objectId), out var existing)
+                ? existing
+                : default;
+            if (referenceDelta > 0)
+            {
+                balance.AddRefCount += referenceDelta;
+            }
+            else
+            {
+                balance.ReleaseCount += -referenceDelta;
+            }
+
+            balance.NetReferenceDelta += referenceDelta;
+            balances[(kind, objectId)] = balance;
+        }
+
+        internal static int ComputeMirrorImageLiveInsertNativeReferenceBalanceSignature(
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> balances)
+        {
+            if (balances == null || balances.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(balances.Count);
+            for (int balanceIndex = 0; balanceIndex < balances.Count; balanceIndex++)
+            {
+                MirrorImageLayerNativeReferenceBalance balance = balances[balanceIndex];
+                signature.Add((int)balance.Kind);
+                signature.Add(balance.ObjectId);
+                signature.Add(balance.AddRefCount);
+                signature.Add(balance.ReleaseCount);
+                signature.Add(balance.NetReferenceDelta);
+            }
+
+            return signature.ToHashCode();
+        }
+        internal static int ResolveMirrorImageLastInsertCanvasNativeOperationSignature(
+            int existingNativeOperationSignature,
+            int currentNativeOperationSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeOperationSignature != 0
+                ? currentNativeOperationSignature
+                : existingNativeOperationSignature;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasNativeReferenceBalanceSignature(
+            int existingNativeReferenceBalanceSignature,
+            int currentNativeReferenceBalanceSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeReferenceBalanceSignature != 0
+                ? currentNativeReferenceBalanceSignature
+                : existingNativeReferenceBalanceSignature;
+        }
+
+        internal static IReadOnlyList<MirrorImageLayerNativeReferenceBalance> ResolveMirrorImageLastInsertCanvasNativeReferenceBalances(
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> existingNativeReferenceBalances,
+            IReadOnlyList<MirrorImageLayerNativeReferenceBalance> currentNativeReferenceBalances,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeReferenceBalances != null && currentNativeReferenceBalances.Count > 0
+                ? currentNativeReferenceBalances
+                : existingNativeReferenceBalances ?? Array.Empty<MirrorImageLayerNativeReferenceBalance>();
+        }
+        internal static IReadOnlyList<MirrorImageLayerNativeOperation> ResolveMirrorImageLastInsertCanvasNativeOperations(
+            IReadOnlyList<MirrorImageLayerNativeOperation> existingNativeOperations,
+            IReadOnlyList<MirrorImageLayerNativeOperation> currentNativeOperations,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentNativeOperations != null && currentNativeOperations.Count > 0
+                ? currentNativeOperations
+                : existingNativeOperations ?? Array.Empty<MirrorImageLayerNativeOperation>();
+        }
+
+        internal static int ResolveMirrorImageOverlayParentObjectId(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int insertionIndex = ResolveMirrorImageOverlayInsertionIndex(frame, overlayTargetLayer);
+            if ((uint)insertionIndex < (uint)frame.Parts.Count)
+            {
+                AssembledPart insertionParent = frame.Parts[insertionIndex];
+                return insertionParent != null ? RuntimeHelpers.GetHashCode(insertionParent) : 0;
+            }
+
+            int previousIndex = frame.Parts.Count - 1;
+            AssembledPart trailingParent = previousIndex >= 0 ? frame.Parts[previousIndex] : null;
+            return trailingParent != null ? RuntimeHelpers.GetHashCode(trailingParent) : 0;
+        }
+
+        internal static int ComputeMirrorImageOverlayParentSignature(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null)
+            {
+                return 0;
+            }
+
+            int[] insertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            int insertionIndex = ResolveMirrorImageOverlayInsertionIndex(insertionIndices, frame.Parts.Count);
+            var signature = new HashCode();
+            signature.Add((int)overlayTargetLayer);
+            signature.Add(insertionIndex);
+            signature.Add(frame.Parts.Count);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.Parts));
+            if (insertionIndices != null)
+            {
+                signature.Add(insertionIndices.Length);
+                for (int layerIndex = 0; layerIndex < insertionIndices.Length; layerIndex++)
+                {
+                    signature.Add(insertionIndices[layerIndex]);
+                }
+            }
+            else
+            {
+                signature.Add(0);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageOverlaySiblingSignature(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int insertionIndex = ResolveMirrorImageOverlayInsertionIndex(frame, overlayTargetLayer);
+            var signature = new HashCode();
+            signature.Add((int)overlayTargetLayer);
+            signature.Add(insertionIndex);
+            signature.Add(frame.Parts.Count);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.Parts));
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex - 1);
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex);
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex + 1);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageUnderFaceParentObjectId(AssembledFrame frame)
+        {
+            IReadOnlyList<AssembledPart> underFaceParts = ResolveMirrorImageUnderFaceSourceParts(frame);
+            return underFaceParts != null ? RuntimeHelpers.GetHashCode(underFaceParts) : 0;
+        }
+
+        internal static int ComputeMirrorImageUnderFaceParentSignature(AssembledFrame frame)
+        {
+            IReadOnlyList<AssembledPart> underFaceParts = ResolveMirrorImageUnderFaceSourceParts(frame);
+            if (underFaceParts == null)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add((int)AvatarRenderLayer.UnderFace);
+            signature.Add(RuntimeHelpers.GetHashCode(underFaceParts));
+            signature.Add(underFaceParts.Count);
+            signature.Add(ComputeMirrorImageSourceLayerSignature(underFaceParts));
+            return signature.ToHashCode();
+        }
+
+        private static IReadOnlyList<AssembledPart> ResolveMirrorImageUnderFaceSourceParts(AssembledFrame frame)
+        {
+            int underFaceLayerIndex = (int)AvatarRenderLayer.UnderFace;
+            return frame?.AvatarRenderLayers != null && (uint)underFaceLayerIndex < (uint)frame.AvatarRenderLayers.Length
+                ? frame.AvatarRenderLayers[underFaceLayerIndex]
+                : null;
+        }
+
+        private static void AddMirrorImageOverlaySiblingPartIdentity(
+            ref HashCode signature,
+            IReadOnlyList<AssembledPart> parts,
+            int partIndex)
+        {
+            signature.Add(partIndex);
+            if (parts == null || (uint)partIndex >= (uint)parts.Count)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            AssembledPart part = parts[partIndex];
+            signature.Add(RuntimeHelpers.GetHashCode(part));
+            if (part == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add((int)part.RenderLayer);
+            signature.Add(part.ZIndex);
+            signature.Add(part.IsVisible);
+            signature.Add(part.VisibilityPriority);
+            signature.Add(part.OffsetX);
+            signature.Add(part.OffsetY);
+            signature.Add(part.ZLayer, StringComparer.Ordinal);
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
+            int existingPreparedLayerFilter,
+            int currentPreparedLayerFilter,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerFilter != int.MinValue
+                ? currentPreparedLayerFilter
+                : existingPreparedLayerFilter;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerZ(
+            int existingPreparedLayerZ,
+            int currentPreparedLayerZ,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerZ != int.MinValue
+                ? currentPreparedLayerZ
+                : existingPreparedLayerZ;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerColor(
+            int existingPreparedLayerColor,
+            int currentPreparedLayerColor,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerColor != 0
+                ? currentPreparedLayerColor
+                : existingPreparedLayerColor;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerTargetOffsetSignature(
+            int existingTargetOffsetSignature,
+            int currentTargetOffsetSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentTargetOffsetSignature != 0
+                ? currentTargetOffsetSignature
+                : existingTargetOffsetSignature;
+        }
+        internal static bool ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
+            bool updatesFromLiveInsertCanvas,
+            int preparedLayerObjectId,
+            int lastInsertCanvasLayerObjectId)
+        {
+            return !updatesFromLiveInsertCanvas
+                   && preparedLayerObjectId > 0
+                   && lastInsertCanvasLayerObjectId > 0
+                   && preparedLayerObjectId != lastInsertCanvasLayerObjectId;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+            IReadOnlyList<int> existingLayerObjectIds,
+            IReadOnlyList<int> existingPartCounts,
+            IReadOnlyList<bool> existingFacingRightByLayer,
+            bool currentFacingRight)
+        {
+            if (existingLayerObjectIds == null
+                || existingPartCounts == null
+                || existingFacingRightByLayer == null)
+            {
+                return false;
+            }
+
+            int layerCount = Math.Min(existingLayerObjectIds.Count, Math.Min(existingPartCounts.Count, existingFacingRightByLayer.Count));
+            bool hasPreservableLayer = false;
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                bool hasExistingLayer = existingLayerObjectIds[layerIndex] > 0
+                    || existingPartCounts[layerIndex] > 0;
+                if (!hasExistingLayer)
+                {
+                    continue;
+                }
+
+                if (existingFacingRightByLayer[layerIndex] != currentFacingRight)
+                {
+                    return false;
+                }
+
+                hasPreservableLayer = true;
+            }
+
+            return hasPreservableLayer;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+            int existingLayerObjectId,
+            bool existingFacingRight,
+            bool currentFacingRight,
+            int existingPartCount)
+        {
+            return CanPreserveMirrorImagePreparedSourceLayerObject(
+                existingLayerObjectId,
+                existingFacingRight,
+                currentFacingRight,
+                existingPartCount);
+        }
+
+        private static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(
+            MirrorImagePreparedSourceLayer[] existingLayers,
+            bool currentFacingRight)
+        {
+            if (existingLayers == null || existingLayers.Length == 0)
+            {
+                return false;
+            }
+
+            int[] existingLayerObjectIds = new int[existingLayers.Length];
+            int[] existingPartCounts = new int[existingLayers.Length];
+            bool[] existingFacingRightByLayer = new bool[existingLayers.Length];
+            for (int layerIndex = 0; layerIndex < existingLayers.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers[layerIndex];
+                existingLayerObjectIds[layerIndex] = existingLayer?.PreparedLayerObjectId ?? 0;
+                existingPartCounts[layerIndex] = existingLayer?.Parts?.Count ?? 0;
+                existingFacingRightByLayer[layerIndex] = existingLayer?.PreparedFacingRight ?? false;
+            }
+
+            return CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+                existingLayerObjectIds,
+                existingPartCounts,
+                existingFacingRightByLayer,
+                currentFacingRight);
+        }
+
+        private static int[] CollectPreparedMirrorImageLayerObjectIds(IReadOnlyList<MirrorImagePreparedSourceLayer> preparedLayers)
+        {
+            if (preparedLayers == null || preparedLayers.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] layerObjectIds = new int[preparedLayers.Count];
+            for (int layerIndex = 0; layerIndex < preparedLayers.Count; layerIndex++)
+            {
+                layerObjectIds[layerIndex] = preparedLayers[layerIndex]?.PreparedLayerObjectId ?? 0;
+            }
+
+            return layerObjectIds;
+        }
+
+        internal static bool ShouldReleaseMirrorImagePreparedSourceLayersWhenHidden(IReadOnlyList<int> preparedLayerObjectIds)
+        {
+            if (preparedLayerObjectIds == null || preparedLayerObjectIds.Count == 0)
+            {
+                return false;
+            }
+
+            for (int layerIndex = 0; layerIndex < preparedLayerObjectIds.Count; layerIndex++)
+            {
+                if (preparedLayerObjectIds[layerIndex] > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void RefreshMirrorImagePreparedSourceLayerMetadata(MirrorImagePreparedSourceLayer[] preparedLayers)
+        {
+            if (preparedLayers == null)
+            {
+                return;
+            }
+
+            for (int layerIndex = 0; layerIndex < preparedLayers.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer preparedLayer = preparedLayers[layerIndex];
+                if (preparedLayer == null)
+                {
+                    continue;
+                }
+
+                AvatarRenderLayer renderLayer = (AvatarRenderLayer)layerIndex;
+                preparedLayer.RenderLayer = renderLayer;
+                ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
+            }
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(
+            int existingPreparedCurrentTime,
+            bool reusesExistingLayer,
+            bool preservesExistingLayerObject,
+            int currentTime)
+        {
+            if ((reusesExistingLayer || preservesExistingLayerObject) && existingPreparedCurrentTime != int.MinValue)
+            {
+                return existingPreparedCurrentTime;
+            }
+
+            return currentTime;
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerCurrentTime(
+            int existingSourceLayerCurrentTime,
+            bool reusesExistingSourceCanvas,
+            int sourceLayerCurrentTime)
+        {
+            if (sourceLayerCurrentTime != int.MinValue)
+            {
+                return sourceLayerCurrentTime;
+            }
+
+            if (reusesExistingSourceCanvas && existingSourceLayerCurrentTime != int.MinValue)
+            {
+                return existingSourceLayerCurrentTime;
+            }
+
+            return sourceLayerCurrentTime;
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerTransitionStartTime(
+            int existingTransitionStartTime,
+            bool preservesExistingLayerObject,
+            int mirrorStartTime,
+            int sourceLayerCurrentTime,
+            int currentTime)
+        {
+            if (preservesExistingLayerObject && existingTransitionStartTime != int.MinValue)
+            {
+                return existingTransitionStartTime;
+            }
+
+            return ResolveMirrorImagePreparedSourceLayerInitialTransitionStartTime(
+                mirrorStartTime,
+                sourceLayerCurrentTime,
+                currentTime);
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerInitialTransitionStartTime(
+            int mirrorStartTime,
+            int sourceLayerCurrentTime,
+            int currentTime)
+        {
+            int sourceElapsedForTransition = Math.Clamp(sourceLayerCurrentTime, 0, MirrorImageTransitionDurationMs);
+            return Math.Max(mirrorStartTime, currentTime - sourceElapsedForTransition);
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerRelMoveEndTime(int sourceLayerCurrentTime)
+        {
+            return sourceLayerCurrentTime == int.MinValue
+                ? int.MinValue
+                : sourceLayerCurrentTime + MirrorImageTransitionDurationMs;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerRelMoveEndTime(
+            int existingRelMoveEndTime,
+            int currentRelMoveEndTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentRelMoveEndTime != int.MinValue
+                ? currentRelMoveEndTime
+                : existingRelMoveEndTime;
+        }
+
+        internal static bool CanUseLiveMirrorImageSourceLayer(
+            string preparedActionName,
+            string currentActionName,
+            int preparedFrameIndex,
+            int currentFrameIndex,
+            bool preparedFacingRight,
+            bool currentFacingRight,
+            int preparedSourceSignature,
+            IReadOnlyList<AssembledPart> liveSourceParts)
+        {
+            _ = preparedActionName;
+            _ = currentActionName;
+            _ = preparedFrameIndex;
+            _ = currentFrameIndex;
+            _ = preparedFacingRight;
+            _ = currentFacingRight;
+            _ = preparedSourceSignature;
+            if (liveSourceParts == null
+                || liveSourceParts.Count == 0)
+            {
+                return false;
+            }
+
+            return HasMirrorImageLiveSourceCanvas(liveSourceParts);
+        }
+
+        internal static bool ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
+            int preparedLayerObjectId,
+            int lastInsertCanvasLayerObjectId,
+            AvatarRenderLayer sourceLayer,
+            int sourceLayerCurrentTime,
+            int lastInsertCanvasSourceLayerCurrentTime,
+            int sourcePartsObjectId,
+            int lastInsertCanvasSourcePartsObjectId,
+            int sourceSignature,
+            int lastInsertedSourceSignature,
+            AvatarRenderLayer? lastInsertCanvasSourceLayer,
+            AvatarRenderLayer overlayTargetLayer,
+            AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
+            int lastInsertCanvasTime,
+            int currentTime,
+            int sourceCanvasSignature = 0,
+            int lastInsertedSourceCanvasSignature = 0,
+            int sourceLayerObjectId = 0,
+            int lastInsertCanvasSourceLayerObjectId = 0,
+            int sourceLayerOriginSignature = 0,
+            int lastInsertCanvasSourceLayerOriginSignature = 0,
+            int sourceLayerClockSignature = 0,
+            int lastInsertCanvasSourceLayerClockSignature = 0,
+            int sourceCanvasObjectId = 0,
+            int lastInsertCanvasSourceCanvasObjectId = 0,
+            int sourceFrameSignature = 0,
+            int lastInsertCanvasSourceFrameSignature = 0,
+            int overlayParentSignature = 0,
+            int lastInsertCanvasOverlayParentSignature = 0,
+            int overlayParentObjectId = 0,
+            int lastInsertCanvasOverlayParentObjectId = 0,
+            int overlayInsertionIndex = int.MinValue,
+            int lastInsertCanvasOverlayInsertionIndex = int.MinValue,
+            int overlaySiblingSignature = 0,
+            int lastInsertCanvasOverlaySiblingSignature = 0,
+            int underFaceParentObjectId = 0,
+            int lastInsertCanvasUnderFaceParentObjectId = 0,
+            int underFaceParentSignature = 0,
+            int lastInsertCanvasUnderFaceParentSignature = 0,
+            int preparedLayerFilter = int.MinValue,
+            int lastInsertCanvasPreparedLayerFilter = int.MinValue,
+            int preparedLayerZ = int.MinValue,
+            int lastInsertCanvasPreparedLayerZ = int.MinValue,
+            int preparedLayerColor = 0,
+            int lastInsertCanvasPreparedLayerColor = 0,
+            int preparedLayerTargetOffsetSignature = 0,
+            int lastInsertCanvasPreparedLayerTargetOffsetSignature = 0,
+            int preparedLayerRelMoveEndTime = int.MinValue,
+            int lastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
+            int postReparentListNodeSignature = 0,
+            int lastInsertCanvasPostReparentListNodeSignature = 0,
+            int nativeOperationSignature = 0,
+            int lastInsertCanvasNativeOperationSignature = 0,
+            int nativeReferenceBalanceSignature = 0,
+            int lastInsertCanvasNativeReferenceBalanceSignature = 0)
+        {
+            if (preparedLayerObjectId <= 0)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasLayerObjectId <= 0)
+            {
+                return true;
+            }
+
+            if (preparedLayerObjectId != lastInsertCanvasLayerObjectId)
+            {
+                // Recreated helper layers should re-enter live insert admission as soon as
+                // the insert time metadata is explicitly reset.
+                return lastInsertCanvasTime == int.MinValue;
+            }
+
+            if (lastInsertCanvasTime == int.MinValue)
+            {
+                return true;
+            }
+
+            if (lastInsertCanvasSourceLayer.HasValue
+                && lastInsertCanvasSourceLayer.Value != sourceLayer)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasOverlayTargetLayer.HasValue
+                && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
+            {
+                return false;
+            }
+
+            bool sourceOrOverlayPlaneMetadataMissing = !lastInsertCanvasSourceLayer.HasValue
+                || !lastInsertCanvasOverlayTargetLayer.HasValue;
+            if (sourceOrOverlayPlaneMetadataMissing)
+            {
+                return true;
+            }
+
+            bool insertTimelineRegressed = currentTime != int.MinValue
+                && lastInsertCanvasTime != int.MinValue
+                && currentTime < lastInsertCanvasTime;
+            if (insertTimelineRegressed)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimeMissing = sourceLayerCurrentTime == int.MinValue
+                || lastInsertCanvasSourceLayerCurrentTime == int.MinValue;
+            if (sourceLayerTimeMissing)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimelineRegressed = sourceLayerCurrentTime < lastInsertCanvasSourceLayerCurrentTime;
+            if (sourceLayerTimelineRegressed)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimelineAdvanced = sourceLayerCurrentTime > lastInsertCanvasSourceLayerCurrentTime;
+            if (sourceLayerTimelineAdvanced)
+            {
+                return true;
+            }
+
+            bool sourcePartsIdentityChanged = sourcePartsObjectId > 0
+                && lastInsertCanvasSourcePartsObjectId > 0
+                && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId;
+            bool sourceLayerObjectChanged = sourceLayerObjectId != 0
+                && lastInsertCanvasSourceLayerObjectId != 0
+                && sourceLayerObjectId != lastInsertCanvasSourceLayerObjectId;
+            bool sourceLayerOriginChanged = sourceLayerOriginSignature != 0
+                && lastInsertCanvasSourceLayerOriginSignature != 0
+                && sourceLayerOriginSignature != lastInsertCanvasSourceLayerOriginSignature;
+            bool sourceLayerClockChanged = sourceLayerClockSignature != 0
+                && lastInsertCanvasSourceLayerClockSignature != 0
+                && sourceLayerClockSignature != lastInsertCanvasSourceLayerClockSignature;
+            bool sourceCanvasObjectChanged = sourceCanvasObjectId != 0
+                && lastInsertCanvasSourceCanvasObjectId != 0
+                && sourceCanvasObjectId != lastInsertCanvasSourceCanvasObjectId;
+            bool sourceFrameSignatureChanged = sourceFrameSignature != 0
+                && lastInsertCanvasSourceFrameSignature != 0
+                && sourceFrameSignature != lastInsertCanvasSourceFrameSignature;
+            bool overlayParentChanged = overlayParentSignature != 0
+                && lastInsertCanvasOverlayParentSignature != 0
+                && overlayParentSignature != lastInsertCanvasOverlayParentSignature;
+            bool overlayParentObjectChanged = overlayParentObjectId != 0
+                && lastInsertCanvasOverlayParentObjectId != 0
+                && overlayParentObjectId != lastInsertCanvasOverlayParentObjectId;
+            bool overlayInsertionIndexChanged = overlayInsertionIndex != int.MinValue
+                && lastInsertCanvasOverlayInsertionIndex != int.MinValue
+                && overlayInsertionIndex != lastInsertCanvasOverlayInsertionIndex;
+            bool overlaySiblingChanged = overlaySiblingSignature != 0
+                && lastInsertCanvasOverlaySiblingSignature != 0
+                && overlaySiblingSignature != lastInsertCanvasOverlaySiblingSignature;
+            bool underFaceParentObjectChanged = underFaceParentObjectId != 0
+                && lastInsertCanvasUnderFaceParentObjectId != 0
+                && underFaceParentObjectId != lastInsertCanvasUnderFaceParentObjectId;
+            bool underFaceParentSignatureChanged = underFaceParentSignature != 0
+                && lastInsertCanvasUnderFaceParentSignature != 0
+                && underFaceParentSignature != lastInsertCanvasUnderFaceParentSignature;
+            bool preparedLayerFilterChanged = preparedLayerFilter != int.MinValue
+                && lastInsertCanvasPreparedLayerFilter != int.MinValue
+                && preparedLayerFilter != lastInsertCanvasPreparedLayerFilter;
+            bool preparedLayerZChanged = preparedLayerZ != int.MinValue
+                && lastInsertCanvasPreparedLayerZ != int.MinValue
+                && preparedLayerZ != lastInsertCanvasPreparedLayerZ;
+            bool preparedLayerColorChanged = preparedLayerColor != 0
+                && lastInsertCanvasPreparedLayerColor != 0
+                && preparedLayerColor != lastInsertCanvasPreparedLayerColor;
+            bool preparedLayerTargetOffsetChanged = preparedLayerTargetOffsetSignature != 0
+                && lastInsertCanvasPreparedLayerTargetOffsetSignature != 0
+                && preparedLayerTargetOffsetSignature != lastInsertCanvasPreparedLayerTargetOffsetSignature;
+            bool preparedLayerRelMoveEndTimeChanged = preparedLayerRelMoveEndTime != int.MinValue
+                && lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue
+                && preparedLayerRelMoveEndTime != lastInsertCanvasPreparedLayerRelMoveEndTime;
+            bool postReparentListNodeChanged = postReparentListNodeSignature != 0
+                && lastInsertCanvasPostReparentListNodeSignature != 0
+                && postReparentListNodeSignature != lastInsertCanvasPostReparentListNodeSignature;
+            bool nativeOperationSignatureChanged = nativeOperationSignature != 0
+                && lastInsertCanvasNativeOperationSignature != 0
+                && nativeOperationSignature != lastInsertCanvasNativeOperationSignature;
+            bool nativeReferenceBalanceSignatureChanged = nativeReferenceBalanceSignature != 0
+                && lastInsertCanvasNativeReferenceBalanceSignature != 0
+                && nativeReferenceBalanceSignature != lastInsertCanvasNativeReferenceBalanceSignature;
+            bool sourceSignatureChanged = sourceSignature != 0
+                && lastInsertedSourceSignature != 0
+                && sourceSignature != lastInsertedSourceSignature;
+            bool sourceCanvasSignatureChanged = sourceCanvasSignature != 0
+                && lastInsertedSourceCanvasSignature != 0
+                && sourceCanvasSignature != lastInsertedSourceCanvasSignature;
+            if (sourcePartsIdentityChanged
+                || sourceLayerObjectChanged
+                || sourceLayerOriginChanged
+                || sourceLayerClockChanged
+                || sourceCanvasObjectChanged
+                || sourceFrameSignatureChanged
+                || overlayParentChanged
+                || overlayParentObjectChanged
+                || overlayInsertionIndexChanged
+                || overlaySiblingChanged
+                || underFaceParentObjectChanged
+                || underFaceParentSignatureChanged
+                || preparedLayerFilterChanged
+                || preparedLayerZChanged
+                || preparedLayerColorChanged
+                || preparedLayerTargetOffsetChanged
+                || preparedLayerRelMoveEndTimeChanged
+                || postReparentListNodeChanged
+                || nativeOperationSignatureChanged
+                || nativeReferenceBalanceSignatureChanged
+                || sourceSignatureChanged
+                || sourceCanvasSignatureChanged)
+            {
+                return true;
+            }
+
+            bool sourcePartsIdentityMetadataMissing = sourcePartsObjectId <= 0
+                || lastInsertCanvasSourcePartsObjectId <= 0;
+            bool sourceSignatureMetadataMissing = sourceSignature == 0
+                || lastInsertedSourceSignature == 0;
+            bool sourceCanvasSignatureMetadataMissing = (sourceCanvasSignature != 0 || lastInsertedSourceCanvasSignature != 0)
+                && (sourceCanvasSignature == 0 || lastInsertedSourceCanvasSignature == 0);
+            bool sourceLayerObjectMetadataMissing = (sourceLayerObjectId != 0 || lastInsertCanvasSourceLayerObjectId != 0)
+                && (sourceLayerObjectId == 0 || lastInsertCanvasSourceLayerObjectId == 0);
+            bool sourceLayerOriginMetadataMissing = (sourceLayerOriginSignature != 0 || lastInsertCanvasSourceLayerOriginSignature != 0)
+                && (sourceLayerOriginSignature == 0 || lastInsertCanvasSourceLayerOriginSignature == 0);
+            bool sourceLayerClockMetadataMissing = (sourceLayerClockSignature != 0 || lastInsertCanvasSourceLayerClockSignature != 0)
+                && (sourceLayerClockSignature == 0 || lastInsertCanvasSourceLayerClockSignature == 0);
+            bool sourceCanvasObjectMetadataMissing = (sourceCanvasObjectId != 0 || lastInsertCanvasSourceCanvasObjectId != 0)
+                && (sourceCanvasObjectId == 0 || lastInsertCanvasSourceCanvasObjectId == 0);
+            bool sourceFrameSignatureMetadataMissing = (sourceFrameSignature != 0 || lastInsertCanvasSourceFrameSignature != 0)
+                && (sourceFrameSignature == 0 || lastInsertCanvasSourceFrameSignature == 0);
+            bool overlayParentMetadataMissing = (overlayParentSignature != 0 || lastInsertCanvasOverlayParentSignature != 0)
+                && (overlayParentSignature == 0 || lastInsertCanvasOverlayParentSignature == 0);
+            bool overlayParentObjectMetadataMissing = (overlayParentObjectId != 0 || lastInsertCanvasOverlayParentObjectId != 0)
+                && (overlayParentObjectId == 0 || lastInsertCanvasOverlayParentObjectId == 0);
+            bool overlayInsertionIndexMetadataMissing = (overlayInsertionIndex != int.MinValue || lastInsertCanvasOverlayInsertionIndex != int.MinValue)
+                && (overlayInsertionIndex == int.MinValue || lastInsertCanvasOverlayInsertionIndex == int.MinValue);
+            bool overlaySiblingMetadataMissing = (overlaySiblingSignature != 0 || lastInsertCanvasOverlaySiblingSignature != 0)
+                && (overlaySiblingSignature == 0 || lastInsertCanvasOverlaySiblingSignature == 0);
+            bool underFaceParentObjectMetadataMissing = (underFaceParentObjectId != 0 || lastInsertCanvasUnderFaceParentObjectId != 0)
+                && (underFaceParentObjectId == 0 || lastInsertCanvasUnderFaceParentObjectId == 0);
+            bool underFaceParentSignatureMetadataMissing = (underFaceParentSignature != 0 || lastInsertCanvasUnderFaceParentSignature != 0)
+                && (underFaceParentSignature == 0 || lastInsertCanvasUnderFaceParentSignature == 0);
+            bool preparedLayerFilterMetadataMissing = (preparedLayerFilter != int.MinValue || lastInsertCanvasPreparedLayerFilter != int.MinValue)
+                && (preparedLayerFilter == int.MinValue || lastInsertCanvasPreparedLayerFilter == int.MinValue);
+            bool preparedLayerZMetadataMissing = (preparedLayerZ != int.MinValue || lastInsertCanvasPreparedLayerZ != int.MinValue)
+                && (preparedLayerZ == int.MinValue || lastInsertCanvasPreparedLayerZ == int.MinValue);
+            bool preparedLayerColorMetadataMissing = (preparedLayerColor != 0 || lastInsertCanvasPreparedLayerColor != 0)
+                && (preparedLayerColor == 0 || lastInsertCanvasPreparedLayerColor == 0);
+            bool preparedLayerTargetOffsetMetadataMissing = (preparedLayerTargetOffsetSignature != 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature != 0)
+                && (preparedLayerTargetOffsetSignature == 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature == 0);
+            bool preparedLayerRelMoveEndTimeMetadataMissing = (preparedLayerRelMoveEndTime != int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue)
+                && (preparedLayerRelMoveEndTime == int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime == int.MinValue);
+            bool postReparentListNodeMetadataMissing = (postReparentListNodeSignature != 0 || lastInsertCanvasPostReparentListNodeSignature != 0)
+                && (postReparentListNodeSignature == 0 || lastInsertCanvasPostReparentListNodeSignature == 0);
+            bool nativeOperationSignatureMetadataMissing = (nativeOperationSignature != 0 || lastInsertCanvasNativeOperationSignature != 0)
+                && (nativeOperationSignature == 0 || lastInsertCanvasNativeOperationSignature == 0);
+            bool nativeReferenceBalanceSignatureMetadataMissing = (nativeReferenceBalanceSignature != 0 || lastInsertCanvasNativeReferenceBalanceSignature != 0)
+                && (nativeReferenceBalanceSignature == 0 || lastInsertCanvasNativeReferenceBalanceSignature == 0);
+            bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
+                || sourceSignatureMetadataMissing
+                || sourceCanvasSignatureMetadataMissing
+                || sourceLayerObjectMetadataMissing
+                || sourceLayerOriginMetadataMissing
+                || sourceLayerClockMetadataMissing
+                || sourceCanvasObjectMetadataMissing
+                || sourceFrameSignatureMetadataMissing
+                || overlayParentMetadataMissing
+                || overlayParentObjectMetadataMissing
+                || overlayInsertionIndexMetadataMissing
+                || overlaySiblingMetadataMissing
+                || underFaceParentObjectMetadataMissing
+                || underFaceParentSignatureMetadataMissing
+                || preparedLayerFilterMetadataMissing
+                || preparedLayerZMetadataMissing
+                || preparedLayerColorMetadataMissing
+                || preparedLayerTargetOffsetMetadataMissing
+                || preparedLayerRelMoveEndTimeMetadataMissing
+                || postReparentListNodeMetadataMissing
+                || nativeOperationSignatureMetadataMissing
+                || nativeReferenceBalanceSignatureMetadataMissing;
+            if (sourceIdentityMetadataMissing)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool CanRenderLastInsertedMirrorImageSourceCanvas(IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts)
+        {
+            return lastInsertedLiveSourceParts != null
+                   && lastInsertedLiveSourceParts.Count > 0
+                   && HasMirrorImageLiveSourceCanvas(lastInsertedLiveSourceParts);
+        }
+
+        private static bool CanRenderLastInsertedMirrorImageSourceCanvas(MirrorImagePreparedSourceLayer preparedLayer)
+        {
+            return preparedLayer?.LastInsertedLiveSourceParts != null
+                   && CanRenderLastInsertedMirrorImageSourceCanvas(preparedLayer.LastInsertedLiveSourceParts);
+        }
+
+        internal static IReadOnlyList<AssembledPart> ResolveMirrorImageLastInsertedLiveSourceParts(
+            IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts,
+            IReadOnlyList<AssembledPart> sourceParts,
+            bool updatesFromLiveInsertCanvas)
+        {
+            if (!updatesFromLiveInsertCanvas)
+            {
+                return lastInsertedLiveSourceParts ?? Array.Empty<AssembledPart>();
+            }
+
+            return CloneMirrorImageSourceParts(sourceParts);
+        }
+
+        private static IReadOnlyList<AssembledPart> CloneMirrorImageSourceParts(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return Array.Empty<AssembledPart>();
+            }
+
+            var clonedParts = new AssembledPart[sourceParts.Count];
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                clonedParts[partIndex] = CloneMirrorImageSourcePart(sourceParts[partIndex]);
+            }
+
+            return clonedParts;
+        }
+
+        private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
+        {
+            return part == null
+                ? null
+                : new AssembledPart
+                {
+                    Texture = part.Texture,
+                    OffsetX = part.OffsetX,
+                    OffsetY = part.OffsetY,
+                    ZLayer = part.ZLayer,
+                    ZIndex = part.ZIndex,
+                    VisibilityTokens = part.VisibilityTokens,
+                    VisibilityPriority = part.VisibilityPriority,
+                    IsVisible = part.IsVisible,
+                    SourcePart = part.SourcePart,
+                    Tint = part.Tint,
+                    PartType = part.PartType,
+                    SourcePortableChairLayer = part.SourcePortableChairLayer,
+                    RenderLayer = part.RenderLayer
+                };
+        }
+
+        internal static int ComputeMirrorImageSourceCanvasSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(sourceParts.Count);
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part == null)
+                {
+                    signature.Add(0);
+                    continue;
+                }
+
+                AddMirrorImageSourceTextureIdentity(ref signature, part.Texture);
+                signature.Add(part.OffsetX);
+                signature.Add(part.OffsetY);
+                signature.Add(part.ZIndex);
+                signature.Add(part.IsVisible);
+                signature.Add(part.VisibilityPriority);
+                signature.Add(part.Tint.PackedValue);
+                signature.Add((int)part.PartType);
+                signature.Add((int)part.RenderLayer);
+                signature.Add(part.ZLayer, StringComparer.Ordinal);
+            }
+
+            return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageSourceLayerOriginSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            Rectangle bounds = CalculateMirrorImageSourceLayerBounds(sourceParts);
+            if (bounds.IsEmpty)
+            {
+                return 0;
+            }
+
+            Point origin = ResolveMirrorImageSourceLayerOrigin(bounds);
+            var signature = new HashCode();
+            signature.Add(bounds.X);
+            signature.Add(bounds.Y);
+            signature.Add(bounds.Width);
+            signature.Add(bounds.Height);
+            signature.Add(origin.X);
+            signature.Add(origin.Y);
+            return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageSourceFrameSignature(AssembledFrame frame, AvatarRenderLayer sourceLayer)
+        {
+            if (frame == null)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add((int)sourceLayer);
+            signature.Add(frame.Bounds.X);
+            signature.Add(frame.Bounds.Y);
+            signature.Add(frame.Bounds.Width);
+            signature.Add(frame.Bounds.Height);
+            signature.Add(frame.Origin.X);
+            signature.Add(frame.Origin.Y);
+            signature.Add(frame.Duration);
+            signature.Add(frame.FeetOffset);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.AvatarRenderLayers));
+            signature.Add(frame.AvatarRenderLayers?.Length ?? 0);
+            if (frame.AvatarRenderLayers != null)
+            {
+                int sourceLayerIndex = (int)sourceLayer;
+                if ((uint)sourceLayerIndex < (uint)frame.AvatarRenderLayers.Length)
+                {
+                    signature.Add(RuntimeHelpers.GetHashCode(frame.AvatarRenderLayers[sourceLayerIndex]));
+                    signature.Add(frame.AvatarRenderLayers[sourceLayerIndex]?.Count ?? 0);
+                }
+            }
+
+            AddMirrorImagePointMapIdentity(ref signature, frame.MapPoints);
+            return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageSourceLayerSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(sourceParts.Count);
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part == null)
+                {
+                    signature.Add(0);
+                    continue;
+                }
+
+                signature.Add(RuntimeHelpers.GetHashCode(part));
+                AddMirrorImageSourceTextureIdentity(ref signature, part.Texture);
+                signature.Add(part.OffsetX);
+                signature.Add(part.OffsetY);
+                signature.Add(part.ZIndex);
+                signature.Add(part.IsVisible);
+                signature.Add(part.VisibilityPriority);
+                signature.Add(part.Tint.PackedValue);
+                signature.Add((int)part.PartType);
+                signature.Add((int)part.RenderLayer);
+                signature.Add(part.ZLayer, StringComparer.Ordinal);
+                AddMirrorImagePortableChairLayerIdentity(ref signature, part.SourcePortableChairLayer);
+                AddMirrorImageSourcePartIdentity(ref signature, part.SourcePart);
+                IReadOnlyList<string> visibilityTokens = part.VisibilityTokens;
+                signature.Add(RuntimeHelpers.GetHashCode(visibilityTokens));
+                signature.Add(visibilityTokens?.Count ?? 0);
+                if (visibilityTokens != null)
+                {
+                    for (int tokenIndex = 0; tokenIndex < visibilityTokens.Count; tokenIndex++)
+                    {
+                        signature.Add(visibilityTokens[tokenIndex], StringComparer.Ordinal);
+                    }
+                }
+            }
+
+            return signature.ToHashCode();
+        }
+
+        private static void AddMirrorImageSourceTextureIdentity(ref HashCode signature, IDXObject texture)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(texture));
+            if (texture == null)
+            {
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                return;
+            }
+
+            Texture2D backingTexture = texture.Texture;
+            signature.Add(RuntimeHelpers.GetHashCode(backingTexture));
+            if (backingTexture != null)
+            {
+                signature.Add(backingTexture.Width);
+                signature.Add(backingTexture.Height);
+            }
+
+            signature.Add(texture.X);
+            signature.Add(texture.Y);
+            signature.Add(texture.Width);
+            signature.Add(texture.Height);
+            signature.Add(texture.Delay);
+
+            object tag = texture.Tag;
+            signature.Add(RuntimeHelpers.GetHashCode(tag));
+            if (tag is string tagText)
+            {
+                signature.Add(tagText, StringComparer.Ordinal);
+            }
+            else if (tag != null)
+            {
+                signature.Add(tag.ToString(), StringComparer.Ordinal);
+            }
+        }
+
+        private static void AddMirrorImageSourcePartIdentity(ref HashCode signature, CharacterPart sourcePart)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart));
+            if (sourcePart == null)
+            {
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(sourcePart.ItemId);
+            signature.Add(sourcePart.Name, StringComparer.Ordinal);
+            signature.Add((int)sourcePart.Type);
+            signature.Add((int)sourcePart.Slot);
+            signature.Add(sourcePart.VSlot, StringComparer.Ordinal);
+            signature.Add(sourcePart.ISlot, StringComparer.Ordinal);
+            signature.Add(sourcePart.Sfx, StringComparer.Ordinal);
+            signature.Add(sourcePart.Description, StringComparer.Ordinal);
+            signature.Add(sourcePart.IsCash);
+            signature.Add(sourcePart.HasWeeklyVariant);
+            signature.Add(sourcePart.UsesWeeklyVariantOverride);
+            signature.Add(sourcePart.ResolvedWeeklyVariantIndex);
+            signature.Add(sourcePart.ClientItemToken);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.Animations));
+            signature.Add(sourcePart.Animations?.Count ?? 0);
+            AddMirrorImageStringSetIdentity(ref signature, sourcePart.Animations?.Keys);
+            AddMirrorImageAnimationMapIdentity(ref signature, sourcePart.Animations);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AvailableAnimations));
+            signature.Add(sourcePart.AvailableAnimations?.Count ?? 0);
+            AddMirrorImageStringSetIdentity(ref signature, sourcePart.AvailableAnimations);
+            signature.Add(sourcePart.ItemCategory, StringComparer.Ordinal);
+            signature.Add(sourcePart.ExpirationDateUtc?.Ticks ?? 0L);
+            signature.Add(sourcePart.Durability ?? int.MinValue);
+            signature.Add(sourcePart.MaxDurability ?? int.MinValue);
+            signature.Add(sourcePart.SellPrice);
+            signature.Add(sourcePart.IsEpic);
+            signature.Add(sourcePart.RequiredJobMask);
+            signature.Add(sourcePart.RequiredFame);
+            signature.Add(sourcePart.RequiredLevel);
+            signature.Add(sourcePart.RequiredSTR);
+            signature.Add(sourcePart.RequiredDEX);
+            signature.Add(sourcePart.RequiredINT);
+            signature.Add(sourcePart.RequiredLUK);
+            signature.Add(sourcePart.BonusSTR);
+            signature.Add(sourcePart.BonusDEX);
+            signature.Add(sourcePart.BonusINT);
+            signature.Add(sourcePart.BonusLUK);
+            signature.Add(sourcePart.BonusAllStat);
+            signature.Add(sourcePart.BonusSTRPercent);
+            signature.Add(sourcePart.BonusDEXPercent);
+            signature.Add(sourcePart.BonusINTPercent);
+            signature.Add(sourcePart.BonusLUKPercent);
+            signature.Add(sourcePart.BonusAllStatPercent);
+            signature.Add(sourcePart.BonusHP);
+            signature.Add(sourcePart.BonusMP);
+            signature.Add(sourcePart.BonusHPPercent);
+            signature.Add(sourcePart.BonusMPPercent);
+            signature.Add(sourcePart.BonusWeaponAttack);
+            signature.Add(sourcePart.BonusMagicAttack);
+            signature.Add(sourcePart.BonusWeaponDefense);
+            signature.Add(sourcePart.BonusMagicDefense);
+            signature.Add(sourcePart.BonusWeaponAttackPercent);
+            signature.Add(sourcePart.BonusMagicAttackPercent);
+            signature.Add(sourcePart.BonusWeaponDefensePercent);
+            signature.Add(sourcePart.BonusMagicDefensePercent);
+            signature.Add(sourcePart.BonusAccuracy);
+            signature.Add(sourcePart.BonusAvoidability);
+            signature.Add(sourcePart.BonusAccuracyPercent);
+            signature.Add(sourcePart.BonusAvoidabilityPercent);
+            signature.Add(sourcePart.BonusHands);
+            signature.Add(sourcePart.BonusSpeed);
+            signature.Add(sourcePart.BonusSpeedPercent);
+            signature.Add(sourcePart.BonusJump);
+            signature.Add(sourcePart.UpgradeSlots);
+            signature.Add(sourcePart.TotalUpgradeSlotCount ?? int.MinValue);
+            signature.Add(sourcePart.RemainingUpgradeSlotCount ?? int.MinValue);
+            signature.Add(sourcePart.EnhancementStarCount);
+            signature.Add(sourcePart.IsSuperManMorph);
+            signature.Add(sourcePart.KnockbackRate);
+            signature.Add(sourcePart.TradeAvailable);
+            signature.Add(sourcePart.IsTradeBlocked);
+            signature.Add(sourcePart.IsEquipTradeBlocked);
+            signature.Add(sourcePart.IsOneOfAKind);
+            signature.Add(sourcePart.IsUniqueEquipItem);
+            signature.Add(sourcePart.IsNotForSale);
+            signature.Add(sourcePart.IsAccountSharable);
+            signature.Add(sourcePart.HasAccountShareTag);
+            signature.Add(sourcePart.IsNoMoveToLocker);
+            signature.Add(sourcePart.OwnerAccountId ?? int.MinValue);
+            signature.Add(sourcePart.OwnerCharacterId ?? int.MinValue);
+            signature.Add(sourcePart.IsCashOwnershipLocked);
+            signature.Add(sourcePart.IsTimeLimited);
+            signature.Add(sourcePart.PotentialTierText, StringComparer.Ordinal);
+            AddMirrorImageStringListIdentity(ref signature, sourcePart.PotentialLines);
+            AddMirrorImageIntListIdentity(ref signature, sourcePart.ItemOptionIds);
+            signature.Add(sourcePart.HasGrowthInfo);
+            signature.Add(sourcePart.GrowthLevel);
+            signature.Add(sourcePart.GrowthMaxLevel);
+            signature.Add(sourcePart.GrowthExpPercent);
+            AddMirrorImageSourceTextureIdentity(ref signature, sourcePart.Icon);
+            AddMirrorImageSourceTextureIdentity(ref signature, sourcePart.IconRaw);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AnimationResolver));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionOverlayResolver));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionFrameOwner));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.MorphActionFrameOwner));
+            AddMirrorImageDerivedSourcePartIdentity(ref signature, sourcePart);
+        }
+
+        private static void AddMirrorImagePortableChairLayerIdentity(ref HashCode signature, PortableChairLayer layer)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(layer));
+            if (layer == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(layer.Name, StringComparer.Ordinal);
+            signature.Add(layer.RelativeZ);
+            signature.Add(layer.PositionHint);
+            AddMirrorImageAnimationIdentity(ref signature, layer.Animation);
+        }
+
+        private static void AddMirrorImageDerivedSourcePartIdentity(ref HashCode signature, CharacterPart sourcePart)
+        {
+            switch (sourcePart)
+            {
+                case BodyPart bodyPart:
+                    signature.Add((int)bodyPart.SkinColor);
+                    signature.Add(bodyPart.IsHead);
+                    break;
+                case FacePart facePart:
+                    signature.Add(RuntimeHelpers.GetHashCode(facePart.Expressions));
+                    signature.Add(facePart.Expressions?.Count ?? 0);
+                    AddMirrorImageAnimationMapIdentity(ref signature, facePart.Expressions);
+                    break;
+                case HairPart hairPart:
+                    signature.Add(hairPart.HairColor.PackedValue);
+                    signature.Add(hairPart.HasBackHair);
+                    signature.Add(RuntimeHelpers.GetHashCode(hairPart.BackHairAnimations));
+                    signature.Add(hairPart.BackHairAnimations?.Count ?? 0);
+                    AddMirrorImageAnimationMapIdentity(ref signature, hairPart.BackHairAnimations);
+                    break;
+                case WeaponPart weaponPart:
+                    signature.Add(weaponPart.AttackSpeed);
+                    signature.Add(weaponPart.Attack);
+                    signature.Add(weaponPart.WeaponType, StringComparer.Ordinal);
+                    signature.Add(weaponPart.AfterImageType, StringComparer.Ordinal);
+                    signature.Add(weaponPart.WalkFrameCount);
+                    signature.Add(weaponPart.StandFrameCount);
+                    signature.Add(weaponPart.AttackFrameCount);
+                    signature.Add(weaponPart.Range);
+                    signature.Add(weaponPart.IsTwoHanded);
+                    break;
+                default:
+                    signature.Add(0);
+                    break;
+            }
+        }
+
+        private static void AddMirrorImageAnimationMapIdentity(
+            ref HashCode signature,
+            IReadOnlyDictionary<string, CharacterAnimation> animations)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(animations));
+            signature.Add(animations?.Count ?? 0);
+            if (animations == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, CharacterAnimation> entry in animations.OrderBy(static entry => entry.Key, StringComparer.Ordinal))
+            {
+                signature.Add(entry.Key, StringComparer.Ordinal);
+                AddMirrorImageAnimationIdentity(ref signature, entry.Value);
+            }
+        }
+
+        private static void AddMirrorImageAnimationIdentity(ref HashCode signature, CharacterAnimation animation)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(animation));
+            if (animation == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add((int)animation.Action);
+            signature.Add(animation.ActionName, StringComparer.Ordinal);
+            signature.Add(animation.TotalDuration);
+            signature.Add(animation.AuthoredDuration ?? int.MinValue);
+            signature.Add(animation.Loop);
+            signature.Add(RuntimeHelpers.GetHashCode(animation.Frames));
+            signature.Add(animation.Frames?.Count ?? 0);
+            if (animation.Frames == null)
+            {
+                return;
+            }
+
+            for (int frameIndex = 0; frameIndex < animation.Frames.Count; frameIndex++)
+            {
+                AddMirrorImageCharacterFrameIdentity(ref signature, animation.Frames[frameIndex]);
+            }
+        }
+
+        private static void AddMirrorImageCharacterFrameIdentity(ref HashCode signature, CharacterFrame frame)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(frame));
+            if (frame == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            AddMirrorImageSourceTextureIdentity(ref signature, frame.Texture);
+            signature.Add(frame.Origin.X);
+            signature.Add(frame.Origin.Y);
+            signature.Add(frame.Delay);
+            signature.Add(frame.Z, StringComparer.Ordinal);
+            signature.Add(frame.Flip);
+            signature.Add(frame.Bounds.X);
+            signature.Add(frame.Bounds.Y);
+            signature.Add(frame.Bounds.Width);
+            signature.Add(frame.Bounds.Height);
+            signature.Add(frame.FrameUol, StringComparer.Ordinal);
+            AddMirrorImagePointMapIdentity(ref signature, frame.Map);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.SubParts));
+            signature.Add(frame.SubParts?.Count ?? 0);
+            if (frame.SubParts == null)
+            {
+                return;
+            }
+
+            for (int partIndex = 0; partIndex < frame.SubParts.Count; partIndex++)
+            {
+                AddMirrorImageCharacterSubPartIdentity(ref signature, frame.SubParts[partIndex]);
+            }
+        }
+
+        private static void AddMirrorImageCharacterSubPartIdentity(ref HashCode signature, CharacterSubPart subPart)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(subPart));
+            if (subPart == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(subPart.Name, StringComparer.Ordinal);
+            AddMirrorImageSourceTextureIdentity(ref signature, subPart.Texture);
+            signature.Add(subPart.Origin.X);
+            signature.Add(subPart.Origin.Y);
+            signature.Add(subPart.Z, StringComparer.Ordinal);
+            signature.Add(subPart.NavelOffset.X);
+            signature.Add(subPart.NavelOffset.Y);
+            AddMirrorImagePointMapIdentity(ref signature, subPart.Map);
+        }
+
+        private static void AddMirrorImagePointMapIdentity(ref HashCode signature, IReadOnlyDictionary<string, Point> points)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(points));
+            signature.Add(points?.Count ?? 0);
+            if (points == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, Point> entry in points.OrderBy(static entry => entry.Key, StringComparer.Ordinal))
+            {
+                signature.Add(entry.Key, StringComparer.Ordinal);
+                signature.Add(entry.Value.X);
+                signature.Add(entry.Value.Y);
+            }
+        }
+
+        private static void AddMirrorImageStringSetIdentity(ref HashCode signature, IEnumerable<string> values)
+        {
+            if (values == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            int valueCount = 0;
+            foreach (string value in values.OrderBy(static value => value, StringComparer.Ordinal))
+            {
+                signature.Add(value, StringComparer.Ordinal);
+                valueCount++;
+            }
+
+            signature.Add(valueCount);
+        }
+
+        private static void AddMirrorImageStringListIdentity(ref HashCode signature, IReadOnlyList<string> values)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(values));
+            signature.Add(values?.Count ?? 0);
+            if (values == null)
+            {
+                return;
+            }
+
+            for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
+            {
+                signature.Add(values[valueIndex], StringComparer.Ordinal);
+            }
+        }
+
+        private static void AddMirrorImageIntListIdentity(ref HashCode signature, IReadOnlyList<int> values)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(values));
+            signature.Add(values?.Count ?? 0);
+            if (values == null)
+            {
+                return;
+            }
+
+            for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
+            {
+                signature.Add(values[valueIndex]);
+            }
+        }
+
+        internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)
+        {
+            return bounds.IsEmpty
+                ? Point.Zero
+                : new Point(-bounds.X, -bounds.Y);
+        }
+
+        private static Rectangle CalculateMirrorImageSourceLayerBounds(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int minX = int.MaxValue;
+            int minY = int.MaxValue;
+            int maxX = int.MinValue;
+            int maxY = int.MinValue;
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                minX = Math.Min(minX, part.OffsetX);
+                minY = Math.Min(minY, part.OffsetY);
+                maxX = Math.Max(maxX, part.OffsetX + part.Texture.Width);
+                maxY = Math.Max(maxY, part.OffsetY + part.Texture.Height);
+            }
+
+            if (minX == int.MaxValue || minY == int.MaxValue)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(minX, minY, Math.Max(0, maxX - minX), Math.Max(0, maxY - minY));
+        }
+
+        internal static Point ResolveMirrorImagePreparedSnapshotDrawPosition(
+            int screenX,
+            int adjustedY,
+            Rectangle snapshotBounds,
+            bool flip)
+        {
+            return ResolveMirrorImagePreparedSnapshotDrawPosition(
+                screenX,
+                adjustedY,
+                snapshotBounds,
+                ResolveMirrorImageSourceLayerOrigin(snapshotBounds),
+                flip);
+        }
+
+        internal static Point ResolveMirrorImagePreparedSnapshotDrawPosition(
+            int screenX,
+            int adjustedY,
+            Rectangle snapshotBounds,
+            Point snapshotOrigin,
+            bool flip)
+        {
+            if (snapshotBounds.Width <= 0 || snapshotBounds.Height <= 0)
+            {
+                return new Point(screenX, adjustedY);
+            }
+
+            int drawX = flip
+                ? screenX + snapshotOrigin.X - snapshotBounds.Width
+                : screenX - snapshotOrigin.X;
+            int drawY = adjustedY - snapshotOrigin.Y;
+            return new Point(drawX, drawY);
+        }
+
+        internal static Rectangle ResolveMirrorImagePreparedSnapshotSourceBounds(
+            Rectangle preparedSourceBounds,
+            Rectangle snapshotBounds)
+        {
+            if (!preparedSourceBounds.IsEmpty)
+            {
+                return preparedSourceBounds;
+            }
+
+            if (snapshotBounds.Width <= 0 || snapshotBounds.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(0, 0, snapshotBounds.Width, snapshotBounds.Height);
+        }
+
+        internal static bool CanRenderPreparedMirrorImageSourceLayer(
+            bool hasPreparedSnapshot,
+            IReadOnlyList<AssembledPart> preparedParts)
+        {
+            return hasPreparedSnapshot || (preparedParts != null && preparedParts.Count > 0);
+        }
+
+        internal static bool ResolveMirrorImagePreparedFallbackFacing(bool preparedFacingRight, bool currentFacingRight)
+        {
+            return currentFacingRight;
+        }
+
+        private static Rectangle ResolveMirrorImageLiveRenderBounds(
+            AssembledFrame frame,
+            AvatarRenderLayer renderLayer)
+        {
+            if (frame?.AvatarRenderLayers != null)
+            {
+                int renderLayerIndex = (int)renderLayer;
+                if ((uint)renderLayerIndex < (uint)frame.AvatarRenderLayers.Length)
+                {
+                    return CalculateMirrorImageSourceLayerBounds(frame.AvatarRenderLayers[renderLayerIndex]);
+                }
+            }
+
+            return Rectangle.Empty;
+        }
+
+        internal static Rectangle ResolveMirrorImageRenderablePositionBounds(
+            Rectangle preparedBounds,
+            Rectangle liveBounds)
+        {
+            if (!preparedBounds.IsEmpty)
+            {
+                return preparedBounds;
+            }
+
+            if (!liveBounds.IsEmpty)
+            {
+                return liveBounds;
+            }
+
+            return preparedBounds;
+        }
+
+        private Texture2D CreateMirrorImageLayerTexture(
+            IReadOnlyList<AssembledPart> sourceParts,
+            Rectangle bounds,
+            Texture2D existingTexture = null,
+            bool preservesExistingLayerObject = false)
+        {
+            if (_graphicsDevice == null
+                || sourceParts == null
+                || sourceParts.Count == 0
+                || bounds.Width <= 0
+                || bounds.Height <= 0)
+            {
+                return null;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+            RenderTarget2D renderTarget = TryReuseMirrorImageLayerTexture(
+                existingTexture,
+                bounds,
+                preservesExistingLayerObject)
+                ?? new RenderTarget2D(
+                    _graphicsDevice,
+                    bounds.Width,
+                    bounds.Height,
+                    false,
+                    SurfaceFormat.Color,
+                    DepthFormat.None);
+            bool reusesExistingTexture = ReferenceEquals(renderTarget, existingTexture);
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(renderTarget);
+                _graphicsDevice.Clear(Color.Transparent);
+
+                using var spriteBatch = new SpriteBatch(_graphicsDevice);
+                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+                {
+                    DrawMirrorImageSourcePartToTexture(spriteBatch, sourceParts[partIndex], bounds);
+                }
+
+                spriteBatch.End();
+                return renderTarget;
+            }
+            catch
+            {
+                if (!reusesExistingTexture)
+                {
+                    renderTarget.Dispose();
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    _graphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    _graphicsDevice.SetRenderTarget(null);
+                }
+
+                _graphicsDevice.Viewport = previousViewport;
+            }
+        }
+
+        private static RenderTarget2D TryReuseMirrorImageLayerTexture(
+            Texture2D existingTexture,
+            Rectangle bounds,
+            bool preservesExistingLayerObject)
+        {
+            if (existingTexture is not RenderTarget2D renderTarget)
+            {
+                return null;
+            }
+
+            return CanRefreshMirrorImagePreparedSourceLayerTextureInPlace(
+                preservesExistingLayerObject,
+                renderTarget.Width,
+                renderTarget.Height,
+                bounds)
+                ? renderTarget
+                : null;
+        }
+
+        internal static bool CanRefreshMirrorImagePreparedSourceLayerTextureInPlace(
+            bool preservesExistingLayerObject,
+            int existingTextureWidth,
+            int existingTextureHeight,
+            Rectangle incomingBounds)
+        {
+            if (!preservesExistingLayerObject
+                || existingTextureWidth <= 0
+                || existingTextureHeight <= 0
+                || incomingBounds.Width <= 0
+                || incomingBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            return existingTextureWidth >= incomingBounds.Width
+                   && existingTextureHeight >= incomingBounds.Height;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerPlacement(
+            bool preservesExistingLayerObject,
+            Rectangle existingBounds,
+            int existingPartCount)
+        {
+            return preservesExistingLayerObject
+                   && existingPartCount > 0
+                   && !existingBounds.IsEmpty;
+        }
+
+        internal static Rectangle ResolveMirrorImagePreparedSourceLayerPlacementBounds(
+            Rectangle existingBounds,
+            Rectangle incomingBounds,
+            bool preservesExistingLayerPlacement)
+        {
+            if (!preservesExistingLayerPlacement || existingBounds.IsEmpty)
+            {
+                return incomingBounds;
+            }
+
+            if (incomingBounds.Width <= 0 || incomingBounds.Height <= 0)
+            {
+                return existingBounds;
+            }
+
+            return new Rectangle(
+                existingBounds.X,
+                existingBounds.Y,
+                incomingBounds.Width,
+                incomingBounds.Height);
+        }
+
+        internal static Point ResolveMirrorImagePreparedSourceLayerOrigin(
+            Point existingOrigin,
+            Rectangle incomingBounds,
+            bool preservesExistingLayerPlacement)
+        {
+            if (preservesExistingLayerPlacement)
+            {
+                return existingOrigin;
+            }
+
+            return incomingBounds.IsEmpty
+                ? Point.Zero
+                : ResolveMirrorImageSourceLayerOrigin(incomingBounds);
+        }
+
+        private static bool CanPreserveMirrorImagePreparedFeetOffset(
+            IReadOnlyList<MirrorImagePreparedSourceLayer> existingLayers,
+            bool currentFacingRight)
+        {
+            if (existingLayers == null || existingLayers.Count == 0)
+            {
+                return false;
+            }
+
+            for (int layerIndex = 0; layerIndex < existingLayers.Count; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer layer = existingLayers[layerIndex];
+                if (layer?.Parts == null || layer.Parts.Count == 0)
+                {
+                    continue;
+                }
+
+                if (layer.PreparedFacingRight == currentFacingRight)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static int ResolveMirrorImagePreparedFeetOffset(
+            int existingFeetOffset,
+            int incomingFeetOffset,
+            bool preservesExistingLayerObject)
+        {
+            return preservesExistingLayerObject
+                ? existingFeetOffset
+                : incomingFeetOffset;
+        }
+
+        private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)
+        {
+            if (part?.Texture == null || !part.IsVisible)
+            {
+                return;
+            }
+
+            int drawX = part.OffsetX - bounds.X;
+            int drawY = part.OffsetY - bounds.Y;
+            Color tint = part.Tint != Color.White ? part.Tint : Color.White;
+            part.Texture.DrawBackground(spriteBatch, null, null, drawX, drawY, tint, false, null);
+        }
+
+        private static void ReplacePreparedMirrorImageSourceLayerTexture(MirrorImagePreparedSourceLayer layer, Texture2D texture)
+        {
+            if (ReferenceEquals(layer?.ComposedTexture, texture))
+            {
+                return;
+            }
+
+            DisposeMirrorImagePreparedSourceLayerTexture(layer);
+            if (layer != null)
+            {
+                layer.ComposedTexture = texture;
+            }
+        }
+
+        private static void DisposeMirrorImagePreparedSourceLayers(MirrorImagePreparedSourceLayer[] layers)
+        {
+            if (layers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < layers.Length; i++)
+            {
+                DisposeMirrorImagePreparedSourceLayerTexture(layers[i]);
+            }
+        }
+
+        private static void DisposeMirrorImagePreparedSourceLayerTexture(MirrorImagePreparedSourceLayer layer)
+        {
+            if (layer?.ComposedTexture == null)
+            {
+                return;
+            }
+
+            layer.ComposedTexture.Dispose();
+            layer.ComposedTexture = null;
+        }
+
+        private bool TryGetShadowPartnerAnimation(
+            int currentTime,
+            out SkillAnimation animation,
+            out SkillFrame frame,
+            out int frameElapsedMs,
+            out bool facingRight)
+        {
+            animation = null;
+            frame = null;
+            frameElapsedMs = 0;
+            facingRight = FacingRight;
+
+            if (_activeShadowPartner?.ActionAnimations == null)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName)
+                || !_activeShadowPartner.ActionAnimations.TryGetValue(_activeShadowPartner.CurrentActionName, out animation)
+                || animation?.Frames == null
+                || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            animation = _activeShadowPartner.CurrentPlaybackAnimation ?? animation;
+            int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
+            if (!ShadowPartnerClientActionResolver.TryGetPlaybackFrameAtTime(animation, animationTime, out frame, out frameElapsedMs))
+            {
+                return false;
+            }
+
+            facingRight = _activeShadowPartner.CurrentFacingRight;
+            return true;
+        }
+
+        private static float ResolveShadowPartnerFrameAlpha(
+            SkillAnimation animation,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int actionElapsedMs)
+        {
+            return ShadowPartnerClientActionResolver.ResolveFrameAlphaForPlayback(
+                animation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
+        }
+
+        private int ResolveShadowPartnerHorizontalOffsetPx(SkillAnimation currentAnimation)
+        {
+            return ShadowPartnerClientActionResolver.ResolveHorizontalOffsetPx(
+                currentAnimation,
+                _activeShadowPartner?.HorizontalOffsetPx ?? 26);
+        }
+
+        private void DrawAvatarEffectPlane(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            List<AvatarEffectRenderable> avatarEffects,
+            SkillAvatarEffectPlane plane,
+            AssembledFrame assembledFrame,
+            int screenX,
+            int screenY,
+            Color tint)
+        {
+            if (avatarEffects == null || avatarEffects.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < avatarEffects.Count; i++)
+            {
+                AvatarEffectRenderable effect = avatarEffects[i];
+                if (effect.Plane != plane || effect.Frame?.Texture == null)
+                {
+                    continue;
+                }
+
+                ResolveAvatarEffectAnchorPosition(
+                    assembledFrame,
+                    screenX,
+                    screenY,
+                    effect.PositionCode,
+                    effect.FacingRightOverride,
+                    out int anchorX,
+                    out int anchorY);
+                bool shouldFlip = ResolveAvatarEffectRenderableFlip(
+                    FacingRight,
+                    effect.Frame.Flip,
+                    effect.FacingRightOverride);
+                int drawX = shouldFlip
+                    ? anchorX - (effect.Frame.Texture.Width - effect.Frame.Origin.X)
+                    : anchorX - effect.Frame.Origin.X;
+                int drawY = anchorY - effect.Frame.Origin.Y;
+
+                effect.Frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, tint, shouldFlip, null);
+            }
+        }
+
+        private List<AvatarEffectRenderable> GetCurrentAvatarEffectRenderables(int currentTime)
+        {
+            var renderables = new List<AvatarEffectRenderable>();
+            if (_activeSkillAvatarEffects.Count == 0 && _transientSkillAvatarEffects.Count == 0)
+            {
+                return renderables;
+            }
+
+            if (ShouldSuppressSkillAvatarEffectRendering())
+            {
+                return renderables;
+            }
+
+            int elapsedTime;
+            for (int i = 0; i < _activeSkillAvatarEffects.Count; i++)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.HideOnRotateAction
+                    && ShouldHideRotateSensitiveAvatarEffect())
+                {
+                    continue;
+                }
+
+                elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
+                PersistentSkillAvatarEffectRenderSelection selection =
+                    ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                        effectState.IsFinishing,
+                        effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                        effectState.HideOnLadderOrRope,
+                        effectState.LadderOverlayAnimation,
+                        effectState.GroundOverlayAnimation,
+                        effectState.GroundOverlaySecondaryAnimation,
+                        effectState.GroundUnderFaceAnimation,
+                        effectState.GroundUnderFaceSecondaryAnimation,
+                        effectState.LadderOverlayFinishAnimation,
+                        effectState.GroundOverlayFinishAnimation,
+                        effectState.GroundUnderFaceFinishAnimation);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    selection.OverlayAnimation,
+                    ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                        selection.OverlayAnimation,
+                        selection.OverlayUsesBehindCharacterPlane),
+                    elapsedTime);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    selection.OverlaySecondaryAnimation,
+                    ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                        selection.OverlaySecondaryAnimation,
+                        selection.OverlayUsesBehindCharacterPlane),
+                    elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.UnderFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.UnderFaceSecondaryAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+            }
+
+            for (int i = 0; i < _transientSkillAvatarEffects.Count; i++)
+            {
+                TransientSkillAvatarEffectState effectState = _transientSkillAvatarEffects[i];
+                if (effectState == null)
+                {
+                    continue;
+                }
+
+                elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
+                SkillAnimation primaryAnimation = effectState.IsFinishing
+                    ? effectState.FinishAnimation
+                    : effectState.Animation;
+                SkillAnimation secondaryAnimation = effectState.IsFinishing
+                    ? effectState.FinishSecondaryAnimation
+                    : effectState.SecondaryAnimation;
+                SkillAvatarEffectPlane primaryPlane = effectState.IsFinishing
+                    ? effectState.FinishPlane
+                    : effectState.Plane;
+                SkillAvatarEffectPlane secondaryPlane = effectState.IsFinishing
+                    ? effectState.FinishSecondaryPlane
+                    : effectState.SecondaryPlane;
+
+                AddAvatarEffectRenderable(
+                    renderables,
+                    primaryAnimation,
+                    primaryPlane,
+                    elapsedTime,
+                    effectState.FacingRightOverride);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    secondaryAnimation,
+                    secondaryPlane,
+                    elapsedTime,
+                    effectState.FacingRightOverride);
+            }
+
+            return renderables;
+        }
+
+        private void UpdateShadowPartnerRenderState(int currentTime)
+        {
+            if (_activeShadowPartner?.ActionAnimations == null || _activeShadowPartner.ActionAnimations.Count == 0)
+            {
+                return;
+            }
+
+            UpdateShadowPartnerClientOffset(currentTime);
+
+            if (TryAdvanceShadowPartnerQueuedAction(currentTime))
+            {
+                return;
+            }
+
+            string playerActionName = GetShadowPartnerObservedPlayerActionName();
+            bool isFloatingState = State is PlayerState.Swimming or PlayerState.Flying;
+            int actionTriggerTime = GetShadowPartnerObservedActionTriggerTime();
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            if (ShouldRefreshShadowPartnerObservation(
+                    playerActionName,
+                    isFloatingState,
+                    FacingRight,
+                    actionTriggerTime,
+                    rawActionCode,
+                    _activeShadowPartner.ObservedPlayerActionName,
+                    _activeShadowPartner.ObservedPlayerFloatingState,
+                    _activeShadowPartner.ObservedPlayerFacingRight,
+                    _activeShadowPartner.ObservedPlayerActionTriggerTime,
+                    _activeShadowPartner.ObservedPlayerRawActionCode))
+            {
+                _activeShadowPartner.ObservedPlayerActionName = playerActionName;
+                _activeShadowPartner.ObservedPlayerFloatingState = isFloatingState;
+                _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
+                _activeShadowPartner.ObservedPlayerActionTriggerTime = actionTriggerTime;
+                _activeShadowPartner.ObservedPlayerRawActionCode = rawActionCode;
+                RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
+                bool observedAttackAction = ShouldUseShadowPartnerAttackObservationGate(playerActionName, State);
+                if (observedAttackAction)
+                {
+                    if (TryResolveShadowPartnerAttackAction(
+                            playerActionName,
+                            out string delayedAttackAction,
+                            out SkillAnimation delayedAttackPlayback))
+                    {
+                        _activeShadowPartner.PendingActionName = delayedAttackAction;
+                        _activeShadowPartner.PendingPlaybackAnimation = delayedAttackPlayback;
+                        _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(
+                            delayedAttackAction,
+                            _activeShadowPartner.PendingPlaybackAnimation);
+                        _activeShadowPartner.PendingFacingRight = FacingRight;
+                        _activeShadowPartner.PendingForceReplay = TryMarkShadowPartnerForcedReplayActionTrigger(actionTriggerTime);
+                    }
+                    else
+                    {
+                        _activeShadowPartner.PendingActionName = null;
+                        _activeShadowPartner.PendingPlaybackAnimation = null;
+                        _activeShadowPartner.PendingForceReplay = false;
+                        _activeShadowPartner.QueuedActionName = null;
+                        _activeShadowPartner.QueuedPlaybackAnimation = null;
+                        _activeShadowPartner.QueuedForceReplay = false;
+                    }
+                }
+                else
+                {
+                    string resolvedAction = ResolveShadowPartnerActionName(playerActionName, _activeShadowPartner.CurrentActionName);
+                    if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+                    {
+                        _activeShadowPartner.QueuedActionName = resolvedAction;
+                        _activeShadowPartner.QueuedPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
+                            _activeShadowPartner.ActionAnimations,
+                            resolvedAction,
+                            playerActionName);
+                        _activeShadowPartner.QueuedFacingRight = FacingRight;
+                        _activeShadowPartner.QueuedForceReplay = false;
+                    }
+                    else
+                    {
+                        SetShadowPartnerAction(
+                            resolvedAction,
+                            currentTime,
+                            FacingRight,
+                            preserveTimingWhenOnlyFacingChanges: true,
+                            playbackAnimation: ResolveShadowPartnerPlaybackAnimation(
+                                _activeShadowPartner.ActionAnimations,
+                                resolvedAction,
+                                playerActionName));
+                    }
+
+                    _activeShadowPartner.PendingActionName = null;
+                    _activeShadowPartner.PendingPlaybackAnimation = null;
+                    _activeShadowPartner.PendingForceReplay = false;
+                }
+            }
+
+            TryQueuePostCreateShadowPartnerAttackResolution(
+                playerActionName,
+                actionTriggerTime,
+                currentTime);
+
+            if (!string.IsNullOrWhiteSpace(_activeShadowPartner.PendingActionName)
+                && ShouldReleaseShadowPartnerPendingActionForParity(currentTime, _activeShadowPartner.PendingActionReadyTime))
+            {
+                string pendingActionName = _activeShadowPartner.PendingActionName;
+                SkillAnimation pendingPlaybackAnimation = _activeShadowPartner.PendingPlaybackAnimation;
+                bool pendingFacingRight = _activeShadowPartner.PendingFacingRight;
+                bool pendingForceReplay = _activeShadowPartner.PendingForceReplay;
+                _activeShadowPartner.PendingActionName = null;
+                _activeShadowPartner.PendingPlaybackAnimation = null;
+                _activeShadowPartner.PendingForceReplay = false;
+
+                if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+                {
+                    _activeShadowPartner.QueuedActionName = pendingActionName;
+                    _activeShadowPartner.QueuedPlaybackAnimation = pendingPlaybackAnimation;
+                    _activeShadowPartner.QueuedFacingRight = pendingFacingRight;
+                    _activeShadowPartner.QueuedForceReplay = pendingForceReplay;
+                }
+                else
+                {
+                    SetShadowPartnerAction(
+                        pendingActionName,
+                        currentTime,
+                        pendingFacingRight,
+                        playbackAnimation: pendingPlaybackAnimation,
+                        forceRestartWhenSameAction: pendingForceReplay);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName))
+            {
+                SetShadowPartnerAction(ResolveShadowPartnerFallbackAction(), currentTime, FacingRight);
+            }
+
+            StoreShadowPartnerActionOwnerCounter(currentTime);
+        }
+
+        private void UpdateMirrorImageRenderState(int currentTime)
+        {
+            if (_activeMirrorImage == null)
+            {
+                return;
+            }
+
+            if (!ShouldRenderMirrorImageForCurrentAction())
+            {
+                _activeMirrorImage.Visible = false;
+                _activeMirrorImage.CurrentOffsetPx = Point.Zero;
+                if (ShouldReleaseMirrorImagePreparedSourceLayersWhenHidden(
+                        CollectPreparedMirrorImageLayerObjectIds(_activeMirrorImage.PreparedSourceLayers)))
+                {
+                    ResetMirrorImagePreparedSourceLayers();
+                }
+                return;
+            }
+
+            string observedActionName = CurrentActionName;
+            if (ShouldRestartMirrorImageStartTime(
+                    _activeMirrorImage.Visible,
+                    _activeMirrorImage.ObservedPlayerActionName,
+                    observedActionName))
+            {
+                _activeMirrorImage.StartTime = currentTime;
+            }
+
+            _activeMirrorImage.ObservedPlayerActionName = observedActionName;
+            _activeMirrorImage.ObservedPlayerFacingRight = FacingRight;
+            _activeMirrorImage.ObservedPlayerState = State;
+            _activeMirrorImage.Visible = true;
+            _activeMirrorImage.CurrentOffsetPx = ResolveMirrorImageCurrentOffset(currentTime);
+
+            AssembledFrame currentFrame = ResolveCurrentRenderFrame(currentTime, out int currentFrameIndex);
+            PrepareMirrorImageSourceLayers(currentFrame, currentFrameIndex, currentTime);
+            StoreMirrorImageOwnerCounter(currentTime);
+        }
+
+        internal static bool ShouldRestartMirrorImageStartTime(
+            bool mirrorVisible,
+            string observedActionName,
+            string currentActionName)
+        {
+            if (!mirrorVisible)
+            {
+                return true;
+            }
+
+            return !string.Equals(
+                observedActionName ?? string.Empty,
+                currentActionName ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private int ResolveShadowPartnerAttackDelayMs(string actionName, SkillAnimation playbackAnimation = null)
+        {
+            return ShadowPartnerClientActionResolver.ResolveAttackDelayMs(
+                _activeShadowPartner?.ActionAnimations,
+                actionName,
+                playbackAnimation,
+                ShadowPartnerAttackDelayMs);
+        }
+
+        private void SetShadowPartnerAction(
+            string actionName,
+            int currentTime,
+            bool facingRight,
+            SkillAnimation playbackAnimation = null,
+            bool forceRestartWhenSameAction = false)
+        {
+            SetShadowPartnerAction(
+                actionName,
+                currentTime,
+                facingRight,
+                preserveTimingWhenOnlyFacingChanges: false,
+                playbackAnimation: playbackAnimation,
+                forceRestartWhenSameAction: forceRestartWhenSameAction);
+        }
+
+        private void SetShadowPartnerAction(
+            string actionName,
+            int currentTime,
+            bool facingRight,
+            bool preserveTimingWhenOnlyFacingChanges,
+            SkillAnimation playbackAnimation = null,
+            bool forceRestartWhenSameAction = false)
+        {
+            if (_activeShadowPartner == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return;
+            }
+
+            if (!_activeShadowPartner.ActionAnimations.ContainsKey(actionName))
+            {
+                return;
+            }
+
+            StoreShadowPartnerActionOwnerCounter(currentTime);
+
+            if (string.Equals(_activeShadowPartner.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase))
+            {
+                RefreshShadowPartnerClientOffsetTarget(currentTime, facingRight);
+                _activeShadowPartner.CurrentPlaybackAnimation = playbackAnimation
+                    ?? ResolveShadowPartnerPlaybackAnimation(_activeShadowPartner.ActionAnimations, actionName, _activeShadowPartner.ObservedPlayerActionName);
+
+                if (forceRestartWhenSameAction)
+                {
+                    _activeShadowPartner.CurrentActionStartTime = currentTime;
+                    _activeShadowPartner.CurrentFacingRight = facingRight;
+                    ApplyShadowPartnerLayerChoreography();
+                    StoreShadowPartnerActionOwnerCounter(currentTime);
+                    return;
+                }
+
+                if (_activeShadowPartner.CurrentFacingRight == facingRight)
+                {
+                    return;
+                }
+
+                _activeShadowPartner.CurrentFacingRight = facingRight;
+                bool preserveTimingForFacingChange = preserveTimingWhenOnlyFacingChanges
+                    || ShadowPartnerClientActionResolver.ShouldPreserveOneShotAlphaLifetimeOnFacingChange(
+                        _activeShadowPartner.CurrentPlaybackAnimation,
+                        ResolveClientOwnedAvatarEffectTickElapsedMs(
+                            currentTime,
+                            _activeShadowPartner.CurrentActionStartTime));
+                if (preserveTimingForFacingChange)
+                {
+                    StoreShadowPartnerActionOwnerCounter(currentTime);
+                    return;
+                }
+            }
+
+            _activeShadowPartner.CurrentActionName = actionName;
+            _activeShadowPartner.CurrentPlaybackAnimation = playbackAnimation
+                ?? ResolveShadowPartnerPlaybackAnimation(_activeShadowPartner.ActionAnimations, actionName, _activeShadowPartner.ObservedPlayerActionName);
+            _activeShadowPartner.CurrentFacingRight = facingRight;
+            _activeShadowPartner.CurrentActionStartTime = TryRestoreShadowPartnerActionOwnerCounter(
+                currentTime,
+                _activeShadowPartner.SkillId,
+                actionName,
+                facingRight,
+                forceRestartWhenSameAction,
+                out int restoredActionStartTime)
+                ? restoredActionStartTime
+                : currentTime;
+            RefreshShadowPartnerClientOffsetTarget(currentTime, facingRight);
+            ApplyShadowPartnerLayerChoreography();
+            StoreShadowPartnerActionOwnerCounter(currentTime);
+        }
+
+        private void ApplyShadowPartnerLayerChoreography()
+        {
+            if (_activeShadowPartner == null)
+            {
+                return;
+            }
+
+            ShadowPartnerClientActionResolver.ShadowPartnerLayerChoreography choreography =
+                ShadowPartnerClientActionResolver.ResolveShadowPartnerLayerChoreography(
+                    _activeShadowPartner.SkillId,
+                    _activeShadowPartner.ObservedPlayerRawActionCode);
+
+            _activeShadowPartner.UsesOneTimeLayerObject = choreography.UsesOneTimeLayer;
+            _activeShadowPartner.LayerObjectId = choreography.LayerObjectId;
+            _activeShadowPartner.LayerListNodeObjectId = choreography.ListNodeObjectId;
+            _activeShadowPartner.RegisteredAnimationObjectId = choreography.RegisteredAnimationObjectId;
+            _activeShadowPartner.ParentUnderFaceLayerObjectId = choreography.ParentUnderFaceLayerObjectId;
+            _activeShadowPartner.LayerNativeOperations = choreography.NativeOperations
+                ?? Array.Empty<ShadowPartnerClientActionResolver.ShadowPartnerLayerNativeOperation>();
+        }
+
+        private string GetShadowPartnerObservedPlayerActionName()
+        {
+            return State switch
+            {
+                PlayerState.Hit => "hit",
+                PlayerState.Dead => "dead",
+                _ => CurrentActionName
+            };
+        }
+
+        private int GetShadowPartnerObservedActionTriggerTime()
+        {
+            if (State != PlayerState.Attacking)
+            {
+                return int.MinValue;
+            }
+
+            if (CurrentSkillAnimationStartTime != int.MinValue)
+            {
+                return CurrentSkillAnimationStartTime;
+            }
+
+            return _lastAttackTime;
+        }
+
+        private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)
+        {
+            return ResolveShadowPartnerActionName(
+                _activeShadowPartner?.ActionAnimations,
+                _activeShadowPartner?.SupportedRawActionNames,
+                playerActionName,
+                fallbackActionName);
+        }
+
+        private bool TryResolveShadowPartnerAttackAction(
+            string playerActionName,
+            out string resolvedActionName,
+            out SkillAnimation resolvedPlaybackAnimation)
+        {
+            return TryResolveShadowPartnerAttackAction(
+                _activeShadowPartner?.ActionAnimations,
+                _activeShadowPartner?.SupportedRawActionNames,
+                playerActionName,
+                out resolvedActionName,
+                out resolvedPlaybackAnimation);
+        }
+
+        private bool TryResolveShadowPartnerAttackAction(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames,
+            string playerActionName,
+            out string resolvedActionName,
+            out SkillAnimation resolvedPlaybackAnimation)
+        {
+            resolvedActionName = null;
+            resolvedPlaybackAnimation = null;
+            if (!ShadowPartnerClientActionResolver.TryResolveAttackIdentityActionName(
+                    actionAnimations,
+                    playerActionName,
+                    State,
+                    out string resolvedAttackActionName,
+                    Build?.GetWeapon()?.WeaponType,
+                    TryGetCurrentClientRawActionCode(out int currentRawActionCode) ? currentRawActionCode : null,
+                    supportedRawActionNames))
+            {
+                return false;
+            }
+
+            SkillAnimation attackPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
+                actionAnimations,
+                resolvedAttackActionName,
+                playerActionName,
+                supportedRawActionNames);
+            if (attackPlaybackAnimation?.Frames == null || attackPlaybackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            resolvedActionName = resolvedAttackActionName;
+            resolvedPlaybackAnimation = attackPlaybackAnimation;
+            return true;
+        }
+
+        private string ResolveShadowPartnerActionName(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames,
+            string playerActionName,
+            string fallbackActionName)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (string candidate in EnumerateShadowPartnerClientMappedCandidates(
+                         playerActionName,
+                         fallbackActionName,
+                         supportedRawActionNames))
+            {
+                if (actionAnimations.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateShadowPartnerActionCandidates(playerActionName, fallbackActionName))
+            {
+                if (ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(candidate, supportedRawActionNames)
+                    && actionAnimations.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
+        {
+            return EnumerateShadowPartnerClientMappedCandidates(
+                playerActionName,
+                fallbackActionName,
+                _activeShadowPartner?.SupportedRawActionNames);
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerClientMappedCandidates(
+            string playerActionName,
+            string fallbackActionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string normalizedWeaponType = Build?.GetWeapon()?.WeaponType;
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int currentRawActionCode)
+                ? currentRawActionCode
+                : null;
+
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
+                         playerActionName,
+                         State,
+                         fallbackActionName,
+                         normalizedWeaponType,
+                         rawActionCode,
+                         supportedRawActionNames))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private IEnumerable<string> GetShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
+        {
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int currentRawActionCode)
+                ? currentRawActionCode
+                : null;
+
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
+                         playerActionName,
+                         State,
+                         fallbackActionName,
+                         Build?.GetWeapon()?.WeaponType,
+                         rawActionCode,
+                         _activeShadowPartner?.SupportedRawActionNames))
+            {
+                yield return candidate;
+            }
+        }
+
+        private string ResolveShadowPartnerCreateActionName(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
+        {
+            return ShadowPartnerClientActionResolver.ResolveCreateActionName(actionAnimations, State);
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerActionCandidates(string playerActionName, string fallbackActionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(playerActionName))
+            {
+                foreach (string candidate in CharacterPart.GetActionLookupStrings(playerActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                foreach (string candidate in EnumerateShadowPartnerClientActionAliases(playerActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                foreach (string candidate in EnumerateShadowPartnerWeaponAwareAttackCandidates(playerActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                if (string.Equals(playerActionName, "hit", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (string candidate in new[] { "alert", "stand1" })
+                    {
+                        if (yielded.Add(candidate))
+                        {
+                            yield return candidate;
+                        }
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(fallbackActionName) && yielded.Add(fallbackActionName))
+            {
+                yield return fallbackActionName;
+            }
+
+            string stateFallback = ResolveShadowPartnerFallbackAction();
+            if (!string.IsNullOrWhiteSpace(stateFallback) && yielded.Add(stateFallback))
+            {
+                yield return stateFallback;
+            }
+
+            foreach (string candidate in new[] { "stand1", "stand2", "alert", "walk1", "sit" })
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerWeaponAwareAttackCandidates(string playerActionName)
+        {
+            if (string.IsNullOrWhiteSpace(playerActionName)
+                || !playerActionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase))
+            {
+                yield break;
+            }
+
+            bool floating = State is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
+            string normalizedWeaponType = Build?.GetWeapon()?.WeaponType?.ToLowerInvariant();
+            bool useRangedShootFamily = normalizedWeaponType is "bow" or "crossbow" or "claw" or "gun" or "double bowgun" or "cannon";
+            bool usePolearmSwingFamily = normalizedWeaponType is "spear" or "polearm";
+            bool useTwoHandedMeleeFamily = normalizedWeaponType is "2h sword" or "2h axe" or "2h blunt";
+
+            if (useRangedShootFamily)
+            {
+                foreach (string candidate in EnumerateShadowPartnerRangedAttackCandidates(playerActionName, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (string.Equals(playerActionName, "attack1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in EnumerateShadowPartnerStabCandidates(useTwoHandedMeleeFamily, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (usePolearmSwingFamily)
+            {
+                foreach (string candidate in EnumerateShadowPartnerSwingCandidates("swingP", "swingT", floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            foreach (string candidate in EnumerateShadowPartnerSwingCandidates(
+                         useTwoHandedMeleeFamily ? "swingT" : "swingO",
+                         useTwoHandedMeleeFamily ? "swingO" : "swingT",
+                         floating))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerRangedAttackCandidates(string playerActionName, bool floating)
+        {
+            if (floating)
+            {
+                yield return "shootF";
+            }
+
+            if (string.Equals(playerActionName, "attack2", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "shoot2";
+                yield return "shoot1";
+            }
+            else
+            {
+                yield return "shoot1";
+                yield return "shoot2";
+            }
+
+            if (!floating)
+            {
+                yield return "shootF";
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerStabCandidates(bool preferTwoHandedFamily, bool floating)
+        {
+            foreach (string candidate in EnumerateShadowPartnerAttackFamilyCandidates(
+                         preferTwoHandedFamily ? "stabT" : "stabO",
+                         preferTwoHandedFamily ? "stabO" : "stabT",
+                         floating,
+                         includeThirdGroundFrame: false))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerSwingCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating)
+        {
+            foreach (string candidate in EnumerateShadowPartnerAttackFamilyCandidates(
+                         primaryPrefix,
+                         secondaryPrefix,
+                         floating,
+                         includeThirdGroundFrame: true))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerAttackFamilyCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating,
+            bool includeThirdGroundFrame)
+        {
+            if (floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            yield return primaryPrefix + "1";
+            yield return primaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return primaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            if (floating)
+            {
+                yield return secondaryPrefix + "F";
+            }
+
+            yield return secondaryPrefix + "1";
+            yield return secondaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return secondaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return secondaryPrefix + "F";
+            }
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerClientActionAliases(string playerActionName)
+        {
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(
+                         playerActionName,
+                         _activeShadowPartner?.SupportedRawActionNames))
+            {
+                yield return candidate;
+            }
+        }
+
+        private Point ResolveShadowPartnerCurrentClientOffset(bool facingRight)
+        {
+            if (_activeShadowPartner == null)
+            {
+                return Point.Zero;
+            }
+
+            return ResolveShadowPartnerClientOffset(
+                _activeShadowPartner.ObservedPlayerActionName,
+                State,
+                facingRight,
+                _activeShadowPartner.ObservedPlayerRawActionCode,
+                HasActiveMorphTransform,
+                HasActiveGhostActionTransform(_activeShadowPartner.ObservedPlayerActionName));
+        }
+
+        private void RefreshShadowPartnerClientOffsetTarget(int currentTime, bool facingRight)
+        {
+            if (_activeShadowPartner == null)
+            {
+                return;
+            }
+
+            Point targetOffset = ResolveShadowPartnerCurrentClientOffset(facingRight);
+            if (targetOffset == _activeShadowPartner.ClientOffsetTargetPx
+                && _activeShadowPartner.CurrentClientOffsetPx == targetOffset)
+            {
+                return;
+            }
+
+            _activeShadowPartner.ClientOffsetStartPx = _activeShadowPartner.CurrentClientOffsetPx;
+            _activeShadowPartner.ClientOffsetTargetPx = targetOffset;
+            _activeShadowPartner.ClientOffsetTransitionStartTime = currentTime;
+        }
+
+        private void UpdateShadowPartnerClientOffset(int currentTime)
+        {
+            if (_activeShadowPartner == null)
+            {
+                return;
+            }
+
+            Point targetOffset = ResolveShadowPartnerCurrentClientOffset(_activeShadowPartner.CurrentFacingRight);
+            if (targetOffset != _activeShadowPartner.ClientOffsetTargetPx)
+            {
+                _activeShadowPartner.ClientOffsetStartPx = _activeShadowPartner.CurrentClientOffsetPx;
+                _activeShadowPartner.ClientOffsetTargetPx = targetOffset;
+                _activeShadowPartner.ClientOffsetTransitionStartTime = currentTime;
+            }
+
+            _activeShadowPartner.CurrentClientOffsetPx = ShadowPartnerClientActionResolver.InterpolateClientOffset(
+                _activeShadowPartner.ClientOffsetStartPx,
+                _activeShadowPartner.ClientOffsetTargetPx,
+                _activeShadowPartner.ClientOffsetTransitionStartTime,
+                currentTime,
+                ShadowPartnerTransitionDurationMs);
+        }
+
+        private static Point ResolveShadowPartnerClientOffset(
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int? rawActionCode = null,
+            bool hasMorphTransform = false,
+            bool hasGhostTransform = false)
+        {
+            return ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
+                observedPlayerActionName,
+                state,
+                facingRight,
+                ShadowPartnerClientSideOffsetPx,
+                ShadowPartnerClientBackActionOffsetYPx,
+                rawActionCode,
+                hasMorphTransform,
+                hasGhostTransform);
+        }
+
+        private bool HasActiveGhostActionTransform(string observedPlayerActionName)
+        {
+            return ShadowPartnerClientActionResolver.IsClientGhostActionName(observedPlayerActionName)
+                   || ShadowPartnerClientActionResolver.IsClientGhostActionName(CurrentActionName);
+        }
+
+        private static bool IsShadowPartnerBackAction(string observedPlayerActionName, PlayerState state)
+        {
+            return ShadowPartnerClientActionResolver.IsClientBackAction(observedPlayerActionName, state);
+        }
+
+        private bool ShouldRenderMirrorImageForCurrentAction()
+        {
+            if (ShouldSuppressMirrorImageForClientState(
+                    _activeMirrorImage != null,
+                    _activeMirrorImage?.SkillId == SkillData.MirrorImageSkillId,
+                    Build?.ActivePortableChair != null,
+                    HasClientOwnedVehicleTamingMobStateActive(),
+                    State))
+            {
+                return false;
+            }
+
+            if (TryGetCurrentClientRawActionCode(out int rawActionCode)
+                && ShouldSuppressMirrorImageForClientAction(rawActionCode, HasActiveMorphTransform))
+            {
+                return false;
+            }
+
+            return !IsMirrorImageSuppressedAction(CurrentActionName);
+        }
+
+        internal static bool ShouldSuppressMirrorImageForClientState(
+            bool hasActiveMirrorImage,
+            bool isMirrorImageSkill,
+            bool hasPortableChair,
+            bool hasClientOwnedVehicleTamingMobState,
+            PlayerState state)
+        {
+            return !hasActiveMirrorImage
+                   || !isMirrorImageSkill
+                   || hasPortableChair
+                   || hasClientOwnedVehicleTamingMobState
+                   || state is PlayerState.Ladder or PlayerState.Rope or PlayerState.Hit or PlayerState.Dead;
+        }
+
+        internal bool TryGetCurrentClientRawActionCode(out int rawActionCode)
+        {
+            rawActionCode = default;
+
+            if (!string.IsNullOrWhiteSpace(_forcedActionName)
+                && CharacterPart.TryGetClientRawActionCode(_forcedActionName, out rawActionCode))
+            {
+                return true;
+            }
+
+            if (CharacterPart.TryGetClientRawActionCode(CharacterPart.GetActionString(CurrentAction), out rawActionCode))
+            {
+                return true;
+            }
+
+            return CharacterPart.TryGetClientRawActionCode(CurrentActionName, out rawActionCode);
+        }
+
+        private bool IsMechanicTamingMobStateActive()
+        {
+            CharacterPart activeTamingMobPart = GetEquippedTamingMobPart();
+            return activeTamingMobPart != null && IsClientOwnedVehicleTamingMobStateActive(activeTamingMobPart);
+        }
+
+        private bool HasClientOwnedVehicleTamingMobStateActive()
+        {
+            return _clientOwnedVehicleTamingMobActive || IsMechanicTamingMobStateActive();
+        }
+
+        private static bool IsMirrorImageSuppressedAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            string normalized = actionName.ToLowerInvariant();
+            return normalized.Contains("ladder")
+                   || normalized.Contains("rope")
+                   || normalized.Contains("back")
+                   || normalized.StartsWith("alert", StringComparison.Ordinal)
+                   || string.Equals(normalized, "hit", StringComparison.Ordinal);
+        }
+
+        internal static bool IsMirrorImageBackAction(int rawActionCode, bool hasMorphTransform)
+        {
+            if (hasMorphTransform)
+            {
+                return rawActionCode is 9 or 10;
+            }
+
+            return rawActionCode is 45 or 46 or 129 or 130;
+        }
+
+        internal static bool IsMirrorImageAlertBackAction(int rawActionCode)
+        {
+            return rawActionCode is 64 or 65;
+        }
+
+        internal static bool ShouldSuppressMirrorImageForClientAction(int rawActionCode, bool hasMorphTransform)
+        {
+            return rawActionCode == 48
+                   || IsMirrorImageBackAction(rawActionCode, hasMorphTransform)
+                   || IsMirrorImageAlertBackAction(rawActionCode);
+        }
+
+        private Point ResolveMirrorImageCurrentOffset(int currentTime)
+        {
+            return ResolveMirrorImageCurrentOffset(currentTime, _activeMirrorImage?.StartTime ?? currentTime);
+        }
+
+        private Point ResolveMirrorImageCurrentOffset(int currentTime, int transitionStartTime)
+        {
+            Point targetOffset = ResolveMirrorImageTargetOffsetForCurrentState();
+            return ResolveMirrorImageLayerCurrentOffset(targetOffset, currentTime, transitionStartTime);
+        }
+
+        private Point ResolveMirrorImageTargetOffsetForCurrentState()
+        {
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ResolveMirrorImageTargetOffset(
+                FacingRight,
+                CurrentActionName,
+                State,
+                rawActionCode,
+                HasActiveMorphTransform);
+        }
+
+        internal static Point ResolveMirrorImageLayerCurrentOffset(
+            Point targetOffset,
+            int currentTime,
+            int transitionStartTime)
+        {
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transitionStartTime);
+            float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
+            return new Point(
+                (int)Math.Round(targetOffset.X * progress),
+                (int)Math.Round(targetOffset.Y * progress));
+        }
+
+        private static Point ResolveMirrorImageTargetOffset(bool facingRight, string actionName, PlayerState state)
+        {
+            return ResolveMirrorImageTargetOffset(
+                facingRight,
+                actionName,
+                state,
+                rawActionCode: null,
+                hasMorphTransform: false);
+        }
+
+        internal static Point ResolveMirrorImageTargetOffset(
+            bool facingRight,
+            string actionName,
+            PlayerState state,
+            int? rawActionCode,
+            bool hasMorphTransform)
+        {
+            if ((rawActionCode.HasValue
+                    && (IsMirrorImageBackAction(rawActionCode.Value, hasMorphTransform)
+                        || IsMirrorImageAlertBackAction(rawActionCode.Value)))
+                || IsShadowPartnerBackAction(actionName, state)
+                || IsMirrorImageSuppressedAction(actionName))
+            {
+                return new Point(0, MirrorImageClientBackActionOffsetYPx);
+            }
+
+            return new Point(facingRight ? -MirrorImageClientSideOffsetPx : MirrorImageClientSideOffsetPx, 0);
+        }
+
+        private float ResolveMirrorImageAlpha(int currentTime)
+        {
+            return ResolveMirrorImageAlpha(currentTime, _activeMirrorImage?.StartTime ?? currentTime);
+        }
+
+        private static float ResolveMirrorImageAlpha(int currentTime, int transitionStartTime)
+        {
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transitionStartTime);
+            float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
+            return MathHelper.Lerp(0.35f, 1f, progress);
+        }
+
+        internal static int ResolveMirrorImageLayerTransitionStartTime(int mirrorStartTime, int layerPreparedCurrentTime)
+        {
+            if (layerPreparedCurrentTime == int.MinValue)
+            {
+                return mirrorStartTime;
+            }
+
+            return Math.Max(mirrorStartTime, layerPreparedCurrentTime);
+        }
+
+        private string ResolveShadowPartnerFallbackAction()
+        {
+            return State switch
+            {
+                PlayerState.Walking => "walk1",
+                PlayerState.Jumping or PlayerState.Falling => "jump",
+                PlayerState.Ladder => "ladder",
+                PlayerState.Rope => "rope",
+                PlayerState.Swimming or PlayerState.Flying => "fly",
+                PlayerState.Sitting => "sit",
+                PlayerState.Prone => "prone",
+                PlayerState.Dead => "dead",
+                PlayerState.Attacking => CurrentActionName,
+                _ => "stand1"
+            };
+        }
+
+        private bool TryAdvanceShadowPartnerQueuedAction(int currentTime)
+        {
+            if (_activeShadowPartner == null || string.IsNullOrWhiteSpace(_activeShadowPartner.QueuedActionName))
+            {
+                return false;
+            }
+
+            if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+            {
+                return false;
+            }
+
+            string queuedActionName = _activeShadowPartner.QueuedActionName;
+            SkillAnimation queuedPlaybackAnimation = _activeShadowPartner.QueuedPlaybackAnimation;
+            bool queuedFacingRight = _activeShadowPartner.QueuedFacingRight;
+            bool queuedForceReplay = _activeShadowPartner.QueuedForceReplay;
+            _activeShadowPartner.QueuedActionName = null;
+            _activeShadowPartner.QueuedPlaybackAnimation = null;
+            _activeShadowPartner.QueuedForceReplay = false;
+            SetShadowPartnerAction(
+                queuedActionName,
+                currentTime,
+                queuedFacingRight,
+                playbackAnimation: queuedPlaybackAnimation,
+                forceRestartWhenSameAction: queuedForceReplay);
+            return true;
+        }
+
+        private SkillAnimation ResolveShadowPartnerPlaybackAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string resolvedActionName,
+            string playerActionName)
+        {
+            return ResolveShadowPartnerPlaybackAnimation(
+                actionAnimations,
+                resolvedActionName,
+                playerActionName,
+                _activeShadowPartner?.SupportedRawActionNames);
+        }
+
+        private SkillAnimation ResolveShadowPartnerPlaybackAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string resolvedActionName,
+            string playerActionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            string rawActionName = null;
+            if (!string.IsNullOrWhiteSpace(playerActionName)
+                && TryGetCurrentClientRawActionCode(out int rawActionCode))
+            {
+                CharacterPart.TryGetActionStringFromCode(rawActionCode, out rawActionName);
+            }
+
+            return ShadowPartnerClientActionResolver.ResolvePlaybackAnimation(
+                actionAnimations,
+                resolvedActionName,
+                playerActionName,
+                rawActionName,
+                supportedRawActionNames);
+        }
+
+        private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)
+        {
+            if (_activeShadowPartner == null
+                || string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName))
+            {
+                return false;
+            }
+
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
+            return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
+                _activeShadowPartner.CurrentActionName,
+                _activeShadowPartner.CurrentPlaybackAnimation,
+                _activeShadowPartner.ActionAnimations,
+                elapsedTime);
+        }
+
+        private static bool IsShadowPartnerBlockingAction(string actionName)
+        {
+            return ShadowPartnerClientActionResolver.IsBlockingAction(actionName);
+        }
+
+        private static bool ShouldUseShadowPartnerAttackObservationGate(string observedPlayerActionName, PlayerState state)
+        {
+            return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
+        }
+
+        private static bool ShouldRefreshShadowPartnerObservation(
+            string observedPlayerActionName,
+            bool observedFloatingState,
+            bool observedFacingRight,
+            int observedActionTriggerTime,
+            int? observedRawActionCode,
+            string previousObservedPlayerActionName,
+            bool previousObservedFloatingState,
+            bool previousObservedFacingRight,
+            int previousObservedActionTriggerTime,
+            int? previousObservedRawActionCode)
+        {
+            return !string.Equals(observedPlayerActionName, previousObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
+                || observedFloatingState != previousObservedFloatingState
+                || observedFacingRight != previousObservedFacingRight
+                || observedActionTriggerTime != previousObservedActionTriggerTime
+                || observedRawActionCode != previousObservedRawActionCode;
+        }
+
+        private bool TryMarkShadowPartnerForcedReplayActionTrigger(int observedActionTriggerTime)
+        {
+            if (_activeShadowPartner == null
+                || !ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                    observedActionTriggerTime,
+                    _activeShadowPartner.LastForcedReplayActionTriggerTime))
+            {
+                return false;
+            }
+
+            _activeShadowPartner.LastForcedReplayActionTriggerTime = observedActionTriggerTime;
+            return true;
+        }
+
+        private void TryQueuePostCreateShadowPartnerAttackResolution(
+            string observedPlayerActionName,
+            int observedActionTriggerTime,
+            int currentTime)
+        {
+            if (_activeShadowPartner == null
+                || !ShouldUseShadowPartnerAttackObservationGate(observedPlayerActionName, State)
+                || !ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                    _activeShadowPartner.CurrentActionName,
+                    _activeShadowPartner.PendingActionName,
+                    _activeShadowPartner.QueuedActionName,
+                    ShouldHoldShadowPartnerCurrentAction(currentTime)))
+            {
+                return;
+            }
+
+            if (!TryResolveShadowPartnerAttackAction(
+                    observedPlayerActionName,
+                    out string resolvedAttackAction,
+                    out SkillAnimation resolvedAttackPlayback))
+            {
+                return;
+            }
+
+            _activeShadowPartner.PendingActionName = resolvedAttackAction;
+            _activeShadowPartner.PendingPlaybackAnimation = resolvedAttackPlayback;
+            _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(
+                resolvedAttackAction,
+                resolvedAttackPlayback);
+            _activeShadowPartner.PendingFacingRight = FacingRight;
+            _activeShadowPartner.PendingForceReplay = TryMarkShadowPartnerForcedReplayActionTrigger(observedActionTriggerTime);
+        }
+
+        private bool IsShadowPartnerAttackAction(string actionName)
+        {
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ShadowPartnerClientActionResolver.IsAttackAction(actionName, rawActionCode);
+        }
+
+        private bool ShouldSuppressSkillAvatarEffectRendering()
+        {
+            return _skillAvatarEffectRenderSuppressionSkillIds.Count > 0
+                   || CharacterAssembler.ShouldSuppressBaseAvatarForState(Build, CurrentActionName);
+        }
+
+        private bool ShouldCancelPortableChairFromInput()
+        {
+            return _inputLeft || _inputRight || _inputUp || _inputJump || _inputAttack;
+        }
+
+        private void ConfigurePortableChairPairPreview(PortableChair chair)
+        {
+            ClearPortableChairPairPreview();
+
+            if (chair?.IsCoupleChair != true || Build == null)
+            {
+                return;
+            }
+
+            CharacterBuild pairBuild = Build.Clone();
+            pairBuild.ActivePortableChair = chair;
+            _portableChairPairAssembler = new CharacterAssembler(pairBuild);
+            _portableChairPairOffset = ResolvePortableChairPairOffset(chair, FacingRight);
+            _portableChairPairFacingRight = ResolvePortableChairPairFacingRight(chair, FacingRight);
+            _portableChairPairActionName = ResolvePortableChairActionName(chair);
+        }
+
+        private bool ShouldDrawPortableChairPairPreview()
+        {
+            return IsPortableChairPairPlacementValid(Build?.ActivePortableChair, FacingRight, X, Y, _findFoothold);
+        }
+
+        public void SetPortableChairPairRequestActive(bool requested)
+        {
+            _portableChairExternalPairRequested = requested;
+            if (!requested)
+            {
+                ClearPortableChairExternalPair();
+            }
+        }
+
+        public void SetPortableChairExternalPair(Vector2 position, bool facingRight)
+        {
+            _portableChairExternalPairRequested = true;
+            _portableChairHasExternalPair = true;
+            _portableChairExternalPairPosition = position;
+            _portableChairExternalPairFacingRight = facingRight;
+        }
+
+        public void ClearPortableChairExternalPair()
+        {
+            _portableChairHasExternalPair = false;
+            _portableChairExternalPairPosition = Vector2.Zero;
+            _portableChairExternalPairFacingRight = false;
+        }
+
+        private void ClearPortableChairPairPreview()
+        {
+            _portableChairPairAssembler = null;
+            _portableChairPairOffset = Point.Zero;
+            _portableChairPairFacingRight = false;
+            _portableChairPairActionName = null;
+            ClearPortableChairExternalPair();
+        }
+
+        public void SetPortableChairExternalOwnerPair(PortableChair chair, Vector2 position, bool facingRight)
+        {
+            _portableChairExternalOwnerChair = chair;
+            _portableChairHasExternalOwnerPair = chair?.IsCoupleChair == true;
+            _portableChairExternalOwnerPosition = position;
+            _portableChairExternalOwnerFacingRight = facingRight;
+        }
+
+        public void ClearPortableChairExternalOwnerPair()
+        {
+            _portableChairExternalOwnerChair = null;
+            _portableChairHasExternalOwnerPair = false;
+            _portableChairExternalOwnerPosition = Vector2.Zero;
+            _portableChairExternalOwnerFacingRight = false;
+        }
+
+        private bool TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out bool previewPairActive)
+        {
+            previewPairActive = false;
+            chair = Build?.ActivePortableChair;
+            if (chair?.IsCoupleChair != true
+                || chair.CoupleSharedLayers == null
+                || chair.CoupleSharedLayers.Count == 0)
+            {
+                chair = null;
+                return false;
+            }
+
+            if (ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair))
+            {
+                return IsPortableChairActualPairActive(
+                    chair,
+                    FacingRight,
+                    X,
+                    Y,
+                    _portableChairExternalPairFacingRight,
+                    _portableChairExternalPairPosition.X,
+                    _portableChairExternalPairPosition.Y);
+            }
+
+            previewPairActive = _portableChairPairAssembler != null && ShouldDrawPortableChairPairPreview();
+            if (!previewPairActive)
+            {
+                chair = null;
+            }
+
+            return previewPairActive;
+        }
+
+        private bool TryResolvePortableChairSharedLayerState(out PortableChair chair)
+        {
+            if (TryResolvePortableChairCoupleSharedLayerState(out chair, out _))
+            {
+                return true;
+            }
+
+            chair = _portableChairExternalOwnerChair;
+            return _portableChairHasExternalOwnerPair
+                   && chair?.IsCoupleChair == true
+                   && chair.CoupleSharedLayers != null
+                   && chair.CoupleSharedLayers.Count > 0;
+        }
+
+        private bool TryResolvePortableChairMidpointLayerState(
+            out PortableChair chair,
+            out float partnerX,
+            out float partnerY,
+            out bool midpointFacingRight)
+        {
+            chair = Build?.ActivePortableChair;
+            partnerX = 0f;
+            partnerY = 0f;
+            midpointFacingRight = FacingRight;
+            if (chair?.IsCoupleChair == true
+                && chair.CoupleMidpointLayers != null
+                && chair.CoupleMidpointLayers.Count > 0)
+            {
+                if (ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair))
+                {
+                    partnerX = _portableChairExternalPairPosition.X;
+                    partnerY = _portableChairExternalPairPosition.Y;
+                    return true;
+                }
+
+                if (_portableChairPairAssembler != null && ShouldDrawPortableChairPairPreview())
+                {
+                    partnerX = X + _portableChairPairOffset.X;
+                    partnerY = Y + _portableChairPairOffset.Y;
+                    return true;
+                }
+            }
+
+            chair = _portableChairExternalOwnerChair;
+            if (!_portableChairHasExternalOwnerPair
+                || chair?.IsCoupleChair != true
+                || chair.CoupleMidpointLayers == null
+                || chair.CoupleMidpointLayers.Count == 0)
+            {
+                chair = null;
+                return false;
+            }
+
+            partnerX = _portableChairExternalOwnerPosition.X;
+            partnerY = _portableChairExternalOwnerPosition.Y;
+            midpointFacingRight = _portableChairExternalOwnerFacingRight;
+            return true;
+        }
+
+        internal static Point ResolvePortableChairPairOffset(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return Point.Zero;
+            }
+
+            int distanceX = Math.Abs(chair.CoupleDistanceX ?? 0);
+            int distanceY = chair.CoupleDistanceY ?? 0;
+            int directionSign = ResolvePortableChairPairDirectionSign(chair, facingRight);
+            return new Point(directionSign * distanceX, distanceY);
+        }
+
+        internal static bool ShouldUsePortableChairExternalPair(bool externalPairRequested, bool hasExternalPair)
+        {
+            return externalPairRequested && hasExternalPair;
+        }
+
+        internal static bool IsPortableChairRidingChairMountItemId(int itemId)
+        {
+            return itemId > 0 && itemId / 1000 == 1983;
+        }
+
+        internal static string ResolvePortableChairActivationRestrictionMessage(
+            PortableChair chair,
+            bool hasBuild,
+            bool isAlive,
+            int playerLevel,
+            PlayerState state,
+            bool isOnFoothold,
+            bool hasActiveMorphTransform,
+            bool hasBlockedMountState)
+        {
+            if (chair == null || !hasBuild)
+            {
+                return "Player runtime is not available.";
+            }
+
+            if (!isAlive)
+            {
+                return "Portable chairs cannot be activated while dead.";
+            }
+
+            if (chair.RequiredLevel > 0 && playerLevel < chair.RequiredLevel)
+            {
+                return $"Portable chairs require level {chair.RequiredLevel.ToString(System.Globalization.CultureInfo.InvariantCulture)}.";
+            }
+
+            if (state != PlayerState.Standing)
+            {
+                return "Portable chairs can only be activated while standing still.";
+            }
+
+            if (!isOnFoothold)
+            {
+                return "Portable chairs can only be activated while standing on a foothold.";
+            }
+
+            if (hasActiveMorphTransform)
+            {
+                return "Portable chairs cannot be activated while morphed.";
+            }
+
+            if (hasBlockedMountState)
+            {
+                return "Portable chairs cannot be activated while mounted.";
+            }
+
+            return null;
+        }
+
+        internal static bool IsPortableChairPairPlacementValid(
+            PortableChair chair,
+            bool facingRight,
+            float originX,
+            float originY,
+            Func<float, float, float, FootholdLine> findFoothold)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return false;
+            }
+
+            if (chair.CoupleMaxDiff is not int maxDiff || maxDiff < 0 || findFoothold == null)
+            {
+                return true;
+            }
+
+            Point offset = ResolvePortableChairPairOffset(chair, facingRight);
+            float partnerX = originX + offset.X;
+            float partnerY = originY + offset.Y;
+            float searchRange = Math.Max(8f, Math.Abs(offset.Y) + maxDiff + 4f);
+            FootholdLine foothold = findFoothold(partnerX, partnerY, searchRange);
+            if (foothold == null)
+            {
+                return false;
+            }
+
+            float footholdY = CalculateYOnFoothold(foothold, partnerX);
+            return Math.Abs(footholdY - partnerY) <= maxDiff;
+        }
+
+        internal static bool ResolvePortableChairPairFacingRight(bool facingRight)
+        {
+            return ResolvePortableChairPairFacingRight(null, facingRight);
+        }
+
+        internal static bool ResolvePortableChairPairFacingRight(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return !facingRight;
+            }
+
+            ResolvePortableChairPairPreviewLayout(chair, facingRight, out _, out bool partnerFacingRight);
+            return partnerFacingRight;
+        }
+
+        internal static int ResolvePortableChairPairDirectionSign(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return facingRight ? 1 : -1;
+            }
+
+            ResolvePortableChairPairPreviewLayout(chair, facingRight, out int directionSign, out _);
+            return directionSign;
+        }
+
+        internal static bool IsPortableChairActualPairActive(
+            PortableChair chair,
+            bool ownerFacingRight,
+            float ownerX,
+            float ownerY,
+            bool partnerFacingRight,
+            float partnerX,
+            float partnerY)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return false;
+            }
+
+            int distanceX = Math.Abs(chair.CoupleDistanceX ?? 0);
+            int distanceY = Math.Abs(chair.CoupleDistanceY ?? 0);
+            int tolerance = Math.Max(0, chair.CoupleMaxDiff ?? 0);
+            int actualDistanceX = (int)Math.Round(Math.Abs(ownerX - partnerX));
+            int actualDistanceY = (int)Math.Round(Math.Abs(ownerY - partnerY));
+            if (Math.Abs(actualDistanceX - distanceX) > tolerance
+                || Math.Abs(actualDistanceY - distanceY) > tolerance)
+            {
+                return false;
+            }
+
+            int direction = chair.CoupleDirection ?? 0;
+            if (direction == 0)
+            {
+                return true;
+            }
+
+            // CUserPool::Update chooses direction-check ordering by horizontal placement
+            // (left actor first; ties choose the second participant first), then compares
+            // move-action facing parity bits against info/direction.
+            bool leftFacingRight;
+            bool rightFacingRight;
+            if (ownerX >= partnerX)
+            {
+                leftFacingRight = partnerFacingRight;
+                rightFacingRight = ownerFacingRight;
+            }
+            else
+            {
+                leftFacingRight = ownerFacingRight;
+                rightFacingRight = partnerFacingRight;
+            }
+
+            bool leftFacesLeft = !leftFacingRight;
+            bool rightFacesLeft = !rightFacingRight;
+            return direction switch
+            {
+                3 => leftFacesLeft == rightFacesLeft,
+                11 => leftFacesLeft && rightFacesLeft,
+                12 => leftFacesLeft && !rightFacesLeft,
+                21 => !leftFacesLeft && rightFacesLeft,
+                22 => !leftFacesLeft && !rightFacesLeft,
+                _ => false
+            };
+        }
+
+        private static void ResolvePortableChairPairPreviewLayout(
+            PortableChair chair,
+            bool ownerFacingRight,
+            out int directionSign,
+            out bool partnerFacingRight)
+        {
+            switch (chair?.CoupleDirection ?? 0)
+            {
+                case 3:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = ownerFacingRight;
+                    return;
+                case 11:
+                    directionSign = ownerFacingRight ? -1 : 1;
+                    partnerFacingRight = false;
+                    return;
+                case 12:
+                    directionSign = ownerFacingRight ? -1 : 1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+                case 21:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+                case 22:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = true;
+                    return;
+                default:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+            }
+        }
+
+        private static float CalculateYOnFoothold(FootholdLine foothold, float x)
+        {
+            if (foothold == null)
+            {
+                return float.NaN;
+            }
+
+            float x1 = foothold.FirstDot.X;
+            float y1 = foothold.FirstDot.Y;
+            float x2 = foothold.SecondDot.X;
+            float y2 = foothold.SecondDot.Y;
+            if (Math.Abs(x2 - x1) < 0.001f)
+            {
+                return Math.Min(y1, y2);
+            }
+
+            float t = (x - x1) / (x2 - x1);
+            return y1 + ((y2 - y1) * t);
+        }
+
+        internal static string ResolvePortableChairActionName(PortableChair chair)
+        {
+            // WZ setup-chair metadata can override the seated avatar action through info/sitAction.
+            // Keep sit as the fallback when sitAction is absent or points to an unknown action code.
+            if (chair?.SitActionId is int sitActionId
+                && sitActionId > 0
+                && CharacterPart.TryGetActionStringFromCode(sitActionId, out string authoredActionName)
+                && !string.IsNullOrWhiteSpace(authoredActionName))
+            {
+                return authoredActionName;
+            }
+
+            return CharacterPart.GetActionString(CharacterAction.Sit);
+        }
+
+        private void ApplyPortableChairMount(PortableChair chair)
+        {
+            if (Build == null
+                || !TryResolvePortableChairRidingVehicleMount(
+                    chair,
+                    _portableChairTamingMobLoader,
+                    out CharacterPart mountPart))
+            {
+                return;
+            }
+
+            Build.Equipment.TryGetValue(EquipSlot.TamingMob, out _portableChairPreviousMount);
+            Build.Equip(mountPart);
+            _portableChairAppliedMount = true;
+            NotifyTamingMobOwnershipHandledExternally();
+        }
+
+        internal static bool TryResolvePortableChairRidingVehicleMount(
+            PortableChair chair,
+            Func<int, CharacterPart> mountLoader,
+            out CharacterPart mountPart)
+        {
+            mountPart = null;
+            if (chair?.TamingMobItemId is not int tamingMobItemId
+                || tamingMobItemId <= 0
+                || !IsPortableChairRidingChairMountItemId(tamingMobItemId)
+                || mountLoader == null)
+            {
+                return false;
+            }
+
+            mountPart = mountLoader(tamingMobItemId);
+            return mountPart?.Slot == EquipSlot.TamingMob;
+        }
+
+        private void ClearPortableChairMountState()
+        {
+            if (Build == null || !_portableChairAppliedMount)
+            {
+                return;
+            }
+
+            if (_portableChairPreviousMount != null)
+            {
+                Build.Equip(_portableChairPreviousMount);
+            }
+            else
+            {
+                Build.Unequip(EquipSlot.TamingMob);
+            }
+
+            _portableChairPreviousMount = null;
+            _portableChairAppliedMount = false;
+            NotifyTamingMobOwnershipHandledExternally();
+        }
+
+        private void ClearTransientSkillAvatarEffect(int skillId)
+        {
+            for (int i = _transientSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                if (_transientSkillAvatarEffects[i].SkillId == skillId)
+                {
+                    ReleaseClientOwnedAvatarLayerTrace(_transientSkillAvatarEffects[i].ClientOwnedLayerTrace);
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                }
+            }
+        }
+
+        public void ClearAllTransientSkillAvatarEffects()
+        {
+            foreach (TransientSkillAvatarEffectState effectState in _transientSkillAvatarEffects)
+            {
+                ReleaseClientOwnedAvatarLayerTrace(effectState?.ClientOwnedLayerTrace);
+            }
+
+            _transientSkillAvatarEffects.Clear();
+        }
+
+        private bool TryGetActivePacketOwnedEmotionName(int currentTime, out string emotionName)
+        {
+            emotionName = null;
+            if (State == PlayerState.Dead
+                || string.IsNullOrWhiteSpace(_packetOwnedEmotionName)
+                || string.Equals(_packetOwnedEmotionName, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (_packetOwnedEmotionEndTime != 0
+                && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, _packetOwnedEmotionEndTime))
+            {
+                // CAvatar::PrepareFaceLayer also gates Etc/EmotionEffect overlays on the resolved emotion lifetime.
+                ResetPacketOwnedEmotionState(clearVisualEffect: true);
+                return false;
+            }
+
+            emotionName = _packetOwnedEmotionName;
+            return true;
+        }
+
+        private void ResetPacketOwnedEmotionState(bool clearVisualEffect, bool clearDecodedItemOption = false)
+        {
+            _packetOwnedEmotionId = 0;
+            _packetOwnedEmotionDurationMs = 0;
+            _packetOwnedEmotionAppliedAt = 0;
+            _packetOwnedEmotionName = "default";
+            _packetOwnedEmotionEndTime = 0;
+            if (clearDecodedItemOption)
+            {
+                _packetOwnedEmotionByItemOption = false;
+            }
+
+            if (clearVisualEffect)
+            {
+                ClearTransientSkillAvatarEffect(PacketOwnedEmotionEffectSkillId);
+            }
+        }
+
+        private SkillAnimation LoadPacketOwnedEmotionEffectAnimation(string emotionName)
+        {
+            if (_graphicsDevice == null
+                || string.IsNullOrWhiteSpace(emotionName)
+                || string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (_packetOwnedEmotionEffectCache.TryGetValue(emotionName, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            SkillAnimation animation = LoadPacketOwnedEmotionEffectAnimationCore($"Etc/EmotionEffect.img/{emotionName}");
+            _packetOwnedEmotionEffectCache[emotionName] = animation;
+            return animation;
+        }
+
+        private SkillAnimation LoadPacketOwnedEmotionEffectAnimationCore(string effectUol)
+        {
+            if (!TryResolveEffectAssetUol(effectUol, out string category, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(category, imageName);
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty property = ResolveWzProperty(image, propertyPath);
+            if (property is not WzSubProperty subProperty)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = CreatePacketOwnedEmotionEffectAnimation(subProperty);
+            if (animation == null || animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            animation.Name = effectUol;
+            animation.Loop = false;
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private SkillAnimation CreatePacketOwnedEmotionEffectAnimation(WzSubProperty effectProperty)
+        {
+            if (effectProperty == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = new SkillAnimation
+            {
+                Name = effectProperty.Name,
+                Loop = false
+            };
+
+            foreach (WzCanvasProperty canvas in effectProperty.WzProperties.OfType<WzCanvasProperty>().OrderBy(static frame => ParsePacketOwnedEmotionFrameIndex(frame.Name)))
+            {
+                try
+                {
+                    if (canvas.GetLinkedWzCanvasBitmap() is not { } bitmap)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = bitmap.ToTexture2DAndDispose(_graphicsDevice);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    WzCanvasProperty metadataCanvas = canvas;
+                    WzVectorProperty origin = metadataCanvas?["origin"] as WzVectorProperty;
+                    int delay = Math.Max(1, GetPacketOwnedEmotionIntValue(metadataCanvas?["delay"], defaultValue: 100));
+                    DXObject textureObject = new(0, 0, texture, delay)
+                    {
+                        Tag = canvas
+                    };
+
+                    animation.Frames.Add(new SkillFrame
+                    {
+                        Texture = textureObject,
+                        Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
+                        Delay = delay,
+                        Bounds = new Rectangle(0, 0, texture.Width, texture.Height),
+                        AlphaStart = Math.Clamp(GetPacketOwnedEmotionIntValue(metadataCanvas?["a0"], defaultValue: 255), 0, 255),
+                        AlphaEnd = Math.Clamp(GetPacketOwnedEmotionIntValue(metadataCanvas?["a1"], defaultValue: 255), 0, 255)
+                    });
+                }
+                catch
+                {
+                    // Ignore malformed emotion-effect frames and keep the render-safe subset.
+                }
+            }
+
+            return animation;
+        }
+
+        private static bool TryResolveEffectAssetUol(string uol, out string category, out string imageName, out string propertyPath)
+        {
+            category = "Etc";
+            imageName = null;
+            propertyPath = null;
+
+            if (string.IsNullOrWhiteSpace(uol))
+            {
+                return false;
+            }
+
+            string[] segments = uol.Replace('\\', '/').Trim('/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return false;
+            }
+
+            category = segments[0];
+            int imageSegmentIndex = Array.FindIndex(segments, segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageSegmentIndex < 1 || imageSegmentIndex >= segments.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = string.Join("/", segments, 1, imageSegmentIndex);
+            propertyPath = string.Join("/", segments, imageSegmentIndex + 1, segments.Length - imageSegmentIndex - 1);
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static WzImageProperty ResolveWzProperty(WzImage image, string propertyPath)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            string[] segments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzImageProperty current = image[segments[0]];
+            for (int i = 1; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return current;
+        }
+
+        private static int ParsePacketOwnedEmotionFrameIndex(string frameName)
+        {
+            return int.TryParse(frameName, out int frameIndex) ? frameIndex : int.MaxValue;
+        }
+
+        private static int GetPacketOwnedEmotionIntValue(WzImageProperty property, int defaultValue)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)Math.Clamp(longProperty.Value, int.MinValue, int.MaxValue),
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsedValue) => parsedValue,
+                _ => defaultValue
+            };
+        }
+
+        private static string ResolveTransientSkillAvatarEffectClientLayerOwnerName(
+            bool isClientMovementOwner,
+            string explicitClientLayerOwnerName)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitClientLayerOwnerName))
+            {
+                return explicitClientLayerOwnerName;
+            }
+
+            return isClientMovementOwner ? ClientOwnedDoubleJumpAvatarEffectOwnerName : null;
+        }
+
+        private static SkillAvatarEffectPlane ResolveTransientSkillAvatarEffectPlane(SkillAnimation animation, bool isClientMovementOwner = false)
+        {
+            if (ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation, isClientMovementOwner))
+            {
+                return SkillAvatarEffectPlane.UnderFace;
+            }
+
+            if (ClientOwnedAvatarEffectParity.PrefersOverFaceAvatarEffectPlane(animation))
+            {
+                return SkillAvatarEffectPlane.OverFace;
+            }
+
+            return SkillAvatarEffectPlane.OverCharacter;
+        }
+
+        internal static string ResolveTransientSkillAvatarEffectClientLayerOwnerNameForTesting(
+            bool isClientMovementOwner,
+            string explicitClientLayerOwnerName = null)
+        {
+            return ResolveTransientSkillAvatarEffectClientLayerOwnerName(
+                isClientMovementOwner,
+                explicitClientLayerOwnerName);
+        }
+
+        internal static bool PrefersUnderFaceTransientSkillAvatarEffectPlaneForTesting(
+            SkillAnimation animation,
+            bool isClientMovementOwner = false)
+        {
+            return ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner) == SkillAvatarEffectPlane.UnderFace;
+        }
+
+        internal static bool PrefersOverFaceTransientSkillAvatarEffectPlaneForTesting(
+            SkillAnimation animation,
+            bool isClientMovementOwner = false)
+        {
+            return ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner) == SkillAvatarEffectPlane.OverFace;
+        }
+
+        internal static string ResolveShadowPartnerActionOwnerNameForTesting(string actionName)
+        {
+            return ResolveShadowPartnerActionOwnerName(actionName);
+        }
+
+        internal static bool ShouldUseShadowPartnerAttackObservationGateForTesting(
+            string observedPlayerActionName,
+            PlayerState state)
+        {
+            return ShouldUseShadowPartnerAttackObservationGate(observedPlayerActionName, state);
+        }
+
+        internal static bool ShouldRetryShadowPartnerAttackResolutionAfterCreateForTesting(
+            string currentActionName,
+            string pendingActionName,
+            string queuedActionName,
+            bool currentActionBlockingHoldActive)
+        {
+            return ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                currentActionName,
+                pendingActionName,
+                queuedActionName,
+                currentActionBlockingHoldActive);
+        }
+
+        internal static bool ShouldRefreshShadowPartnerObservationForTesting(
+            string observedPlayerActionName,
+            bool observedFloatingState,
+            bool observedFacingRight,
+            int observedActionTriggerTime,
+            int? observedRawActionCode,
+            string previousObservedPlayerActionName,
+            bool previousObservedFloatingState,
+            bool previousObservedFacingRight,
+            int previousObservedActionTriggerTime,
+            int? previousObservedRawActionCode)
+        {
+            return ShouldRefreshShadowPartnerObservation(
+                observedPlayerActionName,
+                observedFloatingState,
+                observedFacingRight,
+                observedActionTriggerTime,
+                observedRawActionCode,
+                previousObservedPlayerActionName,
+                previousObservedFloatingState,
+                previousObservedFacingRight,
+                previousObservedActionTriggerTime,
+                previousObservedRawActionCode);
+        }
+
+        internal static bool ShouldReleaseShadowPartnerPendingActionForTesting(int currentTime, int pendingActionReadyTime)
+        {
+            return ShouldReleaseShadowPartnerPendingActionForParity(currentTime, pendingActionReadyTime);
+        }
+
+        private static bool ShouldReleaseShadowPartnerPendingActionForParity(int currentTime, int pendingActionReadyTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, pendingActionReadyTime);
+        }
+        internal static bool ShouldForceShadowPartnerAttackReplayForTriggerForTesting(
+            int observedActionTriggerTime,
+            int previousReplayTriggerTime)
+        {
+            return ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                observedActionTriggerTime,
+                previousReplayTriggerTime);
+        }
+
+        internal static (bool DrawUnderFaceOverlay, bool DrawUnderFaceEffects, bool DrawShadowPartner)
+            ResolveUnderFaceSeamDrawAdmissionsForTesting(
+                bool underFaceOverlayDrawn,
+                bool underFaceDrawn,
+                bool shadowPartnerDrawn)
+        {
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlay,
+                out bool drawUnderFaceEffects,
+                out bool drawShadowPartner);
+            return (drawUnderFaceOverlay, drawUnderFaceEffects, drawShadowPartner);
+        }
+
+        internal static IReadOnlyList<string> ResolveUnderFaceSeamDrawOrderForTesting(
+            bool underFaceOverlayDrawn,
+            bool underFaceDrawn,
+            bool shadowPartnerDrawn)
+        {
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlay,
+                out bool drawUnderFaceEffects,
+                out bool drawShadowPartner);
+
+            var order = new List<string>(3);
+            if (drawUnderFaceOverlay)
+            {
+                order.Add("UnderFaceOverlay");
+            }
+
+            if (drawUnderFaceEffects)
+            {
+                order.Add("UnderFaceEffects");
+            }
+
+            if (drawShadowPartner)
+            {
+                order.Add("ShadowPartner");
+            }
+
+            return order;
+        }
+
+        internal static string ResolveMirrorImageActionOwnerNameForTesting()
+        {
+            return MirrorImagePersistentActionOwnerName;
+        }
+
+        internal static string ResolveMeleeAfterImageActionOwnerNameForTesting()
+        {
+            return MeleeAfterImageOneTimeActionOwnerName;
+        }
+
+        internal static string ResolveMirrorImageActionNameForTesting(string actionName)
+        {
+            return ResolveMirrorImageActionName(actionName);
+        }
+
+        internal static string ResolveMeleeAfterImageActionNameForTesting(int skillId, string actionName)
+        {
+            return ResolveMeleeAfterImageActionName(skillId, actionName);
+        }
+
+        internal string ResolveActiveMeleeAfterImageSfxUolForTesting()
+        {
+            return _activeMeleeAfterImage?.SfxUol;
+        }
+
+        internal static string ResolveAuxiliaryAvatarEffectActionOwnerNameForTesting(int planeCode, bool oneTime)
+        {
+            return ResolveAuxiliaryAvatarEffectActionOwnerNameForTesting(planeCode, oneTime, null);
+        }
+
+        internal static string ResolveAuxiliaryAvatarEffectActionOwnerNameForTesting(
+            int planeCode,
+            bool oneTime,
+            string explicitOwnerName)
+        {
+            SkillAvatarEffectPlane plane = planeCode switch
+            {
+                0 => SkillAvatarEffectPlane.BehindCharacter,
+                1 => SkillAvatarEffectPlane.UnderFace,
+                2 => SkillAvatarEffectPlane.OverFace,
+                _ => SkillAvatarEffectPlane.OverCharacter
+            };
+
+            return ResolveAuxiliaryAvatarEffectActionOwnerName(plane, oneTime, explicitOwnerName);
+        }
+
+        internal static string ResolveAuxiliaryAvatarEffectActionNameForTesting(int skillId, string animationName)
+        {
+            return ResolveAuxiliaryAvatarEffectActionName(
+                skillId,
+                new SkillAnimation { Name = animationName });
+        }
+
+        internal static bool IsShadowPartnerOwnerCounterContextMatchForTesting(
+            int storedSkillId,
+            string storedActionName,
+            bool storedFacingRight,
+            int requestedSkillId,
+            string requestedActionName,
+            bool requestedFacingRight)
+        {
+            return IsAuxiliaryLayerOwnerCounterContextMatch(
+                new AuxiliaryLayerOwnerCounterState
+                {
+                    SkillId = storedSkillId,
+                    ActionName = storedActionName,
+                    FacingRight = storedFacingRight
+                },
+                requestedSkillId,
+                requestedActionName,
+                requestedFacingRight);
+        }
+
+        internal void UpdateAvatarEffectsForTesting(int currentTime)
+        {
+            UpdateAvatarEffects(currentTime);
+        }
+
+        internal int GetSkillAvatarEffectAnimationStartTimeForTesting(int skillId)
+        {
+            SkillAvatarEffectState effectState = _activeSkillAvatarEffects
+                .FirstOrDefault(state => state?.SkillId == skillId);
+            return effectState?.AnimationStartTime ?? int.MinValue;
+        }
+
+        internal int GetAuxiliaryAvatarEffectOwnerCounterElapsedForTesting(
+            int skillId,
+            string animationName,
+            int planeCode,
+            bool oneTime)
+        {
+            SkillAvatarEffectPlane plane = planeCode switch
+            {
+                0 => SkillAvatarEffectPlane.BehindCharacter,
+                1 => SkillAvatarEffectPlane.UnderFace,
+                2 => SkillAvatarEffectPlane.OverFace,
+                _ => SkillAvatarEffectPlane.OverCharacter
+            };
+            string ownerName = ResolveAuxiliaryAvatarEffectActionOwnerName(plane, oneTime);
+            string actionName = string.IsNullOrWhiteSpace(animationName)
+                ? $"skill:{Math.Max(0, skillId)}"
+                : animationName;
+
+            return _auxiliaryLayerOwnerCounters.TryGetValue(ownerName, out AuxiliaryLayerOwnerCounterState ownerCounter)
+                   && IsAuxiliaryLayerOwnerCounterContextMatch(ownerCounter, skillId, actionName, FacingRight)
+                ? ownerCounter.AnimationElapsedMs
+                : -1;
+        }
+        private static void AddAvatarEffectRenderable(
+            List<AvatarEffectRenderable> renderables,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            int elapsedTime,
+            bool? facingRightOverride = null)
+        {
+            if (renderables == null || animation == null)
+            {
+                return;
+            }
+
+            SkillFrame frame = animation.GetFrameAtTime(elapsedTime);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            renderables.Add(new AvatarEffectRenderable(frame, plane, animation.PositionCode, facingRightOverride));
+        }
+
+        private static bool ResolveAvatarEffectRenderableFlip(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return (facingRightOverride ?? ownerFacingRight) ^ frameFlip;
+        }
+
+        internal static bool ResolveAvatarEffectRenderableFlipForTesting(
+            bool ownerFacingRight,
+            bool frameFlip,
+            bool? facingRightOverride = null)
+        {
+            return ResolveAvatarEffectRenderableFlip(ownerFacingRight, frameFlip, facingRightOverride);
+        }
+
+        private void ResolveAvatarEffectAnchorPosition(
+            AssembledFrame assembledFrame,
+            int screenX,
+            int screenY,
+            int? positionCode,
+            bool? facingRightOverride,
+            out int anchorX,
+            out int anchorY)
+        {
+            ResolveAvatarEffectAnchorPositionCore(
+                assembledFrame,
+                FacingRight,
+                facingRightOverride,
+                screenX,
+                screenY,
+                positionCode,
+                out anchorX,
+                out anchorY);
+        }
+
+        internal static bool ResolveAvatarEffectAnchorPositionForTesting(
+            AssembledFrame assembledFrame,
+            bool ownerFacingRight,
+            bool? facingRightOverride,
+            int screenX,
+            int screenY,
+            int? positionCode,
+            out int anchorX,
+            out int anchorY)
+        {
+            return ResolveAvatarEffectAnchorPositionCore(
+                assembledFrame,
+                ownerFacingRight,
+                facingRightOverride,
+                screenX,
+                screenY,
+                positionCode,
+                out anchorX,
+                out anchorY);
+        }
+
+        private static bool ResolveAvatarEffectAnchorPositionCore(
+            AssembledFrame assembledFrame,
+            bool ownerFacingRight,
+            bool? facingRightOverride,
+            int screenX,
+            int screenY,
+            int? positionCode,
+            out int anchorX,
+            out int anchorY)
+        {
+            return ClientOwnedAvatarEffectParity.TryResolveFaceOwnedAvatarEffectAnchor(
+                assembledFrame,
+                facingRightOverride ?? ownerFacingRight,
+                screenX,
+                screenY,
+                positionCode,
+                out anchorX,
+                out anchorY);
+        }
+
+        private static int GetUnderFaceInsertionIndex(List<AssembledPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int fallbackIndex = parts.Count;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                CharacterPartType partType = parts[i].PartType;
+                if (partType == CharacterPartType.Head)
+                {
+                    fallbackIndex = i + 1;
+                    continue;
+                }
+
+                if (partType == CharacterPartType.Face
+                    || partType == CharacterPartType.Hair
+                    || partType == CharacterPartType.Cap
+                    || partType == CharacterPartType.CapOverHair
+                    || partType == CharacterPartType.CapBelowAccessory
+                    || partType == CharacterPartType.Accessory
+                    || partType == CharacterPartType.AccessoryOverHair
+                    || partType == CharacterPartType.Face_Accessory
+                    || partType == CharacterPartType.Eye_Accessory
+                    || partType == CharacterPartType.Earrings)
+                {
+                    return i;
+                }
+            }
+
+            return fallbackIndex;
+        }
+
+        internal static int[] GetAvatarRenderLayerInsertionIndices(IReadOnlyList<AssembledPart> parts)
+        {
+            int layerCount = Enum.GetValues<AvatarRenderLayer>().Length;
+            var insertionIndices = new int[layerCount];
+            int defaultIndex = parts?.Count ?? 0;
+            Array.Fill(insertionIndices, defaultIndex);
+
+            if (parts == null || parts.Count == 0)
+            {
+                return insertionIndices;
+            }
+
+            for (int i = 0; i < parts.Count; i++)
+            {
+                AssembledPart part = parts[i];
+                if (part == null)
+                {
+                    continue;
+                }
+
+                int layerIndex = (int)part.RenderLayer;
+                if ((uint)layerIndex >= (uint)insertionIndices.Length)
+                {
+                    continue;
+                }
+
+                if (insertionIndices[layerIndex] == defaultIndex)
+                {
+                    insertionIndices[layerIndex] = i;
+                }
+            }
+
+            int nextInsertionIndex = defaultIndex;
+            for (int layerIndex = insertionIndices.Length - 1; layerIndex >= 0; layerIndex--)
+            {
+                if (insertionIndices[layerIndex] == defaultIndex)
+                {
+                    insertionIndices[layerIndex] = nextInsertionIndex;
+                }
+                else
+                {
+                    nextInsertionIndex = insertionIndices[layerIndex];
+                }
+            }
+
+            return insertionIndices;
+        }
+
         #region Utility
 
         /// <summary>
@@ -1368,6 +13935,2409 @@ namespace HaCreator.MapSimulator.Character
                 HITBOX_HEIGHT);
         }
 
+        public Point? TryGetCurrentBodyOrigin(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return frame == null
+                ? null
+                : new Point((int)X, (int)Y - frame.FeetOffset);
+        }
+
+        internal int TryGetCurrentBodyRelMoveY(int currentTime)
+        {
+            return TryGetCurrentBodyRelMoveY(currentTime, 0);
+        }
+
+        internal int TryGetCurrentBodyRelMoveY(int currentTime, int mountedVehicleId)
+        {
+            string actionName = ResolveBodyRelMoveActionName(CurrentActionName, CurrentAction);
+            CharacterPart mountedStatePart = ResolveMountedStateTamingMobPart();
+            CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
+            if (mountedPart?.Slot == EquipSlot.TamingMob)
+            {
+                bool canReuseRenderedMountedBodyRelMove =
+                    ShouldReuseRenderedMountedBodyRelMove(mountedVehicleId, mountedStatePart, mountedPart);
+                if (TryResolveCurrentRenderedMountedClientBodyRelMoveY(
+                        currentTime,
+                        mountedVehicleId,
+                        mountedStatePart,
+                        mountedPart,
+                        out int mountedBodyRelMoveY))
+                {
+                    return mountedBodyRelMoveY;
+                }
+
+                if (!string.IsNullOrWhiteSpace(actionName))
+                {
+                    int animationTime = GetRenderAnimationTime(currentTime);
+
+                    if (canReuseRenderedMountedBodyRelMove
+                        && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
+
+                    if (TryResolveCurrentMountedClientBodyRelMoveYFromRawFrames(
+                            actionName,
+                            animationTime,
+                            mountedPart,
+                            out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
+
+                    if (TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
+                            actionName,
+                            animationTime,
+                            mountedPart,
+                            out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
+
+                    CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
+                    if (mountedAnimation?.Frames?.Count > 0)
+                    {
+                        int mountedFrameIndex;
+                        mountedAnimation.GetFrameAtTime(animationTime, out mountedFrameIndex);
+                        return ResolveClientBodyRelMoveY(mountedAnimation.Frames, mountedFrameIndex);
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            int resolvedAnimationTime = GetRenderAnimationTime(currentTime);
+
+            if (Assembler == null)
+            {
+                return 0;
+            }
+
+            AssembledFrame[] frames = Assembler.GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return 0;
+            }
+
+            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, resolvedAnimationTime);
+            return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal static string ResolveBodyRelMoveActionName(string currentActionName, CharacterAction currentAction)
+        {
+            return !string.IsNullOrWhiteSpace(currentActionName)
+                ? currentActionName
+                : CharacterPart.GetActionString(currentAction);
+        }
+
+        internal bool TryResolveCurrentRenderedMountedClientBodyRelMoveY(
+            int currentTime,
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart,
+            out int bodyRelMoveY)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return TryResolveRenderedMountedClientBodyRelMoveY(
+                frame,
+                mountedVehicleId,
+                mountedStatePart,
+                mountedSourcePart,
+                out bodyRelMoveY);
+        }
+
+        internal static bool TryResolveRenderedMountedClientBodyRelMoveY(
+            AssembledFrame frame,
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            return ShouldReuseRenderedMountedBodyRelMove(mountedVehicleId, mountedStatePart, mountedSourcePart)
+                && TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
+        }
+
+        internal static bool ShouldReuseActiveMountedStateBodyRelMove(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart)
+        {
+            // Keep client ownership on the active mounted state: when no explicit
+            // vehicle is requested, only reuse rendered mounted offsets if the
+            // player is currently mounted.
+            return mountedVehicleId > 0
+                ? MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)
+                : mountedStatePart?.Slot == EquipSlot.TamingMob;
+        }
+
+        internal static bool ShouldReuseRenderedMountedBodyRelMove(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart)
+        {
+            if (ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart))
+            {
+                return true;
+            }
+
+            // Keep explicit vehicle ownership strict while still allowing transient
+            // mounted-state holes to reuse the currently rendered mounted frame when
+            // the requested vehicle id already resolves to the same mount source.
+            return mountedVehicleId > 0
+                   && MatchesTamingMobItemId(mountedSourcePart, mountedVehicleId);
+        }
+
+        internal bool TryResolveCurrentMountedClientBodyRelMoveY(
+            string actionName,
+            int animationTime,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (Assembler == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            SyncAssemblerActionLayerContext();
+            AssembledFrame frame = Assembler.GetFrameAtTime(actionName, animationTime);
+            return TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
+        }
+
+        internal bool TryResolveCurrentMountedClientBodyRelMoveYFromRawFrames(
+            string actionName,
+            int animationTime,
+            CharacterPart mountedPart,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (Build?.Body == null
+                || mountedPart?.Slot != EquipSlot.TamingMob
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            CharacterAnimation bodyAnimation = CharacterAssembler.GetPartAnimation(Build.Body, actionName);
+            CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
+            if (bodyAnimation?.Frames?.Count <= 0 || mountedAnimation?.Frames?.Count <= 0)
+            {
+                return false;
+            }
+
+            bodyAnimation.GetFrameAtTime(animationTime, out int bodyFrameIndex);
+            mountedAnimation.GetFrameAtTime(animationTime, out int mountedFrameIndex);
+            return TryResolveMountedClientBodyRelMoveY(
+                bodyAnimation.Frames[bodyFrameIndex],
+                mountedAnimation.Frames[mountedFrameIndex],
+                FacingRight,
+                out bodyRelMoveY);
+        }
+
+        internal bool TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
+            string actionName,
+            int animationTime,
+            CharacterPart mountedPart,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (mountedPart?.Slot != EquipSlot.TamingMob
+                || Assembler == null
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            AssembledFrame[] frames = Assembler.GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return false;
+            }
+
+            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
+            return TryResolveMountedClientBodyRelMoveYFromFallbackFrames(
+                frames,
+                frameIndex,
+                mountedFrames: null,
+                mountedFrameIndex: 0,
+                out bodyRelMoveY);
+        }
+
+        internal static CharacterPart ResolveMountedBodyRelMoveSourceTamingMobPart(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart transitionOverridePart,
+            CharacterPart stateDrivenOverridePart,
+            CharacterPart clientOwnedVehicleMount,
+            CharacterPart transformOwnedVehicleMount,
+            CharacterPart equippedMount,
+            CharacterPart observedMount,
+            CharacterPart sharedMechanicMount)
+        {
+            if (mountedVehicleId <= 0)
+            {
+                return mountedStatePart?.Slot == EquipSlot.TamingMob
+                    ? mountedStatePart
+                    : transitionOverridePart?.Slot == EquipSlot.TamingMob
+                        ? transitionOverridePart
+                        : stateDrivenOverridePart?.Slot == EquipSlot.TamingMob
+                            ? stateDrivenOverridePart
+                            : clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob
+                                ? clientOwnedVehicleMount
+                                : transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob
+                                    ? transformOwnedVehicleMount
+                                    : observedMount?.Slot == EquipSlot.TamingMob
+                                        ? observedMount
+                                        : sharedMechanicMount?.Slot == EquipSlot.TamingMob
+                                            ? sharedMechanicMount
+                                            : equippedMount?.Slot == EquipSlot.TamingMob
+                                                ? equippedMount
+                                                : null;
+            }
+
+            return MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)
+                ? mountedStatePart
+                : MatchesTamingMobItemId(transitionOverridePart, mountedVehicleId)
+                    ? transitionOverridePart
+                    : MatchesTamingMobItemId(stateDrivenOverridePart, mountedVehicleId)
+                        ? stateDrivenOverridePart
+                        : MatchesTamingMobItemId(clientOwnedVehicleMount, mountedVehicleId)
+                            ? clientOwnedVehicleMount
+                            : MatchesTamingMobItemId(transformOwnedVehicleMount, mountedVehicleId)
+                                ? transformOwnedVehicleMount
+                                : MatchesTamingMobItemId(equippedMount, mountedVehicleId)
+                                    ? equippedMount
+                                    : MatchesTamingMobItemId(observedMount, mountedVehicleId)
+                                        ? observedMount
+                                        : MatchesTamingMobItemId(sharedMechanicMount, mountedVehicleId)
+                                            ? sharedMechanicMount
+                                            : null;
+        }
+
+        internal static bool TryResolveMountedClientBodyRelMoveY(
+            AssembledFrame frame,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (frame?.MapPoints == null
+                || !frame.MapPoints.TryGetValue(AvatarActionLayerCoordinator.ClientBodyOriginMapPoint, out Point bodyRelMove))
+            {
+                return false;
+            }
+
+            bodyRelMoveY = bodyRelMove.Y;
+            return true;
+        }
+
+        internal static bool TryResolveMountedClientBodyRelMoveY(
+            CharacterFrame bodyFrame,
+            CharacterFrame tamingMobFrame,
+            bool facingRight,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            AvatarActionLayerCoordinator.MountedOriginRelocation relocation = AvatarActionLayerCoordinator.ResolveMountedOriginRelocation(
+                bodyFrame,
+                tamingMobFrame,
+                facingRight);
+            if (!relocation.HasBodyRelMove)
+            {
+                return false;
+            }
+
+            bodyRelMoveY = relocation.BodyRelMove.Y;
+            return true;
+        }
+
+        internal static bool TryResolveMountedClientBodyRelMoveYFromFallbackFrames(
+            IReadOnlyList<AssembledFrame> assembledFrames,
+            int assembledFrameIndex,
+            IReadOnlyList<CharacterFrame> mountedFrames,
+            int mountedFrameIndex,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (TryResolveClientBodyRelMoveY(assembledFrames, assembledFrameIndex, out bodyRelMoveY))
+            {
+                return true;
+            }
+
+            return TryResolveClientBodyRelMoveY(mountedFrames, mountedFrameIndex, out bodyRelMoveY);
+        }
+
+        internal static bool TryResolveClientBodyRelMoveY(
+            IReadOnlyList<CharacterFrame> frames,
+            int frameIndex,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            if ((uint)frameIndex >= (uint)frames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            CharacterFrame baseFrame = frames[0];
+            CharacterFrame currentFrame = frames[frameIndex];
+            if (baseFrame == null || currentFrame == null)
+            {
+                return false;
+            }
+
+            if (baseFrame.Map?.TryGetValue("navel", out Point baseNavel) == true
+                && currentFrame.Map?.TryGetValue("navel", out Point currentNavel) == true)
+            {
+                bodyRelMoveY = currentNavel.Y - baseNavel.Y;
+                return true;
+            }
+
+            bodyRelMoveY = currentFrame.Origin.Y - baseFrame.Origin.Y;
+            return true;
+        }
+
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<CharacterFrame> frames, int frameIndex)
+        {
+            return TryResolveClientBodyRelMoveY(frames, frameIndex, out int bodyRelMoveY)
+                ? bodyRelMoveY
+                : 0;
+        }
+
+        internal static bool TryResolveClientBodyRelMoveY(
+            IReadOnlyList<AssembledFrame> frames,
+            int frameIndex,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            if ((uint)frameIndex >= (uint)frames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            AssembledFrame baseFrame = frames[0];
+            AssembledFrame currentFrame = frames[frameIndex];
+            if (baseFrame == null || currentFrame == null)
+            {
+                return false;
+            }
+
+            if (baseFrame.MapPoints?.TryGetValue("navel", out Point baseNavel) == true
+                && currentFrame.MapPoints?.TryGetValue("navel", out Point currentNavel) == true)
+            {
+                bodyRelMoveY = currentNavel.Y - baseNavel.Y;
+                return true;
+            }
+
+            bodyRelMoveY = currentFrame.Origin.Y - baseFrame.Origin.Y;
+            return true;
+        }
+
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<AssembledFrame> frames, int frameIndex)
+        {
+            return TryResolveClientBodyRelMoveY(frames, frameIndex, out int bodyRelMoveY)
+                ? bodyRelMoveY
+                : 0;
+        }
+
+        public AssembledFrame TryGetCurrentFrame(int currentTime)
+        {
+            return ResolveCurrentRenderFrame(currentTime, out _);
+        }
+
+        private AssembledFrame ResolveCurrentRenderFrame(int currentTime, out int currentFrameIndex)
+        {
+            currentFrameIndex = -1;
+            if (Assembler == null)
+            {
+                return null;
+            }
+
+            SyncAssemblerActionLayerContext();
+            UpdateMountedActionLayerFrameClock(GetMountedActionLayerState(), currentTime);
+            if (TryResolveMountedTransitionCurrentFrame(currentTime, out AssembledFrame mountedTransitionFrame, out currentFrameIndex))
+            {
+                return mountedTransitionFrame;
+            }
+
+            AvatarActionLayerState avatarActionLayerState = GetAvatarActionLayerState();
+            UpdateAvatarActionLayerFrameClock(avatarActionLayerState, currentTime);
+            if (avatarActionLayerState != null && ShouldUsePreparedAvatarActionLayer())
+            {
+                AssembledFrame indexedFrame = Assembler.GetFrameAtIndex(
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.FrameIndex,
+                    GetRenderAnimationTime(currentTime));
+                if (indexedFrame != null)
+                {
+                    currentFrameIndex = avatarActionLayerState.FrameIndex;
+                    return indexedFrame;
+                }
+            }
+
+            int animationTime = GetRenderAnimationTime(currentTime);
+            currentFrameIndex = Assembler.GetFrameIndexAtTime(CurrentActionName, animationTime);
+            return Assembler.GetFrameAtTime(CurrentActionName, animationTime);
+        }
+
+        private bool ShouldUsePreparedAvatarActionLayer()
+        {
+            if (HasActiveMorphTransform || _sustainedSkillAnimation || State == PlayerState.Attacking)
+            {
+                return true;
+            }
+
+            string defaultActionName = CharacterPart.GetActionString(CurrentAction);
+            return !string.Equals(CurrentActionName, defaultActionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public Point? TryGetCurrentBodyMapPoint(string mapPointName, int currentTime)
+        {
+            if (Assembler == null || string.IsNullOrWhiteSpace(mapPointName))
+            {
+                return null;
+            }
+
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            if (frame == null || !frame.MapPoints.TryGetValue(mapPointName, out Point localPoint))
+            {
+                return null;
+            }
+
+            int worldX = AvatarActionLayerCoordinator.ResolveWorldMapPointX(
+                mapPointName,
+                (int)X,
+                FacingRight,
+                localPoint.X);
+            int worldY = (int)Y - frame.FeetOffset + localPoint.Y;
+            return new Point(worldX, worldY);
+        }
+
+        public Rectangle? TryGetCurrentFrameBounds(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return frame == null || frame.Bounds.IsEmpty
+                ? null
+                : frame.Bounds;
+        }
+
+        public int GetCurrentUnderFaceLayerZ(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int layerZ = 0;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                AssembledPart part = frame.Parts[i];
+                if (part.RenderLayer == AvatarRenderLayer.UnderFace)
+                {
+                    layerZ = Math.Max(layerZ, part.ZIndex);
+                }
+            }
+
+            return layerZ;
+        }
+
+        public int GetCurrentLayerZ(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int layerZ = 0;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                layerZ = Math.Max(layerZ, frame.Parts[i].ZIndex);
+            }
+
+            return layerZ;
+        }
+
+        private void ClearForcedActionName()
+        {
+            _sustainedSkillAnimation = false;
+            _forcedActionName = null;
+            _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
+            ClearMountedActionLayerState();
+            _avatarActionLayerState = null;
+            SetTransientTamingMobOverride(null);
+        }
+
+        private static int ResolveClientOwnedOneTimeActionMinimumEndTime(int startTime, int minimumDurationMs)
+        {
+            if (minimumDurationMs <= 0)
+            {
+                return int.MinValue;
+            }
+
+            return unchecked(startTime + minimumDurationMs);
+        }
+
+        private bool ShouldHoldClientOwnedOneTimeAction(int currentTime)
+        {
+            return _clientOwnedOneTimeActionMinimumEndTime != int.MinValue
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(
+                    currentTime,
+                    _clientOwnedOneTimeActionMinimumEndTime);
+        }
+
+        internal static bool ShouldHoldClientOwnedOneTimeActionForTesting(
+            int currentTime,
+            int actionStartTime,
+            int minimumDurationMs)
+        {
+            int minimumEndTime = ResolveClientOwnedOneTimeActionMinimumEndTime(
+                actionStartTime,
+                minimumDurationMs);
+            return minimumEndTime != int.MinValue
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, minimumEndTime);
+        }
+
+        internal static bool IsExternalAvatarTransformExpiredForTesting(int currentTime, int expirationTime)
+        {
+            return expirationTime != int.MaxValue
+                && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, expirationTime);
+        }
+
+        private void ClearMountedActionLayerState()
+        {
+            _mountedActionLayerState = null;
+            _mountedTamingMobOneTimeActionName = null;
+        }
+
+        private void UpdateAutomaticTamingMobTransition()
+        {
+            int currentTime = Environment.TickCount;
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+            CharacterPart activeMount = ResolveAutomaticTamingMobTransitionMount(equippedMount);
+            bool clientOwnedMountActive = IsClientOwnedVehicleTamingMobStateActive(activeMount);
+
+            if (_suppressAutomaticTamingMobTransition)
+            {
+                _observedTamingMobPart = activeMount;
+                _observedClientOwnedTamingMobActive = clientOwnedMountActive;
+                _suppressAutomaticTamingMobTransition = false;
+                return;
+            }
+
+            if (SameTamingMob(_observedTamingMobPart, activeMount)
+                && _observedClientOwnedTamingMobActive == clientOwnedMountActive)
+            {
+                return;
+            }
+
+            if (_portableChairAppliedMount || Build?.ActivePortableChair != null)
+            {
+                _observedTamingMobPart = activeMount;
+                _observedClientOwnedTamingMobActive = clientOwnedMountActive;
+                return;
+            }
+
+            if (State == PlayerState.Attacking && !IsAutomaticTamingMobTransitionAction(CurrentActionName))
+            {
+                _observedTamingMobPart = activeMount;
+                _observedClientOwnedTamingMobActive = clientOwnedMountActive;
+                return;
+            }
+
+            bool shouldPlayTransition = (activeMount?.Slot == EquipSlot.TamingMob
+                    && (clientOwnedMountActive || !SameTamingMob(_observedTamingMobPart, activeMount)))
+                || (_observedTamingMobPart?.Slot == EquipSlot.TamingMob
+                    && (_observedClientOwnedTamingMobActive || activeMount == null));
+
+            if (shouldPlayTransition
+                && TryResolveClientRidingVehicleTransition(
+                    _observedTamingMobPart,
+                    activeMount,
+                    out ClientRidingVehicleTransition transition))
+            {
+                TriggerAutomaticTamingMobTransition(
+                    transition.OwnerPart,
+                    transition.ActionName,
+                    transition.PreserveUnmountedMount,
+                    currentTime);
+            }
+            else
+            {
+                SetTransientTamingMobOverride(null);
+            }
+
+            _observedTamingMobPart = activeMount;
+            _observedClientOwnedTamingMobActive = clientOwnedMountActive;
+        }
+
+        private void TriggerAutomaticTamingMobTransition(
+            CharacterPart mountPart,
+            string actionName,
+            bool preserveUnmountedMount,
+            int currentTime)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return;
+            }
+
+            SetTransientTamingMobOverride(preserveUnmountedMount ? mountPart : null);
+            TriggerSkillAnimation(actionName, currentTime: currentTime);
+        }
+
+        private CharacterPart GetEquippedTamingMobPart()
+        {
+            return Build?.Equipment != null
+                && Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                ? mountPart
+                : null;
+        }
+
+        internal CharacterPart ResolveMountedStateTamingMobPart()
+        {
+            if (_transitionTamingMobOverridePart?.Slot == EquipSlot.TamingMob)
+            {
+                return _transitionTamingMobOverridePart;
+            }
+
+            if (_stateDrivenTamingMobOverridePart?.Slot == EquipSlot.TamingMob)
+            {
+                return _stateDrivenTamingMobOverridePart;
+            }
+
+            CharacterPart clientOwnedVehicleMount = GetClientOwnedVehicleTamingMobPart();
+            if (clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return clientOwnedVehicleMount;
+            }
+
+            CharacterPart transformOwnedVehicleMount = ResolveClientOwnedVehicleAvatarTransformMountPart();
+            if (transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return transformOwnedVehicleMount;
+            }
+
+            return GetEquippedTamingMobPart();
+        }
+
+        private void SetTransientTamingMobOverride(CharacterPart mountPart)
+        {
+            _transitionTamingMobOverridePart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            UpdateAssemblerTamingMobOverride();
+        }
+
+        private void SetStateDrivenTamingMobOverride(CharacterPart mountPart)
+        {
+            _stateDrivenTamingMobOverridePart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            UpdateAssemblerTamingMobOverride();
+        }
+
+        private void UpdateAssemblerTamingMobOverride()
+        {
+            if (Assembler == null)
+            {
+                return;
+            }
+
+            CharacterPart overridePart = _transitionTamingMobOverridePart?.Slot == EquipSlot.TamingMob
+                ? _transitionTamingMobOverridePart
+                : _stateDrivenTamingMobOverridePart?.Slot == EquipSlot.TamingMob
+                    ? _stateDrivenTamingMobOverridePart
+                    : null;
+            Assembler.OverrideTamingMobPart = overridePart;
+        }
+
+        private void UpdateOwnedTamingMobRenderState()
+        {
+            if (Assembler == null)
+            {
+                return;
+            }
+
+            if (_portableChairAppliedMount || Build?.ActivePortableChair != null)
+            {
+                SetStateDrivenTamingMobOverride(null);
+                return;
+            }
+
+            CharacterPart clientOwnedVehicleMount = GetClientOwnedVehicleTamingMobPart();
+            if (ShouldKeepClientOwnedVehicleRenderOwner(clientOwnedVehicleMount, CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(clientOwnedVehicleMount);
+                return;
+            }
+
+            CharacterPart transformOwnedVehicleMount = ResolveClientOwnedVehicleAvatarTransformMountPart();
+            if (ShouldKeepClientOwnedVehicleRenderOwner(transformOwnedVehicleMount, CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(transformOwnedVehicleMount);
+                return;
+            }
+
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+            if (equippedMount?.Slot == EquipSlot.TamingMob)
+            {
+                SetStateDrivenTamingMobOverride(null);
+                return;
+            }
+
+            CharacterPart mechanicMountPart = ResolveMechanicVehicleTamingMobPart();
+            if (CharacterAssembler.IsTamingMobRenderOwnershipAction(mechanicMountPart, CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(mechanicMountPart);
+                return;
+            }
+
+            SetStateDrivenTamingMobOverride(null);
+        }
+
+        private CharacterPart ResolveMechanicVehicleTamingMobPart()
+        {
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+            if (IsMechanicTamingMobPart(equippedMount))
+            {
+                return equippedMount;
+            }
+
+            if (IsMechanicTamingMobPart(_transitionTamingMobOverridePart))
+            {
+                return _transitionTamingMobOverridePart;
+            }
+
+            if (IsMechanicTamingMobPart(_observedTamingMobPart))
+            {
+                return _observedTamingMobPart;
+            }
+
+            if (IsMechanicTamingMobPart(_sharedMechanicTamingMobPart))
+            {
+                return _sharedMechanicTamingMobPart;
+            }
+
+            CharacterPart loadedMount = _tamingMobLoader?.Invoke(MechanicTamingMobItemId);
+            if (IsMechanicTamingMobPart(loadedMount))
+            {
+                _sharedMechanicTamingMobPart = loadedMount;
+                return loadedMount;
+            }
+
+            return null;
+        }
+
+        private CharacterPart ResolveMountedBodyRelMoveSourceTamingMobPart(int mountedVehicleId)
+        {
+            CharacterPart resolvedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(
+                mountedVehicleId,
+                ResolveMountedStateTamingMobPart(),
+                _transitionTamingMobOverridePart,
+                _stateDrivenTamingMobOverridePart,
+                GetClientOwnedVehicleTamingMobPart(),
+                ResolveClientOwnedVehicleAvatarTransformMountPart(),
+                GetEquippedTamingMobPart(),
+                _observedTamingMobPart,
+                _sharedMechanicTamingMobPart);
+            if (resolvedPart?.Slot == EquipSlot.TamingMob)
+            {
+                return resolvedPart;
+            }
+
+            if (mountedVehicleId == MechanicTamingMobItemId)
+            {
+                return ResolveMechanicVehicleTamingMobPart();
+            }
+
+            CharacterPart loadedMount = _tamingMobLoader?.Invoke(mountedVehicleId);
+            return MatchesTamingMobItemId(loadedMount, mountedVehicleId)
+                ? loadedMount
+                : mountedVehicleId <= 0
+                    ? ResolveMountedStateTamingMobPart()
+                    : null;
+        }
+
+        private CharacterPart ResolveAutomaticTamingMobTransitionMount(CharacterPart equippedMount)
+        {
+            return ResolveAutomaticTamingMobTransitionMount(
+                GetClientOwnedVehicleTamingMobPart(),
+                ResolveClientOwnedVehicleAvatarTransformMountPart(),
+                equippedMount);
+        }
+
+        internal static CharacterPart ResolveAutomaticTamingMobTransitionMount(
+            CharacterPart clientOwnedVehicleMount,
+            CharacterPart transformOwnedVehicleMount,
+            CharacterPart equippedMount)
+        {
+            if (clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return clientOwnedVehicleMount;
+            }
+
+            if (transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return transformOwnedVehicleMount;
+            }
+
+            return equippedMount?.Slot == EquipSlot.TamingMob
+                ? equippedMount
+                : null;
+        }
+
+        private CharacterPart ResolveClientOwnedVehicleAvatarTransformMountPart()
+        {
+            int transformMountItemId = SkillManager.ResolveClientOwnedVehicleAvatarTransformMountItemId(
+                GetActiveAvatarTransformSkillId());
+            return transformMountItemId == MechanicTamingMobItemId
+                ? ResolveMechanicVehicleTamingMobPart()
+                : null;
+        }
+
+        private CharacterPart GetClientOwnedVehicleTamingMobPart()
+        {
+            return _clientOwnedVehicleTamingMobActive
+                   && _clientOwnedVehicleTamingMobPart?.Slot == EquipSlot.TamingMob
+                ? _clientOwnedVehicleTamingMobPart
+                : null;
+        }
+
+        private bool IsClientOwnedVehicleTamingMobStateActive(CharacterPart mountPart)
+        {
+            return _clientOwnedVehicleTamingMobActive
+                   && SameTamingMob(_clientOwnedVehicleTamingMobPart, mountPart);
+        }
+
+        internal static string ResolveClientRidingVehicleTransitionActionName(CharacterPart mountPart, bool isMounting)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return null;
+            }
+
+            if (mountPart.ItemId == MechanicTamingMobItemId)
+            {
+                string mechanicActionName = isMounting ? "msummon" : "msummon2";
+                return SupportsTamingMobTransitionAction(mountPart, mechanicActionName)
+                    ? mechanicActionName
+                    : null;
+            }
+
+            if (ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(mountPart.ItemId))
+            {
+                string jaguarActionName = ResolveClientRidingVehicleJaguarBodyTransitionActionName(isMounting);
+                return IsClientRidingVehicleJaguarBodyTransitionAction(mountPart, jaguarActionName)
+                    ? jaguarActionName
+                    : null;
+            }
+
+            string defaultActionName = isMounting ? "ride2" : "getoff2";
+            return SupportsTamingMobTransitionAction(mountPart, defaultActionName)
+                ? defaultActionName
+                : null;
+        }
+
+        internal static string ResolveClientRidingVehicleTransitionActionName(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            return TryResolveClientRidingVehicleTransition(
+                oldMountPart,
+                newMountPart,
+                out ClientRidingVehicleTransition transition)
+                ? transition.ActionName
+                : null;
+        }
+
+        private static bool TryResolveClientRidingVehicleTransition(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart,
+            out ClientRidingVehicleTransition transition)
+        {
+            transition = default;
+            CharacterPart oldMount = oldMountPart?.Slot == EquipSlot.TamingMob ? oldMountPart : null;
+            CharacterPart newMount = newMountPart?.Slot == EquipSlot.TamingMob ? newMountPart : null;
+            if (oldMount == null && newMount == null)
+            {
+                return false;
+            }
+
+            bool hasNewVehicle = newMount != null;
+            CharacterPart jaguarMount = ResolveClientRidingVehicleJaguarTransitionOwner(oldMount, newMount);
+            if (jaguarMount != null)
+            {
+                string actionName = ResolveClientRidingVehicleJaguarBodyTransitionActionName(hasNewVehicle);
+                if (!IsClientRidingVehicleJaguarBodyTransitionAction(jaguarMount, actionName))
+                {
+                    return false;
+                }
+
+                transition = new ClientRidingVehicleTransition(
+                    jaguarMount,
+                    actionName,
+                    preserveUnmountedMount: !hasNewVehicle);
+                return true;
+            }
+
+            CharacterPart mechanicMount = ResolveClientRidingVehicleMechanicTransitionOwner(oldMount, newMount);
+            if (mechanicMount != null)
+            {
+                string actionName = hasNewVehicle ? "msummon" : "msummon2";
+                if (!SupportsTamingMobTransitionAction(mechanicMount, actionName))
+                {
+                    return false;
+                }
+
+                transition = new ClientRidingVehicleTransition(
+                    mechanicMount,
+                    actionName,
+                    preserveUnmountedMount: !hasNewVehicle);
+                return true;
+            }
+
+            CharacterPart defaultOwner = hasNewVehicle ? newMount : oldMount;
+            string defaultActionName = ResolveClientRidingVehicleTransitionActionName(
+                defaultOwner,
+                isMounting: hasNewVehicle);
+            if (string.IsNullOrWhiteSpace(defaultActionName))
+            {
+                return false;
+            }
+
+            transition = new ClientRidingVehicleTransition(
+                defaultOwner,
+                defaultActionName,
+                preserveUnmountedMount: !hasNewVehicle);
+            return true;
+        }
+
+        private static CharacterPart ResolveClientRidingVehicleJaguarTransitionOwner(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            if (newMountPart?.Slot == EquipSlot.TamingMob
+                && ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(newMountPart.ItemId))
+            {
+                return newMountPart;
+            }
+
+            return oldMountPart?.Slot == EquipSlot.TamingMob
+                   && ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(oldMountPart.ItemId)
+                ? oldMountPart
+                : null;
+        }
+
+        private static CharacterPart ResolveClientRidingVehicleMechanicTransitionOwner(
+            CharacterPart oldMountPart,
+            CharacterPart newMountPart)
+        {
+            if (newMountPart?.Slot == EquipSlot.TamingMob
+                && newMountPart.ItemId == MechanicTamingMobItemId)
+            {
+                return newMountPart;
+            }
+
+            return oldMountPart?.Slot == EquipSlot.TamingMob
+                   && oldMountPart.ItemId == MechanicTamingMobItemId
+                ? oldMountPart
+                : null;
+        }
+
+        private static string ResolveClientRidingVehicleJaguarBodyTransitionActionName(bool isMounting)
+        {
+            return isMounting ? "earthslug" : "rpunch";
+        }
+
+        internal static bool IsClientRidingVehicleJaguarBodyTransitionAction(CharacterPart mountPart, string actionName)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob
+                || !ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(mountPart.ItemId))
+            {
+                return false;
+            }
+
+            // CAvatar::SetRidingVehicle sets raw 255/256 for jaguar mount/unmount.
+            // v95 publishes those roots on Character/00002000.img, while checked jaguar
+            // TamingMob assets publish ride/getoff but no earthslug/rpunch roots.
+            return string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool SupportsTamingMobTransitionAction(CharacterPart mountPart, string actionName)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return false;
+            }
+
+            // `SetRidingVehicle` reaches taming-mob frames through the vehicle-owned
+            // loader path. Do not let bare WZ roots bypass that owner at this seam.
+            return mountPart.TamingMobActionFrameOwner?.SupportsAction(mountPart, actionName) == true;
+        }
+
+        private static bool IsAutomaticTamingMobTransitionAction(string actionName)
+        {
+            return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "msummon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "msummon2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsMechanicTamingMobPart(CharacterPart mountPart)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                && mountPart.ItemId == MechanicTamingMobItemId;
+        }
+
+        private static bool MatchesTamingMobItemId(CharacterPart mountPart, int mountedVehicleId)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                && mountPart.ItemId == mountedVehicleId;
+        }
+
+        private bool HasPortableChairBlockedMountState()
+        {
+            return _clientOwnedVehicleTamingMobActive || IsMechanicTamingMobStateActive();
+        }
+
+        internal static bool ShouldKeepClientOwnedVehicleRenderOwner(CharacterPart mountPart, string actionName)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return false;
+            }
+
+            return SkillManager.SupportsClientOwnedVehicleMountedStateForCurrentAction(
+                mountPart,
+                actionName);
+        }
+
+        private static bool SameTamingMob(CharacterPart left, CharacterPart right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            return left.Slot == right.Slot && left.ItemId == right.ItemId;
+        }
+
+        private readonly struct ClientRidingVehicleTransition
+        {
+            internal ClientRidingVehicleTransition(
+                CharacterPart ownerPart,
+                string actionName,
+                bool preserveUnmountedMount)
+            {
+                OwnerPart = ownerPart;
+                ActionName = actionName;
+                PreserveUnmountedMount = preserveUnmountedMount;
+            }
+
+            internal CharacterPart OwnerPart { get; }
+
+            internal string ActionName { get; }
+
+            internal bool PreserveUnmountedMount { get; }
+        }
+
+        private static CharacterAction GetCharacterActionForActionName(string actionName)
+        {
+            return actionName?.ToLower() switch
+            {
+                "attack1" or "stabo1" => CharacterAction.StabO1,
+                "attack2" or "stabo2" => CharacterAction.StabO2,
+                "swingo1" => CharacterAction.SwingO1,
+                "swingo2" => CharacterAction.SwingO2,
+                "swingo3" => CharacterAction.SwingO3,
+                "swingof" => CharacterAction.SwingOF,
+                "shoot1" => CharacterAction.Shoot1,
+                "shoot2" => CharacterAction.Shoot2,
+                "pronestab" => CharacterAction.ProneStab,
+                _ => CharacterAction.SwingO1
+            };
+        }
+
+        private string GetSkillTransformActionName(PlayerState state)
+        {
+            SkillAvatarTransformState activeTransform = GetActiveAvatarTransform();
+            if (activeTransform == null)
+            {
+                return null;
+            }
+
+            if (ShouldUseSuperManMorphAirborneAttack(activeTransform, state))
+            {
+                return ResolveSkillTransformActionName(
+                    activeTransform.AirborneAttackActionNames,
+                    activeTransform.AttackActionNames,
+                    activeTransform.StandActionNames);
+            }
+
+            return state switch
+            {
+                PlayerState.Walking => ResolveSkillTransformActionName(activeTransform.WalkActionNames, activeTransform.StandActionNames),
+                PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(activeTransform.JumpActionNames, activeTransform.StandActionNames),
+                PlayerState.Sitting => ResolveSkillTransformActionName(activeTransform.SitActionNames, activeTransform.StandActionNames),
+                PlayerState.Prone => ResolveSkillTransformActionName(activeTransform.ProneActionNames, activeTransform.StandActionNames),
+                PlayerState.Ladder => ResolveSkillTransformActionName(activeTransform.LadderActionNames, activeTransform.StandActionNames),
+                PlayerState.Rope => ResolveSkillTransformActionName(activeTransform.RopeActionNames, activeTransform.StandActionNames),
+                PlayerState.Swimming => ResolveSkillTransformActionName(activeTransform.SwimActionNames, activeTransform.StandActionNames),
+                PlayerState.Flying when ShouldUseSuperManMorphAirborneMove(activeTransform) => ResolveSkillTransformActionName(
+                    activeTransform.AirborneMoveActionNames,
+                    activeTransform.FlyActionNames,
+                    activeTransform.StandActionNames),
+                PlayerState.Flying => ResolveSkillTransformActionName(activeTransform.FlyActionNames, activeTransform.StandActionNames),
+                PlayerState.Attacking => ResolveSkillTransformActionName(activeTransform.AttackActionNames, activeTransform.StandActionNames),
+                PlayerState.Hit => ResolveSkillTransformActionName(activeTransform.HitActionNames, activeTransform.StandActionNames),
+                PlayerState.Dead => ResolveSkillTransformActionName(activeTransform.DeadActionNames, activeTransform.HitActionNames, activeTransform.StandActionNames)
+                                    ?? CharacterPart.GetActionString(CharacterAction.Dead),
+                _ => ResolveSkillTransformActionName(activeTransform.StandActionNames)
+            };
+        }
+
+        private bool ShouldUseSuperManMorphAirborneMove(SkillAvatarTransformState activeTransform)
+        {
+            if (activeTransform?.AirborneMoveActionNames == null
+                || Physics == null
+                || !Physics.IsUserFlying()
+                || Physics.IsOnFoothold())
+            {
+                return false;
+            }
+
+            const float movementThreshold = 5f;
+            return _inputLeft
+                   || _inputRight
+                   || _inputUp
+                   || _inputDown
+                   || Math.Abs(Physics.VelocityX) > movementThreshold
+                   || Math.Abs(Physics.VelocityY) > movementThreshold;
+        }
+
+        private bool ShouldUseSuperManMorphAirborneAttack(SkillAvatarTransformState activeTransform, PlayerState state)
+        {
+            return state == PlayerState.Attacking
+                   && activeTransform?.AirborneAttackActionNames != null
+                   && Physics != null
+                   && Physics.IsUserFlying()
+                   && !Physics.IsOnFoothold();
+        }
+
+        private string ResolveSkillTransformActionName(params IReadOnlyList<string>[] actionGroups)
+        {
+            foreach (string actionName in EnumerateTransformActionNames(actionGroups))
+            {
+                if (HasAvatarAction(actionName))
+                {
+                    return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumerateTransformActionNames(actionGroups))
+            {
+                return actionName;
+            }
+
+            return null;
+        }
+
+        private string ResolveActiveSkillSpecificActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("tank_siege", StringComparison.OrdinalIgnoreCase)
+                || GetActiveAvatarTransform() == null)
+            {
+                return actionName;
+            }
+
+            string[] transformPrefixes = GetActiveSkillTransformPrefixes();
+            if (transformPrefixes.Length == 0)
+            {
+                return actionName;
+            }
+
+            foreach (string prefix in transformPrefixes)
+            {
+                string prefixedActionName = $"{prefix}{actionName}";
+                if (HasAvatarAction(prefixedActionName) || HasMountedAction(prefixedActionName))
+                {
+                    return prefixedActionName;
+                }
+            }
+
+            return actionName;
+        }
+
+        private string[] GetActiveSkillTransformPrefixes()
+        {
+            foreach (string actionName in EnumerateTransformActionNames(GetActiveAvatarTransform()?.StandActionNames))
+            {
+                if (actionName.StartsWith("tank_siege", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "tank_siege", "tank_" };
+                }
+
+                if (actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "siege_" };
+                }
+
+                if (actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "tank_" };
+                }
+            }
+
+            return Array.Empty<string>();
+        }
+
+        private IEnumerable<string> EnumerateTransformActionNames(params IReadOnlyList<string>[] actionGroups)
+        {
+            if (actionGroups == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (IReadOnlyList<string> actionGroup in actionGroups)
+            {
+                if (actionGroup == null)
+                {
+                    continue;
+                }
+
+                foreach (string actionName in actionGroup)
+                {
+                    if (string.IsNullOrWhiteSpace(actionName) || !seen.Add(actionName))
+                    {
+                        continue;
+                    }
+
+                    yield return actionName;
+                }
+            }
+        }
+
+        private bool HasAvatarAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            CharacterPart avatarPart = GetActiveAvatarTransform()?.AvatarPart ?? Build?.Body;
+            return avatarPart?.Animations?.ContainsKey(actionName) == true
+                   || avatarPart?.GetAnimation(actionName) != null;
+        }
+
+        private bool HasMountedAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || Build?.Equipment == null
+                || !Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart))
+            {
+                return false;
+            }
+
+            return mountPart.GetAnimation(actionName) != null;
+        }
+
+        public bool CanRenderAction(string actionName)
+        {
+            return HasAvatarAction(actionName) || HasMountedAction(actionName);
+        }
+
+        private bool TryCreateSkillAvatarTransform(int skillId, string actionName, int morphTemplateId, out SkillAvatarTransformState transform)
+        {
+            if (TryCreateMorphAvatarTransform(skillId, morphTemplateId, actionName, out transform))
+            {
+                return true;
+            }
+
+            return TryCreateBuiltInSkillAvatarTransform(skillId, actionName, out transform);
+        }
+
+        private bool TryCreateExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId, out SkillAvatarTransformState transform)
+        {
+            transform = null;
+            if (!TryCreateMorphAvatarTransform(sourceId, morphTemplateId, actionName, out transform))
+            {
+                return false;
+            }
+
+            transform = CloneTransform(transform, sourceId);
+            return true;
+        }
+
+        private bool TryCreateMorphAvatarTransform(int skillId, int morphTemplateId, string actionName, out SkillAvatarTransformState transform)
+        {
+            transform = null;
+            if (morphTemplateId <= 0 || _skillMorphLoader == null)
+            {
+                return false;
+            }
+
+            CharacterPart morphPart = _skillMorphLoader(morphTemplateId);
+            if (morphPart?.Type != CharacterPartType.Morph || morphPart.Animations.Count == 0)
+            {
+                return false;
+            }
+
+            transform = CreateMorphTransform(skillId, morphPart, actionName);
+            return true;
+        }
+
+        private static bool TryCreateBuiltInSkillAvatarTransform(int skillId, string actionName, out SkillAvatarTransformState transform)
+        {
+            transform = null;
+            string normalizedAction = actionName?.Trim();
+
+            switch (skillId)
+            {
+                case 2111002:
+                    transform = CreateSingleActionTransform(skillId, "explosion", "magic6");
+                    return true;
+                case 22121000:
+                    transform = CreateSingleActionTransform(skillId, "icebreathe_prepare", "dragonIceBreathe");
+                    return true;
+                case 22151001:
+                    transform = CreateSingleActionTransform(skillId, "breathe_prepare", "dragonBreathe");
+                    return true;
+                case 31101002:
+                    transform = CreateSingleActionTransform(skillId, "demonTrace", "demonTrace");
+                    return true;
+                case 32121003:
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "cyclone_pre", "cyclone", "cyclone_after");
+                    return true;
+                case 4211001:
+                    transform = CreateSingleActionTransform(skillId, "alert3", "alert");
+                    return true;
+                case 33101005:
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "swallow_pre", "swallow_loop", "swallow");
+                    return true;
+                case 33121006:
+                    transform = CreateSingleActionTransform(skillId, "wildbeast", exitActionName: null);
+                    return true;
+                case 4341002:
+                    transform = CreateSingleActionTransform(skillId, "finalCutPrepare", "finalCut");
+                    return true;
+                case 4341003:
+                    transform = CreateSingleActionTransform(skillId, "monsterBombPrepare", "monsterBombThrow");
+                    return true;
+                case 4001003:
+                case 14001003:
+                    transform = CreateDarkSightTransform(skillId);
+                    return true;
+                case 23121000:
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "dualVulcanPrep", "dualVulcanLoop", "dualVulcanEnd");
+                    return true;
+                case 14111006:
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "darkTornado_pre", "darkTornado", "darkTornado_after", "dash");
+                    return true;
+                case 5311002:
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "noiseWave_pre", "noiseWave_ing", "noiseWave");
+                    return true;
+                case 5221004:
+                case 5721001:
+                    transform = CreateSingleActionTransform(skillId, "rapidfire", exitActionName: null);
+                    return true;
+                case 35001001:
+                    transform = IsRocketBoosterTransformAction(normalizedAction)
+                        ? CreateRocketBoosterTransform(skillId, normalizedAction)
+                        : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
+                    return true;
+                case 35101009:
+                    transform = IsMechanicTankOwnedRushAction(normalizedAction)
+                        ? CreateSingleActionTransform(
+                            skillId,
+                            "tank_mRush",
+                            exitActionName: null)
+                        : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
+                    return true;
+                case 35121003:
+                    transform = CreateSingleActionTransform(
+                        skillId,
+                        ResolveMechanicSummonTransformActionName(normalizedAction, "msummon2", "tank_msummon2"),
+                        exitActionName: null);
+                    return true;
+                case 35121009:
+                case 35121010:
+                    transform = CreateSingleActionTransform(
+                        skillId,
+                        ResolveMechanicSummonTransformActionName(normalizedAction, "msummon", "tank_msummon"),
+                        exitActionName: null);
+                    return true;
+                case 35121005:
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" }, activeTankActionRewrites: true);
+                    return true;
+                case 35111004:
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true, attackActionAliases: new[] { "lasergun" });
+                    return true;
+                case 35121013:
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
+                    return true;
+                case 35101004:
+                    transform = CreateRocketBoosterTransform(skillId, normalizedAction);
+                    return true;
+            }
+
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(normalizedAction))
+            {
+                return false;
+            }
+
+            if (string.Equals(normalizedAction, "flamethrower_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower_after", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "icebreathe_prepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "icebreathe_prepare", "dragonIceBreathe");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "breathe_prepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "breathe_prepare", "dragonBreathe");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "cyclone", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "cyclone_after", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "cyclone_pre", "cyclone", "cyclone_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "swallow_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "swallow_loop", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "swallow", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "swallow_pre", "swallow_loop", "swallow");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "wildbeast", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "wildbeast", exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "bluntSmash", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "bluntSmashEnd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "soulEater_end", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "soulEater", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "bluntSmash", exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "finalCutPrepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "finalCutPrepare", "finalCut");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "monsterBombPrepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "monsterBombPrepare", "monsterBombThrow");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "darksight", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateDarkSightTransform(skillId);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "dualVulcanPrep", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "dualVulcanLoop", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "dualVulcanEnd", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "dualVulcanPrep", "dualVulcanLoop", "dualVulcanEnd");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "darkTornado_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "darkTornado", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "darkTornado_after", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "dash", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "darkTornado_pre", "darkTornado", "darkTornado_after", "dash");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "noiseWave_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "noiseWave_ing", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "noiseWave", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "noiseWave_pre", "noiseWave_ing", "noiseWave");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "rapidfire", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "rapidfire", exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "flamethrower_pre2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower_after2", StringComparison.OrdinalIgnoreCase)
+                || IsMechanicTankOwnedRushAction(normalizedAction))
+            {
+                transform = IsMechanicTankOwnedRushAction(normalizedAction)
+                    ? CreateSingleActionTransform(
+                        skillId,
+                        "tank_mRush",
+                        exitActionName: null)
+                    : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "msummon", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_msummon", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(
+                    skillId,
+                    ResolveMechanicSummonTransformActionName(normalizedAction, "msummon", "tank_msummon"),
+                    exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "msummon2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_msummon2", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(
+                    skillId,
+                    ResolveMechanicSummonTransformActionName(normalizedAction, "msummon2", "tank_msummon2"),
+                    exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_walk", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_laser", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_prone", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_after", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" }, activeTankActionRewrites: true);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "lasergun", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege_after", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true, attackActionAliases: new[] { "lasergun" });
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegestand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegeattack", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegeafter", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
+                return true;
+            }
+
+            if (IsRocketBoosterTransformAction(normalizedAction))
+            {
+                transform = CreateRocketBoosterTransform(skillId, normalizedAction);
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveBuiltInSkillAvatarTransformForTesting(
+            int skillId,
+            string actionName,
+            out SkillAvatarTransformResolutionForTesting resolution)
+        {
+            resolution = default;
+            if (!TryCreateBuiltInSkillAvatarTransform(skillId, actionName, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            resolution = new SkillAvatarTransformResolutionForTesting(
+                transform.StandActionNames ?? Array.Empty<string>(),
+                transform.WalkActionNames ?? Array.Empty<string>(),
+                transform.JumpActionNames ?? Array.Empty<string>(),
+                transform.AttackActionNames ?? Array.Empty<string>(),
+                transform.LadderActionNames ?? Array.Empty<string>(),
+                transform.RopeActionNames ?? Array.Empty<string>(),
+                transform.FlyActionNames ?? Array.Empty<string>(),
+                transform.SwimActionNames ?? Array.Empty<string>(),
+                transform.HitActionNames ?? Array.Empty<string>(),
+                transform.ProneActionNames ?? Array.Empty<string>(),
+                transform.ExitActionName,
+                transform.LocksMovement);
+            return true;
+        }
+
+        internal static bool TryResolveMorphAvatarTransformForTesting(
+            CharacterPart morphPart,
+            string actionName,
+            out MorphAvatarTransformResolutionForTesting resolution)
+        {
+            resolution = default;
+            if (morphPart?.Type != CharacterPartType.Morph)
+            {
+                return false;
+            }
+
+            SkillAvatarTransformState transform = CreateMorphTransform(skillId: 0, morphPart, actionName);
+            resolution = new MorphAvatarTransformResolutionForTesting(
+                transform.StandActionNames ?? Array.Empty<string>(),
+                transform.WalkActionNames ?? Array.Empty<string>(),
+                transform.JumpActionNames ?? Array.Empty<string>(),
+                transform.FlyActionNames ?? Array.Empty<string>(),
+                transform.AirborneMoveActionNames ?? Array.Empty<string>(),
+                transform.AirborneAttackActionNames ?? Array.Empty<string>(),
+                transform.LadderActionNames ?? Array.Empty<string>(),
+                transform.RopeActionNames ?? Array.Empty<string>(),
+                transform.SwimActionNames ?? Array.Empty<string>(),
+                transform.AttackActionNames ?? Array.Empty<string>(),
+                transform.HitActionNames ?? Array.Empty<string>(),
+                transform.DeadActionNames ?? Array.Empty<string>());
+            return true;
+        }
+
+        private static SkillAvatarTransformState CreateMorphTransform(int skillId, CharacterPart morphPart, string actionName)
+        {
+            string normalizedAction = actionName?.Trim();
+            bool isSuperManMorph = morphPart?.IsSuperManMorph == true;
+            bool hasPublishedFly2Action = HasMorphPublishedAction(morphPart, "fly2");
+            bool hasPublishedAirborneMoveAction = HasMorphPublishedAction(morphPart, "fly2Move");
+            bool hasPublishedAirborneAttackAction = HasMorphPublishedAction(morphPart, "fly2Skill");
+            bool shouldUseSuperManLadderRopeActions = isSuperManMorph;
+            bool shouldUseFly2Family = isSuperManMorph || hasPublishedFly2Action;
+            string normalizedJumpAction = MorphClientActionResolver.IsJumpActionName(normalizedAction)
+                ? normalizedAction
+                : null;
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                SourceId = skillId,
+                AvatarPart = morphPart,
+                StandActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "stand", "stand1", "stand2"),
+                WalkActionNames = CreateMorphActionVariants(morphPart, "walk", "move", "walk1", "walk2", "stand"),
+                JumpActionNames = CreateMorphActionVariants(morphPart, normalizedJumpAction, "jump", "fly", "stand"),
+                SitActionNames = CreateMorphActionVariants(morphPart, "sit", "stand"),
+                ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
+                AttackActionNames = CreateMorphAttackActionVariants(morphPart, normalizedAction),
+                LadderActionNames = shouldUseSuperManLadderRopeActions
+                    ? CreateMorphActionVariants(morphPart, "ladder2", "ladder", "rope2", "rope", "stand")
+                    : CreateMorphActionVariants(morphPart, "ladder", "rope", "stand"),
+                RopeActionNames = shouldUseSuperManLadderRopeActions
+                    ? CreateMorphActionVariants(morphPart, "rope2", "rope", "ladder2", "ladder", "stand")
+                    : CreateMorphActionVariants(morphPart, "rope", "ladder", "stand"),
+                FlyActionNames = shouldUseFly2Family
+                    ? CreateMorphActionVariants(morphPart, "fly2", "fly", "jump", "stand")
+                    : CreateMorphActionVariants(morphPart, "fly", "swim", "jump", "stand"),
+                AirborneMoveActionNames = hasPublishedAirborneMoveAction
+                    ? CreateMorphActionVariants(morphPart, "fly2Move", "fly2", "fly", "jump", "stand")
+                    : null,
+                AirborneAttackActionNames = hasPublishedAirborneAttackAction
+                    ? CreateMorphActionVariants(morphPart, "fly2Skill", normalizedAction, "attack", "attack1", "fly2", "fly", "jump", "stand")
+                    : null,
+                SwimActionNames = CreateMorphActionVariants(morphPart, "swim", "fly", "jump", "stand"),
+                HitActionNames = CreateMorphHitActionVariants(morphPart),
+                DeadActionNames = CreateMorphDeadActionVariants(morphPart),
+                ExitActionName = null
+            };
+        }
+
+        private static bool HasMorphPublishedAction(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return morphPart.Animations?.ContainsKey(actionName) == true
+                   || morphPart.AvailableAnimations?.Contains(actionName) == true;
+        }
+
+        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName, string exitActionName, bool locksMovement = false)
+        {
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                SourceId = skillId,
+                StandActionNames = CreateActionVariants(standActionName),
+                WalkActionNames = CreateActionVariants(walkActionName, standActionName),
+                JumpActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                SitActionNames = CreateActionVariants(standActionName),
+                ProneActionNames = CreateActionVariants(proneActionName, standActionName),
+                AttackActionNames = CreateActionVariants(attackActionName, standActionName),
+                LadderActionNames = CreateMechanicPublishedClimbActionVariants(standActionName, preferRope: false),
+                RopeActionNames = CreateMechanicPublishedClimbActionVariants(standActionName, preferRope: true),
+                FlyActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                SwimActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                HitActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                ExitActionName = exitActionName,
+                LocksMovement = locksMovement
+            };
+        }
+
+        private static IReadOnlyList<string> CreateMechanicPublishedActionVariants(string standActionName)
+        {
+            return CreateActionVariants(standActionName);
+        }
+
+        private static IReadOnlyList<string> CreateMechanicPublishedClimbActionVariants(string standActionName, bool preferRope)
+        {
+            return preferRope
+                ? CreateActionVariants("rope2", "ladder2", standActionName)
+                : CreateActionVariants("ladder2", "rope2", standActionName);
+        }
+
+        private static SkillAvatarTransformState CreateSingleActionTransform(int skillId, string actionName, string exitActionName)
+        {
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                SourceId = skillId,
+                StandActionNames = CreateActionVariants(actionName),
+                WalkActionNames = CreateActionVariants(actionName),
+                JumpActionNames = CreateActionVariants(actionName),
+                SitActionNames = CreateActionVariants(actionName),
+                ProneActionNames = CreateActionVariants(actionName),
+                AttackActionNames = CreateActionVariants(actionName),
+                LadderActionNames = CreateActionVariants(actionName),
+                RopeActionNames = CreateActionVariants(actionName),
+                FlyActionNames = CreateActionVariants(actionName),
+                SwimActionNames = CreateActionVariants(actionName),
+                HitActionNames = CreateActionVariants(actionName),
+                ExitActionName = exitActionName
+            };
+        }
+
+        private static SkillAvatarTransformState CreatePreparedSingleActionTransform(
+            int skillId,
+            string currentActionName,
+            string prepareActionName,
+            string holdActionName,
+            string exitActionName,
+            params string[] prepareActionAliases)
+        {
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                holdActionName,
+                exitActionName,
+                prepareActionAliases);
+
+            return stage switch
+            {
+                PreparedAvatarActionStage.Prepare => CreateSingleActionTransform(skillId, prepareActionName, exitActionName: null),
+                PreparedAvatarActionStage.Exit => CreateSingleActionTransform(skillId, exitActionName, exitActionName: null),
+                _ => CreateSingleActionTransform(skillId, holdActionName, exitActionName)
+            };
+        }
+
+        private enum PreparedAvatarActionStage
+        {
+            Hold,
+            Prepare,
+            Exit
+        }
+
+        private static PreparedAvatarActionStage ResolvePreparedActionStage(
+            string currentActionName,
+            string prepareActionName,
+            string holdActionName,
+            string exitActionName,
+            params string[] prepareActionAliases)
+        {
+            if (string.Equals(currentActionName, prepareActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return PreparedAvatarActionStage.Prepare;
+            }
+
+            if (!string.IsNullOrWhiteSpace(exitActionName)
+                && string.Equals(currentActionName, exitActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return PreparedAvatarActionStage.Exit;
+            }
+
+            if (!string.IsNullOrWhiteSpace(holdActionName)
+                && string.Equals(currentActionName, holdActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return PreparedAvatarActionStage.Hold;
+            }
+
+            if (prepareActionAliases != null)
+            {
+                foreach (string alias in prepareActionAliases)
+                {
+                    if (string.Equals(currentActionName, alias, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return PreparedAvatarActionStage.Prepare;
+                    }
+                }
+            }
+
+            return PreparedAvatarActionStage.Hold;
+        }
+
+        private static SkillAvatarTransformState CreatePreparedMechanicTransform(
+            int skillId,
+            string currentActionName,
+            string prepareActionName,
+            string holdActionName,
+            string exitActionName)
+        {
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                holdActionName,
+                exitActionName);
+            if (stage == PreparedAvatarActionStage.Exit)
+            {
+                return CreateSingleActionTransform(skillId, exitActionName, exitActionName: null);
+            }
+
+            string activeActionName = stage == PreparedAvatarActionStage.Prepare ? prepareActionName : holdActionName;
+            return CreateMechanicTransform(
+                skillId,
+                activeActionName,
+                activeActionName,
+                activeActionName,
+                activeActionName,
+                stage == PreparedAvatarActionStage.Prepare ? null : exitActionName);
+        }
+
+        private static string ResolveMechanicTankOwnedTransformActionName(
+            string currentActionName,
+            string baseActionName,
+            string tankActionName)
+        {
+            return string.Equals(currentActionName, tankActionName, StringComparison.OrdinalIgnoreCase)
+                ? tankActionName
+                : baseActionName;
+        }
+
+        private static string ResolveMechanicSummonTransformActionName(
+            string currentActionName,
+            string baseActionName,
+            string tankActionName)
+        {
+            return ResolveMechanicTankOwnedTransformActionName(currentActionName, baseActionName, tankActionName);
+        }
+
+        private static bool IsMechanicTankOwnedRushAction(string actionName)
+        {
+            return string.Equals(actionName, "mRush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_mRush", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static SkillAvatarTransformState CreatePreparedMechanicStateTransform(
+            int skillId,
+            string currentActionName,
+            string prepareActionName,
+            string standActionName,
+            string walkActionName,
+            string attackActionName,
+            string proneActionName,
+            string exitActionName,
+            bool locksMovement = false,
+            IReadOnlyList<string> attackActionAliases = null,
+            bool activeTankActionRewrites = false)
+        {
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                standActionName,
+                exitActionName);
+            if (stage == PreparedAvatarActionStage.Prepare)
+            {
+                return CreateSingleActionTransform(skillId, prepareActionName, exitActionName: null);
+            }
+
+            if (stage == PreparedAvatarActionStage.Exit)
+            {
+                return CreateSingleActionTransform(skillId, exitActionName, exitActionName: null);
+            }
+
+            string resolvedAttackActionName = ResolveMechanicAttackActionName(
+                currentActionName,
+                attackActionName,
+                attackActionAliases,
+                activeTankActionRewrites);
+
+            return CreateMechanicTransform(
+                skillId,
+                standActionName,
+                walkActionName,
+                resolvedAttackActionName,
+                proneActionName,
+                exitActionName,
+                locksMovement);
+        }
+
+        private static string ResolveMechanicAttackActionName(
+            string currentActionName,
+            string defaultAttackActionName,
+            IReadOnlyList<string> attackActionAliases,
+            bool activeTankActionRewrites)
+        {
+            if (activeTankActionRewrites
+                && TryResolveActiveTankOneTimeActionRewrite(currentActionName, out string rewrittenActionName))
+            {
+                return rewrittenActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentActionName) && attackActionAliases != null)
+            {
+                foreach (string attackActionAlias in attackActionAliases)
+                {
+                    if (string.Equals(currentActionName, attackActionAlias, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return attackActionAlias;
+                    }
+                }
+            }
+
+            return defaultAttackActionName;
+        }
+
+        private static bool TryResolveActiveTankOneTimeActionRewrite(string currentActionName, out string rewrittenActionName)
+        {
+            rewrittenActionName = null;
+            if (string.IsNullOrWhiteSpace(currentActionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(currentActionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "mine";
+                return true;
+            }
+
+            if (string.Equals(currentActionName, "flashRain", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "ride";
+                return true;
+            }
+
+            if (string.Equals(currentActionName, "rbooster_after", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "clawCut";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)
+        {
+            string normalizedActionName = actionName?.Trim();
+            if (string.Equals(normalizedActionName, "rbooster_after", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateSingleActionTransform(skillId, normalizedActionName, exitActionName: null);
+            }
+
+            string startupActionName = string.Equals(normalizedActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                ? "tank_rbooster_pre"
+                : string.Equals(normalizedActionName, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                    ? "rbooster_pre"
+                    : "rbooster";
+            string exitActionName = string.Equals(startupActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                ? "tank_rbooster_after"
+                : "rbooster_after";
+            bool usesStartupPose = !string.Equals(startupActionName, "rbooster", StringComparison.OrdinalIgnoreCase);
+
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                SourceId = skillId,
+                StandActionNames = CreateActionVariants(usesStartupPose ? startupActionName : "rbooster"),
+                WalkActionNames = CreateActionVariants(usesStartupPose ? startupActionName : "rbooster"),
+                JumpActionNames = CreateActionVariants("rbooster", startupActionName),
+                SitActionNames = CreateActionVariants(usesStartupPose ? startupActionName : "rbooster"),
+                ProneActionNames = CreateActionVariants(usesStartupPose ? startupActionName : "rbooster"),
+                AttackActionNames = CreateActionVariants("rbooster", startupActionName),
+                LadderActionNames = CreateActionVariants("rbooster", startupActionName),
+                RopeActionNames = CreateActionVariants("rbooster", startupActionName),
+                FlyActionNames = CreateActionVariants("rbooster", startupActionName),
+                SwimActionNames = CreateActionVariants("rbooster", startupActionName),
+                HitActionNames = CreateActionVariants("rbooster", startupActionName),
+                ExitActionName = exitActionName
+            };
+        }
+
+        private static bool IsRocketBoosterTransformAction(string actionName)
+        {
+            return string.Equals(actionName, "rbooster", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rbooster_after", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static SkillAvatarTransformState CreateDarkSightTransform(int skillId)
+        {
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                SourceId = skillId,
+                StandActionNames = CreateActionVariants("ghoststand", "darksight"),
+                WalkActionNames = CreateActionVariants("ghostwalk", "ghoststand", "darksight"),
+                JumpActionNames = CreateActionVariants("ghostjump", "ghostfly", "ghoststand", "darksight"),
+                SitActionNames = CreateActionVariants("ghoststand", "darksight"),
+                ProneActionNames = CreateActionVariants("ghostproneStab", "ghoststand", "darksight"),
+                AttackActionNames = CreateActionVariants("ghoststand", "darksight"),
+                LadderActionNames = CreateActionVariants("ghostladder", "ghostrope", "ghoststand", "darksight"),
+                RopeActionNames = CreateActionVariants("ghostrope", "ghostladder", "ghoststand", "darksight"),
+                FlyActionNames = CreateActionVariants("ghostfly", "ghostjump", "ghoststand", "darksight"),
+                SwimActionNames = CreateActionVariants("ghostfly", "ghostjump", "ghoststand", "darksight"),
+                HitActionNames = CreateActionVariants("ghoststand", "darksight"),
+                ExitActionName = null
+            };
+        }
+
+        private static SkillAvatarTransformState CloneTransform(SkillAvatarTransformState transform, int sourceId)
+        {
+            if (transform == null)
+            {
+                return null;
+            }
+
+            return new SkillAvatarTransformState
+            {
+                SkillId = transform.SkillId,
+                SourceId = sourceId,
+                AvatarPart = transform.AvatarPart,
+                StandActionNames = transform.StandActionNames,
+                WalkActionNames = transform.WalkActionNames,
+                JumpActionNames = transform.JumpActionNames,
+                SitActionNames = transform.SitActionNames,
+                ProneActionNames = transform.ProneActionNames,
+                AttackActionNames = transform.AttackActionNames,
+                LadderActionNames = transform.LadderActionNames,
+                RopeActionNames = transform.RopeActionNames,
+                FlyActionNames = transform.FlyActionNames,
+                AirborneMoveActionNames = transform.AirborneMoveActionNames,
+                AirborneAttackActionNames = transform.AirborneAttackActionNames,
+                SwimActionNames = transform.SwimActionNames,
+                HitActionNames = transform.HitActionNames,
+                DeadActionNames = transform.DeadActionNames,
+                ExitActionName = transform.ExitActionName,
+                LocksMovement = transform.LocksMovement
+            };
+        }
+
+        private SkillAvatarTransformState GetActiveAvatarTransform()
+        {
+            return _activeExternalAvatarTransform ?? _activeSkillAvatarTransform;
+        }
+
+        private static IReadOnlyList<string> CreateActionVariants(params string[] actionNames)
+        {
+            var actions = new List<string>();
+            if (actionNames == null)
+            {
+                return actions;
+            }
+
+            foreach (string actionName in actionNames)
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    continue;
+                }
+
+                bool alreadyAdded = false;
+                foreach (string existingAction in actions)
+                {
+                    if (string.Equals(existingAction, actionName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded)
+                {
+                    actions.Add(actionName);
+                }
+            }
+
+            return actions;
+        }
+
+        private static IReadOnlyList<string> CreateMorphActionVariants(CharacterPart morphPart, params string[] preferredActions)
+        {
+            var actions = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Add(string actionName)
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    return;
+                }
+
+                foreach (string candidate in MorphClientActionResolver.EnumerateClientActionAliases(morphPart, actionName))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        actions.Add(candidate);
+                    }
+                }
+            }
+
+            if (preferredActions != null)
+            {
+                foreach (string actionName in preferredActions)
+                {
+                    Add(actionName);
+                }
+            }
+
+            if (morphPart?.Animations != null)
+            {
+                foreach (string actionName in morphPart.Animations.Keys)
+                {
+                    Add(actionName);
+                }
+            }
+
+            return actions;
+        }
+
+        private static IReadOnlyList<string> CreateMorphAttackActionVariants(CharacterPart morphPart, params string[] preferredActions)
+        {
+            var actions = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Add(string actionName)
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    return;
+                }
+
+                foreach (string candidate in MorphClientActionResolver.EnumerateClientActionAliases(morphPart, actionName))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        actions.Add(candidate);
+                    }
+                }
+            }
+
+            if (preferredActions != null)
+            {
+                foreach (string actionName in preferredActions)
+                {
+                    Add(actionName);
+                }
+            }
+
+            string[] genericCombatActions =
+            {
+                "attack",
+                "attack1",
+                "attack2",
+                "stabO1",
+                "stabO2",
+                "stabOF",
+                "stabT1",
+                "stabT2",
+                "stabTF",
+                "swingO1",
+                "swingO2",
+                "swingO3",
+                "swingOF",
+                "swingT1",
+                "swingT2",
+                "swingT3",
+                "swingTF",
+                "swingP1",
+                "swingP2",
+                "swingPF",
+                "shoot1",
+                "shoot2",
+                "shootF",
+                "shotC1",
+                "proneStab"
+            };
+
+            foreach (string actionName in genericCombatActions)
+            {
+                Add(actionName);
+            }
+
+            if (morphPart?.Animations != null)
+            {
+                foreach (string actionName in morphPart.Animations.Keys
+                             .Where(IsMorphAttackActionName)
+                             .OrderBy(GetMorphAttackActionPriority, StringComparer.OrdinalIgnoreCase))
+                {
+                    Add(actionName);
+                }
+
+                foreach (string actionName in morphPart.Animations.Keys)
+                {
+                    Add(actionName);
+                }
+            }
+
+            Add("walk");
+            Add("stand");
+            return actions;
+        }
+
+        private static IReadOnlyList<string> CreateMorphHitActionVariants(CharacterPart morphPart)
+        {
+            return CreateMorphActionVariants(morphPart, "hit", "recovery", "alert", "alert2", "alert3", "alert4", "alert5", "stand");
+        }
+
+        private static IReadOnlyList<string> CreateMorphDeadActionVariants(CharacterPart morphPart)
+        {
+            return CreateMorphActionVariants(morphPart, "dead", "pvpko", "alert", "stand");
+        }
+
+        private static bool IsMorphAttackActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("leap", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("smash", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("panic", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("chop", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("tempest", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("strike", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("burst", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("drain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("fire", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("orb", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("wave", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spin", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "screw", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "straight", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "somersault", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetMorphAttackActionPriority(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return "9_";
+            }
+
+            if (string.Equals(actionName, "attack", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "attack1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "attack2", StringComparison.OrdinalIgnoreCase)
+                || actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "0_" + actionName;
+            }
+
+            if (string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
+                || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "1_" + actionName;
+            }
+
+            return "2_" + actionName;
+        }
+
+        private void UpdateAssemblerAvatarOverride()
+        {
+            if (Assembler != null)
+            {
+                Assembler.OverrideAvatarPart = GetActiveAvatarTransform()?.AvatarPart;
+            }
+
+            SyncAssemblerActionLayerContext();
+        }
+
+        private void SyncAssemblerActionLayerContext()
+        {
+            if (Assembler == null)
+            {
+                return;
+            }
+
+            Assembler.PreparedActionSpeedDegree = Build?.GetEffectiveWeaponAttackSpeed() ?? 6;
+            Assembler.PreparedWalkSpeed = (int)Math.Round(Build?.Speed ?? 100f);
+            Assembler.HeldActionFrameDelay = _sustainedSkillAnimation;
+            Assembler.CurrentFacingRight = FacingRight;
+        }
+
+        private string ResolveAvatarActionLayerCoordinatorActionName(string actionName)
+        {
+            string resolvedActionName = actionName;
+            int activeTransformSkillId = GetActiveAvatarTransform()?.SkillId ?? 0;
+            string mechanicResolvedActionName = AvatarActionLayerCoordinator.ResolveMechanicTankOneTimeActionName(
+                resolvedActionName,
+                activeTransformSkillId);
+            if (mechanicResolvedActionName != null)
+            {
+                resolvedActionName = mechanicResolvedActionName;
+            }
+
+            return AvatarActionLayerCoordinator.ResolvePreparedActionName(
+                resolvedActionName,
+                HasActiveMorphTransform);
+        }
+
         /// <summary>
         /// Get movement speed based on current state (in pixels per second)
         /// Official formula: maxSpeed = shoeWalkSpeed * physicsWalkSpeed * footholdWalk
@@ -1376,7 +16346,8 @@ namespace HaCreator.MapSimulator.Character
         private float GetMoveSpeed()
         {
             // Get character Speed stat (default 100)
-            float characterSpeed = Build?.Speed ?? 100f;
+            float characterSpeed = (Build?.Speed ?? 100f) * _externalMoveSpeedMultiplier;
+            characterSpeed = _moveSpeedCapResolver?.Invoke(characterSpeed) ?? characterSpeed;
 
             // Official client formula:
             //   maxSpeed = CAttrShoe::walkSpeed * (dWalkSpeed * footholdDrag)
@@ -1389,8 +16360,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (State == PlayerState.Swimming)
             {
-                // Swimming uses swimSpeedDec multiplier (from Physics.img)
-                return characterSpeed * WalkSpeedScale * CVecCtrl.SwimSpeedFactor;
+                return (float)PhysicsConstants.Instance.SwimSpeed;
+            }
+            else if (State == PlayerState.Flying)
+            {
+                return (float)PhysicsConstants.Instance.FlySpeed;
             }
             else if (State == PlayerState.Ladder || State == PlayerState.Rope)
             {
@@ -1424,5 +16398,259 @@ namespace HaCreator.MapSimulator.Character
         }
 
         #endregion
+    }
+
+    public sealed class PlayerMovementSyncSnapshot
+    {
+        public PlayerMovementSyncSnapshot(PassivePositionSnapshot passivePosition, System.Collections.Generic.List<MovePathElement> movePath)
+            : this(passivePosition, movePath, null, Rectangle.Empty)
+        {
+        }
+
+        public PlayerMovementSyncSnapshot(
+            PassivePositionSnapshot passivePosition,
+            System.Collections.Generic.List<MovePathElement> movePath,
+            System.Collections.Generic.IReadOnlyList<byte> passiveKeyPadStates,
+            Rectangle passiveMoveBounds)
+        {
+            PassivePosition = passivePosition;
+            MovePath = movePath ?? throw new ArgumentNullException(nameof(movePath));
+            PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<byte>();
+            PassiveMoveBounds = passiveMoveBounds;
+        }
+
+        public PassivePositionSnapshot PassivePosition { get; }
+        public System.Collections.Generic.List<MovePathElement> MovePath { get; }
+        public System.Collections.Generic.IReadOnlyList<byte> PassiveKeyPadStates { get; }
+        public Rectangle PassiveMoveBounds { get; }
+
+        public byte[] Encode()
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream);
+
+            writer.Write((byte)3);
+            WriteSnapshot(writer, PassivePosition);
+            writer.Write(MovePath.Count);
+
+            for (int i = 0; i < MovePath.Count; i++)
+            {
+                WriteElement(writer, MovePath[i]);
+            }
+
+            writer.Write(PassiveKeyPadStates.Count);
+            for (int i = 0; i < PassiveKeyPadStates.Count; i++)
+            {
+                writer.Write(PassiveKeyPadStates[i]);
+            }
+
+            writer.Write(PassiveMoveBounds.Left);
+            writer.Write(PassiveMoveBounds.Top);
+            writer.Write(PassiveMoveBounds.Right);
+            writer.Write(PassiveMoveBounds.Bottom);
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        public static PlayerMovementSyncSnapshot Decode(byte[] data)
+        {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            using var stream = new MemoryStream(data, writable: false);
+            using var reader = new BinaryReader(stream);
+
+            byte version = reader.ReadByte();
+            if (version != 1 && version != 2 && version != 3)
+            {
+                throw new InvalidDataException($"Unsupported movement snapshot version: {version}");
+            }
+
+            PassivePositionSnapshot passivePosition = ReadSnapshot(reader, version);
+            int count = reader.ReadInt32();
+            var movePath = new System.Collections.Generic.List<MovePathElement>(count);
+
+            for (int i = 0; i < count; i++)
+            {
+                movePath.Add(ReadElement(reader, version));
+            }
+
+            System.Collections.Generic.IReadOnlyList<byte> passiveKeyPadStates = Array.Empty<byte>();
+            Rectangle passiveMoveBounds = Rectangle.Empty;
+            if (version >= 3)
+            {
+                int passiveKeyPadStateCount = reader.ReadInt32();
+                byte[] passiveKeyPadStateValues = new byte[passiveKeyPadStateCount];
+                for (int i = 0; i < passiveKeyPadStateValues.Length; i++)
+                {
+                    passiveKeyPadStateValues[i] = reader.ReadByte();
+                }
+
+                int left = reader.ReadInt32();
+                int top = reader.ReadInt32();
+                int right = reader.ReadInt32();
+                int bottom = reader.ReadInt32();
+                passiveKeyPadStates = passiveKeyPadStateValues;
+                passiveMoveBounds = new Rectangle(left, top, right - left, bottom - top);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath, passiveKeyPadStates, passiveMoveBounds);
+        }
+
+        public PassivePositionSnapshot SampleAtTime(int currentTime)
+        {
+            if (MovePath.Count == 0 || currentTime >= PassivePosition.TimeStamp)
+            {
+                return PassivePosition;
+            }
+
+            if (currentTime <= MovePath[0].TimeStamp)
+            {
+                return ToPassivePosition(MovePath[0]);
+            }
+
+            for (int i = 0; i < MovePath.Count; i++)
+            {
+                MovePathElement start = MovePath[i];
+                int segmentStart = start.TimeStamp;
+                int segmentEnd = i + 1 < MovePath.Count
+                    ? MovePath[i + 1].TimeStamp
+                    : Math.Max(start.TimeStamp + start.Duration, PassivePosition.TimeStamp);
+
+                if (currentTime > segmentEnd)
+                {
+                    continue;
+                }
+
+                if (i + 1 >= MovePath.Count || segmentEnd <= segmentStart)
+                {
+                    return currentTime >= PassivePosition.TimeStamp
+                        ? PassivePosition
+                        : ToPassivePosition(start);
+                }
+
+                MovePathElement end = MovePath[i + 1];
+                float t = (float)(currentTime - segmentStart) / (segmentEnd - segmentStart);
+                t = Math.Clamp(t, 0f, 1f);
+
+                return new PassivePositionSnapshot
+                {
+                    X = LerpInt(start.X, end.X, t),
+                    Y = LerpInt(start.Y, end.Y, t),
+                    VelocityX = LerpShort(start.VelocityX, end.VelocityX, t),
+                    VelocityY = LerpShort(start.VelocityY, end.VelocityY, t),
+                    Action = t < 1f ? start.Action : end.Action,
+                    FootholdId = t < 1f ? start.FootholdId : end.FootholdId,
+                    TimeStamp = currentTime,
+                    FacingRight = t < 0.5f ? start.FacingRight : end.FacingRight,
+                    MovePathAttribute = t < 0.5f ? start.MovePathAttribute : end.MovePathAttribute
+                };
+            }
+
+            return PassivePosition;
+        }
+
+        private static void WriteSnapshot(BinaryWriter writer, PassivePositionSnapshot snapshot)
+        {
+            writer.Write(snapshot.X);
+            writer.Write(snapshot.Y);
+            writer.Write(snapshot.VelocityX);
+            writer.Write(snapshot.VelocityY);
+            writer.Write((byte)snapshot.Action);
+            writer.Write(snapshot.FootholdId);
+            writer.Write(snapshot.TimeStamp);
+            writer.Write(snapshot.FacingRight);
+            writer.Write(snapshot.MovePathAttribute);
+        }
+
+        private static PassivePositionSnapshot ReadSnapshot(BinaryReader reader, byte version)
+        {
+            PassivePositionSnapshot snapshot = new PassivePositionSnapshot
+            {
+                X = reader.ReadInt32(),
+                Y = reader.ReadInt32(),
+                VelocityX = reader.ReadInt16(),
+                VelocityY = reader.ReadInt16(),
+                Action = (MoveAction)reader.ReadByte(),
+                FootholdId = reader.ReadInt32(),
+                TimeStamp = reader.ReadInt32(),
+                FacingRight = reader.ReadBoolean()
+            };
+
+            if (version >= 2)
+            {
+                snapshot.MovePathAttribute = reader.ReadInt32();
+            }
+
+            return snapshot;
+        }
+
+        private static void WriteElement(BinaryWriter writer, MovePathElement element)
+        {
+            writer.Write(element.X);
+            writer.Write(element.Y);
+            writer.Write(element.VelocityX);
+            writer.Write(element.VelocityY);
+            writer.Write((byte)element.Action);
+            writer.Write(element.FootholdId);
+            writer.Write(element.TimeStamp);
+            writer.Write(element.Duration);
+            writer.Write(element.FacingRight);
+            writer.Write(element.StatChanged);
+            writer.Write(element.MovePathAttribute);
+        }
+
+        private static MovePathElement ReadElement(BinaryReader reader, byte version = 2)
+        {
+            MovePathElement element = new MovePathElement
+            {
+                X = reader.ReadInt32(),
+                Y = reader.ReadInt32(),
+                VelocityX = reader.ReadInt16(),
+                VelocityY = reader.ReadInt16(),
+                Action = (MoveAction)reader.ReadByte(),
+                FootholdId = reader.ReadInt32(),
+                TimeStamp = reader.ReadInt32(),
+                Duration = reader.ReadInt16(),
+                FacingRight = reader.ReadBoolean(),
+                StatChanged = reader.ReadBoolean()
+            };
+
+            if (version >= 2)
+            {
+                element.MovePathAttribute = reader.ReadInt32();
+            }
+
+            return element;
+        }
+
+        private static PassivePositionSnapshot ToPassivePosition(MovePathElement element)
+        {
+            return new PassivePositionSnapshot
+            {
+                X = element.X,
+                Y = element.Y,
+                VelocityX = element.VelocityX,
+                VelocityY = element.VelocityY,
+                Action = element.Action,
+                FootholdId = element.FootholdId,
+                TimeStamp = element.TimeStamp,
+                FacingRight = element.FacingRight,
+                MovePathAttribute = element.MovePathAttribute
+            };
+        }
+
+        private static int LerpInt(int start, int end, float t)
+        {
+            return (int)Math.Round(start + ((end - start) * t));
+        }
+
+        private static short LerpShort(short start, short end, float t)
+        {
+            return (short)Math.Round(start + ((end - start) * t));
+        }
     }
 }

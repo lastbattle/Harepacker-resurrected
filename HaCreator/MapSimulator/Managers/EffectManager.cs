@@ -85,11 +85,17 @@ namespace HaCreator.MapSimulator.Managers
         #region Screen Effects Shortcuts
 
         /// <summary>
-        /// Trigger screen tremble effect
+        /// Trigger screen tremble effect using the recovered Effect_Tremble owner arguments.
         /// </summary>
-        public void Tremble(int intensity, bool horizontal, int offsetX, int offsetY, bool randomize, int tickCount)
+        public void Tremble(
+            int force,
+            bool heavyAndShort,
+            int delayMs,
+            int additionalTimeMs,
+            bool enforce,
+            int currentTimeMs)
         {
-            _screenEffects.TriggerTremble(intensity, horizontal, offsetX, offsetY, randomize, tickCount);
+            _screenEffects.TriggerTremble(force, heavyAndShort, delayMs, additionalTimeMs, enforce, currentTimeMs);
         }
 
         /// <summary>

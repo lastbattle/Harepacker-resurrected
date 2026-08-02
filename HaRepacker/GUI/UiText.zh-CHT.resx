@@ -617,6 +617,12 @@ Copyright (C) 2009-2015 haha01haha01</value>
   <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
     <value>MP3 audio (*.mp3)|*.mp3</value>
   </data>
+  <data name="Audio files (*.mp3;*.wav)|*.mp3;*.wav" xml:space="preserve">
+    <value>音訊檔案 (*.mp3;*.wav)|*.mp3;*.wav</value>
+  </data>
+  <data name="WAV audio (*.wav)|*.wav" xml:space="preserve">
+    <value>WAV 音訊 (*.wav)|*.wav</value>
+  </data>
   <data name="Name" xml:space="preserve">
     <value>名稱</value>
   </data>
@@ -902,6 +908,9 @@ Copyright (C) 2009-2015 haha01haha01</value>
   <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
     <value>選擇小型 WZ 檔案，並平行搜尋 IV 金鑰空間。</value>
   </data>
+  <data name="Select audio file" xml:space="preserve">
+    <value>選擇音訊檔案</value>
+  </data>
   <data name="Select All" xml:space="preserve">
     <value>選擇 全部</value>
   </data>
@@ -925,6 +934,9 @@ Copyright (C) 2009-2015 haha01haha01</value>
   </data>
   <data name="Select where to save the MP3 file" xml:space="preserve">
     <value>選擇 where 至 儲存 the MP3 檔案</value>
+  </data>
+  <data name="Select where to save the WAV file" xml:space="preserve">
+    <value>選擇 WAV 檔案的儲存位置</value>
   </data>
   <data name="Settings" xml:space="preserve">
     <value>設置</value>

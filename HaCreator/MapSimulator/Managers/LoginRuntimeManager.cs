@@ -1,0 +1,763 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    public enum LoginStep
+    {
+        Title = 0,
+        WorldSelect = 1,
+        CharacterSelect = 2,
+        NewCharacter = 3,
+        NewCharacterAvatar = 4,
+        ViewAllCharacters = 5,
+        EnteringField = 6,
+    }
+
+    public enum LoginPacketType
+    {
+        CheckPasswordResult = 0,
+        GuestIdLoginResult = 1,
+        AccountInfoResult = 2,
+        CheckUserLimitResult = 3,
+        SetAccountResult = 4,
+        ConfirmEulaResult = 5,
+        CheckPinCodeResult = 6,
+        UpdatePinCodeResult = 7,
+        ViewAllCharResult = 8,
+        SelectCharacterByVacResult = 9,
+        WorldInformation = 10,
+        SelectWorldResult = 11,
+        SelectCharacterResult = 12,
+        CheckDuplicatedIdResult = 13,
+        CreateNewCharacterResult = 14,
+        DeleteCharacterResult = 15,
+        EnableSpwResult = 21,
+        LatestConnectedWorld = 24,
+        RecommendWorldMessage = 25,
+        ExtraCharInfoResult = 26,
+        CheckSpwResult = 27,
+        SetField = 141,
+        SetITC = 142,
+        SetCashShop = 143,
+        SetBackEffect = 144,
+        SetMapObjectVisible = 145,
+        ClearBackEffect = 146,
+        CharacterSaleCheckDuplicatedIdResult = 413,
+        CharacterSaleCreateNewCharacterResult = 414,
+    }
+
+    /// <summary>
+    /// Minimal login bootstrap runtime mirroring the client-owned login step machine.
+    /// This is the pre-field owner that advances delayed step transitions and routes
+    /// login-specific packet notifications into step changes.
+    /// </summary>
+    public class LoginRuntimeManager
+    {
+        public const int DefaultStepChangeDelayMs = 800;
+
+        private readonly Dictionary<LoginPacketType, Action<int>> _packetHandlers;
+        private readonly Dictionary<LoginPacketType, int> _packetCounts = new();
+
+        public LoginRuntimeManager()
+        {
+            _packetHandlers = new Dictionary<LoginPacketType, Action<int>>
+            {
+                [LoginPacketType.CheckPasswordResult] = HandleCheckPasswordResult,
+                [LoginPacketType.GuestIdLoginResult] = HandleGuestIdLoginResult,
+                [LoginPacketType.AccountInfoResult] = HandleAccountInfoResult,
+                [LoginPacketType.CheckUserLimitResult] = HandleCheckUserLimitResult,
+                [LoginPacketType.SetAccountResult] = HandleSetAccountResult,
+                [LoginPacketType.ConfirmEulaResult] = HandleConfirmEulaResult,
+                [LoginPacketType.CheckPinCodeResult] = HandleCheckPinCodeResult,
+                [LoginPacketType.UpdatePinCodeResult] = HandleUpdatePinCodeResult,
+                [LoginPacketType.WorldInformation] = HandleWorldInformation,
+                [LoginPacketType.SelectWorldResult] = HandleSelectWorldResult,
+                [LoginPacketType.SelectCharacterResult] = HandleSelectCharacterResult,
+                [LoginPacketType.ViewAllCharResult] = HandleViewAllCharResult,
+                [LoginPacketType.SelectCharacterByVacResult] = HandleSelectCharacterByVacResult,
+                [LoginPacketType.CheckDuplicatedIdResult] = HandleCheckDuplicatedIdResult,
+                [LoginPacketType.CreateNewCharacterResult] = HandleCreateNewCharacterResult,
+                [LoginPacketType.DeleteCharacterResult] = HandleDeleteCharacterResult,
+                [LoginPacketType.EnableSpwResult] = HandleEnableSpwResult,
+                [LoginPacketType.RecommendWorldMessage] = HandleRecommendWorldMessage,
+                [LoginPacketType.LatestConnectedWorld] = HandleLatestConnectedWorld,
+                [LoginPacketType.ExtraCharInfoResult] = HandleExtraCharInfoResult,
+                [LoginPacketType.CheckSpwResult] = HandleCheckSpwResult,
+                [LoginPacketType.SetField] = HandleSetField,
+                [LoginPacketType.SetITC] = HandleSetItc,
+                [LoginPacketType.SetCashShop] = HandleSetCashShop,
+                [LoginPacketType.SetBackEffect] = HandleSetBackEffect,
+                [LoginPacketType.SetMapObjectVisible] = HandleSetMapObjectVisible,
+                [LoginPacketType.ClearBackEffect] = HandleClearBackEffect,
+                [LoginPacketType.CharacterSaleCheckDuplicatedIdResult] = HandleCharacterSaleCheckDuplicatedIdResult,
+                [LoginPacketType.CharacterSaleCreateNewCharacterResult] = HandleCharacterSaleCreateNewCharacterResult,
+            };
+        }
+
+        public LoginStep CurrentStep { get; private set; } = LoginStep.Title;
+        public LoginStep BaseStep { get; private set; } = LoginStep.Title;
+        public LoginStep? PendingStep { get; private set; }
+        public int StepChangeRequestedAt { get; private set; } = int.MinValue;
+        public int PendingStepDelayMs { get; private set; }
+        public int StepChangeAt { get; private set; } = int.MinValue;
+        public string PendingTransitionReason { get; private set; }
+        public LoginPacketType? LastPacketType { get; private set; }
+        public string LastEventSummary { get; private set; } = "Login runtime not initialized.";
+        public bool HasWorldInformation { get; private set; }
+        public bool CharacterSelectReady { get; private set; }
+        public bool FieldEntryRequested { get; private set; }
+        public bool RequestSent { get; private set; }
+        public int ForwardedStagePacketCount { get; private set; }
+        public int ForwardedMapLoadPacketCount { get; private set; }
+        public int AppliedStagePacketCount { get; private set; }
+        public int AppliedMapLoadPacketCount { get; private set; }
+        public LoginPacketType? LastForwardedPacketType { get; private set; }
+        public string LastForwardedPacketTarget { get; private set; }
+        public bool? LastForwardedPacketApplied { get; private set; }
+        public string LastForwardedPacketDetail { get; private set; }
+
+        public bool BlocksFieldSimulation => !FieldEntryRequested;
+
+        public void Initialize(int currentTickCount)
+        {
+            Reset();
+            CurrentStep = LoginStep.Title;
+            BaseStep = LoginStep.Title;
+            LastEventSummary = "Initialized login runtime at title step.";
+            ScheduleStepChange(LoginStep.Title, currentTickCount, 0, "Bootstrap");
+            Update(currentTickCount);
+        }
+
+        public void Reset()
+        {
+            CurrentStep = LoginStep.Title;
+            BaseStep = LoginStep.Title;
+            PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
+            StepChangeAt = int.MinValue;
+            PendingTransitionReason = null;
+            LastPacketType = null;
+            LastEventSummary = "Login runtime reset.";
+            HasWorldInformation = false;
+            CharacterSelectReady = false;
+            FieldEntryRequested = false;
+            RequestSent = false;
+            ForwardedStagePacketCount = 0;
+            ForwardedMapLoadPacketCount = 0;
+            AppliedStagePacketCount = 0;
+            AppliedMapLoadPacketCount = 0;
+            LastForwardedPacketType = null;
+            LastForwardedPacketTarget = null;
+            LastForwardedPacketApplied = null;
+            LastForwardedPacketDetail = null;
+            _packetCounts.Clear();
+        }
+
+        public bool Update(int currentTickCount)
+        {
+            if (!PendingStep.HasValue || StepChangeAt == int.MinValue)
+            {
+                return false;
+            }
+
+            if (unchecked(currentTickCount - StepChangeAt) < 0)
+            {
+                return false;
+            }
+
+            CurrentStep = PendingStep.Value;
+            if (CurrentStep != LoginStep.EnteringField)
+            {
+                BaseStep = CurrentStep;
+            }
+
+            string reason = PendingTransitionReason;
+            PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
+            StepChangeAt = int.MinValue;
+            PendingTransitionReason = null;
+            LastEventSummary = string.IsNullOrWhiteSpace(reason)
+                ? $"Advanced to {CurrentStep}."
+                : $"{reason} -> {CurrentStep}.";
+            return true;
+        }
+
+        public void ForceStep(LoginStep step, string reason = null)
+        {
+            CurrentStep = step;
+            if (step != LoginStep.EnteringField)
+            {
+                BaseStep = step;
+            }
+
+            PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
+            StepChangeAt = int.MinValue;
+            PendingTransitionReason = null;
+            CharacterSelectReady = step is LoginStep.CharacterSelect or LoginStep.ViewAllCharacters;
+            FieldEntryRequested = step == LoginStep.EnteringField;
+            LastEventSummary = string.IsNullOrWhiteSpace(reason)
+                ? $"Forced step to {step}."
+                : $"{reason} -> {step}.";
+        }
+
+        public void SetCharacterSelectReady(bool ready)
+        {
+            CharacterSelectReady = ready;
+        }
+
+        public void ScheduleStepChange(LoginStep step, int currentTickCount, int delayMs, string reason = null)
+        {
+            int normalizedDelay = Math.Max(0, delayMs);
+            PendingStep = step;
+            StepChangeRequestedAt = currentTickCount;
+            PendingStepDelayMs = normalizedDelay;
+            StepChangeAt = currentTickCount + normalizedDelay;
+            PendingTransitionReason = reason;
+        }
+
+        public bool CancelPendingStep(string reason = null)
+        {
+            if (!PendingStep.HasValue)
+            {
+                return false;
+            }
+
+            LoginStep cancelledStep = PendingStep.Value;
+            PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
+            StepChangeAt = int.MinValue;
+            PendingTransitionReason = null;
+            LastEventSummary = string.IsNullOrWhiteSpace(reason)
+                ? $"Cancelled pending transition to {cancelledStep}."
+                : $"{reason} -> stayed on {CurrentStep}.";
+            return true;
+        }
+
+        public bool TryDispatchPacket(LoginPacketType packetType, int currentTickCount, out string message)
+        {
+            LastPacketType = packetType;
+            _packetCounts.TryGetValue(packetType, out int count);
+            _packetCounts[packetType] = count + 1;
+
+            if (_packetHandlers.TryGetValue(packetType, out Action<int> handler))
+            {
+                handler(currentTickCount);
+                message = LastEventSummary;
+                return true;
+            }
+
+            LastEventSummary = $"Routed {packetType} without a simulator-side state change.";
+            message = LastEventSummary;
+            return false;
+        }
+
+        public void MarkRequestSent(string summary = null)
+        {
+            RequestSent = true;
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
+        public void ClearRequestSent(string summary = null)
+        {
+            RequestSent = false;
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
+        public int GetPacketCount(LoginPacketType packetType)
+        {
+            return _packetCounts.TryGetValue(packetType, out int count) ? count : 0;
+        }
+
+        public void OverrideLastEventSummary(string summary)
+        {
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
+        public void ApplySelectCharacterByVacResultProfile(
+            LoginSelectCharacterByVacResultProfile profile,
+            int currentTickCount)
+        {
+            // Client evidence: CLogin::OnSelectCharacterByVACResult clears m_bRequestSent
+            // before branching on success, title-return failures, or local notice failures.
+            RequestSent = false;
+
+            if (profile == null)
+            {
+                LastEventSummary = "Received SelectCharacterByVacResult without a decoded packet profile.";
+                return;
+            }
+
+            if (profile.IsConnectSuccess)
+            {
+                FieldEntryRequested = true;
+                ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterByVacResult");
+                Update(currentTickCount);
+                return;
+            }
+
+            if (profile.ReturnsToTitle)
+            {
+                ForceStep(LoginStep.Title, "Packet-authored SelectCharacterByVACResult returned the login flow to title.");
+                return;
+            }
+
+            LastEventSummary = "Packet-authored SelectCharacterByVACResult stayed on the active login entry surface.";
+        }
+
+        public void ApplySelectCharacterResultProfile(
+            LoginSelectCharacterResultProfile profile,
+            int currentTickCount)
+        {
+            // Client evidence: CLogin::OnSelectCharacterResult clears m_bRequestSent
+            // before branching on success, title-return failures, or local notice failures.
+            RequestSent = false;
+
+            if (profile == null)
+            {
+                LastEventSummary = "Received SelectCharacterResult without a decoded packet profile.";
+                return;
+            }
+
+            if (profile.IsSuccess)
+            {
+                FieldEntryRequested = true;
+                ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterResult");
+                Update(currentTickCount);
+                return;
+            }
+
+            if (profile.ReturnsToTitle)
+            {
+                ForceStep(LoginStep.Title, "Packet-authored SelectCharacterResult returned the login flow to title.");
+                return;
+            }
+
+            LastEventSummary = "Packet-authored SelectCharacterResult stayed on the active character-entry surface.";
+        }
+
+        public string DescribeStatus()
+        {
+            var builder = new StringBuilder();
+            builder.Append("Step: ").Append(CurrentStep);
+            builder.Append(" | Base: ").Append(BaseStep);
+            builder.Append(" | Field entry: ").Append(FieldEntryRequested ? "requested" : "blocked");
+            builder.Append(" | Request sent: ").Append(RequestSent ? "yes" : "no");
+
+            if (PendingStep.HasValue)
+            {
+                builder.AppendLine();
+                builder.Append("Pending: ").Append(PendingStep.Value);
+                builder.Append(" @ ").Append(StepChangeAt);
+                if (!string.IsNullOrWhiteSpace(PendingTransitionReason))
+                {
+                    builder.Append(" | ").Append(PendingTransitionReason);
+                }
+            }
+
+            builder.AppendLine();
+            builder.Append("Last packet: ").Append(LastPacketType?.ToString() ?? "None");
+            builder.Append(" | Worlds loaded: ").Append(HasWorldInformation ? "yes" : "no");
+            builder.Append(" | Character select ready: ").Append(CharacterSelectReady ? "yes" : "no");
+            builder.Append(" | Stage handoff: ").Append(ForwardedStagePacketCount.ToString());
+            builder.Append('/').Append(AppliedStagePacketCount.ToString()).Append(" applied");
+            builder.Append(" | Map-load handoff: ").Append(ForwardedMapLoadPacketCount.ToString());
+            builder.Append('/').Append(AppliedMapLoadPacketCount.ToString()).Append(" applied");
+            if (LastForwardedPacketType.HasValue)
+            {
+                builder.AppendLine();
+                builder.Append("Last handoff: ").Append(LastForwardedPacketType.Value);
+                builder.Append(" -> ").Append(LastForwardedPacketTarget ?? "unknown target");
+                builder.Append(" | ").Append(LastForwardedPacketApplied == true ? "applied" : "failed");
+                if (!string.IsNullOrWhiteSpace(LastForwardedPacketDetail))
+                {
+                    builder.Append(" | ").Append(LastForwardedPacketDetail);
+                }
+            }
+            builder.AppendLine();
+            builder.Append("Last event: ").Append(LastEventSummary);
+            return builder.ToString();
+        }
+
+        public void RecordForwardedStageTransitionResult(LoginPacketType packetType, bool applied, string detail)
+        {
+            if (!TryResolveForwardedPacketTarget(packetType, out string target, out bool stageOwned))
+            {
+                return;
+            }
+
+            LastForwardedPacketType = packetType;
+            LastForwardedPacketTarget = target;
+            LastForwardedPacketApplied = applied;
+            LastForwardedPacketDetail = string.IsNullOrWhiteSpace(detail) ? null : detail.Trim();
+
+            if (applied)
+            {
+                if (stageOwned)
+                {
+                    AppliedStagePacketCount++;
+                }
+                else
+                {
+                    AppliedMapLoadPacketCount++;
+                }
+            }
+
+            string owner = packetType is LoginPacketType.CharacterSaleCheckDuplicatedIdResult
+                or LoginPacketType.CharacterSaleCreateNewCharacterResult
+                ? "CField::OnCharacterSale"
+                : "CLogin::OnPacket";
+            string summary = $"{owner} forwarded {DescribeForwardedPacket(packetType)} to {target}";
+            if (applied)
+            {
+                LastEventSummary = string.IsNullOrWhiteSpace(LastForwardedPacketDetail)
+                    ? $"{summary}."
+                    : $"{summary}. {LastForwardedPacketDetail}";
+            }
+            else
+            {
+                LastEventSummary = string.IsNullOrWhiteSpace(LastForwardedPacketDetail)
+                    ? $"{summary}, but the simulator relay could not apply it."
+                    : $"{summary}, but the simulator relay could not apply it. {LastForwardedPacketDetail}";
+            }
+        }
+
+        public static bool TryParseStep(string text, out LoginStep step)
+        {
+            step = LoginStep.Title;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim().Replace("-", string.Empty).Replace("_", string.Empty);
+            return normalized.ToLowerInvariant() switch
+            {
+                "title" or "login" => Assign(LoginStep.Title, out step),
+                "world" or "worldselect" => Assign(LoginStep.WorldSelect, out step),
+                "char" or "character" or "characterselect" => Assign(LoginStep.CharacterSelect, out step),
+                "newchar" or "newcharacter" => Assign(LoginStep.NewCharacter, out step),
+                "avatar" or "newcharacteravatar" or "newcharavatar" => Assign(LoginStep.NewCharacterAvatar, out step),
+                "vac" or "viewallcharacters" or "viewall" => Assign(LoginStep.ViewAllCharacters, out step),
+                "enter" or "enterfield" or "enteringfield" => Assign(LoginStep.EnteringField, out step),
+                _ => Enum.TryParse(text, true, out step),
+            };
+        }
+
+        public static bool TryParsePacketType(string text, out LoginPacketType packetType)
+        {
+            packetType = LoginPacketType.CheckPasswordResult;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            int namespaceSeparatorIndex = Math.Max(trimmed.LastIndexOf("::", StringComparison.Ordinal), trimmed.LastIndexOf('.'));
+            if (namespaceSeparatorIndex >= 0 && namespaceSeparatorIndex + 1 < trimmed.Length)
+            {
+                trimmed = trimmed[(namespaceSeparatorIndex + 1)..];
+            }
+
+            string normalized = trimmed.Replace("-", string.Empty).Replace("_", string.Empty);
+            return normalized.ToLowerInvariant() switch
+            {
+                "checkpassword" => Assign(LoginPacketType.CheckPasswordResult, out packetType),
+                "oncheckpasswordresult" => Assign(LoginPacketType.CheckPasswordResult, out packetType),
+                "guestlogin" or "guestidlogin" => Assign(LoginPacketType.GuestIdLoginResult, out packetType),
+                "onguestidloginresult" => Assign(LoginPacketType.GuestIdLoginResult, out packetType),
+                "accountinfo" => Assign(LoginPacketType.AccountInfoResult, out packetType),
+                "onaccountinforesult" => Assign(LoginPacketType.AccountInfoResult, out packetType),
+                "checkuserlimit" or "userlimit" => Assign(LoginPacketType.CheckUserLimitResult, out packetType),
+                "oncheckuserlimitresult" => Assign(LoginPacketType.CheckUserLimitResult, out packetType),
+                "setaccount" => Assign(LoginPacketType.SetAccountResult, out packetType),
+                "onsetaccountresult" => Assign(LoginPacketType.SetAccountResult, out packetType),
+                "confirmeula" or "eula" => Assign(LoginPacketType.ConfirmEulaResult, out packetType),
+                "onconfirmeularesult" => Assign(LoginPacketType.ConfirmEulaResult, out packetType),
+                "checkpincode" or "checkpin" or "pic" => Assign(LoginPacketType.CheckPinCodeResult, out packetType),
+                "oncheckpincoderesult" => Assign(LoginPacketType.CheckPinCodeResult, out packetType),
+                "updatepincode" or "updatepin" or "updatepic" => Assign(LoginPacketType.UpdatePinCodeResult, out packetType),
+                "onupdatepincoderesult" => Assign(LoginPacketType.UpdatePinCodeResult, out packetType),
+                "worldinfo" or "worldinformation" => Assign(LoginPacketType.WorldInformation, out packetType),
+                "onworldinformation" => Assign(LoginPacketType.WorldInformation, out packetType),
+                "selectworld" => Assign(LoginPacketType.SelectWorldResult, out packetType),
+                "onselectworldresult" => Assign(LoginPacketType.SelectWorldResult, out packetType),
+                "selectchar" or "selectcharacter" => Assign(LoginPacketType.SelectCharacterResult, out packetType),
+                "onselectcharacterresult" => Assign(LoginPacketType.SelectCharacterResult, out packetType),
+                "checkduplicatedid" or "checkduplicateid" or "checkduplicate" or "checkdup" => Assign(LoginPacketType.CheckDuplicatedIdResult, out packetType),
+                "oncheckduplicatedidresult" => Assign(LoginPacketType.CheckDuplicatedIdResult, out packetType),
+                "newcharresult" or "createnewcharacter" or "createnewcharacterresult" => Assign(LoginPacketType.CreateNewCharacterResult, out packetType),
+                "oncreatenewcharacterresult" => Assign(LoginPacketType.CreateNewCharacterResult, out packetType),
+                "deletechar" or "deletecharacter" or "deletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
+                "ondeletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
+                "enablespw" => Assign(LoginPacketType.EnableSpwResult, out packetType),
+                "onenablespwresult" => Assign(LoginPacketType.EnableSpwResult, out packetType),
+                "viewallchar" or "viewallcharacters" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
+                "onviewallcharresult" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
+                "vac" or "selectcharacterbyvac" or "selectcharbyvac" => Assign(LoginPacketType.SelectCharacterByVacResult, out packetType),
+                "onselectcharacterbyvacresult" => Assign(LoginPacketType.SelectCharacterByVacResult, out packetType),
+                "recommendworld" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
+                "onrecommendworldmessage" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
+                "latestworld" or "latestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
+                "onlatestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
+                "extracharinfo" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
+                "onextracharinforesult" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
+                "checkspw" => Assign(LoginPacketType.CheckSpwResult, out packetType),
+                "oncheckspwresult" => Assign(LoginPacketType.CheckSpwResult, out packetType),
+                "setfield" or "field" => Assign(LoginPacketType.SetField, out packetType),
+                "onsetfield" => Assign(LoginPacketType.SetField, out packetType),
+                "setitc" or "itc" => Assign(LoginPacketType.SetITC, out packetType),
+                "onsetitc" => Assign(LoginPacketType.SetITC, out packetType),
+                "setcashshop" or "cashshop" => Assign(LoginPacketType.SetCashShop, out packetType),
+                "onsetcashshop" => Assign(LoginPacketType.SetCashShop, out packetType),
+                "setbackeffect" or "backeffect" => Assign(LoginPacketType.SetBackEffect, out packetType),
+                "onsetbackeffect" => Assign(LoginPacketType.SetBackEffect, out packetType),
+                "setmapobjectvisible" or "mapobjectvisible" or "objectvisible" => Assign(LoginPacketType.SetMapObjectVisible, out packetType),
+                "onsetmapobjectvisible" => Assign(LoginPacketType.SetMapObjectVisible, out packetType),
+                "clearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
+                "onclearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
+                "charactersalecheckduplicatedid" or "charactersalecheckduplicatedidresult" or "charsalecheckduplicatedid" or "charsalecheckduplicate" => Assign(LoginPacketType.CharacterSaleCheckDuplicatedIdResult, out packetType),
+                "oncharactersalecheckduplicatedidresult" or "cuicharactersaledlgoncheckduplicatedidresult" => Assign(LoginPacketType.CharacterSaleCheckDuplicatedIdResult, out packetType),
+                "charactersalecreatenewcharacter" or "charactersalecreatenewcharacterresult" or "charsalecreatenewcharacter" or "charsalenewcharresult" => Assign(LoginPacketType.CharacterSaleCreateNewCharacterResult, out packetType),
+                "oncharactersalecreatenewcharacterresult" or "cuicharactersaledlgoncreatenewcharacterresult" => Assign(LoginPacketType.CharacterSaleCreateNewCharacterResult, out packetType),
+                _ => Enum.TryParse(text, true, out packetType),
+            };
+        }
+
+        private void HandleCheckPasswordResult(int currentTickCount)
+        {
+            ScheduleStepChange(LoginStep.WorldSelect, currentTickCount, DefaultStepChangeDelayMs, "CheckPasswordResult");
+            LastEventSummary = "Received CheckPasswordResult and scheduled world-select transition.";
+        }
+
+        private void HandleGuestIdLoginResult(int currentTickCount)
+        {
+            LastEventSummary = "Received GuestIdLoginResult for the login bootstrap flow.";
+        }
+
+        private void HandleAccountInfoResult(int currentTickCount)
+        {
+            LastEventSummary = "Received AccountInfoResult for the login bootstrap flow.";
+        }
+
+        private void HandleWorldInformation(int currentTickCount)
+        {
+            HasWorldInformation = true;
+            LastEventSummary = "Received WorldInformation and populated the world-selection state.";
+        }
+
+        private void HandleCheckUserLimitResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckUserLimitResult and unlocked channel selection for the chosen world.";
+        }
+
+        private void HandleSetAccountResult(int currentTickCount)
+        {
+            LastEventSummary = "Received SetAccountResult and opened the account-migration or account-choice flow.";
+        }
+
+        private void HandleConfirmEulaResult(int currentTickCount)
+        {
+            LastEventSummary = "Received ConfirmEulaResult and opened the EULA confirmation flow.";
+        }
+
+        private void HandleCheckPinCodeResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckPinCodeResult and opened the PIC verification flow.";
+        }
+
+        private void HandleUpdatePinCodeResult(int currentTickCount)
+        {
+            LastEventSummary = "Received UpdatePinCodeResult and opened the PIC setup flow.";
+        }
+
+        private void HandleSelectWorldResult(int currentTickCount)
+        {
+            CharacterSelectReady = true;
+            ScheduleStepChange(LoginStep.CharacterSelect, currentTickCount, DefaultStepChangeDelayMs, "SelectWorldResult");
+            LastEventSummary = "Received SelectWorldResult and scheduled character-select transition.";
+        }
+
+        private void HandleSelectCharacterResult(int currentTickCount)
+        {
+            FieldEntryRequested = true;
+            ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterResult");
+            Update(currentTickCount);
+        }
+
+        private void HandleViewAllCharResult(int currentTickCount)
+        {
+            CharacterSelectReady = true;
+            ScheduleStepChange(LoginStep.ViewAllCharacters, currentTickCount, DefaultStepChangeDelayMs, "ViewAllCharResult");
+            LastEventSummary = "Received view-all-character data and scheduled the expanded roster step.";
+        }
+
+        private void HandleSelectCharacterByVacResult(int currentTickCount)
+        {
+            // Client evidence: CLogin::OnSelectCharacterByVACResult clears m_bRequestSent before decoding the result.
+            RequestSent = false;
+            FieldEntryRequested = true;
+            ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterByVacResult");
+            Update(currentTickCount);
+        }
+
+        private void HandleCheckDuplicatedIdResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckDuplicatedIdResult for the login new-character flow.";
+        }
+
+        private void HandleCreateNewCharacterResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CreateNewCharacterResult for the login bootstrap flow.";
+        }
+
+        private void HandleDeleteCharacterResult(int currentTickCount)
+        {
+            LastEventSummary = "Received DeleteCharacterResult for the login bootstrap flow.";
+        }
+
+        private void HandleEnableSpwResult(int currentTickCount)
+        {
+            LastEventSummary = "Received EnableSpwResult and opened the secondary-password setup choice.";
+        }
+
+        private void HandleRecommendWorldMessage(int currentTickCount)
+        {
+            LastEventSummary = "Received RecommendWorldMessage for the login bootstrap flow.";
+        }
+
+        private void HandleLatestConnectedWorld(int currentTickCount)
+        {
+            LastEventSummary = "Received LatestConnectedWorld for the login bootstrap flow.";
+        }
+
+        private void HandleExtraCharInfoResult(int currentTickCount)
+        {
+            LastEventSummary = "Received ExtraCharInfoResult for the login bootstrap flow.";
+        }
+
+        private void HandleCheckSpwResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckSpwResult and opened the secondary-password verification flow.";
+        }
+
+        private void HandleSetField(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed SetField(141) into the shared CStage::OnPacket handoff seam.";
+        }
+
+        private void HandleSetItc(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed SetITC(142) into the shared CStage::OnPacket handoff seam.";
+        }
+
+        private void HandleSetCashShop(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed SetCashShop(143) into the shared CStage::OnPacket handoff seam.";
+        }
+
+        private void HandleSetBackEffect(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed SetBackEffect(144) into the shared CMapLoadable::OnPacket handoff seam.";
+        }
+
+        private void HandleSetMapObjectVisible(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed SetMapObjectVisible(145) into the shared CMapLoadable::OnPacket handoff seam.";
+        }
+
+        private void HandleClearBackEffect(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "CLogin::OnPacket routed ClearBackEffect(146) into the shared CMapLoadable::OnPacket handoff seam.";
+        }
+
+        private void HandleCharacterSaleCheckDuplicatedIdResult(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CField::OnCharacterSale routed packet 413 into CUICharacterSaleDlg::OnCheckDuplicatedIDResult.";
+        }
+
+        private void HandleCharacterSaleCreateNewCharacterResult(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CField::OnCharacterSale routed packet 414 into CUICharacterSaleDlg::OnCreateNewCharacterResult.";
+        }
+
+        private static bool TryResolveForwardedPacketTarget(LoginPacketType packetType, out string target, out bool stageOwned)
+        {
+            switch (packetType)
+            {
+                case LoginPacketType.SetField:
+                case LoginPacketType.SetITC:
+                case LoginPacketType.SetCashShop:
+                    target = "CStage::OnPacket";
+                    stageOwned = true;
+                    return true;
+                case LoginPacketType.CharacterSaleCheckDuplicatedIdResult:
+                case LoginPacketType.CharacterSaleCreateNewCharacterResult:
+                    target = "CUICharacterSaleDlg::OnPacket";
+                    stageOwned = true;
+                    return true;
+                case LoginPacketType.SetBackEffect:
+                case LoginPacketType.SetMapObjectVisible:
+                case LoginPacketType.ClearBackEffect:
+                    target = "CMapLoadable::OnPacket";
+                    stageOwned = false;
+                    return true;
+                default:
+                    target = null;
+                    stageOwned = false;
+                    return false;
+            }
+        }
+
+        private static string DescribeForwardedPacket(LoginPacketType packetType)
+        {
+            return packetType switch
+            {
+                LoginPacketType.SetField => "SetField(141)",
+                LoginPacketType.SetITC => "SetITC(142)",
+                LoginPacketType.SetCashShop => "SetCashShop(143)",
+                LoginPacketType.SetBackEffect => "SetBackEffect(144)",
+                LoginPacketType.SetMapObjectVisible => "SetMapObjectVisible(145)",
+                LoginPacketType.ClearBackEffect => "ClearBackEffect(146)",
+                LoginPacketType.CharacterSaleCheckDuplicatedIdResult => "CharacterSaleCheckDuplicatedIdResult(413)",
+                LoginPacketType.CharacterSaleCreateNewCharacterResult => "CharacterSaleCreateNewCharacterResult(414)",
+                _ => packetType.ToString()
+            };
+        }
+
+        private static bool Assign(LoginStep value, out LoginStep step)
+        {
+            step = value;
+            return true;
+        }
+
+        private static bool Assign(LoginPacketType value, out LoginPacketType packetType)
+        {
+            packetType = value;
+            return true;
+        }
+    }
+}

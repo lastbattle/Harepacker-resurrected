@@ -1,0 +1,4638 @@
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
+using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
+using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using MapleLib.Converters;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Runtime.CompilerServices;
+
+
+namespace HaCreator.MapSimulator.Fields
+{
+    /// <summary>
+    /// Aggregates minigame field runtimes behind a single simulator surface.
+    /// This gives parity work a stable ownership seam before each minigame is
+    /// expanded into client-like packet, timerboard, and result handling.
+    /// </summary>
+    #region Memory Game / Match Cards (CMemoryGameDlg)
+    public enum MemoryGamePacketType
+    {
+        OpenRoom,
+        SetReady,
+        StartGame,
+        RevealCard,
+        BanUser,
+        ClaimTie,
+        GiveUp,
+        EndRoom,
+        SelectMatchCardsMode
+    }
+
+
+    /// <summary>
+    /// MiniRoom Match Cards runtime. This mirrors the client-owned dialog shape
+    /// by keeping a dedicated room shell, board state, ready/start button flow,
+    /// turn ownership, and delayed mismatch hide handling.
+    /// </summary>
+    public class MemoryGameField
+    {
+        private const int DefaultRows = 4;
+        private const int DefaultColumns = 4;
+        private const int DefaultGameKind = 0;
+        private const int DefaultLocalPlayerIndex = 0;
+        private const int DefaultMismatchHideDelayMs = 900;
+        private const int DefaultTurnSeconds = 15;
+        private const int DefaultResultSeconds = 5;
+        private const int DefaultRemoteActionDelayMs = 600;
+        private const int ClientDialogWidth = 734;
+        private const int ClientDialogHeight = 429;
+        private const int ClientBoardLeft = 48;
+        private const int ClientBoardTop = 36;
+        private const int ClientBoardWidth = 292;
+        private const int ClientBoardHeight = 330;
+        private const int ClientTurnIndicatorY = 55;
+        private const int ClientTurnIndicatorLeftX = 402;
+        private const int ClientTurnIndicatorRightX = 488;
+        private const int ClientNameBarY = 149;
+        private const int ClientNameBarLeftX = 404;
+        private const int ClientNameBarRightX = 490;
+        private const int ClientRecordPanelX = 404;
+        private const int ClientRecordPanelY = 167;
+        private const int ClientRecordColumnLeftX = 409;
+        private const int ClientRecordColumnRightX = 495;
+        private const int ClientRecordColumnY = 190;
+        private const int ClientRecordColumnWidth = 78;
+        private const int ClientRecordRowHeight = 12;
+        private const int ClientRecordNameY = 172;
+        private const int ClientRecordScoreY = 241;
+        private const int ClientRecordGradeY = 253;
+        private const int ClientMasterPanelX = 460;
+        private const int ClientMasterPanelY = 63;
+        private const int ClientTimerTextX = 295;
+        private const int ClientTimerTextY = 404;
+        private const int ClientReadyButtonX = 625;
+        private const int ClientReadyButtonY = 243;
+        private const int ClientTieButtonX = 458;
+        private const int ClientTieButtonY = 403;
+        private const int ClientGiveUpButtonX = 410;
+        private const int ClientGiveUpButtonY = 403;
+        private const int ClientEndButtonX = 679;
+        private const int ClientEndButtonY = 403;
+        private const int ClientBanButtonX = 551;
+        private const int ClientBanButtonY = 63;
+        private const int ClientScoreLeftX = 418;
+        private const int ClientScoreRightX = 582;
+        private const int ClientScoreY = 176;
+        private const int ClientReadyIndicatorLeftX = 408;
+        private const int ClientReadyIndicatorRightX = 494;
+        private const int ClientReadyIndicatorY = 184;
+        private const int CardFaceTextureCount = 15;
+        private const int CardBackTextureCount = 3;
+        private const int CardWidth = 49;
+        private const int CardHeight = 62;
+        private const int ClientCardStepX = 58;
+        private const int ClientCardStepY = 67;
+        private const int DigitTextureCount = 10;
+        private const byte MiniRoomBaseEnterPacketType = 4;
+        private const byte MiniRoomBaseEnterResultPacketType = 5;
+        private const byte MiniRoomBaseGameplayPacketType = 6;
+        private const byte MiniRoomBaseChatPacketType = 7;
+        private const byte MiniRoomBaseChatRepeatPacketType = 8;
+        private const byte MiniRoomBaseAvatarPacketType = 9;
+        private const byte MiniRoomBaseLeavePacketType = 10;
+        private const byte MemoryGameClientEnterResultAckPacketType = 11;
+        private const byte MiniRoomChatGameMessageType = 7;
+        private const byte MemoryGameTieRequestPacketType = 50;
+        private const byte MemoryGameTieResultPacketType = 51;
+        private const byte MemoryGameReadyPacketType = 58;
+        private const byte MemoryGameCancelReadyPacketType = 59;
+        private const byte MemoryGameClientBanOrTurnUpCardPacketType = 60;
+        private const byte MemoryGameStartPacketType = 61;
+        private const byte MemoryGameClientGiveUpPacketType = 52;
+        private const byte MemoryGameClientBookLeavePacketType = 56;
+        private const byte MemoryGameClientCancelLeavePacketType = 57;
+        private const byte MemoryGameGameResultPacketType = 62;
+        private const byte MemoryGameTimeOverPacketType = 63;
+        private const byte MemoryGameTurnUpCardPacketType = 68;
+        private const int MemoryGameGiveUpPromptStringPoolId = 0x1D7;
+        private const int MemoryGameBanPromptStringPoolId = 0x1D8;
+        private const int MemoryGameIncomingTiePromptStringPoolId = 0x1D9;
+        private const int MemoryGameOutgoingTiePromptStringPoolId = 0x1DA;
+        private const int MemoryGameTieResultNoticeStringPoolId = 0x1DB;
+        private const int MemoryGameBookLeavePromptStringPoolId = 0x1E0;
+        private const int MemoryGameCancelLeavePromptStringPoolId = 0x1E1;
+        private const int MemoryGameCloseRoomPromptStringPoolId = 0x1E4;
+        private const int MemoryGameCardBackStringPoolId = 0x61A;
+        private const int MemoryGameRecordDrawStringPoolId = 0x645;
+        private const int MemoryGameRecordWinStringPoolId = 0x646;
+        private const int MemoryGameRecordLoseStringPoolId = 0x647;
+        private const int MemoryGameWinStringPoolId = 0x1D4;
+        private const int MemoryGameDrawStringPoolId = 0x1D5;
+        private const int MemoryGameLoseStringPoolId = 0x1D6;
+        private const int ClientPromptBoxWidth = 250;
+        private const int ClientPromptBoxHeight = 98;
+        private const int ClientPromptButtonWidth = 64;
+        private const int ClientPromptButtonHeight = 22;
+        private const int ClientDialogLeaveUpdateArgument = 2;
+        private const byte ClientEnterResultAckState = 1;
+        private const int ClientMiniGameRecordByteLength = 0x14;
+        private const int ClientEnterResultGuestMatchState = 1;
+        private const int ClientEnterResultGuestNextOperationDelayMs = 3000;
+        private const uint ClientDialogUpdateButtonOne = 1;
+        private const uint ClientDialogUpdateButtonTwo = 2;
+        private const uint ClientDialogUpdateButtonEight = 8;
+        private const uint ClientStartButtonId = 1001;
+        private const uint ClientTieButtonId = 1002;
+        private const uint ClientGiveUpButtonId = 1003;
+        private const uint ClientEndButtonId = 1004;
+        private const uint ClientReadyButtonId = 1007;
+        private const uint ClientBanButtonId = 1008;
+        private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
+        {
+            [0] = new MiniRoomGameMessageDefinition(0x1C8, "[%s] have been expelled."),
+            [1] = new MiniRoomGameMessageDefinition(0x1CD, "[%s]'s turn."),
+            [2] = new MiniRoomGameMessageDefinition(0x1CA, "[%s] have forfeited."),
+            [3] = new MiniRoomGameMessageDefinition(0x1CB, "[%s] have requested a handicap."),
+            [4] = new MiniRoomGameMessageDefinition(0x1C5, "[%s] have left."),
+            [5] = new MiniRoomGameMessageDefinition(0x1C6, "[%s] have called to leave after this game."),
+            [6] = new MiniRoomGameMessageDefinition(0x1C7, "[%s] have cancelled the request to leave after this game."),
+            [7] = new MiniRoomGameMessageDefinition(0x1C4, "[%s] have entered."),
+            [8] = new MiniRoomGameMessageDefinition(0x1CF, "[%s] can't start the game due to lack of mesos."),
+            [9] = new MiniRoomGameMessageDefinition(0x1CE, "[%s] has matched cards. Please continue."),
+            [101] = new MiniRoomGameMessageDefinition(0x1D2, "10 sec. left."),
+            [102] = new MiniRoomGameMessageDefinition(0x1D0, "The game has started."),
+            [103] = new MiniRoomGameMessageDefinition(0x1D1, "The game has ended.\r\nThe room will automatically close in 10 sec.")
+        };
+        private static readonly IReadOnlyDictionary<int, MiniRoomNoticeMessageDefinition> MiniRoomLeaveNotices = new Dictionary<int, MiniRoomNoticeMessageDefinition>
+        {
+            [0x1CC] = new MiniRoomNoticeMessageDefinition(0x1CC, "You have left the room."),
+            [0x1D3] = new MiniRoomNoticeMessageDefinition(0x1D3, "The room is closed.")
+        };
+
+
+        private readonly List<Card> _cards = new();
+        private readonly List<int> _revealedCardIndices = new(2);
+        private readonly Queue<PendingRemoteAction> _pendingRemoteActions = new();
+        private readonly Queue<byte[]> _pendingOfficialClientRelayPackets = new();
+        private readonly Dictionary<int, MiniRoomParticipantState> _miniRoomParticipants = new();
+        private readonly int[] _scores = new int[2];
+        private readonly bool[] _readyStates = new bool[2];
+        private readonly bool[] _leaveBookingStates = new bool[2];
+        private readonly string[] _playerNames = new string[2];
+        private readonly int[] _wins = new int[2];
+        private readonly int[] _losses = new int[2];
+        private readonly int[] _draws = new int[2];
+        private readonly Dictionary<int, MiniGameRecord> _miniGameRecords = new();
+        private readonly Dictionary<MemoryGamePacketType, int> _packetCounts = new();
+        private readonly Texture2D[] _cardFaceTextures = new Texture2D[CardFaceTextureCount];
+        private readonly Texture2D[] _cardBackTextures = new Texture2D[CardBackTextureCount];
+        private readonly Texture2D[] _digitTextures = new Texture2D[DigitTextureCount];
+
+
+        private RoomStage _stage = RoomStage.Hidden;
+        private SocialRoomRuntime _miniRoomRuntime;
+        private GraphicsDevice _graphicsDevice;
+        private bool _assetsLoaded;
+        private Texture2D _backgroundTexture;
+        private Texture2D _masterPanelTexture;
+        private Texture2D _turnTexture;
+        private Texture2D _readyOnTexture;
+        private Texture2D _readyOffTexture;
+        private Texture2D _winTexture;
+        private Texture2D _loseTexture;
+        private Texture2D _drawTexture;
+        private Texture2D _readyButtonTexture;
+        private Texture2D _readyButtonDisabledTexture;
+        private Texture2D _startButtonTexture;
+        private Texture2D _startButtonDisabledTexture;
+        private Texture2D _tieButtonTexture;
+        private Texture2D _tieButtonDisabledTexture;
+        private Texture2D _giveUpButtonTexture;
+        private Texture2D _giveUpButtonDisabledTexture;
+        private Texture2D _endButtonTexture;
+        private Texture2D _endButtonDisabledTexture;
+        private Texture2D _banButtonTexture;
+        private Texture2D _banButtonDisabledTexture;
+        private int _rows;
+        private int _columns;
+        private int _gameKind = DefaultGameKind;
+        private int _cardsPerRow = 4;
+        private Point _firstCardOffset = new(89, 106);
+        private int _localPlayerIndex;
+        private int _currentTurnIndex;
+        private int _pendingHideTick;
+        private int _turnDeadlineTick;
+        private int _resultExpireTick;
+        private int _lastWinnerIndex = -1;
+        private bool _turnWarningEnabled;
+        private bool _turnWarningShown;
+        private int _lastTurnWarningSecond = -1;
+        private string _title = "Match Cards";
+        private string _statusMessage = "Open a MiniRoom to begin.";
+        private MemoryGamePacketType? _lastPacketType;
+        private string _lastPacketSummary = "No Match Cards packet dispatched.";
+        private Func<LoginAvatarLook, CharacterBuild> _miniRoomAvatarBuildFactory;
+        private CharacterBuild _localMiniRoomAvatarBuild;
+        private MemoryGamePromptState _pendingPrompt;
+        private string _statusMessageBeforePrompt;
+        private Action _readyClickSoundCallback;
+        private Action _timerWarningSoundCallback;
+        private Action _participantEnterSoundCallback;
+        private bool _localTieRequestSent;
+        private bool _localTieRequestSentThisTurn;
+        private bool _localGiveUpRequestSent;
+        private bool _officialClientRelayEnabled;
+        private int _lastClientDialogUpdateArgument;
+        private bool _clientOpponentLayersMaterialized;
+        private int _clientReadyLayerReleaseCount;
+        private int _clientScoreLayerReleaseCount;
+        private bool _clientPromptLayerMaterialized;
+        private int _clientPromptLayerCreateCount;
+        private int _clientPromptLayerReleaseCount;
+        private int _lastClientPromptResponseSubtype;
+        private int _clientReadyButtonReleaseCount;
+        private int _clientStartButtonDisableCount;
+        private int _clientStartButtonReleaseCount;
+        private int _clientBanButtonUpdateCount;
+        private int _clientEnterResultMatchState;
+        private int _clientEnterResultNextOperationTick;
+        private bool _clientTournamentMode;
+        private int _clientTournamentRound;
+        private bool _clientReadyButtonVisible = true;
+        private bool _clientStartButtonVisible = true;
+        private bool _clientEndButtonVisible = true;
+
+
+        public enum RoomStage
+        {
+            Hidden,
+            Lobby,
+            Playing,
+            Result
+        }
+
+
+        public sealed class Card
+        {
+            public int FaceId { get; init; }
+            public bool IsFaceUp { get; set; }
+            public bool IsMatched { get; set; }
+        }
+
+        public sealed class MiniGameRecord
+        {
+            public MiniGameRecord(int slot, int wins, int draws, int losses, int score, int grade, byte[] rawBytes)
+            {
+                Slot = slot;
+                Wins = wins;
+                Draws = draws;
+                Losses = losses;
+                Score = score;
+                Grade = grade;
+                RawBytes = rawBytes == null ? Array.Empty<byte>() : (byte[])rawBytes.Clone();
+            }
+
+            public int Slot { get; }
+            public int Wins { get; }
+            public int Draws { get; }
+            public int Losses { get; }
+            public int Score { get; }
+            public int Grade { get; }
+            public byte[] RawBytes { get; }
+            public int TotalGames => Math.Max(0, Wins) + Math.Max(0, Draws) + Math.Max(0, Losses);
+            public int WinRatePercent => TotalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, Wins) * 100d / TotalGames);
+        }
+
+        public sealed class ClientMiniGameRecordWidget
+        {
+            public ClientMiniGameRecordWidget(int slot, string displayName, Rectangle bounds, IReadOnlyList<ClientMiniGameRecordWidgetRow> rows)
+            {
+                Slot = slot;
+                DisplayName = displayName ?? string.Empty;
+                Bounds = bounds;
+                Rows = rows ?? Array.Empty<ClientMiniGameRecordWidgetRow>();
+            }
+
+            public int Slot { get; }
+            public string DisplayName { get; }
+            public Rectangle Bounds { get; }
+            public IReadOnlyList<ClientMiniGameRecordWidgetRow> Rows { get; }
+        }
+
+        public sealed class ClientMiniGameRecordWidgetRow
+        {
+            public ClientMiniGameRecordWidgetRow(string label, int value, string text, Point position)
+            {
+                Label = label ?? string.Empty;
+                Value = value;
+                Text = text ?? string.Empty;
+                Position = position;
+            }
+
+            public string Label { get; }
+            public int Value { get; }
+            public string Text { get; }
+            public Point Position { get; }
+        }
+
+
+        private sealed class MiniRoomParticipantState
+        {
+            public MiniRoomParticipantState(int slot)
+            {
+                Slot = slot;
+            }
+
+
+            public int Slot { get; }
+            public string Name { get; set; }
+            public short JobCode { get; set; }
+            public LoginAvatarLook AvatarLook { get; set; }
+            public CharacterBuild AvatarBuild { get; set; }
+        }
+
+
+        private readonly struct MiniRoomGameMessageDefinition
+        {
+            public MiniRoomGameMessageDefinition(int stringPoolId, string fallbackText)
+            {
+                StringPoolId = stringPoolId;
+                FallbackText = fallbackText ?? string.Empty;
+            }
+
+
+            public int StringPoolId { get; }
+
+            public string FallbackText { get; }
+
+        }
+
+
+        private readonly struct MiniRoomNoticeMessageDefinition
+        {
+            public MiniRoomNoticeMessageDefinition(int stringPoolId, string text)
+            {
+                StringPoolId = stringPoolId;
+                Text = text ?? string.Empty;
+            }
+
+
+            public int StringPoolId { get; }
+
+            public string Text { get; }
+        }
+
+        private readonly struct PendingRemoteAction
+        {
+            public PendingRemoteAction(RemoteActionType actionType, int executeTick, int playerIndex, int cardIndex, bool readyState)
+            {
+                ActionType = actionType;
+                ExecuteTick = executeTick;
+                PlayerIndex = playerIndex;
+                CardIndex = cardIndex;
+                ReadyState = readyState;
+            }
+
+
+            public RemoteActionType ActionType { get; }
+            public int ExecuteTick { get; }
+            public int PlayerIndex { get; }
+            public int CardIndex { get; }
+            public bool ReadyState { get; }
+        }
+
+
+        private enum RemoteActionType
+        {
+            Ready,
+            Start,
+            Reveal,
+            Tie,
+            GiveUp,
+            End
+        }
+
+        private enum MemoryGamePromptType
+        {
+            None,
+            OutgoingTieRequest,
+            IncomingTieRequest,
+            GiveUp,
+            BanParticipant,
+            BookLeave,
+            CancelBookedLeave,
+            CloseRoom
+        }
+
+        private enum MemoryGamePrimaryButtonMode
+        {
+            Ready,
+            Start
+        }
+
+        private readonly struct MemoryGamePromptState
+        {
+            public MemoryGamePromptState(MemoryGamePromptType type, int stringPoolId, int playerIndex, string text)
+            {
+                Type = type;
+                StringPoolId = stringPoolId;
+                PlayerIndex = playerIndex;
+                Text = text ?? string.Empty;
+            }
+
+            public MemoryGamePromptType Type { get; }
+            public int StringPoolId { get; }
+            public int PlayerIndex { get; }
+            public string Text { get; }
+            public bool IsActive => Type != MemoryGamePromptType.None;
+        }
+
+
+        public RoomStage Stage => _stage;
+        public bool IsVisible => _stage != RoomStage.Hidden;
+        public bool IsPlaying => _stage == RoomStage.Playing;
+        public bool HasPendingMismatch => _pendingHideTick > 0;
+        public IReadOnlyList<Card> Cards => _cards;
+        public int CurrentTurnIndex => _currentTurnIndex;
+        public int LocalPlayerIndex => _localPlayerIndex;
+        public int CurrentTurnTimeRemainingSeconds => _turnDeadlineTick <= 0 ? 0 : Math.Max(0, (_turnDeadlineTick - Environment.TickCount + 999) / 1000);
+        public int LastWinnerIndex => _lastWinnerIndex;
+        public IReadOnlyList<int> Scores => _scores;
+        public IReadOnlyList<bool> ReadyStates => _readyStates;
+        public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
+        public IReadOnlyList<string> PlayerNames => _playerNames;
+        public IReadOnlyDictionary<int, MiniGameRecord> MiniGameRecords => _miniGameRecords;
+        public IReadOnlyList<ClientMiniGameRecordWidget> ClientRecordWidgets => BuildClientRecordWidgets();
+        public int GameKind => _gameKind;
+        public int CardsPerRow => _cardsPerRow;
+        public string Title => _title;
+        public string StatusMessage => _statusMessage;
+        public MemoryGamePacketType? LastPacketType => _lastPacketType;
+        public string LastPacketSummary => _lastPacketSummary;
+        public bool HasPendingPrompt => _pendingPrompt.IsActive;
+        public string PendingPromptText => _pendingPrompt.Text;
+        public int LastClientDialogUpdateArgument => _lastClientDialogUpdateArgument;
+        public int ClientReadyLayerReleaseCount => _clientReadyLayerReleaseCount;
+        public int ClientScoreLayerReleaseCount => _clientScoreLayerReleaseCount;
+        public int ClientPromptLayerCreateCount => _clientPromptLayerCreateCount;
+        public int ClientPromptLayerReleaseCount => _clientPromptLayerReleaseCount;
+        public int LastClientPromptResponseSubtype => _lastClientPromptResponseSubtype;
+        public int ClientReadyButtonReleaseCount => _clientReadyButtonReleaseCount;
+        public int ClientStartButtonDisableCount => _clientStartButtonDisableCount;
+        public int ClientStartButtonReleaseCount => _clientStartButtonReleaseCount;
+        public int ClientBanButtonUpdateCount => _clientBanButtonUpdateCount;
+        public int ClientEnterResultMatchState => _clientEnterResultMatchState;
+        public int ClientEnterResultNextOperationTick => _clientEnterResultNextOperationTick;
+        public bool ClientTournamentMode => _clientTournamentMode;
+        public int ClientTournamentRound => _clientTournamentRound;
+        public bool ClientReadyButtonVisible => _clientReadyButtonVisible;
+        public bool ClientStartButtonVisible => _clientStartButtonVisible;
+        public bool ClientEndButtonVisible => _clientEndButtonVisible;
+        public Point FirstCardOffset => _firstCardOffset;
+        public int ClientCardBackIndex => Math.Clamp(_gameKind, 0, CardBackTextureCount - 1);
+        public string ClientCardBackResourcePath => ResolveClientCardBackResourcePath();
+        public bool ClientReadyLayerVisible => HasClientOpponentSeat();
+        public bool ClientScoreLayerVisible => HasClientOpponentSeat();
+        public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
+        public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
+        public bool ClientStartButtonEnabled => _stage != RoomStage.Playing
+            && _localPlayerIndex == 0
+            && HasClientOpponentSeat();
+        public bool ClientBanButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex == 0;
+        public bool ClientTieButtonEnabled => _stage == RoomStage.Playing;
+        public bool ClientGiveUpButtonEnabled => _stage == RoomStage.Playing;
+
+        public void SetOfficialClientRelayEnabled(bool enabled)
+        {
+            _officialClientRelayEnabled = enabled;
+            if (!enabled)
+            {
+                _pendingOfficialClientRelayPackets.Clear();
+            }
+        }
+
+        public bool TryDequeuePendingOfficialClientRequest(out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (_pendingOfficialClientRelayPackets.Count <= 0)
+            {
+                return false;
+            }
+
+            payload = _pendingOfficialClientRelayPackets.Dequeue();
+            return payload != null && payload.Length > 0;
+        }
+
+
+        public void Initialize(GraphicsDevice graphicsDevice)
+        {
+            _graphicsDevice = graphicsDevice;
+        }
+
+
+        public void AttachMiniRoomRuntime(SocialRoomRuntime runtime)
+        {
+            _miniRoomRuntime = runtime;
+            _miniRoomRuntime?.BindMiniRoomHandlers(HandleMiniRoomReadyRequested, HandleMiniRoomStartRequested, HandleMiniRoomModeRequested);
+            SyncMiniRoomRuntime();
+        }
+
+
+        public void SetMiniRoomAvatarBuildFactory(Func<LoginAvatarLook, CharacterBuild> avatarBuildFactory)
+        {
+            _miniRoomAvatarBuildFactory = avatarBuildFactory;
+            foreach (MiniRoomParticipantState participant in _miniRoomParticipants.Values)
+            {
+                participant.AvatarBuild = CreateMiniRoomAvatarBuild(participant.AvatarLook);
+            }
+
+
+            SyncMiniRoomRuntime();
+
+        }
+
+        public void SetReadyClickSoundCallback(Action callback)
+        {
+            _readyClickSoundCallback = callback;
+        }
+
+        public void SetTimerWarningSoundCallback(Action callback)
+        {
+            _timerWarningSoundCallback = callback;
+        }
+
+        public void SetParticipantEnterSoundCallback(Action callback)
+        {
+            _participantEnterSoundCallback = callback;
+        }
+
+
+
+        public void SetLocalMiniRoomAvatar(CharacterBuild build)
+        {
+            _localMiniRoomAvatarBuild = build?.Clone();
+            SyncMiniRoomRuntime();
+        }
+
+
+        public void OpenRoom(
+            string title = "Match Cards",
+            string playerOneName = "Player",
+            string playerTwoName = "Opponent",
+            int rows = DefaultRows,
+            int columns = DefaultColumns,
+            int localPlayerIndex = DefaultLocalPlayerIndex)
+        {
+            rows = Math.Max(2, rows);
+            columns = Math.Max(2, columns);
+            if ((rows * columns) % 2 != 0)
+            {
+                columns++;
+            }
+
+
+            _rows = rows;
+            _columns = columns;
+            _localPlayerIndex = Math.Clamp(localPlayerIndex, 0, 1);
+            _playerNames[0] = string.IsNullOrWhiteSpace(playerOneName) ? "Player" : playerOneName.Trim();
+            _playerNames[1] = string.IsNullOrWhiteSpace(playerTwoName) ? "Opponent" : playerTwoName.Trim();
+            _title = string.IsNullOrWhiteSpace(title) ? "Match Cards" : title.Trim();
+
+
+            ClearRoundState();
+            _stage = RoomStage.Lobby;
+            _statusMessage = "Ready the room, then start the board.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards room opened.");
+            SyncMiniRoomRuntime();
+        }
+
+
+        public bool TrySetReady(int playerIndex, bool isReady, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+
+            if (_stage == RoomStage.Playing)
+            {
+                message = "Ready state is locked while a round is in progress.";
+                return false;
+            }
+
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            _readyStates[playerIndex] = isReady;
+            _statusMessage = $"{_playerNames[playerIndex]} is {(isReady ? "ready" : "not ready")}.";
+            message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage(_statusMessage);
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+
+        public bool TryClickReadyButton(int tickCount, out string message)
+        {
+            if (!TryEnsureNoPendingPromptForLocalAction("sending a ready request", out message))
+            {
+                return false;
+            }
+
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!ClientReadyButtonEnabled)
+            {
+                message = "Ready requests are only valid for a seated non-owner while Match Cards is not in play.";
+                return false;
+            }
+
+            byte subtype = _readyStates[_localPlayerIndex]
+                ? MemoryGameCancelReadyPacketType
+                : MemoryGameReadyPacketType;
+            return TryDispatchOfficialClientSubtype(subtype, tickCount, out message);
+        }
+
+
+        public bool TryClickStartButton(int tickCount, out string message)
+        {
+            if (!TryEnsureNoPendingPromptForLocalAction("starting the Match Cards round", out message))
+            {
+                return false;
+            }
+
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_stage == RoomStage.Playing || _localPlayerIndex != 0)
+            {
+                message = "Start requests are only valid for the Match Cards room owner while Match Cards is not in play.";
+                return false;
+            }
+
+            if (!CanLocalHostSendStartRequest(out message))
+            {
+                return false;
+            }
+
+            return TryDispatchOfficialClientSubtype(MemoryGameStartPacketType, tickCount, out message);
+        }
+
+
+        public bool TryStartGame(int tickCount, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+
+            if (!_readyStates[0] || !_readyStates[1])
+            {
+                message = "Both players must be ready before the round can start.";
+                return false;
+            }
+
+
+            InitializeBoard();
+            _stage = RoomStage.Playing;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _lastWinnerIndex = -1;
+            _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+            _turnWarningEnabled = true;
+            _turnWarningShown = false;
+            _lastTurnWarningSecond = -1;
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round started.");
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+
+        public bool TryRevealCard(int cardIndex, int tickCount, out string message)
+        {
+            return TryRevealCard(cardIndex, tickCount, _localPlayerIndex, out message);
+        }
+
+
+        public bool TryRevealCard(int cardIndex, int tickCount, int playerIndex, out string message)
+        {
+            if (playerIndex == _localPlayerIndex
+                && !TryEnsureNoPendingPromptForLocalAction("turning up a card", out message))
+            {
+                return false;
+            }
+
+            if (_stage != RoomStage.Playing)
+            {
+                message = "The board is not active.";
+                return false;
+            }
+
+
+            if (_currentTurnIndex != playerIndex)
+            {
+                message = $"It is {_playerNames[_currentTurnIndex]}'s turn.";
+                return false;
+            }
+
+
+            if (_pendingHideTick > 0)
+            {
+                message = "Wait for the previous mismatch to resolve.";
+                return false;
+            }
+
+
+            if (cardIndex < 0 || cardIndex >= _cards.Count)
+            {
+                message = $"Invalid card index: {cardIndex}.";
+                return false;
+            }
+
+
+            Card card = _cards[cardIndex];
+            if (card.IsMatched || card.IsFaceUp)
+            {
+                message = "That card is already revealed.";
+                return false;
+            }
+
+
+            card.IsFaceUp = true;
+
+            _revealedCardIndices.Add(cardIndex);
+
+
+
+            if (_revealedCardIndices.Count == 1)
+            {
+                _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
+                message = _statusMessage;
+                _miniRoomRuntime?.AddMiniRoomSpeakerMessage(_playerNames[_currentTurnIndex], $"turned up card {cardIndex}.", _currentTurnIndex == _localPlayerIndex);
+                SyncMiniRoomRuntime();
+                return true;
+            }
+
+
+            Card firstCard = _cards[_revealedCardIndices[0]];
+            if (firstCard.FaceId == card.FaceId)
+            {
+                firstCard.IsMatched = true;
+                card.IsMatched = true;
+                _scores[_currentTurnIndex]++;
+                _revealedCardIndices.Clear();
+                _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+                _lastTurnWarningSecond = -1;
+                _localTieRequestSentThisTurn = false;
+
+
+                if (AreAllCardsMatched())
+                {
+                    FinishRound(tickCount);
+                }
+                else
+                {
+                    _statusMessage = $"{_playerNames[_currentTurnIndex]} found a pair.";
+                    _miniRoomRuntime?.AddMiniRoomSystemMessage(_statusMessage);
+                    SyncMiniRoomRuntime();
+                }
+
+
+                message = _statusMessage;
+
+                return true;
+
+            }
+
+
+
+            _pendingHideTick = tickCount + DefaultMismatchHideDelayMs;
+            _statusMessage = "Mismatch. Cards will flip back.";
+            message = _statusMessage;
+            _localTieRequestSentThisTurn = false;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Mismatch. Waiting for cards to flip back.");
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+
+        public bool TryClaimTie(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+
+            _stage = RoomStage.Result;
+            _lastWinnerIndex = -1;
+            _draws[0]++;
+            _draws[1]++;
+            _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
+            _statusMessage = "The room settled as a draw.";
+            message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : The round ended in a draw.");
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+        public bool TryPromptTieRequest(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Tie is only available during an active Match Cards round.";
+                return false;
+            }
+
+            if (_localTieRequestSent)
+            {
+                message = "A Match Cards tie request is already pending.";
+                return false;
+            }
+
+            if (_localTieRequestSentThisTurn)
+            {
+                message = "A Match Cards tie request was already sent this turn.";
+                return false;
+            }
+
+            return TryOpenPrompt(
+                MemoryGamePromptType.OutgoingTieRequest,
+                MemoryGameOutgoingTiePromptStringPoolId,
+                _localPlayerIndex,
+                ResolveMemoryGamePromptText(MemoryGameOutgoingTiePromptStringPoolId),
+                out message);
+        }
+
+        private bool TryPromptBanParticipant(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            return TryOpenPrompt(
+                MemoryGamePromptType.BanParticipant,
+                MemoryGameBanPromptStringPoolId,
+                _localPlayerIndex,
+                ResolveMemoryGamePromptText(MemoryGameBanPromptStringPoolId),
+                out message);
+        }
+
+
+        public bool TryBanParticipant(int requesterIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!IsValidPlayerIndex(requesterIndex))
+            {
+                message = $"Invalid player index: {requesterIndex}.";
+                return false;
+            }
+
+            int targetIndex = requesterIndex == 0 ? 1 : 0;
+            string targetName = ResolveParticipantName(targetIndex);
+            if (string.IsNullOrWhiteSpace(targetName)
+                || (targetIndex == 1 && string.Equals(targetName, "Opponent", StringComparison.Ordinal))
+                || (targetIndex == 0 && string.Equals(targetName, "Player", StringComparison.Ordinal)))
+            {
+                message = "No participant is available to ban.";
+                return false;
+            }
+
+            _statusMessage = $"Ban request sent for {targetName}.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveMiniRoomGameMessage(0, targetName)}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        public bool TryGiveUp(int playerIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            int winnerIndex = playerIndex == 0 ? 1 : 0;
+            _wins[winnerIndex]++;
+            _losses[playerIndex]++;
+            _stage = RoomStage.Result;
+            _lastWinnerIndex = winnerIndex;
+            _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
+            _statusMessage = $"{_playerNames[playerIndex]} gave up. {_playerNames[winnerIndex]} wins.";
+            message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[playerIndex]} gave up.");
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+        public bool TryPromptGiveUp(int playerIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Give Up is only available during an active Match Cards round.";
+                return false;
+            }
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+            if (playerIndex == _localPlayerIndex && _localGiveUpRequestSent)
+            {
+                message = "A Match Cards give-up request is already pending.";
+                return false;
+            }
+
+            return TryOpenPrompt(
+                MemoryGamePromptType.GiveUp,
+                MemoryGameGiveUpPromptStringPoolId,
+                playerIndex,
+                ResolveMemoryGamePromptText(MemoryGameGiveUpPromptStringPoolId),
+                out message);
+        }
+
+
+        public bool TryEndRoom(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Memory Game room is already closed.";
+                return false;
+            }
+
+
+            Reset();
+            message = "Memory Game room closed.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards room closed.");
+            return true;
+        }
+
+
+        public bool TryRequestRoomExit(int playerIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Memory Game room is already closed.";
+                return false;
+            }
+
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            if (_stage != RoomStage.Playing)
+            {
+                if (playerIndex == 0 || playerIndex == _localPlayerIndex)
+                {
+                    return TryOpenPrompt(
+                        MemoryGamePromptType.CloseRoom,
+                        MemoryGameCloseRoomPromptStringPoolId,
+                        playerIndex,
+                        ResolveMemoryGamePromptText(MemoryGameCloseRoomPromptStringPoolId),
+                        out message);
+                }
+
+                return TryResolveLobbyExit(playerIndex, out message);
+            }
+
+            bool booked = !_leaveBookingStates[playerIndex];
+            return TryOpenPrompt(
+                booked ? MemoryGamePromptType.BookLeave : MemoryGamePromptType.CancelBookedLeave,
+                booked ? MemoryGameBookLeavePromptStringPoolId : MemoryGameCancelLeavePromptStringPoolId,
+                playerIndex,
+                ResolveMemoryGamePromptText(booked ? MemoryGameBookLeavePromptStringPoolId : MemoryGameCancelLeavePromptStringPoolId),
+                out message);
+        }
+
+        public bool TryConfirmPrompt(int tickCount, out string message)
+        {
+            if (!_pendingPrompt.IsActive)
+            {
+                message = "No Match Cards confirmation prompt is active.";
+                return false;
+            }
+
+            MemoryGamePromptState prompt = _pendingPrompt;
+            bool handled = prompt.Type switch
+            {
+                MemoryGamePromptType.OutgoingTieRequest => ConfirmOutgoingTieRequest(tickCount, out message),
+                MemoryGamePromptType.IncomingTieRequest => ConfirmIncomingTieRequest(tickCount, out message),
+                MemoryGamePromptType.GiveUp => ConfirmGiveUp(prompt.PlayerIndex, out message),
+                MemoryGamePromptType.BanParticipant => ConfirmBanParticipant(prompt.PlayerIndex, tickCount, out message),
+                MemoryGamePromptType.BookLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: true, tickCount, out message),
+                MemoryGamePromptType.CancelBookedLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: false, tickCount, out message),
+                MemoryGamePromptType.CloseRoom => ConfirmCloseRoom(prompt.PlayerIndex, tickCount, out message),
+                _ => AssignPromptMissing(out message)
+            };
+
+            // Outbound prompt-bound packets clear prompt state only after the client send branch succeeds.
+            // Non-packet prompt paths (remote-seat resolution) clear it here after a successful confirm.
+            if (handled
+                && _pendingPrompt.IsActive
+                && _pendingPrompt.Type == prompt.Type
+                && _pendingPrompt.PlayerIndex == prompt.PlayerIndex
+                && _pendingPrompt.StringPoolId == prompt.StringPoolId)
+            {
+                ClearPendingPrompt();
+            }
+
+            return handled;
+        }
+
+        public bool TryCancelPrompt(out string message)
+        {
+            if (!_pendingPrompt.IsActive)
+            {
+                message = "No Match Cards confirmation prompt is active.";
+                return false;
+            }
+
+            MemoryGamePromptState prompt = _pendingPrompt;
+            if (prompt.Type == MemoryGamePromptType.IncomingTieRequest)
+            {
+                return TryDispatchOfficialClientSubtype(
+                    MemoryGameTieResultPacketType,
+                    Environment.TickCount,
+                    out message,
+                    0);
+            }
+
+            string statusMessageBeforePrompt = _statusMessageBeforePrompt;
+            ClearPendingPrompt();
+            if (!string.IsNullOrWhiteSpace(statusMessageBeforePrompt))
+            {
+                _statusMessage = statusMessageBeforePrompt;
+            }
+
+            SyncMiniRoomRuntime();
+            message = string.IsNullOrWhiteSpace(prompt.Text)
+                ? "Dismissed Match Cards prompt."
+                : $"Dismissed Match Cards prompt: {prompt.Text}";
+            return true;
+        }
+
+
+        public bool TryDispatchPacket(
+            MemoryGamePacketType packetType,
+            int tickCount,
+            out string message,
+            int playerIndex = DefaultLocalPlayerIndex,
+            int cardIndex = -1,
+            bool readyState = true,
+            string playerOneName = null,
+            string playerTwoName = null,
+            int rows = DefaultRows,
+            int columns = DefaultColumns,
+            string title = "Match Cards")
+        {
+            _lastPacketType = packetType;
+            _packetCounts.TryGetValue(packetType, out int count);
+            _packetCounts[packetType] = count + 1;
+
+
+            bool handled = packetType switch
+            {
+                MemoryGamePacketType.OpenRoom => TryDispatchOpenPacket(title, playerOneName, playerTwoName, rows, columns, playerIndex, out message),
+                MemoryGamePacketType.SetReady => TrySetReady(playerIndex, readyState, out message),
+                MemoryGamePacketType.StartGame => TryStartGame(tickCount, out message),
+                MemoryGamePacketType.RevealCard => TryRevealCard(cardIndex, tickCount, playerIndex, out message),
+                MemoryGamePacketType.BanUser => TryBanParticipant(playerIndex, out message),
+                MemoryGamePacketType.ClaimTie => TryClaimTie(out message),
+                MemoryGamePacketType.GiveUp => TryGiveUp(playerIndex, out message),
+                MemoryGamePacketType.EndRoom => TryEndRoom(out message),
+                MemoryGamePacketType.SelectMatchCardsMode => TrySelectMatchCardsMode(out message),
+                _ => AssignUnsupportedPacket(packetType, out message)
+            };
+
+
+            _lastPacketSummary = $"{packetType}: {message}";
+
+            return handled;
+
+        }
+
+
+
+        public bool TryDispatchMiniRoomPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "MiniRoom packet payload is empty.";
+                return false;
+            }
+
+
+            EnsureRoomOpenFromMiniRoomRuntime();
+
+
+
+            try
+            {
+                byte[] payload = NormalizeMiniRoomPacketPayload(packetBytes);
+                PacketReader reader = new(payload);
+                byte basePacketType = reader.ReadByte();
+                return basePacketType switch
+                {
+                    MiniRoomBaseEnterPacketType => TryDispatchMiniRoomEnterPacket(reader, out message),
+                    MiniRoomBaseEnterResultPacketType => TryDispatchMiniRoomEnterResultPacket(reader, tickCount, out message),
+                    MiniRoomBaseGameplayPacketType => TryDispatchMiniRoomGameplayPacket(reader, tickCount, out message),
+                    MiniRoomBaseChatPacketType => TryDispatchMiniRoomChatPacket(reader, out message),
+                    MiniRoomBaseChatRepeatPacketType => TryDispatchMiniRoomChatPacket(reader, out message),
+                    MiniRoomBaseAvatarPacketType => TryDispatchMiniRoomAvatarPacket(reader, out message),
+                    MiniRoomBaseLeavePacketType => TryDispatchMiniRoomLeavePacket(reader, out message),
+                    _ => FailMiniRoomPacket(basePacketType, out message)
+                };
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"MiniRoom packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
+                return false;
+            }
+        }
+
+
+        public bool TryDispatchOfficialClientPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            return TryDispatchOfficialClientPacket(packetBytes, tickCount, out message, enforcePromptFlow: false, relayOutboundTransport: true);
+        }
+
+        public bool TryDispatchOfficialClientPacket(
+            byte[] packetBytes,
+            int tickCount,
+            out string message,
+            bool enforcePromptFlow,
+            bool relayOutboundTransport)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+
+            EnsureRoomOpenFromMiniRoomRuntime();
+            if (!TryValidateOfficialClientPacketShape(packetBytes, out message))
+            {
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            bool clearPromptAfterHandled = false;
+            if (_pendingPrompt.IsActive && IsLocalRequestPacketSubtype(packetType))
+            {
+                if (!TryValidatePendingPromptForOutgoingPacket(packetBytes, out message))
+                {
+                    return false;
+                }
+
+                if (packetType == MiniRoomBaseLeavePacketType)
+                {
+                    RecordAndClearPendingPromptResponse(packetType);
+                }
+                else
+                {
+                    clearPromptAfterHandled = true;
+                }
+            }
+            else if (enforcePromptFlow
+                && IsPromptBoundRequestPacket(packetBytes))
+            {
+                message = $"Match Cards client packet {packetType} requires a confirmation prompt before dispatch.";
+                return false;
+            }
+
+            bool handled = packetType switch
+            {
+                MiniRoomBaseLeavePacketType => TryApplyOutgoingLobbyLeavePacket(out message),
+                MemoryGameClientEnterResultAckPacketType => TryApplyOutgoingEnterResultAckPacket(packetBytes, out message),
+                MemoryGameTieRequestPacketType => TryApplyOutgoingTieRequest(out message),
+                MemoryGameTieResultPacketType => TryApplyOutgoingTieResponse(packetBytes, tickCount, out message),
+                MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(out message),
+                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message, preserveStatusMessage: true),
+                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message, preserveStatusMessage: true),
+                MemoryGameReadyPacketType => TryApplyOutgoingReadyRequest(isReady: true, out message),
+                MemoryGameCancelReadyPacketType => TryApplyOutgoingReadyRequest(isReady: false, out message),
+                MemoryGameClientBanOrTurnUpCardPacketType => TryApplyClientBanOrTurnUpCardPacket(packetBytes, tickCount, out message),
+                MemoryGameStartPacketType => TryApplyOutgoingStartRequest(out message),
+                MemoryGameTimeOverPacketType => TryApplyOutgoingTimeOverRequest(out message),
+                _ => FailOfficialClientPacket(packetType, out message)
+            };
+
+            if (handled && clearPromptAfterHandled)
+            {
+                RecordAndClearPendingPromptResponse(packetType);
+            }
+
+            if (handled && relayOutboundTransport && _officialClientRelayEnabled)
+            {
+                TryQueueOfficialClientRelayPacket(packetBytes);
+            }
+
+            _lastPacketSummary = $"official client {packetType}: {message}";
+            return handled;
+        }
+
+
+        public static byte[] NormalizeMiniRoomPacketPayload(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+
+            if (IsMiniRoomBasePacketType(packetBytes[0]))
+            {
+                return (byte[])packetBytes.Clone();
+            }
+
+
+            if (packetBytes.Length > sizeof(ushort) && IsMiniRoomBasePacketType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+
+            return (byte[])packetBytes.Clone();
+
+        }
+
+
+
+        public static bool TryParseMiniRoomPacketHex(string text, out byte[] packetBytes, out string error)
+        {
+            packetBytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Provide at least one hex byte.";
+                return false;
+            }
+
+
+            string[] tokens = text
+                .Replace(",", " ", StringComparison.Ordinal)
+                .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            List<byte> bytes = new(tokens.Length);
+            foreach (string token in tokens)
+            {
+                string normalized = token.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? token[2..]
+                    : token;
+                if (!byte.TryParse(normalized, System.Globalization.NumberStyles.HexNumber, null, out byte value))
+                {
+                    error = $"Invalid hex byte: {token}.";
+                    return false;
+                }
+
+
+                bytes.Add(value);
+
+            }
+
+
+
+            packetBytes = bytes.ToArray();
+            error = string.Empty;
+            return packetBytes.Length > 0;
+        }
+
+
+        public int GetPacketCount(MemoryGamePacketType packetType)
+        {
+            return _packetCounts.TryGetValue(packetType, out int count) ? count : 0;
+        }
+
+
+        public bool TryQueueRemoteAction(string action, int tickCount, out string message, int cardIndex = -1, int delayMs = DefaultRemoteActionDelayMs)
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            int executeTick = tickCount + Math.Max(0, delayMs);
+            switch (action)
+            {
+                case "ready":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Ready, executeTick, remotePlayerIndex, -1, true));
+                    message = $"{_playerNames[remotePlayerIndex]} will ready in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "unready":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Ready, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will clear ready in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "start":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Start, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will request start in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "flip":
+                    if (cardIndex < 0)
+                    {
+                        message = "Remote flip requires a card index.";
+                        return false;
+                    }
+
+
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Reveal, executeTick, remotePlayerIndex, cardIndex, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will reveal card {cardIndex} in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "tie":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Tie, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will request a tie in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "giveup":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.GiveUp, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will give up in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "end":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.End, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will close the room in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                default:
+                    message = "Usage: /memorygame remote <ready|unready|start|flip|tie|giveup|end> [...]";
+                    return false;
+            }
+        }
+
+
+        public void Update(int tickCount)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                UpdateClientTimerWarningSound(tickCount);
+
+                if (_pendingHideTick > 0 && tickCount >= _pendingHideTick)
+                {
+                    ResolveMismatch();
+                }
+
+
+                if (_turnDeadlineTick > 0 && tickCount >= _turnDeadlineTick && _pendingHideTick <= 0)
+                {
+                    TryDispatchOfficialClientPacket(
+                        new[] { MemoryGameTimeOverPacketType },
+                        tickCount,
+                        out _,
+                        enforcePromptFlow: false,
+                        relayOutboundTransport: true);
+                    AdvanceTurn(tickCount);
+                    _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+                    SyncMiniRoomRuntime();
+                }
+            }
+            else if (_stage == RoomStage.Result && _resultExpireTick > 0 && tickCount >= _resultExpireTick)
+            {
+                ReturnToLobby();
+            }
+
+
+            ProcessRemoteActions(tickCount);
+
+        }
+
+
+
+        public bool HandleMouseClick(Point mousePosition, int viewportWidth, int viewportHeight, int tickCount, out string message)
+        {
+            message = null;
+            if (_stage == RoomStage.Hidden)
+            {
+                return false;
+            }
+
+
+            GetLayout(viewportWidth, viewportHeight, out Rectangle outer, out Rectangle boardArea, out _, out Rectangle[] buttonRects);
+            if (!outer.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            if (_pendingPrompt.IsActive)
+            {
+                return HandlePromptMouseClick(mousePosition, outer, tickCount, out message);
+            }
+
+            for (int i = 0; i < buttonRects.Length; i++)
+            {
+                if (!buttonRects[i].Contains(mousePosition))
+                {
+                    continue;
+                }
+
+
+                switch (i)
+                {
+                    case 0:
+                        return TryDispatchClientButtonId(
+                            ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready
+                                ? ClientReadyButtonId
+                                : ClientStartButtonId,
+                            tickCount,
+                            out message);
+                    case 1:
+                        return TryDispatchClientButtonId(ClientTieButtonId, tickCount, out message);
+                    case 2:
+                        return TryDispatchClientButtonId(ClientGiveUpButtonId, tickCount, out message);
+                    case 3:
+                        return TryDispatchClientButtonId(ClientEndButtonId, tickCount, out message);
+                    case 4:
+                        return TryDispatchClientButtonId(ClientBanButtonId, tickCount, out message);
+                }
+            }
+
+
+            int cardIndex = GetCardIndexAt(mousePosition, boardArea);
+            if (cardIndex >= 0)
+            {
+                TryRevealCard(cardIndex, tickCount, out message);
+                return true;
+            }
+
+
+            return true;
+
+        }
+
+        public bool TryDispatchClientButtonId(uint buttonId, int tickCount, out string message)
+        {
+            message = null;
+            if (_stage == RoomStage.Hidden
+                && buttonId != ClientDialogUpdateButtonOne
+                && buttonId != ClientDialogUpdateButtonTwo
+                && buttonId != ClientDialogUpdateButtonEight)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            switch (buttonId)
+            {
+                case ClientStartButtonId:
+                    TryDispatchOfficialClientSubtype(MemoryGameStartPacketType, tickCount, out message);
+                    return true;
+                case ClientTieButtonId:
+                    TryPromptTieRequestFromClientButton(out message);
+                    return true;
+                case ClientGiveUpButtonId:
+                    TryPromptGiveUpFromClientButton(_localPlayerIndex, out message);
+                    return true;
+                case ClientEndButtonId:
+                    TryRequestRoomExit(_localPlayerIndex, out message);
+                    return true;
+                case ClientReadyButtonId:
+                    TryDispatchOfficialClientSubtype(
+                        _readyStates[_localPlayerIndex]
+                            ? MemoryGameCancelReadyPacketType
+                            : MemoryGameReadyPacketType,
+                        tickCount,
+                        out message);
+                    return true;
+                case ClientBanButtonId:
+                    TryPromptBanParticipant(out message);
+                    return true;
+                case ClientDialogUpdateButtonOne:
+                case ClientDialogUpdateButtonTwo:
+                case ClientDialogUpdateButtonEight:
+                    _lastClientDialogUpdateArgument = (int)buttonId;
+                    message = $"Memory Game dialog Update({buttonId}) dispatched from client button id {buttonId}.";
+                    return true;
+                default:
+                    message = $"Unsupported Memory Game client button id {buttonId}.";
+                    return false;
+            }
+        }
+
+        private bool HandlePromptMouseClick(Point mousePosition, Rectangle outer, int tickCount, out string message)
+        {
+            message = null;
+            if (!_pendingPrompt.IsActive)
+            {
+                return false;
+            }
+
+            GetPromptLayout(outer, out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect);
+            if (yesRect.Contains(mousePosition))
+            {
+                return TryConfirmPrompt(tickCount, out message);
+            }
+
+            if (noRect.Contains(mousePosition))
+            {
+                return TryCancelPrompt(out message);
+            }
+
+            return promptBox.Contains(mousePosition) || outer.Contains(mousePosition);
+        }
+
+
+
+        public void Draw(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            Texture2D pixelTexture,
+            SpriteFont font = null)
+        {
+            if (_stage == RoomStage.Hidden || pixelTexture == null || font == null)
+            {
+                return;
+            }
+
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+
+            EnsureAssetsLoaded();
+
+
+
+            int dialogWidth = _backgroundTexture?.Width ?? ClientDialogWidth;
+            int dialogHeight = _backgroundTexture?.Height ?? ClientDialogHeight;
+            int dialogX = viewport.Width / 2 - dialogWidth / 2;
+            int dialogY = Math.Max(24, viewport.Height / 2 - dialogHeight / 2);
+
+
+            Rectangle outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
+
+            Rectangle boardArea = new Rectangle(dialogX + ClientBoardLeft, dialogY + ClientBoardTop, ClientBoardWidth, ClientBoardHeight);
+
+
+
+            if (_backgroundTexture != null)
+            {
+                spriteBatch.Draw(_backgroundTexture, new Vector2(dialogX, dialogY), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, outer, new Color(20, 27, 41, 235));
+            }
+
+
+            if (_masterPanelTexture != null)
+            {
+                spriteBatch.Draw(_masterPanelTexture, new Vector2(dialogX + ClientMasterPanelX, dialogY + ClientMasterPanelY), Color.White);
+            }
+
+
+            DrawOutlinedText(spriteBatch, font, _title, new Vector2(dialogX + 407, dialogY + 19), Color.Black, Color.Black);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + ClientNameBarLeftX, dialogY + ClientNameBarY, _readyStates[0], _currentTurnIndex == 0, isLeftPanel: true, showReadyLayer: true, showScoreLayer: true);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + ClientNameBarRightX, dialogY + ClientNameBarY, _readyStates[1], _currentTurnIndex == 1, isLeftPanel: false, showReadyLayer: ClientReadyLayerVisible, showScoreLayer: ClientScoreLayerVisible);
+            DrawBoard(spriteBatch, pixelTexture, font, boardArea);
+            DrawClientTurnIndicator(spriteBatch, dialogX, dialogY);
+            DrawClientButtons(spriteBatch, pixelTexture, font, dialogX, dialogY);
+            DrawClientRecordSummary(spriteBatch, font, dialogX, dialogY);
+            DrawOutlinedText(spriteBatch, font, $"{CurrentTurnTimeRemainingSeconds}s", new Vector2(dialogX + ClientTimerTextX, dialogY + ClientTimerTextY), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, _statusMessage, new Vector2(dialogX + 407, dialogY + 320), Color.Black, new Color(72, 52, 24));
+            DrawPromptOverlay(spriteBatch, pixelTexture, font, outer);
+        }
+
+
+        public string DescribeStatus()
+        {
+            string playerOneName = string.IsNullOrWhiteSpace(_playerNames[0]) ? "Player" : _playerNames[0];
+            string playerTwoName = string.IsNullOrWhiteSpace(_playerNames[1]) ? "Opponent" : _playerNames[1];
+            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], leave=[{_leaveBookingStates[0]},{_leaveBookingStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}, lastPacket={_lastPacketType?.ToString() ?? "None"}";
+        }
+
+
+        public void Reset()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _leaveBookingStates[0] = false;
+            _leaveBookingStates[1] = false;
+            _playerNames[0] = "Player";
+            _playerNames[1] = "Opponent";
+            _rows = 0;
+            _columns = 0;
+            _gameKind = DefaultGameKind;
+            _cardsPerRow = 4;
+            _firstCardOffset = new Point(89, 106);
+            _localPlayerIndex = DefaultLocalPlayerIndex;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+            _turnWarningEnabled = false;
+            _turnWarningShown = false;
+            _lastTurnWarningSecond = -1;
+            _title = "Match Cards";
+            _statusMessage = "Open a MiniRoom to begin.";
+            _stage = RoomStage.Hidden;
+            _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
+            _miniRoomParticipants.Clear();
+            _miniGameRecords.Clear();
+            _lastPacketType = null;
+            _lastPacketSummary = "Memory Game room reset.";
+            _packetCounts.Clear();
+            ClearPendingPrompt();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+            _lastClientDialogUpdateArgument = 0;
+            _clientOpponentLayersMaterialized = false;
+            _clientReadyLayerReleaseCount = 0;
+            _clientScoreLayerReleaseCount = 0;
+            _clientPromptLayerMaterialized = false;
+            _clientPromptLayerCreateCount = 0;
+            _clientPromptLayerReleaseCount = 0;
+            _lastClientPromptResponseSubtype = 0;
+            SyncMiniRoomRuntime();
+        }
+
+
+        private void InitializeBoard()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _resultExpireTick = 0;
+            _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
+            ClearPendingPrompt();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+
+
+            int pairCount = Math.Max(1, (_rows * _columns) / 2);
+            List<int> faceIds = new(pairCount * 2);
+            for (int i = 0; i < pairCount; i++)
+            {
+                faceIds.Add(i);
+                faceIds.Add(i);
+            }
+
+
+            Random random = new((_rows * 397) ^ (_columns * 211) ^ _title.GetHashCode(StringComparison.Ordinal));
+            for (int i = faceIds.Count - 1; i > 0; i--)
+            {
+                int swapIndex = random.Next(i + 1);
+                (faceIds[i], faceIds[swapIndex]) = (faceIds[swapIndex], faceIds[i]);
+            }
+
+
+            for (int i = 0; i < faceIds.Count; i++)
+            {
+                _cards.Add(new Card
+                {
+                    FaceId = faceIds[i],
+                    IsFaceUp = false,
+                    IsMatched = false
+                });
+            }
+        }
+
+
+        private void ResolveMismatch()
+        {
+            for (int i = 0; i < _revealedCardIndices.Count; i++)
+            {
+                _cards[_revealedCardIndices[i]].IsFaceUp = false;
+            }
+
+
+            _revealedCardIndices.Clear();
+            _pendingHideTick = 0;
+            AdvanceTurn(Environment.TickCount);
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Turn passed after the mismatch.");
+            SyncMiniRoomRuntime();
+        }
+
+
+        private void AdvanceTurn(int tickCount)
+        {
+            _currentTurnIndex = _currentTurnIndex == 0 ? 1 : 0;
+            _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+            _lastTurnWarningSecond = -1;
+        }
+
+        private void UpdateClientTimerWarningSound(int tickCount)
+        {
+            if (!_turnWarningEnabled
+                || _turnDeadlineTick <= 0
+                || _currentTurnIndex != _localPlayerIndex)
+            {
+                return;
+            }
+
+            int remainingSeconds = Math.Max(0, (_turnDeadlineTick - tickCount + 999) / 1000);
+            if (remainingSeconds <= 0 || remainingSeconds > 9 || remainingSeconds == _lastTurnWarningSecond)
+            {
+                return;
+            }
+
+            _lastTurnWarningSecond = remainingSeconds;
+            _turnWarningShown = true;
+            _timerWarningSoundCallback?.Invoke();
+        }
+
+
+        private bool AreAllCardsMatched()
+        {
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                if (!_cards[i].IsMatched)
+                {
+                    return false;
+                }
+            }
+
+
+            return _cards.Count > 0;
+
+        }
+
+
+
+        private void FinishRound(int tickCount)
+        {
+            _stage = RoomStage.Result;
+            _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+
+
+            if (_scores[0] == _scores[1])
+            {
+                _lastWinnerIndex = -1;
+                _draws[0]++;
+                _draws[1]++;
+                _statusMessage = "Round complete. Draw.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round complete. Draw.");
+                SyncMiniRoomRuntime();
+                return;
+            }
+
+
+            int winnerIndex = _scores[0] > _scores[1] ? 0 : 1;
+            int loserIndex = winnerIndex == 0 ? 1 : 0;
+            _lastWinnerIndex = winnerIndex;
+            _wins[winnerIndex]++;
+            _losses[loserIndex]++;
+            _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[winnerIndex]} won the round.");
+            SyncMiniRoomRuntime();
+        }
+
+
+        private void ReturnToLobby()
+        {
+            if (TryResolveBookedLeaveAfterRound(out string leaveResolutionMessage))
+            {
+                _statusMessage = leaveResolutionMessage;
+            }
+
+            if (_stage == RoomStage.Hidden)
+            {
+                return;
+            }
+
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+            _stage = RoomStage.Lobby;
+            if (string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                _statusMessage = "Ready the room, then start the board.";
+            }
+
+            SyncMiniRoomRuntime();
+        }
+
+
+        private void ClearRoundState()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _leaveBookingStates[0] = false;
+            _leaveBookingStates[1] = false;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+            _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
+            _miniGameRecords.Clear();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+            _clientStartButtonReleaseCount = 0;
+            _clientBanButtonUpdateCount = 0;
+            _clientEnterResultMatchState = 0;
+            _clientEnterResultNextOperationTick = 0;
+            _clientTournamentMode = false;
+            _clientTournamentRound = 0;
+            _clientReadyButtonVisible = true;
+            _clientStartButtonVisible = true;
+            _clientEndButtonVisible = true;
+        }
+
+
+        private bool TryDispatchMiniRoomEnterPacket(PacketReader reader, out string message)
+        {
+            int slot = reader.ReadByte();
+            if (!TryDecodeMiniRoomParticipant(reader, slot, out MiniRoomParticipantState participant, out message))
+            {
+                return false;
+            }
+
+
+            string seatDescription = slot < 2 ? ResolveSeatLabel(slot) : $"Visitor seat {slot}";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {participant.Name} entered the Match Cards room ({seatDescription}).");
+            SyncMiniRoomRuntime();
+            _participantEnterSoundCallback?.Invoke();
+            message = $"{participant.Name} entered MiniRoom slot {slot} with job {participant.JobCode}.";
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomEnterResultPacket(PacketReader reader, int tickCount, out string message)
+        {
+            ApplyClientEnterResultLocalBranch(tickCount);
+
+            int decodedRecordCount = 0;
+            while (true)
+            {
+                int recordIndex = unchecked((sbyte)reader.ReadByte());
+                if (recordIndex < 0)
+                {
+                    break;
+                }
+
+                if (!TryDecodeMiniGameRecord(reader, recordIndex, out MiniGameRecord record, out message))
+                {
+                    return false;
+                }
+
+                ApplyMiniGameRecord(record);
+                decodedRecordCount++;
+            }
+
+            string title = reader.ReadMapleString();
+            int gameKind = reader.ReadByte();
+            bool tournamentMode = reader.ReadByte() != 0;
+            int tournamentRound = tournamentMode ? reader.ReadByte() : 0;
+
+            ApplyClientEnterResultLayout(gameKind);
+            _title = string.IsNullOrWhiteSpace(title) ? "Match Cards" : title.Trim();
+            _clientTournamentMode = tournamentMode;
+            _clientTournamentRound = tournamentRound;
+            _stage = RoomStage.Lobby;
+            _statusMessage = tournamentMode
+                ? $"Enter result applied for {_title}: game kind {gameKind}, tournament round {tournamentRound}."
+                : $"Enter result applied for {_title}: game kind {gameKind}.";
+
+            if (tournamentMode)
+            {
+                if (_localPlayerIndex != 0)
+                {
+                    _clientReadyButtonVisible = false;
+                }
+                else
+                {
+                    _clientStartButtonVisible = false;
+                }
+
+                _clientEndButtonVisible = false;
+            }
+
+            SyncMiniRoomRuntime();
+            message = $"CMemoryGameDlg::OnEnterResult decoded {decodedRecordCount} MiniGame record entr{(decodedRecordCount == 1 ? "y" : "ies")}, title '{_title}', gameKind={gameKind}, tournament={(tournamentMode ? 1 : 0)}, round={tournamentRound}.";
+            return true;
+        }
+
+        private bool TryDecodeMiniGameRecord(PacketReader reader, int slot, out MiniGameRecord record, out string message)
+        {
+            record = null;
+            if (slot < 0)
+            {
+                message = $"MiniGame record used invalid slot {slot}.";
+                return false;
+            }
+
+            if (reader.Remaining < ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but only {reader.Remaining} byte(s) remain.";
+                return false;
+            }
+
+            byte[] rawBytes = reader.ReadBytes(ClientMiniGameRecordByteLength);
+            if (rawBytes.Length != ClientMiniGameRecordByteLength)
+            {
+                message = $"MiniGame record for slot {slot} requires {ClientMiniGameRecordByteLength} bytes, but decoded {rawBytes.Length} byte(s).";
+                return false;
+            }
+
+            record = new MiniGameRecord(
+                slot,
+                BitConverter.ToInt32(rawBytes, 0),
+                BitConverter.ToInt32(rawBytes, 4),
+                BitConverter.ToInt32(rawBytes, 8),
+                BitConverter.ToInt32(rawBytes, 12),
+                BitConverter.ToInt32(rawBytes, 16),
+                rawBytes);
+            message = string.Empty;
+            return true;
+        }
+
+        private void ApplyMiniGameRecord(MiniGameRecord record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            _miniGameRecords[record.Slot] = record;
+            if (record.Slot < 0 || record.Slot >= _wins.Length)
+            {
+                return;
+            }
+
+            _wins[record.Slot] = record.Wins;
+            _draws[record.Slot] = record.Draws;
+            _losses[record.Slot] = record.Losses;
+        }
+
+
+        private bool TryDispatchMiniRoomChatPacket(PacketReader reader, out string message)
+        {
+            byte chatType = reader.ReadByte();
+            if (chatType == MiniRoomChatGameMessageType)
+            {
+                int gameMessageCode = reader.ReadByte();
+                string characterName = reader.ReadMapleString();
+                string gameMessage = ResolveMiniRoomGameMessage(gameMessageCode, characterName);
+                _statusMessage = gameMessage;
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {gameMessage}");
+                SyncMiniRoomRuntime();
+                message = gameMessage;
+                return true;
+            }
+
+
+            int speakerSlot = chatType;
+            string rawText = reader.ReadMapleString();
+            string speakerName = ResolveParticipantName(speakerSlot);
+            string normalizedText = NormalizeMiniRoomChatText(rawText, ref speakerName);
+            bool isLocalSpeaker = speakerSlot == _localPlayerIndex;
+            _miniRoomRuntime?.AddMiniRoomSpeakerMessage(speakerName, normalizedText, isLocalSpeaker);
+            _statusMessage = $"{speakerName} said: {normalizedText}";
+            SyncMiniRoomRuntime();
+            message = $"MiniRoom chat from slot {speakerSlot}: {speakerName} : {normalizedText}";
+            return true;
+        }
+
+
+        private bool TryDispatchMiniRoomAvatarPacket(PacketReader reader, out string message)
+        {
+            int slot = reader.ReadByte();
+            if (!TryDecodeMiniRoomAvatar(reader, slot, out MiniRoomParticipantState participant, out message))
+            {
+                return false;
+            }
+
+
+            string participantName = ResolveParticipantName(slot);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {participantName} updated their MiniRoom avatar.");
+            SyncMiniRoomRuntime();
+            message = $"Updated MiniRoom avatar for slot {slot}: {participantName}.";
+            return true;
+        }
+
+
+        private bool TryDispatchMiniRoomGameplayPacket(PacketReader reader, int tickCount, out string message)
+        {
+            byte packetType = reader.ReadByte();
+            switch (packetType)
+            {
+                case MemoryGameReadyPacketType:
+                    return TryApplyRemoteReadyPacket(isReady: true, out message);
+                case MemoryGameCancelReadyPacketType:
+                    return TryApplyRemoteReadyPacket(isReady: false, out message);
+                case MemoryGameStartPacketType:
+                    return TryApplyStartPacket(reader, tickCount, out message);
+                case MemoryGameTurnUpCardPacketType:
+                    return TryApplyTurnUpCardPacket(reader, tickCount, out message);
+                case MemoryGameTimeOverPacketType:
+                    return TryApplyTimeOverPacket(reader, tickCount, out message);
+                case MemoryGameTieRequestPacketType:
+                    return TryApplyTieRequestStatus(_localPlayerIndex, out message);
+                case MemoryGameTieResultPacketType:
+                    return TryApplyTieResultStatus(out message);
+                case MemoryGameGameResultPacketType:
+                    return TryApplyGameResultPacket(reader, tickCount, out message);
+                default:
+                    message = $"MiniRoom gameplay packet {packetType} is not modeled for Match Cards.";
+                    return false;
+            }
+        }
+
+
+        private bool TryDispatchMiniRoomLeavePacket(PacketReader reader, out string message)
+        {
+            int playerIndex = reader.ReadByte();
+            if (playerIndex < 0)
+            {
+                message = $"MiniRoom leave packet used invalid player index {playerIndex}.";
+                return false;
+            }
+
+
+            string playerName = ResolveParticipantName(playerIndex);
+            int? leaveReason = null;
+            try
+            {
+                leaveReason = reader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+            }
+            bool isLocalPlayer = playerIndex == _localPlayerIndex;
+            string leaveStatusMessage = leaveReason.HasValue
+                ? ResolveLeaveStatusMessage(playerName, leaveReason.Value, isLocalPlayer)
+                : $"{playerName} left the Match Cards room.";
+            _miniRoomParticipants.Remove(playerIndex);
+
+            if (isLocalPlayer)
+            {
+                if (leaveReason == 2)
+                {
+                    _stage = RoomStage.Result;
+                    _resultExpireTick = Environment.TickCount + 10000;
+                    _pendingHideTick = 0;
+                    _turnDeadlineTick = 0;
+                    _statusMessage = leaveStatusMessage;
+                    SyncMiniRoomRuntime();
+                }
+                else
+                {
+                    Reset();
+                    _statusMessage = leaveStatusMessage;
+                }
+            }
+            else
+            {
+                if (IsValidPlayerIndex(playerIndex))
+                {
+                    _readyStates[playerIndex] = false;
+                    _leaveBookingStates[playerIndex] = false;
+                    _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+                }
+
+                _statusMessage = leaveStatusMessage;
+                SyncMiniRoomRuntime();
+            }
+
+
+            message = leaveReason.HasValue
+                ? $"{playerName} left the Match Cards room (reason {leaveReason.Value})."
+                : $"{playerName} left the Match Cards room.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}", isWarning: true);
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+
+        private bool TryApplyRemoteReadyPacket(bool isReady, out string message)
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            bool handled = TrySetReady(remotePlayerIndex, isReady, out message);
+            if (handled)
+            {
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveParticipantName(remotePlayerIndex)} {(isReady ? "is ready." : "canceled ready.")}");
+            }
+
+
+            return handled;
+
+        }
+
+
+        private bool TryApplyTieRequestStatus(int playerIndex, out string message)
+        {
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            string playerName = ResolveParticipantName(playerIndex);
+            return TryOpenPrompt(
+                MemoryGamePromptType.IncomingTieRequest,
+                MemoryGameIncomingTiePromptStringPoolId,
+                playerIndex,
+                ResolveMemoryGamePromptText(MemoryGameIncomingTiePromptStringPoolId, playerName),
+                out message);
+        }
+
+        private bool TryApplyTieResultStatus(out string message)
+        {
+            _localTieRequestSent = false;
+            _statusMessage = ResolveMemoryGamePromptText(MemoryGameTieResultNoticeStringPoolId);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}", isWarning: true);
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyOutgoingTieRequest(out string message)
+        {
+            if (_localTieRequestSent)
+            {
+                message = "A Match Cards tie request is already pending.";
+                return false;
+            }
+
+            if (_localTieRequestSentThisTurn)
+            {
+                message = "A Match Cards tie request was already sent this turn.";
+                return false;
+            }
+
+            _localTieRequestSent = true;
+            _localTieRequestSentThisTurn = true;
+            message = "Tie request packet (50) sent.";
+            return true;
+        }
+
+        private bool TryApplyOutgoingLobbyLeavePacket(out string message)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                message = "Client leave packet 10 is only emitted outside active rounds; use leave-book packets 56/57 while Match Cards is playing.";
+                return false;
+            }
+
+            bool hadOpponentLayers = HasClientOpponentSeat();
+            int promptLayerReleaseCount = _clientPromptLayerReleaseCount;
+            int promptResponseSubtype = _lastClientPromptResponseSubtype;
+            if (!TryResolveLobbyExit(_localPlayerIndex, out message))
+            {
+                return false;
+            }
+
+            if (hadOpponentLayers)
+            {
+                _clientOpponentLayersMaterialized = false;
+                _clientReadyLayerReleaseCount++;
+                _clientScoreLayerReleaseCount++;
+            }
+
+            if (promptLayerReleaseCount > 0)
+            {
+                _clientPromptLayerMaterialized = false;
+                _clientPromptLayerReleaseCount = promptLayerReleaseCount;
+                _lastClientPromptResponseSubtype = promptResponseSubtype;
+            }
+
+            _lastClientDialogUpdateArgument = ClientDialogLeaveUpdateArgument;
+            return true;
+        }
+
+        private bool TryApplyOutgoingEnterResultAckPacket(byte[] packetBytes, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_localPlayerIndex != 0)
+            {
+                message = "Enter-result ack packet (11) is only emitted by the Match Cards room owner branch.";
+                return false;
+            }
+
+            _clientReadyButtonReleaseCount++;
+            _clientStartButtonDisableCount++;
+            message = $"Enter-result ack packet (11) sent with state {ClientEnterResultAckState}.";
+            return true;
+        }
+
+        private void ApplyClientEnterResultLocalBranch(int tickCount)
+        {
+            if (_localPlayerIndex == 0)
+            {
+                _clientReadyButtonReleaseCount++;
+                _clientStartButtonDisableCount++;
+                if (_officialClientRelayEnabled)
+                {
+                    TryQueueOfficialClientRelayPacket(new[] { MemoryGameClientEnterResultAckPacketType, ClientEnterResultAckState });
+                }
+
+                return;
+            }
+
+            _clientStartButtonReleaseCount++;
+            _readyStates[_localPlayerIndex] = false;
+            _clientBanButtonUpdateCount++;
+            _clientEnterResultMatchState = ClientEnterResultGuestMatchState;
+            _clientEnterResultNextOperationTick = tickCount + ClientEnterResultGuestNextOperationDelayMs;
+        }
+
+        private void ApplyClientEnterResultLayout(int gameKind)
+        {
+            _gameKind = Math.Max(0, gameKind);
+            switch (_gameKind)
+            {
+                case 0:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 4, cardCount: 12, firstCardOffset: new Point(89, 106));
+                    break;
+                case 1:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 5, cardCount: 20, firstCardOffset: new Point(61, 72));
+                    break;
+                case 2:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 6, cardCount: 30, firstCardOffset: new Point(33, 39));
+                    break;
+            }
+        }
+
+        private void ApplyClientMemoryGameLayout(int cardsPerRow, int cardCount, Point firstCardOffset)
+        {
+            _cardsPerRow = cardsPerRow;
+            _columns = cardsPerRow;
+            _rows = Math.Max(1, (cardCount + cardsPerRow - 1) / cardsPerRow);
+            _firstCardOffset = firstCardOffset;
+        }
+
+        private bool TryApplyOutgoingGiveUpRequest(out string message)
+        {
+            if (_localGiveUpRequestSent)
+            {
+                message = "A Match Cards give-up request is already pending.";
+                return false;
+            }
+
+            _localGiveUpRequestSent = true;
+            message = "Give-up request packet (52) sent.";
+            return true;
+        }
+
+
+        private bool TryApplyLeaveBookingStatus(int playerIndex, bool booked, out string message, bool preserveStatusMessage = false)
+        {
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Leave-booking packets (56/57) are only valid during an active Match Cards round.";
+                return false;
+            }
+
+
+            _leaveBookingStates[playerIndex] = booked;
+            string playerName = ResolveParticipantName(playerIndex);
+            if (!preserveStatusMessage)
+            {
+                _statusMessage = booked
+                    ? $"{playerName} booked a leave request for the next round."
+                    : $"{playerName} canceled the pending leave request.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            }
+
+            SyncMiniRoomRuntime();
+            message = preserveStatusMessage
+                ? (booked
+                    ? "Leave-booking packet (56) sent."
+                    : "Leave-booking cancel packet (57) sent.")
+                : _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyOutgoingTieResponse(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes == null || packetBytes.Length <= 1)
+            {
+                message = "Tie-response packet (51) requires an explicit yes/no byte (0 or 1).";
+                return false;
+            }
+
+            if (packetBytes[1] > 1)
+            {
+                message = $"Tie-response packet (51) used invalid decision byte {packetBytes[1]}; expected 0 or 1.";
+                return false;
+            }
+
+            bool accepted = packetBytes[1] != 0;
+            message = accepted
+                ? "Tie-response packet (51) sent with accept=1."
+                : "Tie-response packet (51) sent with accept=0.";
+            return true;
+        }
+
+
+        private bool TryApplyClientBanOrTurnUpCardPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes.Length <= 1)
+            {
+                message = "Ban request packet (60) sent.";
+                return true;
+            }
+
+
+            int cardIndex = packetBytes[1];
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Turn-up requests are only valid while Match Cards is in play.";
+                return false;
+            }
+
+            if (!TryEnsureCardIndex(cardIndex, out message))
+            {
+                return false;
+            }
+
+            message = $"Turn-up request packet (60) sent for card {cardIndex}.";
+            return true;
+        }
+
+        private bool TryApplyOutgoingReadyRequest(bool isReady, out string message)
+        {
+            message = isReady
+                ? "Ready request packet (58) sent."
+                : "Ready-cancel request packet (59) sent.";
+            _readyClickSoundCallback?.Invoke();
+            return true;
+        }
+
+        private bool TryApplyOutgoingTimeOverRequest(out string message)
+        {
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Time-over packets (63) are only valid while Match Cards is in play.";
+                return false;
+            }
+
+            message = "Time-over packet (63) sent.";
+            return true;
+        }
+
+        private bool TryApplyOutgoingStartRequest(out string message)
+        {
+            if (!HasClientStartTarget())
+            {
+                message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
+                return false;
+            }
+
+            message = "Start request packet (61) sent.";
+            return true;
+        }
+
+
+
+        private bool TryApplyStartPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int currentTurnIndex = reader.ReadByte();
+            int cardCount = reader.ReadByte();
+            if (cardCount <= 0)
+            {
+                message = "Memory Game start packet did not include a card count.";
+                return false;
+            }
+
+
+            List<int> shuffle = new(cardCount);
+            for (int i = 0; i < cardCount; i++)
+            {
+                shuffle.Add(reader.ReadInt());
+            }
+
+
+            ResolveBoardDimensions(cardCount, out _rows, out _columns);
+            InitializeBoardFromPacket(shuffle);
+            _stage = RoomStage.Playing;
+            _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
+            _turnDeadlineTick = tickCount + (200 * cardCount) + 11500;
+            _lastTurnWarningSecond = -1;
+            _resultExpireTick = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Start packet applied from MiniRoom payload.");
+            SyncMiniRoomRuntime();
+            message = $"Applied start packet for {cardCount} cards. {_statusMessage}";
+            return true;
+        }
+
+
+        private bool TryApplyTurnUpCardPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int firstRevealFlag = reader.ReadByte();
+            int cardIndex = reader.ReadByte();
+            if (!TryEnsureCardIndex(cardIndex, out message))
+            {
+                return false;
+            }
+
+
+            if (firstRevealFlag != 0)
+            {
+                _cards[cardIndex].IsFaceUp = true;
+                _revealedCardIndices.Clear();
+                _revealedCardIndices.Add(cardIndex);
+                _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
+                _miniRoomRuntime?.AddMiniRoomSpeakerMessage(_playerNames[_currentTurnIndex], $"turned up card {cardIndex}.", _currentTurnIndex == _localPlayerIndex);
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
+            }
+
+
+            int pairedCardIndex = reader.ReadByte();
+            int resultOwner = reader.ReadByte();
+            if (!TryEnsureCardIndex(pairedCardIndex, out message))
+            {
+                return false;
+            }
+
+
+            _cards[cardIndex].IsFaceUp = true;
+            _cards[pairedCardIndex].IsFaceUp = true;
+            _revealedCardIndices.Clear();
+            _revealedCardIndices.Add(pairedCardIndex);
+            _revealedCardIndices.Add(cardIndex);
+
+
+            if (resultOwner < _playerNames.Length)
+            {
+                _currentTurnIndex = resultOwner;
+                _turnDeadlineTick = tickCount + 11600;
+                _lastTurnWarningSecond = -1;
+                _localTieRequestSentThisTurn = false;
+                _statusMessage = $"Mismatch pending. {_playerNames[_currentTurnIndex]} takes the next turn after flip-back.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Packet mismatch received. Waiting for time-over flip-back.");
+            }
+            else
+            {
+                int scoringPlayerIndex = resultOwner - _playerNames.Length;
+                if (!IsValidPlayerIndex(scoringPlayerIndex))
+                {
+                    message = $"Turn-up packet used invalid scoring owner {resultOwner}.";
+                    return false;
+                }
+
+
+                _cards[cardIndex].IsMatched = true;
+                _cards[pairedCardIndex].IsMatched = true;
+                _scores[scoringPlayerIndex]++;
+                _currentTurnIndex = scoringPlayerIndex;
+                _turnDeadlineTick = tickCount + 10000;
+                _lastTurnWarningSecond = -1;
+                _revealedCardIndices.Clear();
+                _localTieRequestSentThisTurn = false;
+                _statusMessage = $"{_playerNames[scoringPlayerIndex]} found a pair.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[scoringPlayerIndex]} matched cards {pairedCardIndex} and {cardIndex}.");
+            }
+
+
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        private bool TryApplyTimeOverPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int currentTurnIndex = reader.ReadByte();
+            if (_revealedCardIndices.Count > 0)
+            {
+                foreach (int revealedIndex in _revealedCardIndices)
+                {
+                    if (revealedIndex >= 0 && revealedIndex < _cards.Count && !_cards[revealedIndex].IsMatched)
+                    {
+                        _cards[revealedIndex].IsFaceUp = false;
+                    }
+                }
+
+
+                _revealedCardIndices.Clear();
+
+            }
+
+            _pendingHideTick = 0;
+
+            _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
+            _turnDeadlineTick = tickCount + 10000;
+            _lastTurnWarningSecond = -1;
+            _statusMessage = ResolveMiniRoomGameMessage(1, ResolveParticipantName(_currentTurnIndex));
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Time-over packet returned the board to the next turn.");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        private bool TryApplyGameResultPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int resultType = reader.ReadByte();
+            int winnerIndex = -1;
+            if (resultType != 1)
+            {
+                winnerIndex = reader.ReadByte();
+                if (!IsValidPlayerIndex(winnerIndex))
+                {
+                    message = $"Game-result packet used invalid winner index {winnerIndex}.";
+                    return false;
+                }
+            }
+
+            if (!TryDecodeMiniGameRecord(reader, 0, out MiniGameRecord firstRecord, out message)
+                || !TryDecodeMiniGameRecord(reader, 1, out MiniGameRecord secondRecord, out message))
+            {
+                return false;
+            }
+
+            _stage = RoomStage.Result;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _lastTurnWarningSecond = -1;
+            _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+            ApplyMiniGameRecord(firstRecord);
+            ApplyMiniGameRecord(secondRecord);
+
+
+            if (resultType == 1)
+            {
+                _lastWinnerIndex = -1;
+                _statusMessage = ResolveMemoryGameResultText(isDraw: true);
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
+            }
+
+            _lastWinnerIndex = winnerIndex;
+            _statusMessage = ResolveMemoryGameResultText(winnerIndex);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        private void InitializeBoardFromPacket(IReadOnlyList<int> shuffle)
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _resultExpireTick = 0;
+            _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
+
+
+            for (int i = 0; i < shuffle.Count; i++)
+            {
+                _cards.Add(new Card
+                {
+                    FaceId = Math.Max(0, shuffle[i]),
+                    IsFaceUp = false,
+                    IsMatched = false
+                });
+            }
+        }
+
+
+        private static void ResolveBoardDimensions(int cardCount, out int rows, out int columns)
+        {
+            rows = 2;
+            columns = Math.Max(2, cardCount / 2);
+            int bestDifference = int.MaxValue;
+            for (int candidateRows = 2; candidateRows <= cardCount; candidateRows++)
+            {
+                if (cardCount % candidateRows != 0)
+                {
+                    continue;
+                }
+
+
+                int candidateColumns = cardCount / candidateRows;
+                int difference = Math.Abs(candidateColumns - candidateRows);
+                if (difference < bestDifference)
+                {
+                    bestDifference = difference;
+                    rows = Math.Min(candidateRows, candidateColumns);
+                    columns = Math.Max(candidateRows, candidateColumns);
+                }
+            }
+        }
+
+
+        private bool TryEnsureCardIndex(int cardIndex, out string message)
+        {
+            if (cardIndex < 0 || cardIndex >= _cards.Count)
+            {
+                message = $"Invalid card index: {cardIndex}.";
+                return false;
+            }
+
+
+            message = string.Empty;
+
+            return true;
+
+        }
+
+
+
+        private string ResolveRemotePlayerName()
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            return string.IsNullOrWhiteSpace(_playerNames[remotePlayerIndex]) ? "Opponent" : _playerNames[remotePlayerIndex];
+        }
+
+
+        private static bool FailMiniRoomPacket(byte basePacketType, out string message)
+        {
+            message = $"MiniRoom base packet {basePacketType} is not modeled for Match Cards.";
+            return false;
+        }
+
+
+        private static bool FailOfficialClientPacket(byte packetType, out string message)
+        {
+            message = $"Memory Game client packet {packetType} is not modeled for Match Cards.";
+            return false;
+        }
+
+
+        private static bool IsMiniRoomBasePacketType(byte packetType)
+        {
+            return packetType == MiniRoomBaseEnterPacketType
+                || packetType == MiniRoomBaseEnterResultPacketType
+                || packetType == MiniRoomBaseGameplayPacketType
+                || packetType == MiniRoomBaseChatPacketType
+                || packetType == MiniRoomBaseChatRepeatPacketType
+                || packetType == MiniRoomBaseAvatarPacketType
+                || packetType == MiniRoomBaseLeavePacketType;
+        }
+
+
+        private void DrawBoard(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area)
+        {
+            if (_cards.Count == 0)
+            {
+                DrawOutlinedText(spriteBatch, font, "No board yet", new Vector2(area.X + 96, area.Y + 124), Color.Black, Color.Black);
+                return;
+            }
+
+
+            for (int index = 0; index < _cards.Count; index++)
+            {
+                Rectangle cardRect = GetClientCardBounds(index, area);
+
+
+                Card card = _cards[index];
+                Texture2D cardTexture = ResolveCardTexture(card);
+                if (cardTexture != null)
+                {
+                    spriteBatch.Draw(cardTexture, new Vector2(cardRect.X, cardRect.Y), card.IsMatched ? Color.White * 0.82f : Color.White);
+                    continue;
+                }
+
+
+                Color cardColor = card.IsMatched
+                    ? new Color(111, 162, 85)
+                    : card.IsFaceUp
+                        ? new Color(246, 224, 167)
+                        : new Color(145, 82, 42);
+
+
+                spriteBatch.Draw(pixel, cardRect, cardColor);
+
+            }
+
+
+
+            if (_stage == RoomStage.Result)
+            {
+                Texture2D resultTexture = _lastWinnerIndex switch
+                {
+                    0 when _localPlayerIndex == 0 => _winTexture,
+                    1 when _localPlayerIndex == 1 => _winTexture,
+                    0 or 1 => _loseTexture,
+                    _ => _drawTexture
+                };
+
+
+                if (resultTexture != null)
+                {
+                    Vector2 resultPosition = new(
+                        area.Center.X - (resultTexture.Width / 2f),
+                        area.Center.Y - (resultTexture.Height / 2f));
+                    spriteBatch.Draw(resultTexture, resultPosition, Color.White);
+                }
+            }
+        }
+
+        private void DrawPromptOverlay(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle outer)
+        {
+            if (!_pendingPrompt.IsActive)
+            {
+                return;
+            }
+
+            GetPromptLayout(outer, out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect);
+            spriteBatch.Draw(pixel, promptBox, new Color(38, 24, 12, 230));
+            spriteBatch.Draw(pixel, new Rectangle(promptBox.X + 1, promptBox.Y + 1, promptBox.Width - 2, promptBox.Height - 2), new Color(247, 232, 194, 240));
+            DrawOutlinedText(spriteBatch, font, "Confirm", new Vector2(promptBox.X + 10, promptBox.Y + 8), Color.Black, new Color(96, 60, 20));
+
+            float textY = promptBox.Y + 30;
+            foreach (string line in WrapPromptText(font, _pendingPrompt.Text, promptBox.Width - 20))
+            {
+                DrawOutlinedText(spriteBatch, font, line, new Vector2(promptBox.X + 10, textY), Color.Black, new Color(72, 52, 24));
+                textY += font.LineSpacing;
+            }
+
+            DrawButton(spriteBatch, pixel, font, yesRect.X, yesRect.Y, null, "Yes");
+            DrawButton(spriteBatch, pixel, font, noRect.X, noRect.Y, null, "No");
+        }
+
+
+        private void HandleMiniRoomReadyRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, remotePlayerIndex, readyState: !_readyStates[remotePlayerIndex]);
+        }
+
+
+        private void HandleMiniRoomStartRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, _localPlayerIndex, readyState: true);
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, remotePlayerIndex, readyState: true);
+            TryDispatchPacket(MemoryGamePacketType.StartGame, Environment.TickCount, out _);
+        }
+
+
+        private void HandleMiniRoomModeRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            TryDispatchPacket(MemoryGamePacketType.SelectMatchCardsMode, Environment.TickCount, out _);
+        }
+
+
+        private void EnsureRoomOpenFromMiniRoomRuntime()
+        {
+            if (_stage != RoomStage.Hidden)
+            {
+                return;
+            }
+
+
+            string ownerName = _miniRoomRuntime?.Occupants.Count > 0 ? _miniRoomRuntime.Occupants[0].Name : "Player";
+            string guestName = _miniRoomRuntime?.Occupants.Count > 1 ? _miniRoomRuntime.Occupants[1].Name : "Opponent";
+            string title = _miniRoomRuntime?.RoomTitle ?? "Match Cards";
+            OpenRoom(title, ownerName, guestName, DefaultRows, DefaultColumns, DefaultLocalPlayerIndex);
+        }
+
+
+        private void ProcessRemoteActions(int tickCount)
+        {
+            while (_pendingRemoteActions.Count > 0 && tickCount >= _pendingRemoteActions.Peek().ExecuteTick)
+            {
+                PendingRemoteAction action = _pendingRemoteActions.Dequeue();
+                MemoryGamePacketType packetType = action.ActionType switch
+                {
+                    RemoteActionType.Ready => MemoryGamePacketType.SetReady,
+                    RemoteActionType.Start => MemoryGamePacketType.StartGame,
+                    RemoteActionType.Reveal => MemoryGamePacketType.RevealCard,
+                    RemoteActionType.Tie => MemoryGamePacketType.ClaimTie,
+                    RemoteActionType.GiveUp => MemoryGamePacketType.GiveUp,
+                    RemoteActionType.End => MemoryGamePacketType.SelectMatchCardsMode,
+                    _ => MemoryGamePacketType.SelectMatchCardsMode
+                };
+
+                if (action.ActionType == RemoteActionType.End)
+                {
+                    TryRequestRoomExit(action.PlayerIndex, out _);
+                    continue;
+                }
+
+
+                TryDispatchPacket(packetType, tickCount, out _, action.PlayerIndex, action.CardIndex, action.ReadyState);
+
+            }
+
+        }
+
+
+
+        private void SyncMiniRoomRuntime()
+        {
+            RefreshClientOpponentLayerOwnership();
+            if (_miniRoomRuntime == null)
+            {
+                return;
+            }
+
+
+            string roomState = _stage switch
+            {
+                RoomStage.Hidden => "Board closed",
+                RoomStage.Lobby => "Waiting for ready check",
+                RoomStage.Playing => $"{_playerNames[_currentTurnIndex]}'s turn ({CurrentTurnTimeRemainingSeconds}s)",
+                RoomStage.Result => _lastWinnerIndex >= 0 ? $"{_playerNames[_lastWinnerIndex]} won the round" : "Round ended in a draw",
+                _ => string.Empty
+            };
+
+
+            List<SocialRoomOccupant> extraOccupants = BuildMiniRoomExtraOccupants();
+
+            CharacterBuild ownerBuild = ResolveParticipantAvatarBuild(0);
+
+            CharacterBuild guestBuild = ResolveParticipantAvatarBuild(1);
+
+            string roomStatus = BuildRoomStatusMessage();
+
+
+
+            _miniRoomRuntime.SyncMiniRoomMatchCards(
+                _title,
+                ResolvePrimaryParticipantName(0),
+                ResolvePrimaryParticipantName(1),
+                _readyStates[0],
+                _readyStates[1],
+                _scores[0],
+                _scores[1],
+                _currentTurnIndex,
+                roomStatus,
+                roomState,
+                BuildParticipantDetail(0, includeScore: true),
+                BuildParticipantDetail(1, includeScore: true),
+                ownerBuild,
+                guestBuild,
+                extraOccupants);
+        }
+
+        private void RefreshClientOpponentLayerOwnership()
+        {
+            bool hasOpponentSeat = HasClientOpponentSeat();
+            if (hasOpponentSeat)
+            {
+                _clientOpponentLayersMaterialized = true;
+                return;
+            }
+
+            if (!_clientOpponentLayersMaterialized)
+            {
+                return;
+            }
+
+            _clientOpponentLayersMaterialized = false;
+            _clientReadyLayerReleaseCount++;
+            _clientScoreLayerReleaseCount++;
+        }
+
+
+        private List<SocialRoomOccupant> BuildMiniRoomExtraOccupants()
+        {
+            List<SocialRoomOccupant> occupants = new();
+            foreach (KeyValuePair<int, MiniRoomParticipantState> entry in _miniRoomParticipants.OrderBy(entry => entry.Key))
+            {
+                int slot = entry.Key;
+                if (slot < 2)
+                {
+                    continue;
+                }
+
+
+                occupants.Add(new SocialRoomOccupant(
+                    ResolveParticipantName(slot),
+                    SocialRoomOccupantRole.Visitor,
+                    BuildParticipantDetail(slot, includeScore: false),
+                    isReady: false,
+                    avatarBuild: entry.Value.AvatarBuild?.Clone()));
+            }
+
+
+            return occupants;
+
+        }
+
+
+
+        private bool TryDecodeMiniRoomParticipant(PacketReader reader, int slot, out MiniRoomParticipantState participant, out string message)
+        {
+            participant = null;
+            if (slot < 0)
+            {
+                message = $"MiniRoom enter packet used invalid slot {slot}.";
+                return false;
+            }
+
+
+            if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook avatarLook, out string decodeError))
+            {
+                message = decodeError;
+                return false;
+            }
+
+
+            string name = reader.ReadMapleString();
+            short jobCode = reader.ReadShort();
+            participant = UpsertMiniRoomParticipant(slot, name, jobCode, avatarLook);
+            message = string.Empty;
+            return true;
+        }
+
+
+        private bool TryDecodeMiniRoomAvatar(PacketReader reader, int slot, out MiniRoomParticipantState participant, out string message)
+        {
+            participant = null;
+            if (slot < 0)
+            {
+                message = $"MiniRoom avatar packet used invalid slot {slot}.";
+                return false;
+            }
+
+
+            if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook avatarLook, out string decodeError))
+            {
+                message = decodeError;
+                return false;
+            }
+
+
+            participant = UpsertMiniRoomParticipant(slot, null, null, avatarLook);
+            message = string.Empty;
+            return true;
+        }
+
+
+        private MiniRoomParticipantState UpsertMiniRoomParticipant(int slot, string name, short? jobCode, LoginAvatarLook avatarLook)
+        {
+            if (!_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant))
+            {
+                participant = new MiniRoomParticipantState(slot);
+                _miniRoomParticipants[slot] = participant;
+            }
+
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                participant.Name = name.Trim();
+                if (slot < _playerNames.Length)
+                {
+                    _playerNames[slot] = participant.Name;
+                }
+            }
+
+
+            if (jobCode.HasValue)
+            {
+                participant.JobCode = jobCode.Value;
+            }
+
+
+            if (avatarLook != null)
+            {
+                participant.AvatarLook = avatarLook;
+                participant.AvatarBuild = CreateMiniRoomAvatarBuild(avatarLook);
+            }
+
+
+            return participant;
+
+        }
+
+
+
+        private string ResolvePrimaryParticipantName(int slot)
+        {
+            if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant)
+                && !string.IsNullOrWhiteSpace(participant.Name))
+            {
+                return participant.Name;
+            }
+
+
+            return _playerNames[slot];
+
+        }
+
+
+
+        private string ResolveParticipantName(int slot)
+        {
+            if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant)
+                && !string.IsNullOrWhiteSpace(participant.Name))
+            {
+                return participant.Name;
+            }
+
+
+            if (slot >= 0 && slot < _playerNames.Length && !string.IsNullOrWhiteSpace(_playerNames[slot]))
+            {
+                return _playerNames[slot];
+            }
+
+
+            return $"Seat {slot}";
+
+        }
+
+
+
+        private string BuildParticipantDetail(int slot, bool includeScore)
+        {
+            List<string> detailParts = new() { ResolveSeatLabel(slot) };
+            if (includeScore && slot >= 0 && slot < _scores.Length)
+            {
+                detailParts.Add($"Score {_scores[slot]}");
+                if (_currentTurnIndex == slot && _stage == RoomStage.Playing)
+                {
+                    detailParts.Add("Current turn");
+                }
+            }
+
+
+            if (slot >= 0 && slot < _leaveBookingStates.Length && _leaveBookingStates[slot])
+            {
+                detailParts.Add("Leaving after round");
+            }
+
+
+            if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant))
+            {
+                if (participant.JobCode > 0)
+                {
+                    detailParts.Add($"Job {participant.JobCode}");
+                }
+
+
+                if (participant.AvatarLook != null)
+                {
+                    detailParts.Add($"Face {participant.AvatarLook.FaceId}");
+                    detailParts.Add($"Hair {participant.AvatarLook.HairId}");
+                }
+            }
+
+
+            return string.Join(" | ", detailParts);
+
+        }
+
+
+
+        private CharacterBuild ResolveParticipantAvatarBuild(int slot)
+        {
+            if (slot == _localPlayerIndex && _localMiniRoomAvatarBuild != null)
+            {
+                return _localMiniRoomAvatarBuild.Clone();
+            }
+
+
+            if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant))
+            {
+                return participant.AvatarBuild?.Clone();
+            }
+
+
+            return null;
+
+        }
+
+
+
+        private CharacterBuild CreateMiniRoomAvatarBuild(LoginAvatarLook avatarLook)
+        {
+            if (avatarLook == null || _miniRoomAvatarBuildFactory == null)
+            {
+                return null;
+            }
+
+
+            try
+            {
+                return _miniRoomAvatarBuildFactory(avatarLook)?.Clone();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+
+        private static string ResolveSeatLabel(int slot)
+        {
+            return slot switch
+            {
+                0 => "Host seat",
+                1 => "Guest seat",
+                _ => $"Visitor seat {slot}"
+            };
+        }
+
+        private bool HasClientStartTarget()
+        {
+            return HasClientOpponentSeat();
+        }
+
+        private bool HasClientOpponentSeat()
+        {
+            if (_miniRoomParticipants.ContainsKey(1))
+            {
+                return true;
+            }
+
+            if (_miniRoomRuntime?.Occupants.Count > 1)
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(_playerNames[1])
+                && !string.Equals(_playerNames[1], "Opponent", StringComparison.Ordinal);
+        }
+
+        private bool IsClientOpponentReady()
+        {
+            int opponentIndex = _localPlayerIndex == 0 ? 1 : 0;
+            return IsValidPlayerIndex(opponentIndex) && _readyStates[opponentIndex];
+        }
+
+
+        private static string NormalizeMiniRoomChatText(string rawText, ref string speakerName)
+        {
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                return string.Empty;
+            }
+
+
+            int separatorIndex = rawText.IndexOf(" : ", StringComparison.Ordinal);
+            if (separatorIndex > 0)
+            {
+                string parsedSpeaker = rawText[..separatorIndex].Trim();
+                string parsedMessage = rawText[(separatorIndex + 3)..].Trim();
+                if (!string.IsNullOrWhiteSpace(parsedSpeaker))
+                {
+                    speakerName = parsedSpeaker;
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(parsedMessage))
+                {
+                    return parsedMessage;
+                }
+            }
+
+
+            return rawText.Trim();
+
+        }
+
+
+
+        private static string ResolveMiniRoomGameMessage(int gameMessageCode, string characterName)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(characterName) ? "The other player" : characterName.Trim();
+            if (!MiniRoomGameMessages.TryGetValue(gameMessageCode, out MiniRoomGameMessageDefinition definition))
+            {
+                return $"MiniRoom game message {gameMessageCode} for {resolvedName}.";
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(definition.StringPoolId, definition.FallbackText, 1, out bool usedResolvedText);
+            string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
+            return usedResolvedText ? text : $"{text} [StringPool 0x{definition.StringPoolId:X}]";
+        }
+
+
+        private static int TranslateLeaveReasonToGameMessageCode(int leaveReason)
+        {
+            return leaveReason switch
+            {
+                2 => 103,
+                3 => -0x1D3,
+                5 => -0x1C9,
+                0 => -0x1CC,
+                4 => -0x1CC,
+                _ => 4
+            };
+        }
+
+        private static string ResolveLeaveStatusMessage(string playerName, int leaveReason, bool isLocalPlayer)
+        {
+            int gameMessageCode = TranslateLeaveReasonToGameMessageCode(leaveReason);
+            if (!isLocalPlayer && gameMessageCode >= 0)
+            {
+                return ResolveMiniRoomGameMessage(gameMessageCode, playerName);
+            }
+
+            int noticeStringPoolId = gameMessageCode < 0 ? -gameMessageCode : 0;
+            if (noticeStringPoolId == 0)
+            {
+                return ResolveMiniRoomGameMessage(4, playerName);
+            }
+
+            string fallbackText = noticeStringPoolId switch
+            {
+                0x1CC => "You have left the room.",
+                0x1C9 => "You have called to leave after this game.",
+                0x1D3 => "The room is closed.",
+                _ => "You have left the room."
+            };
+            return MapleStoryStringPool.GetOrFallback(noticeStringPoolId, fallbackText, appendFallbackSuffix: true);
+        }
+
+
+        private bool HandlePrimarySidebarAction(int tickCount, out string message)
+        {
+            if (!IsPrimaryButtonEnabled(out message))
+            {
+                return true;
+            }
+
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "The primary Memory Game button is only available from the lobby.";
+                return true;
+            }
+
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                TryClickReadyButton(tickCount, out message);
+                return true;
+            }
+
+            TryClickStartButton(tickCount, out message);
+            return true;
+
+        }
+
+
+
+        private string GetPrimaryButtonLabel()
+        {
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                return "Ready";
+            }
+
+
+            return "Start";
+
+        }
+
+        private MemoryGamePrimaryButtonMode ResolvePrimaryButtonMode()
+        {
+            return _localPlayerIndex == 0
+                ? MemoryGamePrimaryButtonMode.Start
+                : MemoryGamePrimaryButtonMode.Ready;
+        }
+
+        private bool IsPrimaryButtonEnabled(out string message)
+        {
+            message = null;
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "The primary Memory Game button is only available from the lobby.";
+                return false;
+            }
+
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                if (!ClientReadyButtonEnabled)
+                {
+                    message = "Ready is disabled while Match Cards is in play.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (!HasClientOpponentSeat())
+            {
+                message = "Start is unavailable until an opponent joins the Match Cards room.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool CanUseTieButton(out string message)
+        {
+            if (ClientTieButtonEnabled)
+            {
+                message = null;
+                return true;
+            }
+
+            message = "Tie is only available during an active Match Cards round.";
+            return false;
+        }
+
+        private bool CanUseGiveUpButton(out string message)
+        {
+            if (ClientGiveUpButtonEnabled)
+            {
+                message = null;
+                return true;
+            }
+
+            message = "Give Up is only available during an active Match Cards round.";
+            return false;
+        }
+
+        private bool CanUseBanButton(out string message)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                message = "Ban is disabled while Match Cards is in play.";
+                return false;
+            }
+
+            if (!ClientBanButtonEnabled)
+            {
+                message = "Only the Match Cards room owner can ban a participant.";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool TryResolveBanTargetName(int requesterIndex, out string targetName)
+        {
+            targetName = null;
+            if (!IsValidPlayerIndex(requesterIndex))
+            {
+                return false;
+            }
+
+            int targetIndex = requesterIndex == 0 ? 1 : 0;
+            string resolvedName = ResolveParticipantName(targetIndex);
+            if (string.IsNullOrWhiteSpace(resolvedName)
+                || (targetIndex == 1 && string.Equals(resolvedName, "Opponent", StringComparison.Ordinal))
+                || (targetIndex == 0 && string.Equals(resolvedName, "Player", StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            targetName = resolvedName;
+            return true;
+        }
+
+        private int ResolveRemotePlayerIndex()
+        {
+            return _localPlayerIndex == 0 ? 1 : 0;
+        }
+
+        private bool CanLocalHostSendStartRequest(out string message)
+        {
+            if (!HasClientStartTarget())
+            {
+                message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool TryOpenPrompt(MemoryGamePromptType type, int stringPoolId, int playerIndex, string text, out string message)
+        {
+            if (_pendingPrompt.IsActive)
+            {
+                message = "Finish the current Match Cards confirmation prompt first.";
+                return false;
+            }
+
+            _statusMessageBeforePrompt = _statusMessage;
+            _pendingPrompt = new MemoryGamePromptState(type, stringPoolId, playerIndex, text);
+            MaterializeClientPromptLayer();
+            SyncMiniRoomRuntime();
+            message = text;
+            return true;
+        }
+
+        private bool ConfirmOutgoingTieRequest(int tickCount, out string message)
+        {
+            return TryDispatchOfficialClientSubtype(MemoryGameTieRequestPacketType, tickCount, out message);
+        }
+
+        private bool ConfirmIncomingTieRequest(int tickCount, out string message)
+        {
+            return TryDispatchOfficialClientSubtype(
+                MemoryGameTieResultPacketType,
+                tickCount,
+                out message,
+                1);
+        }
+
+        private bool ConfirmGiveUp(int playerIndex, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(MemoryGameClientGiveUpPacketType, Environment.TickCount, out message);
+            }
+
+            return TryGiveUp(playerIndex, out message);
+        }
+
+        private bool ConfirmBanParticipant(int playerIndex, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(MemoryGameClientBanOrTurnUpCardPacketType, tickCount, out message);
+            }
+
+            return TryBanParticipant(playerIndex, out message);
+        }
+
+        private bool ConfirmLeaveBooking(int playerIndex, bool booked, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(
+                    booked ? MemoryGameClientBookLeavePacketType : MemoryGameClientCancelLeavePacketType,
+                    tickCount,
+                    out message);
+            }
+
+            return TryApplyLeaveBookingStatus(playerIndex, booked, out message);
+        }
+
+        private bool ConfirmCloseRoom(int playerIndex, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(MiniRoomBaseLeavePacketType, tickCount, out message);
+            }
+
+            return TryResolveLobbyExit(playerIndex, out message);
+        }
+
+        private bool TryDispatchOfficialClientSubtype(byte subtype, int tickCount, out string message, params byte[] extraPayload)
+        {
+            byte[] payload = new byte[1 + (extraPayload?.Length ?? 0)];
+            payload[0] = subtype;
+            if (extraPayload != null && extraPayload.Length > 0)
+            {
+                Buffer.BlockCopy(extraPayload, 0, payload, 1, extraPayload.Length);
+            }
+
+            return TryDispatchOfficialClientPacket(payload, tickCount, out message, enforcePromptFlow: true, relayOutboundTransport: true);
+        }
+
+        private void ClearPendingPrompt()
+        {
+            ReleaseClientPromptLayer();
+            _pendingPrompt = default;
+            _statusMessageBeforePrompt = null;
+        }
+
+        private void MaterializeClientPromptLayer()
+        {
+            if (_clientPromptLayerMaterialized)
+            {
+                return;
+            }
+
+            _clientPromptLayerMaterialized = true;
+            _clientPromptLayerCreateCount++;
+        }
+
+        private void ReleaseClientPromptLayer()
+        {
+            if (!_clientPromptLayerMaterialized)
+            {
+                return;
+            }
+
+            _clientPromptLayerMaterialized = false;
+            _clientPromptLayerReleaseCount++;
+        }
+
+        private bool TryValidatePendingPromptForOutgoingPacket(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (!_pendingPrompt.IsActive)
+            {
+                return true;
+            }
+
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+            if (!IsPromptResponsePacket(_pendingPrompt.Type, packetBytes))
+            {
+                message = "Finish the current Match Cards confirmation prompt before sending another outbound request.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void RecordAndClearPendingPromptResponse(byte packetType)
+        {
+            _lastClientPromptResponseSubtype = packetType;
+            ClearPendingPrompt();
+        }
+
+        private static bool IsPromptResponsePacket(MemoryGamePromptType promptType, byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            return promptType switch
+            {
+                MemoryGamePromptType.OutgoingTieRequest => packetType == MemoryGameTieRequestPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.IncomingTieRequest => packetType == MemoryGameTieResultPacketType && packetBytes.Length == 2 && packetBytes[1] <= 1,
+                MemoryGamePromptType.GiveUp => packetType == MemoryGameClientGiveUpPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.BanParticipant => packetType == MemoryGameClientBanOrTurnUpCardPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.BookLeave => packetType == MemoryGameClientBookLeavePacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.CancelBookedLeave => packetType == MemoryGameClientCancelLeavePacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.CloseRoom => packetType == MiniRoomBaseLeavePacketType && packetBytes.Length == 1,
+                _ => false
+            };
+        }
+
+        private static bool TryValidateOfficialClientPacketShape(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            int packetLength = packetBytes.Length;
+            switch (packetType)
+            {
+                // v95 client send path:
+                // CMemoryGameDlg::OnClickEndButton encodes 10/56/57 as one-byte subtype payloads.
+                // CMemoryGameDlg::SendClaimGiveUp encodes subtype 52 as one-byte payload.
+                // CMemoryGameDlg::SendTieRequest encodes subtype 50 as one-byte payload.
+                // CMemoryGameDlg::OnTieRequest encodes subtype 51 with one decision byte (0/1).
+                // CMemoryGameDlg::OnEnterResult encodes subtype 11 with owner ack byte 1.
+                // CMemoryGameDlg::Update encodes subtype 63 as one-byte payload when the local timer expires.
+                case MiniRoomBaseLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave packet (10) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientEnterResultAckPacketType:
+                    if (packetLength != 2)
+                    {
+                        message = $"Enter-result ack packet (11) requires two bytes (11 01), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    if (packetBytes[1] != ClientEnterResultAckState)
+                    {
+                        message = $"Enter-result ack packet (11) used invalid state byte {packetBytes[1]}; expected 1.";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTieRequestPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Tie-request packet (50) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTieResultPacketType:
+                    if (packetLength != 2)
+                    {
+                        message = $"Tie-response packet (51) requires two bytes (51 <0|1>), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    if (packetBytes[1] > 1)
+                    {
+                        message = $"Tie-response packet (51) used invalid decision byte {packetBytes[1]}; expected 0 or 1.";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientGiveUpPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Give-up packet (52) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientBookLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave-book packet (56) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientCancelLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave-book cancel packet (57) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameReadyPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Ready packet (58) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameCancelReadyPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Cancel-ready packet (59) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientBanOrTurnUpCardPacketType:
+                    if (packetLength != 1 && packetLength != 2)
+                    {
+                        message = $"Ban/turn-up packet (60) requires one byte (ban) or two bytes (turn-up), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameStartPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Start packet (61) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTimeOverPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Time-over packet (63) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+            }
+
+            return true;
+        }
+
+        private static bool AssignPromptMissing(out string message)
+        {
+            message = "The Match Cards prompt could not be resolved.";
+            return false;
+        }
+
+        private bool TryEnsureNoPendingPromptForLocalAction(string actionDescription, out string message)
+        {
+            if (!_pendingPrompt.IsActive)
+            {
+                message = null;
+                return true;
+            }
+
+            message = $"Finish the current Match Cards confirmation prompt before {actionDescription}.";
+            return false;
+        }
+
+        private static bool IsLocalRequestPacketSubtype(byte packetType)
+        {
+            return packetType switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameReadyPacketType => true,
+                MemoryGameCancelReadyPacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => true,
+                MemoryGameStartPacketType => true,
+                _ => false
+            };
+        }
+
+        private static bool IsPromptBoundRequestPacket(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            return packetType switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => packetBytes.Length <= 1,
+                _ => false
+            };
+        }
+
+        private void TryQueueOfficialClientRelayPacket(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return;
+            }
+
+            if (!IsRelayEligibleOfficialClientSubtype(packetBytes))
+            {
+                return;
+            }
+
+            _pendingOfficialClientRelayPackets.Enqueue((byte[])packetBytes.Clone());
+        }
+
+        private static bool IsRelayEligibleOfficialClientSubtype(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            return packetBytes[0] switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameClientEnterResultAckPacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameReadyPacketType => true,
+                MemoryGameCancelReadyPacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => true,
+                MemoryGameStartPacketType => true,
+                MemoryGameTimeOverPacketType => true,
+                _ => false
+            };
+        }
+
+
+        private string BuildRoomStatusMessage()
+        {
+            string leaveStatus = BuildLeaveBookingSummary();
+            string combinedStatus = string.Join(
+                " ",
+                new[] { _statusMessage, leaveStatus }.Where(part => !string.IsNullOrWhiteSpace(part)));
+            return string.IsNullOrWhiteSpace(combinedStatus) ? _statusMessage : combinedStatus;
+        }
+
+
+        private string BuildLeaveBookingSummary()
+        {
+            List<string> pendingSeats = new();
+            for (int i = 0; i < _leaveBookingStates.Length; i++)
+            {
+                if (_leaveBookingStates[i])
+                {
+                    pendingSeats.Add(ResolveParticipantName(i));
+                }
+            }
+
+
+            return pendingSeats.Count == 0
+                ? string.Empty
+                : $"Pending leave: {string.Join(", ", pendingSeats)}.";
+        }
+
+
+        private string GetExitButtonLabel()
+        {
+            if (_stage != RoomStage.Playing)
+            {
+                return "End";
+            }
+
+
+            return _leaveBookingStates[_localPlayerIndex] ? "Stay" : "Leave";
+        }
+
+        private void GetPromptLayout(Rectangle outer, out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect)
+        {
+            int promptX = outer.Center.X - (ClientPromptBoxWidth / 2);
+            int promptY = outer.Center.Y - (ClientPromptBoxHeight / 2);
+            promptBox = new Rectangle(promptX, promptY, ClientPromptBoxWidth, ClientPromptBoxHeight);
+            yesRect = new Rectangle(promptBox.X + 26, promptBox.Bottom - 30, ClientPromptButtonWidth, ClientPromptButtonHeight);
+            noRect = new Rectangle(promptBox.Right - 26 - ClientPromptButtonWidth, promptBox.Bottom - 30, ClientPromptButtonWidth, ClientPromptButtonHeight);
+        }
+
+        private IEnumerable<string> WrapPromptText(SpriteFont font, string text, int maxWidth)
+        {
+            if (font == null || string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            string normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            foreach (string paragraph in normalizedText.Split('\n'))
+            {
+                if (string.IsNullOrWhiteSpace(paragraph))
+                {
+                    yield return string.Empty;
+                    continue;
+                }
+
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                StringBuilder line = new();
+                foreach (string word in words)
+                {
+                    string candidate = line.Length == 0 ? word : $"{line} {word}";
+                    if (font.MeasureString(candidate).X <= maxWidth || line.Length == 0)
+                    {
+                        line.Clear();
+                        line.Append(candidate);
+                        continue;
+                    }
+
+                    yield return line.ToString();
+                    line.Clear();
+                    line.Append(word);
+                }
+
+                if (line.Length > 0)
+                {
+                    yield return line.ToString();
+                }
+            }
+        }
+
+        private static string ResolveMemoryGamePromptText(int stringPoolId, string name = null)
+        {
+            string fallbackText = stringPoolId switch
+            {
+                MemoryGameGiveUpPromptStringPoolId => "Are you sure you want to give up?",
+                MemoryGameBanPromptStringPoolId => "Will you expel the user?",
+                MemoryGameIncomingTiePromptStringPoolId => "Your opponent requests a tie.\r\nWill you accept it?",
+                MemoryGameOutgoingTiePromptStringPoolId => "Will you request a tie?",
+                MemoryGameTieResultNoticeStringPoolId => "Your opponent denied your request for a tie.",
+                MemoryGameBookLeavePromptStringPoolId => "Will you call to leave after this game?",
+                MemoryGameCancelLeavePromptStringPoolId => "Will you cancel the request\r\nto leave after this game?",
+                MemoryGameCloseRoomPromptStringPoolId => "Are you sure you want to leave?",
+                _ => $"Match Cards prompt 0x{stringPoolId:X}."
+            };
+
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix: true);
+        }
+
+        private string ResolveMemoryGameResultText(int winnerIndex = -1, bool isDraw = false)
+        {
+            int stringPoolId;
+            string fallbackText;
+            if (isDraw)
+            {
+                stringPoolId = MemoryGameDrawStringPoolId;
+                fallbackText = "It's a tie.";
+            }
+            else if (winnerIndex == _localPlayerIndex)
+            {
+                stringPoolId = MemoryGameWinStringPoolId;
+                fallbackText = "You win.";
+            }
+            else
+            {
+                stringPoolId = MemoryGameLoseStringPoolId;
+                fallbackText = "You lost.";
+            }
+
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix: true);
+        }
+
+
+        private bool TryResolveLobbyExit(int playerIndex, out string message)
+        {
+            if (playerIndex == 0 || playerIndex == _localPlayerIndex)
+            {
+                return TryEndRoom(out message);
+            }
+
+
+            _leaveBookingStates[playerIndex] = false;
+            _readyStates[playerIndex] = false;
+            string playerName = ResolveParticipantName(playerIndex);
+            _miniRoomParticipants.Remove(playerIndex);
+            _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+            _statusMessage = ResolveMiniRoomGameMessage(4, playerName);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = $"{playerName} left the Match Cards room from the lobby.";
+            return true;
+        }
+
+
+        private bool TryResolveBookedLeaveAfterRound(out string message)
+        {
+            message = null;
+            for (int playerIndex = 0; playerIndex < _leaveBookingStates.Length; playerIndex++)
+            {
+                if (!_leaveBookingStates[playerIndex])
+                {
+                    continue;
+                }
+
+
+                _leaveBookingStates[playerIndex] = false;
+                string playerName = ResolveParticipantName(playerIndex);
+                if (playerIndex == 0 || playerIndex == _localPlayerIndex)
+                {
+                    Reset();
+                    message = $"{playerName} left the Match Cards room after the round.";
+                    _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}");
+                    return true;
+                }
+
+
+                _readyStates[playerIndex] = false;
+                _miniRoomParticipants.Remove(playerIndex);
+                _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+                message = $"{playerName} left the Match Cards room after the round.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}");
+            }
+
+
+            return !string.IsNullOrWhiteSpace(message);
+        }
+
+
+
+        private void GetLayout(int viewportWidth, int viewportHeight, out Rectangle outer, out Rectangle boardArea, out Rectangle sidebar, out Rectangle[] buttonRects)
+        {
+            int dialogWidth = _backgroundTexture?.Width ?? ClientDialogWidth;
+            int dialogHeight = _backgroundTexture?.Height ?? ClientDialogHeight;
+            int dialogX = viewportWidth / 2 - dialogWidth / 2;
+            int dialogY = Math.Max(24, viewportHeight / 2 - dialogHeight / 2);
+            outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
+            boardArea = new Rectangle(dialogX + ClientBoardLeft, dialogY + ClientBoardTop, ClientBoardWidth, ClientBoardHeight);
+            sidebar = new Rectangle(dialogX + ClientRecordPanelX, dialogY + ClientRecordPanelY, 300, 132);
+            buttonRects = new Rectangle[5];
+            buttonRects[0] = CreateButtonRect(dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, GetPrimaryButtonTexture(), 96, 29);
+            buttonRects[1] = CreateButtonRect(dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, GetTieButtonTexture(), 43, 18);
+            buttonRects[2] = CreateButtonRect(dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, GetGiveUpButtonTexture(), 43, 18);
+            buttonRects[3] = CreateButtonRect(dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, 43, 18);
+            buttonRects[4] = CreateButtonRect(dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, GetBanButtonTexture(), 11, 11);
+        }
+
+
+        private int GetCardIndexAt(Point mousePosition, Rectangle area)
+        {
+            if (_cards.Count == 0 || !area.Contains(mousePosition))
+            {
+                return -1;
+            }
+
+
+            for (int index = 0; index < _cards.Count; index++)
+            {
+                Rectangle cardRect = GetClientCardBounds(index, area);
+                if (cardRect.Contains(mousePosition))
+                {
+                    return index;
+                }
+            }
+
+
+            return -1;
+
+        }
+
+        public Rectangle GetClientCardBounds(int cardIndex, Rectangle boardArea)
+        {
+            int cardsPerRow = _cardsPerRow > 0 ? _cardsPerRow : Math.Max(1, _columns);
+            int row = cardIndex / cardsPerRow;
+            int column = cardIndex % cardsPerRow;
+            int dialogX = boardArea.X - ClientBoardLeft;
+            int dialogY = boardArea.Y - ClientBoardTop;
+            return new Rectangle(
+                dialogX + _firstCardOffset.X + column * ClientCardStepX,
+                dialogY + _firstCardOffset.Y + row * ClientCardStepY,
+                CardWidth,
+                CardHeight);
+        }
+
+
+
+        private void DrawNameBar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isActiveTurn, bool showScore = true)
+        {
+            Rectangle rect = new Rectangle(x, y, 174, 28);
+            spriteBatch.Draw(pixel, rect, isActiveTurn ? new Color(223, 196, 120) : new Color(132, 103, 73));
+            DrawOutlinedText(spriteBatch, font, name, new Vector2(x + 8, y + 5), Color.Black, Color.White);
+            if (showScore)
+            {
+                DrawOutlinedText(spriteBatch, font, score.ToString(), new Vector2(x + 146, y + 5), Color.Black, Color.White);
+            }
+        }
+
+
+        private void DrawClientNamePanel(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isReady, bool isActiveTurn, bool isLeftPanel, bool showReadyLayer, bool showScoreLayer)
+
+        {
+
+            DrawNameBar(spriteBatch, pixel, font, name, showScoreLayer ? score : 0, x, y, isActiveTurn, showScoreLayer);
+
+
+
+            Texture2D readyTexture = isReady ? _readyOnTexture : _readyOffTexture;
+            if (showReadyLayer && readyTexture != null)
+            {
+                int readyX = isLeftPanel ? ClientReadyIndicatorLeftX : ClientReadyIndicatorRightX;
+                spriteBatch.Draw(readyTexture, new Vector2(x - ClientNameBarLeftX + readyX, y - ClientNameBarY + ClientReadyIndicatorY), Color.White);
+            }
+        }
+
+
+        private void DrawClientButtons(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, int dialogX, int dialogY)
+        {
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, GetPrimaryButtonTexture(), GetPrimaryButtonLabel());
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, GetTieButtonTexture(), "Tie");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, GetGiveUpButtonTexture(), "Give Up");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, GetExitButtonLabel());
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, GetBanButtonTexture(), string.Empty);
+        }
+
+
+        private void DrawButton(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, int x, int y, Texture2D texture, string label)
+        {
+            if (texture != null)
+            {
+                spriteBatch.Draw(texture, new Vector2(x, y), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixel, new Rectangle(x, y, 64, 22), new Color(119, 84, 48));
+            }
+
+
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                DrawOutlinedText(spriteBatch, font, label, new Vector2(x + 8, y + 6), Color.Black, Color.White);
+            }
+        }
+
+
+        private void DrawClientRecordSummary(SpriteBatch spriteBatch, SpriteFont font, int dialogX, int dialogY)
+        {
+            DrawBitmapNumber(spriteBatch, _scores[0], dialogX + ClientScoreLeftX, dialogY + ClientScoreY);
+            if (ClientScoreLayerVisible)
+            {
+                DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
+            }
+
+            foreach (ClientMiniGameRecordWidget widget in BuildClientRecordWidgets())
+            {
+                DrawOutlinedText(
+                    spriteBatch,
+                    font,
+                    TrimClientRecordText(widget.DisplayName, 11),
+                    new Vector2(dialogX + widget.Bounds.X, dialogY + ClientRecordNameY),
+                    Color.Black,
+                    new Color(48, 48, 48));
+
+                foreach (ClientMiniGameRecordWidgetRow row in widget.Rows)
+                {
+                    DrawOutlinedText(
+                        spriteBatch,
+                        font,
+                        row.Text,
+                        new Vector2(dialogX + row.Position.X, dialogY + row.Position.Y),
+                        Color.Black,
+                        new Color(48, 48, 48));
+                }
+            }
+
+            DrawOutlinedText(spriteBatch, font, $"Room: {_stage}", new Vector2(dialogX + 409, dialogY + 246), Color.Black, new Color(48, 48, 48));
+        }
+
+        private IReadOnlyList<ClientMiniGameRecordWidget> BuildClientRecordWidgets()
+        {
+            int localIndex = Math.Clamp(_localPlayerIndex, 0, _wins.Length - 1);
+            int remoteIndex = localIndex == 0 ? 1 : 0;
+            return new[]
+            {
+                BuildClientRecordWidget(localIndex, ClientRecordColumnLeftX),
+                BuildClientRecordWidget(remoteIndex, ClientRecordColumnRightX)
+            };
+        }
+
+        private ClientMiniGameRecordWidget BuildClientRecordWidget(int slot, int x)
+        {
+            string displayName = ResolveClientRecordDisplayName(slot);
+            int wins = 0;
+            int draws = 0;
+            int losses = 0;
+            int score = 0;
+            int grade = 0;
+            int rate = 0;
+            if (_miniGameRecords.TryGetValue(slot, out MiniGameRecord record))
+            {
+                wins = record.Wins;
+                draws = record.Draws;
+                losses = record.Losses;
+                score = record.Score;
+                grade = record.Grade;
+                rate = record.WinRatePercent;
+            }
+            else if (slot >= 0 && slot < _wins.Length)
+            {
+                wins = _wins[slot];
+                draws = _draws[slot];
+                losses = _losses[slot];
+                int totalGames = Math.Max(0, wins) + Math.Max(0, draws) + Math.Max(0, losses);
+                rate = totalGames <= 0 ? 0 : (int)Math.Round((double)Math.Max(0, wins) * 100d / totalGames);
+            }
+
+            return new ClientMiniGameRecordWidget(
+                slot,
+                displayName,
+                new Rectangle(x, ClientRecordNameY, ClientRecordColumnWidth, ClientRecordGradeY - ClientRecordNameY + ClientRecordRowHeight),
+                new[]
+                {
+                    new ClientMiniGameRecordWidgetRow("Win", wins, FormatClientRecordValue(MemoryGameRecordWinStringPoolId, "Win", wins), new Point(x, ClientRecordColumnY)),
+                    new ClientMiniGameRecordWidgetRow("Draw", draws, FormatClientRecordValue(MemoryGameRecordDrawStringPoolId, "Draw", draws), new Point(x, ClientRecordColumnY + ClientRecordRowHeight)),
+                    new ClientMiniGameRecordWidgetRow("Lose", losses, FormatClientRecordValue(MemoryGameRecordLoseStringPoolId, "Loose", losses), new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 2)),
+                    new ClientMiniGameRecordWidgetRow("Rate", rate, $"Rate {rate}%", new Point(x, ClientRecordColumnY + ClientRecordRowHeight * 3)),
+                    new ClientMiniGameRecordWidgetRow("Score", score, $"Score {score}", new Point(x, ClientRecordScoreY)),
+                    new ClientMiniGameRecordWidgetRow("Grade", grade, $"Grade {grade}", new Point(x, ClientRecordGradeY))
+                });
+        }
+
+        private static string FormatClientRecordValue(int stringPoolId, string fallbackLabel, int value)
+        {
+            string label = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackLabel, appendFallbackSuffix: false);
+            return $"{label} {value}";
+        }
+
+        private string ResolveClientCardBackResourcePath()
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                MemoryGameCardBackStringPoolId,
+                "UI/UIWindow2.img/Minigame/MemoryGame/card/back{0}",
+                maxPlaceholderCount: 1,
+                out _);
+
+            return string.Format(CultureInfo.InvariantCulture, format, ClientCardBackIndex);
+        }
+
+        private string ResolveClientRecordDisplayName(int slot)
+        {
+            string name = ResolveParticipantName(slot);
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+
+            return slot == _localPlayerIndex ? "You" : "Opponent";
+        }
+
+        private static string TrimClientRecordText(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            if (maxLength <= 0 || trimmed.Length <= maxLength)
+            {
+                return trimmed;
+            }
+
+            return trimmed[..maxLength];
+        }
+
+
+        private void DrawBitmapNumber(SpriteBatch spriteBatch, int value, int x, int y)
+        {
+            string scoreText = Math.Clamp(value, 0, 99).ToString("00");
+            foreach (char digit in scoreText)
+            {
+                int index = digit - '0';
+                Texture2D texture = index >= 0 && index < _digitTextures.Length ? _digitTextures[index] : null;
+                if (texture == null)
+                {
+                    return;
+                }
+
+
+                spriteBatch.Draw(texture, new Vector2(x, y), Color.White);
+                x += texture.Width - 1;
+            }
+        }
+
+
+        private void DrawClientTurnIndicator(SpriteBatch spriteBatch, int dialogX, int dialogY)
+        {
+            if (_turnTexture == null || _stage != RoomStage.Playing)
+            {
+                return;
+            }
+
+
+            spriteBatch.Draw(_turnTexture, new Vector2(dialogX + ResolveTurnIndicatorX(), dialogY + ClientTurnIndicatorY), Color.White);
+
+        }
+
+
+
+        public static bool TryParsePacketType(string text, out MemoryGamePacketType packetType)
+        {
+            packetType = MemoryGamePacketType.OpenRoom;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+
+            string normalized = text.Trim().Replace("-", string.Empty).Replace("_", string.Empty);
+            return normalized.ToLowerInvariant() switch
+            {
+                "open" => AssignPacket(MemoryGamePacketType.OpenRoom, out packetType),
+                "ready" or "unready" => AssignPacket(MemoryGamePacketType.SetReady, out packetType),
+                "start" => AssignPacket(MemoryGamePacketType.StartGame, out packetType),
+                "flip" or "reveal" => AssignPacket(MemoryGamePacketType.RevealCard, out packetType),
+                "ban" or "expel" => AssignPacket(MemoryGamePacketType.BanUser, out packetType),
+                "tie" => AssignPacket(MemoryGamePacketType.ClaimTie, out packetType),
+                "giveup" => AssignPacket(MemoryGamePacketType.GiveUp, out packetType),
+                "end" or "close" => AssignPacket(MemoryGamePacketType.EndRoom, out packetType),
+                "mode" or "matchcards" => AssignPacket(MemoryGamePacketType.SelectMatchCardsMode, out packetType),
+                _ => Enum.TryParse(normalized, true, out packetType)
+            };
+        }
+
+
+        private bool TryDispatchOpenPacket(string title, string playerOneName, string playerTwoName, int rows, int columns, int localPlayerIndex, out string message)
+        {
+            OpenRoom(title, playerOneName ?? "Player", playerTwoName ?? "Opponent", rows, columns, localPlayerIndex);
+            message = DescribeStatus();
+            return true;
+        }
+
+
+        private bool TrySelectMatchCardsMode(out string message)
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            _statusMessage = "Match Cards room selected.";
+            message = _statusMessage;
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+
+        private static bool AssignUnsupportedPacket(MemoryGamePacketType packetType, out string message)
+        {
+            message = $"Unsupported Memory Game packet: {packetType}.";
+            return false;
+        }
+
+
+        private static bool AssignPacket(MemoryGamePacketType value, out MemoryGamePacketType packetType)
+        {
+            packetType = value;
+            return true;
+        }
+
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+
+            WzImage uiWindow2Image = global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiWindow1Image = global::HaCreator.Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty minigameRoot = uiWindow2Image?["Minigame"] as WzSubProperty
+                ?? uiWindow1Image?["Minigame"] as WzSubProperty;
+            WzSubProperty memoryGameProperty = minigameRoot?["MemoryGame"] as WzSubProperty;
+            WzSubProperty commonProperty = minigameRoot?["Common"] as WzSubProperty;
+
+
+            _backgroundTexture = LoadCanvasTexture(memoryGameProperty?["backgrnd"] as WzCanvasProperty);
+            _masterPanelTexture = LoadCanvasTexture(memoryGameProperty?["backgrnd2"] as WzCanvasProperty);
+            _turnTexture = LoadCanvasTexture(commonProperty?["turn"] as WzCanvasProperty);
+            _readyOnTexture = LoadCanvasTexture(commonProperty?["readyOn"] as WzCanvasProperty);
+            _readyOffTexture = LoadCanvasTexture(commonProperty?["readyOff"] as WzCanvasProperty);
+            _winTexture = LoadCanvasTexture(commonProperty?["win"] as WzCanvasProperty);
+            _loseTexture = LoadCanvasTexture(commonProperty?["lose"] as WzCanvasProperty);
+            _drawTexture = LoadCanvasTexture(commonProperty?["draw"] as WzCanvasProperty);
+            _readyButtonTexture = LoadButtonTexture(commonProperty, "btReady");
+            _readyButtonDisabledTexture = LoadButtonTexture(commonProperty, "btReady", "disabled");
+            _startButtonTexture = LoadButtonTexture(commonProperty, "btStart");
+            _startButtonDisabledTexture = LoadButtonTexture(commonProperty, "btStart", "disabled");
+            _tieButtonTexture = LoadButtonTexture(commonProperty, "btDraw");
+            _tieButtonDisabledTexture = LoadButtonTexture(commonProperty, "btDraw", "disabled");
+            _giveUpButtonTexture = LoadButtonTexture(commonProperty, "btAbsten");
+            _giveUpButtonDisabledTexture = LoadButtonTexture(commonProperty, "btAbsten", "disabled");
+            _endButtonTexture = LoadButtonTexture(commonProperty, "btExit");
+            _endButtonDisabledTexture = LoadButtonTexture(commonProperty, "btExit", "disabled");
+            _banButtonTexture = LoadButtonTexture(commonProperty, "btBan");
+            _banButtonDisabledTexture = LoadButtonTexture(commonProperty, "btBan", "disabled");
+
+
+            WzImageProperty numberProperty = memoryGameProperty?["number"];
+            for (int i = 0; i < _digitTextures.Length; i++)
+            {
+                _digitTextures[i] = LoadCanvasTexture(numberProperty?[i.ToString()] as WzCanvasProperty);
+            }
+
+
+            WzImageProperty cardProperty = memoryGameProperty?["card"];
+            for (int i = 0; i < _cardFaceTextures.Length; i++)
+            {
+                _cardFaceTextures[i] = LoadCanvasTexture(cardProperty?[i.ToString()] as WzCanvasProperty);
+            }
+
+
+            for (int i = 0; i < _cardBackTextures.Length; i++)
+            {
+                _cardBackTextures[i] = LoadCanvasTexture(cardProperty?[$"back{i}"] as WzCanvasProperty);
+            }
+
+
+            _assetsLoaded = true;
+
+        }
+
+
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return null;
+            }
+
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+
+            return bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+
+        }
+
+
+
+        private Texture2D LoadButtonTexture(WzSubProperty commonProperty, string buttonName, string state = "normal")
+        {
+            return LoadCanvasTexture(commonProperty?[buttonName]?[state]?["0"] as WzCanvasProperty);
+        }
+
+        private Texture2D GetPrimaryButtonTexture()
+        {
+            bool enabled = IsPrimaryButtonEnabled(out _);
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                return enabled
+                    ? _readyButtonTexture
+                    : _readyButtonDisabledTexture ?? _readyButtonTexture;
+            }
+
+            return enabled
+                ? _startButtonTexture
+                : _startButtonDisabledTexture ?? _startButtonTexture;
+        }
+
+        private Texture2D GetTieButtonTexture()
+        {
+            return CanUseTieButton(out _)
+                ? _tieButtonTexture
+                : _tieButtonDisabledTexture ?? _tieButtonTexture;
+        }
+
+        private bool TryPromptTieRequestFromClientButton(out string message)
+        {
+            if (!CanUseTieButton(out message))
+            {
+                return false;
+            }
+
+            return TryPromptTieRequest(out message);
+        }
+
+        private Texture2D GetGiveUpButtonTexture()
+        {
+            return CanUseGiveUpButton(out _)
+                ? _giveUpButtonTexture
+                : _giveUpButtonDisabledTexture ?? _giveUpButtonTexture;
+        }
+
+        private bool TryPromptGiveUpFromClientButton(int playerIndex, out string message)
+        {
+            if (!CanUseGiveUpButton(out message))
+            {
+                return false;
+            }
+
+            return TryPromptGiveUp(playerIndex, out message);
+        }
+
+        private Texture2D GetBanButtonTexture()
+        {
+            return CanUseBanButton(out _)
+                ? _banButtonTexture
+                : _banButtonDisabledTexture ?? _banButtonTexture;
+        }
+
+
+        private Texture2D ResolveCardTexture(Card card)
+        {
+            if (card == null)
+            {
+                return null;
+            }
+
+
+            if (!card.IsFaceUp && !card.IsMatched)
+            {
+                Texture2D backTexture = _cardBackTextures[ClientCardBackIndex];
+                return backTexture ?? _cardBackTextures.FirstOrDefault(texture => texture != null);
+            }
+
+
+            if (card.FaceId < 0 || card.FaceId >= _cardFaceTextures.Length)
+            {
+                return null;
+            }
+
+
+            return _cardFaceTextures[card.FaceId];
+
+        }
+
+
+
+        private int ResolveTurnIndicatorX()
+        {
+            if (_currentTurnIndex == 0)
+            {
+                return _localPlayerIndex != 0 ? ClientTurnIndicatorLeftX : ClientTurnIndicatorRightX;
+            }
+
+
+            return _localPlayerIndex != 0 ? ClientTurnIndicatorRightX : ClientTurnIndicatorLeftX;
+
+        }
+
+
+
+        private static Rectangle CreateButtonRect(int x, int y, Texture2D texture, int fallbackWidth, int fallbackHeight)
+        {
+            return new Rectangle(x, y, texture?.Width ?? fallbackWidth, texture?.Height ?? fallbackHeight);
+        }
+
+
+        private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
+        {
+            spriteBatch.DrawString(font, text, position + Vector2.One, shadowColor);
+            spriteBatch.DrawString(font, text, position, textColor);
+        }
+
+
+        private bool IsValidPlayerIndex(int playerIndex)
+        {
+            return playerIndex >= 0 && playerIndex < _playerNames.Length;
+        }
+    }
+    #endregion
+}

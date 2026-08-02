@@ -1,0 +1,99 @@
+using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework.Graphics;
+using System;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal sealed class GuildCreateAgreementController
+    {
+        private readonly GuildCreateAgreementRuntime _runtime = new();
+        internal Action<string, int> SocialChatObserved
+        {
+            set => _runtime.SocialChatObserved = value;
+        }
+
+        internal string DescribeStatus()
+        {
+            return _runtime.DescribeStatus();
+        }
+
+        internal string Open(
+            string masterName,
+            string guildName,
+            GuildDialogContext dialogContext,
+            UIWindowManager windowManager,
+            SpriteFont font,
+            Func<GuildCreateAgreementAcceptance, string> acceptanceHandler,
+            Action<string> feedbackHandler,
+            Action showWindow)
+        {
+            string message = _runtime.Open(masterName, guildName, dialogContext);
+            WireWindow(windowManager, font, acceptanceHandler, feedbackHandler);
+            showWindow?.Invoke();
+            return message;
+        }
+
+        internal void WireWindow(
+            UIWindowManager windowManager,
+            SpriteFont font,
+            Func<GuildCreateAgreementAcceptance, string> acceptanceHandler,
+            Action<string> feedbackHandler)
+        {
+            if (windowManager?.GetWindow(MapSimulatorWindowNames.GuildCreateAgreement) is not GuildCreateAgreementWindow window)
+            {
+                return;
+            }
+
+            window.SetSnapshotProvider(_runtime.BuildSnapshot);
+            window.SetActionHandlers(
+                elapsedMs =>
+                {
+                    string message = _runtime.Advance(elapsedMs, out GuildCreateAgreementAcceptance timeoutAcceptance);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        feedbackHandler?.Invoke(message);
+                        string acceptanceMessage = acceptanceHandler?.Invoke(timeoutAcceptance);
+                        if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                        {
+                            feedbackHandler?.Invoke(acceptanceMessage);
+                        }
+
+                        windowManager.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
+                    }
+                },
+                () =>
+                {
+                    string message = _runtime.Accept(out GuildCreateAgreementAcceptance acceptance);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        feedbackHandler?.Invoke(message);
+                    }
+
+                    string acceptanceMessage = acceptanceHandler?.Invoke(acceptance);
+                    if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                    {
+                        feedbackHandler?.Invoke(acceptanceMessage);
+                    }
+
+                    windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
+                },
+                () =>
+                {
+                    string message = _runtime.Decline(out GuildCreateAgreementAcceptance acceptance);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        feedbackHandler?.Invoke(message);
+                    }
+
+                    string acceptanceMessage = acceptanceHandler?.Invoke(acceptance);
+                    if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                    {
+                        feedbackHandler?.Invoke(acceptanceMessage);
+                    }
+
+                    windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
+                });
+            window.SetFont(font);
+        }
+    }
+}

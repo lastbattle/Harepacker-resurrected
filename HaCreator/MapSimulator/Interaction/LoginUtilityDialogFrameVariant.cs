@@ -1,0 +1,13 @@
+namespace HaCreator.MapSimulator
+{
+    public enum LoginUtilityDialogFrameVariant
+    {
+        Default = 0,
+        LoginNotice = 1,
+        LoginNoticeCog = 2,
+        LoginNoticeBar = 3,
+        InGameFadeYesNo = 4,
+        UtilDlgNotice = 5,
+        FieldMessageBoxChalkboardCompose = 6,
+    }
+}

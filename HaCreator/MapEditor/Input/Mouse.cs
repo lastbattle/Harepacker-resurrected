@@ -200,7 +200,7 @@ namespace HaCreator.MapEditor.Input
             }
         }
 
-        public void TryConnectFoothold()
+        public bool TryConnectFoothold()
         {
             lock (Board.ParentControl)
             {
@@ -212,7 +212,7 @@ namespace HaCreator.MapEditor.Input
                     {
                         if (anchor.connectedLines.Count > 1)
                         {
-                            continue;
+                            return true;
                         }
                         if (connectedLines.Count > 0) // Are we already holding a foothold?
                         {
@@ -231,8 +231,12 @@ namespace HaCreator.MapEditor.Input
                         {
                             Board.BoardItems.FootholdLines.Add(new FootholdLine(Board, anchor));
                         }
+
+                        return true;
                     }
                 }
+
+                return false;
             }
         }
 

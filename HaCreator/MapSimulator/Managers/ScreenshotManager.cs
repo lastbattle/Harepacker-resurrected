@@ -3,6 +3,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Microsoft.Xna.Framework.Graphics;
+using System.Drawing;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -73,21 +74,49 @@ namespace HaCreator.MapSimulator.Managers
                             dateTimeNow.Minute.ToString("D2"),
                             dateTimeNow.Second.ToString("D2"));
 
-                    using (MemoryStream stream_png = new MemoryStream())
-                    {
-                        texture.SaveAsPng(stream_png, backBufferWidth, backBufferHeight);
-
-                        System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(stream_png);
-                        ImageCodecInfo jpgEncoder = GetEncoder(ImageFormat.Jpeg);
-
-                        // Create an EncoderParameters object with quality setting
-                        EncoderParameters myEncoderParameters = new EncoderParameters(1);
-                        myEncoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 100L);
-
-                        bitmap.Save(fileName, jpgEncoder, myEncoderParameters);
-                    }
+                    SaveTextureAsJpeg(texture, fileName, backBufferWidth, backBufferHeight);
                 }
                 _saveScreenshotComplete = true;
+            }
+        }
+
+        public bool TrySaveBackBufferAsJpeg(GraphicsDevice graphicsDevice, string filePath, out string error)
+        {
+            error = null;
+            if (graphicsDevice == null)
+            {
+                error = "Graphics device is unavailable.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                error = "Screenshot path is empty.";
+                return false;
+            }
+
+            try
+            {
+                string directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                int backBufferWidth = graphicsDevice.PresentationParameters.BackBufferWidth;
+                int backBufferHeight = graphicsDevice.PresentationParameters.BackBufferHeight;
+                int[] backBuffer = new int[backBufferWidth * backBufferHeight];
+                graphicsDevice.GetBackBufferData(backBuffer);
+
+                using Texture2D texture = new Texture2D(graphicsDevice, backBufferWidth, backBufferHeight, false, SurfaceFormat.Color);
+                texture.SetData(backBuffer);
+                SaveTextureAsJpeg(texture, filePath, backBufferWidth, backBufferHeight);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
             }
         }
 
@@ -106,6 +135,19 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
             return null;
+        }
+
+        private void SaveTextureAsJpeg(Texture2D texture, string fileName, int width, int height)
+        {
+            using MemoryStream streamPng = new MemoryStream();
+            texture.SaveAsPng(streamPng, width, height);
+            streamPng.Position = 0;
+
+            using Bitmap bitmap = new Bitmap(streamPng);
+            ImageCodecInfo jpgEncoder = GetEncoder(ImageFormat.Jpeg);
+            EncoderParameters encoderParameters = new EncoderParameters(1);
+            encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 100L);
+            bitmap.Save(fileName, jpgEncoder, encoderParameters);
         }
     }
 }

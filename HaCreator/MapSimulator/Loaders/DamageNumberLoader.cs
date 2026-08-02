@@ -19,9 +19,9 @@ namespace HaCreator.MapSimulator.Loaders
     {
         /// <summary>Player damage to monster (Red)</summary>
         Red = 0,
-        /// <summary>Healing numbers (Blue)</summary>
+        /// <summary>HP increase / heal numbers (Blue)</summary>
         Blue = 1,
-        /// <summary>Damage received by player from monsters (Violet)</summary>
+        /// <summary>Damage received by player and summoned actor HP feedback (Violet)</summary>
         Violet = 2
     }
 
@@ -59,11 +59,23 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Special text origins</summary>
         public Dictionary<string, Point> SpecialOrigins { get; } = new Dictionary<string, Point>();
 
+        /// <summary>Special text widths</summary>
+        public Dictionary<string, int> SpecialWidths { get; } = new Dictionary<string, int>();
+
+        /// <summary>Special text heights</summary>
+        public Dictionary<string, int> SpecialHeights { get; } = new Dictionary<string, int>();
+
         /// <summary>Critical effect sprite (for NoCri1)</summary>
         public Texture2D CriticalEffectTexture { get; set; }
 
         /// <summary>Critical effect origin</summary>
         public Point CriticalEffectOrigin { get; set; }
+
+        /// <summary>Critical effect width</summary>
+        public int CriticalEffectWidth { get; set; }
+
+        /// <summary>Critical effect height</summary>
+        public int CriticalEffectHeight { get; set; }
 
         /// <summary>Whether this digit set is valid and loaded</summary>
         public bool IsLoaded { get; set; }
@@ -75,14 +87,15 @@ namespace HaCreator.MapSimulator.Loaders
         /// Get the total width for rendering a number string.
         /// Uses the authentic MapleStory spacing algorithm from CAnimationDisplayer::Effect_HP.
         ///
-        /// Binary analysis (v115, address 0x444eb0) revealed the spacing formula:
-        /// - For each digit: overlap = 3 * (origin.x - width) / 5
-        /// - Total width is accumulated using: accumulatedX = accumulatedX - previousOverlap + originX
+        /// Binary analysis (address 0x444eb0) revealed the spacing formula:
+        /// - For each digit: overlap = 3 * (width - origin.x) / 5
+        /// - Total width is accumulated using: accumulatedX = accumulatedX - previousOverlap + width
         /// </summary>
         public int GetTotalWidth(string numberString)
         {
             int accumulatedX = 0;  // v15 in the binary
             int previousOverlap = 0;  // lY in the binary
+            bool hasDigit = false;
 
             foreach (char c in numberString)
             {
@@ -93,18 +106,20 @@ namespace HaCreator.MapSimulator.Loaders
                 int width = Widths[digit];
                 int originX = Origins[digit].X;
 
-                // Update accumulated position: accumulatedX = accumulatedX - previousOverlap + originX
-                // Binary: v15 = v15 - lY + idx; (where idx is origin.x)
-                accumulatedX = accumulatedX - previousOverlap + originX;
+                // Update accumulated position: v15 = v15 - lY + width.
+                accumulatedX = accumulatedX - previousOverlap + width;
 
-                // Calculate overlap for next digit: lY = 3 * (origin.x - width) / 5
-                // Binary: lY = 3 * v34 / 5; where v34 = idx - lWidth = origin.x - width
-                previousOverlap = 3 * (originX - width) / 5;
+                // Calculate overlap for next digit: lY = 3 * (width - origin.x) / 5.
+                previousOverlap = 3 * (width - originX) / 5;
+                hasDigit = true;
             }
 
-            // Total width is the final accumulated position
-            // Binary: lWidth = v15; (line 305)
-            return accumulatedX;
+            if (!hasDigit)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, accumulatedX);
         }
     }
 
@@ -114,6 +129,8 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class DamageNumberLoader
     {
+        internal const string DamageNumberSpecialTextOwnerSetName = "NoRed0";
+
         // Cached digit sets
         private static readonly Dictionary<string, DamageNumberDigitSet> _digitSets = new Dictionary<string, DamageNumberDigitSet>();
         private static bool _initialized = false;
@@ -126,10 +143,10 @@ namespace HaCreator.MapSimulator.Loaders
         {
             "NoRed0",    // Red small (player damage, normal)
             "NoRed1",    // Red large (player damage, large)
-            "NoBlue0",   // Blue small (damage received, normal)
-            "NoBlue1",   // Blue large (damage received, large)
-            "NoViolet0", // Violet small (party damage, normal)
-            "NoViolet1", // Violet large (party damage, large)
+            "NoBlue0",   // Blue small (HP increase, normal)
+            "NoBlue1",   // Blue large (HP increase, large)
+            "NoViolet0", // Violet small (received/summoned feedback, normal)
+            "NoViolet1", // Violet large (received/summoned feedback, large)
             "NoCri0",    // Critical small
             "NoCri1"     // Critical large (with effect)
         };
@@ -205,9 +222,9 @@ namespace HaCreator.MapSimulator.Loaders
                     var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
                     if (bitmap != null)
                     {
-                        digitSet.Digits[i] = bitmap.ToTexture2D(device);
                         digitSet.Widths[i] = bitmap.Width;
                         digitSet.Heights[i] = bitmap.Height;
+                        digitSet.Digits[i] = bitmap.ToTexture2DAndDispose(device);
 
                         // Get origin point
                         var originProp = digitCanvas["origin"] as WzVectorProperty;
@@ -225,30 +242,36 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            // Load special text sprites (Miss, guard, etc.)
-            foreach (string specialName in SpecialTextNames)
+            if (ShouldLoadSpecialTextSprites(name))
             {
-                WzCanvasProperty specialCanvas = typeProperty[specialName] as WzCanvasProperty;
-                if (specialCanvas == null)
-                    continue;
-
-                try
+                // CAnimationDisplayer::Effect_HP owner seam:
+                // special-result text is owned by NoRed0 only.
+                foreach (string specialName in SpecialTextNames)
                 {
-                    var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
-                    if (bitmap != null)
-                    {
-                        digitSet.SpecialTextures[specialName] = bitmap.ToTexture2D(device);
+                    WzCanvasProperty specialCanvas = typeProperty[specialName] as WzCanvasProperty;
+                    if (specialCanvas == null)
+                        continue;
 
-                        var originProp = specialCanvas["origin"] as WzVectorProperty;
-                        if (originProp != null)
+                    try
+                    {
+                        var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
+                        if (bitmap != null)
                         {
-                            digitSet.SpecialOrigins[specialName] = new Point(originProp.X.Value, originProp.Y.Value);
+                            digitSet.SpecialWidths[specialName] = bitmap.Width;
+                            digitSet.SpecialHeights[specialName] = bitmap.Height;
+                            digitSet.SpecialTextures[specialName] = bitmap.ToTexture2DAndDispose(device);
+
+                            var originProp = specialCanvas["origin"] as WzVectorProperty;
+                            if (originProp != null)
+                            {
+                                digitSet.SpecialOrigins[specialName] = new Point(originProp.X.Value, originProp.Y.Value);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DamageNumberLoader] Error loading special {specialName} from {name}: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DamageNumberLoader] Error loading special {specialName} from {name}: {ex.Message}");
+                    }
                 }
             }
 
@@ -263,7 +286,9 @@ namespace HaCreator.MapSimulator.Loaders
                         var bitmap = effectCanvas.GetLinkedWzCanvasBitmap();
                         if (bitmap != null)
                         {
-                            digitSet.CriticalEffectTexture = bitmap.ToTexture2D(device);
+                            digitSet.CriticalEffectWidth = bitmap.Width;
+                            digitSet.CriticalEffectHeight = bitmap.Height;
+                            digitSet.CriticalEffectTexture = bitmap.ToTexture2DAndDispose(device);
 
                             var originProp = effectCanvas["origin"] as WzVectorProperty;
                             if (originProp != null)
@@ -293,7 +318,7 @@ namespace HaCreator.MapSimulator.Loaders
         public static DamageNumberDigitSet GetDigitSet(DamageColorType colorType, DamageNumberSize size, bool isCritical)
         {
             string typeName = GetTypeName(colorType, size, isCritical);
-            return _digitSets.TryGetValue(typeName, out var set) ? set : null;
+            return !string.IsNullOrWhiteSpace(typeName) && _digitSets.TryGetValue(typeName, out var set) ? set : null;
         }
 
         /// <summary>
@@ -311,7 +336,14 @@ namespace HaCreator.MapSimulator.Loaders
         /// </summary>
         private static string GetTypeName(DamageColorType colorType, DamageNumberSize size, bool isCritical)
         {
-            if (isCritical)
+            if (colorType != DamageColorType.Red
+                && colorType != DamageColorType.Blue
+                && colorType != DamageColorType.Violet)
+            {
+                return null;
+            }
+
+            if (isCritical && colorType == DamageColorType.Red)
             {
                 return size == DamageNumberSize.Large ? "NoCri1" : "NoCri0";
             }
@@ -321,10 +353,23 @@ namespace HaCreator.MapSimulator.Loaders
                 DamageColorType.Red => "NoRed",
                 DamageColorType.Blue => "NoBlue",
                 DamageColorType.Violet => "NoViolet",
-                _ => "NoRed"
+                _ => null
             };
 
+            if (string.IsNullOrWhiteSpace(colorName))
+            {
+                return null;
+            }
+
             return colorName + (size == DamageNumberSize.Large ? "1" : "0");
+        }
+
+        internal static bool ShouldLoadSpecialTextSprites(string setName)
+        {
+            return string.Equals(
+                setName?.Trim(),
+                DamageNumberSpecialTextOwnerSetName,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

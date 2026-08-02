@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly int _a;
         private Color _color;
         private readonly bool front;
+        private readonly int _pageId;
         private readonly int screenMode;
 
         private double bgMoveShiftX = 0;
@@ -27,14 +28,6 @@ namespace HaCreator.MapSimulator.Entities
 
         // Custom property
         private readonly bool disabledBackground; // disabled background for images that are removed from Map.wz/bg, but entry still presist in maps
-
-        // Pre-calculated tile iteration limits (optimization - avoid while loop overhead)
-        private int _cachedMaxHorizontalTiles = 0;
-        private int _cachedMaxVerticalTiles = 0;
-        private int _lastCalcWidth = 0;
-        private int _lastCalcHeight = 0;
-        private int _lastCalcCx = 0;
-        private int _lastCalcCy = 0;
 
         /// <summary>
         /// 
@@ -49,7 +42,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="frames"></param>
         /// <param name="flip"></param>
         /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
-        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, List<IDXObject> frames, bool flip, int screenMode)
+        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, int pageId, List<IDXObject> frames, bool flip, int screenMode)
             : base(frames, flip)
         {
             int CurTickCount = Environment.TickCount;
@@ -63,6 +56,7 @@ namespace HaCreator.MapSimulator.Entities
             this._type = _type;
             this._a = a;
             this.front = front;
+            this._pageId = pageId;
             this.screenMode = screenMode;
 
             _color = new Color(0xFF, 0xFF, 0xFF, a);
@@ -84,7 +78,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="front"></param>
         /// <param name="frame0"></param>
         /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
-        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, IDXObject frame0, bool flip, int screenMode)
+        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, int pageId, IDXObject frame0, bool flip, int screenMode)
             : base(frame0, flip)
         {
             int CurTickCount = Environment.TickCount;
@@ -98,6 +92,7 @@ namespace HaCreator.MapSimulator.Entities
             this._type = _type;
             this._a = a;
             this.front = front; 
+            this._pageId = pageId;
             this.screenMode = screenMode;
 
             _color = new Color(0xFF, 0xFF, 0xFF, a);
@@ -124,103 +119,107 @@ namespace HaCreator.MapSimulator.Entities
             }
         }
 
-        /// <summary>
-        /// Updates the cached max tile counts if screen dimensions or tile spacing changed.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void UpdateTileCache(int screenWidth, int screenHeight, int tileCx, int tileCy)
+        private static int FloorDiv(int value, int divisor)
         {
-            if (screenWidth != _lastCalcWidth || tileCx != _lastCalcCx)
+            int quotient = value / divisor;
+            int remainder = value % divisor;
+            if (remainder != 0 && value < 0)
             {
-                _lastCalcWidth = screenWidth;
-                _lastCalcCx = tileCx;
-                // +2 for partial tiles on edges
-                _cachedMaxHorizontalTiles = tileCx > 0 ? (screenWidth / tileCx) + 2 : 1;
+                quotient--;
             }
-            if (screenHeight != _lastCalcHeight || tileCy != _lastCalcCy)
+
+            return quotient;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int CeilDiv(int value, int divisor)
+        {
+            int quotient = value / divisor;
+            int remainder = value % divisor;
+            if (remainder != 0 && value > 0)
             {
-                _lastCalcHeight = screenHeight;
-                _lastCalcCy = tileCy;
-                _cachedMaxVerticalTiles = tileCy > 0 ? (screenHeight / tileCy) + 2 : 1;
+                quotient++;
             }
+
+            return quotient;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHorizontalCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simWidth, int x, int y, int _cx, IDXObject frame, Color color)
+            int simWidth, int x, int y, int _cx, IDXObject frame)
         {
-            int width = frame.Width;
-            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame, color);
-
-            // Draw left copies using bounded for loop
-            int copyX = x - _cx;
-            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= _cx)
+            if (_cx <= 0)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame, color);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+                return;
             }
 
-            // Draw right copies using bounded for loop
-            copyX = x + _cx;
-            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += _cx)
+            int width = frame.Width > 0 ? frame.Width : Math.Max(simWidth, _cx);
+
+            int firstCopyIndex = CeilDiv((-width + 1) - x, _cx);
+            int lastCopyIndex = FloorDiv((simWidth - 1) - x, _cx);
+            for (int copyIndex = firstCopyIndex; copyIndex <= lastCopyIndex; copyIndex++)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame, color);
+                int copyX = x + (copyIndex * _cx);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawVerticalCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simHeight, int x, int y, int _cy, IDXObject frame, Color color)
+            int simHeight, int x, int y, int _cy, IDXObject frame)
         {
-            int height = frame.Height;
-            Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame, color);
-
-            // Draw top copies using bounded for loop
-            int copyY = y - _cy;
-            for (int i = 0; i < _cachedMaxVerticalTiles && copyY + height > 0; i++, copyY -= _cy)
+            if (_cy <= 0)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame, color);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+                return;
             }
 
-            // Draw bottom copies using bounded for loop
-            copyY = y + _cy;
-            for (int i = 0; i < _cachedMaxVerticalTiles && copyY < simHeight; i++, copyY += _cy)
+            int height = frame.Height > 0 ? frame.Height : Math.Max(simHeight, _cy);
+
+            int firstCopyIndex = CeilDiv((-height + 1) - y, _cy);
+            int lastCopyIndex = FloorDiv((simHeight - 1) - y, _cy);
+            for (int copyIndex = firstCopyIndex; copyIndex <= lastCopyIndex; copyIndex++)
             {
-                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame, color);
+                int copyY = y + (copyIndex * _cy);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHVCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int simWidth, int simHeight, int x, int y, int _cx, int _cy, IDXObject frame, Color color)
+            int simWidth, int simHeight, int x, int y, int _cx, int _cy, IDXObject frame)
         {
-            int width = frame.Width;
-            DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, x, y, _cy, frame, color);
-
-            // Draw left column copies using bounded for loop
-            int copyX = x - _cx;
-            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= _cx)
+            if (_cx <= 0 || _cy <= 0)
             {
-                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame, color);
+                Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+                return;
             }
 
-            // Draw right column copies using bounded for loop
-            copyX = x + _cx;
-            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += _cx)
+            int width = frame.Width > 0 ? frame.Width : Math.Max(simWidth, _cx);
+            int height = frame.Height > 0 ? frame.Height : Math.Max(simHeight, _cy);
+
+            int firstCopyXIndex = CeilDiv((-width + 1) - x, _cx);
+            int lastCopyXIndex = FloorDiv((simWidth - 1) - x, _cx);
+            int firstCopyYIndex = CeilDiv((-height + 1) - y, _cy);
+            int lastCopyYIndex = FloorDiv((simHeight - 1) - y, _cy);
+
+            for (int copyXIndex = firstCopyXIndex; copyXIndex <= lastCopyXIndex; copyXIndex++)
             {
-                DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, _cy, frame, color);
+                int copyX = x + (copyXIndex * _cx);
+                for (int copyYIndex = firstCopyYIndex; copyYIndex <= lastCopyYIndex; copyYIndex++)
+                {
+                    int copyY = y + (copyYIndex * _cy);
+                    Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, copyY, frame);
+                }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Draw2D(SpriteBatch sprite, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int x, int y, IDXObject frame)
         {
-            Draw2D(sprite, skeletonRenderer, gameTime, x, y, frame, Color);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void Draw2D(SpriteBatch sprite, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int x, int y, IDXObject frame, Color color)
-        {
-            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, color, flip, null);
+            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, Color, flip, null);
         }
 
         private int LastShiftIncreaseX = 0;
@@ -242,30 +241,29 @@ namespace HaCreator.MapSimulator.Entities
             LastShiftIncreaseY = TickCount;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateMotionShift(int cx, int cy, int tickCount)
+        {
+            switch (_type)
+            {
+                case BackgroundType.HorizontalMoving:
+                case BackgroundType.HorizontalMovingHVTiling:
+                    if (cx > 0)
+                        IncreaseShiftX(cx, tickCount);
+                    break;
+                case BackgroundType.VerticalMoving:
+                case BackgroundType.VerticalMovingHVTiling:
+                    if (cy > 0)
+                        IncreaseShiftY(cy, tickCount);
+                    break;
+            }
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
             RenderParameters renderParameters,
             int TickCount)
-        {
-            DrawInternal(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, renderParameters, TickCount, Color);
-        }
-
-        public void DrawPreview(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY,
-            RenderParameters renderParameters,
-            int TickCount,
-            Color color)
-        {
-            Color previewColor = new Color(color.R, color.G, color.B, (byte)(color.A * _color.A / byte.MaxValue));
-            DrawInternal(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, renderParameters, TickCount, previewColor);
-        }
-
-        private void DrawInternal(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY,
-            RenderParameters renderParameters,
-            int TickCount,
-            Color color)
         {
             if (((int)renderParameters.Resolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this
                 return;
@@ -276,41 +274,54 @@ namespace HaCreator.MapSimulator.Entities
             int cx = _cx == 0 ? drawFrame.Width : _cx;
             int cy = _cy == 0 ? drawFrame.Height : _cy;
 
-            // Update tile cache if needed (only recalculates when dimensions change)
-            UpdateTileCache(renderParameters.RenderWidth, renderParameters.RenderHeight, cx, cy);
+            UpdateMotionShift(cx, cy, TickCount);
 
             switch (_type)
             {
                 case BackgroundType.Regular:
-                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, drawFrame, color);
+                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, drawFrame);
                     break;
                 case BackgroundType.HorizontalTiling:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X, Y, cx, drawFrame, color);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X, Y, cx, drawFrame);
                     break;
                 case BackgroundType.VerticalTiling:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y, cy, drawFrame, color);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y, cy, drawFrame);
                     break;
                 case BackgroundType.HVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y, cx, cy, drawFrame, color);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y, cx, cy, drawFrame);
                     break;
                 case BackgroundType.HorizontalMoving:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X + (int)bgMoveShiftX, Y, cx, drawFrame, color);
-                    IncreaseShiftX(cx, TickCount);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X + (int)bgMoveShiftX, Y, cx, drawFrame);
                     break;
                 case BackgroundType.VerticalMoving:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cy, drawFrame, color);
-                    IncreaseShiftY(cy, TickCount);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cy, drawFrame);
                     break;
                 case BackgroundType.HorizontalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X + (int)bgMoveShiftX, Y, cx, cy, drawFrame, color);
-                    IncreaseShiftX(cx, TickCount);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X + (int)bgMoveShiftX, Y, cx, cy, drawFrame);
                     break;
                 case BackgroundType.VerticalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cx, cy, drawFrame, color);
-                    IncreaseShiftX(cy, TickCount);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cx, cy, drawFrame);
                     break;
                 default:
                     break;
+            }
+        }
+
+        public void DrawPreview(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            RenderParameters renderParameters, int tickCount, Color color)
+        {
+            Color previousColor = _color;
+            _color = new Color(color.R, color.G, color.B,
+                (byte)(color.A * previousColor.A / byte.MaxValue));
+            try
+            {
+                Draw(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY,
+                    centerX, centerY, null, renderParameters, tickCount);
+            }
+            finally
+            {
+                _color = previousColor;
             }
         }
 
@@ -358,7 +369,21 @@ namespace HaCreator.MapSimulator.Entities
             }
         }
 
+        public byte DefaultAlpha => (byte)Math.Clamp(_a, byte.MinValue, byte.MaxValue);
+
+        public void SetAlpha(byte alpha)
+        {
+            _color = new Color(_color.R, _color.G, _color.B, alpha);
+        }
+
+        public void SetRgbTint(byte red, byte green, byte blue)
+        {
+            _color = new Color(red, green, blue, _color.A);
+        }
+
         public bool Front { get { return front; } }
+
+        public int PageId { get { return _pageId; } }
 
         public bool DisabledBackground { get { return disabledBackground; } }
     }

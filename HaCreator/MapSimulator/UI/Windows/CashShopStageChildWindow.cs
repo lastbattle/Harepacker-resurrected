@@ -1,0 +1,4192 @@
+using HaSharedLibrary.Render;
+using HaSharedLibrary.Render.DX;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.UI
+{
+    public sealed class CashShopStageChildWindow : UIWindowBase
+    {
+        public sealed class ScrollBarControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int UpButtonId { get; init; }
+            public int DownButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Height { get; init; }
+            public int WheelRange { get; init; }
+            public int Offset { get; init; }
+            public int MaxOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int PageSize { get; init; }
+            public int TrackHeight { get; init; }
+            public int ThumbY { get; init; }
+            public int ThumbHeight { get; init; }
+            public bool IsDragging { get; init; }
+        }
+
+        public sealed class SelectorControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int InitArg { get; init; }
+            public Point Position { get; init; }
+            public int StartX { get; init; }
+            public int StartY { get; init; }
+            public int StartWidth { get; init; }
+            public int StartHeight { get; init; }
+            public int ActiveIndex { get; init; }
+            public int VisibleOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int NormalColor { get; init; }
+            public int SelectedColor { get; init; }
+            public int OutlineColor { get; init; }
+            public string FocusLabel { get; init; } = string.Empty;
+            public bool HasNumberFont { get; init; }
+            public int Revision { get; init; }
+            public IReadOnlyList<string> Labels { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class TabControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int ItemCount { get; init; }
+            public Point Position { get; init; }
+            public int Width { get; init; }
+            public int RuntimeWidth { get; init; }
+            public int CanvasItemCount { get; init; }
+            public bool SameWidth { get; init; }
+            public int NormalStringPoolId { get; init; }
+            public int SelectedStringPoolId { get; init; }
+            public int ActiveIndex { get; init; }
+            public string ActiveTabName { get; init; } = string.Empty;
+            public int Revision { get; init; }
+            public IReadOnlyList<string> TabNames { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class CashChildRuntimeSnapshot
+        {
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public TabControlRuntimeState TabRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+            public string StatusMessage { get; init; } = string.Empty;
+        }
+
+        public sealed class NumberCanvasRuntimeState
+        {
+            public int SourceStringPoolId { get; init; }
+            public int ExpectedCanvasCount { get; init; }
+            public int LoadedCanvasCount { get; init; }
+            public int ReadyMask { get; init; }
+            public string RenderedText { get; init; } = string.Empty;
+            public IReadOnlyList<bool> DigitReadyStates { get; init; } = Array.Empty<bool>();
+            public IReadOnlyList<string> CanvasNames { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class CashShopWrapperOwnerState
+        {
+            public sealed class CanvasSlotState
+            {
+                public int SlotIndex { get; init; }
+                public string WzPath { get; init; } = string.Empty;
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public bool IsBackedByWz { get; init; }
+            }
+
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int SourceStringPoolId { get; init; }
+            }
+
+            public sealed class PriceRangeState
+            {
+                public int Index { get; init; }
+                public int LowPrice { get; init; }
+                public int HighPrice { get; init; }
+            }
+
+            public sealed class SearchResultRowState
+            {
+                public int Index { get; init; }
+                public string Title { get; init; } = string.Empty;
+                public string PriceLabel { get; init; } = string.Empty;
+                public bool IsSelected { get; init; }
+            }
+
+            public string OwnerName { get; init; } = string.Empty;
+            public string Status { get; init; } = string.Empty;
+            public string NativeCreateFunction { get; init; } = string.Empty;
+            public string NativeDrawFunction { get; init; } = string.Empty;
+            public string SourceSurface { get; init; } = string.Empty;
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ButtonControlState SortComboControl { get; init; }
+            public ButtonControlState SearchButtonControl { get; init; }
+            public ButtonControlState SearchDialogPriceComboControl { get; init; }
+            public ButtonControlState SearchDialogEditControl { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+            public IReadOnlyList<CanvasSlotState> CanvasSlots { get; init; } = Array.Empty<CanvasSlotState>();
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public IReadOnlyList<PriceRangeState> PriceRanges { get; init; } = Array.Empty<PriceRangeState>();
+            public IReadOnlyList<SearchResultRowState> SearchResultRows { get; init; } = Array.Empty<SearchResultRowState>();
+            public int LastKeyDownTick { get; init; }
+            public int CurrentCategory { get; init; }
+            public int CurrentSortType { get; init; }
+            public int BestSlotCount { get; init; }
+            public int BestRowHeight { get; init; }
+            public Point BestEventBadgePosition { get; init; }
+            public int PendingCommoditySerialNumber { get; init; }
+            public int SearchResultCount { get; init; }
+            public int SearchResultSelectedIndex { get; init; } = -1;
+            public int SearchResultScrollOffset { get; init; }
+            public int SearchResultPageIndex { get; init; }
+            public int SearchResultPageSize { get; init; }
+            public int SearchResultVisibleCount { get; init; }
+            public int ActivePriceRangeIndex { get; init; }
+            public bool AllItemFilterEnabled { get; init; }
+            public bool HasDedicatedWzSurface { get; init; }
+            public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class RewardSessionRuntimeState
+        {
+            public bool PacketOwned { get; init; }
+            public int SessionByte { get; init; }
+            public int SessionByteOffset { get; init; } = -1;
+            public bool IsPending { get; init; }
+            public int RemainingSeconds { get; init; }
+            public int CountdownDeadlineTick { get; init; } = int.MinValue;
+            public int SelectorIndex { get; init; }
+            public bool ShortcutHelpActive { get; init; }
+            public bool PreviousLaneEnabled { get; init; }
+            public int HistoryEntryCount { get; init; }
+            public IReadOnlyList<int> HistoryStateBytes { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HistoryStateByteOffsets { get; init; } = Array.Empty<int>();
+            public int PayloadLength { get; init; }
+            public int DecodedByteLength { get; init; }
+            public int TrailingByteCount { get; init; }
+            public string TrailingPayloadHex { get; init; } = string.Empty;
+            public string PacketStateSignature { get; init; } = string.Empty;
+        }
+
+        public sealed class OneADayRuntimeSnapshot
+        {
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public NumberCanvasRuntimeState NumberCanvasRuntime { get; init; }
+            public RewardSessionRuntimeState RewardSessionRuntime { get; init; }
+            public IReadOnlyList<OneADayOwnerState.SelectorEntryState> SelectorEntries { get; init; } = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+            public IReadOnlyList<OneADayOwnerState.CounterSlotState> CounterSlots { get; init; } = Array.Empty<OneADayOwnerState.CounterSlotState>();
+            public IReadOnlyList<OneADayOwnerState.PlateButtonState> PlateButtons { get; init; } = Array.Empty<OneADayOwnerState.PlateButtonState>();
+            public string CounterText { get; init; } = string.Empty;
+            public string SessionState { get; init; } = string.Empty;
+            public int SelectorRevision { get; init; }
+            public int CounterRevision { get; init; }
+            public int RewardSessionRevision { get; init; }
+        }
+
+        public sealed class LockerOwnerState
+        {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int NativeButtonId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int MouseOverWidth { get; init; }
+                public int MouseOverHeight { get; init; }
+            }
+
+            public string AccountLabel { get; init; } = string.Empty;
+            public int UsedSlotCount { get; init; }
+            public int SlotLimit { get; init; }
+            public bool CanExpand { get; init; }
+            public int ScrollOffset { get; init; }
+            public int WheelRange { get; init; }
+            public bool HasNumberFont { get; init; }
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = -1;
+            public int ScrollBarY { get; init; } = -1;
+            public int ScrollBarHeight { get; init; } = -1;
+            public IReadOnlyList<string> SharedCharacterNames { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+        }
+
+        public sealed class InventoryOwnerState
+        {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public int NativeButtonId { get; init; }
+                public int StringPoolUolId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int MouseOverWidth { get; init; }
+                public int MouseOverHeight { get; init; }
+            }
+
+            public int EquipCount { get; init; }
+            public int UseCount { get; init; }
+            public int SetupCount { get; init; }
+            public int EtcCount { get; init; }
+            public int CashCount { get; init; }
+            public int FirstPosition { get; init; } = 1;
+            public int ScrollOffset { get; init; }
+            public int RowFocusIndex { get; init; }
+            public int WheelRange { get; init; }
+            public bool HasNumberFont { get; init; }
+            public int TabControlId { get; init; } = 1000;
+            public int TabItemCount { get; init; } = 4;
+            public int TabX { get; init; } = 17;
+            public int TabY { get; init; } = 28;
+            public int TabWidth { get; init; } = 156;
+            public int TabRuntimeWidth { get; init; }
+            public int TabCanvasItemCount { get; init; } = 5;
+            public bool TabSameWidth { get; init; } = true;
+            public int TabNormalStringPoolId { get; init; } = 0xC94;
+            public int TabSelectedStringPoolId { get; init; } = 0xC95;
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = -1;
+            public int ScrollBarY { get; init; } = -1;
+            public int ScrollBarHeight { get; init; } = -1;
+            public string ActiveTabName { get; init; } = string.Empty;
+            public string SelectedEntryTitle { get; init; } = string.Empty;
+            public string PacketFocusSignature { get; init; } = string.Empty;
+            public string PacketFocusMessage { get; init; } = string.Empty;
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public TabControlRuntimeState TabRuntime { get; init; }
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+        }
+
+        public sealed class ListOwnerEntryState
+        {
+            public string Title { get; init; } = string.Empty;
+            public string Detail { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string PriceLabel { get; init; } = string.Empty;
+            public string StateLabel { get; init; } = string.Empty;
+            public bool IsSelected { get; init; }
+            public int PacketRowIndex { get; init; }
+            public string PacketSource { get; init; } = string.Empty;
+            public string PacketFieldSummary { get; init; } = string.Empty;
+            public int PacketRawByteLength { get; init; }
+            public string PacketPayloadRawHex { get; init; } = string.Empty;
+        }
+
+        public sealed class ListOwnerState
+        {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public int NativeButtonId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int KeyFocusedWidth { get; init; }
+                public int KeyFocusedHeight { get; init; }
+                public bool HasKeyFocusCanvas { get; init; }
+            }
+
+            public string PaneLabel { get; init; } = string.Empty;
+            public string BrowseModeLabel { get; init; } = string.Empty;
+            public string CategoryLabel { get; init; } = string.Empty;
+            public string FooterMessage { get; init; } = string.Empty;
+            public string SelectedEntryDetail { get; init; } = string.Empty;
+            public int SelectedIndex { get; init; } = -1;
+            public int ScrollOffset { get; init; }
+            public int TotalCount { get; init; }
+            public int PlateFocusIndex { get; init; } = -1;
+            public bool HasKeyFocusCanvas { get; init; }
+            public int SelectorControlId { get; init; } = 1000;
+            public int SelectorInitArg { get; init; } = 4;
+            public int SelectorX { get; init; } = 412;
+            public int SelectorY { get; init; } = 406;
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = 381;
+            public int ScrollBarY { get; init; } = 44;
+            public int ScrollBarHeight { get; init; } = 339;
+            public int WheelRange { get; init; } = 412;
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public IReadOnlyList<ListOwnerEntryState> VisibleEntries { get; init; } = Array.Empty<ListOwnerEntryState>();
+            public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
+        }
+
+        public sealed class StatusOwnerState
+        {
+            public long NexonCashBalance { get; init; }
+            public long MaplePointBalance { get; init; }
+            public long PrepaidCashBalance { get; init; }
+            public int ChargeParam { get; init; }
+            public string StatusMessage { get; init; } = string.Empty;
+            public IReadOnlyList<string> DetailSummaries { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<ListOwnerState.ButtonControlState> ButtonControls { get; init; } = Array.Empty<ListOwnerState.ButtonControlState>();
+        }
+
+        public sealed class OneADayOwnerState
+        {
+            public sealed class CommodityDrawLayoutState
+            {
+                public int TodayIconX { get; init; } = 14;
+                public int TodayIconY { get; init; } = 137;
+                public int PreviousIconX { get; init; } = 7;
+                public int PreviousIconY { get; init; } = 73;
+                public int TextX { get; init; } = 82;
+                public int NameY { get; init; } = 11;
+                public int DateY { get; init; } = 37;
+                public int DiscountX { get; init; } = 81;
+                public int DiscountY { get; init; } = 119;
+                public int TodayFontScale { get; init; } = 4;
+                public int PreviousFontScale { get; init; } = 2;
+                public bool HasDiscountNumberCanvases { get; init; }
+                public bool HasDiscountStartCanvas { get; init; }
+                public bool HasDiscountPercentCanvas { get; init; }
+            }
+
+            public sealed class SelectorEntryState
+            {
+                public int Index { get; init; }
+                public int SourceStringPoolId { get; init; }
+                public string Label { get; init; } = string.Empty;
+                public bool IsActive { get; init; }
+            }
+
+            public sealed class CounterSlotState
+            {
+                public int SlotIndex { get; init; }
+                public char Digit { get; init; }
+                public bool IsSeparator { get; init; }
+                public bool HasDigitCanvas { get; init; }
+            }
+
+            public sealed class PlateButtonState
+            {
+                public int ButtonId { get; init; }
+                public int SlotIndex { get; init; }
+                public string CommandKey { get; init; } = string.Empty;
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public bool HasCanvas { get; init; }
+                public bool IsLoaded { get; init; }
+                public bool IsEnabled { get; init; } = true;
+                public bool IsFocused { get; init; }
+                public string Label { get; init; } = string.Empty;
+                public bool HasPacketStateByte { get; init; }
+                public int PacketStateByte { get; init; }
+                public int PacketStateByteOffset { get; init; } = -1;
+            }
+
+            public sealed class HistoryEntryState
+            {
+                public int CommoditySerialNumber { get; init; }
+            public int OriginalCommoditySerialNumber { get; init; }
+            public string ItemLabel { get; init; } = string.Empty;
+            public string DateLabel { get; init; } = string.Empty;
+            public bool HasPacketStateByte { get; init; }
+            public int PacketStateByte { get; init; }
+            public int PacketStateByteOffset { get; init; } = -1;
+            }
+
+            public bool IsPending { get; init; }
+            public string NoticeState { get; init; } = string.Empty;
+            public int SelectorIndex { get; init; }
+            public int SelectorCount { get; init; } = 2;
+            public int SelectorControlId { get; init; } = 2001;
+            public int SelectorInitArg { get; init; } = 4;
+            public int SelectorStartX { get; init; } = 2;
+            public int SelectorStartY { get; init; } = 2;
+            public int SelectorStartWidth { get; init; } = 1;
+            public int SelectorStartHeight { get; init; } = 1;
+            public int SelectorNormalColor { get; init; } = -12949590;
+            public int SelectorSelectedColor { get; init; } = -1;
+            public int SelectorOutlineColor { get; init; } = -16777216;
+            public Point SelectorPosition { get; init; } = new(412, 406);
+            public string TodaySelectorLabel { get; init; } = "Today";
+            public string PreviousSelectorLabel { get; init; } = "Previous";
+            public IReadOnlyList<SelectorEntryState> SelectorEntries { get; init; } = Array.Empty<SelectorEntryState>();
+            public bool HasKeyFocusCanvas { get; init; }
+            public bool HasPlateCanvas { get; init; }
+            public bool HasPlateBigCanvas { get; init; }
+            public int BaseCanvasStringPoolId { get; init; } = 0x16A4;
+            public int ItemBoxBigStringPoolId { get; init; } = 0x16A5;
+            public int ItemBoxStringPoolId { get; init; } = 0x16A6;
+            public int NoItemStringPoolId { get; init; } = 0x4ED;
+            public int KeyFocusStringPoolId { get; init; } = 0x4EA;
+            public int PlateStringPoolId { get; init; } = 0x4E9;
+            public int PlateBigStringPoolId { get; init; } = 0x16A5;
+            public int NumberCanvasStringPoolId { get; init; } = 0x16A7;
+            public int BuyButtonStringPoolId { get; init; } = 0x16A8;
+            public int ItemBoxButtonStringPoolId { get; init; } = 0x16A9;
+            public int GiftButtonStringPoolId { get; init; } = 0x1A75;
+            public int InitialChangeStateState { get; init; }
+            public int InitialChangeStateForce { get; init; } = 1;
+            public int NumberCanvasCount { get; init; }
+            public int NumberCanvasReadyMask { get; init; }
+            public int ExpectedNumberCanvasCount { get; init; } = 10;
+            public int PlateCount { get; init; } = 3;
+            public int PlateButtonCount { get; init; } = 12;
+            public int ActivePlateButtonCount { get; init; }
+            public int PreviousOfferCount { get; init; } = 12;
+            public string PlateCanvasBaseName { get; init; } = "NoItem";
+            public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";
+            public int CurrentCommoditySerialNumber { get; init; }
+            public string CurrentItemLabel { get; init; } = string.Empty;
+            public int CurrentDateRaw { get; init; }
+            public string CurrentDateLabel { get; init; } = string.Empty;
+            public int Hour { get; init; }
+            public int Minute { get; init; }
+            public int Second { get; init; }
+            public IReadOnlyList<CounterSlotState> CounterSlots { get; init; } = Array.Empty<CounterSlotState>();
+            public IReadOnlyList<PlateButtonState> PlateButtons { get; init; } = Array.Empty<PlateButtonState>();
+            public string RewardSessionSummary { get; init; } = string.Empty;
+            public bool HasPacketRewardSessionByte { get; init; }
+            public int PacketRewardSessionByte { get; init; }
+            public int PacketRewardSessionByteOffset { get; init; } = -1;
+            public int PacketPayloadLength { get; init; }
+            public int PacketDecodedByteLength { get; init; }
+            public int PacketTrailingByteCount { get; init; }
+            public string PacketTrailingPayloadHex { get; init; } = string.Empty;
+            public string PacketStateSignature { get; init; } = string.Empty;
+            public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
+            public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
+            public CommodityDrawLayoutState CommodityDrawLayout { get; init; } = new();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public NumberCanvasRuntimeState NumberCanvasRuntime { get; init; }
+            public RewardSessionRuntimeState RewardSessionRuntime { get; init; }
+        }
+
+        private readonly struct LayerInfo
+        {
+            public LayerInfo(IDXObject layer, Point offset, string key, Func<bool> visibilityEvaluator)
+            {
+                Layer = layer;
+                Offset = offset;
+                Key = key ?? string.Empty;
+                VisibilityEvaluator = visibilityEvaluator;
+            }
+
+            public IDXObject Layer { get; }
+            public Point Offset { get; }
+            public string Key { get; }
+            public Func<bool> VisibilityEvaluator { get; }
+        }
+
+        private sealed class ButtonAction
+        {
+            public string ActionKey { get; init; } = string.Empty;
+            public Func<string> Action { get; init; }
+        }
+
+        private sealed class OneADaySelectorRuntimeState
+        {
+            public int ControlId { get; set; } = 2001;
+            public int InitArg { get; set; } = 4;
+            public int StartX { get; set; } = 2;
+            public int StartY { get; set; } = 2;
+            public int StartWidth { get; set; } = 1;
+            public int StartHeight { get; set; } = 1;
+            public Point Position { get; set; } = new(412, 406);
+            public int SelectorCount { get; set; } = 2;
+            public int ActiveSelectorIndex { get; set; }
+            public int NormalColor { get; set; } = -12949590;
+            public int SelectedColor { get; set; } = -1;
+            public int OutlineColor { get; set; } = -16777216;
+            public int Revision { get; set; }
+        }
+
+        private sealed class OneADayCounterRuntimeState
+        {
+            public int DigitCanvasMask { get; set; }
+            public int DigitCanvasCount { get; set; }
+            public int ExpectedDigitCanvasCount { get; set; } = 10;
+            public int RemainingSeconds { get; set; }
+            public string CounterText { get; set; } = "00:00:00";
+            public int Revision { get; set; }
+        }
+
+        private sealed class OneADayRewardSessionRuntimeState
+        {
+            public bool PacketOwned { get; set; }
+            public int SessionByte { get; set; }
+            public int Revision { get; set; }
+            public bool IsPending { get; set; }
+            public int CountdownDeadlineTick { get; set; } = int.MinValue;
+            public string PacketStateSignature { get; set; } = string.Empty;
+        }
+
+        private sealed class ScrollBarRuntimeState
+        {
+            public int ControlId { get; set; }
+            public int UpButtonId { get; set; }
+            public int DownButtonId { get; set; }
+            public Point Position { get; set; }
+            public int Height { get; set; }
+            public int WheelRange { get; set; }
+            public int Offset { get; set; }
+            public int MaxOffset { get; set; }
+            public bool IsDragging { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class SelectorRuntimeState
+        {
+            public int ActiveIndex { get; set; }
+            public int VisibleOffset { get; set; }
+            public int VisibleCount { get; set; }
+            public int TotalCount { get; set; }
+            public string FocusLabel { get; set; } = string.Empty;
+            public bool HasNumberFont { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class InventoryTabRuntimeState
+        {
+            public int ControlId { get; set; }
+            public int ItemCount { get; set; }
+            public Point Position { get; set; }
+            public int Width { get; set; }
+            public int RuntimeWidth { get; set; }
+            public int CanvasItemCount { get; set; }
+            public bool SameWidth { get; set; }
+            public int NormalStringPoolId { get; set; }
+            public int SelectedStringPoolId { get; set; }
+            public string ActiveTabName { get; set; } = string.Empty;
+            public int Revision { get; set; }
+        }
+
+        private sealed class ListPlateRuntimeState
+        {
+            public int ActiveIndex { get; set; } = -1;
+            public int ScrollOffset { get; set; }
+            public int TotalCount { get; set; }
+            public bool HasKeyFocusCanvas { get; set; }
+            public int ButtonFocusIndex { get; set; } = -1;
+            public string PaneLabel { get; set; } = string.Empty;
+            public int Revision { get; set; }
+        }
+
+        private readonly string _windowName;
+        private readonly string _title;
+        private readonly List<LayerInfo> _layers = new();
+        private readonly Dictionary<UIObject, ButtonAction> _buttonActions = new();
+        private readonly Dictionary<string, Func<string>> _externalButtonActions = new(StringComparer.Ordinal);
+        private readonly List<string> _fallbackLines = new();
+        private SpriteFont _font;
+        private KeyboardState _previousKeyboardState;
+        private Func<IReadOnlyList<string>> _contentProvider;
+        private Func<LockerOwnerState> _lockerStateProvider;
+        private Func<InventoryOwnerState> _inventoryStateProvider;
+        private Func<string, int, int, IReadOnlyList<string>> _inventoryVisibleRowProvider;
+        private Func<ListOwnerState> _listStateProvider;
+        private Func<StatusOwnerState> _statusStateProvider;
+        private Func<OneADayOwnerState> _oneADayStateProvider;
+        private Func<CashShopWrapperOwnerState> _cashShopWrapperStateProvider;
+        private Func<int, string> _listRowSelectionAction;
+        private Func<int, string> _listScrollAction;
+        private Func<int, int, string> _listScrollOffsetAction;
+        private string _statusMessage = string.Empty;
+        private Rectangle _contentBounds;
+        private Point? _titlePositionOverride;
+        private MouseState _previousMouseState;
+        private int _lockerCharacterIndex;
+        private int _lockerScrollOffset;
+        private string _lockerActionState = "Locker selector idle.";
+        private bool _draggingLockerScrollThumb;
+        private int _lockerScrollThumbGrabOffset;
+        private string _inventoryTabName = "Equip";
+        private int _inventoryFirstPosition = 1;
+        private int _inventoryScrollOffset;
+        private int _inventoryRowFocusIndex;
+        private string _inventoryActionState = "Inventory selector idle.";
+        private bool _inventoryRuntimeSeeded;
+        private string _inventoryPacketFocusSignature = string.Empty;
+        private bool _draggingInventoryScrollThumb;
+        private int _inventoryScrollThumbGrabOffset;
+        private int _listButtonFocusIndex = -1;
+        private string _listActionState = "List selector idle.";
+        private bool _draggingListScrollThumb;
+        private int _listScrollThumbGrabOffset;
+        private string _statusActionState = "Status strip idle.";
+        private int _statusButtonFocusIndex;
+        private int _oneADaySelectorIndex;
+        private int _oneADayPlateFocusIndex;
+        private bool _oneADayShortcutHelpActive;
+        private bool _oneADayPending;
+        private int _oneADayRemainingSeconds;
+        private int _oneADayCountdownDeadlineTick = int.MinValue;
+        private string _oneADayCounterDigits = "00:00:00";
+        private string _oneADaySessionState = "Reward session idle.";
+        private bool _oneADayRuntimeSeeded;
+        private string _oneADayPacketStateSignature = string.Empty;
+        private IReadOnlyList<OneADayOwnerState.SelectorEntryState> _oneADaySelectorRuntime = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+        private IReadOnlyList<OneADayOwnerState.CounterSlotState> _oneADayCounterRuntime = Array.Empty<OneADayOwnerState.CounterSlotState>();
+        private IReadOnlyList<OneADayOwnerState.PlateButtonState> _oneADayPlateButtonRuntime = Array.Empty<OneADayOwnerState.PlateButtonState>();
+        private int _oneADayRewardSessionByte;
+        private int _oneADayRewardSessionRevision;
+        private int _oneADayNumberCanvasReadyMask;
+        private bool _oneADayRewardSessionPacketOwned;
+        private int _oneADayLastPacketRewardSessionByte = -1;
+        private int _oneADayLastPacketRewardSessionByteOffset = -1;
+        private readonly OneADaySelectorRuntimeState _oneADaySelectorObject = new();
+        private readonly OneADayCounterRuntimeState _oneADayCounterObject = new();
+        private readonly OneADayRewardSessionRuntimeState _oneADayRewardSessionObject = new();
+        private readonly SelectorRuntimeState _lockerSelectorObject = new();
+        private readonly ScrollBarRuntimeState _lockerScrollBarObject = new();
+        private readonly SelectorRuntimeState _inventorySelectorObject = new();
+        private readonly InventoryTabRuntimeState _inventoryTabObject = new();
+        private readonly ScrollBarRuntimeState _inventoryScrollBarObject = new();
+        private readonly ListPlateRuntimeState _listPlateObject = new();
+        private readonly ScrollBarRuntimeState _listScrollBarObject = new();
+
+        public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
+            : base(frame)
+        {
+            _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
+            _title = title ?? string.Empty;
+            _contentBounds = new Rectangle(0, 0, CurrentFrame?.Width ?? 240, CurrentFrame?.Height ?? 140);
+        }
+
+        public override string WindowName => _windowName;
+        public override bool CapturesKeyboardInput => IsVisible && IsKeyboardOwnerWindow();
+
+        internal static ScrollBarControlRuntimeState BuildScrollBarControlRuntimeState(
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            int visibleCount,
+            int totalCount,
+            bool isDragging)
+        {
+            return CreateScrollBarControlRuntimeState(
+                controlId,
+                upButtonId,
+                downButtonId,
+                position,
+                height,
+                wheelRange,
+                offset,
+                maxOffset,
+                visibleCount,
+                totalCount,
+                isDragging);
+        }
+
+        public int GetOneADaySelectorIndex()
+        {
+            return _oneADaySelectorIndex;
+        }
+        public bool IsOneADayPacketSeedAccepted(int packetRewardSessionByte)
+        {
+            return _oneADayRuntimeSeeded
+                && _oneADayLastPacketRewardSessionByte == (packetRewardSessionByte & 0xFF);
+        }
+        public OneADayRuntimeSnapshot GetOneADayRuntimeSnapshotForTests(bool forceRefresh = false)
+        {
+            SyncOneADayOwnerState(forceRefresh);
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            return new OneADayRuntimeSnapshot
+            {
+                SelectorRuntime = BuildOneADaySelectorControlRuntimeSnapshot(state),
+                NumberCanvasRuntime = BuildOneADayNumberCanvasRuntimeSnapshot(state),
+                RewardSessionRuntime = BuildOneADayRewardSessionRuntimeSnapshot(state),
+                SelectorEntries = _oneADaySelectorRuntime ?? Array.Empty<OneADayOwnerState.SelectorEntryState>(),
+                CounterSlots = _oneADayCounterRuntime ?? Array.Empty<OneADayOwnerState.CounterSlotState>(),
+                PlateButtons = _oneADayPlateButtonRuntime ?? Array.Empty<OneADayOwnerState.PlateButtonState>(),
+                CounterText = _oneADayCounterObject.CounterText ?? string.Empty,
+                SessionState = _oneADaySessionState ?? string.Empty,
+                SelectorRevision = _oneADaySelectorObject.Revision,
+                CounterRevision = _oneADayCounterObject.Revision,
+                RewardSessionRevision = _oneADayRewardSessionObject.Revision
+            };
+        }
+
+        public CashChildRuntimeSnapshot GetLockerRuntimeSnapshotForTests()
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            if (state != null)
+            {
+                _lockerScrollOffset = Math.Clamp(state.ScrollOffset, 0, Math.Max(0, (state.SharedCharacterNames?.Count ?? 0) - 3));
+                UpdateLockerRuntimeObjects(state);
+            }
+
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = BuildSelectorControlRuntimeSnapshot(_lockerSelectorObject, controlId: 1000, initArg: 4),
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_lockerScrollBarObject, visibleCount: _lockerSelectorObject.VisibleCount, totalCount: _lockerSelectorObject.TotalCount),
+                StatusMessage = _lockerActionState ?? string.Empty
+            };
+        }
+
+        public CashChildRuntimeSnapshot GetInventoryRuntimeSnapshotForTests(bool forceRefresh = false)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state != null)
+            {
+                SyncInventoryOwnerState(state, forceRefresh);
+                UpdateInventoryRuntimeObjects(state);
+            }
+
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = BuildSelectorControlRuntimeSnapshot(_inventorySelectorObject, controlId: 1002, initArg: 4),
+                TabRuntime = BuildInventoryTabControlRuntimeSnapshot(),
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_inventoryScrollBarObject, visibleCount: _inventorySelectorObject.VisibleCount, totalCount: _inventorySelectorObject.TotalCount),
+                StatusMessage = _inventoryActionState ?? string.Empty
+            };
+        }
+
+        public CashChildRuntimeSnapshot GetListRuntimeSnapshotForTests()
+        {
+            ListOwnerState state = _listStateProvider?.Invoke();
+            UpdateListRuntimeObjects(state);
+
+            int visibleCount = Math.Min(5, Math.Max(0, state?.TotalCount ?? 0));
+            return new CashChildRuntimeSnapshot
+            {
+                SelectorRuntime = new SelectorControlRuntimeState
+                {
+                    ControlId = state?.SelectorControlId ?? 1000,
+                    InitArg = state?.SelectorInitArg ?? 4,
+                    Position = new Point(state?.SelectorX ?? 412, state?.SelectorY ?? 406),
+                    ActiveIndex = _listPlateObject.ActiveIndex,
+                    VisibleOffset = _listPlateObject.ScrollOffset,
+                    VisibleCount = visibleCount,
+                    TotalCount = _listPlateObject.TotalCount,
+                    FocusLabel = _listPlateObject.PaneLabel ?? string.Empty,
+                    Revision = _listPlateObject.Revision
+                },
+                ScrollBarRuntime = BuildScrollBarControlRuntimeSnapshot(_listScrollBarObject, visibleCount: visibleCount, totalCount: _listPlateObject.TotalCount),
+                StatusMessage = _listActionState ?? string.Empty
+            };
+        }
+        public string CurrentOwnerStatusMessage => _statusMessage;
+
+        public override void SetFont(SpriteFont font)
+        {
+            _font = font;
+        }
+
+        public void AddLayer(IDXObject layer, Point offset, string key = null, Func<bool> visibilityEvaluator = null)
+        {
+            if (layer != null)
+            {
+                _layers.Add(new LayerInfo(layer, offset, key, visibilityEvaluator));
+            }
+        }
+
+        public void SetFallbackLines(params string[] lines)
+        {
+            _fallbackLines.Clear();
+            if (lines == null)
+            {
+                return;
+            }
+
+            foreach (string line in lines)
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    _fallbackLines.Add(line);
+                }
+            }
+        }
+
+        public void SetContentProvider(Func<IReadOnlyList<string>> contentProvider)
+        {
+            _contentProvider = contentProvider;
+        }
+
+        public void SetLockerStateProvider(Func<LockerOwnerState> provider)
+        {
+            _lockerStateProvider = provider;
+        }
+
+        public void SetInventoryStateProvider(Func<InventoryOwnerState> provider)
+        {
+            _inventoryStateProvider = provider;
+        }
+
+        public void SetInventoryVisibleRowProvider(Func<string, int, int, IReadOnlyList<string>> provider)
+        {
+            _inventoryVisibleRowProvider = provider;
+        }
+
+        public void SetListStateProvider(Func<ListOwnerState> provider)
+        {
+            _listStateProvider = provider;
+        }
+
+        public void SetListRowSelectionAction(Func<int, string> action)
+        {
+            _listRowSelectionAction = action;
+        }
+
+        public void SetListScrollAction(Func<int, string> action)
+        {
+            _listScrollAction = action;
+        }
+
+        public void SetListScrollOffsetAction(Func<int, int, string> action)
+        {
+            _listScrollOffsetAction = action;
+        }
+
+        public void SetStatusStateProvider(Func<StatusOwnerState> provider)
+        {
+            _statusStateProvider = provider;
+        }
+
+        public void SetOneADayStateProvider(Func<OneADayOwnerState> provider)
+        {
+            _oneADayStateProvider = provider;
+        }
+
+        public void SetCashShopWrapperStateProvider(Func<CashShopWrapperOwnerState> provider)
+        {
+            _cashShopWrapperStateProvider = provider;
+        }
+
+        public void SetStatusMessage(string statusMessage)
+        {
+            _statusMessage = statusMessage?.Trim() ?? string.Empty;
+        }
+
+        public void SetContentBounds(Rectangle contentBounds)
+        {
+            _contentBounds = contentBounds;
+        }
+
+        public Rectangle GetContentBoundsForTests() => ResolveContentBounds();
+
+        public void SetTitlePosition(Point titlePosition)
+        {
+            _titlePositionOverride = titlePosition;
+        }
+
+        public void RegisterButton(UIObject button, string actionKey, Func<string> action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            _buttonActions[button] = new ButtonAction
+            {
+                ActionKey = actionKey ?? string.Empty,
+                Action = action
+            };
+            button.ButtonClickReleased += _ => HandleButtonAction(button);
+        }
+
+        public void SetExternalAction(string actionKey, Func<string> action)
+        {
+            if (string.IsNullOrWhiteSpace(actionKey))
+            {
+                return;
+            }
+
+            if (action == null)
+            {
+                _externalButtonActions.Remove(actionKey);
+                return;
+            }
+
+            _externalButtonActions[actionKey] = action;
+        }
+
+        public override void Show()
+        {
+            base.Show();
+            _previousKeyboardState = Keyboard.GetState();
+            _previousMouseState = Mouse.GetState();
+            _draggingLockerScrollThumb = false;
+            _draggingInventoryScrollThumb = false;
+            _draggingListScrollThumb = false;
+            if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
+            {
+                SyncOneADayOwnerState(force: true);
+            }
+            else if (_windowName == MapSimulatorWindowNames.CashShopInventory
+                || _windowName == MapSimulatorWindowNames.ItcInventory)
+            {
+                SyncInventoryOwnerState(force: true);
+            }
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                _previousMouseState = Mouse.GetState();
+                return;
+            }
+
+            HandleOwnerKeyboard(keyboardState);
+            if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
+            {
+                UpdateOneADaySessionTimer();
+            }
+            _previousKeyboardState = keyboardState;
+            _previousMouseState = Mouse.GetState();
+        }
+
+        protected override void DrawContents(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            foreach (LayerInfo layer in _layers)
+            {
+                if (layer.VisibilityEvaluator != null && !layer.VisibilityEvaluator.Invoke())
+                {
+                    continue;
+                }
+
+                layer.Layer.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    Position.X + layer.Offset.X,
+                    Position.Y + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            Rectangle contentBounds = ResolveContentBounds();
+            Vector2 titleOrigin = _titlePositionOverride.HasValue
+                ? new Vector2(Position.X + _titlePositionOverride.Value.X, Position.Y + _titlePositionOverride.Value.Y)
+                : new Vector2(Position.X + contentBounds.X + 12, Position.Y + contentBounds.Y + 10);
+            sprite.DrawString(_font, _title, titleOrigin, Color.White);
+
+            switch (_windowName)
+            {
+                case MapSimulatorWindowNames.CashShopLocker:
+                    DrawLockerOwner(sprite, contentBounds, titleOrigin);
+                    return;
+                case MapSimulatorWindowNames.CashShopInventory:
+                case MapSimulatorWindowNames.ItcInventory:
+                    DrawInventoryOwner(sprite, contentBounds, titleOrigin);
+                    return;
+                case MapSimulatorWindowNames.CashShopList:
+                case MapSimulatorWindowNames.ItcList:
+                    DrawListOwner(sprite, contentBounds, titleOrigin);
+                    return;
+                case MapSimulatorWindowNames.CashShopStatus:
+                case MapSimulatorWindowNames.ItcStatus:
+                    DrawStatusOwner(sprite, contentBounds, titleOrigin);
+                    return;
+                case MapSimulatorWindowNames.CashShopOneADay:
+                    DrawOneADayOwner(sprite, contentBounds, titleOrigin);
+                    return;
+                case MapSimulatorWindowNames.CashShopTab:
+                case MapSimulatorWindowNames.CashShopBest:
+                case MapSimulatorWindowNames.CashShopItemSearch:
+                    DrawCashShopWrapperOwner(sprite, contentBounds, titleOrigin);
+                    return;
+            }
+
+            DrawFallbackContent(sprite, contentBounds, titleOrigin);
+        }
+
+        private void DrawCashShopWrapperOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            CashShopWrapperOwnerState state = _cashShopWrapperStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 6f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+
+            DrawWrapped(sprite, state.Status, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), accentColor);
+            if (!string.IsNullOrWhiteSpace(state.NativeCreateFunction))
+            {
+                DrawWrapped(sprite, $"Native {state.NativeCreateFunction}{(string.IsNullOrWhiteSpace(state.NativeDrawFunction) ? string.Empty : $" / {state.NativeDrawFunction}")}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.SelectorRuntime != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Selector#{state.SelectorRuntime.ControlId.ToString(CultureInfo.InvariantCulture)} at {state.SelectorRuntime.Position.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorRuntime.Position.Y.ToString(CultureInfo.InvariantCulture)} start {state.SelectorRuntime.StartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorRuntime.StartY.ToString(CultureInfo.InvariantCulture)} {state.SelectorRuntime.StartWidth.ToString(CultureInfo.InvariantCulture)}x{state.SelectorRuntime.StartHeight.ToString(CultureInfo.InvariantCulture)} labels {state.SelectorRuntime.TotalCount.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            if (state.SortComboControl != null)
+            {
+                DrawWrapped(sprite, $"Sort combo {FormatWrapperButton(state.SortComboControl)}; sort type {state.CurrentSortType.ToString(CultureInfo.InvariantCulture)}; last-key {state.LastKeyDownTick.ToString(CultureInfo.InvariantCulture)}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.SearchButtonControl != null)
+            {
+                DrawWrapped(sprite, $"Search button {FormatWrapperButton(state.SearchButtonControl)}; modal StringPool 0x12FB; result routes through CCashShop::SetSearchResult; rows {state.SearchResultCount.ToString(CultureInfo.InvariantCulture)}; all-item {(state.AllItemFilterEnabled ? "on" : "off")}.", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.SearchDialogPriceComboControl != null || state.SearchDialogEditControl != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Dialog controls price {FormatWrapperButton(state.SearchDialogPriceComboControl)} / edit {FormatWrapperButton(state.SearchDialogEditControl)}; active price range {state.ActivePriceRangeIndex.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            if (state.ButtonControls.Count > 0)
+            {
+                string buttonLine = string.Join(", ", state.ButtonControls.Select(FormatWrapperButton));
+                DrawWrapped(sprite, $"Buttons {buttonLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.CanvasSlots.Count > 0)
+            {
+                string canvasLine = string.Join(
+                    " ",
+                    state.CanvasSlots.Select(slot =>
+                        $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(slot.IsBackedByWz ? $"{slot.Width.ToString(CultureInfo.InvariantCulture)}x{slot.Height.ToString(CultureInfo.InvariantCulture)}" : "null")}"));
+                DrawWrapped(sprite, $"Canvas slots {canvasLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.PriceRanges.Count > 0)
+            {
+                string priceLine = string.Join(
+                    ", ",
+                    state.PriceRanges.Select(range =>
+                        $"{range.Index.ToString(CultureInfo.InvariantCulture)}:{range.LowPrice.ToString(CultureInfo.InvariantCulture)}-{range.HighPrice.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, $"Price ranges {priceLine}", Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+
+            if (state.ScrollBarRuntime != null)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Result popup page {state.SearchResultPageIndex.ToString(CultureInfo.InvariantCulture)} size {state.SearchResultPageSize.ToString(CultureInfo.InvariantCulture)}; selected {state.SearchResultSelectedIndex.ToString(CultureInfo.InvariantCulture)}; scroll {state.ScrollBarRuntime.Offset.ToString(CultureInfo.InvariantCulture)}/{state.ScrollBarRuntime.MaxOffset.ToString(CultureInfo.InvariantCulture)} at {state.ScrollBarRuntime.Position.X.ToString(CultureInfo.InvariantCulture)},{state.ScrollBarRuntime.Position.Y.ToString(CultureInfo.InvariantCulture)} {state.ScrollBarRuntime.Height.ToString(CultureInfo.InvariantCulture)}px.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            foreach (CashShopWrapperOwnerState.SearchResultRowState row in state.SearchResultRows.Take(3))
+            {
+                DrawWrapped(
+                    sprite,
+                    $"{(row.IsSelected ? "> " : string.Empty)}{row.Index.ToString(CultureInfo.InvariantCulture)} {row.Title} {row.PriceLabel}",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            if (state.BestSlotCount > 0)
+            {
+                DrawWrapped(
+                    sprite,
+                    $"Best slots {state.BestSlotCount.ToString(CultureInfo.InvariantCulture)} row {state.BestRowHeight.ToString(CultureInfo.InvariantCulture)}px; active category {state.CurrentCategory.ToString(CultureInfo.InvariantCulture)}; event badge {state.BestEventBadgePosition.X.ToString(CultureInfo.InvariantCulture)},{state.BestEventBadgePosition.Y.ToString(CultureInfo.InvariantCulture)}; pending SN {state.PendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    Math.Max(180f, contentBounds.Width - 24f),
+                    detailColor);
+            }
+
+            foreach (string line in state.Lines.Skip(1).Take(3))
+            {
+                DrawWrapped(sprite, line, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), detailColor);
+            }
+        }
+
+        private static string FormatWrapperButton(CashShopWrapperOwnerState.ButtonControlState button)
+        {
+            if (button == null)
+            {
+                return "none";
+            }
+
+            return $"{button.ActionKey}#{button.ControlId.ToString(CultureInfo.InvariantCulture)} at {button.Position.X.ToString(CultureInfo.InvariantCulture)},{button.Position.Y.ToString(CultureInfo.InvariantCulture)} {button.Width.ToString(CultureInfo.InvariantCulture)}x{button.Height.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private void DrawLockerOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            UpdateLockerRuntimeObjects(state);
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+            string accountLabel = string.IsNullOrWhiteSpace(state.AccountLabel) ? "CashAccount" : state.AccountLabel;
+            sprite.DrawString(_font, $"{accountLabel} locker  {state.UsedSlotCount}/{state.SlotLimit}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Selector {Math.Max(state.ScrollOffset, _lockerScrollOffset).ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime selector rev {_lockerSelectorObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_lockerSelectorObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}/{_lockerSelectorObject.TotalCount.ToString(CultureInfo.InvariantCulture)}  CCtrlScrollBar#{_lockerScrollBarObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_lockerScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_lockerScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+
+            IReadOnlyList<string> sharedNames = state.SharedCharacterNames.Count > 0
+                ? state.SharedCharacterNames
+                : new[] { "No shared characters" };
+            int selectedIndex = sharedNames.Count == 0 ? -1 : Math.Clamp(_lockerCharacterIndex, 0, sharedNames.Count - 1);
+            int visibleStart = Math.Clamp(Math.Max(state.ScrollOffset, _lockerScrollOffset), 0, Math.Max(0, sharedNames.Count - 3));
+            for (int i = 0; (visibleStart + i) < sharedNames.Count && i < 3; i++)
+            {
+                int visibleIndex = visibleStart + i;
+                string prefix = visibleIndex == selectedIndex ? ">" : " ";
+                sprite.DrawString(_font, $"{prefix} {sharedNames[visibleIndex]}", new Vector2(Position.X + contentBounds.X + 12, lineY), visibleIndex == selectedIndex ? accentColor : detailColor);
+                lineY += _font.LineSpacing;
+            }
+
+            lineY += 4f;
+            sprite.DrawString(
+                _font,
+                state.CanExpand ? "Expansion available for the shared locker." : "Expansion limit reached for the shared locker.",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            DrawWrapped(sprite, _lockerActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
+        }
+
+        private void DrawInventoryOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            SyncInventoryOwnerState(state);
+            UpdateInventoryRuntimeObjects(state);
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+            string[] tabLabels =
+            {
+                $"Equip {state.EquipCount}",
+                $"Use {state.UseCount}",
+                $"Setup {state.SetupCount}",
+                $"Etc {state.EtcCount}"
+            };
+            foreach (string tabLabel in tabLabels)
+            {
+                bool isActive = tabLabel.StartsWith(_inventoryTabName, StringComparison.OrdinalIgnoreCase);
+                sprite.DrawString(_font, $"{(isActive ? ">" : " ")} {tabLabel}", new Vector2(Position.X + contentBounds.X + 12, lineY), isActive ? accentColor : detailColor);
+                lineY += _font.LineSpacing;
+            }
+
+            lineY += 4f;
+            sprite.DrawString(
+                _font,
+                $"Scroll {Math.Max(state.ScrollOffset, _inventoryScrollOffset).ToString(CultureInfo.InvariantCulture)}  First {_inventoryFirstPosition.ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Tab#{state.TabControlId.ToString(CultureInfo.InvariantCulture)} items {state.TabItemCount.ToString(CultureInfo.InvariantCulture)} @{state.TabX.ToString(CultureInfo.InvariantCulture)},{state.TabY.ToString(CultureInfo.InvariantCulture)} w{state.TabWidth.ToString(CultureInfo.InvariantCulture)} same {(state.TabSameWidth ? "on" : "off")}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Tab UOL 0x{state.TabNormalStringPoolId:X}/0x{state.TabSelectedStringPoolId:X} canvases {state.TabCanvasItemCount.ToString(CultureInfo.InvariantCulture)} runtimeW {state.TabRuntimeWidth.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime tab#{_inventoryTabObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_inventoryTabObject.Revision.ToString(CultureInfo.InvariantCulture)} active {_inventoryTabObject.ActiveTabName}  selector rev {_inventorySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_inventorySelectorObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}  scrollbar rev {_inventoryScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_inventoryScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            if (state.ButtonControls.Count > 0)
+            {
+                string buttonSummary = string.Join(
+                    " ",
+                    state.ButtonControls.Select(button =>
+                        $"{button.ActionKey}:{button.ControlId.ToString(CultureInfo.InvariantCulture)}/0x{button.StringPoolUolId:X}/btn0x{button.NativeButtonId:X}"));
+                sprite.DrawString(_font, TrimToLength(buttonSummary, 58), new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
+                lineY += _font.LineSpacing;
+            }
+
+            sprite.DrawString(_font, $"Focus row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)}  Trunk route armed  Cash rows {state.CashCount.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), accentColor);
+            lineY += _font.LineSpacing;
+            string selectedEntry = string.IsNullOrWhiteSpace(state.SelectedEntryTitle) ? "none" : state.SelectedEntryTitle;
+            sprite.DrawString(_font, $"Selected row: {selectedEntry}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
+            lineY += _font.LineSpacing;
+
+            IReadOnlyList<string> visibleRows = _inventoryVisibleRowProvider?.Invoke(_inventoryTabName, _inventoryScrollOffset, 4) ?? Array.Empty<string>();
+            for (int i = 0; i < visibleRows.Count; i++)
+            {
+                Color rowColor = i == _inventoryRowFocusIndex ? accentColor : detailColor;
+                sprite.DrawString(_font, TrimToLength(visibleRows[i], 34), new Vector2(Position.X + contentBounds.X + 12, lineY), rowColor);
+                lineY += _font.LineSpacing;
+            }
+
+            DrawWrapped(sprite, _inventoryActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
+        }
+
+        private void DrawListOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            ListOwnerState state = _listStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            UpdateListRuntimeObjects(state);
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 2f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+            Color mutedColor = new(176, 176, 176);
+            sprite.DrawString(
+                _font,
+                $"{state.PaneLabel} / {state.BrowseModeLabel} / {state.CategoryLabel}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Rows {state.TotalCount.ToString(CultureInfo.InvariantCulture)}  Scroll {state.ScrollOffset.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            sprite.DrawString(
+                _font,
+                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} init {state.SelectorInitArg.ToString(CultureInfo.InvariantCulture)} at {state.SelectorX.ToString(CultureInfo.InvariantCulture)},{state.SelectorY.ToString(CultureInfo.InvariantCulture)}  Plate {state.PlateFocusIndex.ToString(CultureInfo.InvariantCulture)}  Button {Math.Max(-1, _listButtonFocusIndex).ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            sprite.DrawString(
+                _font,
+                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Controls {state.ButtonControls.Count.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            sprite.DrawString(
+                _font,
+                $"Runtime plate rev {_listPlateObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_listPlateObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}  CCtrlScrollBar#{_listScrollBarObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_listScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_listScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            if (state.ButtonControls.Count > 0)
+            {
+                string controlLine = string.Join(
+                    "  ",
+                    state.ButtonControls.Select((control, index) =>
+                        $"{(index == _listButtonFocusIndex ? ">" : string.Empty)}{control.ActionKey}#{control.NativeButtonId.ToString(CultureInfo.InvariantCulture)} {control.Width.ToString(CultureInfo.InvariantCulture)}x{control.Height.ToString(CultureInfo.InvariantCulture)}/{control.KeyFocusedWidth.ToString(CultureInfo.InvariantCulture)}x{control.KeyFocusedHeight.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, controlLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, mutedColor);
+            }
+
+            foreach (ListOwnerEntryState entry in state.VisibleEntries.Take(5))
+            {
+                sprite.DrawString(
+                    _font,
+                    $"{(entry.IsSelected ? ">" : " ")} {TrimToLength(entry.Title, 22)}",
+                    new Vector2(Position.X + contentBounds.X + 12, lineY),
+                    entry.IsSelected ? accentColor : detailColor);
+                sprite.DrawString(
+                    _font,
+                    TrimToLength(entry.PriceLabel, 12),
+                    new Vector2(Position.X + contentBounds.Right - 96, lineY),
+                    detailColor);
+                lineY += _font.LineSpacing;
+
+                string detailLine = string.IsNullOrWhiteSpace(entry.StateLabel)
+                    ? TrimToLength(entry.Seller, 18)
+                    : $"{TrimToLength(entry.Seller, 12)} / {TrimToLength(entry.StateLabel, 10)}";
+                sprite.DrawString(_font, detailLine, new Vector2(Position.X + contentBounds.X + 24, lineY), mutedColor);
+                lineY += _font.LineSpacing + 2f;
+            }
+
+            lineY += 2f;
+            DrawWrapped(sprite, _listActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
+            if (!string.IsNullOrWhiteSpace(state.SelectedEntryDetail))
+            {
+                DrawWrapped(sprite, state.SelectedEntryDetail, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, mutedColor);
+            }
+            if (!string.IsNullOrWhiteSpace(state.FooterMessage))
+            {
+                DrawWrapped(sprite, state.FooterMessage, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
+            foreach (string recentPacket in state.RecentPackets.Take(2))
+            {
+                DrawWrapped(sprite, recentPacket, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, mutedColor);
+            }
+        }
+
+        private void DrawStatusOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            StatusOwnerState state = _statusStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
+            Color balanceColor = new(223, 240, 172);
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+            string balanceLine =
+                $"NX {state.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture)}  " +
+                $"MP {state.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture)}  " +
+                $"Pre {state.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture)}";
+            sprite.DrawString(_font, balanceLine, new Vector2(Position.X + contentBounds.X + 12, lineY), balanceColor);
+            lineY += _font.LineSpacing;
+            if (state.ChargeParam != 0)
+            {
+                sprite.DrawString(_font, $"Charge param {state.ChargeParam.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
+                lineY += _font.LineSpacing;
+            }
+
+            string[] buttonNames = GetStatusButtonKeys();
+            int focusIndex = Math.Clamp(_statusButtonFocusIndex, 0, buttonNames.Length - 1);
+            sprite.DrawString(
+                _font,
+                string.Join("  ", buttonNames.Select((name, index) => index == focusIndex ? $">{name}" : $" {name}")),
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                accentColor);
+            lineY += _font.LineSpacing;
+            if (state.ButtonControls.Count > 0)
+            {
+                string controlLine = string.Join(
+                    "  ",
+                    state.ButtonControls.Select((control, index) =>
+                        $"{(index == focusIndex ? ">" : string.Empty)}{control.ActionKey}#{control.NativeButtonId.ToString(CultureInfo.InvariantCulture)} {control.Width.ToString(CultureInfo.InvariantCulture)}x{control.Height.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, controlLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
+            DrawWrapped(sprite, _statusActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
+            DrawWrapped(sprite, state.StatusMessage, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            foreach (string detailSummary in state.DetailSummaries.Take(3))
+            {
+                if (string.IsNullOrWhiteSpace(detailSummary))
+                {
+                    continue;
+                }
+
+                DrawWrapped(sprite, detailSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+        }
+
+        private void DrawOneADayOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                DrawFallbackContent(sprite, contentBounds, titleOrigin);
+                return;
+            }
+
+            SyncOneADayOwnerState();
+
+            float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
+            Color detailColor = new(225, 225, 225);
+            Color accentColor = new(255, 223, 149);
+            sprite.DrawString(
+                _font,
+                state.IsPending ? "Packet 395 armed the reward plate." : "Reward plate is idle.",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            string todayLabel = string.IsNullOrWhiteSpace(state.TodaySelectorLabel) ? "Today" : state.TodaySelectorLabel.Trim();
+            string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
+            sprite.DrawString(
+                _font,
+                $"Selector#{_oneADaySelectorObject.ControlId.ToString(CultureInfo.InvariantCulture)} init {_oneADaySelectorObject.InitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {_oneADaySelectorObject.StartX.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartY.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartWidth.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartHeight.ToString(CultureInfo.InvariantCulture)}  pos {_oneADaySelectorObject.Position.X.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.Position.Y.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                accentColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Selector attr {_oneADaySelectorObject.NormalColor.ToString(CultureInfo.InvariantCulture)}/{_oneADaySelectorObject.SelectedColor.ToString(CultureInfo.InvariantCulture)}/{_oneADaySelectorObject.OutlineColor.ToString(CultureInfo.InvariantCulture)}  Runtime {DescribeOneADaySelectorRuntime()}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                _oneADayShortcutHelpActive
+                    ? $"Shortcut surface {ResolveOneADayPlateName(state)} is active beside the reward owner."
+                    : _oneADaySelectorIndex == 0
+                        ? $"Current reward plate {ResolveOneADayPlateName(state)}  Pending {(state.IsPending ? "yes" : "no")}"
+                        : HasOneADayPreviousLane(state)
+                            ? $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered {state.PreviousOfferCount.ToString(CultureInfo.InvariantCulture)}-slot history."
+                            : "Previous reward lane is disabled by the packet-owned reward-session byte.",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                accentColor);
+            lineY += _font.LineSpacing;
+            string selectionSummary = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive && HasOneADayPreviousLane(state)
+                ? ResolveOneADayHistorySelectionSummary(state)
+                : ResolveOneADayCurrentSelectionSummary(state);
+            sprite.DrawString(
+                _font,
+                TrimToLength(selectionSummary, 54),
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            string selectionDetail = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive && HasOneADayPreviousLane(state)
+                ? ResolveOneADayHistorySelectionDetail(state)
+                : ResolveOneADayCurrentSelectionDetail(state);
+            if (!string.IsNullOrWhiteSpace(selectionDetail))
+            {
+                DrawWrapped(sprite, selectionDetail, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+            if (state.CommodityDrawLayout != null)
+            {
+                OneADayOwnerState.CommodityDrawLayoutState layout = state.CommodityDrawLayout;
+                string iconLane = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive
+                    ? $"prev icon {layout.PreviousIconX.ToString(CultureInfo.InvariantCulture)},{layout.PreviousIconY.ToString(CultureInfo.InvariantCulture)} scale {layout.PreviousFontScale.ToString(CultureInfo.InvariantCulture)}"
+                    : $"today icon {layout.TodayIconX.ToString(CultureInfo.InvariantCulture)},{layout.TodayIconY.ToString(CultureInfo.InvariantCulture)} scale {layout.TodayFontScale.ToString(CultureInfo.InvariantCulture)}";
+                DrawWrapped(
+                    sprite,
+                    $"DrawCommodity {iconLane}; text {layout.TextX.ToString(CultureInfo.InvariantCulture)},{layout.NameY.ToString(CultureInfo.InvariantCulture)}/{layout.DateY.ToString(CultureInfo.InvariantCulture)}; discount {layout.DiscountX.ToString(CultureInfo.InvariantCulture)},{layout.DiscountY.ToString(CultureInfo.InvariantCulture)} digits {(layout.HasDiscountNumberCanvases ? "ready" : "missing")}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    contentBounds.Width - 24f,
+                    detailColor);
+            }
+            sprite.DrawString(
+                _font,
+                $"Remain {_oneADayCounterDigits}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            if (_oneADayCounterRuntime.Count > 0)
+            {
+                string counterSlotLine = string.Join(
+                    " ",
+                    _oneADayCounterRuntime.Select(slot =>
+                        slot.IsSeparator
+                            ? $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}::"
+                            : $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{slot.Digit}{(slot.HasDigitCanvas ? string.Empty : "!")}"));
+                DrawWrapped(sprite, counterSlotLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
+            if (_oneADayPlateButtonRuntime.Count > 0)
+            {
+                string plateButtonLine = string.Join(
+                    " ",
+                    _oneADayPlateButtonRuntime.Take(6).Select(button =>
+                        $"{(button.IsFocused ? ">" : string.Empty)}{button.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(button.IsLoaded ? "on" : "off")}{(button.HasCanvas ? string.Empty : "!")}{(button.HasPacketStateByte ? $"/0x{(button.PacketStateByte & 0xFF):X2}" : string.Empty)}"));
+                DrawWrapped(sprite, $"Plate buttons {plateButtonLine}", Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
+            sprite.DrawString(
+                _font,
+                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/{state.ExpectedNumberCanvasCount.ToString(CultureInfo.InvariantCulture)}  Plate buttons {state.PlateButtonCount.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime selector rev {_oneADaySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)}  counter rev {_oneADayCounterObject.Revision.ToString(CultureInfo.InvariantCulture)}  reward-session rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            string rewardSessionSummary = string.IsNullOrWhiteSpace(state.RewardSessionSummary)
+                ? BuildOneADayRewardSessionSummary()
+                : state.RewardSessionSummary;
+            if (!string.IsNullOrWhiteSpace(rewardSessionSummary))
+            {
+                DrawWrapped(sprite, rewardSessionSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+            if (state.PacketPayloadLength > 0)
+            {
+                string trailingHex = string.IsNullOrWhiteSpace(state.PacketTrailingPayloadHex)
+                    ? "none"
+                    : state.PacketTrailingPayloadHex;
+                DrawWrapped(
+                    sprite,
+                    $"Packet395 payload {state.PacketPayloadLength.ToString(CultureInfo.InvariantCulture)}B / decoded {state.PacketDecodedByteLength.ToString(CultureInfo.InvariantCulture)}B / trailing {state.PacketTrailingByteCount.ToString(CultureInfo.InvariantCulture)}B ({trailingHex}).",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    contentBounds.Width - 24f,
+                    detailColor);
+            }
+
+            DrawWrapped(sprite, _oneADaySessionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
+            DrawWrapped(sprite, state.NoticeState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            foreach (string recentPacket in state.RecentPackets.Take(2))
+            {
+                DrawWrapped(sprite, recentPacket, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+        }
+
+        private void DrawFallbackContent(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
+        {
+            float lineY = titleOrigin.Y + _font.LineSpacing + 6f;
+            IReadOnlyList<string> lines = _contentProvider?.Invoke();
+            if (lines == null || lines.Count == 0)
+            {
+                lines = _fallbackLines;
+            }
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    lineY += 6f;
+                    continue;
+                }
+
+                DrawWrapped(sprite, line, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), new Color(225, 225, 225));
+                lineY += 2f;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                DrawWrapped(sprite, _statusMessage, Position.X + contentBounds.X + 12, ref lineY, Math.Max(180f, contentBounds.Width - 24f), new Color(255, 223, 149));
+            }
+        }
+
+        private Rectangle ResolveContentBounds()
+        {
+            int frameWidth = CurrentFrame?.Width ?? 240;
+            int frameHeight = CurrentFrame?.Height ?? 140;
+            if (_contentBounds.Width <= 0 || _contentBounds.Height <= 0)
+            {
+                return new Rectangle(0, 0, frameWidth, frameHeight);
+            }
+
+            return _contentBounds;
+        }
+
+        private void HandleButtonAction(UIObject button)
+        {
+            if (!_buttonActions.TryGetValue(button, out ButtonAction actionState))
+            {
+                return;
+            }
+
+            ApplyLocalButtonState(actionState.ActionKey);
+            string message = null;
+            if (_externalButtonActions.TryGetValue(actionState.ActionKey, out Func<string> externalAction))
+            {
+                message = externalAction?.Invoke();
+            }
+
+            message ??= actionState.Action?.Invoke();
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message.Trim();
+            }
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            bool handledByOwnerSurface = HandleOwnerSurfaceMouse(mouseState, mouseCursor);
+            bool handledByBase = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousMouseState = mouseState;
+            return handledByOwnerSurface || handledByBase;
+        }
+
+        private bool HandleOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor)
+        {
+            Rectangle contentBounds = ResolveContentBounds();
+            Rectangle absoluteBounds = new(Position.X + contentBounds.X, Position.Y + contentBounds.Y, contentBounds.Width, contentBounds.Height);
+            bool dragging = _draggingLockerScrollThumb || _draggingInventoryScrollThumb || _draggingListScrollThumb;
+            if (!dragging && !absoluteBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _previousMouseState.LeftButton == ButtonState.Released;
+
+            bool handled = _windowName switch
+            {
+                MapSimulatorWindowNames.CashShopLocker => HandleLockerOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopInventory or MapSimulatorWindowNames.ItcInventory => HandleInventoryOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopList or MapSimulatorWindowNames.ItcList => HandleListOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopOneADay => HandleOneADayOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                _ => false
+            };
+
+            return handled;
+        }
+
+        private bool HandleLockerOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            Rectangle scrollTrackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
+            Rectangle scrollThumbBounds = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
+            if (wheelDelta != 0)
+            {
+                StepLockerSelector(wheelDelta > 0 ? -1 : 1);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (_draggingLockerScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyLockerScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingLockerScrollThumb = false;
+            }
+
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingLockerScrollThumb = true;
+                _lockerScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyLockerScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 72);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing ?? 16;
+            int visibleRowIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 2);
+            int targetIndex = Math.Clamp(_lockerScrollOffset + visibleRowIndex, 0, Math.Max(0, state.SharedCharacterNames.Count - 1));
+            _lockerCharacterIndex = targetIndex;
+            _lockerActionState = "CCSWnd_Locker moved the shared-account selector directly from the owner list.";
+            _statusMessage = _lockerActionState;
+            ClampLockerState(state.SharedCharacterNames.Count);
+
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleInventoryOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            Rectangle scrollTrackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
+            Rectangle scrollThumbBounds = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
+            if (wheelDelta != 0)
+            {
+                StepInventoryScroll(state, wheelDelta > 0 ? -1 : 1);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (_draggingInventoryScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyInventoryScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingInventoryScrollThumb = false;
+            }
+
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingInventoryScrollThumb = true;
+                _inventoryScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyInventoryScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 112, Math.Max(80, absoluteBounds.Width - 24), 72);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing ?? 16;
+            _inventoryRowFocusIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 3);
+            _inventoryActionState = $"CCSWnd_Inventory moved focus to visible row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)} on the {_inventoryTabName} owner.";
+            _statusMessage = _inventoryActionState;
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleListOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            ListOwnerState state = _listStateProvider?.Invoke();
+            Rectangle scrollTrackBounds = GetListScrollTrackBounds(absoluteBounds);
+            Rectangle scrollThumbBounds = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
+            if (wheelDelta != 0 && _listScrollAction != null)
+            {
+                ApplyStatusMessage(_listScrollAction.Invoke(wheelDelta > 0 ? -1 : 1));
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (_draggingListScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyListScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingListScrollThumb = false;
+            }
+
+            if (!leftJustPressed || _listRowSelectionAction == null)
+            {
+                return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingListScrollThumb = true;
+                _listScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyListScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 140);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing * 2 + 2 ?? 26;
+            int visibleRowIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 4);
+            ApplyStatusMessage(_listRowSelectionAction.Invoke(visibleRowIndex));
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleOneADayOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            SyncOneADayOwnerState();
+            if (wheelDelta != 0)
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, wheelDelta > 0 ? -1 : 1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, wheelDelta > 0 ? -1 : 1);
+                }
+
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            OneADayOwnerState.PlateButtonState plateButton = ResolveOneADayPlateButtonFromMouse(state, absoluteBounds, mouseState.Position);
+            if (plateButton != null)
+            {
+                if (_oneADaySelectorIndex == 1 && !string.Equals(plateButton.CommandKey, "BtClose", StringComparison.Ordinal))
+                {
+                    _oneADayPlateFocusIndex = Math.Clamp(
+                        plateButton.SlotIndex,
+                        0,
+                        Math.Max(0, Math.Max(1, state.PreviousOfferCount) - 1));
+                }
+
+                ApplyOneADayButtonState(plateButton.CommandKey);
+                ApplyStatusMessage(InvokeExternalAction(plateButton.CommandKey));
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 38, Math.Max(80, absoluteBounds.Width - 24), 56);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            if (relativeY < Math.Max(18, (_font?.LineSpacing ?? 16) + 2))
+            {
+                SelectOneADaySelector(mouseState.X < rowsBounds.Center.X ? 0 : 1, state);
+            }
+            else if (_oneADayShortcutHelpActive)
+            {
+                ApplyOneADayButtonState("BtClose");
+                ApplyStatusMessage(InvokeExternalAction("BtClose"));
+            }
+            else if (_oneADaySelectorIndex == 1)
+            {
+                SelectOneADayPreviousOfferFromMouse(state, rowsBounds, mouseState.Position);
+            }
+            else
+            {
+                string actionKey = ResolveOneADayActionKeyFromMouse(state, absoluteBounds, mouseState.Position)
+                    ?? (mouseState.X < rowsBounds.Center.X ? "BtBuy" : "BtItemBox");
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private static OneADayOwnerState.PlateButtonState ResolveOneADayPlateButtonFromMouse(
+            OneADayOwnerState state,
+            Rectangle absoluteBounds,
+            Point mousePosition)
+        {
+            if (state?.PlateButtons == null || state.PlateButtons.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (OneADayOwnerState.PlateButtonState button in state.PlateButtons)
+            {
+                if (button == null
+                    || !button.IsEnabled
+                    || string.IsNullOrWhiteSpace(button.CommandKey)
+                    || button.Width <= 0
+                    || button.Height <= 0)
+                {
+                    continue;
+                }
+
+                Rectangle buttonBounds = new(
+                    absoluteBounds.X + button.Position.X - (button.Width / 2),
+                    absoluteBounds.Y + button.Position.Y - (button.Height / 2),
+                    button.Width,
+                    button.Height);
+                Rectangle topLeftButtonBounds = new(
+                    absoluteBounds.X + button.Position.X,
+                    absoluteBounds.Y + button.Position.Y,
+                    button.Width,
+                    button.Height);
+                if (buttonBounds.Contains(mousePosition) || topLeftButtonBounds.Contains(mousePosition))
+                {
+                    return button;
+                }
+            }
+
+            return null;
+        }
+
+        private static string ResolveOneADayActionKeyFromMouse(OneADayOwnerState state, Rectangle absoluteBounds, Point mousePosition)
+        {
+            if (state?.PlateButtons == null || state.PlateButtons.Count == 0)
+            {
+                return null;
+            }
+
+            OneADayOwnerState.PlateButtonState bestButton = null;
+            int bestDistance = int.MaxValue;
+            bool hasSizedButton = false;
+            foreach (OneADayOwnerState.PlateButtonState button in state.PlateButtons)
+            {
+                if (button == null || !button.IsEnabled || string.IsNullOrWhiteSpace(button.CommandKey))
+                {
+                    continue;
+                }
+
+                if (button.Width > 0 && button.Height > 0)
+                {
+                    hasSizedButton = true;
+                    Rectangle buttonBounds = new(
+                        absoluteBounds.X + button.Position.X - (button.Width / 2),
+                        absoluteBounds.Y + button.Position.Y - (button.Height / 2),
+                        button.Width,
+                        button.Height);
+                    if (buttonBounds.Contains(mousePosition))
+                    {
+                        return button.CommandKey;
+                    }
+                }
+
+                int buttonCenterX = absoluteBounds.X + button.Position.X;
+                int buttonCenterY = absoluteBounds.Y + button.Position.Y;
+                int distance = Math.Abs(mousePosition.X - buttonCenterX) + Math.Abs(mousePosition.Y - buttonCenterY);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestButton = button;
+                }
+            }
+
+            if (hasSizedButton)
+            {
+                return null;
+            }
+
+            return bestButton?.CommandKey;
+        }
+
+        private void ApplyLocalButtonState(string actionKey)
+        {
+            switch (_windowName)
+            {
+                case MapSimulatorWindowNames.CashShopLocker:
+                    ApplyLockerButtonState(actionKey);
+                    break;
+                case MapSimulatorWindowNames.CashShopInventory:
+                case MapSimulatorWindowNames.ItcInventory:
+                    ApplyInventoryButtonState(actionKey);
+                    break;
+                case MapSimulatorWindowNames.CashShopList:
+                case MapSimulatorWindowNames.ItcList:
+                    ApplyListButtonState(actionKey);
+                    break;
+                case MapSimulatorWindowNames.CashShopStatus:
+                case MapSimulatorWindowNames.ItcStatus:
+                    ApplyStatusButtonState(actionKey);
+                    break;
+                case MapSimulatorWindowNames.CashShopOneADay:
+                    ApplyOneADayButtonState(actionKey);
+                    break;
+            }
+        }
+
+        private void ApplyLockerButtonState(string actionKey)
+        {
+            int sharedCount = Math.Max(1, _lockerStateProvider?.Invoke()?.SharedCharacterNames.Count ?? 0);
+            switch (actionKey)
+            {
+                case "BtRebate":
+                    _lockerCharacterIndex = (_lockerCharacterIndex + 1) % sharedCount;
+                    _lockerScrollOffset = Math.Min(_lockerScrollOffset + 1, Math.Max(0, sharedCount - 1));
+                    _lockerActionState = "CCSWnd_Locker rotated the shared-account selector to the next owner.";
+                    break;
+                case "BtRebate2":
+                    _lockerCharacterIndex = (_lockerCharacterIndex + sharedCount - 1) % sharedCount;
+                    _lockerScrollOffset = Math.Max(0, _lockerScrollOffset - 1);
+                    _lockerActionState = "CCSWnd_Locker rotated the selector backward through shared owners.";
+                    break;
+                case "BtRefund":
+                    _lockerActionState = "CCSWnd_Locker armed the refund path for the focused locker row.";
+                    break;
+            }
+        }
+
+        private void ApplyInventoryButtonState(string actionKey)
+        {
+            _inventoryTabName = actionKey switch
+            {
+                "BtExEquip" => "Equip",
+                "BtExConsume" => "Use",
+                "BtExInstall" => "Setup",
+                "BtExEtc" => "Etc",
+                _ => _inventoryTabName
+            };
+
+            _inventoryActionState = actionKey switch
+            {
+                "BtExEquip" => "CCSWnd_Inventory selected the Equip tab owner.",
+                "BtExConsume" => "CCSWnd_Inventory selected the Use tab owner.",
+                "BtExInstall" => "CCSWnd_Inventory selected the Setup tab owner.",
+                "BtExEtc" => "CCSWnd_Inventory selected the Etc tab owner.",
+                "BtExTrunk" => "CCSWnd_Inventory routed trunk access back toward CCSWnd_Locker.",
+                _ => _inventoryActionState
+            };
+
+            if (actionKey != "BtExTrunk")
+            {
+                _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                _inventoryPacketFocusSignature = string.Empty;
+            }
+        }
+
+        private void ApplyListButtonState(string actionKey)
+        {
+            _listButtonFocusIndex = actionKey switch
+            {
+                "BtBuy" => 0,
+                "BtGift" => 1,
+                "BtReserve" => 2,
+                "BtRemove" => 3,
+                _ => _listButtonFocusIndex
+            };
+            _listActionState = actionKey switch
+            {
+                "BtBuy" => "CCSWnd_List staged the selected row for direct purchase.",
+                "BtGift" => "CCSWnd_List staged the selected row for the gifting flow.",
+                "BtReserve" => "CCSWnd_List toggled the reserve or wish-list path for the focused row.",
+                "BtRemove" => "CCSWnd_List removed the focused row from the staged reserve surface.",
+                _ => _listActionState
+            };
+        }
+
+        private void ApplyStatusButtonState(string actionKey)
+        {
+            _statusActionState = actionKey switch
+            {
+                "BtCharge" => "CCSWnd_Status opened the charge balance path.",
+                "BtCheck" => "CCSWnd_Status requested a balance refresh from the stage owner.",
+                "BtCoupon" => "CCSWnd_Status routed into the coupon registration path.",
+                "BtExit" => "CCSWnd_Status armed the parent-stage exit path.",
+                _ => _statusActionState
+            };
+
+            int focusIndex = Array.IndexOf(GetStatusButtonKeys(), actionKey);
+            if (focusIndex >= 0)
+            {
+                _statusButtonFocusIndex = focusIndex;
+            }
+        }
+
+        private void ApplyOneADayButtonState(string actionKey)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            SyncOneADayOwnerState();
+            switch (actionKey)
+            {
+                case "BtBuy":
+                    _oneADayShortcutHelpActive = false;
+                    _oneADaySelectorIndex = 0;
+                    if (_oneADayPending)
+                    {
+                        _oneADayPlateFocusIndex = 0;
+                    }
+
+                    _oneADaySessionState = !_oneADayPending
+                        ? $"CCSWnd_OneADay kept the dedicated buy button armed, but no packet-authored today reward is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
+                        : $"CCSWnd_OneADay routed the dedicated buy button through the Today reward lane for {ResolveOneADayCurrentSelectionSummary(state)}.";
+                    RefreshOneADayInteractiveRuntime(state);
+                    break;
+                case "BtItemBox":
+                    _oneADayShortcutHelpActive = false;
+                    if (_oneADaySelectorIndex == 0)
+                    {
+                        _oneADaySessionState = !_oneADayPending
+                            ? $"CCSWnd_OneADay kept the dedicated gift button armed, but no packet-authored today reward is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
+                            : $"CCSWnd_OneADay routed the dedicated gift button through the Today reward lane for {ResolveOneADayCurrentSelectionSummary(state)}.";
+                    }
+                    else
+                    {
+                        if (!HasOneADayPreviousLane(state))
+                        {
+                            _oneADaySelectorIndex = 0;
+                            _oneADaySessionState = "CCSWnd_OneADay kept the dedicated previous-item lane closed because packet state disabled it.";
+                            RefreshOneADayInteractiveRuntime(state);
+                            break;
+                        }
+
+                        _oneADaySelectorIndex = Math.Min(1, Math.Max(0, Math.Max(1, state?.SelectorCount ?? 2) - 1));
+                        _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, Math.Max(1, state?.PreviousOfferCount ?? 12) - 1));
+                        _oneADaySessionState = state?.HistoryEntries?.Count > 0
+                            ? $"CCSWnd_OneADay routed previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} through the recovered item-box lane."
+                            : "CCSWnd_OneADay kept the dedicated previous-item lane active, but no packet-authored history rows are loaded.";
+                    }
+                    RefreshOneADayInteractiveRuntime(state);
+                    break;
+                case "BtJoin":
+                    _oneADayShortcutHelpActive = false;
+                    if (_oneADaySelectorIndex == 1)
+                    {
+                        if (!HasOneADayPreviousLane(state))
+                        {
+                            _oneADaySelectorIndex = 0;
+                            _oneADaySessionState = "CCSWnd_OneADay ignored the previous-item join action because packet state disabled that lane.";
+                            RefreshOneADayInteractiveRuntime(state);
+                            break;
+                        }
+
+                        OneADayOwnerState.HistoryEntryState historyEntry = ResolveSelectedOneADayHistoryEntry(state);
+                        _oneADaySessionState = historyEntry == null
+                            ? "CCSWnd_OneADay kept the Previous selector active, but no packet-authored history row is loaded."
+                            : $"CCSWnd_OneADay routed previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} ({historyEntry.ItemLabel}) through the recovered previous-item purchase lane.";
+                        RefreshOneADayInteractiveRuntime(state);
+                        break;
+                    }
+
+                    SelectOneADaySelector(0, state);
+                    if (_oneADayPending)
+                    {
+                        _oneADayPlateFocusIndex = 0;
+                    }
+
+                    _oneADaySessionState = !_oneADayPending
+                        ? $"CCSWnd_OneADay kept the Today selector active, but no packet-armed reward session is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
+                        : $"CCSWnd_OneADay routed the Today selector through the packet-armed purchase lane for {ResolveOneADayCurrentSelectionSummary(state)} and kept the active reward plate selected.";
+                    RefreshOneADayInteractiveRuntime(state);
+                    break;
+                case "BtShortcut":
+                    _oneADayShortcutHelpActive = true;
+                    _oneADaySessionState = $"CCSWnd_OneADay opened the dedicated {ResolveOneADayPlateName(state)} help surface without leaving the current selector lane.";
+                    RefreshOneADayInteractiveRuntime(state);
+                    break;
+                case "BtClose":
+                    if (_oneADayShortcutHelpActive)
+                    {
+                        _oneADayShortcutHelpActive = false;
+                        _oneADaySessionState = "CCSWnd_OneADay dismissed the shortcut-help plate and returned to the staged reward owner.";
+                    }
+                    else
+                    {
+                        _oneADaySessionState = _oneADaySelectorIndex == 1
+                            ? $"CCSWnd_OneADay dismissed the previous reward preview for {ResolveOneADayHistorySelectionSummary(state)} while keeping the owner shell alive."
+                            : $"CCSWnd_OneADay dismissed the current reward preview for {ResolveOneADayCurrentSelectionSummary(state)} while keeping the owner shell alive.";
+                    }
+                    RefreshOneADayInteractiveRuntime(state);
+                    break;
+            }
+        }
+
+        private void HandleOwnerKeyboard(KeyboardState keyboardState)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                return;
+            }
+
+            switch (_windowName)
+            {
+                case MapSimulatorWindowNames.CashShopLocker:
+                    HandleLockerKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopInventory:
+                case MapSimulatorWindowNames.ItcInventory:
+                    HandleInventoryKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopList:
+                case MapSimulatorWindowNames.ItcList:
+                    HandleListKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopStatus:
+                case MapSimulatorWindowNames.ItcStatus:
+                    HandleStatusKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopOneADay:
+                    HandleOneADayKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopItemSearch:
+                    HandleCashShopItemSearchKeyboard(keyboardState);
+                    break;
+            }
+        }
+
+        private void HandleCashShopItemSearchKeyboard(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultNext"));
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPrevious"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPageNext"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                ApplyStatusMessage(InvokeExternalAction("ResultPagePrevious"));
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtSearch"));
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtCancel"));
+            }
+        }
+
+        private void HandleLockerKeyboard(KeyboardState keyboardState)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames.Count ?? 0);
+            if (sharedCount == 0)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                StepLockerSelector(1);
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                StepLockerSelector(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                StepLockerSelector(3);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                StepLockerSelector(-3);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _lockerCharacterIndex = 0;
+                _lockerScrollOffset = 0;
+                _lockerActionState = "CCSWnd_Locker snapped the selector back to the first shared owner.";
+                _statusMessage = _lockerActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _lockerCharacterIndex = sharedCount - 1;
+                _lockerScrollOffset = Math.Max(0, sharedCount - 3);
+                _lockerActionState = "CCSWnd_Locker advanced the selector to the last shared owner.";
+                _statusMessage = _lockerActionState;
+            }
+        }
+
+        private void HandleInventoryKeyboard(KeyboardState keyboardState)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                StepInventoryScroll(state, 1);
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                StepInventoryScroll(state, -1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                StepInventoryScroll(state, 4);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                StepInventoryScroll(state, -4);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                _inventoryActionState = $"CCSWnd_Inventory reset the {_inventoryTabName} scrollbar to the first row.";
+                _statusMessage = _inventoryActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+                _inventoryScrollOffset = maxScroll;
+                _inventoryRowFocusIndex = Math.Clamp(Math.Min(3, Math.Max(0, ResolveInventoryActiveCount(state) - 1 - maxScroll)), 0, 3);
+                _inventoryActionState = $"CCSWnd_Inventory pushed the {_inventoryTabName} scrollbar to the last visible row.";
+                _statusMessage = _inventoryActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.Left))
+            {
+                CycleInventoryTab(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.Right))
+            {
+                CycleInventoryTab(1);
+            }
+        }
+
+        private void HandleListKeyboard(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                ApplyStatusMessage(_listScrollAction?.Invoke(1));
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                ApplyStatusMessage(_listScrollAction?.Invoke(-1));
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                ApplyStatusMessage(InvokeExternalAction("PageDown"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                ApplyStatusMessage(InvokeExternalAction("PageUp"));
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                ApplyStatusMessage(InvokeExternalAction("Home"));
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                ApplyStatusMessage(InvokeExternalAction("End"));
+            }
+            else if (WasPressed(keyboardState, Keys.Tab) || WasPressed(keyboardState, Keys.Left) || WasPressed(keyboardState, Keys.Right))
+            {
+                ApplyStatusMessage(InvokeExternalAction("TogglePane"));
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtBuy"));
+            }
+            else if (WasPressed(keyboardState, Keys.Space))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtReserve"));
+            }
+        }
+
+        private void HandleStatusKeyboard(KeyboardState keyboardState)
+        {
+            string[] buttonKeys = GetStatusButtonKeys();
+            if (buttonKeys.Length == 0)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Left))
+            {
+                StepStatusButtonFocus(-1, buttonKeys);
+            }
+            else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Tab))
+            {
+                StepStatusButtonFocus(1, buttonKeys);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _statusButtonFocusIndex = 0;
+                _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+                _statusMessage = _statusActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _statusButtonFocusIndex = buttonKeys.Length - 1;
+                _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+                _statusMessage = _statusActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.C))
+            {
+                ActivateStatusButton("BtCharge");
+            }
+            else if (WasPressed(keyboardState, Keys.B))
+            {
+                ActivateStatusButton("BtCheck");
+            }
+            else if (!IsItcStatusOwnerWindow() && WasPressed(keyboardState, Keys.O))
+            {
+                ActivateStatusButton("BtCoupon");
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ActivateStatusButton("BtExit");
+            }
+            else if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
+            {
+                _statusButtonFocusIndex = Math.Clamp(_statusButtonFocusIndex, 0, buttonKeys.Length - 1);
+                ActivateStatusButton(buttonKeys[_statusButtonFocusIndex]);
+            }
+        }
+
+        private void StepStatusButtonFocus(int delta, string[] buttonKeys)
+        {
+            _statusButtonFocusIndex = (_statusButtonFocusIndex + buttonKeys.Length + delta) % buttonKeys.Length;
+            _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+            _statusMessage = _statusActionState;
+        }
+
+        private void ActivateStatusButton(string actionKey)
+        {
+            ApplyStatusButtonState(actionKey);
+            ApplyStatusMessage(InvokeExternalAction(actionKey));
+        }
+
+        private void HandleOneADayKeyboard(KeyboardState keyboardState)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            SyncOneADayOwnerState();
+            if (WasPressed(keyboardState, Keys.Up))
+            {
+                SelectOneADaySelector(_oneADaySelectorIndex - 1, state);
+            }
+            else if (WasPressed(keyboardState, Keys.Down) || WasPressed(keyboardState, Keys.Tab))
+            {
+                SelectOneADaySelector(_oneADaySelectorIndex + 1, state);
+            }
+            else if (WasPressed(keyboardState, Keys.Left))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, -1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, -1);
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.Right))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, 1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, 1);
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, -5);
+                }
+                else
+                {
+                    StepOneADayPlate(state, -1);
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, 5);
+                }
+                else
+                {
+                    StepOneADayPlate(state, 1);
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    _oneADayPlateFocusIndex = 0;
+                    _oneADaySessionState = "CCSWnd_OneADay snapped the previous-item selector back to the first recovered history slot.";
+                }
+                else
+                {
+                    _oneADayShortcutHelpActive = false;
+                    _oneADayPlateFocusIndex = 0;
+                    _oneADaySessionState = $"CCSWnd_OneADay snapped the plate owner back to {ResolveOneADayPlateName(state)}.";
+                }
+
+                _statusMessage = _oneADaySessionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    _oneADayPlateFocusIndex = Math.Max(0, state.PreviousOfferCount - 1);
+                    _oneADaySessionState = "CCSWnd_OneADay advanced the previous-item selector to the last recovered history slot.";
+                }
+                else
+                {
+                    _oneADayShortcutHelpActive = false;
+                    _oneADayPlateFocusIndex = Math.Max(0, state.PlateCount - 1);
+                    _oneADaySessionState = $"CCSWnd_OneADay advanced the plate owner to {ResolveOneADayPlateName(state)}.";
+                }
+
+                _statusMessage = _oneADaySessionState;
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                string actionKey = ResolveOneADayEnterActionKey(state);
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.B))
+            {
+                string actionKey = "BtBuy";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.I))
+            {
+                string actionKey = "BtItemBox";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.F1))
+            {
+                string actionKey = _oneADayShortcutHelpActive ? "BtClose" : "BtShortcut";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ApplyOneADayButtonState("BtClose");
+                ApplyStatusMessage(InvokeExternalAction("BtClose"));
+            }
+        }
+
+        private string ResolveOneADayEnterActionKey(OneADayOwnerState state)
+        {
+            if (_oneADayShortcutHelpActive)
+            {
+                return "BtClose";
+            }
+
+            if (_oneADaySelectorIndex == 1 && HasOneADayPreviousLane(state))
+            {
+                return "BtJoin";
+            }
+
+            if (state?.PlateButtons != null)
+            {
+                OneADayOwnerState.PlateButtonState focusedButton = state.PlateButtons
+                    .FirstOrDefault(button => button != null && button.IsEnabled && button.IsFocused && !string.IsNullOrWhiteSpace(button.CommandKey));
+                if (focusedButton != null)
+                {
+                    return focusedButton.CommandKey;
+                }
+            }
+
+            return _oneADayPlateFocusIndex <= 0 ? "BtBuy" : "BtItemBox";
+        }
+
+        private void StepLockerSelector(int delta)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames.Count ?? 0);
+            if (sharedCount == 0)
+            {
+                return;
+            }
+
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex + delta, 0, sharedCount - 1);
+            ClampLockerState(sharedCount);
+            _lockerActionState = delta >= 0
+                ? "CCSWnd_Locker advanced the shared-owner selector through the dedicated owner."
+                : "CCSWnd_Locker moved the selector backward through the dedicated owner.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ClampLockerState(int sharedCount)
+        {
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+            _lockerScrollOffset = Math.Clamp(_lockerScrollOffset, Math.Max(0, _lockerCharacterIndex - 2), _lockerCharacterIndex);
+            _lockerScrollOffset = Math.Clamp(_lockerScrollOffset, 0, Math.Max(0, sharedCount - 3));
+        }
+
+        private void StepInventoryScroll(InventoryOwnerState state, int delta)
+        {
+            int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+            _inventoryScrollOffset = Math.Clamp(_inventoryScrollOffset + delta, 0, maxScroll);
+            _inventoryRowFocusIndex = Math.Clamp(_inventoryRowFocusIndex + Math.Sign(delta), 0, 3);
+            _inventoryPacketFocusSignature = string.Empty;
+            _inventoryActionState = $"CCSWnd_Inventory scrolled the {_inventoryTabName} owner to offset {_inventoryScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void ApplyLockerScrollTrackClick(int mouseY, Rectangle absoluteBounds, LockerOwnerState state)
+        {
+            Rectangle thumbBounds = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset);
+            StepLockerSelector(mouseY < thumbBounds.Y ? -3 : 3);
+            _lockerActionState = mouseY < thumbBounds.Y
+                ? "CCSWnd_Locker paged the dedicated scrollbar upward through shared owners."
+                : "CCSWnd_Locker paged the dedicated scrollbar downward through shared owners.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ApplyLockerScrollThumbDrag(int mouseY, Rectangle absoluteBounds, LockerOwnerState state)
+        {
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int maxScroll = Math.Max(0, sharedCount - 3);
+            if (maxScroll <= 0)
+            {
+                _lockerScrollOffset = 0;
+                _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+                return;
+            }
+
+            int thumbHeight = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _lockerScrollThumbGrabOffset, 0, travel);
+            _lockerScrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            int minIndex = _lockerScrollOffset;
+            int maxIndex = Math.Min(_lockerScrollOffset + 2, Math.Max(0, sharedCount - 1));
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, minIndex, maxIndex);
+            _lockerActionState = $"CCSWnd_Locker dragged the dedicated scrollbar thumb to owner offset {_lockerScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ApplyInventoryScrollTrackClick(int mouseY, Rectangle absoluteBounds, InventoryOwnerState state)
+        {
+            Rectangle thumbBounds = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset);
+            StepInventoryScroll(state, mouseY < thumbBounds.Y ? -4 : 4);
+            _inventoryActionState = mouseY < thumbBounds.Y
+                ? $"CCSWnd_Inventory paged the {_inventoryTabName} owner upward through the dedicated scrollbar."
+                : $"CCSWnd_Inventory paged the {_inventoryTabName} owner downward through the dedicated scrollbar.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void ApplyInventoryScrollThumbDrag(int mouseY, Rectangle absoluteBounds, InventoryOwnerState state)
+        {
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
+            int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+            if (maxScroll <= 0)
+            {
+                _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                return;
+            }
+
+            int thumbHeight = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _inventoryScrollThumbGrabOffset, 0, travel);
+            _inventoryScrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            _inventoryPacketFocusSignature = string.Empty;
+            _inventoryActionState = $"CCSWnd_Inventory dragged the {_inventoryTabName} scrollbar thumb to offset {_inventoryScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void ApplyListScrollTrackClick(int mouseY, Rectangle absoluteBounds, ListOwnerState state)
+        {
+            Rectangle thumbBounds = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0);
+            ApplyStatusMessage(mouseY < thumbBounds.Y
+                ? InvokeExternalAction("PageUp")
+                : InvokeExternalAction("PageDown"));
+        }
+
+        private void ApplyListScrollThumbDrag(int mouseY, Rectangle absoluteBounds, ListOwnerState state)
+        {
+            if (state == null || _listScrollOffsetAction == null)
+            {
+                return;
+            }
+
+            int maxScroll = Math.Max(0, state.TotalCount - 5);
+            Rectangle trackBounds = GetListScrollTrackBounds(absoluteBounds);
+            if (maxScroll <= 0)
+            {
+                ApplyStatusMessage(_listScrollOffsetAction.Invoke(0, Math.Max(0, state.PlateFocusIndex)));
+                return;
+            }
+
+            int thumbHeight = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _listScrollThumbGrabOffset, 0, travel);
+            int scrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            int focusIndex = Math.Clamp(state.PlateFocusIndex, 0, 4);
+            ApplyStatusMessage(_listScrollOffsetAction.Invoke(scrollOffset, focusIndex));
+        }
+
+        private int ResolveInventoryActiveCount(InventoryOwnerState state)
+        {
+            return _inventoryTabName switch
+            {
+                "Equip" => state.EquipCount,
+                "Use" => state.UseCount,
+                "Setup" => state.SetupCount,
+                "Etc" => state.EtcCount,
+                _ => state.EquipCount
+            };
+        }
+
+        private void CycleInventoryTab(int delta)
+        {
+            string[] tabs = { "Equip", "Use", "Setup", "Etc" };
+            int currentIndex = Array.IndexOf(tabs, _inventoryTabName);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = (currentIndex + tabs.Length + delta) % tabs.Length;
+            _inventoryTabName = tabs[nextIndex];
+            _inventoryScrollOffset = 0;
+            _inventoryRowFocusIndex = 0;
+            _inventoryPacketFocusSignature = string.Empty;
+            _inventoryActionState = $"CCSWnd_Inventory switched keyboard focus to the {_inventoryTabName} owner tab.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void SyncInventoryOwnerState(InventoryOwnerState state = null, bool force = false)
+        {
+            state ??= _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            _inventoryFirstPosition = Math.Max(1, state.FirstPosition);
+            string nextSignature = state.PacketFocusSignature ?? string.Empty;
+            bool shouldReseed = force || !_inventoryRuntimeSeeded;
+            if (!shouldReseed && !string.IsNullOrWhiteSpace(nextSignature))
+            {
+                shouldReseed = !string.Equals(_inventoryPacketFocusSignature, nextSignature, StringComparison.Ordinal);
+            }
+
+            if (!shouldReseed)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.ActiveTabName))
+            {
+                _inventoryTabName = state.ActiveTabName;
+            }
+
+            _inventoryScrollOffset = Math.Max(0, state.ScrollOffset);
+            _inventoryRowFocusIndex = Math.Clamp(state.RowFocusIndex, 0, 3);
+            _inventoryRuntimeSeeded = true;
+            _inventoryPacketFocusSignature = nextSignature;
+            if (!string.IsNullOrWhiteSpace(state.PacketFocusMessage))
+            {
+                _inventoryActionState = state.PacketFocusMessage.Trim();
+                _statusMessage = _inventoryActionState;
+            }
+        }
+
+        private void UpdateLockerRuntimeObjects(LockerOwnerState state)
+        {
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int visibleOffset = Math.Clamp(_lockerScrollOffset, 0, Math.Max(0, sharedCount - 3));
+            int activeIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+            string focusLabel = sharedCount > 0 && activeIndex < state.SharedCharacterNames.Count
+                ? state.SharedCharacterNames[activeIndex] ?? string.Empty
+                : string.Empty;
+            bool selectorChanged =
+                _lockerSelectorObject.ActiveIndex != activeIndex
+                || _lockerSelectorObject.VisibleOffset != visibleOffset
+                || _lockerSelectorObject.TotalCount != sharedCount
+                || _lockerSelectorObject.VisibleCount != Math.Min(3, sharedCount)
+                || _lockerSelectorObject.HasNumberFont != (state?.HasNumberFont ?? false)
+                || !string.Equals(_lockerSelectorObject.FocusLabel, focusLabel, StringComparison.Ordinal);
+
+            _lockerSelectorObject.ActiveIndex = activeIndex;
+            _lockerSelectorObject.VisibleOffset = visibleOffset;
+            _lockerSelectorObject.VisibleCount = Math.Min(3, sharedCount);
+            _lockerSelectorObject.TotalCount = sharedCount;
+            _lockerSelectorObject.FocusLabel = focusLabel;
+            _lockerSelectorObject.HasNumberFont = state?.HasNumberFont ?? false;
+            if (selectorChanged)
+            {
+                _lockerSelectorObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _lockerScrollBarObject,
+                state?.ScrollBarControlId ?? 1001,
+                state?.ScrollBarUpButtonId ?? 1,
+                state?.ScrollBarDownButtonId ?? 0,
+                new Point(state?.ScrollBarX ?? -1, state?.ScrollBarY ?? -1),
+                state?.ScrollBarHeight ?? -1,
+                state?.WheelRange ?? 0,
+                visibleOffset,
+                Math.Max(0, sharedCount - 3),
+                _draggingLockerScrollThumb);
+        }
+
+        private void UpdateInventoryRuntimeObjects(InventoryOwnerState state)
+        {
+            int activeCount = Math.Max(0, ResolveInventoryActiveCount(state));
+            int maxScroll = Math.Max(0, activeCount - 4);
+            int scrollOffset = Math.Clamp(_inventoryScrollOffset, 0, maxScroll);
+            int activeIndex = activeCount == 0
+                ? -1
+                : Math.Clamp(scrollOffset + _inventoryRowFocusIndex, 0, activeCount - 1);
+            bool selectorChanged =
+                _inventorySelectorObject.ActiveIndex != activeIndex
+                || _inventorySelectorObject.VisibleOffset != scrollOffset
+                || _inventorySelectorObject.VisibleCount != Math.Min(4, activeCount)
+                || _inventorySelectorObject.TotalCount != activeCount
+                || _inventorySelectorObject.HasNumberFont != state.HasNumberFont
+                || !string.Equals(_inventorySelectorObject.FocusLabel, state.SelectedEntryTitle ?? string.Empty, StringComparison.Ordinal);
+
+            _inventorySelectorObject.ActiveIndex = activeIndex;
+            _inventorySelectorObject.VisibleOffset = scrollOffset;
+            _inventorySelectorObject.VisibleCount = Math.Min(4, activeCount);
+            _inventorySelectorObject.TotalCount = activeCount;
+            _inventorySelectorObject.FocusLabel = state.SelectedEntryTitle ?? string.Empty;
+            _inventorySelectorObject.HasNumberFont = state.HasNumberFont;
+            if (selectorChanged)
+            {
+                _inventorySelectorObject.Revision++;
+            }
+
+            bool tabChanged =
+                _inventoryTabObject.ControlId != state.TabControlId
+                || _inventoryTabObject.ItemCount != state.TabItemCount
+                || _inventoryTabObject.CanvasItemCount != state.TabCanvasItemCount
+                || _inventoryTabObject.Position != new Point(state.TabX, state.TabY)
+                || _inventoryTabObject.Width != state.TabWidth
+                || _inventoryTabObject.RuntimeWidth != state.TabRuntimeWidth
+                || _inventoryTabObject.SameWidth != state.TabSameWidth
+                || _inventoryTabObject.NormalStringPoolId != state.TabNormalStringPoolId
+                || _inventoryTabObject.SelectedStringPoolId != state.TabSelectedStringPoolId
+                || !string.Equals(_inventoryTabObject.ActiveTabName, _inventoryTabName, StringComparison.Ordinal);
+
+            _inventoryTabObject.ControlId = state.TabControlId;
+            _inventoryTabObject.ItemCount = state.TabItemCount;
+            _inventoryTabObject.CanvasItemCount = state.TabCanvasItemCount;
+            _inventoryTabObject.Position = new Point(state.TabX, state.TabY);
+            _inventoryTabObject.Width = state.TabWidth;
+            _inventoryTabObject.RuntimeWidth = state.TabRuntimeWidth;
+            _inventoryTabObject.SameWidth = state.TabSameWidth;
+            _inventoryTabObject.NormalStringPoolId = state.TabNormalStringPoolId;
+            _inventoryTabObject.SelectedStringPoolId = state.TabSelectedStringPoolId;
+            _inventoryTabObject.ActiveTabName = _inventoryTabName;
+            if (tabChanged)
+            {
+                _inventoryTabObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _inventoryScrollBarObject,
+                state.ScrollBarControlId,
+                state.ScrollBarUpButtonId,
+                state.ScrollBarDownButtonId,
+                new Point(state.ScrollBarX, state.ScrollBarY),
+                state.ScrollBarHeight,
+                state.WheelRange,
+                scrollOffset,
+                maxScroll,
+                _draggingInventoryScrollThumb);
+        }
+
+        private void UpdateListRuntimeObjects(ListOwnerState state)
+        {
+            int totalCount = Math.Max(0, state?.TotalCount ?? 0);
+            int scrollOffset = Math.Clamp(state?.ScrollOffset ?? 0, 0, Math.Max(0, totalCount - 5));
+            int activeIndex = Math.Clamp(state?.SelectedIndex ?? -1, -1, Math.Max(-1, totalCount - 1));
+            bool plateChanged =
+                _listPlateObject.ActiveIndex != activeIndex
+                || _listPlateObject.ScrollOffset != scrollOffset
+                || _listPlateObject.TotalCount != totalCount
+                || _listPlateObject.HasKeyFocusCanvas != (state?.HasKeyFocusCanvas ?? false)
+                || _listPlateObject.ButtonFocusIndex != _listButtonFocusIndex
+                || !string.Equals(_listPlateObject.PaneLabel, state?.PaneLabel ?? string.Empty, StringComparison.Ordinal);
+
+            _listPlateObject.ActiveIndex = activeIndex;
+            _listPlateObject.ScrollOffset = scrollOffset;
+            _listPlateObject.TotalCount = totalCount;
+            _listPlateObject.HasKeyFocusCanvas = state?.HasKeyFocusCanvas ?? false;
+            _listPlateObject.ButtonFocusIndex = _listButtonFocusIndex;
+            _listPlateObject.PaneLabel = state?.PaneLabel ?? string.Empty;
+            if (plateChanged)
+            {
+                _listPlateObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _listScrollBarObject,
+                state?.ScrollBarControlId ?? 1001,
+                state?.ScrollBarUpButtonId ?? 1,
+                state?.ScrollBarDownButtonId ?? 0,
+                new Point(state?.ScrollBarX ?? 381, state?.ScrollBarY ?? 44),
+                state?.ScrollBarHeight ?? 339,
+                state?.WheelRange ?? 412,
+                scrollOffset,
+                Math.Max(0, totalCount - 5),
+                _draggingListScrollThumb);
+        }
+
+        private static void UpdateScrollBarRuntimeObject(
+            ScrollBarRuntimeState runtime,
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            bool isDragging)
+        {
+            if (runtime == null)
+            {
+                return;
+            }
+
+            bool changed =
+                runtime.ControlId != controlId
+                || runtime.UpButtonId != upButtonId
+                || runtime.DownButtonId != downButtonId
+                || runtime.Position != position
+                || runtime.Height != height
+                || runtime.WheelRange != wheelRange
+                || runtime.Offset != offset
+                || runtime.MaxOffset != maxOffset
+                || runtime.IsDragging != isDragging;
+
+            runtime.ControlId = controlId;
+            runtime.UpButtonId = upButtonId;
+            runtime.DownButtonId = downButtonId;
+            runtime.Position = position;
+            runtime.Height = height;
+            runtime.WheelRange = wheelRange;
+            runtime.Offset = offset;
+            runtime.MaxOffset = maxOffset;
+            runtime.IsDragging = isDragging;
+            if (changed)
+            {
+                runtime.Revision++;
+            }
+        }
+
+        private static SelectorControlRuntimeState BuildSelectorControlRuntimeSnapshot(
+            SelectorRuntimeState runtime,
+            int controlId,
+            int initArg)
+        {
+            return new SelectorControlRuntimeState
+            {
+                ControlId = controlId,
+                InitArg = initArg,
+                ActiveIndex = runtime?.ActiveIndex ?? -1,
+                VisibleOffset = runtime?.VisibleOffset ?? 0,
+                VisibleCount = runtime?.VisibleCount ?? 0,
+                TotalCount = runtime?.TotalCount ?? 0,
+                FocusLabel = runtime?.FocusLabel ?? string.Empty,
+                HasNumberFont = runtime?.HasNumberFont ?? false,
+                Revision = runtime?.Revision ?? 0
+            };
+        }
+
+        private TabControlRuntimeState BuildInventoryTabControlRuntimeSnapshot()
+        {
+            string[] tabNames = { "Equip", "Use", "Setup", "Etc" };
+            int activeIndex = Array.FindIndex(tabNames, tabName => string.Equals(tabName, _inventoryTabObject.ActiveTabName, StringComparison.OrdinalIgnoreCase));
+            return new TabControlRuntimeState
+            {
+                ControlId = _inventoryTabObject.ControlId,
+                ItemCount = _inventoryTabObject.ItemCount,
+                Position = _inventoryTabObject.Position,
+                Width = _inventoryTabObject.Width,
+                RuntimeWidth = _inventoryTabObject.RuntimeWidth,
+                CanvasItemCount = _inventoryTabObject.CanvasItemCount,
+                SameWidth = _inventoryTabObject.SameWidth,
+                NormalStringPoolId = _inventoryTabObject.NormalStringPoolId,
+                SelectedStringPoolId = _inventoryTabObject.SelectedStringPoolId,
+                ActiveIndex = Math.Max(0, activeIndex),
+                ActiveTabName = _inventoryTabObject.ActiveTabName ?? string.Empty,
+                Revision = _inventoryTabObject.Revision,
+                TabNames = tabNames
+            };
+        }
+
+        private static ScrollBarControlRuntimeState BuildScrollBarControlRuntimeSnapshot(
+            ScrollBarRuntimeState runtime,
+            int visibleCount,
+            int totalCount)
+        {
+            return CreateScrollBarControlRuntimeState(
+                runtime?.ControlId ?? 0,
+                runtime?.UpButtonId ?? 0,
+                runtime?.DownButtonId ?? 0,
+                runtime?.Position ?? Point.Zero,
+                runtime?.Height ?? 0,
+                runtime?.WheelRange ?? 0,
+                runtime?.Offset ?? 0,
+                runtime?.MaxOffset ?? 0,
+                visibleCount,
+                totalCount,
+                runtime?.IsDragging ?? false);
+        }
+
+        private static ScrollBarControlRuntimeState CreateScrollBarControlRuntimeState(
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            int visibleCount,
+            int totalCount,
+            bool isDragging)
+        {
+            int clampedHeight = Math.Max(0, height);
+            int clampedTotal = Math.Max(0, totalCount);
+            int clampedVisible = Math.Clamp(visibleCount, 0, Math.Max(visibleCount, clampedTotal));
+            if (clampedTotal > 0)
+            {
+                clampedVisible = Math.Clamp(clampedVisible, 1, clampedTotal);
+            }
+
+            int clampedMaxOffset = Math.Max(0, maxOffset);
+            int clampedOffset = Math.Clamp(offset, 0, clampedMaxOffset);
+            int thumbHeight = clampedHeight;
+            if (clampedMaxOffset > 0 && clampedTotal > 0)
+            {
+                thumbHeight = Math.Clamp(
+                    (clampedHeight * Math.Max(1, clampedVisible)) / Math.Max(clampedVisible, clampedTotal),
+                    Math.Min(16, clampedHeight),
+                    clampedHeight);
+            }
+
+            int trackHeight = Math.Max(0, clampedHeight - thumbHeight);
+            int thumbY = clampedMaxOffset == 0
+                ? 0
+                : (trackHeight * clampedOffset) / clampedMaxOffset;
+
+            return new ScrollBarControlRuntimeState
+            {
+                ControlId = controlId,
+                UpButtonId = upButtonId,
+                DownButtonId = downButtonId,
+                Position = position,
+                Height = height,
+                WheelRange = wheelRange,
+                Offset = clampedOffset,
+                MaxOffset = clampedMaxOffset,
+                VisibleCount = clampedVisible,
+                TotalCount = clampedTotal,
+                PageSize = Math.Max(1, clampedVisible),
+                TrackHeight = trackHeight,
+                ThumbY = thumbY,
+                ThumbHeight = thumbHeight,
+                IsDragging = isDragging
+            };
+        }
+
+        private void StepOneADayPlate(OneADayOwnerState state, int delta)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            _oneADayShortcutHelpActive = false;
+            int plateCount = Math.Max(1, state.PlateCount);
+            int step = delta == 0 ? 0 : Math.Sign(delta);
+            _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + plateCount + step) % plateCount;
+            _oneADaySessionState = $"CCSWnd_OneADay rotated the reward owner to {ResolveOneADayPlateName(state)}.";
+            RefreshOneADayInteractiveRuntime(state);
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void StepOneADayPreviousOffer(OneADayOwnerState state, int delta)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
+                _oneADaySessionState = "CCSWnd_OneADay kept the previous-item selector closed because the packet-owned reward-session byte disabled that lane.";
+                _statusMessage = _oneADaySessionState;
+                RefreshOneADayInteractiveRuntime(state);
+                return;
+            }
+
+            int previousOfferCount = Math.Max(1, state.PreviousOfferCount);
+            int step = delta == 0 ? 0 : Math.Sign(delta);
+            if (Math.Abs(delta) >= 5)
+            {
+                _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex + delta, 0, previousOfferCount - 1);
+            }
+            else
+            {
+                _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + previousOfferCount + step) % previousOfferCount;
+            }
+
+            _oneADaySessionState = $"CCSWnd_OneADay moved the previous-item selector to slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} of {Math.Max(0, previousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}.";
+            RefreshOneADayInteractiveRuntime(state);
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void SelectOneADayPreviousOfferFromMouse(OneADayOwnerState state, Rectangle rowsBounds, Point mousePosition)
+        {
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
+                _oneADaySessionState = "CCSWnd_OneADay ignored previous-item row selection because that lane is packet-disabled.";
+                _statusMessage = _oneADaySessionState;
+                RefreshOneADayInteractiveRuntime(state);
+                return;
+            }
+
+            int previousOfferCount = Math.Max(1, state?.PreviousOfferCount ?? 12);
+            int columns = Math.Min(5, previousOfferCount);
+            int rows = Math.Max(1, (int)Math.Ceiling(previousOfferCount / (double)columns));
+            int rowHeight = Math.Max(18, rowsBounds.Height / rows);
+            int columnWidth = Math.Max(18, rowsBounds.Width / columns);
+            int columnIndex = Math.Clamp((mousePosition.X - rowsBounds.X) / columnWidth, 0, columns - 1);
+            int rowIndex = Math.Clamp((mousePosition.Y - rowsBounds.Y) / rowHeight, 0, rows - 1);
+            int offerIndex = Math.Clamp((rowIndex * columns) + columnIndex, 0, previousOfferCount - 1);
+            _oneADayPlateFocusIndex = offerIndex;
+            _oneADaySessionState = $"CCSWnd_OneADay focused previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} from the recovered history grid.";
+            RefreshOneADayInteractiveRuntime(state);
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void SelectOneADaySelector(int selectorIndex, OneADayOwnerState state)
+        {
+            int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
+            _oneADaySelectorIndex = Math.Clamp(selectorIndex, 0, selectorCount - 1);
+            _oneADaySessionState = _oneADaySelectorIndex == 0
+                ? "CCSWnd_OneADay moved keyboard focus to the Today selector."
+                : "CCSWnd_OneADay moved keyboard focus to the Previous selector.";
+            _oneADayPlateFocusIndex = Math.Clamp(
+                _oneADayPlateFocusIndex,
+                0,
+                Math.Max(0, (_oneADaySelectorIndex == 1 ? state?.PreviousOfferCount : state?.PlateCount) ?? 1) - 1);
+            RefreshOneADayInteractiveRuntime(state);
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void SyncOneADayOwnerState(bool force = false)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
+            string nextPacketStateSignature = state.PacketStateSignature ?? string.Empty;
+            int packetRewardSessionByte = state.PacketRewardSessionByte & 0xFF;
+            bool packetOwnedPending = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 1) != 0;
+            bool effectivePending = state.IsPending || packetOwnedPending;
+            bool pendingChanged = !_oneADayRuntimeSeeded || effectivePending != _oneADayPending;
+            bool countdownRestarted = _oneADayRuntimeSeeded
+                && effectivePending
+                && nextRemainingSeconds > 0
+                && (nextRemainingSeconds > (_oneADayRemainingSeconds + 1) || _oneADayCountdownDeadlineTick == int.MinValue);
+            bool packetStateChanged = !string.Equals(_oneADayPacketStateSignature, nextPacketStateSignature, StringComparison.Ordinal);
+            bool packetSeedChanged = state.HasPacketRewardSessionByte
+                && (!_oneADayRuntimeSeeded || _oneADayLastPacketRewardSessionByte != packetRewardSessionByte);
+            bool selectorReseedRequested = force || !_oneADayRuntimeSeeded || packetSeedChanged;
+
+            if (!pendingChanged && !countdownRestarted && !selectorReseedRequested && !packetStateChanged)
+            {
+                return;
+            }
+
+            _oneADayPending = effectivePending;
+            _oneADayPacketStateSignature = nextPacketStateSignature;
+            _oneADayLastPacketRewardSessionByte = state.HasPacketRewardSessionByte ? packetRewardSessionByte : -1;
+            _oneADayLastPacketRewardSessionByteOffset = state.HasPacketRewardSessionByte ? state.PacketRewardSessionByteOffset : -1;
+            if (selectorReseedRequested)
+            {
+                int packetOwnedSelectorIndex = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 2) != 0 ? 1 : 0;
+                _oneADaySelectorIndex = Math.Clamp(
+                    state.HasPacketRewardSessionByte ? packetOwnedSelectorIndex : state.SelectorIndex,
+                    0,
+                    Math.Max(0, state.SelectorCount - 1));
+                _oneADayShortcutHelpActive = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 4) != 0;
+            }
+
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
+                _oneADayShortcutHelpActive = false;
+            }
+
+            int activeOfferCount = _oneADaySelectorIndex == 1 ? state.PreviousOfferCount : state.PlateCount;
+            _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, activeOfferCount - 1));
+            if (pendingChanged || countdownRestarted)
+            {
+                _oneADayRemainingSeconds = nextRemainingSeconds;
+                _oneADayCountdownDeadlineTick = _oneADayPending && nextRemainingSeconds > 0
+                    ? Environment.TickCount + (nextRemainingSeconds * 1000)
+                    : int.MinValue;
+            }
+
+            _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
+            RefreshOneADaySelectorRuntime(state);
+            RefreshOneADayPlateButtonRuntime(state);
+            RefreshOneADayRewardSessionRuntime(state);
+            RefreshOneADayCounterRuntime(state);
+            _oneADayRuntimeSeeded = true;
+            _oneADaySessionState = _oneADayPending
+                ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {_oneADayCounterRuntime.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
+                : $"CCSWnd_OneADay::ChangeState(0,1) left selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} plate-button lanes alive while no packet-authored reward is pending.";
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void UpdateOneADaySessionTimer()
+        {
+            if (!_oneADayPending || _oneADayCountdownDeadlineTick == int.MinValue)
+            {
+                return;
+            }
+
+            int remainingMilliseconds = _oneADayCountdownDeadlineTick - Environment.TickCount;
+            int nextRemainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMilliseconds / 1000d));
+            if (nextRemainingSeconds == _oneADayRemainingSeconds)
+            {
+                return;
+            }
+
+            _oneADayRemainingSeconds = nextRemainingSeconds;
+            _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
+            RefreshOneADayCounterRuntime(_oneADayStateProvider?.Invoke());
+            if (_oneADayRemainingSeconds == 0)
+            {
+                _oneADayPending = false;
+                _oneADayCountdownDeadlineTick = int.MinValue;
+                _oneADayRewardSessionByte &= ~1;
+                _oneADayRewardSessionRevision++;
+                _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
+                _statusMessage = _oneADaySessionState;
+            }
+
+            UpdateOneADayRewardSessionObject(_oneADayStateProvider?.Invoke(), _oneADayRewardSessionByte);
+        }
+
+        private static string FormatOneADayCounterDigits(int remainingSeconds)
+        {
+            int clampedSeconds = Math.Max(0, remainingSeconds);
+            int hours = clampedSeconds / 3600;
+            int minutes = (clampedSeconds / 60) % 60;
+            int seconds = clampedSeconds % 60;
+            return string.Create(
+                8,
+                (hours, minutes, seconds),
+                static (span, state) =>
+                {
+                    state.hours.TryFormat(span[..2], out _, "00", CultureInfo.InvariantCulture);
+                    span[2] = ':';
+                    state.minutes.TryFormat(span.Slice(3, 2), out _, "00", CultureInfo.InvariantCulture);
+                    span[5] = ':';
+                    state.seconds.TryFormat(span.Slice(6, 2), out _, "00", CultureInfo.InvariantCulture);
+                });
+        }
+
+        private void RefreshOneADaySelectorRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                _oneADaySelectorRuntime = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+                UpdateOneADaySelectorRuntimeObject(null);
+                return;
+            }
+
+            if (state.SelectorEntries != null && state.SelectorEntries.Count > 0)
+            {
+                _oneADaySelectorRuntime = state.SelectorEntries
+                    .Select(entry => new OneADayOwnerState.SelectorEntryState
+                    {
+                        Index = entry.Index,
+                        SourceStringPoolId = entry.SourceStringPoolId,
+                        Label = entry.Label,
+                        IsActive = entry.Index == _oneADaySelectorIndex
+                    })
+                    .ToArray();
+                UpdateOneADaySelectorRuntimeObject(state);
+                return;
+            }
+
+            string todayLabel = string.IsNullOrWhiteSpace(state.TodaySelectorLabel) ? "Today" : state.TodaySelectorLabel.Trim();
+            string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
+            _oneADaySelectorRuntime = new[]
+            {
+                new OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 0,
+                    SourceStringPoolId = 0x16A1,
+                    Label = todayLabel,
+                    IsActive = _oneADaySelectorIndex == 0
+                },
+                new OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 1,
+                    SourceStringPoolId = 0x16A2,
+                    Label = previousLabel,
+                    IsActive = _oneADaySelectorIndex == 1
+                }
+            };
+            UpdateOneADaySelectorRuntimeObject(state);
+        }
+
+        private void RefreshOneADayCounterRuntime(OneADayOwnerState state = null)
+        {
+            if (state?.CounterSlots != null && state.CounterSlots.Count > 0)
+            {
+                int slotCount = Math.Max(_oneADayCounterDigits.Length, state.CounterSlots.Count);
+                List<OneADayOwnerState.CounterSlotState> templatedSlots = new(slotCount);
+                for (int i = 0; i < slotCount; i++)
+                {
+                    OneADayOwnerState.CounterSlotState template = i < state.CounterSlots.Count
+                        ? state.CounterSlots[i]
+                        : null;
+                    char character = i < _oneADayCounterDigits.Length
+                        ? _oneADayCounterDigits[i]
+                        : template?.Digit ?? '0';
+                    bool isDigit = char.IsDigit(character);
+                    int digit = isDigit ? character - '0' : -1;
+                    bool hasDigitCanvas = template != null
+                        ? template.HasDigitCanvas
+                        : isDigit && digit >= 0 && digit < 10 && ((_oneADayNumberCanvasReadyMask & (1 << digit)) != 0);
+                    templatedSlots.Add(new OneADayOwnerState.CounterSlotState
+                    {
+                        SlotIndex = template?.SlotIndex ?? i,
+                        Digit = character,
+                        IsSeparator = !isDigit,
+                        HasDigitCanvas = isDigit && hasDigitCanvas
+                    });
+                }
+
+                _oneADayCounterRuntime = templatedSlots;
+                UpdateOneADayCounterRuntimeObject(state);
+                return;
+            }
+
+            List<OneADayOwnerState.CounterSlotState> slots = new(_oneADayCounterDigits.Length);
+            for (int i = 0; i < _oneADayCounterDigits.Length; i++)
+            {
+                char character = _oneADayCounterDigits[i];
+                bool isDigit = char.IsDigit(character);
+                int digit = isDigit ? character - '0' : -1;
+                slots.Add(new OneADayOwnerState.CounterSlotState
+                {
+                    SlotIndex = i,
+                    Digit = character,
+                    IsSeparator = !isDigit,
+                    HasDigitCanvas = isDigit && digit >= 0 && digit < 10 && ((_oneADayNumberCanvasReadyMask & (1 << digit)) != 0)
+                });
+            }
+
+            _oneADayCounterRuntime = slots;
+            UpdateOneADayCounterRuntimeObject(state);
+        }
+
+        private void RefreshOneADayPlateButtonRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                _oneADayPlateButtonRuntime = Array.Empty<OneADayOwnerState.PlateButtonState>();
+                return;
+            }
+
+            if (state.PlateButtons != null && state.PlateButtons.Count > 0)
+            {
+                _oneADayPlateButtonRuntime = state.PlateButtons
+                    .Select(button => new OneADayOwnerState.PlateButtonState
+                    {
+                        ButtonId = button.ButtonId,
+                        SlotIndex = button.SlotIndex,
+                        CommandKey = button.CommandKey,
+                        Position = button.Position,
+                        Width = button.Width,
+                        Height = button.Height,
+                        HasCanvas = button.HasCanvas,
+                        IsLoaded = button.IsLoaded,
+                        IsEnabled = button.IsEnabled,
+                        IsFocused = button.SlotIndex == _oneADayPlateFocusIndex,
+                        Label = button.Label,
+                        HasPacketStateByte = button.HasPacketStateByte,
+                        PacketStateByte = button.PacketStateByte,
+                        PacketStateByteOffset = button.PacketStateByteOffset
+                    })
+                    .ToArray();
+                return;
+            }
+
+            int historyCount = Math.Max(0, state.HistoryEntries?.Count ?? 0);
+            bool isTodayLane = _oneADaySelectorIndex == 0;
+            int buttonCount = isTodayLane
+                ? 2
+                : Math.Min(Math.Max(0, state.PlateButtonCount), Math.Max(0, historyCount));
+            int loadedCount = isTodayLane
+                ? (state.CurrentCommoditySerialNumber > 0 ? 2 : 0)
+                : Math.Min(buttonCount, historyCount);
+            int authoredCanvasCount = isTodayLane
+                ? (state.HasPlateCanvas ? 2 : 0)
+                : (state.HasPlateBigCanvas ? buttonCount : Math.Min(buttonCount, Math.Max(0, state.PlateCount)));
+            List<OneADayOwnerState.PlateButtonState> buttons = new(buttonCount);
+            for (int i = 0; i < buttonCount; i++)
+            {
+                bool isTodayBuyButton = isTodayLane && i == 0;
+                buttons.Add(new OneADayOwnerState.PlateButtonState
+                {
+                    ButtonId = 2100 + i,
+                    SlotIndex = i,
+                    CommandKey = isTodayLane
+                        ? (isTodayBuyButton ? "BtBuy" : "BtItemBox")
+                        : "BtJoin",
+                    Position = ResolveOneADayPlateButtonPosition(i, !isTodayLane),
+                    HasCanvas = i < authoredCanvasCount,
+                    IsLoaded = i < loadedCount,
+                    IsEnabled = i < loadedCount,
+                    IsFocused = i == _oneADayPlateFocusIndex,
+                    Label = isTodayLane
+                        ? (isTodayBuyButton ? "Buy" : "Gift")
+                        : $"History {i + 1}"
+                });
+            }
+
+            _oneADayPlateButtonRuntime = buttons;
+        }
+
+        private static Point ResolveOneADayPlateButtonPosition(int slotIndex, bool isHistoryLane)
+        {
+            int clampedSlot = Math.Max(0, slotIndex);
+            if (!isHistoryLane)
+            {
+                return clampedSlot == 0
+                    ? new Point(165, 202)
+                    : new Point(246, 202);
+            }
+
+            return new Point(16 + ((clampedSlot % 4) * 92), 252 + ((clampedSlot / 4) * 44));
+        }
+
+        private void RefreshOneADayRewardSessionRuntime(OneADayOwnerState state)
+        {
+            int nextSessionByte;
+            if (state?.HasPacketRewardSessionByte == true)
+            {
+                nextSessionByte = state.PacketRewardSessionByte & 0xFF;
+                nextSessionByte = _oneADaySelectorIndex == 1
+                    ? nextSessionByte | 2
+                    : nextSessionByte & ~2;
+                nextSessionByte = _oneADayShortcutHelpActive
+                    ? nextSessionByte | 4
+                    : nextSessionByte & ~4;
+                nextSessionByte = _oneADayPending
+                    ? nextSessionByte | 1
+                    : nextSessionByte & ~1;
+                _oneADayRewardSessionPacketOwned = true;
+            }
+            else
+            {
+                nextSessionByte = 0;
+                if (_oneADayPending)
+                {
+                    nextSessionByte |= 1;
+                }
+
+                if (_oneADaySelectorIndex == 1)
+                {
+                    nextSessionByte |= 2;
+                }
+
+                if (_oneADayShortcutHelpActive)
+                {
+                    nextSessionByte |= 4;
+                }
+
+                if (HasOneADayPreviousLane(state))
+                {
+                    nextSessionByte |= 8;
+                }
+
+                _oneADayRewardSessionPacketOwned = false;
+            }
+
+            if (_oneADayRewardSessionByte != nextSessionByte)
+            {
+                _oneADayRewardSessionByte = nextSessionByte;
+                _oneADayRewardSessionRevision++;
+            }
+
+            _oneADayNumberCanvasReadyMask = state == null
+                ? 0
+                : (state.NumberCanvasRuntime != null
+                    ? state.NumberCanvasRuntime.ReadyMask
+                    : (state.NumberCanvasReadyMask != 0
+                        ? state.NumberCanvasReadyMask
+                        : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount)));
+
+            UpdateOneADayRewardSessionObject(state, nextSessionByte);
+        }
+
+        private static bool HasOneADayPreviousLane(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return false;
+            }
+
+            if (state.HasPacketRewardSessionByte)
+            {
+                return (state.PacketRewardSessionByte & 8) != 0;
+            }
+
+            return state.PreviousOfferCount > 0 || (state.HistoryEntries?.Count ?? 0) > 0;
+        }
+
+        private void RefreshOneADayInteractiveRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            RefreshOneADaySelectorRuntime(state);
+            RefreshOneADayPlateButtonRuntime(state);
+            RefreshOneADayRewardSessionRuntime(state);
+        }
+
+        private string BuildOneADayRewardSessionSummary()
+        {
+            string sourceLabel = _oneADayRewardSessionObject.PacketOwned ? "packet-owned" : "owner-approx";
+            string packetSignature = string.IsNullOrWhiteSpace(_oneADayRewardSessionObject.PacketStateSignature)
+                ? "none"
+                : TrimToLength(_oneADayRewardSessionObject.PacketStateSignature, 24);
+            string packetOffset = _oneADayRewardSessionPacketOwned
+                ? $" offset {_oneADayLastPacketRewardSessionByteOffset.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return
+                $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionObject.SessionByte:X2}{packetOffset} rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}  " +
+                $"Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)} (obj rev {_oneADaySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
+                $"Number mask 0x{_oneADayCounterObject.DigitCanvasMask:X3} (obj rev {_oneADayCounterObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
+                $"Packet sig {packetSignature}.";
+        }
+
+        private string DescribeOneADaySelectorRuntime()
+        {
+            if (_oneADaySelectorRuntime == null || _oneADaySelectorRuntime.Count == 0)
+            {
+                return "empty";
+            }
+
+            return string.Join(
+                "/",
+                _oneADaySelectorRuntime.Select(entry =>
+                    $"{(entry.IsActive ? ">" : string.Empty)}{entry.Index.ToString(CultureInfo.InvariantCulture)}:{TrimToLength(entry.Label, 10)}"));
+        }
+
+        private static int BuildOneADayNumberCanvasReadyMask(int numberCanvasCount)
+        {
+            int count = Math.Clamp(numberCanvasCount, 0, 10);
+            int mask = 0;
+            for (int i = 0; i < count; i++)
+            {
+                mask |= 1 << i;
+            }
+
+            return mask;
+        }
+
+        private void UpdateOneADaySelectorRuntimeObject(OneADayOwnerState state)
+        {
+            int controlId = state?.SelectorControlId ?? 2001;
+            int initArg = state?.SelectorInitArg ?? 4;
+            int startX = state?.SelectorStartX ?? 2;
+            int startY = state?.SelectorStartY ?? 2;
+            int startWidth = state?.SelectorStartWidth ?? 1;
+            int startHeight = state?.SelectorStartHeight ?? 1;
+            Point position = state?.SelectorPosition ?? new Point(412, 406);
+            int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
+            int normalColor = state?.SelectorNormalColor ?? -12949590;
+            int selectedColor = state?.SelectorSelectedColor ?? -1;
+            int outlineColor = state?.SelectorOutlineColor ?? -16777216;
+            int activeSelectorIndex = Math.Clamp(_oneADaySelectorIndex, 0, selectorCount - 1);
+
+            bool changed =
+                _oneADaySelectorObject.ControlId != controlId
+                || _oneADaySelectorObject.InitArg != initArg
+                || _oneADaySelectorObject.StartX != startX
+                || _oneADaySelectorObject.StartY != startY
+                || _oneADaySelectorObject.StartWidth != startWidth
+                || _oneADaySelectorObject.StartHeight != startHeight
+                || _oneADaySelectorObject.Position != position
+                || _oneADaySelectorObject.SelectorCount != selectorCount
+                || _oneADaySelectorObject.ActiveSelectorIndex != activeSelectorIndex
+                || _oneADaySelectorObject.NormalColor != normalColor
+                || _oneADaySelectorObject.SelectedColor != selectedColor
+                || _oneADaySelectorObject.OutlineColor != outlineColor;
+
+            _oneADaySelectorObject.ControlId = controlId;
+            _oneADaySelectorObject.InitArg = initArg;
+            _oneADaySelectorObject.StartX = startX;
+            _oneADaySelectorObject.StartY = startY;
+            _oneADaySelectorObject.StartWidth = startWidth;
+            _oneADaySelectorObject.StartHeight = startHeight;
+            _oneADaySelectorObject.Position = position;
+            _oneADaySelectorObject.SelectorCount = selectorCount;
+            _oneADaySelectorObject.ActiveSelectorIndex = activeSelectorIndex;
+            _oneADaySelectorObject.NormalColor = normalColor;
+            _oneADaySelectorObject.SelectedColor = selectedColor;
+            _oneADaySelectorObject.OutlineColor = outlineColor;
+            if (changed)
+            {
+                _oneADaySelectorObject.Revision++;
+            }
+        }
+
+        private void UpdateOneADayCounterRuntimeObject(OneADayOwnerState state)
+        {
+            int expectedDigitCanvasCount = Math.Max(1, state?.ExpectedNumberCanvasCount ?? 10);
+            int digitCanvasCount = Math.Clamp(state?.NumberCanvasCount ?? 0, 0, expectedDigitCanvasCount);
+            string counterText = _oneADayCounterDigits ?? "00:00:00";
+            int remainingSeconds = Math.Max(0, _oneADayRemainingSeconds);
+            int digitCanvasMask = _oneADayNumberCanvasReadyMask;
+
+            bool changed =
+                _oneADayCounterObject.DigitCanvasMask != digitCanvasMask
+                || _oneADayCounterObject.DigitCanvasCount != digitCanvasCount
+                || _oneADayCounterObject.ExpectedDigitCanvasCount != expectedDigitCanvasCount
+                || _oneADayCounterObject.RemainingSeconds != remainingSeconds
+                || !string.Equals(_oneADayCounterObject.CounterText, counterText, StringComparison.Ordinal);
+
+            _oneADayCounterObject.DigitCanvasMask = digitCanvasMask;
+            _oneADayCounterObject.DigitCanvasCount = digitCanvasCount;
+            _oneADayCounterObject.ExpectedDigitCanvasCount = expectedDigitCanvasCount;
+            _oneADayCounterObject.RemainingSeconds = remainingSeconds;
+            _oneADayCounterObject.CounterText = counterText;
+            if (changed)
+            {
+                _oneADayCounterObject.Revision++;
+            }
+        }
+
+        private void UpdateOneADayRewardSessionObject(OneADayOwnerState state, int sessionByte)
+        {
+            bool packetOwned = state?.HasPacketRewardSessionByte ?? _oneADayRewardSessionPacketOwned;
+            bool pending = _oneADayPending;
+            int countdownDeadlineTick = _oneADayCountdownDeadlineTick;
+            string packetStateSignature = state?.RewardSessionRuntime?.PacketStateSignature ?? state?.PacketStateSignature ?? string.Empty;
+
+            bool changed =
+                _oneADayRewardSessionObject.PacketOwned != packetOwned
+                || _oneADayRewardSessionObject.SessionByte != sessionByte
+                || _oneADayRewardSessionObject.IsPending != pending
+                || _oneADayRewardSessionObject.CountdownDeadlineTick != countdownDeadlineTick
+                || !string.Equals(_oneADayRewardSessionObject.PacketStateSignature, packetStateSignature, StringComparison.Ordinal);
+            int revision = Math.Max(_oneADayRewardSessionObject.Revision, _oneADayRewardSessionRevision);
+            if (changed)
+            {
+                revision++;
+            }
+
+            _oneADayRewardSessionObject.PacketOwned = packetOwned;
+            _oneADayRewardSessionObject.SessionByte = sessionByte;
+            _oneADayRewardSessionObject.IsPending = pending;
+            _oneADayRewardSessionObject.CountdownDeadlineTick = countdownDeadlineTick;
+            _oneADayRewardSessionObject.PacketStateSignature = packetStateSignature;
+            _oneADayRewardSessionObject.Revision = revision;
+        }
+
+        private SelectorControlRuntimeState BuildOneADaySelectorControlRuntimeSnapshot(OneADayOwnerState state)
+        {
+            int selectorCount = Math.Max(1, _oneADaySelectorObject.SelectorCount);
+            return new SelectorControlRuntimeState
+            {
+                ControlId = _oneADaySelectorObject.ControlId,
+                InitArg = _oneADaySelectorObject.InitArg,
+                Position = _oneADaySelectorObject.Position,
+                StartX = _oneADaySelectorObject.StartX,
+                StartY = _oneADaySelectorObject.StartY,
+                StartWidth = _oneADaySelectorObject.StartWidth,
+                StartHeight = _oneADaySelectorObject.StartHeight,
+                ActiveIndex = Math.Clamp(_oneADaySelectorObject.ActiveSelectorIndex, 0, selectorCount - 1),
+                VisibleOffset = 0,
+                VisibleCount = selectorCount,
+                TotalCount = selectorCount,
+                NormalColor = _oneADaySelectorObject.NormalColor,
+                SelectedColor = _oneADaySelectorObject.SelectedColor,
+                OutlineColor = _oneADaySelectorObject.OutlineColor,
+                FocusLabel = ResolveOneADaySelectorFocusLabel(),
+                Revision = _oneADaySelectorObject.Revision,
+                Labels = (_oneADaySelectorRuntime ?? Array.Empty<OneADayOwnerState.SelectorEntryState>())
+                    .Select(entry => entry.Label ?? string.Empty)
+                    .ToArray()
+            };
+        }
+
+        private NumberCanvasRuntimeState BuildOneADayNumberCanvasRuntimeSnapshot(OneADayOwnerState state)
+        {
+            int expectedCanvasCount = Math.Max(1, _oneADayCounterObject.ExpectedDigitCanvasCount);
+            int loadedCanvasCount = Math.Clamp(_oneADayCounterObject.DigitCanvasCount, 0, expectedCanvasCount);
+            bool[] digitReadyStates = new bool[expectedCanvasCount];
+            string[] canvasNames = new string[expectedCanvasCount];
+            for (int i = 0; i < expectedCanvasCount; i++)
+            {
+                digitReadyStates[i] = (_oneADayCounterObject.DigitCanvasMask & (1 << i)) != 0;
+                canvasNames[i] = i.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return new NumberCanvasRuntimeState
+            {
+                SourceStringPoolId = state?.NumberCanvasStringPoolId ?? 0x16A7,
+                ExpectedCanvasCount = expectedCanvasCount,
+                LoadedCanvasCount = loadedCanvasCount,
+                ReadyMask = _oneADayCounterObject.DigitCanvasMask,
+                RenderedText = _oneADayCounterObject.CounterText ?? string.Empty,
+                DigitReadyStates = digitReadyStates,
+                CanvasNames = canvasNames
+            };
+        }
+
+        private RewardSessionRuntimeState BuildOneADayRewardSessionRuntimeSnapshot(OneADayOwnerState state)
+        {
+            return new RewardSessionRuntimeState
+            {
+                PacketOwned = _oneADayRewardSessionObject.PacketOwned,
+                SessionByte = _oneADayRewardSessionObject.SessionByte,
+                SessionByteOffset = _oneADayRewardSessionPacketOwned ? _oneADayLastPacketRewardSessionByteOffset : -1,
+                IsPending = _oneADayRewardSessionObject.IsPending,
+                RemainingSeconds = Math.Max(0, _oneADayRemainingSeconds),
+                CountdownDeadlineTick = _oneADayRewardSessionObject.CountdownDeadlineTick,
+                SelectorIndex = _oneADaySelectorIndex,
+                ShortcutHelpActive = _oneADayShortcutHelpActive,
+                PreviousLaneEnabled = HasOneADayPreviousLane(state),
+                HistoryEntryCount = Math.Max(0, state?.HistoryEntries?.Count ?? 0),
+                HistoryStateBytes = (state?.HistoryEntries ?? Array.Empty<OneADayOwnerState.HistoryEntryState>())
+                    .Where(entry => entry?.HasPacketStateByte == true)
+                    .Select(entry => entry.PacketStateByte & 0xFF)
+                    .ToArray(),
+                HistoryStateByteOffsets = (state?.HistoryEntries ?? Array.Empty<OneADayOwnerState.HistoryEntryState>())
+                    .Where(entry => entry?.HasPacketStateByte == true)
+                    .Select(entry => entry.PacketStateByteOffset)
+                    .ToArray(),
+                PayloadLength = Math.Max(0, state?.PacketPayloadLength ?? 0),
+                DecodedByteLength = Math.Max(0, state?.PacketDecodedByteLength ?? 0),
+                TrailingByteCount = Math.Max(0, state?.PacketTrailingByteCount ?? 0),
+                TrailingPayloadHex = state?.PacketTrailingPayloadHex ?? string.Empty,
+                PacketStateSignature = _oneADayRewardSessionObject.PacketStateSignature ?? string.Empty
+            };
+        }
+
+        private string ResolveOneADaySelectorFocusLabel()
+        {
+            if (_oneADaySelectorRuntime == null || _oneADaySelectorRuntime.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            OneADayOwnerState.SelectorEntryState activeEntry = _oneADaySelectorRuntime
+                .FirstOrDefault(entry => entry != null && entry.Index == _oneADaySelectorIndex);
+            return activeEntry?.Label ?? string.Empty;
+        }
+
+        private string ResolveOneADayPlateName(OneADayOwnerState state)
+        {
+            if (_oneADayShortcutHelpActive)
+            {
+                return string.IsNullOrWhiteSpace(state?.ShortcutHelpCanvasName) ? "ShortcutHelp" : state.ShortcutHelpCanvasName;
+            }
+
+            string baseName = string.IsNullOrWhiteSpace(state?.PlateCanvasBaseName) ? "NoItem" : state.PlateCanvasBaseName;
+            if (string.Equals(baseName, "NoItem", StringComparison.Ordinal))
+            {
+                return Math.Clamp(_oneADayPlateFocusIndex, 0, 2) switch
+                {
+                    0 => "NoItem",
+                    1 => "NoItem0",
+                    _ => "NoItem1"
+                };
+            }
+
+            return _oneADayPlateFocusIndex == 0
+                ? baseName
+                : $"{baseName}{_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private OneADayOwnerState.HistoryEntryState ResolveSelectedOneADayHistoryEntry(OneADayOwnerState state)
+        {
+            if (state?.HistoryEntries == null || state.HistoryEntries.Count == 0)
+            {
+                return null;
+            }
+
+            int clampedIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, state.HistoryEntries.Count - 1);
+            return state.HistoryEntries[clampedIndex];
+        }
+
+        private string ResolveOneADayCurrentSelectionSummary(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return "Today reward";
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.CurrentItemLabel))
+            {
+                return state.CurrentItemLabel.Trim();
+            }
+
+            return state.CurrentCommoditySerialNumber > 0
+                ? $"SN {state.CurrentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : "today reward";
+        }
+
+        private static string ResolveOneADayCurrentSelectionDetail(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return string.Empty;
+            }
+
+            string dateLabel = string.IsNullOrWhiteSpace(state.CurrentDateLabel)
+                ? (state.CurrentDateRaw > 0 ? state.CurrentDateRaw.ToString(CultureInfo.InvariantCulture) : "date unavailable")
+                : state.CurrentDateLabel.Trim();
+            if (state.CurrentCommoditySerialNumber > 0)
+            {
+                return $"Current slot date {dateLabel}  SN {state.CurrentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return $"Current slot date {dateLabel}";
+        }
+
+        private string ResolveOneADayHistorySelectionSummary(OneADayOwnerState state)
+        {
+            OneADayOwnerState.HistoryEntryState historyEntry = ResolveSelectedOneADayHistoryEntry(state);
+            if (historyEntry == null)
+            {
+                return "previous reward history";
+            }
+
+            return historyEntry.ItemLabel;
+        }
+
+        private string ResolveOneADayHistorySelectionDetail(OneADayOwnerState state)
+        {
+            OneADayOwnerState.HistoryEntryState historyEntry = ResolveSelectedOneADayHistoryEntry(state);
+            if (historyEntry == null)
+            {
+                return "No packet-authored previous reward rows are loaded.";
+            }
+
+            string detail = $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}  {historyEntry.DateLabel}";
+            if (historyEntry.CommoditySerialNumber > 0)
+            {
+                detail += $"  SN {historyEntry.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (historyEntry.OriginalCommoditySerialNumber > 0
+                && historyEntry.OriginalCommoditySerialNumber != historyEntry.CommoditySerialNumber)
+            {
+                detail += $"  Original SN {historyEntry.OriginalCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (historyEntry.HasPacketStateByte)
+            {
+                string offsetLabel = historyEntry.PacketStateByteOffset >= 0
+                    ? $" @0x{historyEntry.PacketStateByteOffset:X}"
+                    : string.Empty;
+                detail += $"  history-state 0x{(historyEntry.PacketStateByte & 0xFF):X2}{offsetLabel}";
+            }
+
+            return detail;
+        }
+
+        public bool IsOneADayLayerVisible(string layerKey)
+        {
+            if (!string.Equals(_windowName, MapSimulatorWindowNames.CashShopOneADay, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(layerKey))
+            {
+                return true;
+            }
+
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                // Prevent a transient full-plate stack before packet-backed owner state is seeded.
+                return string.Equals(layerKey, "NoItem", StringComparison.Ordinal);
+            }
+
+            if (string.Equals(layerKey, "Base01", StringComparison.Ordinal))
+            {
+                return state.HasKeyFocusCanvas && !_oneADayShortcutHelpActive;
+            }
+
+            if (string.Equals(layerKey, "ItemBox", StringComparison.Ordinal))
+            {
+                return state.HasPlateCanvas && !_oneADayShortcutHelpActive && _oneADaySelectorIndex == 0;
+            }
+
+            if (string.Equals(layerKey, "ItemBoxBig", StringComparison.Ordinal))
+            {
+                return state.HasPlateBigCanvas && !_oneADayShortcutHelpActive && _oneADaySelectorIndex == 1;
+            }
+
+            string expectedLayer = ResolveOneADayPlateName(state);
+            return string.Equals(layerKey, expectedLayer, StringComparison.Ordinal);
+        }
+
+        private bool IsKeyboardOwnerWindow()
+        {
+            return _windowName == MapSimulatorWindowNames.CashShopLocker
+                || _windowName == MapSimulatorWindowNames.CashShopInventory
+                || _windowName == MapSimulatorWindowNames.ItcInventory
+                || _windowName == MapSimulatorWindowNames.CashShopList
+                || _windowName == MapSimulatorWindowNames.ItcList
+                || _windowName == MapSimulatorWindowNames.CashShopStatus
+                || _windowName == MapSimulatorWindowNames.ItcStatus
+                || _windowName == MapSimulatorWindowNames.CashShopOneADay
+                || _windowName == MapSimulatorWindowNames.CashShopItemSearch;
+        }
+
+        private string[] GetStatusButtonKeys()
+        {
+            return IsItcStatusOwnerWindow()
+                ? new[] { "BtCharge", "BtCheck", "BtExit" }
+                : new[] { "BtCharge", "BtCheck", "BtCoupon", "BtExit" };
+        }
+
+        private bool IsItcStatusOwnerWindow()
+        {
+            return string.Equals(_windowName, MapSimulatorWindowNames.ItcStatus, StringComparison.Ordinal);
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void ApplyStatusMessage(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message.Trim();
+            }
+        }
+
+        private string InvokeExternalAction(string actionKey)
+        {
+            return _externalButtonActions.TryGetValue(actionKey, out Func<string> externalAction)
+                ? externalAction?.Invoke()
+                : null;
+        }
+
+        private void DrawWrapped(SpriteBatch sprite, string text, float x, ref float y, float maxWidth, Color color)
+        {
+            foreach (string wrappedLine in WrapText(text, maxWidth))
+            {
+                sprite.DrawString(_font, wrappedLine, new Vector2(x, y), color);
+                y += _font.LineSpacing;
+            }
+        }
+
+        private static string TrimToLength(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            {
+                return value ?? string.Empty;
+            }
+
+            return value.Substring(0, Math.Max(0, maxLength - 3)) + "...";
+        }
+
+        private static Rectangle GetLockerScrollTrackBounds(Rectangle absoluteBounds, LockerOwnerState state)
+        {
+            int x = state?.ScrollBarX >= 0 ? absoluteBounds.X + state.ScrollBarX : absoluteBounds.Right - 28;
+            int y = state?.ScrollBarY >= 0 ? absoluteBounds.Y + state.ScrollBarY : absoluteBounds.Y + 54;
+            int height = state?.ScrollBarHeight > 0 ? state.ScrollBarHeight : 72;
+            return new Rectangle(x, y, 16, height);
+        }
+
+        private static Rectangle GetLockerScrollThumbBounds(Rectangle absoluteBounds, LockerOwnerState state, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
+            int count = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int maxScroll = Math.Max(0, count - 3);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(18, (trackBounds.Height * 3) / Math.Max(3, count));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
+        }
+
+        private static Rectangle GetInventoryScrollTrackBounds(Rectangle absoluteBounds, InventoryOwnerState state)
+        {
+            int x = state?.ScrollBarX >= 0 ? absoluteBounds.X + state.ScrollBarX : absoluteBounds.Right - 28;
+            int y = state?.ScrollBarY >= 0 ? absoluteBounds.Y + state.ScrollBarY : absoluteBounds.Y + 112;
+            int height = state?.ScrollBarHeight > 0 ? state.ScrollBarHeight : 72;
+            return new Rectangle(x, y, 16, height);
+        }
+
+        private static Rectangle GetInventoryScrollThumbBounds(Rectangle absoluteBounds, InventoryOwnerState state, string activeTabName, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
+            int count = state == null ? 0 : activeTabName switch
+            {
+                "Use" => state.UseCount,
+                "Setup" => state.SetupCount,
+                "Etc" => state.EtcCount,
+                _ => state.EquipCount
+            };
+            int maxScroll = Math.Max(0, count - 4);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(18, (trackBounds.Height * 4) / Math.Max(4, count));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
+        }
+
+        private static Rectangle GetListScrollTrackBounds(Rectangle absoluteBounds)
+        {
+            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 54, 16, 140);
+        }
+
+        private static Rectangle GetListScrollThumbBounds(Rectangle absoluteBounds, ListOwnerState state, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetListScrollTrackBounds(absoluteBounds);
+            int totalCount = Math.Max(0, state?.TotalCount ?? 0);
+            int maxScroll = Math.Max(0, totalCount - 5);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(20, (trackBounds.Height * 5) / Math.Max(5, totalCount));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
+        }
+
+        private IEnumerable<string> WrapText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string currentLine = string.Empty;
+            foreach (string word in words)
+            {
+                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                {
+                    yield return currentLine;
+                    currentLine = word;
+                }
+                else
+                {
+                    currentLine = candidate;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(currentLine))
+            {
+                yield return currentLine;
+            }
+        }
+    }
+}

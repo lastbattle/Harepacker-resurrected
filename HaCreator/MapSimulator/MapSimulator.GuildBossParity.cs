@@ -1,0 +1,221 @@
+using HaCreator.MapSimulator.Managers;
+using System;
+using System.Net;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private bool _guildBossOfficialSessionBridgeEnabled;
+        private bool _guildBossOfficialSessionBridgeUseDiscovery;
+        private int _guildBossOfficialSessionBridgeConfiguredListenPort = GuildBossOfficialSessionBridgeManager.DefaultListenPort;
+        private string _guildBossOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+        private int _guildBossOfficialSessionBridgeConfiguredRemotePort;
+        private string _guildBossOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _guildBossOfficialSessionBridgeConfiguredLocalPort;
+        private const int GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt;
+        private int _nextGuildBossPassiveSessionVerifyAt;
+
+        internal static bool HasGuildBossOfficialSessionBridgeOwnership(
+            bool isRunning,
+            bool hasAttachedClient,
+            bool hasPassiveEstablishedSocketPair)
+        {
+            return isRunning || hasAttachedClient || hasPassiveEstablishedSocketPair;
+        }
+
+        internal static bool ShouldAllowLocalGuildBossPulleyPreview(
+            bool officialSessionBridgeHoldsOwnership,
+            bool transportHasConnectedClients)
+        {
+            return !officialSessionBridgeHoldsOwnership && !transportHasConnectedClients;
+        }
+
+        internal static bool ShouldFallbackGuildBossPulleyTransport(
+            bool officialSessionBridgeHoldsOwnership)
+        {
+            return !officialSessionBridgeHoldsOwnership;
+        }
+
+        internal static bool ShouldKeepRunningGuildBossBridge(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int configuredListenPort,
+            string configuredRemoteHost,
+            int configuredRemotePort)
+        {
+            bool autoSelectListenPort = configuredListenPort <= 0;
+            int expectedListenPort = autoSelectListenPort
+                ? GuildBossOfficialSessionBridgeManager.DefaultListenPort
+                : configuredListenPort;
+            return GuildBossOfficialSessionBridgeManager.MatchesRequestedTargetConfiguration(
+                currentListenPort,
+                currentRemoteHost,
+                currentRemotePort,
+                expectedListenPort,
+                configuredRemoteHost,
+                configuredRemotePort,
+                ignoreListenPort: autoSelectListenPort);
+        }
+
+        private bool HoldsGuildBossOfficialSessionBridgeOwnership()
+        {
+            if (_guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair
+                && !_guildBossOfficialSessionBridge.HasConnectedSession
+                && !_guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSessionIfNeeded(out _))
+            {
+                return HasGuildBossOfficialSessionBridgeOwnership(
+                    _guildBossOfficialSessionBridge.IsRunning,
+                    _guildBossOfficialSessionBridge.HasAttachedClient,
+                    hasPassiveEstablishedSocketPair: false);
+            }
+
+            return HasGuildBossOfficialSessionBridgeOwnership(
+                _guildBossOfficialSessionBridge.IsRunning,
+                _guildBossOfficialSessionBridge.HasAttachedClient,
+                _guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair);
+        }
+
+        private string DescribeGuildBossTransportRoutingStatus()
+        {
+            string modeText = _guildBossOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Guild boss transport routing {modeText}, {fallbackText}.";
+        }
+
+        private string DescribeGuildBossOfficialSessionBridgeStatus()
+        {
+            string enabledText = _guildBossOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _guildBossOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _guildBossOfficialSessionBridgeUseDiscovery
+                ? _guildBossOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_guildBossOfficialSessionBridgeConfiguredRemotePort} with local port {_guildBossOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_guildBossOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_guildBossOfficialSessionBridgeConfiguredRemoteHost}:{_guildBossOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_guildBossOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_guildBossOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _guildBossOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_guildBossOfficialSessionBridge.ListenPort}"
+                : _guildBossOfficialSessionBridgeConfiguredListenPort == 0
+                    ? "configured for 127.0.0.1:auto"
+                    : $"configured for 127.0.0.1:{_guildBossOfficialSessionBridgeConfiguredListenPort}";
+            return $"Guild boss session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_guildBossOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private void EnsureGuildBossOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_guildBossOfficialSessionBridgeEnabled)
+            {
+                if (_guildBossOfficialSessionBridge.IsRunning)
+                {
+                    _guildBossOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_guildBossOfficialSessionBridgeConfiguredListenPort < 0
+                || _guildBossOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_guildBossOfficialSessionBridge.IsRunning)
+                {
+                    _guildBossOfficialSessionBridge.Stop();
+                }
+
+                _guildBossOfficialSessionBridgeEnabled = false;
+                _guildBossOfficialSessionBridgeConfiguredListenPort = GuildBossOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_guildBossOfficialSessionBridgeUseDiscovery)
+            {
+                if (_guildBossOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _guildBossOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_guildBossOfficialSessionBridge.IsRunning)
+                    {
+                        _guildBossOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _guildBossOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _guildBossOfficialSessionBridgeConfiguredListenPort,
+                    _guildBossOfficialSessionBridgeConfiguredRemotePort,
+                    _guildBossOfficialSessionBridgeConfiguredProcessSelector,
+                    _guildBossOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_guildBossOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _guildBossOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_guildBossOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_guildBossOfficialSessionBridge.IsRunning)
+                {
+                    _guildBossOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_guildBossOfficialSessionBridge.IsRunning
+                && ShouldKeepRunningGuildBossBridge(
+                    _guildBossOfficialSessionBridge.ListenPort,
+                    _guildBossOfficialSessionBridge.RemoteHost,
+                    _guildBossOfficialSessionBridge.RemotePort,
+                    _guildBossOfficialSessionBridgeConfiguredListenPort,
+                    _guildBossOfficialSessionBridgeConfiguredRemoteHost,
+                    _guildBossOfficialSessionBridgeConfiguredRemotePort))
+            {
+                return;
+            }
+
+            if (_guildBossOfficialSessionBridge.IsRunning)
+            {
+                _guildBossOfficialSessionBridge.Stop();
+            }
+
+            _guildBossOfficialSessionBridge.Start(
+                _guildBossOfficialSessionBridgeConfiguredListenPort,
+                _guildBossOfficialSessionBridgeConfiguredRemoteHost,
+                _guildBossOfficialSessionBridgeConfiguredRemotePort);
+        }
+
+        private void RefreshGuildBossOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (_guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair
+                && !_guildBossOfficialSessionBridge.HasConnectedSession
+                && currentTickCount >= _nextGuildBossPassiveSessionVerifyAt)
+            {
+                _nextGuildBossPassiveSessionVerifyAt =
+                    currentTickCount + GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+                _guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSession(out _);
+            }
+
+            if (!_guildBossOfficialSessionBridgeEnabled
+                || !_guildBossOfficialSessionBridgeUseDiscovery
+                || _guildBossOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _guildBossOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || _guildBossOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _guildBossOfficialSessionBridge.TryRefreshFromDiscovery(
+                _guildBossOfficialSessionBridgeConfiguredListenPort,
+                _guildBossOfficialSessionBridgeConfiguredRemotePort,
+                _guildBossOfficialSessionBridgeConfiguredProcessSelector,
+                _guildBossOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+    }
+}

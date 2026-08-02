@@ -49,7 +49,7 @@
         <avalonEdit:TextEditor x:Name="textEditor"
                                Grid.Row="1"
                                SyntaxHighlighting="{Binding HighlightingDefinition}"
-                               FontFamily="Consolas" FontSize="12pt" 
+                               FontFamily="Malgun Gothic, Segoe UI" FontSize="12pt" 
             WordWrap="True" ShowLineNumbers="True" 
                                TextChanged="textEditor_TextChanged"
             />

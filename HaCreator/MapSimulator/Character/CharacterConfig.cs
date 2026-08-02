@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Managers;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -37,6 +38,10 @@ namespace HaCreator.MapSimulator.Character
         public int Defense { get; set; } = 5;
         public float Speed { get; set; } = 100;
         public float JumpPower { get; set; } = 100;
+        public int Job { get; set; }
+        public string JobName { get; set; } = "Beginner";
+        public string GuildName { get; set; } = string.Empty;
+        public LoginAvatarLook AvatarLook { get; set; }
 
         // Skill hotkey configuration
         // Key: slot index (0-27), Value: skill ID
@@ -44,6 +49,7 @@ namespace HaCreator.MapSimulator.Character
         // Slots 8-19: Function key hotkeys (F1-F12)
         // Slots 20-27: Ctrl+Number hotkeys (Ctrl+1-8)
         public Dictionary<int, int> SkillHotkeys { get; set; } = new();
+        public Dictionary<int, Skills.ItemHotkeyBinding> ItemHotkeys { get; set; } = new();
 
         // Learned skill levels
         // Key: skill ID, Value: skill level
@@ -70,7 +76,11 @@ namespace HaCreator.MapSimulator.Character
                 Attack = build.Attack,
                 Defense = build.Defense,
                 Speed = build.Speed,
-                JumpPower = build.JumpPower
+                JumpPower = build.JumpPower,
+                Job = build.Job,
+                JobName = build.JobName,
+                GuildName = build.GuildName,
+                AvatarLook = LoginAvatarLookCodec.CreateLook(build)
             };
 
             // Save equipment IDs
@@ -85,31 +95,73 @@ namespace HaCreator.MapSimulator.Character
             return preset;
         }
 
+        public static CharacterPreset FromAvatarLook(
+            LoginAvatarLook avatarLook,
+            CharacterLoader.SimulatorDefaultAvatarSelection selection)
+        {
+            if (avatarLook == null)
+            {
+                throw new ArgumentNullException(nameof(avatarLook));
+            }
+
+            if (selection == null)
+            {
+                throw new ArgumentNullException(nameof(selection));
+            }
+
+            var preset = new CharacterPreset
+            {
+                Name = selection.Name ?? "Unnamed",
+                Created = DateTime.Now,
+                Modified = DateTime.Now,
+                Gender = avatarLook.Gender,
+                Skin = avatarLook.Skin,
+                FaceId = avatarLook.FaceId,
+                HairId = avatarLook.HairId,
+                Level = selection.Level,
+                MaxHP = 10000,
+                MaxMP = 10000,
+                Attack = 10,
+                Defense = 5,
+                Speed = 100,
+                JumpPower = 100,
+                Job = selection.JobId,
+                JobName = selection.JobName,
+                AvatarLook = LoginAvatarLookCodec.CloneLook(avatarLook)
+            };
+
+            foreach (KeyValuePair<byte, int> entry in avatarLook.VisibleEquipmentByBodyPart)
+            {
+                if (LoginAvatarLookCodec.TryGetEquipSlot(entry.Key, out EquipSlot slot))
+                {
+                    preset.Equipment[slot.ToString()] = entry.Value;
+                }
+            }
+
+            return preset;
+        }
+
         /// <summary>
         /// Apply preset to build using loader
         /// </summary>
         public CharacterBuild ToBuild(CharacterLoader loader)
         {
-            var build = new CharacterBuild
+            if (loader == null)
             {
-                Id = Id,
-                Name = Name,
-                Gender = Gender,
-                Skin = Skin,
-                Body = loader.LoadBody(Skin),
-                Head = loader.LoadHead(Skin),
-                Face = loader.LoadFace(FaceId),
-                Hair = loader.LoadHair(HairId),
-                Level = Level,
-                MaxHP = MaxHP,
-                MaxMP = MaxMP,
-                HP = MaxHP,
-                MP = MaxMP,
-                Attack = Attack,
-                Defense = Defense,
-                Speed = Speed,
-                JumpPower = JumpPower
-            };
+                throw new ArgumentNullException(nameof(loader));
+            }
+
+            var build = CreateBuildTemplate();
+            if (AvatarLook != null)
+            {
+                return loader.LoadFromAvatarLook(LoginAvatarLookCodec.CloneLook(AvatarLook), build);
+            }
+
+            // Legacy fallback for older presets that do not carry a synthesized AvatarLook owner.
+            build.Body = loader.LoadBody(Skin);
+            build.Head = loader.LoadHead(Skin);
+            build.Face = loader.LoadFace(FaceId);
+            build.Hair = loader.LoadHair(HairId);
 
             // Load equipment
             foreach (var kv in Equipment)
@@ -127,6 +179,29 @@ namespace HaCreator.MapSimulator.Character
             return build;
         }
 
+        private CharacterBuild CreateBuildTemplate()
+        {
+            return new CharacterBuild
+            {
+                Id = Id,
+                Name = Name,
+                Gender = Gender,
+                Skin = Skin,
+                Level = Level,
+                MaxHP = MaxHP,
+                MaxMP = MaxMP,
+                HP = MaxHP,
+                MP = MaxMP,
+                Attack = Attack,
+                Defense = Defense,
+                Speed = Speed,
+                JumpPower = JumpPower,
+                Job = Job,
+                JobName = string.IsNullOrWhiteSpace(JobName) ? "Beginner" : JobName,
+                GuildName = GuildName ?? string.Empty
+            };
+        }
+
         /// <summary>
         /// Copy skill configuration from a SkillManager
         /// </summary>
@@ -136,15 +211,16 @@ namespace HaCreator.MapSimulator.Character
 
             // Copy hotkey assignments
             SkillHotkeys = skillManager.GetAllHotkeys();
+            ItemHotkeys = skillManager.GetAllItemHotkeys();
 
             // Copy learned skill levels
             SkillLevels.Clear();
-            foreach (var skill in skillManager.GetLearnedSkills())
+            foreach (int skillId in skillManager.GetLearnedSkillRecordIds())
             {
-                int level = skillManager.GetSkillLevel(skill.SkillId);
+                int level = skillManager.GetSkillLevel(skillId);
                 if (level > 0)
                 {
-                    SkillLevels[skill.SkillId] = level;
+                    SkillLevels[skillId] = level;
                 }
             }
         }
@@ -156,20 +232,25 @@ namespace HaCreator.MapSimulator.Character
         {
             if (skillManager == null) return;
 
-            // Load hotkey assignments
-            skillManager.LoadHotkeys(SkillHotkeys);
-
             // Load skill levels
             foreach (var kv in SkillLevels)
             {
                 skillManager.SetSkillLevel(kv.Key, kv.Value);
             }
+
+            // Restore hotkeys after levels so preset load uses the same validation
+            // path as live quick-slot assignment.
+            skillManager.LoadHotkeys(SkillHotkeys);
+            skillManager.LoadItemHotkeys(ItemHotkeys);
         }
 
         /// <summary>
         /// Check if this preset has any skill configuration
         /// </summary>
-        public bool HasSkillConfiguration => (SkillHotkeys?.Count ?? 0) > 0 || (SkillLevels?.Count ?? 0) > 0;
+        public bool HasSkillConfiguration =>
+            (SkillHotkeys?.Count ?? 0) > 0 ||
+            (ItemHotkeys?.Count ?? 0) > 0 ||
+            (SkillLevels?.Count ?? 0) > 0;
     }
 
     /// <summary>
@@ -391,25 +472,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterPreset CreateDefaultMalePreset()
         {
-            var preset = new CharacterPreset
-            {
-                Id = _nextId++,
-                Name = "Default Male",
-                Created = DateTime.Now,
-                Modified = DateTime.Now,
-                Gender = CharacterGender.Male,
-                Skin = SkinColor.Light,
-                FaceId = 20000,
-                HairId = 30000,
-                Level = 1,
-                MaxHP = 50,
-                MaxMP = 50,
-                Attack = 10,
-                Defense = 5,
-                Speed = 100,
-                JumpPower = 100
-            };
-
+            var preset = CreateDefaultSimulatorPreset(CharacterGender.Male);
             _presets[preset.Id] = preset;
             return preset;
         }
@@ -419,25 +482,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterPreset CreateDefaultFemalePreset()
         {
-            var preset = new CharacterPreset
-            {
-                Id = _nextId++,
-                Name = "Default Female",
-                Created = DateTime.Now,
-                Modified = DateTime.Now,
-                Gender = CharacterGender.Female,
-                Skin = SkinColor.Light,
-                FaceId = 21000,
-                HairId = 31000,
-                Level = 1,
-                MaxHP = 50,
-                MaxMP = 50,
-                Attack = 10,
-                Defense = 5,
-                Speed = 100,
-                JumpPower = 100
-            };
-
+            var preset = CreateDefaultSimulatorPreset(CharacterGender.Female);
             _presets[preset.Id] = preset;
             return preset;
         }
@@ -470,6 +515,22 @@ namespace HaCreator.MapSimulator.Character
             };
 
             _presets[preset.Id] = preset;
+            return preset;
+        }
+
+        private CharacterPreset CreateDefaultSimulatorPreset(CharacterGender gender)
+        {
+            CharacterLoader.SimulatorDefaultAvatarSelection selection = CharacterLoader.GetDefaultAvatarSelection(gender);
+            LoginAvatarLook avatarLook = LoginAvatarLookCodec.CreateLook(
+                selection.Gender,
+                selection.Skin,
+                selection.FaceId,
+                selection.HairId,
+                selection.EquipmentItemIdsBySlot);
+            var preset = CharacterPreset.FromAvatarLook(avatarLook, selection);
+            preset.Id = _nextId++;
+            preset.Created = DateTime.Now;
+            preset.Modified = DateTime.Now;
             return preset;
         }
 

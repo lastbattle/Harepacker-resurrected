@@ -1,4 +1,6 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
@@ -7,7 +9,6 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
-using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -201,6 +202,8 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(btnDetailClose);
                 btnDetailClose.ButtonClickReleased += OnCloseDetail;
             }
+
+            RefreshDetailButtonVisibility();
         }
 
         /// <summary>
@@ -219,6 +222,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _statsFont = font;
+            base.SetFont(font);
         }
 
         public void SetDetailBackground(IDXObject detailBg)
@@ -273,23 +277,27 @@ namespace HaCreator.MapSimulator.UI
             DrawStatRow(sprite, windowX, windowY, NAME_Y, _characterBuild.Name ?? "Unknown");
             DrawStatRow(sprite, windowX, windowY, JOB_Y, _characterBuild.JobName ?? "Beginner");
             DrawStatRow(sprite, windowX, windowY, LEVEL_Y, _characterBuild.Level.ToString());
-            DrawStatRow(sprite, windowX, windowY, GUILD_Y, "-");
+            DrawStatRow(sprite, windowX, windowY, GUILD_Y, _characterBuild.GuildDisplayText);
 
             // Draw HP/MP
-            DrawStatRow(sprite, windowX, windowY, HP_Y, $"{_characterBuild.HP}/{_characterBuild.MaxHP}");
-            DrawStatRow(sprite, windowX, windowY, MP_Y, $"{_characterBuild.MP}/{_characterBuild.MaxMP}");
+            DrawStatRow(sprite, windowX, windowY, HP_Y, $"{_characterBuild.TotalHP}/{_characterBuild.TotalMaxHP}");
+            DrawStatRow(sprite, windowX, windowY, MP_Y, $"{_characterBuild.TotalMP}/{_characterBuild.TotalMaxMP}");
 
             // Draw AP
             Color apColor = _characterBuild.AP > 0 ? APAvailableColor : TextColorDark;
-            sprite.DrawString(_statsFont, _characterBuild.AP.ToString(),
+            ClientTextDrawing.Draw(
+                sprite,
+                _characterBuild.AP.ToString(),
                 new Vector2(windowX + VALUE_X + LEFT_BORDER_X + 10, windowY + AP_Y),
-                apColor, 0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                apColor,
+                TEXT_SCALE,
+                _statsFont);
 
             // Draw primary stats
-            DrawStatRow(sprite, windowX, windowY, STR_Y, _characterBuild.STR.ToString());
-            DrawStatRow(sprite, windowX, windowY, DEX_Y, _characterBuild.DEX.ToString());
-            DrawStatRow(sprite, windowX, windowY, INT_Y, _characterBuild.INT.ToString());
-            DrawStatRow(sprite, windowX, windowY, LUK_Y, _characterBuild.LUK.ToString());
+            DrawStatRow(sprite, windowX, windowY, STR_Y, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalSTR, _characterBuild.STR));
+            DrawStatRow(sprite, windowX, windowY, DEX_Y, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalDEX, _characterBuild.DEX));
+            DrawStatRow(sprite, windowX, windowY, INT_Y, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalINT, _characterBuild.INT));
+            DrawStatRow(sprite, windowX, windowY, LUK_Y, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalLUK, _characterBuild.LUK));
 
             // Draw detail panel if open
             if (_isDetailMode && _detailBackground != null)
@@ -314,10 +322,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawStatRow(SpriteBatch sprite, int windowX, int windowY, int y, string value, Color? color = null)
         {
-            sprite.DrawString(_statsFont, value,
+            ClientTextDrawing.Draw(
+                sprite,
+                value,
                 new Vector2(windowX + VALUE_X + LEFT_BORDER_X, windowY + y),
                 color ?? TextColorDark,
-                0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                TEXT_SCALE,
+                _statsFont);
         }
 
         private void DrawExtendedStats(SpriteBatch sprite, int panelX, int panelY)
@@ -325,94 +336,71 @@ namespace HaCreator.MapSimulator.UI
             int startY = 56;  // Down by 2 rows (2 * 18 = 36) from original 20
             int lineHeight = 18;
 
-            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.Attack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.Defense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.MagicAttack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.MagicDefense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.Accuracy.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.Avoidability.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, "0");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, "0%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.Speed:F0}%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.JumpPower:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.TotalAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.TotalDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.TotalMagicAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.TotalMagicDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.TotalAccuracy.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.TotalAvoidability.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.TotalHands.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.TotalCriticalRate}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.TotalSpeed:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.TotalJumpPower:F0}%");
         }
 
         private void DrawDetailStatRow(SpriteBatch sprite, int panelX, int panelY, int y, string value)
         {
-            sprite.DrawString(_statsFont, value,
+            ClientTextDrawing.Draw(
+                sprite,
+                value,
                 new Vector2(panelX + 75, panelY + y),
                 TextColorDark,
-                0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                TEXT_SCALE,
+                _statsFont);
         }
         #endregion
 
         #region Stat Modification
         public void IncreaseHP()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.MaxHP += 20;  // Big Bang: HP increase per AP
-                _characterBuild.HP += 20;
-                _characterBuild.AP--;
-            }
+            _characterBuild?.IncreaseMaxHp();
         }
 
         public void IncreaseMP()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.MaxMP += 20;  // Big Bang: MP increase per AP
-                _characterBuild.MP += 20;
-                _characterBuild.AP--;
-            }
+            _characterBuild?.IncreaseMaxMp();
         }
 
-        public void IncreaseSTR()
+        public bool IncreaseSTR()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.STR++;
-                _characterBuild.AP--;
-            }
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Strength) == true;
         }
 
-        public void IncreaseDEX()
+        public bool IncreaseDEX()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.DEX++;
-                _characterBuild.AP--;
-            }
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Dexterity) == true;
         }
 
-        public void IncreaseINT()
+        public bool IncreaseINT()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.INT++;
-                _characterBuild.AP--;
-            }
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Intelligence) == true;
         }
 
-        public void IncreaseLUK()
+        public bool IncreaseLUK()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.LUK++;
-                _characterBuild.AP--;
-            }
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Luck) == true;
         }
 
         public void OpenDetailMode()
         {
             _isDetailMode = true;
-            // TODO: Toggle button visibility when UIObject supports it
+            RefreshDetailButtonVisibility();
         }
 
         public void CloseDetailMode()
         {
             _isDetailMode = false;
-            // TODO: Toggle button visibility when UIObject supports it
+            RefreshDetailButtonVisibility();
         }
 
         public void AddAbilityPoints(int amount)
@@ -451,67 +439,15 @@ namespace HaCreator.MapSimulator.UI
         #region Auto-Assign
         public void AutoAssignAP()
         {
-            if (_characterBuild == null || _characterBuild.AP <= 0)
-                return;
-
-            int jobId = _characterBuild.Job;
-            int jobClass = jobId / 100;
-
-            while (_characterBuild.AP > 0)
-            {
-                switch (jobClass)
-                {
-                    case 1: // Warrior
-                        if (_characterBuild.STR % 5 == 0 && _characterBuild.DEX < _characterBuild.STR / 2)
-                            IncreaseDEX();
-                        else
-                            IncreaseSTR();
-                        break;
-
-                    case 2: // Magician
-                        if (_characterBuild.INT % 5 == 0 && _characterBuild.LUK < _characterBuild.INT / 2)
-                            IncreaseLUK();
-                        else
-                            IncreaseINT();
-                        break;
-
-                    case 3: // Archer
-                        if (_characterBuild.DEX % 5 == 0 && _characterBuild.STR < _characterBuild.DEX / 2)
-                            IncreaseSTR();
-                        else
-                            IncreaseDEX();
-                        break;
-
-                    case 4: // Thief
-                        if (_characterBuild.LUK % 5 == 0 && _characterBuild.DEX < _characterBuild.LUK / 2)
-                            IncreaseDEX();
-                        else
-                            IncreaseLUK();
-                        break;
-
-                    case 5: // Pirate
-                        if (_characterBuild.STR <= _characterBuild.DEX)
-                            IncreaseSTR();
-                        else
-                            IncreaseDEX();
-                        break;
-
-                    default:
-                        int minStat = Math.Min(Math.Min(_characterBuild.STR, _characterBuild.DEX),
-                                               Math.Min(_characterBuild.INT, _characterBuild.LUK));
-                        if (_characterBuild.STR == minStat)
-                            IncreaseSTR();
-                        else if (_characterBuild.DEX == minStat)
-                            IncreaseDEX();
-                        else if (_characterBuild.INT == minStat)
-                            IncreaseINT();
-                        else
-                            IncreaseLUK();
-                        break;
-                }
-            }
+            _characterBuild?.AutoAssignAbilityPoints();
         }
         #endregion
+
+        private void RefreshDetailButtonVisibility()
+        {
+            _btnDetailOpen?.SetVisible(!_isDetailMode);
+            _btnDetailClose?.SetVisible(_isDetailMode);
+        }
 
         #region Update
         public override void Update(GameTime gameTime)
@@ -519,12 +455,12 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             bool hasAP = _characterBuild != null && _characterBuild.AP > 0;
-            _btnIncHP?.SetEnabled(hasAP);
-            _btnIncMP?.SetEnabled(hasAP);
-            _btnIncSTR?.SetEnabled(hasAP);
-            _btnIncDEX?.SetEnabled(hasAP);
-            _btnIncINT?.SetEnabled(hasAP);
-            _btnIncLUK?.SetEnabled(hasAP);
+            _btnIncHP?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreaseMaxHp());
+            _btnIncMP?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreaseMaxMp());
+            _btnIncSTR?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.STR));
+            _btnIncDEX?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.DEX));
+            _btnIncINT?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.INT));
+            _btnIncLUK?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.LUK));
             _btnAutoAssign?.SetEnabled(hasAP);
         }
         #endregion

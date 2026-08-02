@@ -1,0 +1,1546 @@
+using HaSharedLibrary.Render;
+using HaSharedLibrary.Render.DX;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+namespace HaCreator.MapSimulator.UI
+{
+    public sealed class CashTradingRoomWindow : UIWindowBase, ISoftKeyboardHost
+    {
+        public sealed class PacketTradeSessionSnapshot
+        {
+            public string Signature { get; init; } = string.Empty;
+            public int CommoditySerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public int Price { get; init; }
+            public int Quantity { get; init; } = 1;
+            public bool CommodityOnSale { get; init; }
+            public string ListingTitle { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string ListingSignature { get; init; } = string.Empty;
+            public string PacketSummary { get; init; } = string.Empty;
+        }
+
+        public sealed class ButtonControlRuntimeState
+        {
+            public string ActionKey { get; init; } = string.Empty;
+            public int NativeButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Width { get; init; }
+            public int Height { get; init; }
+            public int PressedWidth { get; init; }
+            public int PressedHeight { get; init; }
+            public bool HasWzCanvas { get; init; } = true;
+            public bool HasOwnerFocus { get; init; }
+        }
+
+        public sealed class ChatEditRuntimeSnapshot
+        {
+            public int ControlId { get; init; }
+            public int FontStringPoolId { get; init; }
+            public int BackColor { get; init; }
+            public int FontColor { get; init; }
+            public Point Position { get; init; }
+            public System.Drawing.Size Size { get; init; }
+            public int MaxLength { get; init; }
+            public bool HasFocus { get; init; }
+            public bool SoftKeyboardActive { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class ChatLogRuntimeSnapshot
+        {
+            public Point Position { get; init; }
+            public System.Drawing.Size Size { get; init; }
+            public int EnableChatParam { get; init; }
+            public int MaxVisibleLines { get; init; }
+            public int HistoryCount { get; init; }
+            public int ScrollOffset { get; init; }
+        }
+
+        public sealed class ScrollBarRuntimeSnapshot
+        {
+            public int ControlId { get; init; }
+            public int UpButtonId { get; init; }
+            public int DownButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Height { get; init; }
+            public int WheelRange { get; init; }
+            public int Offset { get; init; }
+            public int MaxOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int PageSize { get; init; }
+            public int TrackHeight { get; init; }
+            public int ThumbY { get; init; }
+            public int ThumbHeight { get; init; }
+            public bool IsDragging { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class FontRuntimeSnapshot
+        {
+            public int NumberImageStringPoolId { get; init; }
+            public bool HasSmallWhiteFont { get; init; }
+            public bool HasNoBlackFont { get; init; }
+            public bool HasNoBlueFont { get; init; }
+            public bool HasSmallGrayFont { get; init; }
+            public bool HasSmallRedFont { get; init; }
+            public bool HasRemainGrayFont { get; init; }
+            public bool HasNumberImage { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class TradeSessionRuntimeSnapshot
+        {
+            public int InitMoney { get; init; }
+            public int LocalWallet { get; init; }
+            public int RemoteWallet { get; init; }
+            public int LocalOffer { get; init; }
+            public int RemoteOffer { get; init; }
+            public string Stage { get; init; } = string.Empty;
+            public bool LocalLocked { get; init; }
+            public bool RemoteLocked { get; init; }
+            public bool LocalAccepted { get; init; }
+            public bool RemoteAccepted { get; init; }
+            public string RemoteProgressState { get; init; } = string.Empty;
+            public int Revision { get; init; }
+            public string PacketSignature { get; init; } = string.Empty;
+            public int PacketCommoditySerialNumber { get; init; }
+            public int PacketItemId { get; init; }
+            public int PacketPrice { get; init; }
+            public int PacketQuantity { get; init; }
+            public bool PacketCommodityOnSale { get; init; }
+            public string PacketListingTitle { get; init; } = string.Empty;
+            public string PacketSeller { get; init; } = string.Empty;
+            public string PacketListingSignature { get; init; } = string.Empty;
+            public string PacketSummary { get; init; } = string.Empty;
+        }
+
+        public sealed class TradingRoomRuntimeSnapshot
+        {
+            public ChatEditRuntimeSnapshot ChatEdit { get; init; }
+            public ChatLogRuntimeSnapshot ChatLog { get; init; }
+            public ScrollBarRuntimeSnapshot ScrollBar { get; init; }
+            public FontRuntimeSnapshot FontOwner { get; init; }
+            public TradeSessionRuntimeSnapshot TradeSession { get; init; }
+            public IReadOnlyList<ButtonControlRuntimeState> ButtonControls { get; init; } = Array.Empty<ButtonControlRuntimeState>();
+            public IReadOnlyList<string> VisibleChatEntries { get; init; } = Array.Empty<string>();
+            public string FocusTarget { get; init; } = string.Empty;
+            public string DraftText { get; init; } = string.Empty;
+            public string StatusMessage { get; init; } = string.Empty;
+        }
+
+        private enum TradeSessionStage
+        {
+            Draft,
+            Locked,
+            Accepted,
+            Completed
+        }
+
+        private enum RemoteTradeProgressState
+        {
+            Reviewing,
+            WaitingForLock,
+            WaitingForAcceptance,
+            Closing,
+            Idle
+        }
+
+        private enum TradeOwnerFocusTarget
+        {
+            ChatLog,
+            ChatEdit,
+            TradeButton,
+            ResetButton,
+            CoinButton,
+            ClaimButton,
+            EnterButton
+        }
+
+        private readonly struct LayerInfo
+        {
+            public LayerInfo(IDXObject layer, Point offset)
+            {
+                Layer = layer;
+                Offset = offset;
+            }
+
+            public IDXObject Layer { get; }
+            public Point Offset { get; }
+        }
+
+        private sealed class ChatEditRuntimeState
+        {
+            public int ControlId { get; init; } = 1006;
+            public int FontStringPoolId { get; init; } = 0x1A25;
+            public int BackColor { get; init; } = ChatEditBackColor;
+            public int FontColor { get; init; } = ChatEditFontColor;
+            public Point Position { get; init; } = new(ChatEditX, ChatEditY);
+            public System.Drawing.Size Size { get; init; } = new(ChatEditWidth, ChatEditHeight);
+            public int MaxLength { get; init; } = ChatMaxLength;
+            public bool HasFocus { get; set; }
+            public bool SoftKeyboardActive { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class ScrollBarRuntimeState
+        {
+            public int ControlId { get; init; } = 1000;
+            public int UpButtonId { get; init; } = 1;
+            public int DownButtonId { get; init; } = 8;
+            public Point Position { get; init; } = new(ChatScrollX, ChatScrollY);
+            public int Height { get; init; } = ChatScrollHeight;
+            public int WheelRange { get; init; } = ChatWheelRange;
+            public int Offset { get; set; }
+            public int MaxOffset { get; set; }
+            public bool IsDragging { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class FontRuntimeState
+        {
+            public int NumberImageStringPoolId { get; init; } = 0x50E;
+            public bool HasSmallWhiteFont { get; set; } = true;
+            public bool HasNoBlackFont { get; set; } = true;
+            public bool HasNoBlueFont { get; set; } = true;
+            public bool HasSmallGrayFont { get; set; } = true;
+            public bool HasSmallRedFont { get; set; } = true;
+            public bool HasRemainGrayFont { get; set; } = true;
+            public bool HasNumberImage { get; set; } = true;
+            public int Revision { get; set; }
+        }
+
+        private sealed class TradeSessionRuntimeState
+        {
+            public int InitMoney { get; set; }
+            public int LocalWallet { get; set; }
+            public int RemoteWallet { get; set; }
+            public int LocalOffer { get; set; }
+            public int RemoteOffer { get; set; }
+            public TradeSessionStage Stage { get; set; } = TradeSessionStage.Draft;
+            public int Revision { get; set; }
+            public string PacketSignature { get; set; } = string.Empty;
+            public int PacketCommoditySerialNumber { get; set; }
+            public int PacketItemId { get; set; }
+            public int PacketPrice { get; set; }
+            public int PacketQuantity { get; set; }
+            public bool PacketCommodityOnSale { get; set; }
+            public string PacketListingTitle { get; set; } = string.Empty;
+            public string PacketSeller { get; set; } = string.Empty;
+            public string PacketListingSignature { get; set; } = string.Empty;
+            public string PacketSummary { get; set; } = string.Empty;
+        }
+
+        private const int ChatEditX = 410;
+        private const int ChatEditY = 158;
+        private const int ChatEditWidth = 165;
+        private const int ChatEditHeight = 16;
+        private const int ChatEditBackColor = 0;
+        private const int ChatEditFontColor = -11184811;
+        private const int ChatLogX = 409;
+        private const int ChatLogY = 18;
+        private const int ChatLogWidth = 216;
+        private const int ChatLogHeight = 128;
+        private const int ChatLogEnableParam = 0;
+        private const int ChatScrollX = 630;
+        private const int ChatScrollY = 12;
+        private const int ChatScrollHeight = 135;
+        private const int ChatWheelRange = 223;
+        private const int OfferStep = 50000;
+        private const int DefaultRemoteWallet = 275000;
+        private const int MaxVisibleChatLines = 6;
+        private const int MaxChatHistory = 24;
+        private const int ChatMaxLength = 256;
+        private const int TradeButtonNativeId = 0x3EA;
+        private const int CoinButtonNativeId = 0x3EB;
+        private const int ResetButtonNativeId = 0x3EC;
+        private const int EnterButtonNativeId = 0x3ED;
+        private const int ClaimButtonNativeId = 2;
+        private static readonly TradeOwnerFocusTarget[] FocusCycleOrder =
+        {
+            TradeOwnerFocusTarget.ChatEdit,
+            TradeOwnerFocusTarget.ChatLog,
+            TradeOwnerFocusTarget.TradeButton,
+            TradeOwnerFocusTarget.ResetButton,
+            TradeOwnerFocusTarget.CoinButton,
+            TradeOwnerFocusTarget.ClaimButton,
+            TradeOwnerFocusTarget.EnterButton
+        };
+
+        private readonly List<LayerInfo> _layers = new();
+        private readonly Texture2D _solidPixel;
+        private readonly AntiMacroEditControl _chatEditControl;
+        private readonly ChatEditRuntimeState _editRuntime = new();
+        private readonly ScrollBarRuntimeState _scrollBarRuntime = new();
+        private readonly FontRuntimeState _fontRuntime = new();
+        private readonly TradeSessionRuntimeState _sessionRuntime = new();
+        private readonly List<string> _chatEntries = new()
+        {
+            "Rondo: Added ore stack to the trade window.",
+            "ExplorerGM: Checking the premium offer.",
+            "System: CCashTradingRoomDlg initialized its dedicated chat entry and scrollbar."
+        };
+        private readonly string[] _chatDrafts =
+        {
+            "Ready when you are.",
+            "Need another second to review the offer.",
+            "Lock after I move the coin stack.",
+            "Looks good. Let's finish the cash trade."
+        };
+
+        private SpriteFont _font;
+        private KeyboardState _previousKeyboardState;
+        private MouseState _previousMouseState;
+        private bool _draggingChatScrollThumb;
+        private int _chatScrollThumbGrabOffset;
+        private Func<int> _localWalletProvider;
+        private string _localTraderName = "ExplorerGM";
+        private string _remoteTraderName = "Rondo";
+        private int _localWalletSnapshot;
+        private int _remoteWallet = DefaultRemoteWallet;
+        private int _remoteInitialMoney = DefaultRemoteWallet;
+        private int _initialMoney;
+        private int _localOffer;
+        private int _remoteOffer = 75000;
+        private bool _localLocked;
+        private bool _remoteLocked;
+        private bool _localAccepted;
+        private bool _remoteAccepted;
+        private TradeSessionStage _sessionStage = TradeSessionStage.Draft;
+        private int _chatDraftIndex;
+        private int _chatScrollOffset;
+        private int _tradeRevision;
+        private int _remoteProgressTick;
+        private RemoteTradeProgressState _remoteProgressState = RemoteTradeProgressState.Reviewing;
+        private TradeOwnerFocusTarget _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+        private bool _softKeyboardActive;
+        private Func<PacketTradeSessionSnapshot> _packetSessionProvider;
+        private string _packetSessionSignature = string.Empty;
+        private string _statusMessage = "CCashTradingRoomDlg ready: chat entry, scrollbar, and money fonts are staged.";
+
+        public CashTradingRoomWindow(IDXObject frame, GraphicsDevice graphicsDevice)
+            : base(frame)
+        {
+            _solidPixel = new Texture2D(graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice)), 1, 1);
+            _solidPixel.SetData(new[] { Color.White });
+            _chatEditControl = new AntiMacroEditControl(_solidPixel, new Point(ChatEditX, ChatEditY), ChatEditWidth, ChatEditHeight, ChatMaxLength);
+        }
+
+        public CashTradingRoomWindow(IDXObject frame)
+            : this(frame, frame?.Texture?.GraphicsDevice)
+        {
+        }
+
+        public override string WindowName => MapSimulatorWindowNames.CashTradingRoom;
+        public override bool CapturesKeyboardInput => IsVisible;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _chatEditControl.HasFocus && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _chatEditControl.Text?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => ChatMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _chatEditControl.HasFocus && !string.IsNullOrWhiteSpace(_chatEditControl.Text);
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _chatEditControl.Text ?? string.Empty;
+
+        public override void Show()
+        {
+            bool wasVisible = IsVisible;
+            base.Show();
+            if (!wasVisible)
+            {
+                ResetOwnerSession();
+            }
+
+            _chatEditControl.ActivateByOwner();
+            _softKeyboardActive = false;
+            _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+            _previousKeyboardState = Keyboard.GetState();
+            _previousMouseState = Mouse.GetState();
+        }
+
+        public override void Hide()
+        {
+            base.Hide();
+            _softKeyboardActive = false;
+            _chatEditControl.SetFocus(false);
+        }
+
+        public void AddLayer(IDXObject layer, Point offset)
+        {
+            if (layer != null)
+            {
+                _layers.Add(new LayerInfo(layer, offset));
+            }
+        }
+
+        public override void SetFont(SpriteFont font)
+        {
+            _font = font;
+            _chatEditControl.SetFont(font);
+        }
+
+        public void SetWalletProvider(Func<int> localWalletProvider)
+        {
+            _localWalletProvider = localWalletProvider;
+            _initialMoney = Math.Max(0, _localWalletProvider?.Invoke() ?? _initialMoney);
+            _localWalletSnapshot = _initialMoney;
+        }
+
+        public void SetTraderNames(string localTraderName, string remoteTraderName)
+        {
+            if (!string.IsNullOrWhiteSpace(localTraderName))
+            {
+                _localTraderName = localTraderName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(remoteTraderName))
+            {
+                _remoteTraderName = remoteTraderName.Trim();
+            }
+        }
+
+        public void SetPacketSessionProvider(Func<PacketTradeSessionSnapshot> packetSessionProvider)
+        {
+            _packetSessionProvider = packetSessionProvider;
+            _packetSessionSignature = string.Empty;
+        }
+
+        public TradingRoomRuntimeSnapshot GetRuntimeSnapshotForTests()
+        {
+            SyncPacketOwnedTradeSession();
+            RefreshOwnerRuntimeState();
+            return BuildRuntimeSnapshot();
+        }
+
+        internal static IReadOnlyList<ButtonControlRuntimeState> BuildRecoveredButtonControlRuntimeStatesForTests()
+        {
+            return BuildButtonControlRuntimeStates(TradeOwnerFocusTarget.ChatEdit);
+        }
+
+        internal static TradingRoomRuntimeSnapshot BuildInitialRuntimeSnapshotForTests()
+        {
+            return new TradingRoomRuntimeSnapshot
+            {
+                ChatEdit = new ChatEditRuntimeSnapshot
+                {
+                    ControlId = 1006,
+                    FontStringPoolId = 0x1A25,
+                    BackColor = ChatEditBackColor,
+                    FontColor = ChatEditFontColor,
+                    Position = new Point(ChatEditX, ChatEditY),
+                    Size = new System.Drawing.Size(ChatEditWidth, ChatEditHeight),
+                    MaxLength = ChatMaxLength,
+                    HasFocus = true,
+                    SoftKeyboardActive = false,
+                    Revision = 0
+                },
+                ChatLog = new ChatLogRuntimeSnapshot
+                {
+                    Position = new Point(ChatLogX, ChatLogY),
+                    Size = new System.Drawing.Size(ChatLogWidth, ChatLogHeight),
+                    EnableChatParam = ChatLogEnableParam,
+                    MaxVisibleLines = MaxVisibleChatLines,
+                    HistoryCount = 3,
+                    ScrollOffset = 0
+                },
+                ScrollBar = new ScrollBarRuntimeSnapshot
+                {
+                    ControlId = 1000,
+                    UpButtonId = 1,
+                    DownButtonId = 8,
+                    Position = new Point(ChatScrollX, ChatScrollY),
+                    Height = ChatScrollHeight,
+                    WheelRange = ChatWheelRange,
+                    Offset = 0,
+                    MaxOffset = 0,
+                    VisibleCount = 3,
+                    TotalCount = 3,
+                    PageSize = MaxVisibleChatLines,
+                    TrackHeight = 0,
+                    ThumbY = 0,
+                    ThumbHeight = ChatScrollHeight,
+                    IsDragging = false,
+                    Revision = 0
+                },
+                FontOwner = new FontRuntimeSnapshot
+                {
+                    NumberImageStringPoolId = 0x50E,
+                    HasSmallWhiteFont = true,
+                    HasNoBlackFont = true,
+                    HasNoBlueFont = true,
+                    HasSmallGrayFont = true,
+                    HasSmallRedFont = true,
+                    HasRemainGrayFont = true,
+                    HasNumberImage = true,
+                    Revision = 0
+                },
+                TradeSession = new TradeSessionRuntimeSnapshot
+                {
+                    Stage = TradeSessionStage.Draft.ToString(),
+                    RemoteProgressState = RemoteTradeProgressState.Reviewing.ToString()
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(TradeOwnerFocusTarget.ChatEdit),
+                VisibleChatEntries = Array.Empty<string>(),
+                FocusTarget = TradeOwnerFocusTarget.ChatEdit.ToString(),
+                StatusMessage = "CCashTradingRoomDlg initial runtime snapshot."
+            };
+        }
+
+        internal static TradeSessionRuntimeSnapshot BuildPacketTradeSessionRuntimeSnapshotForTests(PacketTradeSessionSnapshot packetSnapshot)
+        {
+            return new TradeSessionRuntimeSnapshot
+            {
+                PacketSignature = packetSnapshot?.Signature ?? string.Empty,
+                PacketCommoditySerialNumber = packetSnapshot?.CommoditySerialNumber ?? 0,
+                PacketItemId = packetSnapshot?.ItemId ?? 0,
+                PacketPrice = packetSnapshot?.Price ?? 0,
+                PacketQuantity = packetSnapshot?.Quantity ?? 0,
+                PacketCommodityOnSale = packetSnapshot?.CommodityOnSale == true,
+                PacketListingTitle = packetSnapshot?.ListingTitle ?? string.Empty,
+                PacketSeller = packetSnapshot?.Seller ?? string.Empty,
+                PacketListingSignature = packetSnapshot?.ListingSignature ?? string.Empty,
+                PacketSummary = packetSnapshot?.PacketSummary ?? string.Empty
+            };
+        }
+
+        public void ResetOwnerSession()
+        {
+            _initialMoney = Math.Max(0, _localWalletProvider?.Invoke() ?? 0);
+            _localWalletSnapshot = _initialMoney;
+            _remoteInitialMoney = DefaultRemoteWallet;
+            _remoteWallet = _remoteInitialMoney;
+            _localOffer = 0;
+            _remoteOffer = 75000;
+            _localLocked = false;
+            _remoteLocked = false;
+            _localAccepted = false;
+            _remoteAccepted = false;
+            _sessionStage = TradeSessionStage.Draft;
+            _chatDraftIndex = 0;
+            _chatScrollOffset = 0;
+            _tradeRevision = 0;
+            _remoteProgressTick = Environment.TickCount + 1800;
+            _remoteProgressState = RemoteTradeProgressState.Reviewing;
+            _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+            _chatEntries.Clear();
+            _chatEntries.Add($"{_remoteTraderName}: Added ore stack to the trade window.");
+            _chatEntries.Add($"{_localTraderName}: Checking the premium offer.");
+            _chatEntries.Add("System: CCashTradingRoomDlg initialized its dedicated chat entry and scrollbar.");
+            _chatEditControl.Reset();
+            _statusMessage = $"CCashTradingRoomDlg ready with init money {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public void BindButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            if (action != null)
+            {
+                button.ButtonClickReleased += _ => action();
+            }
+        }
+
+        public void ToggleTradeLock()
+        {
+            if (_sessionStage == TradeSessionStage.Completed)
+            {
+                _statusMessage = "CCashTradingRoomDlg::OnTrade cannot reopen a trade that already completed.";
+                return;
+            }
+
+            _localLocked = !_localLocked;
+            _remoteLocked = false;
+            _localAccepted = false;
+            _remoteAccepted = false;
+            _sessionStage = _localLocked ? TradeSessionStage.Locked : TradeSessionStage.Draft;
+            AppendChatLine("System", _localLocked
+                ? "Offers locked. Waiting for final acceptance."
+                : "Trade lock removed. Offer editing is available again.");
+            _remoteProgressState = _localLocked ? RemoteTradeProgressState.WaitingForLock : RemoteTradeProgressState.Reviewing;
+            _remoteProgressTick = Environment.TickCount + (_localLocked ? 900 : 1800);
+            _statusMessage = _localLocked
+                ? "CCashTradingRoomDlg::OnTrade locked the local offer and is waiting for the remote owner to mirror the lock."
+                : "CCashTradingRoomDlg::OnTrade reopened the trade after clearing the lock.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public void ResetTrade()
+        {
+            _localWalletSnapshot = _initialMoney;
+            _remoteWallet = _remoteInitialMoney;
+            _localOffer = 0;
+            _remoteOffer = 75000;
+            _localLocked = false;
+            _remoteLocked = false;
+            _localAccepted = false;
+            _remoteAccepted = false;
+            _sessionStage = TradeSessionStage.Draft;
+            _tradeRevision = 0;
+            _chatDraftIndex = 0;
+            _chatScrollOffset = 0;
+            _remoteProgressTick = Environment.TickCount + 1800;
+            _remoteProgressState = RemoteTradeProgressState.Reviewing;
+            AppendChatLine("System", "Trade draft reset and both escrow panes cleared back to the init-money snapshot.");
+            _statusMessage = $"CCashTradingRoomDlg::OnTradeReset restored the session wallets to init money {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public void IncreaseTradeOffer()
+        {
+            if (_localLocked)
+            {
+                _statusMessage = "CCashTradingRoomDlg::OnMoney is unavailable while both trade panes are locked.";
+                return;
+            }
+
+            int localWallet = Math.Max(0, _localWalletSnapshot);
+            if (_localOffer + OfferStep > localWallet)
+            {
+                _statusMessage = $"CCashTradingRoomDlg::OnMoney cannot escrow {OfferStep.ToString("N0", CultureInfo.InvariantCulture)} more meso from the local wallet.";
+                return;
+            }
+
+            _localOffer += OfferStep;
+            _remoteOffer = Math.Min(_remoteWallet, _remoteOffer + (OfferStep / 2));
+            _tradeRevision++;
+            AppendChatLine(_remoteTraderName, _tradeRevision % 2 == 0 ? "Raised my side a bit to match." : "Offer updated on my side too.");
+            _statusMessage = $"CCashTradingRoomDlg::OnMoney raised the local offer to {_localOffer.ToString("N0", CultureInfo.InvariantCulture)} meso.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public void ToggleTradeAcceptance()
+        {
+            if (!_localLocked)
+            {
+                _statusMessage = "CCashTradingRoomDlg::OnClaim waits for the local trader to lock the trade first.";
+                return;
+            }
+
+            if (!_remoteLocked)
+            {
+                _statusMessage = "CCashTradingRoomDlg::OnClaim is waiting for the remote owner to finish locking the trade.";
+                return;
+            }
+
+            _localAccepted = !_localAccepted;
+            _remoteAccepted = false;
+            _sessionStage = _localAccepted ? TradeSessionStage.Accepted : TradeSessionStage.Locked;
+            AppendChatLine("System", _localAccepted
+                ? "Local final acceptance received. Waiting for the remote owner."
+                : "Final acceptance canceled. Trade remains locked.");
+            if (_localAccepted)
+            {
+                _remoteProgressState = RemoteTradeProgressState.WaitingForAcceptance;
+                _remoteProgressTick = Environment.TickCount + 1000;
+            }
+            else
+            {
+                _remoteProgressState = RemoteTradeProgressState.WaitingForLock;
+                _remoteProgressTick = Environment.TickCount + 1200;
+            }
+
+            _statusMessage = _localAccepted
+                ? "CCashTradingRoomDlg::OnClaim accepted the locked trade for the local preview trader and is waiting for the remote owner."
+                : "CCashTradingRoomDlg::OnClaim canceled the final trade acceptance.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public void SubmitChatEntry(bool allowDraftFallback = false)
+        {
+            string chatLine = _chatEditControl.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(chatLine))
+            {
+                if (!allowDraftFallback)
+                {
+                    _statusMessage = "CCashTradingRoomDlg::OnKey ignored Enter because the dedicated chat-entry control is empty.";
+                    RefreshOwnerRuntimeState();
+                    return;
+                }
+
+                chatLine = _chatDrafts[_chatDraftIndex];
+            }
+
+            AppendChatLine(_localTraderName, chatLine);
+            AppendChatLine(_remoteTraderName, ResolveRemoteChatReply(chatLine));
+            if (allowDraftFallback && string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            {
+                _chatDraftIndex = (_chatDraftIndex + 1) % _chatDrafts.Length;
+            }
+
+            _chatEditControl.Reset();
+            _chatScrollOffset = 0;
+            _remoteProgressTick = Environment.TickCount + 2200;
+            _statusMessage = "CCashTradingRoomDlg::OnEnter committed the current chat line through the dedicated edit-control seam.";
+            RefreshOwnerRuntimeState();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            _chatEditControl.HandleKeyboardInput(keyboardState, _previousKeyboardState);
+            SyncPacketOwnedTradeSession();
+            HandleOwnerKeyboard(keyboardState);
+            if (Pressed(keyboardState, _previousKeyboardState, Keys.Enter) && _chatEditControl.HasFocus)
+            {
+                SubmitChatEntry();
+            }
+
+            AdvanceRemoteOwnerRuntime();
+            RefreshOwnerRuntimeState();
+            _previousKeyboardState = keyboardState;
+            _previousMouseState = Mouse.GetState();
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+            Rectangle ownerBounds = GetWindowBounds();
+            int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            bool handledByOwner = false;
+            Rectangle chatScrollBounds = GetChatScrollBounds(ownerBounds);
+            Rectangle chatThumbBounds = GetChatThumbBounds(ownerBounds);
+            if (leftJustPressed)
+            {
+                Rectangle inputBounds = _chatEditControl.GetBounds(ownerBounds);
+                if (inputBounds.Contains(mouseState.Position))
+                {
+                    _chatEditControl.FocusAtMouseX(mouseState.X, ownerBounds);
+                    _softKeyboardActive = true;
+                    _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    handledByOwner = true;
+                }
+                else if (chatThumbBounds.Contains(mouseState.Position))
+                {
+                    _draggingChatScrollThumb = true;
+                    _chatScrollThumbGrabOffset = mouseState.Y - chatThumbBounds.Y;
+                    _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    _previousMouseState = mouseState;
+                    return true;
+                }
+                else if (chatScrollBounds.Contains(mouseState.Position))
+                {
+                    ApplyScrollTrackClick(mouseState.Y, ownerBounds);
+                    _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    _previousMouseState = mouseState;
+                    return true;
+                }
+                else if (!ContainsPoint(mouseState.X, mouseState.Y))
+                {
+                    _softKeyboardActive = false;
+                    _chatEditControl.SetFocus(false);
+                }
+            }
+
+            if (wheelDelta != 0
+                && (GetChatLogBounds(ownerBounds).Contains(mouseState.Position)
+                    || chatScrollBounds.Contains(mouseState.Position)))
+            {
+                ScrollChat(wheelDelta > 0 ? -1 : 1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                handledByOwner = true;
+            }
+
+            if (_draggingChatScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyScrollThumbDrag(mouseState.Y, ownerBounds);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                handledByOwner = true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingChatScrollThumb = false;
+            }
+
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousMouseState = mouseState;
+            return handledByOwner || handled;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            _chatEditControl.HandleCommittedText(text, CapturesKeyboardInput);
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            _chatEditControl.HandleCompositionText(text, CapturesKeyboardInput);
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            _chatEditControl.HandleCompositionState(state, CapturesKeyboardInput);
+        }
+
+        public override void ClearCompositionText()
+        {
+            _chatEditControl.ClearCompositionText();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _chatEditControl.HandleImeCandidateList(state, CapturesKeyboardInput);
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _chatEditControl.ClearImeCandidateList();
+        }
+
+        protected override void DrawContents(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            foreach (LayerInfo layer in _layers)
+            {
+                layer.Layer.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    Position.X + layer.Offset.X,
+                    Position.Y + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            Color labelColor = Color.White;
+            Color moneyColor = new(34, 39, 53);
+            Color textMoneyColor = new(50, 85, 162);
+            Color itemColor = new(115, 115, 115);
+            Color alertColor = new(170, 60, 60);
+            Color mutedColor = new(205, 205, 205);
+            Color accentColor = new(255, 223, 149);
+
+            sprite.DrawString(_font, "CCashTradingRoomDlg", new Vector2(Position.X + 18, Position.Y + 16), labelColor);
+            sprite.DrawString(_font, "Dedicated chat entry / scrollbar / cash-balance seam", new Vector2(Position.X + 18, Position.Y + 34), mutedColor);
+
+            float leftY = Position.Y + 70;
+            int contextWallet = Math.Max(0, _localWalletProvider?.Invoke() ?? _localWalletSnapshot);
+            sprite.DrawString(_font, $"Init money: {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY - 18), mutedColor);
+            sprite.DrawString(_font, $"{_localTraderName} session wallet", new Vector2(Position.X + 22, leftY), itemColor);
+            sprite.DrawString(_font, $"{_localWalletSnapshot.ToString("N0", CultureInfo.InvariantCulture)} meso", new Vector2(Position.X + 22, leftY + 16), moneyColor);
+            sprite.DrawString(_font, $"{_localTraderName} remain: {GetLocalRemainingMoney().ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 32), mutedColor);
+            sprite.DrawString(_font, $"{_localTraderName} offer: {_localOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 48), textMoneyColor);
+            sprite.DrawString(_font, $"{_remoteTraderName} wallet: {_remoteWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 64), moneyColor);
+            sprite.DrawString(_font, $"{_remoteTraderName} remain: {GetRemoteRemainingMoney().ToString("N0", CultureInfo.InvariantCulture)}  Offer: {_remoteOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 80), textMoneyColor);
+            sprite.DrawString(_font, $"Fonts: white / no-black / no-blue / gray / red / remain-gray / number-img  Context {contextWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 96), mutedColor);
+
+            float stateY = Position.Y + 188;
+            sprite.DrawString(_font, $"Stage: {_sessionStage}  Lock: {(_localLocked ? "Locked" : "Open")}  Accept: {(_localAccepted ? "Accepted" : "Pending")}", new Vector2(Position.X + 22, stateY), labelColor);
+            sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight} max {ChatMaxLength}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Owner focus {DescribeFocusedControl()}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
+            sprite.DrawString(_font, $"Draft fallback: {_chatDrafts[_chatDraftIndex]}", new Vector2(Position.X + 22, stateY + 36), accentColor);
+            sprite.DrawString(_font, $"Remote: {_remoteProgressState}  Buttons: Trade / Reset / Coin / Clame / Enter  Tab cycles owner focus; Space activates.", new Vector2(Position.X + 22, stateY + 54), mutedColor);
+            sprite.DrawString(_font, $"Runtime CCtrlEdit#{_editRuntime.ControlId} rev {_editRuntime.Revision}  CCtrlScrollBar#{_scrollBarRuntime.ControlId} rev {_scrollBarRuntime.Revision}  Font owner rev {_fontRuntime.Revision} (num-img 0x{_fontRuntime.NumberImageStringPoolId:X})", new Vector2(Position.X + 22, stateY + 72), mutedColor);
+            sprite.DrawString(_font, $"Session rev {_sessionRuntime.Revision}  Packet signature {TrimToLength(_sessionRuntime.PacketSignature, 28)}", new Vector2(Position.X + 22, stateY + 90), mutedColor);
+
+            Rectangle chatBox = GetChatLogBounds(GetWindowBounds());
+            sprite.DrawString(_font, "Chat log", new Vector2(chatBox.X, chatBox.Y - 18), labelColor);
+            int startIndex = Math.Max(0, _chatEntries.Count - MaxVisibleChatLines - _chatScrollOffset);
+            float chatY = chatBox.Y;
+            for (int i = startIndex; i < _chatEntries.Count - _chatScrollOffset && i < _chatEntries.Count; i++)
+            {
+                sprite.DrawString(_font, TrimToLength(_chatEntries[i], 36), new Vector2(chatBox.X, chatY), mutedColor);
+                chatY += 16f;
+                if (chatY > chatBox.Bottom - 14)
+                {
+                    break;
+                }
+            }
+
+            Rectangle ownerBounds = GetWindowBounds();
+            Rectangle scrollThumbBounds = GetChatThumbBounds(ownerBounds);
+            sprite.Draw(_solidPixel, GetChatScrollBounds(ownerBounds), new Color(43, 48, 66, 110));
+            sprite.Draw(_solidPixel, scrollThumbBounds, _draggingChatScrollThumb ? new Color(255, 223, 149, 220) : new Color(193, 199, 220, 180));
+            _chatEditControl.Draw(sprite, ownerBounds, drawChrome: true);
+            _chatEditControl.DrawImeCandidateWindow(sprite, ownerBounds);
+
+            float statusY = Position.Y + 322;
+            foreach (string wrappedLine in WrapText(_statusMessage, 610f))
+            {
+                sprite.DrawString(_font, wrappedLine, new Vector2(Position.X + 18, statusY), alertColor);
+                statusY += _font.LineSpacing;
+            }
+        }
+
+        private static bool Pressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void AppendChatLine(string speaker, string message)
+        {
+            _chatEntries.Add($"{speaker}: {message}");
+            if (_chatEntries.Count > MaxChatHistory)
+            {
+                _chatEntries.RemoveAt(0);
+            }
+
+            _chatScrollOffset = Math.Clamp(_chatScrollOffset, 0, GetMaxChatScrollOffset());
+        }
+
+        private void AdvanceRemoteOwnerRuntime()
+        {
+            int now = Environment.TickCount;
+            if (now < _remoteProgressTick)
+            {
+                return;
+            }
+
+            if (_remoteProgressState == RemoteTradeProgressState.Reviewing && _sessionStage == TradeSessionStage.Draft && !_localLocked)
+            {
+                AppendChatLine(_remoteTraderName, _tradeRevision % 2 == 0
+                    ? "Still comparing the price against the cash balance."
+                    : "The chat owner is still active on my side.");
+                _remoteProgressTick = now + 2800;
+                RefreshOwnerRuntimeState();
+                return;
+            }
+
+            if (_remoteProgressState == RemoteTradeProgressState.WaitingForLock && _localLocked && !_remoteLocked)
+            {
+                _remoteLocked = true;
+                AppendChatLine(_remoteTraderName, "Locked my side too. Claim when you're ready.");
+                _statusMessage = "CCashTradingRoomDlg remote owner finished locking the trade.";
+                _remoteProgressState = _localAccepted ? RemoteTradeProgressState.WaitingForAcceptance : RemoteTradeProgressState.Idle;
+                _remoteProgressTick = now + 2400;
+                RefreshOwnerRuntimeState();
+                return;
+            }
+
+            if (_remoteProgressState == RemoteTradeProgressState.WaitingForAcceptance && _localAccepted && !_remoteAccepted)
+            {
+                _remoteAccepted = true;
+                _sessionStage = TradeSessionStage.Completed;
+                _localWalletSnapshot = Math.Max(0, _initialMoney - _localOffer + _remoteOffer);
+                _remoteWallet = Math.Max(0, _remoteWallet - _remoteOffer + _localOffer);
+                AppendChatLine(_remoteTraderName, "Accepted. Finalizing the cash trade now.");
+                _statusMessage = "CCashTradingRoomDlg remote owner accepted the locked trade and closed the preview session.";
+                _remoteProgressState = RemoteTradeProgressState.Closing;
+                _remoteProgressTick = now + 1800;
+                RefreshOwnerRuntimeState();
+                return;
+            }
+
+            if (_remoteProgressState == RemoteTradeProgressState.Closing)
+            {
+                AppendChatLine(_remoteTraderName, "Trade complete. Closing the room after the last review.");
+                _remoteProgressState = RemoteTradeProgressState.Idle;
+                _remoteProgressTick = int.MaxValue;
+                RefreshOwnerRuntimeState();
+            }
+        }
+
+        private void ScrollChat(int delta)
+        {
+            _chatScrollOffset = Math.Clamp(_chatScrollOffset + delta, 0, GetMaxChatScrollOffset());
+            _scrollBarRuntime.Offset = _chatScrollOffset;
+        }
+
+        private int GetLocalRemainingMoney()
+        {
+            return Math.Max(0, _localWalletSnapshot - _localOffer);
+        }
+
+        private int GetRemoteRemainingMoney()
+        {
+            return Math.Max(0, _remoteWallet - _remoteOffer);
+        }
+
+        private int GetMaxChatScrollOffset()
+        {
+            return Math.Max(0, _chatEntries.Count - MaxVisibleChatLines);
+        }
+
+        private Rectangle GetChatLogBounds(Rectangle ownerBounds)
+        {
+            return new Rectangle(ownerBounds.X + ChatLogX, ownerBounds.Y + ChatLogY, ChatLogWidth, ChatLogHeight);
+        }
+
+        private Rectangle GetChatScrollBounds(Rectangle ownerBounds)
+        {
+            return new Rectangle(ownerBounds.X + ChatScrollX, ownerBounds.Y + ChatScrollY, 18, ChatScrollHeight);
+        }
+
+        private Rectangle GetChatThumbBounds(Rectangle ownerBounds)
+        {
+            Rectangle scrollBounds = GetChatScrollBounds(ownerBounds);
+            int maxOffset = GetMaxChatScrollOffset();
+            int thumbHeight = maxOffset == 0
+                ? scrollBounds.Height
+                : Math.Max(20, (scrollBounds.Height * MaxVisibleChatLines) / Math.Max(MaxVisibleChatLines, _chatEntries.Count));
+            int trackHeight = Math.Max(0, scrollBounds.Height - thumbHeight);
+            int thumbY = scrollBounds.Y + (maxOffset == 0 ? 0 : (trackHeight * _chatScrollOffset) / maxOffset);
+            return new Rectangle(scrollBounds.X + 3, thumbY, Math.Max(10, scrollBounds.Width - 6), thumbHeight);
+        }
+
+        private void ApplyScrollTrackClick(int mouseY, Rectangle ownerBounds)
+        {
+            Rectangle scrollBounds = GetChatScrollBounds(ownerBounds);
+            Rectangle thumbBounds = GetChatThumbBounds(ownerBounds);
+            if (mouseY < thumbBounds.Y)
+            {
+                ScrollChat(-MaxVisibleChatLines);
+            }
+            else if (mouseY > thumbBounds.Bottom)
+            {
+                ScrollChat(MaxVisibleChatLines);
+            }
+
+            _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar.";
+            RefreshOwnerRuntimeState();
+        }
+
+        private void ApplyScrollThumbDrag(int mouseY, Rectangle ownerBounds)
+        {
+            Rectangle scrollBounds = GetChatScrollBounds(ownerBounds);
+            Rectangle thumbBounds = GetChatThumbBounds(ownerBounds);
+            int maxOffset = GetMaxChatScrollOffset();
+            if (maxOffset == 0)
+            {
+                _chatScrollOffset = 0;
+                return;
+            }
+
+            int trackHeight = Math.Max(1, scrollBounds.Height - thumbBounds.Height);
+            int relativeY = Math.Clamp(mouseY - scrollBounds.Y - _chatScrollThumbGrabOffset, 0, trackHeight);
+            _chatScrollOffset = (int)Math.Round(relativeY / (double)trackHeight * maxOffset, MidpointRounding.AwayFromZero);
+            _statusMessage = "CCashTradingRoomDlg::OnScroll dragged the dedicated chat scrollbar thumb.";
+            RefreshOwnerRuntimeState();
+        }
+
+        private void SyncPacketOwnedTradeSession()
+        {
+            PacketTradeSessionSnapshot snapshot = _packetSessionProvider?.Invoke();
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            string signature = snapshot.Signature ?? string.Empty;
+            if (string.IsNullOrEmpty(signature) || string.Equals(_packetSessionSignature, signature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _packetSessionSignature = signature;
+            _sessionRuntime.PacketSignature = signature;
+            _sessionRuntime.PacketCommoditySerialNumber = snapshot.CommoditySerialNumber;
+            _sessionRuntime.PacketItemId = snapshot.ItemId;
+            _sessionRuntime.PacketPrice = snapshot.Price;
+            _sessionRuntime.PacketQuantity = snapshot.Quantity;
+            _sessionRuntime.PacketCommodityOnSale = snapshot.CommodityOnSale;
+            _sessionRuntime.PacketListingTitle = snapshot.ListingTitle ?? string.Empty;
+            _sessionRuntime.PacketSeller = snapshot.Seller ?? string.Empty;
+            _sessionRuntime.PacketListingSignature = snapshot.ListingSignature ?? string.Empty;
+            _sessionRuntime.PacketSummary = snapshot.PacketSummary ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(snapshot.Seller))
+            {
+                _remoteTraderName = snapshot.Seller.Trim();
+            }
+
+            if (!_localLocked)
+            {
+                int packetOffer = Math.Clamp(snapshot.Price, 0, Math.Max(0, _remoteWallet));
+                _remoteOffer = packetOffer;
+                _remoteProgressState = RemoteTradeProgressState.Reviewing;
+            }
+
+            string listing = string.IsNullOrWhiteSpace(snapshot.ListingTitle)
+                ? $"SN {snapshot.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : snapshot.ListingTitle.Trim();
+            string quantitySuffix = snapshot.Quantity > 1
+                ? $" x{snapshot.Quantity.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            string saleSuffix = snapshot.CommodityOnSale ? string.Empty : " off-sale";
+            string listingSignature = string.IsNullOrWhiteSpace(snapshot.ListingSignature)
+                ? string.Empty
+                : $" sig {TrimToLength(snapshot.ListingSignature.Trim(), 24)}";
+            AppendChatLine(
+                "System",
+                $"CCashTradingRoomDlg staged packet-owned listing {listing} (item {snapshot.ItemId.ToString(CultureInfo.InvariantCulture)}{quantitySuffix}, {snapshot.Price.ToString("N0", CultureInfo.InvariantCulture)} NX{saleSuffix}{listingSignature}).");
+            if (!string.IsNullOrWhiteSpace(snapshot.PacketSummary))
+            {
+                _statusMessage = snapshot.PacketSummary.Trim();
+            }
+
+            RefreshOwnerRuntimeState();
+        }
+
+        private void RefreshOwnerRuntimeState()
+        {
+            _editRuntime.HasFocus = _chatEditControl.HasFocus;
+            _editRuntime.SoftKeyboardActive = _softKeyboardActive;
+            _editRuntime.Revision = _tradeRevision + (_chatEditControl.HasFocus ? 1 : 0);
+            _scrollBarRuntime.Offset = _chatScrollOffset;
+            _scrollBarRuntime.MaxOffset = GetMaxChatScrollOffset();
+            _scrollBarRuntime.IsDragging = _draggingChatScrollThumb;
+            _scrollBarRuntime.Revision = _tradeRevision + _chatScrollOffset;
+            _fontRuntime.Revision = _font != null ? 1 : 0;
+            _sessionRuntime.InitMoney = _initialMoney;
+            _sessionRuntime.LocalWallet = _localWalletSnapshot;
+            _sessionRuntime.RemoteWallet = _remoteWallet;
+            _sessionRuntime.LocalOffer = _localOffer;
+            _sessionRuntime.RemoteOffer = _remoteOffer;
+            _sessionRuntime.Stage = _sessionStage;
+            _sessionRuntime.Revision = _tradeRevision;
+        }
+
+        private TradingRoomRuntimeSnapshot BuildRuntimeSnapshot()
+        {
+            int startIndex = Math.Max(0, _chatEntries.Count - MaxVisibleChatLines - _chatScrollOffset);
+            int endIndex = Math.Min(_chatEntries.Count, _chatEntries.Count - _chatScrollOffset);
+            IReadOnlyList<string> visibleChatEntries = startIndex < endIndex
+                ? _chatEntries.GetRange(startIndex, endIndex - startIndex)
+                : Array.Empty<string>();
+
+            return new TradingRoomRuntimeSnapshot
+            {
+                ChatEdit = new ChatEditRuntimeSnapshot
+                {
+                    ControlId = _editRuntime.ControlId,
+                    FontStringPoolId = _editRuntime.FontStringPoolId,
+                    BackColor = _editRuntime.BackColor,
+                    FontColor = _editRuntime.FontColor,
+                    Position = _editRuntime.Position,
+                    Size = _editRuntime.Size,
+                    MaxLength = _editRuntime.MaxLength,
+                    HasFocus = _editRuntime.HasFocus,
+                    SoftKeyboardActive = _editRuntime.SoftKeyboardActive,
+                    Revision = _editRuntime.Revision
+                },
+                ChatLog = new ChatLogRuntimeSnapshot
+                {
+                    Position = new Point(ChatLogX, ChatLogY),
+                    Size = new System.Drawing.Size(ChatLogWidth, ChatLogHeight),
+                    EnableChatParam = ChatLogEnableParam,
+                    MaxVisibleLines = MaxVisibleChatLines,
+                    HistoryCount = _chatEntries.Count,
+                    ScrollOffset = _chatScrollOffset
+                },
+                ScrollBar = new ScrollBarRuntimeSnapshot
+                {
+                    ControlId = _scrollBarRuntime.ControlId,
+                    UpButtonId = _scrollBarRuntime.UpButtonId,
+                    DownButtonId = _scrollBarRuntime.DownButtonId,
+                    Position = _scrollBarRuntime.Position,
+                    Height = _scrollBarRuntime.Height,
+                    WheelRange = _scrollBarRuntime.WheelRange,
+                    Offset = _scrollBarRuntime.Offset,
+                    MaxOffset = _scrollBarRuntime.MaxOffset,
+                    VisibleCount = Math.Min(MaxVisibleChatLines, _chatEntries.Count),
+                    TotalCount = _chatEntries.Count,
+                    PageSize = MaxVisibleChatLines,
+                    TrackHeight = Math.Max(0, ChatScrollHeight - GetChatThumbBounds(GetWindowBounds()).Height),
+                    ThumbY = GetChatThumbBounds(GetWindowBounds()).Y - GetChatScrollBounds(GetWindowBounds()).Y,
+                    ThumbHeight = GetChatThumbBounds(GetWindowBounds()).Height,
+                    IsDragging = _scrollBarRuntime.IsDragging,
+                    Revision = _scrollBarRuntime.Revision
+                },
+                FontOwner = new FontRuntimeSnapshot
+                {
+                    NumberImageStringPoolId = _fontRuntime.NumberImageStringPoolId,
+                    HasSmallWhiteFont = _fontRuntime.HasSmallWhiteFont,
+                    HasNoBlackFont = _fontRuntime.HasNoBlackFont,
+                    HasNoBlueFont = _fontRuntime.HasNoBlueFont,
+                    HasSmallGrayFont = _fontRuntime.HasSmallGrayFont,
+                    HasSmallRedFont = _fontRuntime.HasSmallRedFont,
+                    HasRemainGrayFont = _fontRuntime.HasRemainGrayFont,
+                    HasNumberImage = _fontRuntime.HasNumberImage,
+                    Revision = _fontRuntime.Revision
+                },
+                TradeSession = new TradeSessionRuntimeSnapshot
+                {
+                    InitMoney = _sessionRuntime.InitMoney,
+                    LocalWallet = _sessionRuntime.LocalWallet,
+                    RemoteWallet = _sessionRuntime.RemoteWallet,
+                    LocalOffer = _sessionRuntime.LocalOffer,
+                    RemoteOffer = _sessionRuntime.RemoteOffer,
+                    Stage = _sessionRuntime.Stage.ToString(),
+                    LocalLocked = _localLocked,
+                    RemoteLocked = _remoteLocked,
+                    LocalAccepted = _localAccepted,
+                    RemoteAccepted = _remoteAccepted,
+                    RemoteProgressState = _remoteProgressState.ToString(),
+                    Revision = _sessionRuntime.Revision,
+                    PacketSignature = _sessionRuntime.PacketSignature ?? string.Empty,
+                    PacketCommoditySerialNumber = _sessionRuntime.PacketCommoditySerialNumber,
+                    PacketItemId = _sessionRuntime.PacketItemId,
+                    PacketPrice = _sessionRuntime.PacketPrice,
+                    PacketQuantity = _sessionRuntime.PacketQuantity,
+                    PacketCommodityOnSale = _sessionRuntime.PacketCommodityOnSale,
+                    PacketListingTitle = _sessionRuntime.PacketListingTitle ?? string.Empty,
+                    PacketSeller = _sessionRuntime.PacketSeller ?? string.Empty,
+                    PacketListingSignature = _sessionRuntime.PacketListingSignature ?? string.Empty,
+                    PacketSummary = _sessionRuntime.PacketSummary ?? string.Empty
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(_focusedControl),
+                VisibleChatEntries = visibleChatEntries,
+                FocusTarget = DescribeFocusedControl(),
+                DraftText = _chatDrafts[_chatDraftIndex],
+                StatusMessage = _statusMessage
+            };
+        }
+
+        private static IReadOnlyList<ButtonControlRuntimeState> BuildButtonControlRuntimeStates(TradeOwnerFocusTarget focusedControl)
+        {
+            return new[]
+            {
+                BuildButtonControlRuntimeState("BtTrade", TradeButtonNativeId, TradeOwnerFocusTarget.TradeButton, focusedControl, new Point(0, 0), 64, 16, 64, 16),
+                BuildButtonControlRuntimeState("BtReset", ResetButtonNativeId, TradeOwnerFocusTarget.ResetButton, focusedControl, new Point(0, 0), 64, 16, 64, 16),
+                BuildButtonControlRuntimeState("BtCoin", CoinButtonNativeId, TradeOwnerFocusTarget.CoinButton, focusedControl, new Point(0, 0), 18, 16, 18, 16),
+                BuildButtonControlRuntimeState("BtClame", ClaimButtonNativeId, TradeOwnerFocusTarget.ClaimButton, focusedControl, new Point(0, 0), 18, 17, 18, 18),
+                BuildButtonControlRuntimeState("BtEnter", EnterButtonNativeId, TradeOwnerFocusTarget.EnterButton, focusedControl, new Point(0, 0), 40, 16, 40, 16)
+            };
+        }
+
+        private static ButtonControlRuntimeState BuildButtonControlRuntimeState(
+            string actionKey,
+            int nativeButtonId,
+            TradeOwnerFocusTarget focusTarget,
+            TradeOwnerFocusTarget focusedControl,
+            Point position,
+            int width,
+            int height,
+            int pressedWidth,
+            int pressedHeight)
+        {
+            return new ButtonControlRuntimeState
+            {
+                ActionKey = actionKey,
+                NativeButtonId = nativeButtonId,
+                Position = position,
+                Width = width,
+                Height = height,
+                PressedWidth = pressedWidth,
+                PressedHeight = pressedHeight,
+                HasOwnerFocus = focusedControl == focusTarget
+            };
+        }
+
+        private void HandleOwnerKeyboard(KeyboardState keyboardState)
+        {
+            if (Pressed(keyboardState, _previousKeyboardState, Keys.Tab))
+            {
+                bool reverse = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+                CycleFocusedControl(reverse ? -1 : 1);
+            }
+            else if (!_chatEditControl.HasFocus && (Pressed(keyboardState, _previousKeyboardState, Keys.Space) || Pressed(keyboardState, _previousKeyboardState, Keys.Enter)))
+            {
+                ActivateFocusedControl();
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.T))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.TradeButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.R))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.ResetButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.C))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.CoinButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.A))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.ClaimButton);
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Up))
+            {
+                ScrollChat(-1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar upward.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Down))
+            {
+                ScrollChat(1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar downward.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.PageUp))
+            {
+                ScrollChat(-MaxVisibleChatLines);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll paged the dedicated chat scrollbar upward.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.PageDown))
+            {
+                ScrollChat(MaxVisibleChatLines);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll paged the dedicated chat scrollbar downward.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Home))
+            {
+                _chatScrollOffset = GetMaxChatScrollOffset();
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll moved the chat log to the oldest visible entry.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.End))
+            {
+                _chatScrollOffset = 0;
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
+                _statusMessage = "CCashTradingRoomDlg::OnScroll returned the chat log to the newest entry.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Left) && string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            {
+                _chatDraftIndex = (_chatDraftIndex + _chatDrafts.Length - 1) % _chatDrafts.Length;
+                _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+                _statusMessage = "CCashTradingRoomDlg rotated the staged draft on the dedicated edit-control runtime.";
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Right) && string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            {
+                _chatDraftIndex = (_chatDraftIndex + 1) % _chatDrafts.Length;
+                _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+                _statusMessage = "CCashTradingRoomDlg advanced the staged draft on the dedicated edit-control runtime.";
+            }
+        }
+
+        private void CycleFocusedControl(int delta)
+        {
+            int currentIndex = Array.IndexOf(FocusCycleOrder, _focusedControl);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = (currentIndex + FocusCycleOrder.Length + delta) % FocusCycleOrder.Length;
+            _focusedControl = FocusCycleOrder[nextIndex];
+            _chatEditControl.SetFocus(_focusedControl == TradeOwnerFocusTarget.ChatEdit);
+            if (_focusedControl != TradeOwnerFocusTarget.ChatEdit)
+            {
+                _softKeyboardActive = false;
+            }
+            _statusMessage = $"CCashTradingRoomDlg moved owner focus to {DescribeFocusedControl()}.";
+        }
+
+        private void ActivateFocusedControl()
+        {
+            switch (_focusedControl)
+            {
+                case TradeOwnerFocusTarget.ChatLog:
+                    _statusMessage = "CCashTradingRoomDlg kept focus on the dedicated chat scrollbar and log surface.";
+                    break;
+                case TradeOwnerFocusTarget.ChatEdit:
+                    _chatEditControl.ActivateByOwner();
+                    _softKeyboardActive = true;
+                    _statusMessage = "CCashTradingRoomDlg focused the dedicated chat-entry control.";
+                    break;
+                case TradeOwnerFocusTarget.TradeButton:
+                    ToggleTradeLock();
+                    break;
+                case TradeOwnerFocusTarget.ResetButton:
+                    ResetTrade();
+                    break;
+                case TradeOwnerFocusTarget.CoinButton:
+                    IncreaseTradeOffer();
+                    break;
+                case TradeOwnerFocusTarget.ClaimButton:
+                    ToggleTradeAcceptance();
+                    break;
+                case TradeOwnerFocusTarget.EnterButton:
+                    SubmitChatEntry();
+                    break;
+            }
+        }
+
+        private void FocusAndActivateButton(TradeOwnerFocusTarget focusTarget)
+        {
+            _focusedControl = focusTarget;
+            _softKeyboardActive = false;
+            _chatEditControl.SetFocus(false);
+            ActivateFocusedControl();
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => _chatEditControl.GetBounds(GetWindowBounds());
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || char.IsControl(character))
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryInsertCharacter(character))
+            {
+                errorMessage = "The trade chat field cannot accept that character.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || char.IsControl(character))
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryReplaceCharacterBeforeCaret(character))
+            {
+                errorMessage = "Nothing in the trade chat field can be replaced.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus)
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryBackspace())
+            {
+                errorMessage = "The trade chat field is already empty.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            {
+                errorMessage = "Type a trade chat line before submitting.";
+                return false;
+            }
+
+            SubmitChatEntry();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            _chatEditControl.HandleCompositionText(text, IsVisible && _chatEditControl.HasFocus);
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
+        private string DescribeFocusedControl()
+        {
+            return _focusedControl switch
+            {
+                TradeOwnerFocusTarget.ChatLog => "chat log",
+                TradeOwnerFocusTarget.ChatEdit => "chat edit",
+                TradeOwnerFocusTarget.TradeButton => "BtTrade",
+                TradeOwnerFocusTarget.ResetButton => "BtReset",
+                TradeOwnerFocusTarget.CoinButton => "BtCoin",
+                TradeOwnerFocusTarget.ClaimButton => "BtClame",
+                TradeOwnerFocusTarget.EnterButton => "BtEnter",
+                _ => "owner"
+            };
+        }
+
+        private string ResolveRemoteChatReply(string localChatLine)
+        {
+            if (_sessionStage == TradeSessionStage.Completed)
+            {
+                return "Trade already settled on my side.";
+            }
+
+            if (_localLocked && !_localAccepted)
+            {
+                return "Lock looks good. Claim when ready.";
+            }
+
+            return localChatLine.Contains("review", StringComparison.OrdinalIgnoreCase)
+                ? "Take your time. I'm watching the escrow panes."
+                : "Looks fine from this side.";
+        }
+
+        private IEnumerable<string> WrapText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string currentLine = string.Empty;
+            foreach (string word in words)
+            {
+                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                {
+                    yield return currentLine;
+                    currentLine = word;
+                }
+                else
+                {
+                    currentLine = candidate;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(currentLine))
+            {
+                yield return currentLine;
+            }
+        }
+
+        private static string TrimToLength(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            {
+                return value ?? string.Empty;
+            }
+
+            return value.Substring(0, Math.Max(0, maxLength - 3)) + "...";
+        }
+    }
+}

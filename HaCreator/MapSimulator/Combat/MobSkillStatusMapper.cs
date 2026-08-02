@@ -1,0 +1,128 @@
+using HaCreator.MapSimulator.AI;
+
+namespace HaCreator.MapSimulator.Combat
+{
+    internal enum MobSkillOperation
+    {
+        ApplyStatus,
+        ClearNegativeStatuses,
+        Heal
+    }
+
+    internal enum MobSkillStatusTargetMode
+    {
+        Self,
+        NearbyMobs,
+        RuntimeTargetMobType
+    }
+
+    internal readonly record struct MobSkillStatusDefinition(
+        int SkillId,
+        MobSkillOperation Operation,
+        MobStatusEffect Effect,
+        MobSkillStatusTargetMode TargetMode);
+
+    internal static class MobSkillStatusMapper
+    {
+        public static bool TryGetDefinition(int skillId, out MobSkillStatusDefinition definition)
+        {
+            switch (skillId)
+            {
+                case 100:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 101:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 102:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 103:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 110:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 111:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 112:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 113:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 114:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.Heal, MobStatusEffect.None, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 115:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Speed, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 140:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PImmune, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 141:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MImmune, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 142:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.HardSkin, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 143:
+                case 144:
+                case 145:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Reflect, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 146:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ClearNegativeStatuses, MobStatusEffect.None, MobSkillStatusTargetMode.RuntimeTargetMobType);
+                    return true;
+                case 150:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 151:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 152:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 153:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 154:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.ACC, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 155:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.EVA, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 156:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Speed, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 157:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Rich, MobSkillStatusTargetMode.Self);
+                    return true;
+                default:
+                    definition = default;
+                    return false;
+            }
+        }
+
+        public static int ResolveStatusValue(MobStatusEffect effect, int x, int y, int hp)
+        {
+            return effect switch
+            {
+                MobStatusEffect.PowerUp => x,
+                MobStatusEffect.MagicUp => x,
+                MobStatusEffect.PGuardUp => x,
+                MobStatusEffect.MGuardUp => x,
+                MobStatusEffect.ACC => x,
+                MobStatusEffect.EVA => x,
+                MobStatusEffect.Speed => x,
+                MobStatusEffect.PImmune => x,
+                MobStatusEffect.MImmune => x,
+                MobStatusEffect.HardSkin => x,
+                MobStatusEffect.Reflect => 100,
+                MobStatusEffect.Rich => x,
+                _ => 0
+            };
+        }
+    }
+}

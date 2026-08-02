@@ -1,9 +1,13 @@
 using HaSharedLibrary.Render.DX;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Combat;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -20,17 +24,1398 @@ namespace HaCreator.MapSimulator.Animation
     /// </summary>
     public class AnimationEffects
     {
+        internal sealed class SecondaryMotionBlurLayerStackEntryTag
+        {
+            public SecondaryMotionBlurLayerStackEntryTag(
+                int drawOrder,
+                int sourceLayerCode = -1,
+                int sourceLayerCaptureOrder = -1,
+                int simulatedLayerHandleId = 0,
+                int simulatedLayerHandleRefCount = 0,
+                int simulatedSnapshotLayerHandleId = 0,
+                int simulatedSnapshotLayerHandleRefCount = 0,
+                int simulatedRepeatAnimationStateId = 0,
+                int sourceLayerColorAlpha = byte.MaxValue)
+            {
+                DrawOrder = Math.Max(0, drawOrder);
+                SourceLayerCode = sourceLayerCode;
+                SourceLayerCaptureOrder = sourceLayerCaptureOrder;
+                SimulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+                SimulatedLayerHandleRefCount = Math.Max(
+                    0,
+                    simulatedLayerHandleRefCount > 0
+                        ? simulatedLayerHandleRefCount
+                        : SimulatedLayerHandleId > 0 ? 1 : 0);
+                SimulatedSnapshotLayerHandleId = Math.Max(0, simulatedSnapshotLayerHandleId);
+                SimulatedSnapshotLayerHandleRefCount = Math.Max(
+                    0,
+                    simulatedSnapshotLayerHandleRefCount > 0
+                        ? simulatedSnapshotLayerHandleRefCount
+                        : SimulatedSnapshotLayerHandleId > 0 ? 1 : 0);
+                SimulatedRepeatAnimationStateId = Math.Max(0, simulatedRepeatAnimationStateId);
+                SourceLayerColorAlpha = Math.Clamp(sourceLayerColorAlpha, 0, byte.MaxValue);
+            }
+
+            public int DrawOrder { get; }
+            public int SourceLayerCode { get; }
+            public int SourceLayerCaptureOrder { get; }
+            public int SimulatedLayerHandleId { get; }
+            public int SimulatedLayerHandleRefCount { get; }
+            public int SimulatedSnapshotLayerHandleId { get; }
+            public int SimulatedSnapshotLayerHandleRefCount { get; }
+            public int SimulatedRepeatAnimationStateId { get; }
+            public int SourceLayerColorAlpha { get; }
+        }
+
+        internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
+        {
+            return frames != null
+                && frames.Count > 0
+                && frames[0]?.Tag is SecondaryMotionBlurLayerStackEntryTag;
+        }
+
+        internal static int ResolveSecondaryMotionBlurLayerStackDrawOrder(IDXObject frame, int fallbackOrder)
+        {
+            return frame?.Tag is SecondaryMotionBlurLayerStackEntryTag metadata
+                ? metadata.DrawOrder
+                : fallbackOrder;
+        }
+
+        internal static byte ResolveSecondaryMotionBlurLayerStackSourceAlpha(IDXObject frame, byte ownerAlpha)
+        {
+            byte sourceAlpha = frame?.Tag is SecondaryMotionBlurLayerStackEntryTag metadata
+                ? (byte)Math.Clamp(metadata.SourceLayerColorAlpha, 0, byte.MaxValue)
+                : byte.MaxValue;
+            return sourceAlpha < ownerAlpha ? sourceAlpha : ownerAlpha;
+        }
+
+        internal sealed class FollowAnimationOptions
+        {
+            public IReadOnlyList<Vector2> GenerationPoints { get; init; }
+            public int ThetaDegrees { get; init; }
+            public float Radius { get; init; }
+            public bool RandomizeStartupAngle { get; init; }
+            public Func<bool> GetTargetFlip { get; init; }
+            public Func<bool> IsTargetMoveAction { get; init; }
+            public bool SuppressTargetFlip { get; init; }
+            public bool SpawnOnlyOnTargetMove { get; init; }
+            public int UpdateIntervalMs { get; init; }
+            public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
+            public bool SpawnRelativeToTarget { get; init; } = true;
+            public bool SpawnUsesEmissionBox { get; init; }
+            public bool SpawnAppliesEmissionBias { get; init; }
+            public bool SpawnUsesEmissionTravelDistance { get; init; }
+            public int SpawnDurationMs { get; init; }
+            public float SpawnTravelDistanceMin { get; init; }
+            public float SpawnTravelDistanceMax { get; init; }
+            public float SpawnVerticalEmissionBias { get; init; }
+            public Point SpawnOffsetMin { get; init; }
+            public Point SpawnOffsetMax { get; init; }
+            public Rectangle SpawnArea { get; init; }
+            public int SpawnZOrder { get; init; }
+            public int SourceItemId { get; init; }
+            public int SourceClientEquipIndex { get; init; } = -1;
+            public int SourceCandidateIdentity { get; init; }
+            public int SourceVariantCount { get; init; }
+            public IReadOnlyList<int> SourceVariantIndices { get; init; }
+            public bool SourceUsesEmission { get; init; }
+            public bool SourceUsesAnimateEffect { get; init; }
+        }
+
+        internal sealed class SecondaryMotionBlurAnimationState
+        {
+            public bool TerminateRequested { get; set; }
+            public bool PauseRequested { get; set; }
+            public bool IsTerminated { get; internal set; }
+            public int SimulatedAnimationStateId { get; internal set; }
+            public int SimulatedMotionBlurListNodeId { get; internal set; }
+            public int SimulatedOverlayLayerHandleId { get; internal set; }
+            public int SimulatedOverlayLayerHandleRefCount { get; internal set; }
+            public IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode { get; internal set; }
+                = new Dictionary<int, int>();
+            public IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode { get; internal set; }
+                = new Dictionary<int, int>();
+            public IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedRegistrationArgumentReferenceOperations { get; private set; }
+                = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+            public IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations { get; private set; }
+                = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+            public IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> SimulatedAnimationStateReferenceOperations { get; private set; }
+                = Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>();
+            public IReadOnlyList<SecondaryMotionBlurOwnerListOperation> SimulatedOwnerListOperations { get; private set; }
+                = Array.Empty<SecondaryMotionBlurOwnerListOperation>();
+            private int _simulatedOverlaySnapshotRefCount;
+            private readonly Dictionary<int, int> _simulatedLayerOwnerRefCountsByHandle = new();
+            private readonly Dictionary<int, int> _simulatedLayerSnapshotRefCountsByHandle = new();
+            private readonly HashSet<SecondaryMotionBlurSnapshotReleaseKey> _releasedSnapshotTraces = new();
+            private int _simulatedAnimationStateReferenceCount;
+            private bool _simulatedMotionBlurOwnerAnimationStateReferenceHeld;
+            private bool _simulatedSpectrumOwnerAnimationStateReferenceHeld;
+            private bool _simulatedMotionBlurListNodeHeld;
+            private bool _simulatedMotionBlurListNodeTerminateRecorded;
+            internal static readonly int[] ClientLayerCopyOrder =
+            {
+                (int)AvatarRenderLayer.Face,
+                (int)AvatarRenderLayer.OverFace,
+                (int)AvatarRenderLayer.UnderFace,
+                (int)AvatarRenderLayer.OverCharacter,
+                (int)AvatarRenderLayer.UnderCharacter
+            };
+
+            internal void CaptureRegisteredLayerReferences(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                CaptureRegisteredAnimationStateReference();
+                SimulatedOverlayLayerHandleId = Math.Max(0, overlayLayerHandleId);
+                SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
+                _simulatedOverlaySnapshotRefCount = 0;
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
+                _simulatedLayerSnapshotRefCountsByHandle.Clear();
+                _releasedSnapshotTraces.Clear();
+                var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
+                if (SimulatedOverlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureOwnerReference(
+                        layerCode: -1,
+                        SimulatedOverlayLayerHandleId,
+                        SimulatedOverlayLayerHandleRefCount));
+                }
+
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    SimulatedLayerHandleIdsByLayerCode = new Dictionary<int, int>();
+                    SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                    SimulatedRegistrationArgumentReferenceOperations =
+                        BuildClientRegistrationArgumentReferenceOperations(
+                            SimulatedOverlayLayerHandleId,
+                            SimulatedLayerHandleIdsByLayerCode);
+                    SimulatedLayerReferenceOperations =
+                        SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                    return;
+                }
+
+                SimulatedLayerHandleIdsByLayerCode = layerHandleIdsByLayerCode
+                    .ToDictionary(static entry => entry.Key, static entry => Math.Max(0, entry.Value));
+                SimulatedRegistrationArgumentReferenceOperations =
+                    BuildClientRegistrationArgumentReferenceOperations(
+                        SimulatedOverlayLayerHandleId,
+                        SimulatedLayerHandleIdsByLayerCode);
+                SimulatedLayerHandleRefCountsByLayerCode =
+                    ResolveLayerHandleRefCountsByLayerCode(SimulatedLayerHandleIdsByLayerCode);
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(SimulatedLayerHandleIdsByLayerCode))
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureOwnerReference(
+                        layerCode,
+                        handleId,
+                        SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int refCount)
+                            ? refCount
+                            : 1));
+                }
+
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal void CaptureRegisteredOwnerListNode(
+                int delayMs,
+                int intervalMs,
+                byte alpha,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (SimulatedMotionBlurListNodeId <= 0)
+                {
+                    SimulatedMotionBlurListNodeId = SimulatedMotionBlurIdentitySource.NextListNodeId();
+                }
+
+                _simulatedMotionBlurListNodeHeld = true;
+                _simulatedMotionBlurListNodeTerminateRecorded = false;
+                var operations = new List<SecondaryMotionBlurOwnerListOperation>
+                {
+                    SecondaryMotionBlurOwnerListOperation.Create(
+                        SecondaryMotionBlurOwnerListOperationKind.AddMotionBlurListNode,
+                        SimulatedMotionBlurListNodeId,
+                        SimulatedAnimationStateId,
+                        ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                        delayMs,
+                        intervalMs,
+                        alpha)
+                };
+
+                if (SimulatedOverlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                        SecondaryMotionBlurOwnerListOperationKind.CopyOverlayToListNode,
+                        SimulatedMotionBlurListNodeId,
+                        SimulatedAnimationStateId,
+                        ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                        delayMs,
+                        intervalMs,
+                        alpha));
+                }
+
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.CopyLayerArrayToListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.StoreTimingAndAlpha,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.CopyAnimationStateToListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId,
+                    ResolveRegisteredLayerSlotCount(layerHandleIdsByLayerCode),
+                    delayMs,
+                    intervalMs,
+                    alpha));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal void ReleaseRegisteredLayerReferences()
+            {
+                var operations = SimulatedLayerReferenceOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurLayerReferenceOperation>();
+                if (SimulatedOverlayLayerHandleRefCount > 0
+                    && SimulatedOverlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseOwnerReference(
+                        layerCode: -1,
+                        SimulatedOverlayLayerHandleId));
+                }
+
+                SimulatedOverlayLayerHandleRefCount = 0;
+                if (SimulatedLayerHandleRefCountsByLayerCode == null
+                    || SimulatedLayerHandleRefCountsByLayerCode.Count == 0)
+                {
+                    SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                    SimulatedLayerReferenceOperations =
+                        SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                    ReleaseOwnerListNode();
+                    return;
+                }
+
+                var remainingOwnerRefCountsByHandle = new Dictionary<int, int>(_simulatedLayerOwnerRefCountsByHandle);
+                foreach ((int layerCode, int refCount) in EnumerateClientLayerCopyOrder(SimulatedLayerHandleRefCountsByLayerCode))
+                {
+                    if (refCount <= 0
+                        || SimulatedLayerHandleIdsByLayerCode == null
+                        || !SimulatedLayerHandleIdsByLayerCode.TryGetValue(layerCode, out int handleId)
+                        || handleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    remainingOwnerRefCountsByHandle.TryGetValue(handleId, out int remainingRefCount);
+                    remainingRefCount = Math.Max(0, remainingRefCount - 1);
+                    if (remainingRefCount > 0)
+                    {
+                        remainingOwnerRefCountsByHandle[handleId] = remainingRefCount;
+                    }
+                    else
+                    {
+                        remainingOwnerRefCountsByHandle.Remove(handleId);
+                    }
+
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseOwnerReference(
+                        layerCode,
+                        handleId,
+                        remainingRefCount
+                        + (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount)
+                            ? snapshotRefCount
+                            : 0)));
+                }
+
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
+                SimulatedLayerHandleRefCountsByLayerCode = SimulatedLayerHandleRefCountsByLayerCode
+                    .ToDictionary(static entry => entry.Key, static _ => 0);
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                ReleaseOwnerListNode();
+            }
+
+            internal void ReleaseSnapshotLayerReferences(SecondaryMotionBlurSnapshotTrace trace)
+            {
+                SecondaryMotionBlurSnapshotReleaseKey releaseKey = SecondaryMotionBlurSnapshotReleaseKey.FromTrace(trace);
+                if (!_releasedSnapshotTraces.Add(releaseKey))
+                {
+                    return;
+                }
+
+                var operations = SimulatedLayerReferenceOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurLayerReferenceOperation>();
+                if (trace.SimulatedOverlayLayerHandleId > 0
+                    && trace.SimulatedOverlayLayerHandleRefCount > 1)
+                {
+                    _simulatedOverlaySnapshotRefCount = Math.Max(0, _simulatedOverlaySnapshotRefCount - 1);
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                        layerCode: -1,
+                        trace.SimulatedOverlayLayerHandleId,
+                        SimulatedOverlayLayerHandleRefCount + _simulatedOverlaySnapshotRefCount));
+                }
+
+                if (trace.SimulatedLayerHandleIdsByLayerCode != null)
+                {
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(trace.SimulatedLayerHandleIdsByLayerCode))
+                    {
+                        if (handleId <= 0
+                            || trace.SimulatedLayerHandleRefCountsByLayerCode == null
+                            || !trace.SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int refCount)
+                            || refCount <= 1)
+                        {
+                            continue;
+                        }
+
+                        int remainingSnapshotRefCount = 0;
+                        if (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int existingSnapshotRefCount))
+                        {
+                            remainingSnapshotRefCount = Math.Max(0, existingSnapshotRefCount - 1);
+                            if (remainingSnapshotRefCount > 0)
+                            {
+                                _simulatedLayerSnapshotRefCountsByHandle[handleId] = remainingSnapshotRefCount;
+                            }
+                            else
+                            {
+                                _simulatedLayerSnapshotRefCountsByHandle.Remove(handleId);
+                            }
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                            layerCode,
+                            handleId,
+                            ResolveOwnerLayerHandleRefCount(handleId) + remainingSnapshotRefCount));
+                    }
+                }
+
+                if (trace.SimulatedSnapshotLayerHandleIdsByLayerCode != null)
+                {
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(trace.SimulatedSnapshotLayerHandleIdsByLayerCode))
+                    {
+                        if (handleId <= 0)
+                        {
+                            continue;
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                    }
+                }
+
+                if (trace.SimulatedRepeatAnimationStateIdsByLayerCode != null)
+                {
+                    foreach ((int layerCode, int stateId) in EnumerateClientLayerCopyOrder(trace.SimulatedRepeatAnimationStateIdsByLayerCode))
+                    {
+                        if (stateId <= 0)
+                        {
+                            continue;
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRepeatAnimation(
+                            layerCode,
+                            stateId,
+                            refCount: 0));
+                    }
+                }
+
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> CaptureSnapshotLayerReferences(
+                IReadOnlyDictionary<int, int> layerHandleIds,
+                IReadOnlyDictionary<int, int> snapshotLayerHandleIds,
+                IReadOnlyDictionary<int, int> snapshotLayerHandleRefCounts,
+                IReadOnlyDictionary<int, int> repeatAnimationStateIds,
+                out int overlayRefCount,
+                out IReadOnlyDictionary<int, int> layerHandleRefCounts)
+            {
+                var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
+                overlayRefCount = 0;
+                if (SimulatedOverlayLayerHandleId > 0 && SimulatedOverlayLayerHandleRefCount > 0)
+                {
+                    _simulatedOverlaySnapshotRefCount++;
+                    overlayRefCount = SimulatedOverlayLayerHandleRefCount + _simulatedOverlaySnapshotRefCount;
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopySnapshotReference(
+                        layerCode: -1,
+                        SimulatedOverlayLayerHandleId,
+                        overlayRefCount));
+                }
+
+                var resolvedLayerHandleRefCounts = new Dictionary<int, int>();
+                if (layerHandleIds != null)
+                {
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIds))
+                    {
+                        if (handleId <= 0)
+                        {
+                            continue;
+                        }
+
+                        _simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount);
+                        snapshotRefCount++;
+                        _simulatedLayerSnapshotRefCountsByHandle[handleId] = snapshotRefCount;
+                        int ownerRefCount = ResolveOwnerLayerHandleRefCount(handleId);
+                        int refCount = ownerRefCount + snapshotRefCount;
+                        resolvedLayerHandleRefCounts[layerCode] = refCount;
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopySnapshotReference(
+                            layerCode,
+                            handleId,
+                            refCount));
+                    }
+                }
+
+                if (snapshotLayerHandleIds != null)
+                {
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(snapshotLayerHandleIds))
+                    {
+                        if (handleId <= 0)
+                        {
+                            continue;
+                        }
+
+                        int refCount = snapshotLayerHandleRefCounts != null
+                            && snapshotLayerHandleRefCounts.TryGetValue(layerCode, out int resolvedRefCount)
+                            ? resolvedRefCount
+                            : 1;
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureOwnerReference(
+                            layerCode,
+                            handleId,
+                            refCount));
+                    }
+                }
+
+                if (repeatAnimationStateIds != null)
+                {
+                    foreach ((int layerCode, int stateId) in EnumerateClientLayerCopyOrder(repeatAnimationStateIds))
+                    {
+                        if (stateId <= 0)
+                        {
+                            continue;
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.RegisterRepeatAnimation(
+                            layerCode,
+                            stateId,
+                            refCount: 1));
+                    }
+                }
+
+                layerHandleRefCounts = resolvedLayerHandleRefCounts;
+                IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> normalizedSnapshotOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(
+                        (SimulatedLayerReferenceOperations ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>())
+                        .Concat(normalizedSnapshotOperations));
+                return normalizedSnapshotOperations;
+            }
+
+            private int ResolveOwnerLayerHandleRefCount(int handleId)
+            {
+                return handleId > 0
+                    && _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount)
+                    ? refCount
+                    : 0;
+            }
+
+            private IReadOnlyDictionary<int, int> ResolveLayerHandleRefCountsByLayerCode(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                var refCountsByLayerCode = new Dictionary<int, int>();
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    return refCountsByLayerCode;
+                }
+
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    _simulatedLayerOwnerRefCountsByHandle[handleId] = refCount;
+                    refCountsByLayerCode[layerCode] = refCount;
+                }
+
+                return refCountsByLayerCode;
+            }
+
+            private static IEnumerable<KeyValuePair<int, int>> EnumerateClientLayerCopyOrder(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    yield break;
+                }
+
+                var emitted = new HashSet<int>();
+                for (int i = 0; i < ClientLayerCopyOrder.Length; i++)
+                {
+                    int layerCode = ClientLayerCopyOrder[i];
+                    if (layerHandleIdsByLayerCode.TryGetValue(layerCode, out int handleId))
+                    {
+                        emitted.Add(layerCode);
+                        yield return new KeyValuePair<int, int>(layerCode, handleId);
+                    }
+                }
+
+                foreach ((int layerCode, int handleId) in layerHandleIdsByLayerCode.OrderBy(static entry => entry.Key))
+                {
+                    if (emitted.Add(layerCode))
+                    {
+                        yield return new KeyValuePair<int, int>(layerCode, handleId);
+                    }
+                }
+            }
+
+            internal void MarkTerminated()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                CaptureOwnerListTerminateRequest();
+                ReleaseAnimationStateReferences();
+                ReleaseRegisteredLayerReferences();
+            }
+
+            internal SecondaryMotionBlurAnimationStateTrace CaptureTrace()
+            {
+                return new SecondaryMotionBlurAnimationStateTrace(
+                    SimulatedAnimationStateId,
+                    TerminateRequested,
+                    IsTerminated,
+                    SimulatedOverlayLayerHandleId,
+                    SimulatedOverlayLayerHandleRefCount,
+                    SimulatedLayerHandleIdsByLayerCode?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    ?? new Dictionary<int, int>(),
+                    SimulatedLayerHandleRefCountsByLayerCode?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    ?? new Dictionary<int, int>(),
+                    SimulatedRegistrationArgumentReferenceOperations?.ToArray()
+                    ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>(),
+                    SimulatedLayerReferenceOperations?.ToArray()
+                    ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>(),
+                    SimulatedAnimationStateReferenceOperations?.ToArray()
+                    ?? Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>(),
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedOwnerListOperations?.ToArray()
+                    ?? Array.Empty<SecondaryMotionBlurOwnerListOperation>());
+            }
+
+            internal void CaptureOwnerListTerminateRequest()
+            {
+                if (!_simulatedMotionBlurListNodeHeld
+                    || _simulatedMotionBlurListNodeTerminateRecorded
+                    || SimulatedMotionBlurListNodeId <= 0)
+                {
+                    return;
+                }
+
+                _simulatedMotionBlurListNodeTerminateRecorded = true;
+                var operations = SimulatedOwnerListOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurOwnerListOperation>();
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.RequestTerminateAnimationState,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
+            private void ReleaseOwnerListNode()
+            {
+                if (!_simulatedMotionBlurListNodeHeld || SimulatedMotionBlurListNodeId <= 0)
+                {
+                    return;
+                }
+
+                _simulatedMotionBlurListNodeHeld = false;
+                var operations = SimulatedOwnerListOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurOwnerListOperation>();
+                operations.Add(SecondaryMotionBlurOwnerListOperation.Create(
+                    SecondaryMotionBlurOwnerListOperationKind.RemoveMotionBlurListNode,
+                    SimulatedMotionBlurListNodeId,
+                    SimulatedAnimationStateId));
+                SimulatedOwnerListOperations =
+                    SecondaryMotionBlurOwnerListOperation.NormalizeTraceOrder(operations);
+            }
+
+            private static int ResolveRegisteredLayerSlotCount(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    return 0;
+                }
+
+                int count = 0;
+                foreach ((_, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId > 0)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+
+            private void CaptureRegisteredAnimationStateReference()
+            {
+                if (SimulatedAnimationStateId <= 0)
+                {
+                    return;
+                }
+
+                var operations = new List<SecondaryMotionBlurAnimationStateReferenceOperation>();
+                _simulatedAnimationStateReferenceCount = 1;
+                _simulatedMotionBlurOwnerAnimationStateReferenceHeld = false;
+                _simulatedSpectrumOwnerAnimationStateReferenceHeld = false;
+                operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                    SecondaryMotionBlurAnimationStateReferenceOperationKind.AllocateReturnReference,
+                    SimulatedAnimationStateId,
+                    _simulatedAnimationStateReferenceCount));
+
+                _simulatedAnimationStateReferenceCount++;
+                _simulatedMotionBlurOwnerAnimationStateReferenceHeld = true;
+                operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                    SecondaryMotionBlurAnimationStateReferenceOperationKind.CopyToMotionBlurOwner,
+                    SimulatedAnimationStateId,
+                    _simulatedAnimationStateReferenceCount));
+
+                _simulatedAnimationStateReferenceCount++;
+                _simulatedSpectrumOwnerAnimationStateReferenceHeld = true;
+                operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                    SecondaryMotionBlurAnimationStateReferenceOperationKind.CopyToSpectrumOwner,
+                    SimulatedAnimationStateId,
+                    _simulatedAnimationStateReferenceCount));
+
+                _simulatedAnimationStateReferenceCount = Math.Max(0, _simulatedAnimationStateReferenceCount - 1);
+                operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                    SecondaryMotionBlurAnimationStateReferenceOperationKind.ReleaseReturnTemporary,
+                    SimulatedAnimationStateId,
+                    _simulatedAnimationStateReferenceCount));
+
+                SimulatedAnimationStateReferenceOperations =
+                    SecondaryMotionBlurAnimationStateReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal void ReleaseAnimationStateReferences()
+            {
+                if (SimulatedAnimationStateId <= 0)
+                {
+                    return;
+                }
+
+                var operations = SimulatedAnimationStateReferenceOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurAnimationStateReferenceOperation>();
+                if (_simulatedSpectrumOwnerAnimationStateReferenceHeld)
+                {
+                    _simulatedAnimationStateReferenceCount = Math.Max(0, _simulatedAnimationStateReferenceCount - 1);
+                    _simulatedSpectrumOwnerAnimationStateReferenceHeld = false;
+                    operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                        SecondaryMotionBlurAnimationStateReferenceOperationKind.TerminateSpectrumOwner,
+                        SimulatedAnimationStateId,
+                        _simulatedAnimationStateReferenceCount));
+                }
+
+                if (_simulatedMotionBlurOwnerAnimationStateReferenceHeld)
+                {
+                    _simulatedAnimationStateReferenceCount = Math.Max(0, _simulatedAnimationStateReferenceCount - 1);
+                    _simulatedMotionBlurOwnerAnimationStateReferenceHeld = false;
+                    operations.Add(SecondaryMotionBlurAnimationStateReferenceOperation.Create(
+                        SecondaryMotionBlurAnimationStateReferenceOperationKind.ReleaseMotionBlurOwner,
+                        SimulatedAnimationStateId,
+                        _simulatedAnimationStateReferenceCount));
+                }
+
+                SimulatedAnimationStateReferenceOperations =
+                    SecondaryMotionBlurAnimationStateReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal void CaptureFailedRegistrationArgumentReferences(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                SimulatedOverlayLayerHandleId = Math.Max(0, overlayLayerHandleId);
+                SimulatedOverlayLayerHandleRefCount = 0;
+                SimulatedLayerHandleIdsByLayerCode = layerHandleIdsByLayerCode?
+                    .ToDictionary(static entry => entry.Key, static entry => Math.Max(0, entry.Value))
+                    ?? new Dictionary<int, int>();
+                SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                SimulatedRegistrationArgumentReferenceOperations =
+                    BuildClientFailedRegistrationArgumentReferenceOperations(
+                        SimulatedOverlayLayerHandleId,
+                        SimulatedLayerHandleIdsByLayerCode);
+                SimulatedLayerReferenceOperations = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+                SimulatedOwnerListOperations = Array.Empty<SecondaryMotionBlurOwnerListOperation>();
+            }
+
+            private static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> BuildClientFailedRegistrationArgumentReferenceOperations(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
+
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    if (overlayLayerHandleId > 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 2));
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 1));
+                    }
+
+                    return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                }
+
+                var temporaryArgumentRefCountsByHandle = new Dictionary<int, int>();
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    temporaryArgumentRefCountsByHandle[handleId] = refCount;
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        refCount));
+                }
+
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 2));
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 1));
+                }
+
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int temporaryRefCount);
+                    temporaryRefCount = Math.Max(0, temporaryRefCount - 1);
+                    if (temporaryRefCount > 0)
+                    {
+                        temporaryArgumentRefCountsByHandle[handleId] = temporaryRefCount;
+                    }
+                    else
+                    {
+                        temporaryArgumentRefCountsByHandle.Remove(handleId);
+                    }
+
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        temporaryRefCount));
+                }
+
+                return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> BuildClientRegistrationArgumentReferenceOperations(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
+
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    if (overlayLayerHandleId > 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 2));
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode: -1,
+                            overlayLayerHandleId,
+                            refCount: 1));
+                    }
+
+                    return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                }
+
+                var temporaryArgumentRefCountsByHandle = new Dictionary<int, int>();
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    temporaryArgumentRefCountsByHandle[handleId] = refCount;
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        refCount));
+                }
+
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 2));
+                }
+
+                var ownerRefCountsByHandle = new Dictionary<int, int>();
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    ownerRefCountsByHandle.TryGetValue(handleId, out int ownerRefCount);
+                    ownerRefCount++;
+                    ownerRefCountsByHandle[handleId] = ownerRefCount;
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int temporaryRefCount);
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        temporaryRefCount + ownerRefCount));
+                }
+
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 1));
+                }
+
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int temporaryRefCount);
+                    temporaryRefCount = Math.Max(0, temporaryRefCount - 1);
+                    if (temporaryRefCount > 0)
+                    {
+                        temporaryArgumentRefCountsByHandle[handleId] = temporaryRefCount;
+                    }
+                    else
+                    {
+                        temporaryArgumentRefCountsByHandle.Remove(handleId);
+                    }
+
+                    ownerRefCountsByHandle.TryGetValue(handleId, out int ownerRefCount);
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        temporaryRefCount + ownerRefCount));
+                }
+
+                return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+            }
+        }
+
+        private readonly record struct SecondaryMotionBlurSnapshotReleaseKey(
+            int StartTime,
+            int OverlayHandleId,
+            int LayerHandleHash,
+            int SnapshotLayerHandleHash,
+            int RepeatAnimationStateHash)
+        {
+            public static SecondaryMotionBlurSnapshotReleaseKey FromTrace(SecondaryMotionBlurSnapshotTrace trace)
+            {
+                return new SecondaryMotionBlurSnapshotReleaseKey(
+                    trace.StartTime,
+                    trace.SimulatedOverlayLayerHandleId,
+                    ComputeDictionaryHash(trace.SimulatedLayerHandleIdsByLayerCode),
+                    ComputeDictionaryHash(trace.SimulatedSnapshotLayerHandleIdsByLayerCode),
+                    ComputeDictionaryHash(trace.SimulatedRepeatAnimationStateIdsByLayerCode));
+            }
+
+            private static int ComputeDictionaryHash(IReadOnlyDictionary<int, int> values)
+            {
+                if (values == null || values.Count == 0)
+                {
+                    return 0;
+                }
+
+                unchecked
+                {
+                    int hash = 17;
+                    foreach ((int key, int value) in values.OrderBy(static entry => entry.Key))
+                    {
+                        hash = (hash * 31) + key;
+                        hash = (hash * 31) + value;
+                    }
+
+                    return hash;
+                }
+            }
+        }
+
+        internal readonly record struct SecondaryMotionBlurAnimationStateTrace(
+            int SimulatedAnimationStateId,
+            bool TerminateRequested,
+            bool IsTerminated,
+            int SimulatedOverlayLayerHandleId,
+            int SimulatedOverlayLayerHandleRefCount,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode,
+            IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedRegistrationArgumentReferenceOperations,
+            IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations,
+            IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> SimulatedAnimationStateReferenceOperations,
+            int SimulatedMotionBlurListNodeId,
+            IReadOnlyList<SecondaryMotionBlurOwnerListOperation> SimulatedOwnerListOperations);
+
+        internal readonly record struct SecondaryMotionBlurSnapshotTrace(
+            int StartTime,
+            int SimulatedOverlayLayerHandleId,
+            int SimulatedOverlayLayerHandleRefCount,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleRefCountsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedRepeatAnimationStateIdsByLayerCode,
+            IReadOnlyList<SecondaryMotionBlurUpdateOperation> SimulatedUpdateOperations,
+            IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations);
+
+        internal enum SecondaryMotionBlurUpdateOperationKind
+        {
+            AddRefSourceLayer,
+            GetSourceCanvasSlot0,
+            CreateBlurLayer,
+            PutOverlay,
+            CopyOrigin,
+            PutZOffsetMinus10,
+            PutFlip,
+            SetInitialAlpha,
+            FadeAlphaToZero,
+            StopAnimation,
+            InsertSourceCanvas,
+            RetainRegisterArgumentLayer,
+            RegisterRepeatAnimation,
+            ReleaseRegisterArgumentLayer,
+            StoreLastUpdatedTick,
+            ReleaseBlurLayerLocal,
+            ReleaseSourceLayerLocal
+        }
+
+        internal readonly record struct SecondaryMotionBlurUpdateOperation(
+            SecondaryMotionBlurUpdateOperationKind Kind,
+            int LayerCode,
+            int SimulatedSourceLayerHandleId,
+            int SimulatedSnapshotLayerHandleId,
+            int SimulatedRepeatAnimationStateId,
+            int SourceCanvasSlot,
+            byte Alpha,
+            int FadeEndTime,
+            int ZOffset,
+            int RefCountDelta = 0,
+            int Time = 0,
+            int OperationIndex = -1,
+            int ClientLayerCopyIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurUpdateOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurUpdateOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurUpdateOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurUpdateOperation>();
+                foreach (SecondaryMotionBlurUpdateOperation operation in operations)
+                {
+                    ordered.Add(operation with
+                    {
+                        OperationIndex = ordered.Count,
+                        ClientLayerCopyIndex = SecondaryMotionBlurLayerReferenceOperation.ResolveClientLayerCopyIndex(operation.LayerCode)
+                    });
+                }
+
+                return ordered;
+            }
+
+            public static SecondaryMotionBlurUpdateOperation Create(
+                SecondaryMotionBlurUpdateOperationKind kind,
+                int layerCode,
+                int sourceLayerHandleId,
+                int snapshotLayerHandleId,
+                int repeatAnimationStateId,
+                byte alpha = 0,
+                int fadeEndTime = 0,
+                int sourceCanvasSlot = 0,
+                int zOffset = 0,
+                int refCountDelta = 0,
+                int time = 0)
+            {
+                return new SecondaryMotionBlurUpdateOperation(
+                    kind,
+                    layerCode,
+                    Math.Max(0, sourceLayerHandleId),
+                    Math.Max(0, snapshotLayerHandleId),
+                    Math.Max(0, repeatAnimationStateId),
+                    Math.Max(0, sourceCanvasSlot),
+                    alpha,
+                    fadeEndTime,
+                    zOffset,
+                    refCountDelta,
+                    time);
+            }
+        }
+
+        internal enum SecondaryMotionBlurLayerReferenceOperationKind
+        {
+            CaptureOwnerReference,
+            CopySnapshotReference,
+            RegisterRepeatAnimation,
+            ReleaseRepeatAnimation,
+            ReleaseOwnerReference,
+            ReleaseSnapshotReference,
+            CaptureRegistrationArgumentReference,
+            CopyRegistrationArgumentReference,
+            ReleaseRegistrationArgumentReference
+        }
+
+        internal enum SecondaryMotionBlurAnimationStateReferenceOperationKind
+        {
+            AllocateReturnReference,
+            CopyToMotionBlurOwner,
+            CopyToSpectrumOwner,
+            ReleaseReturnTemporary,
+            TerminateSpectrumOwner,
+            ReleaseMotionBlurOwner
+        }
+
+        internal enum SecondaryMotionBlurOwnerListOperationKind
+        {
+            AddMotionBlurListNode,
+            CopyOverlayToListNode,
+            CopyLayerArrayToListNode,
+            StoreTimingAndAlpha,
+            CopyAnimationStateToListNode,
+            RequestTerminateAnimationState,
+            RemoveMotionBlurListNode
+        }
+
+        internal readonly record struct SecondaryMotionBlurOwnerListOperation(
+            SecondaryMotionBlurOwnerListOperationKind Kind,
+            int SimulatedMotionBlurListNodeId,
+            int SimulatedAnimationStateId,
+            int CapturedLayerSlotCount,
+            int DelayMs,
+            int IntervalMs,
+            byte Alpha,
+            int OperationIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurOwnerListOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurOwnerListOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurOwnerListOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurOwnerListOperation>();
+                foreach (SecondaryMotionBlurOwnerListOperation operation in operations)
+                {
+                    ordered.Add(operation with { OperationIndex = ordered.Count });
+                }
+
+                return ordered;
+            }
+
+            public static SecondaryMotionBlurOwnerListOperation Create(
+                SecondaryMotionBlurOwnerListOperationKind kind,
+                int listNodeId,
+                int animationStateId,
+                int capturedLayerSlotCount = 0,
+                int delayMs = 0,
+                int intervalMs = 0,
+                byte alpha = 0)
+            {
+                return new SecondaryMotionBlurOwnerListOperation(
+                    kind,
+                    Math.Max(0, listNodeId),
+                    Math.Max(0, animationStateId),
+                    Math.Max(0, capturedLayerSlotCount),
+                    Math.Max(0, delayMs),
+                    Math.Max(0, intervalMs),
+                    alpha);
+            }
+        }
+
+        internal readonly record struct SecondaryMotionBlurAnimationStateReferenceOperation(
+            SecondaryMotionBlurAnimationStateReferenceOperationKind Kind,
+            int SimulatedAnimationStateId,
+            int SimulatedAnimationStateReferenceCount,
+            int OperationIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurAnimationStateReferenceOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurAnimationStateReferenceOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurAnimationStateReferenceOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurAnimationStateReferenceOperation>();
+                foreach (SecondaryMotionBlurAnimationStateReferenceOperation operation in operations)
+                {
+                    ordered.Add(operation with { OperationIndex = ordered.Count });
+                }
+
+                return ordered;
+            }
+
+            public static SecondaryMotionBlurAnimationStateReferenceOperation Create(
+                SecondaryMotionBlurAnimationStateReferenceOperationKind kind,
+                int animationStateId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurAnimationStateReferenceOperation(
+                    kind,
+                    Math.Max(0, animationStateId),
+                    Math.Max(0, refCount));
+            }
+        }
+
+        internal readonly record struct SecondaryMotionBlurLayerReferenceOperation(
+            SecondaryMotionBlurLayerReferenceOperationKind Kind,
+            int LayerCode,
+            int SimulatedLayerHandleId,
+            int SimulatedLayerHandleRefCount,
+            int OperationIndex = -1,
+            int ClientLayerCopyIndex = -1)
+        {
+            internal static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurLayerReferenceOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurLayerReferenceOperation>();
+                foreach (SecondaryMotionBlurLayerReferenceOperation operation in operations)
+                {
+                    ordered.Add(operation with
+                    {
+                        OperationIndex = ordered.Count,
+                        ClientLayerCopyIndex = ResolveClientLayerCopyIndex(operation.LayerCode)
+                    });
+                }
+
+                return ordered;
+            }
+
+            internal static int ResolveClientLayerCopyIndex(int layerCode)
+            {
+                if (layerCode < 0)
+                {
+                    return -1;
+                }
+
+                for (int i = 0; i < SecondaryMotionBlurAnimationState.ClientLayerCopyOrder.Length; i++)
+                {
+                    if (SecondaryMotionBlurAnimationState.ClientLayerCopyOrder[i] == layerCode)
+                    {
+                        return i;
+                    }
+                }
+
+                return SecondaryMotionBlurAnimationState.ClientLayerCopyOrder.Length + layerCode;
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation CaptureOwnerReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.CaptureOwnerReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation CaptureRegistrationArgumentReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.CaptureRegistrationArgumentReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation CopyRegistrationArgumentReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.CopyRegistrationArgumentReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation ReleaseRegistrationArgumentReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.ReleaseRegistrationArgumentReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation CopySnapshotReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.CopySnapshotReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation RegisterRepeatAnimation(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.RegisterRepeatAnimation,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation ReleaseRepeatAnimation(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.ReleaseRepeatAnimation,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation ReleaseOwnerReference(
+                int layerCode,
+                int handleId,
+                int refCount = 0)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.ReleaseOwnerReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation ReleaseSnapshotReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.ReleaseSnapshotReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
+            }
+        }
+
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
+        private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();
         private readonly List<RepeatAnimation> _repeatAnimations = new();
         private readonly List<ChainLightning> _chainLightnings = new();
         private readonly List<FallingAnimation> _fallingAnimations = new();
+        private readonly List<FallingAnimationRegistration> _fallingRegistrations = new();
         private readonly List<FollowAnimation> _followAnimations = new();
+        private readonly List<FollowParticleAnimation> _followParticleAnimations = new();
+        private readonly List<AreaAnimationRegistration> _areaAnimations = new();
+        private readonly List<UserStateAnimation> _userStateAnimations = new();
+        private readonly Dictionary<int, SecondaryPrepareAnimation> _secondaryPrepareAnimations = new();
+        private readonly List<SecondaryFootholdAnimation> _secondaryFootholdAnimations = new();
+        private readonly List<SecondaryHookChainAnimation> _secondaryHookChainAnimations = new();
+        private readonly List<SecondaryMotionBlurAnimation> _secondaryMotionBlurAnimations = new();
+        private readonly List<SecondaryChainSegmentAnimation> _secondaryChainSegmentAnimations = new();
 
         private readonly Random _random = new();
 
         // Object pools for reduced allocations
         private readonly Queue<OneTimeAnimation> _oneTimePool = new();
+        private readonly Queue<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayerPool = new();
         private readonly Queue<FallingAnimation> _fallingPool = new();
+        private readonly List<OneTimeAnimationRecoveredNativeFinalReleaseState> _releasedOneTimeAnimationStates = new();
+        private readonly List<OneTimeAnimationRecoveredMobProjectileFinalReleaseState> _releasedMobProjectileStates = new();
+        private readonly List<CanvasLayerRecoveredNativeFinalReleaseState> _releasedOneTimeCanvasLayerStates = new();
+        private const int MaxReleasedOneTimeAnimationStates = 64;
+        private const int MaxReleasedMobProjectileStates = 64;
+        private const int MaxReleasedOneTimeCanvasLayerStates = 64;
+        private int _nextOneTimeCanvasLayerHandleId = 1;
+        private int _nextOneTimeTemporaryCanvasHandleId = 1;
 
         #region One-Time Animation (ONETIMEINFO)
 
@@ -49,7 +1434,1060 @@ namespace HaCreator.MapSimulator.Animation
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddOneTimeAttached(
+            List<IDXObject> frames,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            if (frames == null || frames.Count == 0) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip,
+                AnimationOneTimeOwner.Generic,
+                AnimationOneTimePlaybackMode.Default,
+                sourceUol: null,
+                usesOverlayParent: false,
+                recoveredRegistrationTrace: null,
+                initialElapsedMs: initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddPacketOwnedCatch(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedCatch,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedSquib(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedSquib,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedTransformed(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTransformed,
+                initialElapsedMs);
+        }
+
+        internal void AddClientOwnedCollisionVerticalJump(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.ClientOwnedCollisionVerticalJump,
+                initialElapsedMs);
+        }
+
+        internal void AddClientOwnedCollisionCustomImpact(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.ClientOwnedCollisionCustomImpact,
+                initialElapsedMs);
+        }
+
+        internal void AddClientOwnedBoundJumpGeneralEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.ClientOwnedBoundJumpGeneralEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMonsterBookCardGet(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedMonsterBookCardGet(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                registrationTrace.LoadLayerFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip: null,
+                AnimationOneTimeOwner.PacketOwnedMonsterBookCardGet,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddPacketOwnedSummonEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedSummonEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedBuffItemUse(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedBuffItemUse,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedItemUnrelease(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedItemUnrelease,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedCombatFeedback(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedCombatFeedback,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedCool(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicFloat(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                registrationTrace.LoadLayerFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip: null,
+                AnimationOneTimeOwner.PacketOwnedCool,
+                AnimationOneTimePlaybackMode.BasicFloat,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddPacketOwnedLevelUp(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedLevelUp,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillIcon(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillIcon,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillBomb(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillBomb,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobSkillHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                null,
+                null,
+                x,
+                y,
+                false,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSkillHit,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddMobOwnedAttackEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddMobOwnedAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackHit,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddMobOwnedAttachedAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddClientOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.MobOwnedAttackHit,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedMobBullet(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobBullet,
+                zOrder,
+                initialElapsedMs,
+                OneTimeAnimationRecoveredMobProjectileRegistrationTrace.CreateMobBullet(sourceUol));
+        }
+
+        internal void AddPacketOwnedMobSwallow(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedMobSwallow,
+                zOrder,
+                initialElapsedMs,
+                OneTimeAnimationRecoveredMobProjectileRegistrationTrace.CreateMobSwallow(sourceUol));
+        }
+
+        internal void AddPacketOwnedAreaExplosion(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedAreaExplosion,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedDropExplosion(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedDropExplosion,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedUpgradeTomb(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedUpgradeTomb,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedTeleport(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTeleport,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteGenericUserState(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteGenericUserState,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteItemMake(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteItemMake,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteMakerSkill(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteMakerSkill,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteStringEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteStringEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteSkillUse(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteSkillUse,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteMobAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteMobAttackHit,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedReservedVisual(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedReservedVisual,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedTransientAreaVisual(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTransientAreaVisual,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal bool AddFullChargedAngerGauge(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getOrigin,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 1)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return false;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreateFullChargedAngerGauge(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                registrationTrace.LoadLayerFlip,
+                currentTimeMs,
+                zOrder,
+                getOrigin,
+                getFlip: null,
+                AnimationOneTimeOwner.FullChargedAngerGauge,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: true,
+                registrationTrace);
+            InsertOneTimeAnimation(anim);
+            return true;
+        }
+
+        private void AddPacketOwnedBasicOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int zOrder,
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                registrationTrace.LoadLayerFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip: null,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddClientOwnedBasicOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int zOrder,
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreateClientOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                zOrder,
+                getPosition: null,
+                getFlip: null,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddClientOwnedAttachedOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int initialElapsedMs = 0)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreateClientOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                0,
+                getPosition,
+                getFlip,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddPacketOwnedAttachedOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int initialElapsedMs)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                flip: false,
+                currentTimeMs,
+                zOrder: 0,
+                getPosition,
+                getFlip: null,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddPacketOwnedMobOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int zOrder,
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                owner == AnimationOneTimeOwner.PacketOwnedRemoteSkillUse
+                    ? OneTimeAnimationRecoveredRegistrationTrace.CreateClientShowSkillEffectSkillUse(
+                        sourceUol,
+                        fallbackFlip)
+                    : OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: registrationTrace.UsesOverlayLayer,
+                registrationTrace,
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
+            InsertOneTimeAnimation(anim);
         }
 
         /// <summary>
@@ -62,7 +2500,7 @@ namespace HaCreator.MapSimulator.Animation
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
             anim.Tint = tint;
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
         }
 
         /// <summary>
@@ -75,7 +2513,246 @@ namespace HaCreator.MapSimulator.Animation
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
             anim.FadeOut = true;
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void InsertOneTimeAnimation(OneTimeAnimation animation)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            int insertIndex = _oneTimeAnimations.Count;
+            while (insertIndex > 0 && _oneTimeAnimations[insertIndex - 1].ZOrder > animation.ZOrder)
+            {
+                insertIndex--;
+            }
+
+            _oneTimeAnimations.Insert(insertIndex, animation);
+        }
+
+        internal void RegisterOneTimeCanvasLayer(
+            Texture2D canvasTexture,
+            float left,
+            float top,
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            int currentTimeMs,
+            Texture2D overlayTexture = null,
+            Point? overlayOffset = null,
+            int overlayDelayMs = 0,
+            bool ownsCanvasTexture = false,
+            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic,
+            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null,
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null)
+        {
+            if (canvasTexture == null)
+            {
+                return;
+            }
+
+            CanvasLayerRegistration registration = OneTimeCanvasLayerAnimation.BuildRegistration(
+                holdDurationMs,
+                fadeDurationMs,
+                riseDistancePx,
+                overlayTexture != null,
+                overlayOffset ?? Point.Zero,
+                overlayDelayMs,
+                recoveredLayerSettings);
+
+            OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
+                ? _oneTimeCanvasLayerPool.Dequeue()
+                : new OneTimeCanvasLayerAnimation();
+            anim.Initialize(
+                canvasTexture,
+                overlayTexture,
+                left,
+                top,
+                currentTimeMs,
+                registration.InsertDescriptors,
+                ownsCanvasTexture,
+                owner,
+                registration.RecoveredLayerSettings,
+                recoveredRegistrationTrace,
+                recoveredOwnerTrace,
+                AllocateOneTimeCanvasLayerHandleId(),
+                AllocateOneTimeTemporaryCanvasHandleId());
+            InsertOneTimeCanvasLayer(anim);
+        }
+
+        internal void RegisterOneTimeCanvasLayer(
+            Texture2D canvasTexture,
+            int currentTimeMs,
+            PreparedOneTimeCanvasLayerRegistration registration,
+            Texture2D overlayTexture = null,
+            bool ownsCanvasTexture = false,
+            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic)
+        {
+            if (canvasTexture == null)
+            {
+                return;
+            }
+
+            OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
+                ? _oneTimeCanvasLayerPool.Dequeue()
+                : new OneTimeCanvasLayerAnimation();
+            anim.Initialize(
+                canvasTexture,
+                overlayTexture,
+                registration.Left,
+                registration.Top,
+                currentTimeMs,
+                registration.InsertDescriptors,
+                ownsCanvasTexture,
+                owner,
+                registration.RecoveredLayerSettings,
+                registration.RecoveredRegistrationTrace,
+                registration.RecoveredOwnerTrace,
+                AllocateOneTimeCanvasLayerHandleId(),
+                AllocateOneTimeTemporaryCanvasHandleId());
+            InsertOneTimeCanvasLayer(anim);
+        }
+
+        internal IReadOnlyList<OneTimeCanvasLayerAnimation> OneTimeCanvasLayers => _oneTimeCanvasLayers;
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeFinalReleaseState> ReleasedOneTimeAnimationStates =>
+            _releasedOneTimeAnimationStates;
+        internal IReadOnlyList<OneTimeAnimationRecoveredMobProjectileFinalReleaseState> ReleasedMobProjectileStates =>
+            _releasedMobProjectileStates;
+        internal IReadOnlyList<CanvasLayerRecoveredNativeFinalReleaseState> ReleasedOneTimeCanvasLayerStates =>
+            _releasedOneTimeCanvasLayerStates;
+
+        private void CaptureReleasedOneTimeAnimationState(
+            OneTimeAnimation animation,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            OneTimeAnimationRecoveredNativeFinalReleaseState finalReleaseState =
+                animation.BuildRecoveredNativeFinalReleaseState(reason);
+            if (finalReleaseState.HadRegisteredLayer)
+            {
+                _releasedOneTimeAnimationStates.Add(finalReleaseState);
+                if (_releasedOneTimeAnimationStates.Count > MaxReleasedOneTimeAnimationStates)
+                {
+                    _releasedOneTimeAnimationStates.RemoveAt(0);
+                }
+            }
+
+            OneTimeAnimationRecoveredMobProjectileFinalReleaseState mobProjectileFinalReleaseState =
+                animation.BuildRecoveredMobProjectileFinalReleaseState(reason);
+            if (mobProjectileFinalReleaseState.HadBulletContainerReference)
+            {
+                _releasedMobProjectileStates.Add(mobProjectileFinalReleaseState);
+                if (_releasedMobProjectileStates.Count > MaxReleasedMobProjectileStates)
+                {
+                    _releasedMobProjectileStates.RemoveAt(0);
+                }
+            }
+        }
+
+        private void InsertOneTimeCanvasLayer(OneTimeCanvasLayerAnimation animation)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            int insertIndex = _oneTimeCanvasLayers.Count;
+            while (insertIndex > 0
+                && _oneTimeCanvasLayers[insertIndex - 1].RecoveredLayerSettings.LayerPriorityValue > animation.RecoveredLayerSettings.LayerPriorityValue)
+            {
+                insertIndex--;
+            }
+
+            _oneTimeCanvasLayers.Insert(insertIndex, animation);
+        }
+
+        private void CaptureReleasedOneTimeCanvasLayerState(
+            OneTimeCanvasLayerAnimation animation,
+            CanvasLayerRecoveredNativeFinalReleaseReason reason)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            CanvasLayerRecoveredNativeFinalReleaseState finalReleaseState =
+                animation.BuildRecoveredNativeFinalReleaseState(reason);
+            if (finalReleaseState.HadRegisteredLayer)
+            {
+                _releasedOneTimeCanvasLayerStates.Add(finalReleaseState);
+                if (_releasedOneTimeCanvasLayerStates.Count > MaxReleasedOneTimeCanvasLayerStates)
+                {
+                    _releasedOneTimeCanvasLayerStates.RemoveAt(0);
+                }
+            }
+        }
+
+        private int AllocateOneTimeCanvasLayerHandleId()
+        {
+            if (_nextOneTimeCanvasLayerHandleId == int.MaxValue)
+            {
+                _nextOneTimeCanvasLayerHandleId = 1;
+            }
+
+            return _nextOneTimeCanvasLayerHandleId++;
+        }
+
+        private int AllocateOneTimeTemporaryCanvasHandleId()
+        {
+            if (_nextOneTimeTemporaryCanvasHandleId == int.MaxValue)
+            {
+                _nextOneTimeTemporaryCanvasHandleId = 1;
+            }
+
+            return _nextOneTimeTemporaryCanvasHandleId++;
+        }
+
+        public void ClearCanvasLayers(AnimationCanvasLayerOwner owner)
+        {
+            for (int i = _oneTimeCanvasLayers.Count - 1; i >= 0; i--)
+            {
+                OneTimeCanvasLayerAnimation animation = _oneTimeCanvasLayers[i];
+                if (animation.Owner != owner)
+                {
+                    continue;
+                }
+
+                CaptureReleasedOneTimeCanvasLayerState(
+                    animation,
+                    CanvasLayerRecoveredNativeFinalReleaseReason.Cleared);
+                animation.Reset();
+                _oneTimeCanvasLayerPool.Enqueue(animation);
+                _oneTimeCanvasLayers.RemoveAt(i);
+            }
+        }
+
+        public void ClearDamageNumberLayers()
+        {
+            ClearCanvasLayers(AnimationCanvasLayerOwner.DamageNumber);
+        }
+
+        public int DamageNumberLayerCount
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < _oneTimeCanvasLayers.Count; i++)
+                {
+                    if (_oneTimeCanvasLayers[i].Owner == AnimationCanvasLayerOwner.DamageNumber)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
         }
 
         #endregion
@@ -168,6 +2845,195 @@ namespace HaCreator.MapSimulator.Animation
 
         #endregion
 
+        #region Secondary Skill Animation Owners
+
+        public int RegisterPrepareAnimation(
+            int ownerId,
+            List<IDXObject> primaryFrames,
+            List<IDXObject> secondaryFrames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int durationMs)
+        {
+            if (ownerId <= 0 || (!HasFrames(primaryFrames) && !HasFrames(secondaryFrames)))
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryPrepareAnimation();
+            animation.Initialize(ownerId, primaryFrames, secondaryFrames, getOwnerPosition, getOwnerFlip, fallbackPosition, fallbackFlip, currentTimeMs, durationMs);
+            _secondaryPrepareAnimations[ownerId] = animation;
+            return ownerId;
+        }
+
+        public bool RemovePrepareAnimation(int ownerId)
+        {
+            return ownerId > 0 && _secondaryPrepareAnimations.Remove(ownerId);
+        }
+
+        public int RegisterFootholdAnimation(
+            List<IDXObject> frames,
+            Rectangle area,
+            int tStartDelay,
+            int tDuration,
+            int updateIntervalMs,
+            int currentTimeMs,
+            bool randomPosition)
+        {
+            if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryFootholdAnimation();
+            animation.Initialize(frames, area, tStartDelay, tDuration, updateIntervalMs, currentTimeMs, randomPosition, _random);
+            _secondaryFootholdAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        public int RegisterHookingChainAnimation(
+            List<IDXObject> hookFrames,
+            List<IDXObject> chainFrames,
+            int ownerId,
+            Func<Vector2> getOwnerPosition,
+            Vector2 fallbackOwnerPosition,
+            Vector2? targetPosition,
+            bool left,
+            int attackTimeMs,
+            int currentTimeMs,
+            int zOrder,
+            int initialElapsedMs = 0)
+        {
+            if (!HasFrames(hookFrames) && !HasFrames(chainFrames))
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryHookChainAnimation();
+            animation.Initialize(hookFrames, chainFrames, ownerId, getOwnerPosition, fallbackOwnerPosition, targetPosition, left, attackTimeMs, currentTimeMs, zOrder, initialElapsedMs);
+            _secondaryHookChainAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        internal int RegisterMotionBlurAnimation(
+            List<IDXObject> frames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int delayMs,
+            int intervalMs,
+            byte alpha,
+            int currentTimeMs,
+            int durationMs,
+            bool follow,
+            int snapshotRetentionMs = 0,
+            bool ownsFrameTextures = false,
+            Func<int, List<IDXObject>> snapshotFrameFactory = null,
+            Func<int, Vector2?> snapshotPositionFactory = null,
+            Func<int, bool?> snapshotFlipFactory = null,
+            SecondaryMotionBlurAnimationState animationState = null)
+        {
+            if (!HasFrames(frames))
+            {
+                animationState?.CaptureFailedRegistrationArgumentReferences(
+                    animationState.SimulatedOverlayLayerHandleId,
+                    animationState.SimulatedLayerHandleIdsByLayerCode);
+                return -1;
+            }
+
+            var animation = new SecondaryMotionBlurAnimation();
+            animation.Initialize(
+                frames,
+                getOwnerPosition,
+                getOwnerFlip,
+                fallbackPosition,
+                fallbackFlip,
+                delayMs,
+                intervalMs,
+                alpha,
+                currentTimeMs,
+                durationMs,
+                follow,
+                snapshotRetentionMs,
+                ownsFrameTextures,
+                snapshotFrameFactory,
+                snapshotPositionFactory,
+                snapshotFlipFactory,
+                animationState);
+            _secondaryMotionBlurAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        public bool RemoveMotionBlurAnimation(int id)
+        {
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_secondaryMotionBlurAnimations[i].Id != id)
+                {
+                    continue;
+                }
+
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
+                _secondaryMotionBlurAnimations[i].Dispose();
+                _secondaryMotionBlurAnimations.RemoveAt(i);
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool TerminateMotionBlurAnimation(int id, int currentTimeMs)
+        {
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_secondaryMotionBlurAnimations[i].Id != id)
+                {
+                    continue;
+                }
+
+                _secondaryMotionBlurAnimations[i].RequestTermination(currentTimeMs);
+                return true;
+            }
+
+            return false;
+        }
+
+        public int RegisterSecondaryChainLightningAnimation(
+            IReadOnlyList<List<IDXObject>> frameVariants,
+            Vector2 start,
+            Vector2 end,
+            int tStart,
+            int tEnd,
+            int zOrder,
+            bool ordered,
+            bool tesla,
+            int registrationKey = 0)
+        {
+            if (start == end || tEnd <= tStart)
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryChainSegmentAnimation();
+            animation.Initialize(frameVariants, start, end, tStart, tEnd, zOrder, ordered, tesla, registrationKey, _random);
+            _secondaryChainSegmentAnimations.Add(animation);
+            AddLightningBolt(
+                start,
+                end,
+                tesla ? new Color(130, 220, 255) : new Color(100, 150, 255),
+                Math.Max(1, tEnd - tStart),
+                tStart,
+                tesla ? 4f : 3f,
+                Math.Max(4, animation.SegmentCount));
+            return animation.Id;
+        }
+
+        #endregion
+
         #region Falling Animation (FALLINGINFO)
 
         /// <summary>
@@ -184,10 +3050,44 @@ namespace HaCreator.MapSimulator.Animation
         public void AddFalling(List<IDXObject> frames, float startX, float startY, float endY,
             float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs)
         {
+            AddFalling(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, byte.MaxValue);
+        }
+
+        internal void AddFalling(List<IDXObject> frames, float startX, float startY, float endY,
+            float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, byte alpha)
+        {
+            AddFalling(
+                frames,
+                startX,
+                startY,
+                endY,
+                fallSpeed,
+                horizontalDrift,
+                rotation,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.Generic,
+                sourceUol: null);
+        }
+
+        private void AddFalling(
+            List<IDXObject> frames,
+            float startX,
+            float startY,
+            float endY,
+            float fallSpeed,
+            float horizontalDrift,
+            bool rotation,
+            int currentTimeMs,
+            byte alpha,
+            AnimationFallingOwner owner,
+            string sourceUol,
+            int initialElapsedMs = 0)
+        {
             if (frames == null || frames.Count == 0) return;
 
             FallingAnimation anim = _fallingPool.Count > 0 ? _fallingPool.Dequeue() : new FallingAnimation();
-            anim.Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, _random);
+            anim.Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, _random, alpha, owner, sourceUol, initialElapsedMs);
             _fallingAnimations.Add(anim);
         }
 
@@ -197,6 +3097,137 @@ namespace HaCreator.MapSimulator.Animation
         public void AddFallingBurst(List<IDXObject> frames, float centerX, float startY, float endY,
             float spreadX, int count, float fallSpeed, int currentTimeMs)
         {
+            AddFallingBurst(frames, centerX, startY, endY, spreadX, count, fallSpeed, currentTimeMs, byte.MaxValue);
+        }
+
+        internal void AddFallingBurst(List<IDXObject> frames, float centerX, float startY, float endY,
+            float spreadX, int count, float fallSpeed, int currentTimeMs, byte alpha)
+        {
+            AddFallingBurst(
+                frames,
+                centerX,
+                startY,
+                endY,
+                spreadX,
+                count,
+                fallSpeed,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.Generic,
+                sourceUol: null);
+        }
+
+        internal void AddPacketOwnedFallingBurst(
+            List<IDXObject> frames,
+            string sourceUol,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            int count,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            int updateIntervalMs,
+            int updateNextMs,
+            int durationMs,
+            int initialElapsedMs = 0)
+        {
+            if (!HasFrames(frames) || count <= 0)
+            {
+                return;
+            }
+
+            var registration = new FallingAnimationRegistration();
+            registration.Initialize(
+                frames,
+                sourceUol,
+                centerX,
+                startY,
+                endY,
+                spreadX,
+                count,
+                fallSpeed,
+                currentTimeMs,
+                alpha,
+                updateIntervalMs,
+                updateNextMs,
+                durationMs,
+                initialElapsedMs);
+            _fallingRegistrations.Add(registration);
+        }
+
+        internal void AddPacketOwnedFallingSingle(
+            List<IDXObject> frames,
+            string sourceUol,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            Random random)
+        {
+            float x = centerX + (float)((random?.NextDouble() ?? 0.5) * 2 - 1) * spreadX;
+            float drift = (float)((random?.NextDouble() ?? 0.5) * 0.4 - 0.2);
+
+            AddFalling(
+                frames,
+                x,
+                startY,
+                endY,
+                fallSpeed,
+                drift,
+                true,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.PacketOwnedFalling,
+                sourceUol);
+        }
+
+        internal void AddMobOwnedAttackFalling(
+            List<IDXObject> frames,
+            string sourceUol,
+            float startX,
+            float startY,
+            float endY,
+            float fallSpeed,
+            float horizontalDrift,
+            bool rotation,
+            int currentTimeMs,
+            byte alpha = byte.MaxValue,
+            int initialElapsedMs = 0)
+        {
+            AddFalling(
+                frames,
+                startX,
+                startY,
+                endY,
+                fallSpeed,
+                horizontalDrift,
+                rotation,
+                currentTimeMs,
+                alpha,
+                AnimationFallingOwner.MobOwnedAttackFalling,
+                sourceUol,
+                initialElapsedMs);
+        }
+
+        private void AddFallingBurst(
+            List<IDXObject> frames,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            int count,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            AnimationFallingOwner owner,
+            string sourceUol,
+            int initialElapsedMs = 0)
+        {
             for (int i = 0; i < count; i++)
             {
                 float x = centerX + (float)(_random.NextDouble() * 2 - 1) * spreadX;
@@ -204,7 +3235,19 @@ namespace HaCreator.MapSimulator.Animation
                 int delay = _random.Next(0, 300);
 
                 // Stagger the start times
-                AddFalling(frames, x, startY, endY, fallSpeed, drift, true, currentTimeMs + delay);
+                AddFalling(
+                    frames,
+                    x,
+                    startY,
+                    endY,
+                    fallSpeed,
+                    drift,
+                    true,
+                    currentTimeMs + delay,
+                    alpha,
+                    owner,
+                    sourceUol,
+                    initialElapsedMs);
             }
         }
 
@@ -225,12 +3268,59 @@ namespace HaCreator.MapSimulator.Animation
         public int AddFollow(List<IDXObject> frames, Func<Vector2> getTargetPosition,
             float offsetX, float offsetY, int durationMs, int currentTimeMs)
         {
-            if (frames == null || frames.Count == 0) return -1;
+            return AddFollow(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options: null);
+        }
+
+        internal int AddFollow(
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int durationMs,
+            int currentTimeMs,
+            FollowAnimationOptions options)
+        {
+            bool hasFollowFrames = HasFrames(frames);
+            bool hasSpawnVariants = HasFrameVariants(options?.SpawnFrameVariants);
+            if (!hasFollowFrames && !hasSpawnVariants) return -1;
 
             FollowAnimation anim = new FollowAnimation();
-            anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs);
+            anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options, _random);
+            anim.ApplyRecoveredNativeItemEffectReplacement(
+                ResolveRecoveredNativePreviousFollowItemEffectOwner(anim.RecoveredNativeItemEffectOwnerState));
             _followAnimations.Add(anim);
             return anim.Id;
+        }
+
+        private FollowItemEffectRecoveredNativeOwnerState ResolveRecoveredNativePreviousFollowItemEffectOwner(
+            FollowItemEffectRecoveredNativeOwnerState nextOwnerState)
+        {
+            if (nextOwnerState.ItemId <= 0 || nextOwnerState.ClientEquipIndex < 0)
+            {
+                return default;
+            }
+
+            for (int i = _followAnimations.Count - 1; i >= 0; i--)
+            {
+                FollowItemEffectRecoveredNativeOwnerState previousOwnerState =
+                    _followAnimations[i].RecoveredNativeItemEffectOwnerState;
+                if (previousOwnerState.ItemId <= 0
+                    || previousOwnerState.IsReleased
+                    || previousOwnerState.ClientEquipIndex != nextOwnerState.ClientEquipIndex)
+                {
+                    continue;
+                }
+
+                if (previousOwnerState.ItemId == nextOwnerState.ItemId)
+                {
+                    return default;
+                }
+
+                _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
+                return _followAnimations[i].RecoveredNativeItemEffectOwnerState;
+            }
+
+            return default;
         }
 
         /// <summary>
@@ -242,10 +3332,305 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (_followAnimations[i].Id == id)
                 {
+                    _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
                     _followAnimations.RemoveAt(i);
+                    RemoveFollowParticles(id);
                     return true;
                 }
             }
+            return false;
+        }
+
+        #endregion
+
+        #region User State Animation
+
+        public int RegisterUserState(
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            return RegisterUserState(
+                registrationKey: ownerId,
+                ownerId,
+                startFrames,
+                repeatFrames,
+                endFrames,
+                getTargetPosition,
+                offsetX,
+                offsetY,
+                currentTimeMs,
+                initialElapsedMs);
+        }
+
+        public int RegisterUserState(
+            int registrationKey,
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            if (ownerId <= 0 || getTargetPosition == null)
+            {
+                return -1;
+            }
+
+            if (!HasFrames(startFrames) && !HasFrames(repeatFrames) && !HasFrames(endFrames))
+            {
+                return -1;
+            }
+
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
+                {
+                    if (!_userStateAnimations[i].BeginEndPhase(currentTimeMs))
+                    {
+                        _userStateAnimations.RemoveAt(i);
+                    }
+                }
+            }
+
+            var animation = new UserStateAnimation();
+            animation.Initialize(
+                registrationKey,
+                ownerId,
+                startFrames,
+                repeatFrames,
+                endFrames,
+                getTargetPosition,
+                offsetX,
+                offsetY,
+                currentTimeMs,
+                initialElapsedMs);
+            _userStateAnimations.Add(animation);
+            return registrationKey;
+        }
+
+        public bool RemoveUserState(int ownerId, int currentTimeMs)
+        {
+            return RemoveUserStateByRegistrationKey(ownerId, currentTimeMs);
+        }
+
+        public bool RemoveUserStateByRegistrationKey(int registrationKey, int currentTimeMs)
+        {
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
+                {
+                    if (_userStateAnimations[i].BeginEndPhase(currentTimeMs))
+                    {
+                        return true;
+                    }
+
+                    _userStateAnimations.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool HasUserState(int ownerId)
+        {
+            return HasUserStateByRegistrationKey(ownerId);
+        }
+
+        public bool HasUserStateByRegistrationKey(int registrationKey)
+        {
+            for (int i = 0; i < _userStateAnimations.Count; i++)
+            {
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        #endregion
+
+        #region Area Animation
+
+        public int RegisterAreaAnimation(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null,
+            int zOrder = 1,
+            float? spawnProbability = null)
+        {
+            return RegisterAreaAnimation(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.Generic,
+                sourceUol: null);
+        }
+
+        internal int RegisterPacketOwnedAreaAnimation(
+            List<IDXObject> frames,
+            string sourceUol,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null,
+            int zOrder = 1,
+            float? spawnProbability = null,
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
+        {
+            return RegisterAreaAnimation(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.PacketOwnedExplosion,
+                sourceUol,
+                initialElapsedMs,
+                recoveredNumericPropertyCount);
+        }
+
+        internal int RegisterPacketOwnedReservedAreaAnimation(
+            List<IDXObject> frames,
+            string sourceUol,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null,
+            int zOrder = 1,
+            float? spawnProbability = null)
+        {
+            return RegisterAreaAnimation(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.PacketOwnedReservedArea,
+                sourceUol);
+        }
+
+        internal int RegisterPacketOwnedTransientAreaAnimation(
+            List<IDXObject> frames,
+            string sourceUol,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null,
+            int zOrder = 1,
+            float? spawnProbability = null)
+        {
+            return RegisterAreaAnimation(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.PacketOwnedTransientArea,
+                sourceUol);
+        }
+
+        private int RegisterAreaAnimation(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn,
+            int zOrder,
+            float? spawnProbability,
+            AnimationAreaAnimationOwner owner,
+            string sourceUol,
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
+        {
+            if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
+            {
+                return -1;
+            }
+
+            var registration = new AreaAnimationRegistration();
+            registration.Initialize(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                owner,
+                sourceUol,
+                initialElapsedMs,
+                recoveredNumericPropertyCount);
+            _areaAnimations.Add(registration);
+            return registration.Id;
+        }
+
+        public bool RemoveAreaAnimation(int id)
+        {
+            for (int i = _areaAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_areaAnimations[i].Id == id)
+                {
+                    _areaAnimations.RemoveAt(i);
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -265,8 +3650,24 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (!_oneTimeAnimations[i].Update(currentTimeMs))
                 {
+                    CaptureReleasedOneTimeAnimationState(
+                        _oneTimeAnimations[i],
+                        OneTimeAnimationRecoveredNativeFinalReleaseReason.NaturalCompletion);
                     _oneTimePool.Enqueue(_oneTimeAnimations[i]);
                     _oneTimeAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _oneTimeCanvasLayers.Count - 1; i >= 0; i--)
+            {
+                if (!_oneTimeCanvasLayers[i].Update(currentTimeMs))
+                {
+                    CaptureReleasedOneTimeCanvasLayerState(
+                        _oneTimeCanvasLayers[i],
+                        CanvasLayerRecoveredNativeFinalReleaseReason.NaturalCompletion);
+                    _oneTimeCanvasLayers[i].Reset();
+                    _oneTimeCanvasLayerPool.Enqueue(_oneTimeCanvasLayers[i]);
+                    _oneTimeCanvasLayers.RemoveAt(i);
                 }
             }
 
@@ -298,12 +3699,88 @@ namespace HaCreator.MapSimulator.Animation
                 }
             }
 
+            for (int i = _fallingRegistrations.Count - 1; i >= 0; i--)
+            {
+                if (!_fallingRegistrations[i].Update(this, currentTimeMs, _random))
+                {
+                    _fallingRegistrations.RemoveAt(i);
+                }
+            }
+
             // Update follow animations
             for (int i = _followAnimations.Count - 1; i >= 0; i--)
             {
-                if (!_followAnimations[i].Update(currentTimeMs))
+                if (!_followAnimations[i].Update(this, currentTimeMs, _random))
                 {
+                    _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
+                    RemoveFollowParticles(_followAnimations[i].Id);
                     _followAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _followParticleAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_followParticleAnimations[i].Update(currentTimeMs))
+                {
+                    _followParticleAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _areaAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_areaAnimations[i].Update(this, currentTimeMs, _random))
+                {
+                    _areaAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_userStateAnimations[i].Update(currentTimeMs))
+                {
+                    _userStateAnimations.RemoveAt(i);
+                }
+            }
+
+            foreach (int key in new List<int>(_secondaryPrepareAnimations.Keys))
+            {
+                if (!_secondaryPrepareAnimations[key].Update(currentTimeMs))
+                {
+                    _secondaryPrepareAnimations.Remove(key);
+                }
+            }
+
+            for (int i = _secondaryFootholdAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryFootholdAnimations[i].Update(currentTimeMs, _random))
+                {
+                    _secondaryFootholdAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryHookChainAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryHookChainAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryHookChainAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryMotionBlurAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryMotionBlurAnimations[i].MarkTerminated();
+                    _secondaryMotionBlurAnimations[i].Dispose();
+                    _secondaryMotionBlurAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryChainSegmentAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryChainSegmentAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryChainSegmentAnimations.RemoveAt(i);
                 }
             }
         }
@@ -331,6 +3808,11 @@ namespace HaCreator.MapSimulator.Animation
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
 
+            foreach (var anim in _oneTimeCanvasLayers)
+            {
+                anim.Draw(spriteBatch, mapShiftX, mapShiftY);
+            }
+
             // Draw repeat animations
             foreach (var anim in _repeatAnimations)
             {
@@ -354,6 +3836,41 @@ namespace HaCreator.MapSimulator.Animation
             {
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
+
+            foreach (var anim in _followParticleAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY, currentTimeMs);
+            }
+
+            foreach (var anim in _userStateAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryPrepareAnimations.Values)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryFootholdAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryHookChainAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, pixelTexture, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryMotionBlurAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryChainSegmentAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
         }
 
         #endregion
@@ -365,25 +3882,3548 @@ namespace HaCreator.MapSimulator.Animation
         /// </summary>
         public void Clear()
         {
+            for (int i = 0; i < _oneTimeAnimations.Count; i++)
+            {
+                CaptureReleasedOneTimeAnimationState(
+                    _oneTimeAnimations[i],
+                    OneTimeAnimationRecoveredNativeFinalReleaseReason.Cleared);
+            }
             _oneTimeAnimations.Clear();
+            for (int i = 0; i < _oneTimeCanvasLayers.Count; i++)
+            {
+                CaptureReleasedOneTimeCanvasLayerState(
+                    _oneTimeCanvasLayers[i],
+                    CanvasLayerRecoveredNativeFinalReleaseReason.Cleared);
+                _oneTimeCanvasLayers[i].Reset();
+            }
+            _oneTimeCanvasLayers.Clear();
             _repeatAnimations.Clear();
             _chainLightnings.Clear();
             _fallingAnimations.Clear();
+            _fallingRegistrations.Clear();
+            for (int i = 0; i < _followAnimations.Count; i++)
+            {
+                _followAnimations[i].ReleaseRecoveredNativeItemEffectOwner();
+            }
+
             _followAnimations.Clear();
+            _followParticleAnimations.Clear();
+            _areaAnimations.Clear();
+            _userStateAnimations.Clear();
+            _secondaryPrepareAnimations.Clear();
+            _secondaryFootholdAnimations.Clear();
+            _secondaryHookChainAnimations.Clear();
+            for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
+            {
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
+                _secondaryMotionBlurAnimations[i].Dispose();
+            }
+            _secondaryMotionBlurAnimations.Clear();
+            _secondaryChainSegmentAnimations.Clear();
         }
 
         /// <summary>
         /// Get count of active animations
         /// </summary>
         public int ActiveCount =>
-            _oneTimeAnimations.Count + _repeatAnimations.Count +
-            _chainLightnings.Count + _fallingAnimations.Count +
-            _followAnimations.Count;
+            _oneTimeAnimations.Count + _oneTimeCanvasLayers.Count + _repeatAnimations.Count +
+            _chainLightnings.Count + _fallingAnimations.Count + _fallingRegistrations.Count +
+            _followAnimations.Count + _followParticleAnimations.Count + _areaAnimations.Count +
+            _userStateAnimations.Count + SecondarySkillAnimationOwnerCount;
+
+        internal static bool HasFrames(List<IDXObject> frames)
+        {
+            return frames != null && frames.Count > 0;
+        }
+
+        internal static bool HasFrameVariants(IReadOnlyList<List<IDXObject>> frameVariants)
+        {
+            if (frameVariants == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < frameVariants.Count; i++)
+            {
+                if (HasFrames(frameVariants[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void ClearUserStates()
+        {
+            _userStateAnimations.Clear();
+        }
+
+        public void ClearAreaAnimations()
+        {
+            _areaAnimations.Clear();
+        }
+
+        public void ClearSecondarySkillAnimationOwners()
+        {
+            _secondaryPrepareAnimations.Clear();
+            _secondaryFootholdAnimations.Clear();
+            _secondaryHookChainAnimations.Clear();
+            for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
+            {
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
+                _secondaryMotionBlurAnimations[i].Dispose();
+            }
+            _secondaryMotionBlurAnimations.Clear();
+            _secondaryChainSegmentAnimations.Clear();
+        }
+
+        private void RemoveFollowParticles(int followRegistrationId)
+        {
+            for (int i = _followParticleAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_followParticleAnimations[i].FollowRegistrationId == followRegistrationId)
+                {
+                    _followParticleAnimations.RemoveAt(i);
+                }
+            }
+        }
+
+        internal void AddFollowParticle(
+            int followRegistrationId,
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            Func<bool> getTargetFlip,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget,
+            bool suppressTargetFlip,
+            float offsetX,
+            float offsetY,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int zOrder,
+            int durationMs,
+            int currentTimeMs,
+            int sourceEffectVariantIndex = -1,
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
+        {
+            if (!HasFrames(frames) || getTargetPosition == null)
+            {
+                return;
+            }
+
+            var particle = new FollowParticleAnimation();
+            particle.Initialize(
+                followRegistrationId,
+                frames,
+                getTargetPosition,
+                getTargetFlip,
+                capturedTargetPosition,
+                relativeToTarget,
+                suppressTargetFlip,
+                offsetX,
+                offsetY,
+                startOffset,
+                endOffset,
+                zOrder,
+                durationMs,
+                currentTimeMs,
+                sourceEffectVariantIndex,
+                sourceVariantOrdinal,
+                usesEmission);
+            InsertFollowParticleAnimation(particle);
+        }
+
+        private void InsertFollowParticleAnimation(FollowParticleAnimation particle)
+        {
+            if (particle == null)
+            {
+                return;
+            }
+
+            int insertIndex = _followParticleAnimations.Count;
+            while (insertIndex > 0 && _followParticleAnimations[insertIndex - 1].ZOrder > particle.ZOrder)
+            {
+                insertIndex--;
+            }
+
+            _followParticleAnimations.Insert(insertIndex, particle);
+        }
+
+        internal static Vector2 ResolveFollowGenerationPointOffset(
+            IReadOnlyList<Vector2> generationPoints,
+            int generationPointIndex,
+            float radius,
+            int currentAngleDegrees,
+            out int nextGenerationPointIndex,
+            out int nextAngleDegrees)
+        {
+            if (generationPoints != null && generationPoints.Count > 0)
+            {
+                int resolvedIndex = Math.Max(0, generationPointIndex) % generationPoints.Count;
+                nextGenerationPointIndex = (resolvedIndex + 1) % generationPoints.Count;
+                nextAngleDegrees = NormalizeFollowAngleDegrees(currentAngleDegrees);
+                return generationPoints[resolvedIndex];
+            }
+
+            int normalizedAngle = NormalizeFollowAngleDegrees(currentAngleDegrees);
+            nextGenerationPointIndex = 0;
+            nextAngleDegrees = normalizedAngle;
+            return ResolvePolarFollowOffset(radius, normalizedAngle);
+        }
+
+        internal static Vector2 ResolvePolarFollowOffset(float radius, int angleDegrees)
+        {
+            float radians = MathHelper.ToRadians(NormalizeFollowAngleDegrees(angleDegrees));
+            return new Vector2(
+                (float)Math.Cos(radians) * radius,
+                (float)Math.Sin(radians) * radius);
+        }
+
+        internal static int NormalizeFollowAngleDegrees(int angleDegrees)
+        {
+            int normalized = angleDegrees % 360;
+            return normalized < 0 ? normalized + 360 : normalized;
+        }
+
+        internal static int ResolveFollowSpawnDurationMs(IReadOnlyList<IDXObject> frames, int explicitDurationMs)
+        {
+            if (explicitDurationMs > 0)
+            {
+                return explicitDurationMs;
+            }
+
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDurationMs = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDurationMs += Math.Max(1, frames[i]?.Delay ?? 0);
+            }
+
+            return Math.Max(1, totalDurationMs);
+        }
+
+        internal static int ResolveFollowParticleAngleDegrees(Vector2 emissionOffset, int fallbackAngleDegrees)
+        {
+            if (emissionOffset.LengthSquared() <= float.Epsilon)
+            {
+                return NormalizeFollowAngleDegrees(fallbackAngleDegrees);
+            }
+
+            int angleDegrees = (int)Math.Round(MathHelper.ToDegrees((float)Math.Atan2(emissionOffset.Y, emissionOffset.X)));
+            return NormalizeFollowAngleDegrees(angleDegrees);
+        }
+
+        internal static int ResolveFollowSpawnAngleDegrees(
+            bool hasGenerationPoints,
+            int currentAngleDegrees,
+            int thetaDegrees,
+            Random random)
+        {
+            if (hasGenerationPoints || thetaDegrees != 0)
+            {
+                return NormalizeFollowAngleDegrees(currentAngleDegrees);
+            }
+
+            return random?.Next(0, 360) ?? 0;
+        }
+
+        internal static int ResolveFollowRandomOffsetComponent(int startInclusive, int endExclusive, Random random)
+        {
+            int resolvedMin = Math.Min(startInclusive, endExclusive);
+            int resolvedMax = Math.Max(startInclusive, endExclusive);
+            int delta = resolvedMax - resolvedMin;
+            if (delta <= 0)
+            {
+                return resolvedMin;
+            }
+
+            return resolvedMin + (random?.Next(delta) ?? 0);
+        }
+
+        internal static Vector2 ResolveFollowRandomOffset(Point startInclusive, Point endExclusive, Random random)
+        {
+            return new Vector2(
+                ResolveFollowRandomOffsetComponent(startInclusive.X, endExclusive.X, random),
+                ResolveFollowRandomOffsetComponent(startInclusive.Y, endExclusive.Y, random));
+        }
+
+        internal static Vector2 ResolveFollowEmissionStartOffset(Rectangle area, Random random)
+        {
+            int x = ResolveFollowRandomOffsetComponent(area.Left, area.Right, random);
+            int y = ResolveFollowRandomOffsetComponent(area.Top, area.Bottom, random);
+            return new Vector2(x, y);
+        }
+
+        internal static Vector2 ResolveFollowParticleStartOffset(
+            Vector2 generationPointOffset,
+            bool hasGenerationPoints,
+            int angleDegrees,
+            Vector2 randomOffset,
+            Rectangle emissionArea,
+            bool useEmissionBox,
+            bool applyEmissionBias,
+            float verticalEmissionBias,
+            Random random)
+        {
+            Vector2 startOffset;
+            if (useEmissionBox)
+            {
+                Vector2 emissionStart = ResolveFollowEmissionStartOffset(emissionArea, random);
+                startOffset = emissionStart;
+            }
+            else if (hasGenerationPoints)
+            {
+                startOffset = generationPointOffset;
+            }
+            else
+            {
+                float radialDistance = Math.Abs(randomOffset.X);
+                startOffset = ResolvePolarFollowOffset(radialDistance, angleDegrees);
+            }
+
+            return applyEmissionBias
+                ? new Vector2(startOffset.X, startOffset.Y + verticalEmissionBias)
+                : startOffset;
+        }
+
+        internal static Vector2 ResolveFollowParticleEndOffset(
+            Vector2 emissionOffset,
+            int angleDegrees,
+            Vector2 randomOffset,
+            bool useEmissionBox,
+            bool mirrorHorizontal,
+            bool useEmissionTravelDistance = false)
+        {
+            Vector2 travelOffset = ResolveFollowParticleTravelOffset(
+                randomOffset,
+                angleDegrees,
+                useEmissionBox,
+                mirrorHorizontal,
+                useEmissionTravelDistance);
+            if (travelOffset.LengthSquared() <= float.Epsilon)
+            {
+                return emissionOffset;
+            }
+
+            return emissionOffset + travelOffset;
+        }
+
+        internal static Vector2 ResolveFollowParticleEndOffset(
+            Vector2 emissionOffset,
+            int angleDegrees,
+            float radialDistance)
+        {
+            if (radialDistance <= float.Epsilon)
+            {
+                return emissionOffset;
+            }
+
+            return emissionOffset + ResolvePolarFollowOffset(radialDistance, angleDegrees);
+        }
+
+        internal static float ResolveFollowParticleTravelDistance(float minDistance, float maxDistance, Random random)
+        {
+            float resolvedMin = Math.Max(0f, Math.Min(minDistance, maxDistance));
+            float resolvedMax = Math.Max(0f, Math.Max(minDistance, maxDistance));
+            if (resolvedMax <= resolvedMin + float.Epsilon)
+            {
+                return resolvedMin;
+            }
+
+            return resolvedMin + ((float)(random?.NextDouble() ?? 0d) * (resolvedMax - resolvedMin));
+        }
+
+        internal static float ResolveFollowParticleTravelDistance(Vector2 randomOffset, bool useEmissionBox)
+        {
+            if (useEmissionBox)
+            {
+                return randomOffset.Length();
+            }
+
+            float distance = randomOffset.Length();
+            if (distance > float.Epsilon)
+            {
+                return distance;
+            }
+
+            return Math.Max(Math.Abs(randomOffset.X), Math.Abs(randomOffset.Y));
+        }
+
+        internal static Vector2 ResolveFollowParticleTravelOffset(
+            Vector2 randomOffset,
+            int angleDegrees,
+            bool useEmissionBox,
+            bool mirrorHorizontal,
+            bool useEmissionTravelDistance = false)
+        {
+            if (useEmissionBox)
+            {
+                return new Vector2(
+                    mirrorHorizontal ? -randomOffset.X : randomOffset.X,
+                    randomOffset.Y);
+            }
+
+            if (useEmissionTravelDistance)
+            {
+                float emissionTravelDistance = Math.Abs(randomOffset.Y);
+                return emissionTravelDistance <= float.Epsilon
+                    ? Vector2.Zero
+                    : ResolvePolarFollowOffset(emissionTravelDistance, angleDegrees);
+            }
+
+            float travelDistance = ResolveFollowParticleTravelDistance(randomOffset, useEmissionBox: false);
+            return travelDistance <= float.Epsilon
+                ? Vector2.Zero
+                : ResolvePolarFollowOffset(travelDistance, angleDegrees);
+        }
+
+        internal static Vector2 ResolveFollowSpawnAnchorPosition(
+            Vector2 targetPosition,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget)
+        {
+            return relativeToTarget ? targetPosition : capturedTargetPosition;
+        }
+
+        internal static byte ResolveFollowParticleAlpha(int elapsedMs, int durationMs)
+        {
+            if (durationMs <= 0)
+            {
+                return byte.MinValue;
+            }
+
+            float progress = MathHelper.Clamp((float)elapsedMs / durationMs, 0f, 1f);
+            return (byte)Math.Clamp((int)MathF.Round(byte.MaxValue * (1f - progress)), byte.MinValue, byte.MaxValue);
+        }
+
+        public int UserStateCount => _userStateAnimations.Count;
+        public int AreaAnimationCount => _areaAnimations.Count;
+        public int FallingAnimationCount => _fallingAnimations.Count;
+        public int FollowAnimationCount => _followAnimations.Count;
+        public int FollowParticleCount => _followParticleAnimations.Count;
+        public int SecondarySkillAnimationOwnerCount =>
+            _secondaryPrepareAnimations.Count
+            + _secondaryFootholdAnimations.Count
+            + _secondaryHookChainAnimations.Count
+            + _secondaryMotionBlurAnimations.Count
+            + _secondaryChainSegmentAnimations.Count;
+        internal IReadOnlyList<FollowParticleAnimation> FollowParticles => _followParticleAnimations;
+        internal IReadOnlyList<FollowAnimation> FollowAnimations => _followAnimations;
+        internal IReadOnlyList<OneTimeAnimation> OneTimeAnimations => _oneTimeAnimations;
+        internal IReadOnlyList<FallingAnimation> FallingAnimations => _fallingAnimations;
+        internal IReadOnlyList<FallingAnimationRegistration> FallingRegistrations => _fallingRegistrations;
+        internal IReadOnlyList<AreaAnimationRegistration> AreaAnimations => _areaAnimations;
 
         #endregion
     }
 
     #region Animation Classes
+
+    internal static class SecondarySkillAnimationIdSource
+    {
+        private static int _nextId = 1;
+
+        public static int NextId()
+        {
+            return _nextId++;
+        }
+    }
+
+    internal abstract class SecondarySkillFrameAnimation
+    {
+        protected static int ResolveFrameDelay(IDXObject frame)
+        {
+            return Math.Max(10, frame?.Delay ?? 100);
+        }
+
+        protected static int ResolveFrameIndex(IReadOnlyList<IDXObject> frames, int elapsedMs, bool loop)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalDuration = ResolveFramesDuration(frames);
+            if (loop && totalDuration > 0)
+            {
+                elapsedMs %= totalDuration;
+            }
+
+            int cursor = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                cursor += ResolveFrameDelay(frames[i]);
+                if (elapsedMs < cursor)
+                {
+                    return i;
+                }
+            }
+
+            return loop ? 0 : frames.Count - 1;
+        }
+
+        protected static int ResolveFramesDuration(IReadOnlyList<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                duration += ResolveFrameDelay(frames[i]);
+            }
+
+            return duration;
+        }
+
+        protected static int ResolveClientOwnedAvatarEffectElapsedMs(int currentTime, int startTime)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, startTime);
+        }
+
+        protected static void DrawFrame(
+            IReadOnlyList<IDXObject> frames,
+            int frameIndex,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            GameTime gameTime,
+            Vector2 position,
+            bool flip,
+            int mapShiftX,
+            int mapShiftY)
+        {
+            if (frames == null || frameIndex < 0 || frameIndex >= frames.Count)
+            {
+                return;
+            }
+
+            int drawShiftX = -(int)MathF.Round(position.X) - mapShiftX;
+            int drawShiftY = -(int)MathF.Round(position.Y) - mapShiftY;
+            frames[frameIndex]?.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+        }
+    }
+
+    internal sealed class SecondaryPrepareAnimation : SecondarySkillFrameAnimation
+    {
+        private int _ownerId;
+        private List<IDXObject> _primaryFrames;
+        private List<IDXObject> _secondaryFrames;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
+        private Vector2 _fallbackPosition;
+        private bool _fallbackFlip;
+        private int _startTime;
+        private int _durationMs;
+        private int _lastUpdateTime;
+
+        public void Initialize(
+            int ownerId,
+            List<IDXObject> primaryFrames,
+            List<IDXObject> secondaryFrames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int durationMs)
+        {
+            _ownerId = ownerId;
+            _primaryFrames = primaryFrames;
+            _secondaryFrames = secondaryFrames;
+            _positionResolver = getOwnerPosition;
+            _flipResolver = getOwnerFlip;
+            _fallbackPosition = fallbackPosition;
+            _fallbackFlip = fallbackFlip;
+            _startTime = currentTimeMs;
+            _lastUpdateTime = currentTimeMs;
+            _durationMs = durationMs > 0
+                ? durationMs
+                : Math.Max(ResolveFramesDuration(primaryFrames), ResolveFramesDuration(secondaryFrames));
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return _ownerId > 0
+                   && (_durationMs <= 0 || ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, _startTime) < _durationMs);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            Vector2 position = _positionResolver?.Invoke() ?? _fallbackPosition;
+            bool flip = _flipResolver?.Invoke() ?? _fallbackFlip;
+            int elapsed = ResolveClientOwnedAvatarEffectElapsedMs(_lastUpdateTime, _startTime);
+            DrawFrame(_primaryFrames, ResolveFrameIndex(_primaryFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+            DrawFrame(_secondaryFrames, ResolveFrameIndex(_secondaryFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, startTimeMs);
+        }
+    }
+
+    internal sealed class SecondaryFootholdAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<(Vector2 Position, int StartTime)> _layers = new();
+        private List<IDXObject> _frames;
+        private Rectangle _area;
+        private int _startTime;
+        private int _endTime;
+        private int _nextSpawnTime;
+        private int _updateIntervalMs;
+        private bool _randomPosition;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        public void Initialize(List<IDXObject> frames, Rectangle area, int tStartDelay, int tDuration, int updateIntervalMs, int currentTimeMs, bool randomPosition, Random random)
+        {
+            _frames = frames;
+            _area = area;
+            _startTime = currentTimeMs + Math.Max(0, tStartDelay);
+            _endTime = _startTime + Math.Max(1, tDuration);
+            _nextSpawnTime = _startTime;
+            _lastUpdateTime = currentTimeMs;
+            _updateIntervalMs = Math.Max(30, updateIntervalMs);
+            _randomPosition = randomPosition;
+            TrySpawn(_startTime, random);
+        }
+
+        public bool Update(int currentTimeMs, Random random)
+        {
+            _lastUpdateTime = currentTimeMs;
+            while (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextSpawnTime)
+                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextSpawnTime, _endTime))
+            {
+                TrySpawn(_nextSpawnTime, random);
+                _nextSpawnTime += _updateIntervalMs;
+            }
+
+            int frameDuration = ResolveFramesDuration(_frames);
+            _layers.RemoveAll(layer => ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, layer.StartTime) >= frameDuration);
+            return !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime) || _layers.Count > 0;
+        }
+
+        private void TrySpawn(int startTime, Random random)
+        {
+            if (_area.Width <= 0 || _area.Height <= 0)
+            {
+                return;
+            }
+
+            Vector2 position = _randomPosition
+                ? new Vector2(_area.Left + (random?.Next(_area.Width) ?? 0), _area.Top + (random?.Next(_area.Height) ?? 0))
+                : new Vector2(_area.Left + (_area.Width * 0.5f), _area.Top + (_area.Height * 0.5f));
+            _layers.Add((position, startTime));
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            foreach ((Vector2 position, int startTime) in _layers)
+            {
+                if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, startTime))
+                {
+                    continue;
+                }
+
+                int frameIndex = ResolveFrameIndex(_frames, ResolveClientOwnedAvatarEffectElapsedMs(currentTime, startTime), loop: false);
+                DrawFrame(_frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip: false, mapShiftX, mapShiftY);
+            }
+        }
+
+        internal static bool HasReachedForTesting(int currentTimeMs, int targetTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, targetTimeMs);
+        }
+
+        internal static int ResolveLayerElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, startTimeMs);
+        }
+    }
+
+    internal sealed class SecondaryHookChainAnimation : SecondarySkillFrameAnimation
+    {
+        private List<IDXObject> _hookFrames;
+        private List<IDXObject> _chainFrames;
+        private Func<Vector2> _ownerPositionResolver;
+        private Vector2 _fallbackOwnerPosition;
+        private Vector2 _targetPosition;
+        private bool _left;
+        private int _startTime;
+        private int _stretchEndTime;
+        private int _endTime;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        public void Initialize(List<IDXObject> hookFrames, List<IDXObject> chainFrames, int ownerId, Func<Vector2> getOwnerPosition, Vector2 fallbackOwnerPosition, Vector2? targetPosition, bool left, int attackTimeMs, int currentTimeMs, int zOrder, int initialElapsedMs = 0)
+        {
+            _hookFrames = hookFrames;
+            _chainFrames = chainFrames;
+            _ownerPositionResolver = getOwnerPosition;
+            _fallbackOwnerPosition = fallbackOwnerPosition;
+            _left = left;
+            int elapsedMs = Math.Max(0, initialElapsedMs);
+            _startTime = unchecked(currentTimeMs - elapsedMs);
+            _lastUpdateTime = currentTimeMs;
+            _stretchEndTime = attackTimeMs - 100;
+            _endTime = _stretchEndTime + 1000;
+            Vector2 userPoint = ResolveUserPoint();
+            _targetPosition = targetPosition ?? new Vector2(userPoint.X + (left ? -300f : 300f), userPoint.Y);
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, Texture2D pixelTexture, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            Vector2 userPoint = ResolveUserPoint();
+            int elapsed = ResolveClientOwnedAvatarEffectElapsedMs(currentTime, _startTime);
+            int stretchDurationMs = ResolveClientOwnedAvatarEffectElapsedMs(_stretchEndTime, _startTime);
+            float progress = stretchDurationMs <= 0
+                ? 1f
+                : MathHelper.Clamp(elapsed / (float)stretchDurationMs, 0f, 1f);
+            Vector2 tip = Vector2.Lerp(userPoint, _targetPosition, progress);
+            if (pixelTexture != null)
+            {
+                DrawLine(spriteBatch, pixelTexture, userPoint + new Vector2(mapShiftX, mapShiftY), tip + new Vector2(mapShiftX, mapShiftY), 3f, Color.White * 0.8f);
+            }
+
+            DrawFrame(_chainFrames, ResolveFrameIndex(_chainFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, (userPoint + tip) * 0.5f, _left, mapShiftX, mapShiftY);
+            DrawFrame(_hookFrames, ResolveFrameIndex(_hookFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, tip, _left, mapShiftX, mapShiftY);
+        }
+
+        internal static int ResolveHookChainElapsedForTesting(int currentTime, int startTime)
+        {
+            return ResolveClientOwnedAvatarEffectElapsedMs(currentTime, startTime);
+        }
+
+        internal static bool IsHookChainBeforeEndForTesting(int currentTime, int endTime)
+        {
+            return !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, endTime);
+        }
+
+        private Vector2 ResolveUserPoint()
+        {
+            Vector2 owner = _ownerPositionResolver?.Invoke() ?? _fallbackOwnerPosition;
+            return new Vector2(owner.X + (_left ? -25f : 25f), owner.Y - 20f);
+        }
+
+        private static void DrawLine(SpriteBatch spriteBatch, Texture2D texture, Vector2 start, Vector2 end, float width, Color color)
+        {
+            Vector2 delta = end - start;
+            float length = delta.Length();
+            if (length < 0.01f)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(texture, start, null, color, (float)Math.Atan2(delta.Y, delta.X), new Vector2(0, 0.5f), new Vector2(length, width), SpriteEffects.None, 0);
+        }
+    }
+
+    internal sealed class SecondaryMotionBlurAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<MotionBlurSnapshot> _snapshots = new();
+        private List<IDXObject> _fallbackFrames;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
+        private Func<int, List<IDXObject>> _snapshotFrameFactory;
+        private Vector2 _fallbackPosition;
+        private bool _fallbackFlip;
+        private int _nextUpdateTime;
+        private int _endTime;
+        private int _intervalMs;
+        private byte _alpha;
+        private int _snapshotRetentionMs;
+        private int _lastUpdateTime;
+        private bool _follow;
+        private bool _ownsFrameTextures;
+        private bool _terminationRequested;
+        private AnimationEffects.SecondaryMotionBlurAnimationState _state;
+        private Func<int, Vector2?> _snapshotPositionFactory;
+        private Func<int, bool?> _snapshotFlipFactory;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        private readonly struct MotionBlurSnapshot
+        {
+            public MotionBlurSnapshot(
+                Vector2 position,
+                bool flip,
+                int startTime,
+                List<IDXObject> frames,
+                AnimationEffects.SecondaryMotionBlurSnapshotTrace trace)
+            {
+                Position = position;
+                Flip = flip;
+                StartTime = startTime;
+                Frames = frames;
+                Trace = trace;
+            }
+
+            public Vector2 Position { get; }
+            public bool Flip { get; }
+            public int StartTime { get; }
+            public List<IDXObject> Frames { get; }
+            public AnimationEffects.SecondaryMotionBlurSnapshotTrace Trace { get; }
+        }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int delayMs,
+            int intervalMs,
+            byte alpha,
+            int currentTimeMs,
+            int durationMs,
+            bool follow,
+            int snapshotRetentionMs,
+            bool ownsFrameTextures,
+            Func<int, List<IDXObject>> snapshotFrameFactory,
+            Func<int, Vector2?> snapshotPositionFactory,
+            Func<int, bool?> snapshotFlipFactory,
+            AnimationEffects.SecondaryMotionBlurAnimationState state)
+        {
+            _fallbackFrames = frames;
+            _positionResolver = getOwnerPosition;
+            _flipResolver = getOwnerFlip;
+            _snapshotFrameFactory = snapshotFrameFactory;
+            _snapshotPositionFactory = snapshotPositionFactory;
+            _snapshotFlipFactory = snapshotFlipFactory;
+            _fallbackPosition = fallbackPosition;
+            _fallbackFlip = fallbackFlip;
+            _follow = follow;
+            _ownsFrameTextures = ownsFrameTextures;
+            _nextUpdateTime = currentTimeMs;
+            _lastUpdateTime = currentTimeMs;
+            _endTime = currentTimeMs + Math.Max(1, durationMs);
+            _intervalMs = NormalizeSnapshotIntervalMs(intervalMs);
+            _alpha = alpha;
+            _snapshotRetentionMs = Math.Max(0, snapshotRetentionMs);
+            _terminationRequested = false;
+            _state = state ?? new AnimationEffects.SecondaryMotionBlurAnimationState();
+            if (_state.SimulatedAnimationStateId <= 0)
+            {
+                _state.SimulatedAnimationStateId = SimulatedMotionBlurIdentitySource.NextAnimationStateId();
+            }
+
+            _state.TerminateRequested = false;
+            _state.PauseRequested = false;
+            _state.IsTerminated = false;
+            _state.CaptureRegisteredLayerReferences(
+                _state.SimulatedOverlayLayerHandleId,
+                _state.SimulatedLayerHandleIdsByLayerCode);
+            _state.CaptureRegisteredOwnerListNode(
+                delayMs,
+                intervalMs,
+                alpha,
+                _state.SimulatedLayerHandleIdsByLayerCode);
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            if (_state?.TerminateRequested == true)
+            {
+                RequestTermination(currentTimeMs);
+            }
+
+            _lastUpdateTime = currentTimeMs;
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextUpdateTime)
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateTime, _endTime))
+            {
+                int sampleTime = _nextUpdateTime;
+                _nextUpdateTime += _intervalMs;
+
+                if (_state?.PauseRequested != true)
+                {
+                    List<IDXObject> snapshotFrames = _snapshotFrameFactory?.Invoke(sampleTime);
+                    if (!AnimationEffects.HasFrames(snapshotFrames))
+                    {
+                        snapshotFrames = _fallbackFrames;
+                    }
+
+                    if (AnimationEffects.HasFrames(snapshotFrames))
+                    {
+                        Vector2 snapshotPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
+                        bool snapshotFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
+                        Vector2? samplePosition = _snapshotPositionFactory?.Invoke(sampleTime);
+                        bool? sampleFlip = _snapshotFlipFactory?.Invoke(sampleTime);
+                        if (samplePosition.HasValue)
+                        {
+                            snapshotPosition = samplePosition.Value;
+                        }
+
+                        if (sampleFlip.HasValue)
+                        {
+                            snapshotFlip = sampleFlip.Value;
+                        }
+
+                        _snapshots.Add(new MotionBlurSnapshot(
+                            snapshotPosition,
+                            snapshotFlip,
+                            sampleTime,
+                            snapshotFrames,
+                            CaptureSnapshotTrace(sampleTime, snapshotFrames)));
+                    }
+                }
+            }
+
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            {
+                MotionBlurSnapshot snapshot = _snapshots[i];
+                int retentionMs = ResolveSnapshotRetentionMs(snapshot);
+                if (retentionMs <= 0
+                    || ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, snapshot.StartTime) >= retentionMs)
+                {
+                    _state?.ReleaseSnapshotLayerReferences(snapshot.Trace);
+                    DisposeFrameListIfOwned(snapshot.Frames);
+                    _snapshots.RemoveAt(i);
+                }
+            }
+
+            bool isActive = !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime) || _snapshots.Count > 0;
+            if (!isActive && _state != null)
+            {
+                _state.IsTerminated = true;
+                _state.ReleaseAnimationStateReferences();
+                _state.ReleaseRegisteredLayerReferences();
+            }
+
+            return isActive;
+        }
+
+        public void RequestTermination(int currentTimeMs)
+        {
+            if (_terminationRequested)
+            {
+                return;
+            }
+
+            _terminationRequested = true;
+            if (_state != null)
+            {
+                _state.TerminateRequested = true;
+                _state.CaptureOwnerListTerminateRequest();
+            }
+
+            if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime))
+            {
+                _endTime = currentTimeMs;
+            }
+
+            if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateTime, _endTime))
+            {
+                _nextUpdateTime = _endTime;
+            }
+        }
+
+        public void MarkTerminated()
+        {
+            _state?.MarkTerminated();
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            Vector2 ownerPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
+            bool ownerFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
+            foreach (MotionBlurSnapshot snapshot in _snapshots)
+            {
+                int snapshotAgeMs = ResolveClientOwnedAvatarEffectElapsedMs(currentTime, snapshot.StartTime);
+                int snapshotRetentionMs = ResolveSnapshotRetentionMs(snapshot);
+                byte snapshotAlpha = ResolveSnapshotAlpha(
+                    ageMs: snapshotAgeMs,
+                    retentionMs: snapshotRetentionMs,
+                    baseAlpha: _alpha);
+                if (snapshotAlpha == 0)
+                {
+                    continue;
+                }
+
+                List<IDXObject> frames = snapshot.Frames;
+                int frameIndex = ResolveFrameIndex(
+                    frames,
+                    snapshotAgeMs,
+                    loop: false);
+                if (frames == null || frameIndex < 0 || frameIndex >= frames.Count)
+                {
+                    continue;
+                }
+
+                IDXObject frame = frames[frameIndex];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                Vector2 drawPosition = _follow ? ownerPosition : snapshot.Position;
+                bool drawFlip = _follow ? ownerFlip : snapshot.Flip;
+                int drawShiftX = -(int)MathF.Round(drawPosition.X) - mapShiftX;
+                int drawShiftY = -(int)MathF.Round(drawPosition.Y) - mapShiftY;
+                Color tint = new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, snapshotAlpha);
+                if (AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+                {
+                    DrawLayerStack(
+                        frames,
+                        spriteBatch,
+                        skeletonRenderer,
+                        gameTime,
+                        drawShiftX,
+                        drawShiftY,
+                        drawFlip,
+                        tint,
+                        snapshotAgeMs,
+                        snapshotRetentionMs,
+                        _alpha);
+                    continue;
+                }
+
+                frame.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    frame.X - drawShiftX,
+                    frame.Y - drawShiftY,
+                    tint,
+                    drawFlip,
+                    null);
+            }
+        }
+
+        private static void DrawLayerStack(
+            IReadOnlyList<IDXObject> frames,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            GameTime gameTime,
+            int drawShiftX,
+            int drawShiftY,
+            bool drawFlip,
+            Color tint,
+            int snapshotAgeMs,
+            int snapshotRetentionMs,
+            byte ownerAlpha)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            int maxTaggedOrder = -1;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                maxTaggedOrder = Math.Max(
+                    maxTaggedOrder,
+                    AnimationEffects.ResolveSecondaryMotionBlurLayerStackDrawOrder(frames[i], fallbackOrder: -1));
+            }
+
+            for (int drawOrder = 0; drawOrder <= maxTaggedOrder; drawOrder++)
+            {
+                for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
+                {
+                    IDXObject layer = frames[frameIndex];
+                    if (layer == null
+                        || AnimationEffects.ResolveSecondaryMotionBlurLayerStackDrawOrder(layer, fallbackOrder: -1) != drawOrder)
+                    {
+                        continue;
+                    }
+
+                    byte layerBaseAlpha = AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(layer, ownerAlpha);
+                    byte layerAlpha = ResolveSnapshotAlpha(snapshotAgeMs, snapshotRetentionMs, layerBaseAlpha);
+                    if (layerAlpha == 0)
+                    {
+                        continue;
+                    }
+
+                    layer.DrawBackground(
+                        spriteBatch,
+                        skeletonRenderer,
+                        gameTime,
+                        layer.X - drawShiftX,
+                        layer.Y - drawShiftY,
+                        new Color(tint.R, tint.G, tint.B, layerAlpha),
+                        drawFlip,
+                        null);
+                }
+            }
+
+            for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
+            {
+                IDXObject layer = frames[frameIndex];
+                if (layer == null
+                    || layer.Tag is AnimationEffects.SecondaryMotionBlurLayerStackEntryTag)
+                {
+                    continue;
+                }
+
+                byte layerBaseAlpha = AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(layer, ownerAlpha);
+                byte layerAlpha = ResolveSnapshotAlpha(snapshotAgeMs, snapshotRetentionMs, layerBaseAlpha);
+                if (layerAlpha == 0)
+                {
+                    continue;
+                }
+
+                layer.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    layer.X - drawShiftX,
+                    layer.Y - drawShiftY,
+                    new Color(tint.R, tint.G, tint.B, layerAlpha),
+                    drawFlip,
+                    null);
+            }
+        }
+
+        internal static byte ResolveSnapshotAlpha(int ageMs, int retentionMs, byte baseAlpha)
+        {
+            if (baseAlpha == 0)
+            {
+                return 0;
+            }
+
+            if (retentionMs <= 0)
+            {
+                return baseAlpha;
+            }
+
+            if (ageMs >= retentionMs)
+            {
+                return 0;
+            }
+
+            float progress = MathHelper.Clamp((float)ageMs / retentionMs, 0f, 1f);
+            return (byte)Math.Clamp((int)MathF.Round(baseAlpha * (1f - progress)), 0, byte.MaxValue);
+        }
+
+        internal static int NormalizeSnapshotIntervalMs(int intervalMs)
+        {
+            return Math.Max(1, intervalMs);
+        }
+
+        internal static int ResolveSnapshotAgeForTesting(int currentTime, int snapshotStartTime)
+        {
+            return ResolveClientOwnedAvatarEffectElapsedMs(currentTime, snapshotStartTime);
+        }
+
+        internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurSnapshotTrace> CaptureSnapshotTracesForTesting()
+        {
+            return _snapshots
+                .Select(static snapshot => snapshot.Trace)
+                .ToArray();
+        }
+
+        private AnimationEffects.SecondaryMotionBlurSnapshotTrace CaptureSnapshotTrace(
+            int startTime,
+            IReadOnlyList<IDXObject> frames)
+        {
+            AnimationEffects.SecondaryMotionBlurAnimationStateTrace stateTrace =
+                (_state ?? new AnimationEffects.SecondaryMotionBlurAnimationState()).CaptureTrace();
+            IReadOnlyDictionary<int, int> layerHandleIds = ResolveSnapshotLayerHandleIds(
+                frames,
+                stateTrace.SimulatedLayerHandleIdsByLayerCode);
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds = ResolveTaggedSnapshotLayerHandleIds(frames);
+            IReadOnlyDictionary<int, int> snapshotLayerHandleRefCounts = ResolveTaggedSnapshotLayerHandleRefCounts(
+                frames,
+                snapshotLayerHandleIds);
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds = ResolveTaggedRepeatAnimationStateIds(frames);
+            IReadOnlyList<AnimationEffects.SecondaryMotionBlurUpdateOperation> updateOperations =
+                CaptureSnapshotUpdateOperations(
+                    startTime,
+                    frames,
+                    layerHandleIds,
+                    snapshotLayerHandleIds,
+                    repeatAnimationStateIds);
+            IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> layerReferenceOperations =
+                (_state ?? new AnimationEffects.SecondaryMotionBlurAnimationState()).CaptureSnapshotLayerReferences(
+                    layerHandleIds,
+                    snapshotLayerHandleIds,
+                    snapshotLayerHandleRefCounts,
+                    repeatAnimationStateIds,
+                    out int overlayRefCount,
+                    out IReadOnlyDictionary<int, int> layerHandleRefCounts);
+
+            return new AnimationEffects.SecondaryMotionBlurSnapshotTrace(
+                startTime,
+                stateTrace.SimulatedOverlayLayerHandleId,
+                overlayRefCount,
+                layerHandleIds,
+                layerHandleRefCounts,
+                snapshotLayerHandleIds,
+                snapshotLayerHandleRefCounts,
+                repeatAnimationStateIds,
+                updateOperations,
+                layerReferenceOperations);
+        }
+
+        private IReadOnlyList<AnimationEffects.SecondaryMotionBlurUpdateOperation> CaptureSnapshotUpdateOperations(
+            int startTime,
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> layerHandleIds,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds,
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds)
+        {
+            var operations = new List<AnimationEffects.SecondaryMotionBlurUpdateOperation>();
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                foreach ((int layerCode, int sourceLayerHandleId) in EnumerateSnapshotUpdateLayerHandles(layerHandleIds))
+                {
+                    AddSnapshotUpdateOperations(
+                        operations,
+                        layerCode,
+                        sourceLayerHandleId,
+                        snapshotLayerHandleIds,
+                        repeatAnimationStateIds,
+                        baseAlpha: _alpha,
+                        startTime);
+                }
+
+                return AnimationEffects.SecondaryMotionBlurUpdateOperation.NormalizeTraceOrder(operations);
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedLayerHandleId <= 0)
+                {
+                    continue;
+                }
+
+                AddSnapshotUpdateOperations(
+                    operations,
+                    tag.SourceLayerCode,
+                    tag.SimulatedLayerHandleId,
+                    snapshotLayerHandleIds,
+                    repeatAnimationStateIds,
+                    AnimationEffects.ResolveSecondaryMotionBlurLayerStackSourceAlpha(frames[i], _alpha),
+                    startTime);
+            }
+
+            return AnimationEffects.SecondaryMotionBlurUpdateOperation.NormalizeTraceOrder(operations);
+        }
+
+        private void AddSnapshotUpdateOperations(
+            List<AnimationEffects.SecondaryMotionBlurUpdateOperation> operations,
+            int layerCode,
+            int sourceLayerHandleId,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds,
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds,
+            byte baseAlpha,
+            int startTime)
+        {
+            if (operations == null || layerCode < 0 || sourceLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            int snapshotLayerHandleId = snapshotLayerHandleIds != null
+                && snapshotLayerHandleIds.TryGetValue(layerCode, out int resolvedSnapshotLayerHandleId)
+                ? resolvedSnapshotLayerHandleId
+                : 0;
+            int repeatAnimationStateId = repeatAnimationStateIds != null
+                && repeatAnimationStateIds.TryGetValue(layerCode, out int resolvedRepeatAnimationStateId)
+                ? resolvedRepeatAnimationStateId
+                : 0;
+            int fadeEndTime = startTime + ResolveSnapshotRetentionMsForTrace();
+
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.AddRefSourceLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.GetSourceCanvasSlot0,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                sourceCanvasSlot: 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.CreateBlurLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutOverlay,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.CopyOrigin,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutZOffsetMinus10,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                zOffset: -10));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.PutFlip,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.SetInitialAlpha,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                alpha: baseAlpha));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.FadeAlphaToZero,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                alpha: 0,
+                fadeEndTime: fadeEndTime));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.StopAnimation,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.InsertSourceCanvas,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                sourceCanvasSlot: 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RetainRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? 1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.RegisterRepeatAnimation,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseRegisterArgumentLayer,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                refCountDelta: snapshotLayerHandleId > 0 ? -1 : 0));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.StoreLastUpdatedTick,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId,
+                time: startTime));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseBlurLayerLocal,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+            operations.Add(AnimationEffects.SecondaryMotionBlurUpdateOperation.Create(
+                AnimationEffects.SecondaryMotionBlurUpdateOperationKind.ReleaseSourceLayerLocal,
+                layerCode,
+                sourceLayerHandleId,
+                snapshotLayerHandleId,
+                repeatAnimationStateId));
+        }
+
+        private int ResolveSnapshotRetentionMsForTrace()
+        {
+            if (_snapshotRetentionMs > 0)
+            {
+                return _snapshotRetentionMs;
+            }
+
+            return ResolveFramesDuration(_fallbackFrames);
+        }
+
+        private static IEnumerable<KeyValuePair<int, int>> EnumerateSnapshotUpdateLayerHandles(
+            IReadOnlyDictionary<int, int> layerHandleIds)
+        {
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
+            {
+                yield break;
+            }
+
+            var emitted = new HashSet<int>();
+            int[] clientLayerCopyOrder =
+            {
+                (int)AvatarRenderLayer.Face,
+                (int)AvatarRenderLayer.OverFace,
+                (int)AvatarRenderLayer.UnderFace,
+                (int)AvatarRenderLayer.OverCharacter,
+                (int)AvatarRenderLayer.UnderCharacter
+            };
+
+            for (int i = 0; i < clientLayerCopyOrder.Length; i++)
+            {
+                int layerCode = clientLayerCopyOrder[i];
+                if (layerHandleIds.TryGetValue(layerCode, out int handleId))
+                {
+                    emitted.Add(layerCode);
+                    yield return new KeyValuePair<int, int>(layerCode, handleId);
+                }
+            }
+
+            foreach ((int layerCode, int handleId) in layerHandleIds.OrderBy(static entry => entry.Key))
+            {
+                if (emitted.Add(layerCode))
+                {
+                    yield return new KeyValuePair<int, int>(layerCode, handleId);
+                }
+            }
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveSnapshotLayerHandleIds(
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> fallbackLayerHandleIds)
+        {
+            if (AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                var layerHandleIds = new Dictionary<int, int>();
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                        || tag.SourceLayerCode < 0
+                        || tag.SimulatedLayerHandleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    layerHandleIds[tag.SourceLayerCode] = tag.SimulatedLayerHandleId;
+                }
+
+                if (layerHandleIds.Count > 0)
+                {
+                    return layerHandleIds;
+                }
+            }
+
+            return fallbackLayerHandleIds?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                ?? new Dictionary<int, int>();
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedSnapshotLayerHandleIds(
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var layerHandleIds = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedSnapshotLayerHandleId <= 0)
+                {
+                    continue;
+                }
+
+                layerHandleIds[tag.SourceLayerCode] = tag.SimulatedSnapshotLayerHandleId;
+            }
+
+            return layerHandleIds;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedSnapshotLayerHandleRefCounts(
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames)
+                || snapshotLayerHandleIds == null
+                || snapshotLayerHandleIds.Count == 0)
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var refCounts = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedSnapshotLayerHandleId <= 0
+                    || !snapshotLayerHandleIds.ContainsKey(tag.SourceLayerCode))
+                {
+                    continue;
+                }
+
+                refCounts[tag.SourceLayerCode] = tag.SimulatedSnapshotLayerHandleRefCount;
+            }
+
+            return refCounts;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedRepeatAnimationStateIds(
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var stateIds = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedRepeatAnimationStateId <= 0)
+                {
+                    continue;
+                }
+
+                stateIds[tag.SourceLayerCode] = tag.SimulatedRepeatAnimationStateId;
+            }
+
+            return stateIds;
+        }
+
+        public void Dispose()
+        {
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            {
+                _state?.ReleaseSnapshotLayerReferences(_snapshots[i].Trace);
+            }
+
+            _state?.MarkTerminated();
+
+            if (!_ownsFrameTextures)
+            {
+                return;
+            }
+
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            {
+                DisposeFrameListIfOwned(_snapshots[i].Frames);
+            }
+
+            _snapshots.Clear();
+            DisposeFallbackFramesIfOwned();
+        }
+
+        private void DisposeFrameListIfOwned(List<IDXObject> frames)
+        {
+            if (!_ownsFrameTextures
+                || frames == null
+                || ReferenceEquals(frames, _fallbackFrames))
+            {
+                return;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i] is DXObject dxObject
+                    && dxObject.Texture != null
+                    && !dxObject.Texture.IsDisposed)
+                {
+                    dxObject.Texture.Dispose();
+                }
+            }
+        }
+
+        private int ResolveSnapshotRetentionMs(MotionBlurSnapshot snapshot)
+        {
+            if (_snapshotRetentionMs > 0)
+            {
+                return _snapshotRetentionMs;
+            }
+
+            return ResolveFramesDuration(snapshot.Frames);
+        }
+
+        private void DisposeFallbackFramesIfOwned()
+        {
+            if (!_ownsFrameTextures || _fallbackFrames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _fallbackFrames.Count; i++)
+            {
+                if (_fallbackFrames[i] is DXObject dxObject
+                    && dxObject.Texture != null
+                    && !dxObject.Texture.IsDisposed)
+                {
+                    dxObject.Texture.Dispose();
+                }
+            }
+        }
+    }
+
+    internal sealed class SecondaryChainSegmentAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<(Vector2 Position, int Variant)> _segments = new();
+        private IReadOnlyList<List<IDXObject>> _frameVariants;
+        private int _startTime;
+        private int _endTime;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+        public int SegmentCount => _segments.Count;
+
+        public void Initialize(IReadOnlyList<List<IDXObject>> frameVariants, Vector2 start, Vector2 end, int tStart, int tEnd, int zOrder, bool ordered, bool tesla, int registrationKey, Random random)
+        {
+            _frameVariants = frameVariants ?? Array.Empty<List<IDXObject>>();
+            _startTime = tStart;
+            _endTime = tEnd;
+            _lastUpdateTime = tStart;
+            Vector2 delta = end - start;
+            float distance = delta.Length();
+            int count = Math.Max(1, (int)(distance / 48f) + 1);
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0.5f : (float)i / (count - 1);
+                int variant = ResolveVariantIndex(i, count, ordered, tesla, random);
+                _segments.Add((start + (delta * t), variant));
+            }
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int elapsed = ResolveClientOwnedAvatarEffectElapsedMs(_lastUpdateTime, _startTime);
+            for (int i = 0; i < _segments.Count; i++)
+            {
+                (Vector2 position, int variant) = _segments[i];
+                List<IDXObject> frames = variant >= 0 && variant < _frameVariants.Count ? _frameVariants[variant] : null;
+                int frameIndex = ResolveFrameIndex(frames, elapsed, loop: true);
+                DrawFrame(frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip: false, mapShiftX, mapShiftY);
+            }
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static bool IsBeforeEndForTesting(int currentTimeMs, int endTimeMs)
+        {
+            return !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, endTimeMs);
+        }
+
+        private static int ResolveVariantIndex(int index, int count, bool ordered, bool tesla, Random random)
+        {
+            if (tesla)
+            {
+                if (index == 0)
+                {
+                    return 0;
+                }
+
+                if (index == count - 1)
+                {
+                    return 4;
+                }
+
+                return (random?.Next(3) ?? 0) + 1;
+            }
+
+            return ordered ? random?.Next(2) ?? 0 : random?.Next(3) ?? 0;
+        }
+    }
+
+    /// <summary>
+    /// Shared one-time canvas layer owners used by animation-displayer parity paths.
+    /// </summary>
+    public enum AnimationCanvasLayerOwner
+    {
+        Generic = 0,
+        DamageNumber = 1
+    }
+
+    public enum AnimationOneTimeOwner
+    {
+        Generic = 0,
+        FullChargedAngerGauge = 1,
+        PacketOwnedMonsterBookCardGet = 2,
+        PacketOwnedBuffItemUse = 3,
+        PacketOwnedItemUnrelease = 4,
+        PacketOwnedCombatFeedback = 5,
+        PacketOwnedCatch = 6,
+        PacketOwnedSquib = 7,
+        PacketOwnedTransformed = 8,
+        PacketOwnedSummonEffect = 9,
+        PacketOwnedCool = 10,
+        PacketOwnedMobBullet = 11,
+        PacketOwnedMobSwallow = 12,
+        PacketOwnedAreaExplosion = 13,
+        PacketOwnedDropExplosion = 14,
+        PacketOwnedUpgradeTomb = 15,
+        PacketOwnedTeleport = 16,
+        PacketOwnedRemoteGenericUserState = 17,
+        PacketOwnedRemoteItemMake = 18,
+        PacketOwnedRemoteMakerSkill = 19,
+        PacketOwnedRemoteStringEffect = 20,
+        PacketOwnedRemoteMobAttackHit = 21,
+        PacketOwnedReservedVisual = 22,
+        PacketOwnedLevelUp = 23,
+        ClientOwnedCollisionVerticalJump = 24,
+        ClientOwnedCollisionCustomImpact = 25,
+        PacketOwnedRemoteSkillUse = 26,
+        ClientOwnedBoundJumpGeneralEffect = 27,
+        PacketOwnedMobSkillEffect = 28,
+        PacketOwnedMobSkillIcon = 29,
+        PacketOwnedMobSkillBomb = 30,
+        PacketOwnedMobSkillHit = 31,
+        MobOwnedAttackEffect = 32,
+        MobOwnedAttackHit = 33,
+        PacketOwnedTransientAreaVisual = 34
+    }
+
+    internal enum AnimationFallingOwner
+    {
+        Generic = 0,
+        PacketOwnedFalling = 1,
+        MobOwnedAttackFalling = 2
+    }
+
+    internal enum AnimationAreaAnimationOwner
+    {
+        Generic = 0,
+        PacketOwnedExplosion = 1,
+        PacketOwnedReservedArea = 2,
+        PacketOwnedTransientArea = 3
+    }
+
+    internal enum AnimationOneTimePlaybackMode
+    {
+        Default = 0,
+        GA_STOP = 1,
+        BasicFloat = 2
+    }
+
+    internal enum AnimationOneTimeOverlayParentKind
+    {
+        None = 0,
+        MobActionLayer = 1,
+        UserUnderFaceLayer = 2
+    }
+
+    internal enum OneTimeAnimationRecoveredMobProjectileOperationKind
+    {
+        LoadMobAction = 0,
+        RetainBallUol = 1,
+        RetainSourceCanvas = 2,
+        RetainTargetVector = 3,
+        AllocateBulletOwner = 4,
+        RetainBulletLocalReference = 5,
+        RetainBulletContainerReference = 6,
+        InsertIntoBulletContainer = 7,
+        ReleaseBulletLocalReference = 8,
+        ReleaseMobActionFrameList = 9,
+        ReleaseTargetVector = 10,
+        ReleaseBallUol = 11,
+        ReleaseSourceCanvas = 12
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileOperation(
+        OneTimeAnimationRecoveredMobProjectileOperationKind Kind,
+        string SourceUol,
+        AnimationOneTimeOwner Owner,
+        int LoadMobActionId,
+        bool UsesBallUol,
+        bool UsesActionFrameCanvas,
+        bool UsesProvidedCanvas,
+        int Value = 0);
+
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileFinalReleaseState(
+        AnimationOneTimeOwner Owner,
+        string SourceUol,
+        int BulletContainerReferenceCountBeforeManagerRelease,
+        int BulletContainerReferenceCountAfterManagerRelease,
+        bool HadBulletContainerReference,
+        bool ManagerReleasedBulletContainerReference,
+        OneTimeAnimationRecoveredNativeFinalReleaseReason Reason);
+
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+        string SourceUol,
+        AnimationOneTimeOwner Owner,
+        int LoadMobActionId,
+        bool UsesBallUol,
+        bool UsesActionFrameCanvas,
+        bool UsesProvidedCanvas)
+    {
+        public static OneTimeAnimationRecoveredMobProjectileRegistrationTrace CreateMobBullet(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+                sourceUol,
+                AnimationOneTimeOwner.PacketOwnedMobBullet,
+                MobAttackSystem.ClientAnimationDisplayerMobBulletLoadAction,
+                UsesBallUol: true,
+                UsesActionFrameCanvas: true,
+                UsesProvidedCanvas: false);
+        }
+
+        public static OneTimeAnimationRecoveredMobProjectileRegistrationTrace CreateMobSwallow(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+                sourceUol,
+                AnimationOneTimeOwner.PacketOwnedMobSwallow,
+                LoadMobActionId: -1,
+                UsesBallUol: false,
+                UsesActionFrameCanvas: false,
+                UsesProvidedCanvas: true);
+        }
+    }
+
+    internal enum FollowParticleRecoveredNativeOperationKind
+    {
+        LoadLayer = 0,
+        PutFlip = 1,
+        RelOffset = 2,
+        AlphaRelMove = 3,
+        AnimateRepeat = 4,
+        RegisterRepeatAnimation = 5
+    }
+
+    public enum FollowParticleRecoveredNativeRelOffsetMode
+    {
+        ParentRelative = 0,
+        AbsoluteOrigin = 1
+    }
+
+    public enum FollowParticleRecoveredNativeParentLayerKind
+    {
+        None = 0,
+        OwnerUnderFace = 1
+    }
+
+    internal readonly record struct FollowParticleRecoveredNativeOperation(
+        FollowParticleRecoveredNativeOperationKind Kind,
+        bool RelativeToTarget,
+        bool AppliesOwnerFlip,
+        Vector2 StartOffset,
+        Vector2 EndOffset,
+        int ZOrder,
+        int DurationMs,
+        int AlphaStart,
+        int AlphaEnd,
+        int SourceEffectVariantIndex = -1,
+        int SourceVariantOrdinal = -1,
+        FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
+        Vector2 RelOffsetDelta = default,
+        int RelOffsetDurationMs = 0,
+        int AlphaRelMoveDurationMs = 0,
+        FollowParticleRecoveredNativeParentLayerKind ParentLayerKind = FollowParticleRecoveredNativeParentLayerKind.None,
+        bool UsesEmission = false,
+        bool AddsParentLayerZ = false);
+
+    internal readonly record struct FollowParticleRecoveredNativeLayerState(
+        bool RelativeToTarget,
+        bool AppliesOwnerFlip,
+        Vector2 StartOffset,
+        Vector2 EndOffset,
+        int ZOrder,
+        int DurationMs,
+        int AlphaStart,
+        int AlphaEnd,
+        bool RegistersRepeatLayer,
+        int SourceEffectVariantIndex = -1,
+        int SourceVariantOrdinal = -1,
+        FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
+        Vector2 RelOffsetDelta = default,
+        int RelOffsetDurationMs = 0,
+        int AlphaRelMoveDurationMs = 0,
+        FollowParticleRecoveredNativeParentLayerKind ParentLayerKind = FollowParticleRecoveredNativeParentLayerKind.None,
+        bool UsesEmission = false,
+        bool AddsParentLayerZ = false);
+
+    internal readonly record struct FollowParticleRecoveredNativeLifetimeState(
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountAfterLoadLayer,
+        int LayerReferenceCountAfterRegisterRepeatAnimation,
+        int LayerReferenceCountAfterOwnerRelease,
+        bool RegistersRepeatLayer,
+        bool ReleasesOwnerReferenceAfterRegistration);
+
+    internal enum FollowItemEffectRecoveredNativeOperationKind
+    {
+        AllocateIItemEffect = 0,
+        LoadIndexedEffect = 1,
+        RetainInItemEffectManager = 2,
+        RegisterFollowInfo = 3,
+        ReleaseOwnerReference = 4,
+        ReleaseManagerReference = 5,
+        RegisterAnimateEffect = 6,
+        ReplaceManagerSlot = 7
+    }
+
+    internal readonly record struct FollowItemEffectRecoveredNativeOperation(
+        FollowItemEffectRecoveredNativeOperationKind Kind,
+        int ItemId,
+        int ClientEquipIndex,
+        int CandidateIdentity,
+        int EffectVariantCount,
+        IReadOnlyList<int> EffectVariantIndices,
+        int ReferenceCountAfterOperation,
+        int EffectVariantIndex = -1,
+        int VariantOrdinal = -1,
+        int SimulatedItemEffectHandleId = 0,
+        int ManagerSlotOrdinal = -1);
+
+    internal readonly record struct FollowItemEffectRecoveredNativeOwnerState(
+        int ItemId,
+        int ClientEquipIndex,
+        int CandidateIdentity,
+        int EffectVariantCount,
+        IReadOnlyList<int> EffectVariantIndices,
+        int ItemEffectReferenceCountAfterAllocate,
+        int ItemEffectReferenceCountAfterManagerRetain,
+        int ItemEffectReferenceCountAfterOwnerRelease,
+        int ItemEffectReferenceCountAfterManagerRelease,
+        bool RegistersFollowInfo,
+        bool RegistersAnimateEffect,
+        bool IsReleased,
+        int AllocatedItemEffectCount,
+        int ManagerOwnedItemEffectCountAfterRetain,
+        int OwnerHeldItemEffectCountAfterOwnerRelease,
+        int ManagerOwnedItemEffectCountAfterRelease,
+        IReadOnlyList<int> SimulatedItemEffectHandleIds = null);
+
+    /// <summary>
+    /// Recovered native call shape for one-time animation-displayer owners that are still drawn through managed DX frames.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredRegistrationTrace(
+        string SourceUol,
+        int MobTemplatePathStringPoolId,
+        int EffectNameStringPoolId,
+        int LoadLayerCanvasValue,
+        bool UsesOriginVector,
+        int LoadLayerOriginOffsetX,
+        int LoadLayerOriginOffsetY,
+        bool UsesOverlayLayer,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
+        int LoadLayerOptionValue,
+        int LoadLayerAlphaValue,
+        int LoadLayerReservedValue,
+        bool LoadLayerFlip,
+        AnimationOneTimePlaybackMode AnimatePlaybackMode,
+        bool AnimateUsesMissingStartTime,
+        bool AnimateUsesMissingRepeatCount,
+        bool RegistersOneTimeAnimation,
+        int RegisterOneTimeAnimationDelayMs,
+        bool RegisterOneTimeAnimationUsesFlipOrigin,
+        bool RegisterOneTimeAnimationHasCallback,
+        bool RegisterOneTimeAnimationUsesAutoFlipOverlay = false)
+    {
+        public static OneTimeAnimationRecoveredRegistrationTrace CreateFullChargedAngerGauge(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId,
+                MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: true,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.MobActionLayer,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedMonsterBookCardGet(string sourceUol)
+        {
+            return CreatePacketOwnedBasicOneTime(sourceUol);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedBasicFloat(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: false,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: false,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.None,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false,
+                RegisterOneTimeAnimationUsesAutoFlipOverlay: true);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedBasicOneTime(string sourceUol)
+        {
+            return CreateClientOwnedBasicOneTime(sourceUol);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreateClientShowSkillEffectSkillUse(
+            string sourceUol,
+            bool loadLayerFlip)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: true,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.UserUnderFaceLayer,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: loadLayerFlip,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreateClientOwnedBasicOneTime(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: false,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.None,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
+    }
+
+    internal enum OneTimeAnimationRecoveredNativeOperationKind
+    {
+        LoadLayer = 0,
+        Animate = 1,
+        RegisterOneTimeAnimation = 2,
+        RetainOverlayParent = 3,
+        RetainOriginVector = 4,
+        RetainLoadedLayerForRegistration = 5,
+        ReleaseLoadedLayer = 6,
+        ReleaseOriginVector = 7,
+        ReleaseOverlayParent = 8,
+        ReleaseSourceUol = 9,
+        CreateMissingStartTimeVariant = 10,
+        CreateMissingRepeatCountVariant = 11,
+        ClearMissingRepeatCountVariant = 12,
+        ClearMissingStartTimeVariant = 13,
+        LoadLayerNoLayer = 14
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
+        OneTimeAnimationRecoveredNativeOperationKind Kind,
+        string SourceUol,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool UsesOriginVector,
+        int OriginOffsetX,
+        int OriginOffsetY,
+        bool UsesOverlayLayer,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
+        int Value,
+        int LoadLayerCanvasValue = 0,
+        int LoadLayerAlphaValue = 0,
+        bool LoadLayerFlip = false,
+        int LoadLayerReservedValue = 0,
+        bool AnimateUsesMissingStartTime = false,
+        bool AnimateUsesMissingRepeatCount = false,
+        bool RegisterOneTimeAnimationHasCallback = false);
+
+    internal enum OneTimeAnimationRecoveredNativeObjectRole
+    {
+        None = 0,
+        SourceUol = 1,
+        OriginVector = 2,
+        OverlayParent = 3,
+        LoadedLayer = 4,
+        MissingStartTimeVariant = 5,
+        MissingRepeatCountVariant = 6,
+        OneTimeAnimationManager = 7
+    }
+
+    /// <summary>
+    /// Per-operation managed snapshot of the recovered one-time animation-displayer COM lifetime sequence.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredNativeOperationState(
+        OneTimeAnimationRecoveredNativeOperation Operation,
+        int OperationIndex,
+        OneTimeAnimationRecoveredNativeObjectRole OperationObjectRole,
+        int SimulatedLoadedLayerHandleId,
+        int LoadedLayerReferenceCountAfterOperation,
+        int SimulatedSourceUolHandleId,
+        int SourceUolReferenceCountAfterOperation,
+        int SimulatedOriginVectorHandleId,
+        int OriginVectorReferenceCountAfterOperation,
+        int SimulatedOverlayParentHandleId,
+        int OverlayParentReferenceCountAfterOperation,
+        bool RegisterOneTimeAnimationHasRun,
+        bool LoadedLayerReleasedByOwnerAfterRegistration);
+
+    /// <summary>
+    /// Managed lifetime snapshot for COM objects touched by recovered one-time animation-displayer owners.
+    /// This preserves the observed LoadLayer/RegisterOneTimeAnimation/Release balance without
+    /// pretending that managed frame lists are native IWzGr2DLayer identities.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredNativeLifetimeState(
+        int SimulatedLoadedLayerHandleId,
+        int LoadedLayerReferenceCountAfterLoadLayer,
+        int LoadedLayerReferenceCountAfterRetainForRegistration,
+        int LoadedLayerReferenceCountAfterRegisterOneTimeAnimation,
+        int LoadedLayerReferenceCountAfterOwnerRelease,
+        int SimulatedSourceUolHandleId,
+        int SourceUolReferenceCountAfterCreate,
+        int SourceUolReferenceCountAfterOwnerRelease,
+        int SimulatedOriginVectorHandleId,
+        int OriginVectorReferenceCountAfterRetain,
+        int OriginVectorReferenceCountAfterOwnerRelease,
+        int SimulatedOverlayParentHandleId,
+        int OverlayParentReferenceCountAfterRetain,
+        int OverlayParentReferenceCountAfterOwnerRelease,
+        bool RegistersOneTimeAnimation,
+        bool LoadedLayerReleasedByOwnerAfterRegistration);
+
+    /// <summary>
+    /// Managed rendering surface used for one-time animation-displayer owners.
+    /// This keeps the native IWzGr2DLayer contract visible while the simulator
+    /// draws loaded WZ canvases through the existing IDXObject/XNA path.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredLayerSurfaceState(
+        string NativeLayerInterfaceName,
+        string NativeLayerInterfaceGuid,
+        string NativeOriginInterfaceName,
+        string NativeOriginInterfaceGuid,
+        string ManagedFrameListType,
+        string ManagedFrameType,
+        string ManagedDrawEntrypoint,
+        string ManagedRendererBackend,
+        bool UsesNativeIWzGr2DLayer,
+        bool UsesNativeIWzVector2D,
+        bool IsByteIdenticalNativeLayer);
+
+    /// <summary>
+    /// Presentation boundary between recovered native one-time animation-displayer owners
+    /// and the simulator's managed DX frame renderer.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredPresentationBoundaryState(
+        string NativeDisplayerOwnerEntrypoint,
+        string NativeLoadLayerEntrypoint,
+        string NativeAnimateEntrypoint,
+        string NativeRegisterEntrypoint,
+        string ManagedDrawEntrypoint,
+        string ManagedRendererBackend,
+        string SourceUol,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool UsesNativeGr2DLayerExecution,
+        bool UsesManagedDxFrameExecution,
+        bool IsByteIdenticalNativeOutput,
+        bool UsesLiveOriginResolver,
+        bool UsesLiveFlipResolver,
+        bool UsesOverlayParent,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
+        int LoadLayerCanvasValue,
+        int LoadLayerOptionValue,
+        int LoadLayerAlphaValue,
+        bool LoadLayerFlip,
+        int RegisterOneTimeAnimationDelayMs);
+
+    /// <summary>
+    /// Recovered GA_STOP Animate variant setup from one-time animation-displayer owners.
+    /// The native path initializes two VARIANTARG values, copies vtMissing into both,
+    /// passes them to IWzGr2DLayer::Animate, and then clears both variants.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredNativeAnimateVariantState(
+        bool StartTimeVariantInitialized,
+        bool StartTimeVariantCopiedFromMissing,
+        bool StartTimeVariantClearedAfterAnimate,
+        bool RepeatCountVariantInitialized,
+        bool RepeatCountVariantCopiedFromMissing,
+        bool RepeatCountVariantClearedAfterAnimate,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool AnimateCalled);
+
+    /// <summary>
+    /// Recovered CAnimationDisplayer::Effect_BasicFloat helper constants used by Cool/Guard/Miss-style float layers.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredBasicFloatTrace(
+        int CanvasWidth,
+        int CanvasHeight,
+        int HoldInsertDurationMs,
+        int HoldStartAlphaValue,
+        int HoldEndAlphaValue,
+        int FadeInsertDurationMs,
+        int FadeStartAlphaValue,
+        int FadeEndAlphaValue,
+        int MoveDelayMs,
+        int RiseDistancePx,
+        bool CentersCanvasByWidth,
+        bool AnchorsCanvasBottom,
+        bool RegistersOneTimeAnimation);
+
+    internal enum OneTimeAnimationRecoveredNativeFinalReleaseReason
+    {
+        None = 0,
+        NaturalCompletion = 1,
+        Cleared = 2
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredNativeFinalReleaseState(
+        AnimationOneTimeOwner Owner,
+        string SourceUol,
+        int SimulatedLoadedLayerHandleId,
+        int LoadedLayerReferenceCountBeforeManagerRelease,
+        int LoadedLayerReferenceCountAfterManagerRelease,
+        bool HadRegisteredLayer,
+        bool ManagerHeldLoadedLayerReference,
+        bool ManagerReleasedLoadedLayerReference,
+        OneTimeAnimationRecoveredNativeFinalReleaseReason Reason);
+
+    internal enum AnimationCanvasLayerContent
+    {
+        PrimaryCanvas = 0,
+        OverlayCanvas = 1
+    }
+
+    internal enum AnimationCanvasLayerBlendMode
+    {
+        AlphaBlend = 0
+    }
+
+    internal readonly record struct CanvasLayerInsertDescriptor(
+        AnimationCanvasLayerContent Content,
+        Point Offset,
+        int StartDelayMs,
+        int HoldDurationMs,
+        int FadeDurationMs,
+        float StartAlpha,
+        float EndAlpha,
+        int RiseDistancePx,
+        AnimationCanvasLayerBlendMode BlendMode,
+        CanvasLayerRecoveredInsertCanvasSettings RecoveredInsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings RecoveredMoveSettings);
+
+    /// <summary>
+    /// Native InsertCanvas parameters recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredInsertCanvasSettings(
+        int DurationMs,
+        int StartAlphaValue,
+        int EndAlphaValue);
+
+    /// <summary>
+    /// Native layer movement target recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredMoveSettings(
+        Point StartOffset,
+        Point EndOffset);
+
+    /// <summary>
+    /// Native layer position recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredPositionSettings(
+        int Left,
+        int Top);
+
+    /// <summary>
+    /// Native InsertCanvas call shape recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredInsertCommand(
+        AnimationCanvasLayerContent Content,
+        Point Offset,
+        int StartDelayMs,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings MoveSettings);
+
+    /// <summary>
+    /// Temporary canvas dimensions recovered from CAnimationDisplayer::Effect_HP CreateCanvas.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredCanvasSettings(
+        int Width,
+        int Height);
+
+    /// <summary>
+    /// Managed surface settings for the owner-created temporary canvas analogue.
+    /// The native path creates an IWzCanvas from StringPool id 0x3D0 ("Canvas");
+    /// the simulator keeps the recovered owner contract explicit while rendering
+    /// through a managed RenderTarget2D.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredCompositeSurfaceSettings(
+        int NativeCanvasFactoryStringPoolId,
+        string NativeCanvasFactoryName,
+        string NativeCanvasInterfaceName,
+        string NativeCanvasInterfaceGuid,
+        string NativeLayerInterfaceName,
+        string NativeLayerInterfaceGuid,
+        string ManagedSurfaceType,
+        string ManagedSurfaceFormat,
+        string ManagedClearColor,
+        string ManagedSpriteSortMode,
+        string ManagedBlendState,
+        string ManagedSamplerState,
+        string ManagedDepthStencilState,
+        string ManagedRasterizerState,
+        bool RestoresPreviousRenderTargets,
+        bool UsesNativeIWzCanvas,
+        bool UsesNativeIWzGr2DLayer,
+        bool IsByteIdenticalNativeComposite);
+
+    /// <summary>
+    /// Recovered native layer values from CAnimationDisplayer::Effect_HP.
+    /// The simulator preserves these as parity metadata even though it does not instantiate the client COM graph.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredLayerSettings(
+        int CreateLayerCanvasValue,
+        int InitialLayerOptionValue,
+        int LayerPriorityValue,
+        int FinalizeLayerOptionValue);
+
+    internal readonly record struct CanvasLayerRegistration(
+        CanvasLayerInsertDescriptor[] InsertDescriptors,
+        CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
+
+    /// <summary>
+    /// Prepared managed registration payload handed off from owner seams such as Effect_HP.
+    /// Carries the recovered position write, insert-descriptor shape, and native trace verbatim.
+    /// </summary>
+    internal readonly record struct PreparedOneTimeCanvasLayerRegistration(
+        float Left,
+        float Top,
+        CanvasLayerInsertDescriptor[] InsertDescriptors,
+        CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
+        CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace,
+        CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace);
+
+    /// <summary>
+    /// Full recovered registration trace for the managed canvas-layer analogue.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredRegistrationTrace(
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredLayerSettings LayerSettings,
+        CanvasLayerRecoveredPositionSettings Position,
+        bool HasNativePosition,
+        CanvasLayerRecoveredPositionSettings NativePosition,
+        CanvasLayerRecoveredInsertCommand[] InsertCommands,
+        bool RegistersOneTimeAnimation);
+
+    internal enum CanvasLayerRecoveredNativeOperationKind
+    {
+        CreateTemporaryCanvas,
+        InsertTemporaryCanvas,
+        CreateLayer,
+        SetLayerOption,
+        SetLayerPriority,
+        InsertCanvas,
+        SetLayerPosition,
+        RetainLayerForOneTimeRegistration,
+        RegisterOneTimeAnimation,
+        ReleaseLayerAfterOneTimeRegistration,
+        ReleaseTemporaryCanvasAfterLayerRegistration
+    }
+
+    /// <summary>
+    /// Managed replay of the native Gr2D calls recovered from CAnimationDisplayer::Effect_HP.
+    /// This keeps the live one-time layer tied to the client call sequence even though the
+    /// simulator renders through XNA textures instead of IWzGr2DLayer COM objects.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeOperation(
+        CanvasLayerRecoveredNativeOperationKind Kind,
+        AnimationCanvasLayerContent? Content,
+        Point Offset,
+        int StartDelayMs,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings MoveSettings,
+        CanvasLayerRecoveredPositionSettings Position,
+        int Value,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings);
+
+    internal enum CanvasLayerRecoveredNativeObjectRole
+    {
+        None = 0,
+        TemporaryCanvas = 1,
+        OneTimeLayer = 2
+    }
+
+    /// <summary>
+    /// Per-operation managed snapshot of the recovered Effect_HP COM lifetime sequence.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeOperationState(
+        CanvasLayerRecoveredNativeOperation Operation,
+        int OperationIndex,
+        CanvasLayerRecoveredNativeObjectRole OperationObjectRole,
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountAfterOperation,
+        bool LayerReferenceHeldByOneTimeAnimationManager,
+        int SimulatedTemporaryCanvasHandleId,
+        int TemporaryCanvasReferenceCountAfterOperation,
+        bool RegisterOneTimeAnimationHasRun,
+        bool TemporaryCanvasReleasedAfterRegistration);
+
+    /// <summary>
+    /// Snapshot of the recovered layer state after the native Effect_HP call sequence has run.
+    /// This is the managed analogue for the IWzGr2DLayer writes the simulator does not instantiate.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeLayerState(
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredLayerSettings LayerSettings,
+        CanvasLayerRecoveredPositionSettings PrimaryPosition,
+        bool HasOverlayPosition,
+        CanvasLayerRecoveredPositionSettings OverlayPosition,
+        int ActiveLayerOptionValue,
+        bool RegistersOneTimeAnimation);
+
+    /// <summary>
+    /// Managed lifetime snapshot for the COM objects touched by CAnimationDisplayer::Effect_HP.
+    /// It records the recovered AddRef/RegisterOneTimeAnimation/Release balance without
+    /// pretending that XNA textures are real IWzGr2DLayer or IWzCanvas COM identities.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeLifetimeState(
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountAfterCreate,
+        int LayerReferenceCountAfterRegisterOneTimeAnimation,
+        int LayerReferenceCountAfterOwnerRelease,
+        bool LayerReferenceHeldByOneTimeAnimationManager,
+        int SimulatedTemporaryCanvasHandleId,
+        int TemporaryCanvasReferenceCountAfterCreate,
+        int TemporaryCanvasReferenceCountAfterOwnerRelease,
+        bool RegistersOneTimeAnimation,
+        bool TemporaryCanvasReleasedAfterRegistration);
+
+    internal enum CanvasLayerRecoveredNativeFinalReleaseReason
+    {
+        None = 0,
+        NaturalCompletion = 1,
+        Cleared = 2
+    }
+
+    /// <summary>
+    /// Managed snapshot of the one-time animation manager releasing its retained
+    /// layer reference after the registered damage-number layer leaves the live list.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeFinalReleaseState(
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountBeforeManagerRelease,
+        int LayerReferenceCountAfterManagerRelease,
+        bool HadRegisteredLayer,
+        bool ManagerHeldLayerReference,
+        bool ManagerReleasedLayerReference,
+        int SimulatedTemporaryCanvasHandleId,
+        int TemporaryCanvasReferenceCountAfterOwnerRelease,
+        bool TemporaryCanvasAlreadyReleasedByOwner,
+        CanvasLayerRecoveredNativeFinalReleaseReason Reason);
+
+    /// <summary>
+    /// Recovered object-role identity for the native Effect_HP COM graph.
+    /// Handles are simulator-only identifiers; roles keep the owner-created canvas
+    /// distinct from the one-time layer without claiming byte-identical COM identity.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeObjectIdentityState(
+        int SimulatedTemporaryCanvasHandleId,
+        CanvasLayerRecoveredNativeObjectRole TemporaryCanvasRole,
+        int SimulatedLayerHandleId,
+        CanvasLayerRecoveredNativeObjectRole LayerRole,
+        bool HasTemporaryCanvas,
+        bool HasLayer,
+        bool HandlesAreDistinct,
+        bool RegistersOneTimeAnimation,
+        bool TemporaryCanvasReleasedAfterRegistration,
+        bool LayerReferenceHeldByOneTimeAnimationManager,
+        bool LayerOwnerReferenceReleasedAfterRegistration);
+
+    /// <summary>
+    /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredPreparedSourceTrace(
+        string SourceSetName,
+        string SpriteName,
+        string SourceCanvasPath,
+        bool UseLargeDigitSet,
+        Point SourceOrigin,
+        int SourceWidth,
+        int SourceHeight,
+        Point CanvasOffset,
+        Rectangle CanvasDestinationBounds,
+        Rectangle VisibleCanvasBounds,
+        bool ClipsToTemporaryCanvas);
+
+    internal enum CanvasLayerRecoveredTemporaryCanvasOperationKind
+    {
+        CreateCanvas,
+        InsertCanvas
+    }
+
+    /// <summary>
+    /// Owner-side temporary canvas operation recovered from CAnimationDisplayer::Effect_HP.
+    /// This preserves the CreateCanvas and source InsertCanvas sequence before the
+    /// prepared canvas is handed to the managed one-time layer analogue.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredTemporaryCanvasOperation(
+        CanvasLayerRecoveredTemporaryCanvasOperationKind Kind,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredPreparedSourceTrace Source,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        AnimationCanvasLayerBlendMode BlendMode);
+
+    /// <summary>
+    /// Per-source digit placement recurrence recovered from CAnimationDisplayer::Effect_HP.
+    /// The native function computes lEffX from source width, origin.x, and the previous
+    /// 3 * (origin.x - width) / 5 reduction before inserting each source canvas.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpDigitLayoutStep(
+        int SourceIndex,
+        string SourceSetName,
+        string SpriteName,
+        bool UsesLargeOwner,
+        int SourceWidth,
+        int SourceOriginX,
+        int PreviousReductionOffset,
+        int NativeEffX,
+        int NativeAccumulatedCanvasWidthAfterStep,
+        int NextReductionOffset);
+
+    /// <summary>
+    /// Recovered text-formatting state owned by CAnimationDisplayer::Effect_HP.
+    /// Numeric damage passes through StringPool id 0x1A15 before digit composition;
+    /// special-result sprites reuse the same owner trace but bypass numeric formatting.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpTextFormatTrace(
+        int StringPoolId,
+        string CompositeFormat,
+        bool UsedResolvedStringPoolText,
+        int MaxPlaceholderCount,
+        int RawDamageValue,
+        string FormattedText,
+        bool IsSpecialText);
+
+    /// <summary>
+    /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredOwnerTrace(
+        int FormatStringPoolId,
+        string FormattedText,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredCanvasSettings NativeTemporaryCanvasSettings,
+        CanvasLayerRecoveredCompositeSurfaceSettings CompositeSurfaceSettings,
+        CanvasLayerRecoveredEffectHpOwnerSelectionTrace OwnerSelectionTrace,
+        CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
+        CanvasLayerRecoveredTemporaryCanvasOperation[] TemporaryCanvasOperations,
+        CanvasLayerRecoveredEffectHpDigitLayoutStep[] DigitLayoutSteps,
+        bool KeepsOverlayOnSeparateLayer,
+        int OverlaySpriteNameStringPoolId,
+        string OverlayCanvasPath,
+        string OverlaySpriteName,
+        Point OverlayOffset,
+        Point OverlaySourceOrigin,
+        int OverlaySourceWidth,
+        int OverlaySourceHeight,
+        int OverlayLayerPositionOffsetY,
+        CanvasLayerRecoveredEffectHpSourceCleanupStep[] SourceCleanupSteps,
+        CanvasLayerRecoveredEffectHpTextFormatTrace TextFormatTrace);
+
+    internal enum CanvasLayerRecoveredEffectHpSourceCleanupKind
+    {
+        ReleaseFormattedText,
+        ReleaseLastSourceCanvas,
+        ReleaseSmallOwnerProperty,
+        ReleaseLargeOwnerProperty
+    }
+
+    /// <summary>
+    /// Recovered cleanup order for source-side Effect_HP objects after one-time registration.
+    /// The managed renderer keeps these as metadata because source WZ properties and canvases
+    /// are cached managed assets rather than native COM references.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpSourceCleanupStep(
+        int Order,
+        CanvasLayerRecoveredEffectHpSourceCleanupKind Kind,
+        string OwnerSetName,
+        string SourceCanvasPath,
+        bool RunsAfterOneTimeRegistration);
+
+    /// <summary>
+    /// Recovered CAnimationDisplayer::Effect_HP family-owner selection.
+    /// The first digit is read from the large owner, later digits from the small owner;
+    /// red critical damage swaps both owners to NoCri1/NoCri0 while non-red families stay
+    /// on their color owner.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+        int NativeColorType,
+        bool RequestedCriticalAttack,
+        bool AppliesCriticalPresentation,
+        bool CriticalRequestIgnoredForNonRedColor,
+        bool UnsupportedColorRejected,
+        string LargeOwnerSetName,
+        string SmallOwnerSetName,
+        bool FirstDigitUsesLargeOwner,
+        bool TailDigitsUseSmallOwner,
+        bool UsesRedCriticalOwnerSplit,
+        bool UsesSpecialTextOwner,
+        string SpecialTextOwnerSetName,
+        bool SpecialTextOwnerIsAuthoredNoRed0);
+
+    /// <summary>
+    /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
+    /// </summary>
+    internal class OneTimeCanvasLayerAnimation
+    {
+        private sealed class CanvasLayerInsertOperation
+        {
+            public Texture2D Texture { get; init; }
+            public CanvasLayerInsertDescriptor Descriptor { get; init; }
+        }
+
+        private Texture2D _canvasTexture;
+        private Texture2D _overlayTexture;
+        private float _left;
+        private float _top;
+        private int _startTimeMs;
+        private int _elapsedMs;
+        private bool _ownsCanvasTexture;
+        private CanvasLayerInsertOperation[] _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
+
+        public AnimationCanvasLayerOwner Owner { get; private set; } = AnimationCanvasLayerOwner.Generic;
+        internal IReadOnlyList<CanvasLayerInsertDescriptor> InsertDescriptors => Array.ConvertAll(
+            _insertOperations,
+            static operation => operation.Descriptor);
+        internal CanvasLayerRecoveredLayerSettings RecoveredLayerSettings { get; private set; }
+        internal CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace { get; private set; }
+        internal CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace { get; private set; }
+        internal IReadOnlyList<CanvasLayerRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+        internal IReadOnlyList<CanvasLayerRecoveredNativeOperationState> RecoveredNativeExecutionStateTrace { get; private set; }
+            = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
+        internal CanvasLayerRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
+        internal CanvasLayerRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
+        internal CanvasLayerRecoveredNativeObjectIdentityState RecoveredNativeObjectIdentityState { get; private set; }
+
+        internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            bool hasOverlay,
+            Point overlayOffset,
+            int overlayDelayMs)
+        {
+            holdDurationMs = Math.Max(0, holdDurationMs);
+            fadeDurationMs = Math.Max(0, fadeDurationMs);
+            overlayDelayMs = Math.Max(0, overlayDelayMs);
+
+            var descriptors = new List<CanvasLayerInsertDescriptor>(hasOverlay ? 3 : 2)
+            {
+                new(
+                    AnimationCanvasLayerContent.PrimaryCanvas,
+                    Point.Zero,
+                    0,
+                holdDurationMs,
+                0,
+                1f,
+                1f,
+                0,
+                AnimationCanvasLayerBlendMode.AlphaBlend,
+                new CanvasLayerRecoveredInsertCanvasSettings(holdDurationMs, 255, 255),
+                new CanvasLayerRecoveredMoveSettings(Point.Zero, Point.Zero)),
+                new(
+                    AnimationCanvasLayerContent.PrimaryCanvas,
+                    Point.Zero,
+                    holdDurationMs,
+                    0,
+                    fadeDurationMs,
+                    1f,
+                    0f,
+                    riseDistancePx,
+                    AnimationCanvasLayerBlendMode.AlphaBlend,
+                    new CanvasLayerRecoveredInsertCanvasSettings(fadeDurationMs, 255, 0),
+                    new CanvasLayerRecoveredMoveSettings(Point.Zero, new Point(0, -riseDistancePx))),
+            };
+
+            if (hasOverlay)
+            {
+                int overlayHoldDurationMs = Math.Max(0, holdDurationMs - overlayDelayMs);
+                descriptors.Add(new CanvasLayerInsertDescriptor(
+                    AnimationCanvasLayerContent.OverlayCanvas,
+                    overlayOffset,
+                    overlayDelayMs,
+                    overlayHoldDurationMs,
+                    fadeDurationMs,
+                    1f,
+                    0f,
+                    riseDistancePx,
+                    AnimationCanvasLayerBlendMode.AlphaBlend,
+                    new CanvasLayerRecoveredInsertCanvasSettings(
+                        overlayHoldDurationMs + fadeDurationMs,
+                        255,
+                        0),
+                    new CanvasLayerRecoveredMoveSettings(
+                        overlayOffset,
+                        new Point(overlayOffset.X, overlayOffset.Y - riseDistancePx))));
+            }
+
+            return descriptors.ToArray();
+        }
+
+        internal static CanvasLayerRegistration BuildRegistration(
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            bool hasOverlay,
+            Point overlayOffset,
+            int overlayDelayMs,
+            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null)
+        {
+            return new CanvasLayerRegistration(
+                BuildInsertDescriptors(
+                    holdDurationMs,
+                    fadeDurationMs,
+                    riseDistancePx,
+                    hasOverlay,
+                    overlayOffset,
+                    overlayDelayMs),
+                recoveredLayerSettings ?? default);
+        }
+
+        public void Initialize(
+            Texture2D canvasTexture,
+            Texture2D overlayTexture,
+            float left,
+            float top,
+            int currentTimeMs,
+            IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
+            bool ownsCanvasTexture,
+            AnimationCanvasLayerOwner owner,
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 2)
+        {
+            _canvasTexture = canvasTexture;
+            _overlayTexture = overlayTexture;
+            _left = left;
+            _top = top;
+            _startTimeMs = currentTimeMs;
+            _elapsedMs = 0;
+            _ownsCanvasTexture = ownsCanvasTexture;
+            _insertOperations = BuildInsertOperations(insertDescriptors);
+            Owner = owner;
+            RecoveredLayerSettings = recoveredLayerSettings;
+            RecoveredRegistrationTrace = recoveredRegistrationTrace ?? BuildRecoveredRegistrationTrace(
+                left,
+                top,
+                canvasTexture.Width,
+                canvasTexture.Height,
+                insertDescriptors,
+                recoveredLayerSettings,
+                registersOneTimeAnimation: true);
+            RecoveredOwnerTrace = recoveredOwnerTrace;
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace);
+            RecoveredNativeExecutionStateTrace = BuildRecoveredNativeExecutionStateTrace(
+                RecoveredNativeExecutionTrace,
+                simulatedLayerHandleId,
+                simulatedTemporaryCanvasHandleId);
+            RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace);
+            RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace,
+                RecoveredNativeExecutionTrace,
+                simulatedLayerHandleId,
+                simulatedTemporaryCanvasHandleId);
+            RecoveredNativeObjectIdentityState = BuildRecoveredNativeObjectIdentityState(
+                RecoveredNativeLifetimeState);
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTimeMs);
+            return HasActiveInsertOperation();
+        }
+
+        public void Draw(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY)
+        {
+            if (_canvasTexture == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _insertOperations.Length; i++)
+            {
+                CanvasLayerInsertOperation operation = _insertOperations[i];
+                if (operation?.Texture == null
+                    || !TryResolveOperationDrawState(operation.Descriptor, out float alpha, out Point animatedOffset))
+                {
+                    continue;
+                }
+
+                CanvasLayerRecoveredPositionSettings basePosition = ResolveContentBasePosition(operation.Descriptor.Content);
+                Vector2 position = new(
+                    basePosition.Left + mapShiftX + animatedOffset.X,
+                    basePosition.Top + mapShiftY + animatedOffset.Y);
+
+                spriteBatch.Draw(operation.Texture, position, Color.White * alpha);
+            }
+        }
+
+        public void Reset()
+        {
+            if (_ownsCanvasTexture)
+            {
+                _canvasTexture?.Dispose();
+            }
+
+            _canvasTexture = null;
+            _overlayTexture = null;
+            _left = 0f;
+            _top = 0f;
+            _startTimeMs = 0;
+            _elapsedMs = 0;
+            _ownsCanvasTexture = false;
+            _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
+            Owner = AnimationCanvasLayerOwner.Generic;
+            RecoveredLayerSettings = default;
+            RecoveredRegistrationTrace = default;
+            RecoveredOwnerTrace = null;
+            RecoveredNativeExecutionTrace = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+            RecoveredNativeExecutionStateTrace = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
+            RecoveredNativeLayerState = default;
+            RecoveredNativeLifetimeState = default;
+            RecoveredNativeObjectIdentityState = default;
+        }
+
+        internal static CanvasLayerRecoveredNativeLayerState BuildRecoveredNativeLayerState(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace)
+        {
+            bool hasOverlayPosition = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            int overlayLayerPositionOffsetY = ownerTrace?.OverlayLayerPositionOffsetY ?? 0;
+            CanvasLayerRecoveredPositionSettings primaryPosition = registrationTrace.HasNativePosition
+                ? registrationTrace.NativePosition
+                : registrationTrace.Position;
+            CanvasLayerRecoveredPositionSettings overlayPosition = hasOverlayPosition
+                ? new CanvasLayerRecoveredPositionSettings(
+                    primaryPosition.Left,
+                    primaryPosition.Top + overlayLayerPositionOffsetY)
+                : default;
+
+            return new CanvasLayerRecoveredNativeLayerState(
+                registrationTrace.CanvasSettings,
+                registrationTrace.LayerSettings,
+                primaryPosition,
+                hasOverlayPosition,
+                overlayPosition,
+                registrationTrace.LayerSettings.FinalizeLayerOptionValue,
+                registrationTrace.RegistersOneTimeAnimation);
+        }
+
+        internal static CanvasLayerRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace,
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace = null,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 2)
+        {
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> trace =
+                executionTrace ?? BuildRecoveredNativeExecutionTrace(registrationTrace, ownerTrace);
+
+            simulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+            simulatedTemporaryCanvasHandleId = Math.Max(0, simulatedTemporaryCanvasHandleId);
+            int layerRefCount = 0;
+            int layerReferenceCountAfterCreate = 0;
+            int layerReferenceCountAfterRegister = 0;
+            int layerReferenceCountAfterOwnerRelease = 0;
+            int temporaryCanvasRefCount = 0;
+            int temporaryCanvasReferenceCountAfterCreate = 0;
+            int temporaryCanvasReferenceCountAfterOwnerRelease = 0;
+            bool registersOneTimeAnimation = false;
+            bool layerReferenceHeldByOneTimeAnimationManager = false;
+            bool temporaryCanvasReleasedAfterRegistration = false;
+            bool sawRegisterOneTimeAnimation = false;
+
+            for (int i = 0; i < trace.Count; i++)
+            {
+                CanvasLayerRecoveredNativeOperation operation = trace[i];
+                switch (operation.Kind)
+                {
+                    case CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas:
+                        temporaryCanvasRefCount = 1;
+                        temporaryCanvasReferenceCountAfterCreate = temporaryCanvasRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.CreateLayer:
+                        layerRefCount = 1;
+                        layerReferenceCountAfterCreate = layerRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration:
+                        layerRefCount++;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        registersOneTimeAnimation = true;
+                        sawRegisterOneTimeAnimation = true;
+                        layerReferenceCountAfterRegister = layerRefCount;
+                        layerReferenceHeldByOneTimeAnimationManager = layerRefCount > 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration:
+                        layerRefCount = Math.Max(0, layerRefCount - 1);
+                        layerReferenceCountAfterOwnerRelease = layerRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration:
+                        temporaryCanvasRefCount = Math.Max(0, temporaryCanvasRefCount - 1);
+                        temporaryCanvasReferenceCountAfterOwnerRelease = temporaryCanvasRefCount;
+                        temporaryCanvasReleasedAfterRegistration = sawRegisterOneTimeAnimation;
+                        break;
+                }
+            }
+
+            return new CanvasLayerRecoveredNativeLifetimeState(
+                layerReferenceCountAfterCreate > 0 ? simulatedLayerHandleId : 0,
+                layerReferenceCountAfterCreate,
+                layerReferenceCountAfterRegister,
+                layerReferenceCountAfterOwnerRelease,
+                layerReferenceHeldByOneTimeAnimationManager
+                    && layerReferenceCountAfterOwnerRelease > 0,
+                temporaryCanvasReferenceCountAfterCreate > 0 ? simulatedTemporaryCanvasHandleId : 0,
+                temporaryCanvasReferenceCountAfterCreate,
+                temporaryCanvasReferenceCountAfterOwnerRelease,
+                registersOneTimeAnimation,
+                temporaryCanvasReleasedAfterRegistration);
+        }
+
+        internal static CanvasLayerRecoveredNativeOperationState[] BuildRecoveredNativeExecutionStateTrace(
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 2)
+        {
+            if (executionTrace == null || executionTrace.Count == 0)
+            {
+                return Array.Empty<CanvasLayerRecoveredNativeOperationState>();
+            }
+
+            simulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+            simulatedTemporaryCanvasHandleId = Math.Max(0, simulatedTemporaryCanvasHandleId);
+            int layerRefCount = 0;
+            int temporaryCanvasRefCount = 0;
+            bool sawLayer = false;
+            bool sawTemporaryCanvas = false;
+            bool sawRegisterOneTimeAnimation = false;
+            bool layerReferenceHeldByOneTimeAnimationManager = false;
+            bool temporaryCanvasReleasedAfterRegistration = false;
+            var states = new CanvasLayerRecoveredNativeOperationState[executionTrace.Count];
+
+            for (int i = 0; i < executionTrace.Count; i++)
+            {
+                CanvasLayerRecoveredNativeOperation operation = executionTrace[i];
+                switch (operation.Kind)
+                {
+                    case CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas:
+                        sawTemporaryCanvas = true;
+                        temporaryCanvasRefCount = 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.CreateLayer:
+                        sawLayer = true;
+                        layerRefCount = 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration:
+                        if (sawLayer)
+                        {
+                            layerRefCount++;
+                        }
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        sawRegisterOneTimeAnimation = true;
+                        layerReferenceHeldByOneTimeAnimationManager = sawLayer && layerRefCount > 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration:
+                        if (sawLayer)
+                        {
+                            layerRefCount = Math.Max(0, layerRefCount - 1);
+                            layerReferenceHeldByOneTimeAnimationManager =
+                                sawRegisterOneTimeAnimation && layerRefCount > 0;
+                        }
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration:
+                        if (sawTemporaryCanvas)
+                        {
+                            temporaryCanvasRefCount = Math.Max(0, temporaryCanvasRefCount - 1);
+                            temporaryCanvasReleasedAfterRegistration = sawRegisterOneTimeAnimation;
+                        }
+                        break;
+                }
+
+                states[i] = new CanvasLayerRecoveredNativeOperationState(
+                    operation,
+                    i,
+                    ResolveRecoveredNativeOperationObjectRole(operation.Kind),
+                    sawLayer ? simulatedLayerHandleId : 0,
+                    layerRefCount,
+                    layerReferenceHeldByOneTimeAnimationManager,
+                    sawTemporaryCanvas ? simulatedTemporaryCanvasHandleId : 0,
+                    temporaryCanvasRefCount,
+                    sawRegisterOneTimeAnimation,
+                    temporaryCanvasReleasedAfterRegistration);
+            }
+
+            return states;
+        }
+
+        internal static CanvasLayerRecoveredNativeObjectIdentityState BuildRecoveredNativeObjectIdentityState(
+            CanvasLayerRecoveredNativeLifetimeState lifetimeState)
+        {
+            bool hasTemporaryCanvas = lifetimeState.SimulatedTemporaryCanvasHandleId > 0
+                || lifetimeState.TemporaryCanvasReferenceCountAfterCreate > 0;
+            bool hasLayer = lifetimeState.SimulatedLayerHandleId > 0
+                || lifetimeState.LayerReferenceCountAfterCreate > 0;
+            bool handlesAreDistinct = !hasTemporaryCanvas
+                || !hasLayer
+                || lifetimeState.SimulatedTemporaryCanvasHandleId != lifetimeState.SimulatedLayerHandleId;
+
+            return new CanvasLayerRecoveredNativeObjectIdentityState(
+                lifetimeState.SimulatedTemporaryCanvasHandleId,
+                hasTemporaryCanvas
+                    ? CanvasLayerRecoveredNativeObjectRole.TemporaryCanvas
+                    : CanvasLayerRecoveredNativeObjectRole.None,
+                lifetimeState.SimulatedLayerHandleId,
+                hasLayer
+                    ? CanvasLayerRecoveredNativeObjectRole.OneTimeLayer
+                    : CanvasLayerRecoveredNativeObjectRole.None,
+                hasTemporaryCanvas,
+                hasLayer,
+                handlesAreDistinct,
+                lifetimeState.RegistersOneTimeAnimation,
+                lifetimeState.TemporaryCanvasReleasedAfterRegistration,
+                lifetimeState.LayerReferenceHeldByOneTimeAnimationManager,
+                lifetimeState.LayerReferenceCountAfterOwnerRelease < lifetimeState.LayerReferenceCountAfterRegisterOneTimeAnimation);
+        }
+
+        internal CanvasLayerRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            CanvasLayerRecoveredNativeFinalReleaseReason reason)
+        {
+            return BuildRecoveredNativeFinalReleaseState(
+                RecoveredNativeLifetimeState,
+                reason);
+        }
+
+        internal static CanvasLayerRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            CanvasLayerRecoveredNativeLifetimeState lifetimeState,
+            CanvasLayerRecoveredNativeFinalReleaseReason reason)
+        {
+            bool hadRegisteredLayer = lifetimeState.RegistersOneTimeAnimation
+                && lifetimeState.SimulatedLayerHandleId > 0
+                && lifetimeState.LayerReferenceCountAfterOwnerRelease > 0;
+            bool managerHeldLayerReference = hadRegisteredLayer
+                && lifetimeState.LayerReferenceHeldByOneTimeAnimationManager;
+            int layerReferenceCountAfterManagerRelease = managerHeldLayerReference
+                ? Math.Max(0, lifetimeState.LayerReferenceCountAfterOwnerRelease - 1)
+                : lifetimeState.LayerReferenceCountAfterOwnerRelease;
+
+            return new CanvasLayerRecoveredNativeFinalReleaseState(
+                lifetimeState.SimulatedLayerHandleId,
+                lifetimeState.LayerReferenceCountAfterOwnerRelease,
+                layerReferenceCountAfterManagerRelease,
+                hadRegisteredLayer,
+                managerHeldLayerReference,
+                managerHeldLayerReference
+                    && layerReferenceCountAfterManagerRelease < lifetimeState.LayerReferenceCountAfterOwnerRelease,
+                lifetimeState.SimulatedTemporaryCanvasHandleId,
+                lifetimeState.TemporaryCanvasReferenceCountAfterOwnerRelease,
+                lifetimeState.TemporaryCanvasReleasedAfterRegistration
+                    && lifetimeState.TemporaryCanvasReferenceCountAfterOwnerRelease == 0,
+                reason);
+        }
+
+        private static CanvasLayerRecoveredNativeObjectRole ResolveRecoveredNativeOperationObjectRole(
+            CanvasLayerRecoveredNativeOperationKind kind)
+        {
+            return kind switch
+            {
+                CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.InsertTemporaryCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration
+                    => CanvasLayerRecoveredNativeObjectRole.TemporaryCanvas,
+                CanvasLayerRecoveredNativeOperationKind.CreateLayer
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerOption
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerPriority
+                    or CanvasLayerRecoveredNativeOperationKind.InsertCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerPosition
+                    or CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration
+                    or CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation
+                    or CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration
+                    => CanvasLayerRecoveredNativeObjectRole.OneTimeLayer,
+                _ => CanvasLayerRecoveredNativeObjectRole.None
+            };
+        }
+
+        internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace)
+        {
+            CanvasLayerRecoveredTemporaryCanvasOperation[] ownerTemporaryCanvasOperations =
+                ownerTrace?.TemporaryCanvasOperations ?? Array.Empty<CanvasLayerRecoveredTemporaryCanvasOperation>();
+            CanvasLayerRecoveredInsertCommand[] insertCommands =
+                registrationTrace.InsertCommands ?? Array.Empty<CanvasLayerRecoveredInsertCommand>();
+            bool hasOverlayPositionWrite = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            bool hasTemporaryCanvas = ownerTemporaryCanvasOperations.Length > 0;
+            int capacity = ownerTemporaryCanvasOperations.Length + 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
+                + (registrationTrace.RegistersOneTimeAnimation ? 3 : 0)
+                + (hasTemporaryCanvas ? 1 : 0);
+            var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity);
+
+            for (int i = 0; i < ownerTemporaryCanvasOperations.Length; i++)
+            {
+                CanvasLayerRecoveredTemporaryCanvasOperation operation = ownerTemporaryCanvasOperations[i];
+                if (operation.Kind == CanvasLayerRecoveredTemporaryCanvasOperationKind.CreateCanvas)
+                {
+                    operations.Add(new CanvasLayerRecoveredNativeOperation(
+                        CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas,
+                        null,
+                        Point.Zero,
+                        0,
+                        default,
+                        default,
+                        default,
+                        0,
+                        operation.CanvasSettings));
+                    continue;
+                }
+
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.InsertTemporaryCanvas,
+                    null,
+                    operation.Source.CanvasOffset,
+                    0,
+                    operation.InsertCanvasSettings,
+                    new CanvasLayerRecoveredMoveSettings(
+                        operation.Source.CanvasOffset,
+                        operation.Source.CanvasOffset),
+                    default,
+                    0,
+                    operation.CanvasSettings));
+            }
+
+            operations.AddRange(new CanvasLayerRecoveredNativeOperation[]
+            {
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.CreateLayer,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.CreateLayerCanvasValue,
+                    registrationTrace.CanvasSettings),
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerOption,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.InitialLayerOptionValue,
+                    registrationTrace.CanvasSettings),
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerPriority,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.LayerPriorityValue,
+                    registrationTrace.CanvasSettings)
+            });
+
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                CanvasLayerRecoveredInsertCommand command = insertCommands[i];
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.InsertCanvas,
+                    command.Content,
+                    command.Offset,
+                    command.StartDelayMs,
+                    command.InsertCanvasSettings,
+                    command.MoveSettings,
+                    default,
+                    0,
+                    registrationTrace.CanvasSettings));
+            }
+
+            operations.Add(new CanvasLayerRecoveredNativeOperation(
+                CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
+                AnimationCanvasLayerContent.PrimaryCanvas,
+                Point.Zero,
+                0,
+                default,
+                default,
+                registrationTrace.HasNativePosition
+                    ? registrationTrace.NativePosition
+                    : registrationTrace.Position,
+                0,
+                registrationTrace.CanvasSettings));
+
+            if (hasOverlayPositionWrite)
+            {
+                Point overlayOffset = ResolveOverlayInsertOffset(insertCommands);
+                int overlayLayerPositionOffsetY = ownerTrace?.OverlayLayerPositionOffsetY ?? 0;
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
+                    AnimationCanvasLayerContent.OverlayCanvas,
+                    overlayOffset,
+                    0,
+                    default,
+                    default,
+                    new CanvasLayerRecoveredPositionSettings(
+                        registrationTrace.HasNativePosition
+                            ? registrationTrace.NativePosition.Left
+                            : registrationTrace.Position.Left,
+                        (registrationTrace.HasNativePosition
+                            ? registrationTrace.NativePosition.Top
+                            : registrationTrace.Position.Top) + overlayLayerPositionOffsetY),
+                    0,
+                    registrationTrace.CanvasSettings));
+            }
+
+            operations.Add(new CanvasLayerRecoveredNativeOperation(
+                CanvasLayerRecoveredNativeOperationKind.SetLayerOption,
+                null,
+                Point.Zero,
+                0,
+                default,
+                default,
+                default,
+                registrationTrace.LayerSettings.FinalizeLayerOptionValue,
+                registrationTrace.CanvasSettings));
+
+            if (registrationTrace.RegistersOneTimeAnimation)
+            {
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    1,
+                    registrationTrace.CanvasSettings));
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    0,
+                    registrationTrace.CanvasSettings));
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    -1,
+                    registrationTrace.CanvasSettings));
+            }
+
+            if (hasTemporaryCanvas)
+            {
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    -1,
+                    registrationTrace.CanvasSettings));
+            }
+
+            return operations.ToArray();
+        }
+
+        private static Point ResolveOverlayInsertOffset(IReadOnlyList<CanvasLayerRecoveredInsertCommand> insertCommands)
+        {
+            if (insertCommands == null)
+            {
+                return Point.Zero;
+            }
+
+            for (int i = 0; i < insertCommands.Count; i++)
+            {
+                if (insertCommands[i].Content == AnimationCanvasLayerContent.OverlayCanvas)
+                {
+                    return insertCommands[i].Offset;
+                }
+            }
+
+            return Point.Zero;
+        }
+
+        private CanvasLayerRecoveredPositionSettings ResolveContentBasePosition(AnimationCanvasLayerContent content)
+        {
+            if (content == AnimationCanvasLayerContent.OverlayCanvas
+                && RecoveredNativeLayerState.HasOverlayPosition)
+            {
+                return RecoveredNativeLayerState.OverlayPosition;
+            }
+
+            return new CanvasLayerRecoveredPositionSettings(
+                (int)Math.Round(_left, MidpointRounding.AwayFromZero),
+                (int)Math.Round(_top, MidpointRounding.AwayFromZero));
+        }
+
+        internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(
+            float left,
+            float top,
+            int canvasWidth,
+            int canvasHeight,
+            IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
+            bool registersOneTimeAnimation,
+            CanvasLayerRecoveredPositionSettings? recoveredNativePosition = null)
+        {
+            CanvasLayerRecoveredInsertCommand[] recoveredInsertCommands;
+            if (insertDescriptors == null || insertDescriptors.Count == 0)
+            {
+                recoveredInsertCommands = Array.Empty<CanvasLayerRecoveredInsertCommand>();
+            }
+            else
+            {
+                recoveredInsertCommands = new CanvasLayerRecoveredInsertCommand[insertDescriptors.Count];
+                for (int i = 0; i < insertDescriptors.Count; i++)
+                {
+                    CanvasLayerInsertDescriptor descriptor = insertDescriptors[i];
+                    recoveredInsertCommands[i] = new CanvasLayerRecoveredInsertCommand(
+                        descriptor.Content,
+                        descriptor.Offset,
+                        descriptor.StartDelayMs,
+                        descriptor.RecoveredInsertCanvasSettings,
+                        descriptor.RecoveredMoveSettings);
+                }
+            }
+
+            return new CanvasLayerRecoveredRegistrationTrace(
+                new CanvasLayerRecoveredCanvasSettings(
+                    Math.Max(0, canvasWidth),
+                    Math.Max(0, canvasHeight)),
+                recoveredLayerSettings,
+                new CanvasLayerRecoveredPositionSettings(
+                    (int)Math.Round(left, MidpointRounding.AwayFromZero),
+                    (int)Math.Round(top, MidpointRounding.AwayFromZero)),
+                recoveredNativePosition.HasValue,
+                recoveredNativePosition.GetValueOrDefault(),
+                recoveredInsertCommands,
+                registersOneTimeAnimation);
+        }
+
+        private CanvasLayerInsertOperation[] BuildInsertOperations(IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors)
+        {
+            if (insertDescriptors == null || insertDescriptors.Count == 0)
+            {
+                return Array.Empty<CanvasLayerInsertOperation>();
+            }
+
+            var operations = new CanvasLayerInsertOperation[insertDescriptors.Count];
+            for (int i = 0; i < insertDescriptors.Count; i++)
+            {
+                CanvasLayerInsertDescriptor descriptor = insertDescriptors[i];
+                Texture2D texture = descriptor.Content switch
+                {
+                    AnimationCanvasLayerContent.PrimaryCanvas => _canvasTexture,
+                    AnimationCanvasLayerContent.OverlayCanvas => _overlayTexture,
+                    _ => null,
+                };
+
+                operations[i] = new CanvasLayerInsertOperation
+                {
+                    Texture = texture,
+                    Descriptor = descriptor,
+                };
+            }
+
+            return operations;
+        }
+
+        private bool HasActiveInsertOperation()
+        {
+            for (int i = 0; i < _insertOperations.Length; i++)
+            {
+                CanvasLayerInsertOperation operation = _insertOperations[i];
+                if (operation?.Texture != null
+                    && TryResolveOperationDrawState(operation.Descriptor, out _, out _))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryResolveOperationDrawState(
+            CanvasLayerInsertDescriptor descriptor,
+            out float alpha,
+            out Point animatedOffset)
+        {
+            return TryResolveRecoveredInsertState(
+                descriptor,
+                _elapsedMs,
+                out alpha,
+                out animatedOffset);
+        }
+
+        internal static bool TryResolveRecoveredInsertState(
+            CanvasLayerInsertDescriptor descriptor,
+            int elapsedMs,
+            out float alpha,
+            out Point animatedOffset)
+        {
+            alpha = 0f;
+            animatedOffset = descriptor.Offset;
+
+            int localElapsedMs = elapsedMs - descriptor.StartDelayMs;
+            int recoveredDurationMs = descriptor.RecoveredInsertCanvasSettings.DurationMs;
+            int fallbackDurationMs = descriptor.HoldDurationMs + descriptor.FadeDurationMs;
+            int lifetimeMs = recoveredDurationMs > 0
+                ? recoveredDurationMs
+                : Math.Max(0, fallbackDurationMs);
+            if (localElapsedMs < 0 || localElapsedMs >= lifetimeMs)
+            {
+                return false;
+            }
+
+            int holdDurationMs = Math.Max(0, descriptor.HoldDurationMs);
+            int fadeDurationMs = Math.Max(0, descriptor.FadeDurationMs);
+            float transitionProgress;
+            if (fadeDurationMs > 0)
+            {
+                transitionProgress = localElapsedMs <= holdDurationMs
+                    ? 0f
+                    : Math.Clamp((float)(localElapsedMs - holdDurationMs) / fadeDurationMs, 0f, 1f);
+            }
+            else
+            {
+                transitionProgress = lifetimeMs > 0
+                    ? Math.Clamp((float)localElapsedMs / lifetimeMs, 0f, 1f)
+                    : 1f;
+            }
+            float startAlpha = ResolveRecoveredAlphaValue(
+                descriptor.StartAlpha,
+                descriptor.RecoveredInsertCanvasSettings.StartAlphaValue);
+            float endAlpha = ResolveRecoveredAlphaValue(
+                descriptor.EndAlpha,
+                descriptor.RecoveredInsertCanvasSettings.EndAlphaValue);
+            alpha = MathHelper.Lerp(startAlpha, endAlpha, transitionProgress);
+
+            Point startOffset = descriptor.RecoveredMoveSettings.StartOffset;
+            Point endOffset = descriptor.RecoveredMoveSettings.EndOffset;
+            if (startOffset == Point.Zero
+                && endOffset == Point.Zero
+                && descriptor.Offset != Point.Zero)
+            {
+                startOffset = descriptor.Offset;
+                endOffset = descriptor.Offset;
+            }
+
+            animatedOffset = new Point(
+                startOffset.X + (int)Math.Round(
+                    (endOffset.X - startOffset.X) * transitionProgress,
+                    MidpointRounding.AwayFromZero),
+                startOffset.Y + (int)Math.Round(
+                    (endOffset.Y - startOffset.Y) * transitionProgress,
+                    MidpointRounding.AwayFromZero));
+            return alpha > 0f;
+        }
+
+        private static float ResolveRecoveredAlphaValue(float fallbackAlpha, int recoveredAlphaValue)
+        {
+            return recoveredAlphaValue >= 0 && recoveredAlphaValue <= 255
+                ? recoveredAlphaValue / 255f
+                : Math.Clamp(fallbackAlpha, 0f, 1f);
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+    }
 
     /// <summary>
     /// One-shot animation that plays once and removes itself
@@ -393,22 +7433,96 @@ namespace HaCreator.MapSimulator.Animation
         private List<IDXObject> _frames;
         private float _x, _y;
         private bool _flip;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
         private int _startTime;
         private int _currentFrame;
         private int _lastFrameTime;
         private int _zOrder;
         private bool _finished;
+        private const int BasicFloatHoldDurationMs = 400;
+        private const int BasicFloatFadeDurationMs = 600;
+        private const int BasicFloatMoveDurationMs = 250;
+        private const int BasicFloatRiseDistancePx = 30;
 
         public Color Tint { get; set; } = Color.White;
         public bool FadeOut { get; set; } = false;
         public float Alpha { get; private set; } = 1f;
+        public int ZOrder => _zOrder;
+        public AnimationOneTimeOwner Owner { get; private set; } = AnimationOneTimeOwner.Generic;
+        public AnimationOneTimePlaybackMode PlaybackMode { get; private set; } = AnimationOneTimePlaybackMode.Default;
+        public string SourceUol { get; private set; }
+        public bool UsesOverlayParent { get; private set; }
+        public AnimationOneTimeOverlayParentKind OverlayParentKind { get; private set; } = AnimationOneTimeOverlayParentKind.None;
+        public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+        internal IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> RecoveredMobProjectileExecutionTrace { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+        internal OneTimeAnimationRecoveredMobProjectileRegistrationTrace? RecoveredMobProjectileRegistrationTrace { get; private set; }
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperationState> RecoveredNativeOperationStates { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
+        internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
+        internal OneTimeAnimationRecoveredLayerSurfaceState RecoveredLayerSurfaceState { get; private set; }
+        internal OneTimeAnimationRecoveredNativeAnimateVariantState RecoveredNativeAnimateVariantState { get; private set; }
+        internal OneTimeAnimationRecoveredPresentationBoundaryState RecoveredPresentationBoundaryState { get; private set; }
+        internal OneTimeAnimationRecoveredBasicFloatTrace? RecoveredBasicFloatTrace { get; private set; }
+        internal int CurrentFrameIndex => _currentFrame;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
+        {
+            Initialize(frames, x, y, flip, currentTimeMs, zOrder, getPosition: null, getFlip: null);
+        }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip)
+        {
+            Initialize(
+                frames,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip,
+                AnimationOneTimeOwner.Generic,
+                AnimationOneTimePlaybackMode.Default,
+                sourceUol: null,
+                usesOverlayParent: false,
+                recoveredRegistrationTrace: null);
+        }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            AnimationOneTimeOwner owner,
+            AnimationOneTimePlaybackMode playbackMode,
+            string sourceUol,
+            bool usesOverlayParent,
+            OneTimeAnimationRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            int initialElapsedMs = 0,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? recoveredMobProjectileRegistrationTrace = null)
         {
             _frames = frames;
             _x = x;
             _y = y;
             _flip = flip;
+            _positionResolver = getPosition;
+            _flipResolver = getFlip;
             _startTime = currentTimeMs;
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
@@ -417,14 +7531,56 @@ namespace HaCreator.MapSimulator.Animation
             Tint = Color.White;
             FadeOut = false;
             Alpha = 1f;
+            Owner = owner;
+            PlaybackMode = playbackMode;
+            SourceUol = sourceUol;
+            UsesOverlayParent = usesOverlayParent;
+            OverlayParentKind = recoveredRegistrationTrace?.OverlayParentKind
+                ?? (usesOverlayParent ? AnimationOneTimeOverlayParentKind.MobActionLayer : AnimationOneTimeOverlayParentKind.None);
+            RecoveredRegistrationTrace = recoveredRegistrationTrace;
+            RecoveredMobProjectileRegistrationTrace = recoveredMobProjectileRegistrationTrace;
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
+            RecoveredMobProjectileExecutionTrace =
+                BuildRecoveredMobProjectileExecutionTrace(recoveredMobProjectileRegistrationTrace);
+            RecoveredNativeOperationStates = BuildRecoveredNativeOperationStates(
+                recoveredRegistrationTrace,
+                RecoveredNativeExecutionTrace);
+            RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
+                recoveredRegistrationTrace,
+                RecoveredNativeExecutionTrace);
+            RecoveredLayerSurfaceState = BuildRecoveredLayerSurfaceState(recoveredRegistrationTrace);
+            RecoveredNativeAnimateVariantState = BuildRecoveredNativeAnimateVariantState(
+                recoveredRegistrationTrace,
+                RecoveredNativeExecutionTrace);
+            RecoveredPresentationBoundaryState = BuildRecoveredPresentationBoundaryState(
+                recoveredRegistrationTrace,
+                getPosition,
+                getFlip,
+                playbackMode);
+            RecoveredBasicFloatTrace = BuildRecoveredBasicFloatTrace(playbackMode, frames, recoveredRegistrationTrace);
+
+            if (initialElapsedMs > 0)
+            {
+                SeekToElapsed(initialElapsedMs, currentTimeMs);
+            }
         }
 
         public bool Update(int currentTimeMs)
         {
             if (_finished) return false;
 
+            if (PlaybackMode == AnimationOneTimePlaybackMode.GA_STOP)
+            {
+                return UpdateStoppedPlayback(currentTimeMs);
+            }
+
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                return UpdateBasicFloatPlayback(currentTimeMs);
+            }
+
             IDXObject frame = _frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
                 _currentFrame++;
                 _lastFrameTime = currentTimeMs;
@@ -446,18 +7602,1053 @@ namespace HaCreator.MapSimulator.Animation
             return true;
         }
 
+        private bool UpdateStoppedPlayback(int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return false;
+            }
+
+            int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime);
+            int cursor = 0;
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                cursor += ResolveFrameDelay(_frames[i]);
+                if (elapsed < cursor)
+                {
+                    _currentFrame = i;
+                    _lastFrameTime = currentTimeMs;
+                    return true;
+                }
+            }
+
+            _finished = true;
+            _currentFrame = _frames.Count;
+            return false;
+        }
+
+        private bool UpdateBasicFloatPlayback(int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return false;
+            }
+
+            int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime);
+            if (elapsed >= ResolveBasicFloatLifetimeMs())
+            {
+                _finished = true;
+                _currentFrame = _frames.Count;
+                Alpha = 0f;
+                return false;
+            }
+
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            Alpha = ResolveBasicFloatAlpha(elapsed);
+            return true;
+        }
+
+        private void SeekToElapsed(int initialElapsedMs, int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return;
+            }
+
+            int elapsed = Math.Max(0, initialElapsedMs);
+            _startTime = unchecked(currentTimeMs - elapsed);
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                if (elapsed >= ResolveBasicFloatLifetimeMs())
+                {
+                    _finished = true;
+                    _currentFrame = _frames.Count;
+                    Alpha = 0f;
+                    return;
+                }
+
+                Alpha = ResolveBasicFloatAlpha(elapsed);
+                return;
+            }
+
+            while (_currentFrame < _frames.Count)
+            {
+                int frameDelay = Math.Max(0, _frames[_currentFrame]?.Delay ?? 0);
+                if (elapsed <= frameDelay)
+                {
+                    _lastFrameTime = unchecked(currentTimeMs - elapsed);
+                    return;
+                }
+
+                elapsed -= frameDelay + 1;
+                _currentFrame++;
+            }
+
+            _finished = true;
+        }
+
+        private static int ResolveFrameDelay(IDXObject frame)
+        {
+            return Math.Max(10, frame?.Delay ?? 100);
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static bool HasFrameDelayElapsedForTesting(int currentTimeMs, int lastFrameTimeMs, int frameDelayMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, lastFrameTimeMs) > frameDelayMs;
+        }
+
+        internal static int ResolveBasicFloatLifetimeMs()
+        {
+            return BasicFloatHoldDurationMs + BasicFloatFadeDurationMs;
+        }
+
+        internal static float ResolveBasicFloatAlpha(int elapsedMs)
+        {
+            int elapsed = Math.Max(0, elapsedMs);
+            if (elapsed <= BasicFloatHoldDurationMs)
+            {
+                return 1f;
+            }
+
+            float fadeProgress = MathHelper.Clamp(
+                (elapsed - BasicFloatHoldDurationMs) / (float)BasicFloatFadeDurationMs,
+                0f,
+                1f);
+            return 1f - fadeProgress;
+        }
+
+        internal static float ResolveBasicFloatOffsetY(int elapsedMs)
+        {
+            float moveProgress = MathHelper.Clamp(
+                Math.Max(0, elapsedMs) / (float)BasicFloatMoveDurationMs,
+                0f,
+                1f);
+            return -BasicFloatRiseDistancePx * moveProgress;
+        }
+
+        internal static Point ResolveBasicFloatNativeLayerPosition(
+            int centerLeft,
+            int centerTop,
+            int canvasWidth,
+            int canvasHeight)
+        {
+            return new Point(
+                centerLeft - (Math.Max(0, canvasWidth) / 2),
+                centerTop - Math.Max(0, canvasHeight));
+        }
+
+        internal static Point ResolveBasicFloatNativeMoveTarget(
+            int centerLeft,
+            int centerTop,
+            int canvasWidth,
+            int canvasHeight)
+        {
+            Point origin = ResolveBasicFloatNativeLayerPosition(centerLeft, centerTop, canvasWidth, canvasHeight);
+            return new Point(origin.X, origin.Y - BasicFloatRiseDistancePx);
+        }
+
+        private static OneTimeAnimationRecoveredBasicFloatTrace? BuildRecoveredBasicFloatTrace(
+            AnimationOneTimePlaybackMode playbackMode,
+            IReadOnlyList<IDXObject> frames,
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (playbackMode != AnimationOneTimePlaybackMode.BasicFloat || registrationTrace == null)
+            {
+                return null;
+            }
+
+            IDXObject firstFrame = frames != null && frames.Count > 0 ? frames[0] : null;
+            return new OneTimeAnimationRecoveredBasicFloatTrace(
+                CanvasWidth: Math.Max(0, firstFrame?.Width ?? 0),
+                CanvasHeight: Math.Max(0, firstFrame?.Height ?? 0),
+                HoldInsertDurationMs: BasicFloatHoldDurationMs,
+                HoldStartAlphaValue: 255,
+                HoldEndAlphaValue: 255,
+                FadeInsertDurationMs: BasicFloatFadeDurationMs,
+                FadeStartAlphaValue: 255,
+                FadeEndAlphaValue: 0,
+                MoveDelayMs: BasicFloatMoveDurationMs,
+                RiseDistancePx: BasicFloatRiseDistancePx,
+                CentersCanvasByWidth: true,
+                AnchorsCanvasBottom: true,
+                RegistersOneTimeAnimation: registrationTrace.Value.RegistersOneTimeAnimation);
+        }
+
+        private static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 2
+                + (trace.UsesOverlayLayer ? 2 : 0)
+                + (trace.UsesOriginVector ? 2 : 0)
+                + (trace.RegistersOneTimeAnimation ? 2 : 1);
+            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(capacity);
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.LoadLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                trace.UsesOriginVector,
+                trace.LoadLayerOriginOffsetX,
+                trace.LoadLayerOriginOffsetY,
+                trace.UsesOverlayLayer,
+                trace.OverlayParentKind,
+                trace.LoadLayerOptionValue,
+                trace.LoadLayerCanvasValue,
+                trace.LoadLayerAlphaValue,
+                trace.LoadLayerFlip,
+                trace.LoadLayerReservedValue));
+
+            if (trace.AnimateUsesMissingStartTime)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingStartTime: true));
+            }
+
+            if (trace.AnimateUsesMissingRepeatCount)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingRepeatCount: true));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.Animate,
+                trace.SourceUol,
+                trace.AnimatePlaybackMode,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                (int)trace.AnimatePlaybackMode,
+                AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
+                AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount));
+
+            if (trace.AnimateUsesMissingRepeatCount)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingRepeatCount: true));
+            }
+
+            if (trace.AnimateUsesMissingStartTime)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingStartTime: true));
+            }
+
+            if (trace.RegistersOneTimeAnimation)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainLoadedLayerForRegistration,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    trace.RegisterOneTimeAnimationUsesFlipOrigin,
+                    0,
+                    0,
+                    trace.RegisterOneTimeAnimationUsesAutoFlipOverlay,
+                    trace.RegisterOneTimeAnimationUsesAutoFlipOverlay
+                        ? trace.OverlayParentKind
+                        : AnimationOneTimeOverlayParentKind.None,
+                    trace.RegisterOneTimeAnimationDelayMs,
+                    RegisterOneTimeAnimationHasCallback: trace.RegisterOneTimeAnimationHasCallback));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            return operations.ToArray();
+        }
+
+        internal static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeNullLayerExecutionTraceForTesting(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 2
+                + (trace.UsesOverlayLayer ? 2 : 0)
+                + (trace.UsesOriginVector ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(capacity);
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.LoadLayerNoLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                trace.UsesOriginVector,
+                trace.LoadLayerOriginOffsetX,
+                trace.LoadLayerOriginOffsetY,
+                trace.UsesOverlayLayer,
+                trace.OverlayParentKind,
+                trace.LoadLayerOptionValue,
+                trace.LoadLayerCanvasValue,
+                trace.LoadLayerAlphaValue,
+                trace.LoadLayerFlip,
+                trace.LoadLayerReservedValue));
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            return operations.ToArray();
+        }
+
+        internal static OneTimeAnimationRecoveredNativeOperationState[] BuildRecoveredNativeOperationStates(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null,
+            int simulatedLoadedLayerHandleId = 1,
+            int simulatedSourceUolHandleId = 1,
+            int simulatedOriginVectorHandleId = 1,
+            int simulatedOverlayParentHandleId = 1)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(registrationTrace);
+
+            int loadedLayerReferenceCount = 0;
+            int sourceUolReferenceCount = string.IsNullOrWhiteSpace(trace.SourceUol) ? 0 : 1;
+            int originVectorReferenceCount = 0;
+            int overlayParentReferenceCount = 0;
+            bool registerOneTimeAnimationHasRun = false;
+            bool loadedLayerReleasedByOwnerAfterRegistration = false;
+            var states = new OneTimeAnimationRecoveredNativeOperationState[executionTrace.Count];
+
+            for (int i = 0; i < executionTrace.Count; i++)
+            {
+                OneTimeAnimationRecoveredNativeOperation operation = executionTrace[i];
+                OneTimeAnimationRecoveredNativeObjectRole role = OneTimeAnimationRecoveredNativeObjectRole.None;
+
+                switch (operation.Kind)
+                {
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent:
+                        overlayParentReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OverlayParent;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector:
+                        originVectorReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OriginVector;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.LoadLayer:
+                        loadedLayerReferenceCount = Math.Max(loadedLayerReferenceCount, 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.LoadLayerNoLayer:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingStartTimeVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingRepeatCountVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.Animate:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingRepeatCountVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingStartTimeVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainLoadedLayerForRegistration:
+                        loadedLayerReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        registerOneTimeAnimationHasRun = true;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OneTimeAnimationManager;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer:
+                        loadedLayerReferenceCount = Math.Max(0, loadedLayerReferenceCount - 1);
+                        loadedLayerReleasedByOwnerAfterRegistration = registerOneTimeAnimationHasRun;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol:
+                        sourceUolReferenceCount = Math.Max(0, sourceUolReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.SourceUol;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector:
+                        originVectorReferenceCount = Math.Max(0, originVectorReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OriginVector;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent:
+                        overlayParentReferenceCount = Math.Max(0, overlayParentReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OverlayParent;
+                        break;
+                }
+
+                states[i] = new OneTimeAnimationRecoveredNativeOperationState(
+                    operation,
+                    i,
+                    role,
+                    loadedLayerReferenceCount > 0 ? simulatedLoadedLayerHandleId : 0,
+                    loadedLayerReferenceCount,
+                    sourceUolReferenceCount > 0 ? simulatedSourceUolHandleId : 0,
+                    sourceUolReferenceCount,
+                    originVectorReferenceCount > 0 ? simulatedOriginVectorHandleId : 0,
+                    originVectorReferenceCount,
+                    overlayParentReferenceCount > 0 ? simulatedOverlayParentHandleId : 0,
+                    overlayParentReferenceCount,
+                    registerOneTimeAnimationHasRun,
+                    loadedLayerReleasedByOwnerAfterRegistration);
+            }
+
+            return states;
+        }
+
+        internal static OneTimeAnimationRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null,
+            int simulatedLoadedLayerHandleId = 1,
+            int simulatedSourceUolHandleId = 1,
+            int simulatedOriginVectorHandleId = 1,
+            int simulatedOverlayParentHandleId = 1)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(registrationTrace);
+
+            int loadedLayerReferenceCountAfterLoadLayer = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.LoadLayer) ? 1 : 0;
+            int loadedLayerReferenceCountAfterRetain = loadedLayerReferenceCountAfterLoadLayer;
+            if (HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.RetainLoadedLayerForRegistration))
+            {
+                loadedLayerReferenceCountAfterRetain++;
+            }
+
+            int loadedLayerReferenceCountAfterRegister = loadedLayerReferenceCountAfterRetain;
+            int loadedLayerReferenceCountAfterOwnerRelease = loadedLayerReferenceCountAfterRegister;
+            if (HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer))
+            {
+                loadedLayerReferenceCountAfterOwnerRelease = Math.Max(0, loadedLayerReferenceCountAfterOwnerRelease - 1);
+            }
+
+            int sourceUolReferenceCountAfterCreate = string.IsNullOrWhiteSpace(trace.SourceUol) ? 0 : 1;
+            int sourceUolReferenceCountAfterOwnerRelease = sourceUolReferenceCountAfterCreate;
+            if (HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol))
+            {
+                sourceUolReferenceCountAfterOwnerRelease = Math.Max(0, sourceUolReferenceCountAfterOwnerRelease - 1);
+            }
+
+            int originVectorReferenceCountAfterRetain = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector) ? 1 : 0;
+            int originVectorReferenceCountAfterOwnerRelease = originVectorReferenceCountAfterRetain;
+            if (HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector))
+            {
+                originVectorReferenceCountAfterOwnerRelease = Math.Max(0, originVectorReferenceCountAfterOwnerRelease - 1);
+            }
+
+            int overlayParentReferenceCountAfterRetain = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent) ? 1 : 0;
+            int overlayParentReferenceCountAfterOwnerRelease = overlayParentReferenceCountAfterRetain;
+            if (HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent))
+            {
+                overlayParentReferenceCountAfterOwnerRelease = Math.Max(0, overlayParentReferenceCountAfterOwnerRelease - 1);
+            }
+
+            return new OneTimeAnimationRecoveredNativeLifetimeState(
+                loadedLayerReferenceCountAfterLoadLayer > 0 ? simulatedLoadedLayerHandleId : 0,
+                loadedLayerReferenceCountAfterLoadLayer,
+                loadedLayerReferenceCountAfterRetain,
+                loadedLayerReferenceCountAfterRegister,
+                loadedLayerReferenceCountAfterOwnerRelease,
+                sourceUolReferenceCountAfterCreate > 0 ? simulatedSourceUolHandleId : 0,
+                sourceUolReferenceCountAfterCreate,
+                sourceUolReferenceCountAfterOwnerRelease,
+                originVectorReferenceCountAfterRetain > 0 ? simulatedOriginVectorHandleId : 0,
+                originVectorReferenceCountAfterRetain,
+                originVectorReferenceCountAfterOwnerRelease,
+                overlayParentReferenceCountAfterRetain > 0 ? simulatedOverlayParentHandleId : 0,
+                overlayParentReferenceCountAfterRetain,
+                overlayParentReferenceCountAfterOwnerRelease,
+                trace.RegistersOneTimeAnimation
+                    && HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation),
+                HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer));
+        }
+
+        internal static OneTimeAnimationRecoveredLayerSurfaceState BuildRecoveredLayerSurfaceState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            return new OneTimeAnimationRecoveredLayerSurfaceState(
+                NativeLayerInterfaceName: "IWzGr2DLayer",
+                NativeLayerInterfaceGuid: "6dc8c7ce-8e81-4420-b4f6-4b60b7d5fcdf",
+                NativeOriginInterfaceName: "IWzVector2D",
+                NativeOriginInterfaceGuid: "f28bd1ed-3deb-4f92-9eec-10ef5a1c3fb4",
+                ManagedFrameListType: "List<IDXObject>",
+                ManagedFrameType: "IDXObject",
+                ManagedDrawEntrypoint: "IDXObject.DrawObject",
+                ManagedRendererBackend: "XNA/MonoGame SpriteBatch",
+                UsesNativeIWzGr2DLayer: false,
+                UsesNativeIWzVector2D: false,
+                IsByteIdenticalNativeLayer: false);
+        }
+
+        internal static OneTimeAnimationRecoveredPresentationBoundaryState BuildRecoveredPresentationBoundaryState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            AnimationOneTimePlaybackMode playbackMode)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            return new OneTimeAnimationRecoveredPresentationBoundaryState(
+                NativeDisplayerOwnerEntrypoint: ResolveNativeDisplayerOwnerEntrypoint(trace),
+                NativeLoadLayerEntrypoint: "CAnimationDisplayer::LoadLayer",
+                NativeAnimateEntrypoint: "IWzGr2DLayer::Animate",
+                NativeRegisterEntrypoint: "CAnimationDisplayer::RegisterOneTimeAnimation",
+                ManagedDrawEntrypoint: "IDXObject.DrawObject",
+                ManagedRendererBackend: "XNA/MonoGame SpriteBatch",
+                SourceUol: trace.SourceUol,
+                PlaybackMode: playbackMode,
+                UsesNativeGr2DLayerExecution: false,
+                UsesManagedDxFrameExecution: true,
+                IsByteIdenticalNativeOutput: false,
+                UsesLiveOriginResolver: getPosition != null && trace.UsesOriginVector,
+                UsesLiveFlipResolver: getFlip != null,
+                UsesOverlayParent: trace.UsesOverlayLayer,
+                OverlayParentKind: trace.OverlayParentKind,
+                LoadLayerCanvasValue: trace.LoadLayerCanvasValue,
+                LoadLayerOptionValue: trace.LoadLayerOptionValue,
+                LoadLayerAlphaValue: trace.LoadLayerAlphaValue,
+                LoadLayerFlip: trace.LoadLayerFlip,
+                RegisterOneTimeAnimationDelayMs: trace.RegisterOneTimeAnimationDelayMs);
+        }
+
+        private static string ResolveNativeDisplayerOwnerEntrypoint(
+            OneTimeAnimationRecoveredRegistrationTrace trace)
+        {
+            return trace.MobTemplatePathStringPoolId == MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId
+                   && trace.EffectNameStringPoolId == MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId
+                ? "CAnimationDisplayer::Effect_FullChargedAngerGauge"
+                : "CAnimationDisplayer";
+        }
+
+        internal static OneTimeAnimationRecoveredNativeAnimateVariantState BuildRecoveredNativeAnimateVariantState(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(registrationTrace);
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            bool animateCalled = HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.Animate);
+            bool createsStartTimeVariant = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant);
+            bool createsRepeatCountVariant = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant);
+
+            return new OneTimeAnimationRecoveredNativeAnimateVariantState(
+                StartTimeVariantInitialized: createsStartTimeVariant,
+                StartTimeVariantCopiedFromMissing: createsStartTimeVariant,
+                StartTimeVariantClearedAfterAnimate: HasOperation(
+                    executionTrace,
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant),
+                RepeatCountVariantInitialized: createsRepeatCountVariant,
+                RepeatCountVariantCopiedFromMissing: createsRepeatCountVariant,
+                RepeatCountVariantClearedAfterAnimate: HasOperation(
+                    executionTrace,
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant),
+                trace.AnimatePlaybackMode,
+                animateCalled);
+        }
+
+        internal OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            return BuildRecoveredNativeFinalReleaseState(
+                RecoveredNativeLifetimeState,
+                Owner,
+                SourceUol,
+                reason);
+        }
+
+        internal OneTimeAnimationRecoveredMobProjectileFinalReleaseState BuildRecoveredMobProjectileFinalReleaseState(
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            return BuildRecoveredMobProjectileFinalReleaseState(
+                RecoveredMobProjectileRegistrationTrace,
+                RecoveredMobProjectileExecutionTrace,
+                reason);
+        }
+
+        internal static OneTimeAnimationRecoveredMobProjectileFinalReleaseState BuildRecoveredMobProjectileFinalReleaseState(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> executionTrace,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            if (registrationTrace == null)
+            {
+                return default;
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            bool hadContainerReference = HasOperation(
+                executionTrace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer);
+            int beforeManagerRelease = hadContainerReference ? 1 : 0;
+            bool managerReleased = hadContainerReference
+                && reason != OneTimeAnimationRecoveredNativeFinalReleaseReason.None;
+            int afterManagerRelease = managerReleased ? 0 : beforeManagerRelease;
+            return new OneTimeAnimationRecoveredMobProjectileFinalReleaseState(
+                trace.Owner,
+                trace.SourceUol,
+                beforeManagerRelease,
+                afterManagerRelease,
+                hadContainerReference,
+                managerReleased,
+                reason);
+        }
+
+        internal static OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            OneTimeAnimationRecoveredNativeLifetimeState lifetimeState,
+            AnimationOneTimeOwner owner,
+            string sourceUol,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            bool hadRegisteredLayer = lifetimeState.RegistersOneTimeAnimation
+                && lifetimeState.SimulatedLoadedLayerHandleId > 0
+                && lifetimeState.LoadedLayerReferenceCountAfterOwnerRelease > 0;
+            bool managerHeldLayerReference = hadRegisteredLayer;
+            int beforeManagerRelease = lifetimeState.LoadedLayerReferenceCountAfterOwnerRelease;
+            int afterManagerRelease = managerHeldLayerReference
+                ? Math.Max(0, beforeManagerRelease - 1)
+                : beforeManagerRelease;
+
+            return new OneTimeAnimationRecoveredNativeFinalReleaseState(
+                owner,
+                sourceUol,
+                lifetimeState.SimulatedLoadedLayerHandleId,
+                beforeManagerRelease,
+                afterManagerRelease,
+                hadRegisteredLayer,
+                managerHeldLayerReference,
+                managerHeldLayerReference && reason != OneTimeAnimationRecoveredNativeFinalReleaseReason.None,
+                reason);
+        }
+
+        private static bool HasOperation(
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> operations,
+            OneTimeAnimationRecoveredNativeOperationKind kind)
+        {
+            if (operations == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < operations.Count; i++)
+            {
+                if (operations[i].Kind == kind)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasOperation(
+            IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> operations,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind)
+        {
+            if (operations == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < operations.Count; i++)
+            {
+                if (operations[i].Kind == kind)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation[] BuildRecoveredMobProjectileExecutionTrace(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 7
+                + (trace.LoadMobActionId >= 0 ? 2 : 0)
+                + (trace.UsesBallUol ? 2 : 0)
+                + (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredMobProjectileOperation>(capacity);
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.LoadMobAction,
+                    trace.LoadMobActionId));
+            }
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBallUol,
+                    1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainSourceCanvas,
+                    1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainTargetVector,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.AllocateBulletOwner,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletLocalReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletContainerReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBulletLocalReference,
+                -1));
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseMobActionFrameList,
+                    -1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseTargetVector,
+                -1));
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBallUol,
+                    -1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseSourceCanvas,
+                    -1));
+            }
+
+            return operations.ToArray();
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation CreateMobProjectileOperation(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind,
+            int value)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileOperation(
+                kind,
+                trace.SourceUol,
+                trace.Owner,
+                trace.LoadMobActionId,
+                trace.UsesBallUol,
+                trace.UsesActionFrameCanvas,
+                trace.UsesProvidedCanvas,
+                value);
+        }
+
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
         {
             if (_finished || _currentFrame >= _frames.Count) return;
 
             IDXObject frame = _frames[_currentFrame];
+            Vector2 position = _positionResolver?.Invoke() ?? new Vector2(_x, _y);
+            bool flip = _flipResolver?.Invoke() ?? _flip;
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(_lastFrameTime, _startTime);
+                position = new Vector2(position.X, position.Y + ResolveBasicFloatOffsetY(elapsed));
+            }
 
             // Use the object's built-in DrawObject method
             // Note: DrawObject takes negative shift values because it subtracts them internally
-            int drawShiftX = -(int)_x - mapShiftX;
-            int drawShiftY = -(int)_y - mapShiftY;
+            int drawShiftX = -(int)position.X - mapShiftX;
+            int drawShiftY = -(int)position.Y - mapShiftY;
 
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, _flip, null);
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat && Alpha < 1f)
+            {
+                byte alpha = (byte)Math.Clamp((int)MathF.Round(Alpha * byte.MaxValue), 0, byte.MaxValue);
+                frame.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    frame.X - drawShiftX,
+                    frame.Y - drawShiftY,
+                    new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
+                    flip,
+                    null);
+                return;
+            }
+
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+        }
+
+        internal bool ResolveDrawFlipForTesting()
+        {
+            return _flipResolver?.Invoke() ?? _flip;
+        }
+
+        internal Vector2 ResolveDrawPositionForTesting()
+        {
+            return _positionResolver?.Invoke() ?? new Vector2(_x, _y);
         }
     }
 
@@ -475,6 +8666,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
+        private bool _usesEmission;
 
         public int Id { get; private set; }
 
@@ -494,11 +8686,12 @@ namespace HaCreator.MapSimulator.Animation
         public bool Update(int currentTimeMs)
         {
             // Check duration
-            if (_duration > 0 && currentTimeMs - _startTime > _duration)
+            if (_duration > 0
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime) > _duration)
                 return false;
 
             IDXObject frame = _frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
                 _currentFrame = (_currentFrame + 1) % _frames.Count;
                 _lastFrameTime = currentTimeMs;
@@ -516,6 +8709,16 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftY = -(int)_y - mapShiftY;
 
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, _flip, null);
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static bool HasFrameDelayElapsedForTesting(int currentTimeMs, int lastFrameTimeMs, int frameDelayMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, lastFrameTimeMs) > frameDelayMs;
         }
     }
 
@@ -579,7 +8782,7 @@ namespace HaCreator.MapSimulator.Animation
 
         public bool Update(int currentTimeMs)
         {
-            int elapsed = currentTimeMs - _startTime;
+            int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime);
             if (elapsed >= _duration)
                 return false;
 
@@ -591,6 +8794,11 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return true;
+        }
+
+        internal static int ResolveElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, int mapShiftX, int mapShiftY)
@@ -650,9 +8858,30 @@ namespace HaCreator.MapSimulator.Animation
         private int _currentFrame;
         private int _lastFrameTime;
         private bool _finished;
+        private byte _alpha;
+        public AnimationFallingOwner Owner { get; private set; } = AnimationFallingOwner.Generic;
+        public string SourceUol { get; private set; }
 
         public void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
             float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random)
+        {
+            Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, random, byte.MaxValue);
+        }
+
+        internal void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
+            float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random, byte alpha)
+        {
+            Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, random, alpha, AnimationFallingOwner.Generic, sourceUol: null);
+        }
+
+        internal void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
+            float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random, byte alpha, AnimationFallingOwner owner, string sourceUol)
+        {
+            Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, random, alpha, owner, sourceUol, initialElapsedMs: 0);
+        }
+
+        internal void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
+            float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random, byte alpha, AnimationFallingOwner owner, string sourceUol, int initialElapsedMs)
         {
             _frames = frames;
             _x = startX;
@@ -668,6 +8897,126 @@ namespace HaCreator.MapSimulator.Animation
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
             _finished = false;
+            _alpha = alpha;
+            Owner = owner;
+            SourceUol = sourceUol;
+
+            if (initialElapsedMs > 0)
+            {
+                SeekElapsed(initialElapsedMs, currentTimeMs);
+            }
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation[] BuildRecoveredMobProjectileExecutionTrace(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 7
+                + (trace.LoadMobActionId >= 0 ? 2 : 0)
+                + (trace.UsesBallUol ? 2 : 0)
+                + (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredMobProjectileOperation>(capacity);
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.LoadMobAction,
+                    trace.LoadMobActionId));
+            }
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBallUol,
+                    1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainSourceCanvas,
+                    1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainTargetVector,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.AllocateBulletOwner,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletLocalReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletContainerReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBulletLocalReference,
+                -1));
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseMobActionFrameList,
+                    -1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseTargetVector,
+                -1));
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBallUol,
+                    -1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseSourceCanvas,
+                    -1));
+            }
+
+            return operations.ToArray();
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation CreateMobProjectileOperation(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind,
+            int value)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileOperation(
+                kind,
+                trace.SourceUol,
+                trace.Owner,
+                trace.LoadMobActionId,
+                trace.UsesBallUol,
+                trace.UsesActionFrameCanvas,
+                trace.UsesProvidedCanvas,
+                value);
         }
 
         public bool Update(int currentTimeMs, float deltaSeconds)
@@ -695,7 +9044,7 @@ namespace HaCreator.MapSimulator.Animation
             if (_frames.Count > 1)
             {
                 IDXObject frame = _frames[_currentFrame];
-                if (currentTimeMs - _lastFrameTime > frame.Delay)
+                if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
                 {
                     _currentFrame = (_currentFrame + 1) % _frames.Count;
                     _lastFrameTime = currentTimeMs;
@@ -703,6 +9052,61 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return true;
+        }
+
+        internal static bool HasFrameDelayElapsedForTesting(int currentTimeMs, int lastFrameTimeMs, int frameDelayMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, lastFrameTimeMs) > frameDelayMs;
+        }
+
+        internal int CurrentFrameIndexForTesting => _currentFrame;
+
+        private void SeekElapsed(int elapsedMs, int currentTimeMs)
+        {
+            int resolvedElapsedMs = Math.Max(0, elapsedMs);
+            if (resolvedElapsedMs == 0)
+            {
+                return;
+            }
+
+            float elapsedSeconds = resolvedElapsedMs / 1000f;
+            _y = _startY + (_fallSpeed * elapsedSeconds);
+            _x += _horizontalDrift * _fallSpeed * elapsedSeconds * 0.5f;
+            _startTime = unchecked(currentTimeMs - resolvedElapsedMs);
+            _lastFrameTime = _startTime;
+            if (_rotation)
+            {
+                _rotationAngle += _rotationSpeed * elapsedSeconds;
+            }
+
+            if (_y >= _endY)
+            {
+                _finished = true;
+                return;
+            }
+
+            if (_frames == null || _frames.Count <= 1)
+            {
+                return;
+            }
+
+            int remainingMs = resolvedElapsedMs;
+            int guard = 0;
+            while (remainingMs > 0 && guard++ < 4096)
+            {
+                IDXObject frame = _frames[_currentFrame];
+                int frameDelay = Math.Max(1, frame?.Delay ?? 1);
+                if (remainingMs < frameDelay)
+                {
+                    _lastFrameTime = unchecked(currentTimeMs - remainingMs);
+                    return;
+                }
+
+                remainingMs -= frameDelay;
+                _currentFrame = (_currentFrame + 1) % _frames.Count;
+            }
+
+            _lastFrameTime = currentTimeMs;
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -716,7 +9120,112 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftX = -(int)_x - mapShiftX;
             int drawShiftY = -(int)_y - mapShiftY;
 
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+            if (_alpha == byte.MaxValue)
+            {
+                frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+                return;
+            }
+
+            frame.DrawBackground(
+                spriteBatch,
+                skeletonRenderer,
+                gameTime,
+                frame.X - drawShiftX,
+                frame.Y - drawShiftY,
+                new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _alpha),
+                false,
+                null);
+        }
+    }
+
+    internal sealed class FallingAnimationRegistration
+    {
+        private static int _nextId;
+
+        private List<IDXObject> _frames;
+        private string _sourceUol;
+        private float _centerX;
+        private float _startY;
+        private float _endY;
+        private float _spreadX;
+        private float _fallSpeed;
+        private byte _alpha;
+        private int _remainingUpdates;
+        private int _totalUpdates;
+        private int _updateIntervalMs;
+        private int _nextUpdateAt;
+        private int _endTime;
+
+        public int Id { get; private set; }
+        public AnimationFallingOwner Owner { get; private set; } = AnimationFallingOwner.PacketOwnedFalling;
+        public string SourceUol => _sourceUol;
+        public int RemainingUpdates => _remainingUpdates;
+        public int TotalUpdates => _totalUpdates;
+        public int NextUpdateAt => _nextUpdateAt;
+        public int EndTime => _endTime;
+
+        public void Initialize(
+            List<IDXObject> frames,
+            string sourceUol,
+            float centerX,
+            float startY,
+            float endY,
+            float spreadX,
+            int updateCount,
+            float fallSpeed,
+            int currentTimeMs,
+            byte alpha,
+            int updateIntervalMs,
+            int updateNextMs,
+            int durationMs,
+            int initialElapsedMs)
+        {
+            Id = ++_nextId;
+            _frames = frames;
+            _sourceUol = sourceUol;
+            _centerX = centerX;
+            _startY = startY;
+            _endY = endY;
+            _spreadX = Math.Max(0f, spreadX);
+            _fallSpeed = Math.Max(1f, fallSpeed);
+            _alpha = alpha;
+            _remainingUpdates = Math.Max(1, updateCount);
+            _totalUpdates = _remainingUpdates;
+            _updateIntervalMs = Math.Max(1, updateIntervalMs);
+            int startTime = unchecked(currentTimeMs - Math.Max(0, initialElapsedMs));
+            _nextUpdateAt = unchecked(startTime + Math.Max(0, updateNextMs));
+            _endTime = unchecked(startTime + Math.Max(1, durationMs));
+            Owner = AnimationFallingOwner.PacketOwnedFalling;
+        }
+
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
+        {
+            if (effects == null || !AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
+            while (_remainingUpdates > 0
+                   && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextUpdateAt)
+                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateAt, _endTime))
+            {
+                effects.AddPacketOwnedFallingSingle(
+                    _frames,
+                    _sourceUol,
+                    _centerX,
+                    _startY,
+                    _endY,
+                    _spreadX,
+                    _fallSpeed,
+                    _nextUpdateAt,
+                    _alpha,
+                    random);
+                _remainingUpdates--;
+                _nextUpdateAt = unchecked(_nextUpdateAt + _updateIntervalMs);
+            }
+
+            return _remainingUpdates > 0
+                   && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime);
         }
     }
 
@@ -729,16 +9238,50 @@ namespace HaCreator.MapSimulator.Animation
 
         private List<IDXObject> _frames;
         private Func<Vector2> _getTargetPosition;
+        private Func<bool> _getTargetFlip;
         private float _offsetX, _offsetY;
         private int _startTime;
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
+        private int _lastFollowUpdateTime;
+        private IReadOnlyList<Vector2> _generationPoints;
+        private int _currentGenerationPointIndex;
+        private int _currentAngleDegrees;
+        private int _thetaDegrees;
+        private int _updateIntervalMs;
+        private float _radius;
+        private Vector2 _followOffset;
+        private IReadOnlyList<List<IDXObject>> _spawnFrameVariants;
+        private IReadOnlyList<int> _spawnFrameVariantIndices;
+        private bool _spawnRelativeToTarget;
+        private bool _spawnOnlyOnTargetMove;
+        private Func<bool> _isTargetMoveAction;
+        private int _spawnDurationMs;
+        private int _nextSpawnTime;
+        private float _spawnTravelDistanceMin;
+        private float _spawnTravelDistanceMax;
+        private bool _spawnUsesEmissionBox;
+        private bool _spawnAppliesEmissionBias;
+        private bool _spawnUsesEmissionTravelDistance;
+        private bool _sourceUsesEmission;
+        private float _spawnVerticalEmissionBias;
+        private Point _spawnOffsetMin;
+        private Point _spawnOffsetMax;
+        private Rectangle _spawnArea;
+        private int _spawnZOrder;
+        private bool _suppressTargetFlip;
+        private Vector2 _lastObservedTargetPosition;
 
         public int Id { get; private set; }
+        internal IReadOnlyList<FollowItemEffectRecoveredNativeOperation> RecoveredNativeItemEffectTrace { get; private set; }
+            = Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+        internal IReadOnlyList<FollowItemEffectRecoveredNativeOperation> RecoveredNativeItemEffectPerVariantTrace { get; private set; }
+            = Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+        internal FollowItemEffectRecoveredNativeOwnerState RecoveredNativeItemEffectOwnerState { get; private set; }
 
         public void Initialize(List<IDXObject> frames, Func<Vector2> getTargetPosition,
-            float offsetX, float offsetY, int durationMs, int currentTimeMs)
+            float offsetX, float offsetY, int durationMs, int currentTimeMs, AnimationEffects.FollowAnimationOptions options, Random random)
         {
             Id = _nextId++;
             _frames = frames;
@@ -749,17 +9292,732 @@ namespace HaCreator.MapSimulator.Animation
             _duration = durationMs;
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
+            _lastFollowUpdateTime = currentTimeMs;
+            _generationPoints = options?.GenerationPoints ?? Array.Empty<Vector2>();
+            _getTargetFlip = options?.GetTargetFlip;
+            _currentGenerationPointIndex = 0;
+            _thetaDegrees = options?.ThetaDegrees ?? 0;
+            _updateIntervalMs = Math.Max(1, options?.UpdateIntervalMs ?? 100);
+            _radius = Math.Max(0f, options?.Radius ?? 0f);
+            _spawnFrameVariants = options?.SpawnFrameVariants;
+            _spawnFrameVariantIndices = NormalizeFollowSpawnFrameVariantIndices(
+                options?.SourceVariantIndices,
+                _spawnFrameVariants?.Count ?? 0);
+            _spawnRelativeToTarget = options?.SpawnRelativeToTarget ?? true;
+            _suppressTargetFlip = options?.SuppressTargetFlip ?? false;
+            _spawnOnlyOnTargetMove = options?.SpawnOnlyOnTargetMove ?? false;
+            _isTargetMoveAction = options?.IsTargetMoveAction;
+            _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
+            _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
+            _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
+            _spawnUsesEmissionBox = options?.SpawnUsesEmissionBox ?? false;
+            _spawnAppliesEmissionBias = options?.SpawnAppliesEmissionBias ?? false;
+            _spawnUsesEmissionTravelDistance = options?.SpawnUsesEmissionTravelDistance ?? false;
+            _sourceUsesEmission = options?.SourceUsesEmission ?? false;
+            _spawnVerticalEmissionBias = options?.SpawnVerticalEmissionBias ?? 0f;
+            _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
+            _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
+            _spawnArea = options?.SpawnArea ?? Rectangle.Empty;
+            _spawnZOrder = options?.SpawnZOrder ?? 0;
+            _currentAngleDegrees = options?.RandomizeStartupAngle == true
+                ? random?.Next(0, 360) ?? 0
+                : 0;
+            _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
+                _generationPoints,
+                _currentGenerationPointIndex,
+                _radius,
+                _currentAngleDegrees,
+                out _currentGenerationPointIndex,
+                out _currentAngleDegrees);
+            _nextSpawnTime = currentTimeMs;
+            _lastObservedTargetPosition = _getTargetPosition?.Invoke() ?? Vector2.Zero;
+            RecoveredNativeItemEffectOwnerState = BuildRecoveredNativeItemEffectOwnerState(
+                options?.SourceItemId ?? 0,
+                options?.SourceClientEquipIndex ?? -1,
+                options?.SourceCandidateIdentity ?? 0,
+                options?.SourceVariantCount ?? 0,
+                options?.SourceVariantIndices,
+                released: false,
+                registersAnimateEffect: options?.SourceUsesAnimateEffect == true);
+            RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
+            RecoveredNativeItemEffectPerVariantTrace = BuildRecoveredNativeItemEffectPerVariantTrace(RecoveredNativeItemEffectOwnerState);
+        }
+
+        internal void ReleaseRecoveredNativeItemEffectOwner()
+        {
+            if (RecoveredNativeItemEffectOwnerState.ItemId <= 0
+                || RecoveredNativeItemEffectOwnerState.IsReleased)
+            {
+                return;
+            }
+
+            RecoveredNativeItemEffectOwnerState = BuildRecoveredNativeItemEffectOwnerState(
+                RecoveredNativeItemEffectOwnerState.ItemId,
+                RecoveredNativeItemEffectOwnerState.ClientEquipIndex,
+                RecoveredNativeItemEffectOwnerState.CandidateIdentity,
+                RecoveredNativeItemEffectOwnerState.EffectVariantCount,
+                RecoveredNativeItemEffectOwnerState.EffectVariantIndices,
+                released: true,
+                registersAnimateEffect: RecoveredNativeItemEffectOwnerState.RegistersAnimateEffect);
+            RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
+            RecoveredNativeItemEffectPerVariantTrace = BuildRecoveredNativeItemEffectPerVariantTrace(RecoveredNativeItemEffectOwnerState);
+        }
+
+        internal void ApplyRecoveredNativeItemEffectReplacement(
+            FollowItemEffectRecoveredNativeOwnerState previousOwnerState)
+        {
+            FollowItemEffectRecoveredNativeOperation[] replacementTrace =
+                BuildRecoveredNativeItemEffectReplacementTrace(
+                    previousOwnerState,
+                    RecoveredNativeItemEffectOwnerState);
+            if (replacementTrace.Length > 0)
+            {
+                RecoveredNativeItemEffectTrace = replacementTrace;
+            }
+        }
+
+        internal static FollowItemEffectRecoveredNativeOwnerState BuildRecoveredNativeItemEffectOwnerState(
+            int itemId,
+            int clientEquipIndex,
+            int candidateIdentity,
+            int effectVariantCount,
+            IReadOnlyList<int> effectVariantIndices,
+            bool released,
+            bool registersAnimateEffect = false)
+        {
+            if (itemId <= 0 || clientEquipIndex < 0)
+            {
+                return default;
+            }
+
+            int normalizedVariantCount = Math.Max(1, effectVariantCount);
+            IReadOnlyList<int> normalizedVariantIndices =
+                NormalizeRecoveredNativeItemEffectVariantIndices(effectVariantIndices, normalizedVariantCount);
+            IReadOnlyList<int> simulatedItemEffectHandleIds = BuildRecoveredNativeItemEffectHandleIds(
+                itemId,
+                clientEquipIndex,
+                normalizedVariantIndices);
+            int allocatedItemEffectCount = 1;
+            return new FollowItemEffectRecoveredNativeOwnerState(
+                itemId,
+                clientEquipIndex,
+                candidateIdentity,
+                normalizedVariantCount,
+                normalizedVariantIndices,
+                ItemEffectReferenceCountAfterAllocate: 1,
+                ItemEffectReferenceCountAfterManagerRetain: 2,
+                ItemEffectReferenceCountAfterOwnerRelease: 1,
+                ItemEffectReferenceCountAfterManagerRelease: released ? 0 : 1,
+                RegistersFollowInfo: !registersAnimateEffect,
+                RegistersAnimateEffect: registersAnimateEffect,
+                IsReleased: released,
+                AllocatedItemEffectCount: allocatedItemEffectCount,
+                ManagerOwnedItemEffectCountAfterRetain: allocatedItemEffectCount,
+                OwnerHeldItemEffectCountAfterOwnerRelease: 0,
+                ManagerOwnedItemEffectCountAfterRelease: released ? 0 : allocatedItemEffectCount,
+                SimulatedItemEffectHandleIds: simulatedItemEffectHandleIds);
+        }
+
+        internal static IReadOnlyList<int> BuildRecoveredNativeItemEffectHandleIds(
+            int itemId,
+            int clientEquipIndex,
+            IReadOnlyList<int> effectVariantIndices)
+        {
+            if (itemId <= 0
+                || clientEquipIndex < 0
+                || effectVariantIndices == null
+                || effectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var handles = new int[effectVariantIndices.Count];
+            for (int ordinal = 0; ordinal < handles.Length; ordinal++)
+            {
+                handles[ordinal] = BuildRecoveredNativeItemEffectHandleId(
+                    itemId,
+                    clientEquipIndex,
+                    effectVariantIndices[ordinal],
+                    ordinal);
+            }
+
+            return handles;
+        }
+
+        internal static int BuildRecoveredNativeItemEffectHandleId(
+            int itemId,
+            int clientEquipIndex,
+            int effectVariantIndex,
+            int variantOrdinal)
+        {
+            int normalizedItem = Math.Abs(itemId % 1_000_000);
+            int normalizedClientIndex = Math.Abs(clientEquipIndex % 100);
+            int normalizedVariantIndex = Math.Abs(effectVariantIndex % 100);
+            int normalizedOrdinal = Math.Abs(variantOrdinal % 10);
+            return (normalizedItem * 1000)
+                + (normalizedClientIndex * 100)
+                + (normalizedVariantIndex * 10)
+                + normalizedOrdinal;
+        }
+
+        internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectTrace(
+            FollowItemEffectRecoveredNativeOwnerState ownerState)
+        {
+            if (ownerState.ItemId <= 0
+                || ownerState.ClientEquipIndex < 0
+                || ownerState.EffectVariantIndices == null
+                || ownerState.EffectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            FollowItemEffectRecoveredNativeOperationKind registrationKind = ResolveRecoveredNativeItemEffectRegistrationKind(ownerState);
+            var operations = new List<FollowItemEffectRecoveredNativeOperation>(ownerState.IsReleased ? 6 : 5)
+            {
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.AllocateIItemEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.LoadIndexedEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    registrationKind,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterManagerRetain),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseOwnerReference,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterOwnerRelease)
+            };
+
+            if (ownerState.IsReleased)
+            {
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterManagerRelease));
+            }
+
+            return operations.ToArray();
+        }
+
+        internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectPerVariantTrace(
+            FollowItemEffectRecoveredNativeOwnerState ownerState)
+        {
+            if (ownerState.ItemId <= 0
+                || ownerState.ClientEquipIndex < 0
+                || ownerState.EffectVariantIndices == null
+                || ownerState.EffectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            var operations = new List<FollowItemEffectRecoveredNativeOperation>(
+                ownerState.EffectVariantIndices.Count * (ownerState.IsReleased ? 6 : 5));
+            FollowItemEffectRecoveredNativeOperationKind registrationKind = ResolveRecoveredNativeItemEffectRegistrationKind(ownerState);
+            for (int ordinal = 0; ordinal < ownerState.EffectVariantIndices.Count; ordinal++)
+            {
+                int effectVariantIndex = ownerState.EffectVariantIndices[ordinal];
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.AllocateIItemEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.LoadIndexedEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    registrationKind,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterManagerRetain,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseOwnerReference,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterOwnerRelease,
+                    effectVariantIndex,
+                    ordinal));
+
+                if (ownerState.IsReleased)
+                {
+                    operations.Add(BuildRecoveredNativeItemEffectOperation(
+                        FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
+                        ownerState,
+                        ownerState.ItemEffectReferenceCountAfterManagerRelease,
+                        effectVariantIndex,
+                        ordinal));
+                }
+            }
+
+            return operations.ToArray();
+        }
+
+        internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectReplacementTrace(
+            FollowItemEffectRecoveredNativeOwnerState previousOwnerState,
+            FollowItemEffectRecoveredNativeOwnerState nextOwnerState)
+        {
+            if (nextOwnerState.ItemId <= 0
+                || nextOwnerState.ClientEquipIndex < 0
+                || nextOwnerState.EffectVariantIndices == null
+                || nextOwnerState.EffectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            FollowItemEffectRecoveredNativeOperationKind registrationKind =
+                ResolveRecoveredNativeItemEffectRegistrationKind(nextOwnerState);
+
+            if (previousOwnerState.ItemId == nextOwnerState.ItemId
+                && previousOwnerState.ClientEquipIndex == nextOwnerState.ClientEquipIndex
+                && !previousOwnerState.IsReleased)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            var operations = new List<FollowItemEffectRecoveredNativeOperation>(7)
+            {
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.AllocateIItemEffect,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.LoadIndexedEffect,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    registrationKind,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterAllocate),
+                BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    nextOwnerState,
+                    nextOwnerState.ItemEffectReferenceCountAfterManagerRetain)
+            };
+
+            if (previousOwnerState.ItemId > 0
+                && previousOwnerState.ItemId != nextOwnerState.ItemId
+                && previousOwnerState.ClientEquipIndex == nextOwnerState.ClientEquipIndex)
+            {
+                FollowItemEffectRecoveredNativeOwnerState releasedPreviousOwnerState =
+                    previousOwnerState.IsReleased
+                        ? previousOwnerState
+                        : BuildRecoveredNativeItemEffectOwnerState(
+                            previousOwnerState.ItemId,
+                            previousOwnerState.ClientEquipIndex,
+                            previousOwnerState.CandidateIdentity,
+                            previousOwnerState.EffectVariantCount,
+                            previousOwnerState.EffectVariantIndices,
+                            released: true,
+                            registersAnimateEffect: previousOwnerState.RegistersAnimateEffect);
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
+                    releasedPreviousOwnerState,
+                    releasedPreviousOwnerState.ItemEffectReferenceCountAfterManagerRelease));
+            }
+
+            operations.Add(BuildRecoveredNativeItemEffectOperation(
+                FollowItemEffectRecoveredNativeOperationKind.ReplaceManagerSlot,
+                nextOwnerState,
+                nextOwnerState.ItemEffectReferenceCountAfterManagerRetain));
+            operations.Add(BuildRecoveredNativeItemEffectOperation(
+                FollowItemEffectRecoveredNativeOperationKind.ReleaseOwnerReference,
+                nextOwnerState,
+                nextOwnerState.ItemEffectReferenceCountAfterOwnerRelease));
+
+            return operations.ToArray();
+        }
+
+        private static FollowItemEffectRecoveredNativeOperationKind ResolveRecoveredNativeItemEffectRegistrationKind(
+            FollowItemEffectRecoveredNativeOwnerState ownerState)
+        {
+            return ownerState.RegistersAnimateEffect
+                ? FollowItemEffectRecoveredNativeOperationKind.RegisterAnimateEffect
+                : FollowItemEffectRecoveredNativeOperationKind.RegisterFollowInfo;
+        }
+
+        private static FollowItemEffectRecoveredNativeOperation BuildRecoveredNativeItemEffectOperation(
+            FollowItemEffectRecoveredNativeOperationKind kind,
+            FollowItemEffectRecoveredNativeOwnerState ownerState,
+            int referenceCountAfterOperation,
+            int effectVariantIndex = -1,
+            int variantOrdinal = -1)
+        {
+            int simulatedItemEffectHandleId = ResolveRecoveredNativeItemEffectHandleId(
+                ownerState,
+                variantOrdinal);
+            return new FollowItemEffectRecoveredNativeOperation(
+                kind,
+                ownerState.ItemId,
+                ownerState.ClientEquipIndex,
+                ownerState.CandidateIdentity,
+                ownerState.EffectVariantCount,
+                ownerState.EffectVariantIndices,
+                Math.Max(0, referenceCountAfterOperation),
+                effectVariantIndex,
+                variantOrdinal,
+                simulatedItemEffectHandleId,
+                ownerState.ClientEquipIndex);
+        }
+
+        private static int ResolveRecoveredNativeItemEffectHandleId(
+            FollowItemEffectRecoveredNativeOwnerState ownerState,
+            int variantOrdinal)
+        {
+            return ownerState.SimulatedItemEffectHandleIds != null
+                && variantOrdinal >= 0
+                && variantOrdinal < ownerState.SimulatedItemEffectHandleIds.Count
+                    ? ownerState.SimulatedItemEffectHandleIds[variantOrdinal]
+                    : 0;
+        }
+
+        private static IReadOnlyList<int> NormalizeRecoveredNativeItemEffectVariantIndices(
+            IReadOnlyList<int> effectVariantIndices,
+            int effectVariantCount)
+        {
+            if (effectVariantCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (effectVariantIndices != null && effectVariantIndices.Count > 0)
+            {
+                int count = Math.Min(effectVariantIndices.Count, effectVariantCount);
+                var normalized = new int[count];
+                for (int i = 0; i < count; i++)
+                {
+                    normalized[i] = effectVariantIndices[i];
+                }
+
+                return normalized;
+            }
+
+            var fallback = new int[effectVariantCount];
+            for (int i = 0; i < fallback.Length; i++)
+            {
+                fallback[i] = i;
+            }
+
+            return fallback;
+        }
+
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
+        {
+            // Check duration
+            if (_duration > 0
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime) > _duration)
+                return false;
+
+            // Update animation frame
+            if (AnimationEffects.HasFrames(_frames))
+            {
+                IDXObject frame = _frames[_currentFrame];
+                if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
+                {
+                    _currentFrame = (_currentFrame + 1) % _frames.Count;
+                    _lastFrameTime = currentTimeMs;
+                }
+            }
+
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextSpawnTime))
+            {
+                bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
+                int spawnAngleDegrees = AnimationEffects.ResolveFollowSpawnAngleDegrees(
+                    hasGenerationPoints,
+                    _currentAngleDegrees,
+                    _thetaDegrees,
+                    random);
+                _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
+                    _generationPoints,
+                    _currentGenerationPointIndex,
+                    _radius,
+                    spawnAngleDegrees,
+                    out _currentGenerationPointIndex,
+                    out _currentAngleDegrees);
+
+                if (!hasGenerationPoints)
+                {
+                    _currentAngleDegrees = _thetaDegrees != 0
+                        ? AnimationEffects.NormalizeFollowAngleDegrees(spawnAngleDegrees + _thetaDegrees)
+                        : AnimationEffects.NormalizeFollowAngleDegrees(spawnAngleDegrees);
+                }
+
+                Vector2 targetPosition = _getTargetPosition();
+                bool targetMoved = ResolveTargetMoveActionState(targetPosition);
+
+                if (effects != null && targetMoved && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
+                {
+                    int variantIndex = random?.Next(0, _spawnFrameVariants.Count) ?? 0;
+                    List<IDXObject> variantFrames = _spawnFrameVariants[variantIndex];
+                    if (AnimationEffects.HasFrames(variantFrames))
+                    {
+                        int resolvedDurationMs = AnimationEffects.ResolveFollowSpawnDurationMs(variantFrames, _spawnDurationMs);
+                        if (resolvedDurationMs > 0)
+                        {
+                            int particleAngleDegrees = AnimationEffects.ResolveFollowParticleAngleDegrees(_followOffset, spawnAngleDegrees);
+                            Vector2 randomOffset = AnimationEffects.ResolveFollowRandomOffset(
+                                _spawnOffsetMin,
+                                _spawnOffsetMax,
+                                random);
+                            bool useClientOffsetPath = _spawnUsesEmissionBox
+                                || _spawnAppliesEmissionBias
+                                || _spawnOffsetMin != Point.Zero
+                                || _spawnOffsetMax != Point.Zero;
+                            Vector2 particleStartOffset = useClientOffsetPath
+                                ? AnimationEffects.ResolveFollowParticleStartOffset(
+                                    _followOffset,
+                                    hasGenerationPoints,
+                                    particleAngleDegrees,
+                                     randomOffset,
+                                     _spawnArea,
+                                     _spawnUsesEmissionBox,
+                                     _spawnAppliesEmissionBias,
+                                     _spawnVerticalEmissionBias,
+                                     random)
+                                : _followOffset;
+                            Vector2 particleEndOffset;
+                            if (useClientOffsetPath)
+                            {
+                                bool mirrorHorizontalTravel = _spawnUsesEmissionBox
+                                    && !_suppressTargetFlip
+                                    && (_getTargetFlip?.Invoke() ?? false);
+                                particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
+                                    particleStartOffset,
+                                    particleAngleDegrees,
+                                    randomOffset,
+                                    _spawnUsesEmissionBox,
+                                    mirrorHorizontalTravel,
+                                    _spawnUsesEmissionTravelDistance);
+                            }
+                            else
+                            {
+                                float particleTravelDistance = AnimationEffects.ResolveFollowParticleTravelDistance(
+                                    _spawnTravelDistanceMin,
+                                    _spawnTravelDistanceMax,
+                                    random);
+                                particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
+                                    particleStartOffset,
+                                    particleAngleDegrees,
+                                    particleTravelDistance);
+                            }
+                            effects.AddFollowParticle(
+                                Id,
+                                variantFrames,
+                                _getTargetPosition,
+                                _getTargetFlip,
+                                targetPosition,
+                                _spawnRelativeToTarget,
+                                _suppressTargetFlip,
+                                _offsetX,
+                                _offsetY,
+                                startOffset: particleStartOffset,
+                                endOffset: particleEndOffset,
+                                zOrder: _spawnZOrder,
+                                durationMs: resolvedDurationMs,
+                                currentTimeMs: currentTimeMs,
+                                sourceEffectVariantIndex: ResolveFollowSpawnFrameVariantIndex(
+                                    _spawnFrameVariantIndices,
+                                    variantIndex),
+                                sourceVariantOrdinal: variantIndex,
+                                usesEmission: _sourceUsesEmission);
+                        }
+                    }
+                }
+
+                _lastFollowUpdateTime = _nextSpawnTime;
+                _nextSpawnTime += _updateIntervalMs;
+                _lastObservedTargetPosition = targetPosition;
+            }
+
+            return true;
+        }
+
+        private bool ResolveTargetMoveActionState(Vector2 targetPosition)
+        {
+            if (!_spawnOnlyOnTargetMove)
+            {
+                return true;
+            }
+
+            if (_isTargetMoveAction != null)
+            {
+                return _isTargetMoveAction();
+            }
+
+            return Vector2.DistanceSquared(targetPosition, _lastObservedTargetPosition) > float.Epsilon;
+        }
+
+        internal static IReadOnlyList<int> NormalizeFollowSpawnFrameVariantIndices(
+            IReadOnlyList<int> sourceVariantIndices,
+            int frameVariantCount)
+        {
+            if (frameVariantCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var normalized = new int[frameVariantCount];
+            for (int i = 0; i < normalized.Length; i++)
+            {
+                normalized[i] = sourceVariantIndices != null && i < sourceVariantIndices.Count
+                    ? sourceVariantIndices[i]
+                    : i;
+            }
+
+            return normalized;
+        }
+
+        internal static int ResolveFollowSpawnFrameVariantIndex(
+            IReadOnlyList<int> sourceVariantIndices,
+            int variantOrdinal)
+        {
+            return sourceVariantIndices != null
+                && variantOrdinal >= 0
+                && variantOrdinal < sourceVariantIndices.Count
+                    ? sourceVariantIndices[variantOrdinal]
+                    : variantOrdinal;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return;
+            }
+
+            Vector2 targetPos = _getTargetPosition();
+            IDXObject frame = _frames[_currentFrame];
+            bool flip = !_suppressTargetFlip && (_getTargetFlip?.Invoke() ?? false);
+
+            // Use the object's built-in DrawObject method
+            float drawX = targetPos.X + _offsetX + _followOffset.X;
+            float drawY = targetPos.Y + _offsetY + _followOffset.Y;
+            int drawShiftX = -(int)drawX - mapShiftX;
+            int drawShiftY = -(int)drawY - mapShiftY;
+
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+        }
+
+        internal static int ResolveFollowElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+    }
+
+    internal sealed class FollowParticleAnimation
+    {
+        private List<IDXObject> _frames;
+        private Func<Vector2> _getTargetPosition;
+        private Func<bool> _getTargetFlip;
+        private Vector2 _capturedTargetPosition;
+        private bool _relativeToTarget;
+        private bool _suppressTargetFlip;
+        private float _offsetX;
+        private float _offsetY;
+        private Vector2 _startOffset;
+        private Vector2 _endOffset;
+        private int _zOrder;
+        private int _startTime;
+        private int _duration;
+        private int _currentFrame;
+        private int _lastFrameTime;
+        private bool _usesEmission;
+
+        public int FollowRegistrationId { get; private set; }
+        internal int SourceEffectVariantIndex { get; private set; } = -1;
+        internal int SourceVariantOrdinal { get; private set; } = -1;
+        public int ZOrder => _zOrder;
+        internal IReadOnlyList<FollowParticleRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<FollowParticleRecoveredNativeOperation>();
+        internal FollowParticleRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
+        internal FollowParticleRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
+
+        public void Initialize(
+            int followRegistrationId,
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            Func<bool> getTargetFlip,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget,
+            bool suppressTargetFlip,
+            float offsetX,
+            float offsetY,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int zOrder,
+            int durationMs,
+            int currentTimeMs,
+            int sourceEffectVariantIndex = -1,
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
+        {
+            FollowRegistrationId = followRegistrationId;
+            SourceEffectVariantIndex = sourceEffectVariantIndex;
+            SourceVariantOrdinal = sourceVariantOrdinal;
+            _usesEmission = usesEmission;
+            _frames = frames;
+            _getTargetPosition = getTargetPosition;
+            _getTargetFlip = getTargetFlip;
+            _capturedTargetPosition = capturedTargetPosition;
+            _relativeToTarget = relativeToTarget;
+            _suppressTargetFlip = suppressTargetFlip;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            _startOffset = startOffset;
+            _endOffset = endOffset;
+            _zOrder = zOrder;
+            _startTime = currentTimeMs;
+            _duration = Math.Max(1, durationMs);
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
+                _relativeToTarget,
+                !_suppressTargetFlip,
+                _startOffset,
+                _endOffset,
+                _zOrder,
+                _duration,
+                SourceEffectVariantIndex,
+                SourceVariantOrdinal,
+                _usesEmission);
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(RecoveredNativeLayerState);
+            RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
+                RecoveredNativeLayerState,
+                RecoveredNativeExecutionTrace,
+                simulatedLayerHandleId: FollowRegistrationId);
         }
 
         public bool Update(int currentTimeMs)
         {
-            // Check duration
-            if (_duration > 0 && currentTimeMs - _startTime > _duration)
+            if (_duration > 0
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime) >= _duration)
+            {
                 return false;
+            }
 
-            // Update animation frame
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
             IDXObject frame = _frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
                 _currentFrame = (_currentFrame + 1) % _frames.Count;
                 _lastFrameTime = currentTimeMs;
@@ -768,18 +10026,713 @@ namespace HaCreator.MapSimulator.Animation
             return true;
         }
 
-        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int currentTimeMs)
         {
-            Vector2 targetPos = _getTargetPosition();
-            IDXObject frame = _frames[_currentFrame];
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return;
+            }
 
-            // Use the object's built-in DrawObject method
-            float drawX = targetPos.X + _offsetX;
-            float drawY = targetPos.Y + _offsetY;
+            float progress = _duration <= 0
+                ? 1f
+                : MathHelper.Clamp((float)ResolveFollowParticleElapsedMs(currentTimeMs, _startTime) / _duration, 0f, 1f);
+            Vector2 anchorPosition = AnimationEffects.ResolveFollowSpawnAnchorPosition(
+                _getTargetPosition(),
+                _capturedTargetPosition,
+                _relativeToTarget);
+            Vector2 animatedOffset = Vector2.Lerp(_startOffset, _endOffset, progress);
+            IDXObject frame = _frames[_currentFrame];
+            bool flip = !_suppressTargetFlip && (_getTargetFlip?.Invoke() ?? false);
+            float drawX = anchorPosition.X + _offsetX + animatedOffset.X;
+            float drawY = anchorPosition.Y + _offsetY + animatedOffset.Y;
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
+            byte alpha = AnimationEffects.ResolveFollowParticleAlpha(
+                ResolveFollowParticleElapsedMs(currentTimeMs, _startTime),
+                _duration);
+            if (alpha == byte.MaxValue)
+            {
+                frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+                return;
+            }
 
+            frame.DrawBackground(
+                spriteBatch,
+                skeletonRenderer,
+                gameTime,
+                frame.X - drawShiftX,
+                frame.Y - drawShiftY,
+                new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
+                flip,
+                null);
+        }
+
+        internal static int ResolveFollowParticleElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveFollowParticleElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        private static int ResolveFollowParticleElapsedMs(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static FollowParticleRecoveredNativeLayerState BuildRecoveredNativeLayerState(
+            bool relativeToTarget,
+            bool appliesOwnerFlip,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int zOrder,
+            int durationMs,
+            int sourceEffectVariantIndex = -1,
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
+        {
+            int resolvedDurationMs = Math.Max(1, durationMs);
+            return new FollowParticleRecoveredNativeLayerState(
+                relativeToTarget,
+                appliesOwnerFlip,
+                startOffset,
+                endOffset,
+                zOrder,
+                resolvedDurationMs,
+                AlphaStart: byte.MaxValue,
+                AlphaEnd: byte.MinValue,
+                RegistersRepeatLayer: true,
+                SourceEffectVariantIndex: sourceEffectVariantIndex,
+                SourceVariantOrdinal: sourceVariantOrdinal,
+                RelOffsetMode: ResolveRecoveredNativeRelOffsetMode(relativeToTarget),
+                RelOffsetDelta: endOffset - startOffset,
+                RelOffsetDurationMs: resolvedDurationMs,
+                AlphaRelMoveDurationMs: resolvedDurationMs,
+                ParentLayerKind: ResolveRecoveredNativeParentLayerKind(),
+                UsesEmission: usesEmission,
+                AddsParentLayerZ: true);
+        }
+
+        internal static FollowParticleRecoveredNativeParentLayerKind ResolveRecoveredNativeParentLayerKind()
+        {
+            return FollowParticleRecoveredNativeParentLayerKind.OwnerUnderFace;
+        }
+
+        internal static FollowParticleRecoveredNativeRelOffsetMode ResolveRecoveredNativeRelOffsetMode(
+            bool relativeToTarget)
+        {
+            return relativeToTarget
+                ? FollowParticleRecoveredNativeRelOffsetMode.ParentRelative
+                : FollowParticleRecoveredNativeRelOffsetMode.AbsoluteOrigin;
+        }
+
+        internal static FollowParticleRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            FollowParticleRecoveredNativeLayerState layerState)
+        {
+            var operations = new List<FollowParticleRecoveredNativeOperation>(6)
+            {
+                BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.LoadLayer, layerState)
+            };
+
+            if (layerState.AppliesOwnerFlip)
+            {
+                operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.PutFlip, layerState));
+            }
+
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.RelOffset, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.AlphaRelMove, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.AnimateRepeat, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.RegisterRepeatAnimation, layerState));
+            return operations.ToArray();
+        }
+
+        internal static FollowParticleRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
+            FollowParticleRecoveredNativeLayerState layerState,
+            IReadOnlyList<FollowParticleRecoveredNativeOperation> executionTrace = null,
+            int simulatedLayerHandleId = 1)
+        {
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(layerState);
+            bool loadedLayer = HasRecoveredNativeOperation(
+                executionTrace,
+                FollowParticleRecoveredNativeOperationKind.LoadLayer);
+            bool registeredRepeatLayer = layerState.RegistersRepeatLayer
+                && HasRecoveredNativeOperation(
+                    executionTrace,
+                    FollowParticleRecoveredNativeOperationKind.RegisterRepeatAnimation);
+
+            int layerReferenceCountAfterLoadLayer = loadedLayer ? 1 : 0;
+            int layerReferenceCountAfterRegisterRepeatAnimation = layerReferenceCountAfterLoadLayer;
+            if (registeredRepeatLayer)
+            {
+                layerReferenceCountAfterRegisterRepeatAnimation++;
+            }
+
+            int layerReferenceCountAfterOwnerRelease = registeredRepeatLayer
+                ? Math.Max(0, layerReferenceCountAfterRegisterRepeatAnimation - 1)
+                : layerReferenceCountAfterRegisterRepeatAnimation;
+
+            return new FollowParticleRecoveredNativeLifetimeState(
+                layerReferenceCountAfterLoadLayer > 0 ? Math.Max(0, simulatedLayerHandleId) : 0,
+                layerReferenceCountAfterLoadLayer,
+                layerReferenceCountAfterRegisterRepeatAnimation,
+                layerReferenceCountAfterOwnerRelease,
+                registeredRepeatLayer,
+                ReleasesOwnerReferenceAfterRegistration: registeredRepeatLayer);
+        }
+
+        private static bool HasRecoveredNativeOperation(
+            IReadOnlyList<FollowParticleRecoveredNativeOperation> operations,
+            FollowParticleRecoveredNativeOperationKind kind)
+        {
+            if (operations == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < operations.Count; i++)
+            {
+                if (operations[i].Kind == kind)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static FollowParticleRecoveredNativeOperation BuildRecoveredNativeOperation(
+            FollowParticleRecoveredNativeOperationKind kind,
+            FollowParticleRecoveredNativeLayerState layerState)
+        {
+            return new FollowParticleRecoveredNativeOperation(
+                kind,
+                layerState.RelativeToTarget,
+                layerState.AppliesOwnerFlip,
+                layerState.StartOffset,
+                layerState.EndOffset,
+                layerState.ZOrder,
+                layerState.DurationMs,
+                layerState.AlphaStart,
+                layerState.AlphaEnd,
+                layerState.SourceEffectVariantIndex,
+                layerState.SourceVariantOrdinal,
+                layerState.RelOffsetMode,
+                layerState.RelOffsetDelta,
+                layerState.RelOffsetDurationMs,
+                layerState.AlphaRelMoveDurationMs,
+                layerState.ParentLayerKind,
+                layerState.UsesEmission,
+                layerState.AddsParentLayerZ);
+        }
+    }
+
+    internal sealed class UserStateAnimation
+    {
+        private enum UserStatePhase
+        {
+            Start,
+            Repeat,
+            End
+        }
+
+        private List<IDXObject> _startFrames;
+        private List<IDXObject> _repeatFrames;
+        private List<IDXObject> _endFrames;
+        private Func<Vector2> _getTargetPosition;
+        private float _offsetX;
+        private float _offsetY;
+        private int _currentFrame;
+        private int _lastFrameTime;
+        private bool _finished;
+        private UserStatePhase _phase;
+
+        public int RegistrationKey { get; private set; }
+        public int OwnerId { get; private set; }
+
+        public void Initialize(
+            int registrationKey,
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            RegistrationKey = registrationKey;
+            OwnerId = ownerId;
+            _startFrames = startFrames;
+            _repeatFrames = repeatFrames;
+            _endFrames = endFrames;
+            _getTargetPosition = getTargetPosition;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            _finished = false;
+            _phase = AnimationEffects.HasFrames(startFrames)
+                ? UserStatePhase.Start
+                : AnimationEffects.HasFrames(repeatFrames)
+                    ? UserStatePhase.Repeat
+                    : UserStatePhase.End;
+
+            if (initialElapsedMs > 0)
+            {
+                SeekElapsed(initialElapsedMs, currentTimeMs);
+            }
+        }
+
+        public bool BeginEndPhase(int currentTimeMs)
+        {
+            if (_finished)
+            {
+                return false;
+            }
+
+            if (!AnimationEffects.HasFrames(_endFrames))
+            {
+                _finished = true;
+                return false;
+            }
+
+            if (_phase == UserStatePhase.End)
+            {
+                return true;
+            }
+
+            _phase = UserStatePhase.End;
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            return true;
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            if (_finished)
+            {
+                return false;
+            }
+
+            List<IDXObject> frames = GetCurrentFrames();
+            if (!AnimationEffects.HasFrames(frames))
+            {
+                return AdvancePhase(currentTimeMs);
+            }
+
+            IDXObject frame = frames[_currentFrame];
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
+            {
+                _currentFrame++;
+                _lastFrameTime = currentTimeMs;
+                if (_currentFrame >= frames.Count)
+                {
+                    return AdvancePhase(currentTimeMs);
+                }
+            }
+
+            return true;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            if (_finished)
+            {
+                return;
+            }
+
+            List<IDXObject> frames = GetCurrentFrames();
+            if (!AnimationEffects.HasFrames(frames) || _currentFrame < 0 || _currentFrame >= frames.Count)
+            {
+                return;
+            }
+
+            Vector2 targetPosition = _getTargetPosition();
+            IDXObject frame = frames[_currentFrame];
+            int drawShiftX = -(int)(targetPosition.X + _offsetX) - mapShiftX;
+            int drawShiftY = -(int)(targetPosition.Y + _offsetY) - mapShiftY;
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+        }
+
+        private bool AdvancePhase(int currentTimeMs)
+        {
+            switch (_phase)
+            {
+                case UserStatePhase.Start:
+                    if (AnimationEffects.HasFrames(_repeatFrames))
+                    {
+                        _phase = UserStatePhase.Repeat;
+                        _currentFrame = 0;
+                        _lastFrameTime = currentTimeMs;
+                        return true;
+                    }
+
+                    if (AnimationEffects.HasFrames(_endFrames))
+                    {
+                        _phase = UserStatePhase.End;
+                        _currentFrame = 0;
+                        _lastFrameTime = currentTimeMs;
+                        return true;
+                    }
+
+                    _finished = true;
+                    return false;
+
+                case UserStatePhase.Repeat:
+                    if (!AnimationEffects.HasFrames(_repeatFrames))
+                    {
+                        return AdvanceEndOrFinish(currentTimeMs);
+                    }
+
+                    _currentFrame = 0;
+                    _lastFrameTime = currentTimeMs;
+                    return true;
+
+                case UserStatePhase.End:
+                default:
+                    _finished = true;
+                    return false;
+            }
+        }
+
+        private bool AdvanceEndOrFinish(int currentTimeMs)
+        {
+            if (AnimationEffects.HasFrames(_endFrames))
+            {
+                _phase = UserStatePhase.End;
+                _currentFrame = 0;
+                _lastFrameTime = currentTimeMs;
+                return true;
+            }
+
+            _finished = true;
+            return false;
+        }
+
+        private List<IDXObject> GetCurrentFrames()
+        {
+            return _phase switch
+            {
+                UserStatePhase.Start => _startFrames,
+                UserStatePhase.Repeat => _repeatFrames,
+                UserStatePhase.End => _endFrames,
+                _ => null
+            };
+        }
+
+        private void SeekElapsed(int elapsedMs, int currentTimeMs)
+        {
+            int remainingMs = Math.Max(0, elapsedMs);
+            int guard = 0;
+            while (remainingMs > 0 && !_finished && guard++ < 4096)
+            {
+                List<IDXObject> frames = GetCurrentFrames();
+                if (!AnimationEffects.HasFrames(frames))
+                {
+                    if (!AdvancePhase(currentTimeMs))
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (_currentFrame < 0 || _currentFrame >= frames.Count)
+                {
+                    _currentFrame = 0;
+                }
+
+                int frameDelay = Math.Max(1, frames[_currentFrame]?.Delay ?? 1);
+                if (remainingMs < frameDelay)
+                {
+                    _lastFrameTime = unchecked(currentTimeMs - remainingMs);
+                    return;
+                }
+
+                remainingMs -= frameDelay;
+                _currentFrame++;
+                if (_currentFrame < frames.Count)
+                {
+                    continue;
+                }
+
+                if (!AdvancePhase(currentTimeMs))
+                {
+                    break;
+                }
+            }
+
+            _lastFrameTime = currentTimeMs;
+        }
+    }
+
+    internal sealed class AreaAnimationRegistration
+    {
+        private static int _nextId;
+
+        private List<IDXObject> _frames;
+        private Rectangle _area;
+        private int _updateIntervalMs;
+        private int _remainingUpdates;
+        private int _totalUpdates;
+        private int _completedUpdates;
+        private int _nextUpdateAt;
+        private int _expiresAt;
+        private bool _hasFiniteDuration;
+        private Action _onSpawn;
+        private int _zOrder;
+        private float? _spawnProbability;
+        private int _initialSpawnElapsedMs;
+
+        public int Id { get; private set; }
+        public AnimationAreaAnimationOwner Owner { get; private set; } = AnimationAreaAnimationOwner.Generic;
+        public string SourceUol { get; private set; }
+        public int RecoveredNumericPropertyCount { get; private set; }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn,
+            int zOrder,
+            float? spawnProbability = null)
+        {
+            Initialize(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                AnimationAreaAnimationOwner.Generic,
+                sourceUol: null);
+        }
+
+        internal void Initialize(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn,
+            int zOrder,
+            float? spawnProbability,
+            AnimationAreaAnimationOwner owner,
+            string sourceUol,
+            int initialElapsedMs = 0,
+            int recoveredNumericPropertyCount = 0)
+        {
+            Id = ++_nextId;
+            _frames = frames;
+            _area = area;
+            _updateIntervalMs = Math.Max(1, updateIntervalMs);
+            _remainingUpdates = Math.Max(0, updateCount);
+            _totalUpdates = Math.Max(0, updateCount);
+            _completedUpdates = 0;
+            _nextUpdateAt = unchecked(currentTimeMs + Math.Max(0, updateNextMs));
+            _hasFiniteDuration = durationMs > 0;
+            _expiresAt = _hasFiniteDuration
+                ? unchecked(currentTimeMs + durationMs)
+                : int.MinValue;
+            _onSpawn = onSpawn;
+            _zOrder = zOrder;
+            _spawnProbability = spawnProbability.HasValue
+                ? Math.Clamp(spawnProbability.Value, 0f, 1f)
+                : null;
+            _initialSpawnElapsedMs = Math.Max(0, initialElapsedMs);
+            Owner = owner;
+            SourceUol = sourceUol;
+            RecoveredNumericPropertyCount = Math.Max(0, recoveredNumericPropertyCount);
+        }
+
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
+        {
+            if (effects == null || !AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
+            if (_remainingUpdates == 0 || HasDurationElapsed(currentTimeMs))
+            {
+                return false;
+            }
+
+            while (_remainingUpdates > 0
+                   && HasScheduledTimeReached(currentTimeMs, _nextUpdateAt)
+                   && IsScheduledWithinDuration(_nextUpdateAt))
+            {
+                int scheduledUpdateTime = _nextUpdateAt;
+                bool shouldSpawn = !_spawnProbability.HasValue
+                    || _spawnProbability.Value >= 1f
+                    || (_spawnProbability.Value > 0f && random.NextDouble() < _spawnProbability.Value);
+                if (shouldSpawn)
+                {
+                    Rectangle spawnArea = Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
+                        ? ResolvePacketOwnedExplosionSpawnArea(_area, _completedUpdates, _totalUpdates)
+                        : _area;
+                    int spawnWidth = Owner == AnimationAreaAnimationOwner.PacketOwnedReservedArea
+                        ? ResolvePacketOwnedReservedAreaSpawnWidth(spawnArea)
+                        : ResolveAreaAnimationSpawnWidth(spawnArea);
+                    int spawnHeight = Owner == AnimationAreaAnimationOwner.PacketOwnedReservedArea
+                        ? ResolvePacketOwnedReservedAreaSpawnHeight(spawnArea)
+                        : ResolveAreaAnimationSpawnHeight(spawnArea);
+                    float x = spawnArea.Left + random.Next(spawnWidth);
+                    float y = spawnArea.Top + random.Next(spawnHeight);
+                    if (Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
+                        && !string.IsNullOrWhiteSpace(SourceUol))
+                    {
+                        int initialElapsedMs = _initialSpawnElapsedMs;
+                        _initialSpawnElapsedMs = 0;
+                        effects.AddPacketOwnedAreaExplosion(
+                            _frames,
+                            SourceUol,
+                            x,
+                            y,
+                            scheduledUpdateTime,
+                            _zOrder,
+                            initialElapsedMs);
+                    }
+                    else if (Owner == AnimationAreaAnimationOwner.PacketOwnedReservedArea
+                             && !string.IsNullOrWhiteSpace(SourceUol))
+                    {
+                        effects.AddPacketOwnedReservedVisual(
+                            _frames,
+                            SourceUol,
+                            () => new Vector2(x, y),
+                            getFlip: null,
+                            x,
+                            y,
+                            fallbackFlip: false,
+                            scheduledUpdateTime,
+                            _zOrder);
+                    }
+                    else if (Owner == AnimationAreaAnimationOwner.PacketOwnedTransientArea
+                             && !string.IsNullOrWhiteSpace(SourceUol))
+                    {
+                        effects.AddPacketOwnedTransientAreaVisual(
+                            _frames,
+                            SourceUol,
+                            x,
+                            y,
+                            scheduledUpdateTime,
+                            _zOrder);
+                    }
+                    else
+                    {
+                        effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: _zOrder);
+                    }
+                    _onSpawn?.Invoke();
+                }
+
+                _remainingUpdates--;
+                _completedUpdates++;
+                _nextUpdateAt = unchecked(_nextUpdateAt + _updateIntervalMs);
+            }
+
+            return _remainingUpdates > 0 && IsScheduledWithinDuration(_nextUpdateAt);
+        }
+
+        internal static int ResolveAreaAnimationSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width);
+        }
+
+        internal static int ResolveAreaAnimationSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height);
+        }
+
+        internal static int ResolvePacketOwnedReservedAreaSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width + 1);
+        }
+
+        internal static int ResolvePacketOwnedReservedAreaSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height + 1);
+        }
+
+        internal static int ResolvePacketOwnedExplosionInitialSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width * 5 / 6);
+        }
+
+        internal static int ResolvePacketOwnedExplosionInitialSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height * 5 / 6);
+        }
+
+        internal static Rectangle ResolvePacketOwnedExplosionInitialSpawnArea(Rectangle area)
+        {
+            int width = ResolvePacketOwnedExplosionInitialSpawnWidth(area);
+            int height = ResolvePacketOwnedExplosionInitialSpawnHeight(area);
+            int x = area.Left + (area.Width - width) / 2;
+            int y = area.Top + (area.Height - height) / 2;
+            return new Rectangle(x, y, width, height);
+        }
+
+        internal static Rectangle ResolvePacketOwnedExplosionSpawnArea(
+            Rectangle area,
+            int completedUpdates,
+            int totalUpdates)
+        {
+            int updateIndex = Math.Max(0, completedUpdates);
+            int updateCount = Math.Max(1, totalUpdates);
+            int initialWidth = ResolvePacketOwnedExplosionInitialSpawnWidth(area);
+            int initialHeight = ResolvePacketOwnedExplosionInitialSpawnHeight(area);
+            int fullWidth = ResolveAreaAnimationSpawnWidth(area);
+            int fullHeight = ResolveAreaAnimationSpawnHeight(area);
+            if (updateIndex <= 0 || updateCount <= 1)
+            {
+                return CenterPacketOwnedExplosionSpawnArea(area, initialWidth, initialHeight);
+            }
+
+            if (updateIndex >= updateCount - 1)
+            {
+                return CenterPacketOwnedExplosionSpawnArea(area, fullWidth, fullHeight);
+            }
+
+            int width = initialWidth + ((fullWidth - initialWidth) * updateIndex / (updateCount - 1));
+            int height = initialHeight + ((fullHeight - initialHeight) * updateIndex / (updateCount - 1));
+            return CenterPacketOwnedExplosionSpawnArea(area, width, height);
+        }
+
+        private static Rectangle CenterPacketOwnedExplosionSpawnArea(Rectangle area, int width, int height)
+        {
+            int x = area.Left + (area.Width - width) / 2;
+            int y = area.Top + (area.Height - height) / 2;
+            return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
+        }
+
+        internal static bool HasScheduledTimeReachedForTesting(int currentTimeMs, int scheduledTimeMs)
+        {
+            return HasScheduledTimeReached(currentTimeMs, scheduledTimeMs);
+        }
+
+        private bool HasDurationElapsed(int currentTimeMs)
+        {
+            return _hasFiniteDuration
+                   && currentTimeMs != _expiresAt
+                   && HasScheduledTimeReached(currentTimeMs, _expiresAt);
+        }
+
+        private bool IsScheduledWithinDuration(int scheduledTimeMs)
+        {
+            return !_hasFiniteDuration
+                   || HasScheduledTimeReached(_expiresAt, scheduledTimeMs);
+        }
+
+        private static bool HasScheduledTimeReached(int currentTimeMs, int scheduledTimeMs)
+        {
+            return unchecked((uint)(currentTimeMs - scheduledTimeMs)) < int.MaxValue;
         }
     }
 

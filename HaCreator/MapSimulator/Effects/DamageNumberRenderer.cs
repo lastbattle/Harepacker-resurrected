@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -12,6 +15,12 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public static class DamageNumberConstants
     {
+        /// <summary>Temporary canvas height used by CAnimationDisplayer::Effect_HP.</summary>
+        public const int COMPOSITE_CANVAS_HEIGHT_PX = 57;
+
+        /// <summary>Top offset applied when registering the damage-number layer.</summary>
+        public const int COMPOSITE_PLACEMENT_OFFSET_Y = 47;
+
         /// <summary>Phase 1: Display duration (stationary, full alpha) in ms</summary>
         public const int DISPLAY_DURATION_MS = 400;
 
@@ -29,6 +38,9 @@ namespace HaCreator.MapSimulator.Effects
 
         /// <summary>Y offset for critical effect (above digits)</summary>
         public const int CRITICAL_EFFECT_OFFSET_Y = -30;
+
+        /// <summary>Leading horizontal padding applied by native critical-digit composition.</summary>
+        public const int CRITICAL_LEADING_SPACING_PX = 30;
 
         /// <summary>Stacking offset for multi-hit damage numbers (should be >= digit height)</summary>
         public const int MULTI_HIT_STACK_OFFSET_Y = 20;
@@ -61,7 +73,10 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>Whether this is a miss</summary>
         public bool IsMiss { get; set; }
 
-        /// <summary>Color type (Red for player damage, Blue for received, Violet for party)</summary>
+        /// <summary>Optional BasicEff special text sprite name, such as Miss or guard.</summary>
+        public string SpecialTextName { get; set; }
+
+        /// <summary>Color type (Red for player damage, Blue for HP increase, Violet for received/summoned feedback)</summary>
         public DamageColorType ColorType { get; set; }
 
         /// <summary>Size variant (Small or Large)</summary>
@@ -72,6 +87,14 @@ namespace HaCreator.MapSimulator.Effects
 
         /// <summary>Elapsed time in ms</summary>
         public float ElapsedMs { get; set; }
+
+        /// <summary>
+        /// Client-shaped visual payload prepared once when the number is spawned.
+        /// Mirrors Effect_HP building a temporary canvas before scheduling animation.
+        /// </summary>
+        internal DamageNumberRenderer.PreparedDamageNumberVisual PreparedVisual { get; set; }
+        internal DamageNumberRenderer.PreparedDamageNumberLayer LayerState { get; set; }
+        internal Texture2D CompositeCanvasTexture { get; set; }
 
         /// <summary>
         /// Current alpha value (0.0 to 1.0)
@@ -134,8 +157,8 @@ namespace HaCreator.MapSimulator.Effects
         public string GetDamageString()
         {
             if (IsMiss)
-                return "Miss";
-            return Damage.ToString();
+                return DamageNumberRenderer.ResolveSpecialTextName(SpecialTextName);
+            return DamageNumberRenderer.FormatDamageValue(Damage);
         }
     }
 
@@ -147,13 +170,94 @@ namespace HaCreator.MapSimulator.Effects
     {
         #region Constants
         private const int MAX_ACTIVE_NUMBERS = 100;
+        internal const int DamageNumberFormatStringPoolId = 0x1A15;
+        internal const int TemporaryCanvasFactoryStringPoolId = 0x03D0;
+        internal const int CriticalBannerSpriteStringPoolId = 0x1AAD;
+        internal const string DamageNumberEffectCategoryName = "effect";
+        internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
+        internal const string DamageNumberSpecialTextOwnerSetName = DamageNumberLoader.DamageNumberSpecialTextOwnerSetName;
         #endregion
+
+        internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
+        internal readonly record struct PreparedDigitDrawInfo(int Digit, bool UseLargeDigitSet, int DrawOffsetX, int DrawOffsetY);
+        internal readonly record struct PreparedSpriteDrawInfo(
+            string SpriteName,
+            int DrawOffsetX,
+            int DrawOffsetY,
+            Point SourceOrigin,
+            int SourceWidth,
+            int SourceHeight);
+        internal readonly record struct PreparedDamageNumberCompositionInsertCommand(
+            string SourceSetName,
+            string SpriteName,
+            string SourceCanvasPath,
+            bool UseLargeDigitSet,
+            Point SourceOrigin,
+            int SourceWidth,
+            int SourceHeight,
+            Point CanvasOffset,
+            CanvasLayerRecoveredInsertCanvasSettings RecoveredInsertCanvasSettings,
+            AnimationCanvasLayerBlendMode RecoveredBlendMode);
+        internal enum DamageNumberRecoveredCompositionOperationKind
+        {
+            CreateCanvas,
+            InsertCanvas
+        }
+        internal readonly record struct PreparedDamageNumberCompositionNativeOperation(
+            DamageNumberRecoveredCompositionOperationKind Kind,
+            CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            PreparedDamageNumberCompositionInsertCommand InsertCommand);
+        internal readonly record struct PreparedDamageNumberCompositionTrace(
+            CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            CanvasLayerRecoveredCanvasSettings NativeTemporaryCanvasSettings,
+            int RecoveredNativeAccumulatedCanvasWidth,
+            PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
+            PreparedDamageNumberCompositionNativeOperation[] NativeOperations,
+            bool KeepsCriticalBannerOnSeparateLayer,
+            string CriticalBannerLayerCanvasPath,
+            PreparedSpriteDrawInfo? CriticalBannerLayerSprite);
+        internal readonly record struct CompositeCanvasPlacement(int Left, int Top, int Width, int Height);
+        internal readonly record struct DamageNumberAnimationTimeline(
+            int HoldDurationMs,
+            int FadeDurationMs,
+            int TotalLifetimeMs,
+            int CriticalDelayMs,
+            int RiseDistancePx);
+        internal readonly record struct PreparedDamageNumberLayerRegistration(
+            CompositeCanvasPlacement Placement,
+            CompositeCanvasPlacement NativePlacement,
+            DamageNumberAnimationTimeline Timeline,
+            Point CriticalBannerOffset,
+            bool HasCriticalBanner,
+            PreparedDamageNumberCompositionTrace CompositionTrace,
+            CanvasLayerInsertDescriptor[] InsertDescriptors,
+            PreparedOneTimeCanvasLayerRegistration PreparedRegistration,
+            CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
+            CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
+        internal sealed record PreparedDamageNumberLayer(
+            int CanvasWidth,
+            int CanvasHeight,
+            DamageNumberAnimationTimeline Timeline);
+        internal sealed record PreparedDamageNumberVisual(
+            string DamageString,
+            int CanvasWidth,
+            int CanvasHeight,
+            DamageColorType ColorType,
+            bool RequestedCriticalAttack,
+            bool AppliesCriticalPresentation,
+            int DamageStringPoolId,
+            CanvasLayerRecoveredEffectHpTextFormatTrace TextFormatTrace,
+            PreparedDigitDrawInfo[] Digits,
+            PreparedSpriteDrawInfo? MissSprite,
+            PreparedSpriteDrawInfo? CriticalBannerSprite,
+            PreparedDamageNumberCompositionTrace CompositionTrace);
 
         #region State
         private readonly List<WzDamageNumber> _activeNumbers = new List<WzDamageNumber>();
         private readonly Queue<WzDamageNumber> _pool = new Queue<WzDamageNumber>();
         private GraphicsDevice _device;
         private bool _initialized = false;
+        private AnimationEffects _animationEffects;
 
         // Fallback font for when WZ sprites not loaded
         private SpriteFont _fallbackFont;
@@ -181,6 +285,11 @@ namespace HaCreator.MapSimulator.Effects
         /// Whether WZ-based rendering is available.
         /// </summary>
         public bool HasWzSprites => DamageNumberLoader.IsInitialized;
+
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
+        }
         #endregion
 
         #region Spawn Methods
@@ -196,21 +305,33 @@ namespace HaCreator.MapSimulator.Effects
         /// <param name="currentTime">Current game tick</param>
         /// <param name="comboIndex">Multi-hit combo index for stacking</param>
         public void SpawnDamageNumber(int damage, float x, float y, DamageColorType colorType,
-            bool isCritical, bool isMiss, int currentTime, int comboIndex = 0)
+            bool isCritical, bool isMiss, int currentTime, int comboIndex = 0, string specialTextName = null)
         {
+            if (!IsSupportedColorType(colorType))
+            {
+                return;
+            }
+
+            if (isMiss && ResolveSpecialTextDigitSet() == null)
+            {
+                // CAnimationDisplayer owner seam: special-text variants belong to NoRed0.
+                // If the authored owner set is unavailable, no-op instead of falling back.
+                return;
+            }
+
             // Limit active numbers
             if (_activeNumbers.Count >= MAX_ACTIVE_NUMBERS)
             {
                 var oldest = _activeNumbers[0];
                 _activeNumbers.RemoveAt(0);
+                ReleaseCompositeCanvas(oldest);
                 _pool.Enqueue(oldest);
             }
 
             // Get from pool or create new
             var dmgNumber = _pool.Count > 0 ? _pool.Dequeue() : new WzDamageNumber();
 
-            // Determine size based on critical
-            DamageNumberSize size = isCritical ? DamageNumberSize.Large : DamageNumberSize.Small;
+            bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
 
             // Apply stacking offset for multi-hit
             float stackedY = y - (comboIndex * DamageNumberConstants.MULTI_HIT_STACK_OFFSET_Y);
@@ -220,12 +341,28 @@ namespace HaCreator.MapSimulator.Effects
             dmgNumber.X = x;
             dmgNumber.BaseY = stackedY;
             dmgNumber.SpawnTime = currentTime;
-            dmgNumber.IsCritical = isCritical;
+            dmgNumber.IsCritical = useCriticalPresentation;
             dmgNumber.IsMiss = isMiss;
+            dmgNumber.SpecialTextName = isMiss ? ResolveSpecialTextName(specialTextName) : null;
             dmgNumber.ColorType = colorType;
-            dmgNumber.Size = size;
+            dmgNumber.Size = useCriticalPresentation ? DamageNumberSize.Large : DamageNumberSize.Small;
             dmgNumber.ComboIndex = comboIndex;
             dmgNumber.ElapsedMs = 0f; // Reset for pooled objects
+            dmgNumber.PreparedVisual = null;
+            dmgNumber.LayerState = null;
+            ReleaseCompositeCanvas(dmgNumber);
+
+            if (HasWzSprites)
+            {
+                dmgNumber.PreparedVisual = PrepareVisual(dmgNumber);
+                dmgNumber.LayerState = PrepareLayer(dmgNumber.PreparedVisual);
+                dmgNumber.CompositeCanvasTexture = CreateCompositeCanvasTexture(dmgNumber.PreparedVisual, colorType, useCriticalPresentation);
+
+                if (TryRegisterPreparedCanvasLayer(dmgNumber))
+                {
+                    return;
+                }
+            }
 
             _activeNumbers.Add(dmgNumber);
         }
@@ -239,15 +376,15 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
-        /// Spawn damage received by player (Blue).
+        /// Spawn damage received by player (Violet).
         /// </summary>
         public void SpawnReceivedDamage(int damage, float x, float y, bool isCritical, int currentTime)
         {
-            SpawnDamageNumber(damage, x, y, DamageColorType.Blue, isCritical, false, currentTime, 0);
+            SpawnDamageNumber(damage, x, y, DamageColorType.Violet, isCritical, false, currentTime, 0);
         }
 
         /// <summary>
-        /// Spawn party/summon damage (Violet).
+        /// Spawn party/summon HP feedback (Violet).
         /// </summary>
         public void SpawnPartyDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
         {
@@ -260,6 +397,17 @@ namespace HaCreator.MapSimulator.Effects
         public void SpawnMiss(float x, float y, DamageColorType colorType, int currentTime)
         {
             SpawnDamageNumber(0, x, y, colorType, false, true, currentTime, 0);
+        }
+
+        public void SpawnSpecialText(string specialTextName, float x, float y, DamageColorType colorType, int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                SpawnMiss(x, y, colorType, currentTime);
+                return;
+            }
+
+            SpawnDamageNumber(0, x, y, colorType, false, true, currentTime, 0, specialTextName.Trim());
         }
         #endregion
 
@@ -278,6 +426,7 @@ namespace HaCreator.MapSimulator.Effects
                 if (dmgNumber.IsComplete)
                 {
                     _activeNumbers.RemoveAt(i);
+                    ReleaseCompositeCanvas(dmgNumber);
                     _pool.Enqueue(dmgNumber);
                 }
             }
@@ -319,7 +468,7 @@ namespace HaCreator.MapSimulator.Effects
         /// Draw a damage number using WZ sprites.
         /// Uses the authentic MapleStory spacing algorithm from CAnimationDisplayer::Effect_HP.
         ///
-        /// Binary analysis (v115, address 0x444eb0) revealed the spacing formula:
+        /// Binary analysis (address 0x444eb0) revealed the spacing formula:
         /// - For each digit: overlap = 3 * (origin.x - width) / 5
         /// - Since origin.x is typically less than width/2, this produces negative overlap
         /// - Negative overlap means digits are drawn CLOSER together (overlapping slightly)
@@ -330,121 +479,1318 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         private void DrawWzDamageNumber(SpriteBatch spriteBatch, WzDamageNumber dmgNumber, int screenX, int screenY)
         {
-            // Get the appropriate digit set
-            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSet(
-                dmgNumber.ColorType,
-                dmgNumber.Size,
-                dmgNumber.IsCritical);
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            if (largeDigitSet == null || smallDigitSet == null)
+                return;
 
-            if (digitSet == null || !digitSet.IsLoaded)
-            {
-                // Fall back to non-critical if critical set not available
-                if (dmgNumber.IsCritical)
-                {
-                    digitSet = DamageNumberLoader.GetDigitSet(dmgNumber.ColorType, dmgNumber.Size, false);
-                }
-
-                // Still null? Try any available set
-                if (digitSet == null || !digitSet.IsLoaded)
-                {
-                    digitSet = DamageNumberLoader.GetDigitSetByName("NoRed0");
-                }
-
-                if (digitSet == null || !digitSet.IsLoaded)
-                    return;
-            }
-
-            string damageString = dmgNumber.GetDamageString();
+            PreparedDamageNumberVisual visual = dmgNumber.PreparedVisual ?? PrepareVisual(dmgNumber);
+            dmgNumber.PreparedVisual = visual;
+            dmgNumber.LayerState ??= PrepareLayer(visual);
             float alpha = dmgNumber.Alpha;
             Color color = Color.White * alpha;
 
-            // Handle miss text
-            if (dmgNumber.IsMiss)
+            int compositeCanvasWidth = dmgNumber.LayerState?.CanvasWidth ?? visual.CanvasWidth;
+            if (dmgNumber.CompositeCanvasTexture != null && compositeCanvasWidth <= 0)
             {
-                if (digitSet.SpecialTextures.TryGetValue("Miss", out var missTexture))
-                {
-                    Point origin = digitSet.SpecialOrigins.TryGetValue("Miss", out var o) ? o : Point.Zero;
-                    int drawX = screenX - origin.X;
-                    int drawY = screenY - origin.Y;
-                    spriteBatch.Draw(missTexture, new Vector2(drawX, drawY), color);
-                }
+                compositeCanvasWidth = dmgNumber.CompositeCanvasTexture.Width;
+            }
+
+            CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
+                screenX,
+                screenY,
+                compositeCanvasWidth);
+
+            if (dmgNumber.CompositeCanvasTexture != null)
+            {
+                spriteBatch.Draw(
+                    dmgNumber.CompositeCanvasTexture,
+                    new Vector2(placement.Left, placement.Top),
+                    color);
+            }
+            else if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
+                && ResolveSpecialTextDigitSet()?.SpecialTextures.TryGetValue(
+                    missSprite.SpriteName,
+                    out var missTexture) == true)
+            {
+                spriteBatch.Draw(
+                    missTexture,
+                    new Vector2(placement.Left + missSprite.DrawOffsetX, placement.Top + missSprite.DrawOffsetY),
+                    color);
                 return;
             }
 
-            // Draw critical effect behind digits
-            if (dmgNumber.ShouldShowCriticalEffect && digitSet.CriticalEffectTexture != null)
+            if (dmgNumber.ShouldShowCriticalEffect
+                && visual.CriticalBannerSprite is PreparedSpriteDrawInfo criticalSprite
+                && largeDigitSet.CriticalEffectTexture != null)
             {
-                int effectX = screenX - digitSet.CriticalEffectOrigin.X;
-                int effectY = screenY + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y - digitSet.CriticalEffectOrigin.Y;
-                spriteBatch.Draw(digitSet.CriticalEffectTexture, new Vector2(effectX, effectY), color);
+                spriteBatch.Draw(
+                    largeDigitSet.CriticalEffectTexture,
+                    new Vector2(placement.Left + criticalSprite.DrawOffsetX, placement.Top + criticalSprite.DrawOffsetY),
+                    color);
             }
 
-            // Pre-calculate digit X positions using MapleStory's spacing algorithm
-            // Binary offset: 0x445176 - 0x44519a in CAnimationDisplayer::Effect_HP
-            // The algorithm calculates overlap for each digit to make them closer together
-            int[] digitXPositions = new int[damageString.Length];
-            int digitCount = 0;
-            int accumulatedX = 0;  // v15 in the binary
-            int previousOverlap = 0;  // lY in the binary (overlap from previous digit)
+            if (dmgNumber.CompositeCanvasTexture != null)
+            {
+                return;
+            }
 
-            // First pass: calculate positions for each digit
+            foreach (PreparedDigitDrawInfo entry in visual.Digits)
+            {
+                DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                Texture2D digitTexture = digitSet.Digits[entry.Digit];
+                if (digitTexture == null)
+                    continue;
+
+                spriteBatch.Draw(
+                    digitTexture,
+                    new Vector2(placement.Left + entry.DrawOffsetX, placement.Top + entry.DrawOffsetY),
+                    color);
+            }
+        }
+
+        private static PreparedDamageNumberVisual PrepareVisual(WzDamageNumber dmgNumber)
+        {
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+
+            if (largeDigitSet == null || smallDigitSet == null)
+            {
+                CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace =
+                    BuildRecoveredTextFormatTrace(
+                        dmgNumber.Damage,
+                        dmgNumber.IsMiss,
+                        dmgNumber.SpecialTextName);
+                return new PreparedDamageNumberVisual(
+                    textFormatTrace.FormattedText,
+                    0,
+                    DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    dmgNumber.ColorType,
+                    dmgNumber.IsCritical,
+                    UsesCriticalPresentation(dmgNumber.ColorType, dmgNumber.IsCritical),
+                    DamageNumberFormatStringPoolId,
+                    textFormatTrace,
+                    Array.Empty<PreparedDigitDrawInfo>(),
+                    null,
+                    null,
+                    CreateEmptyCompositionTrace());
+            }
+
+            return PrepareVisual(
+                dmgNumber.Damage,
+                dmgNumber.ColorType,
+                dmgNumber.IsCritical,
+                dmgNumber.IsMiss,
+                dmgNumber.SpecialTextName,
+                largeDigitSet,
+                smallDigitSet);
+        }
+
+        internal static bool UsesCriticalPresentation(DamageColorType colorType, bool isCritical)
+        {
+            return colorType == DamageColorType.Red && isCritical;
+        }
+
+        internal static bool IsSupportedSpecialTextName(string specialTextName)
+        {
+            return specialTextName != null
+                && (specialTextName.Equals("Miss", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("guard", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("shot", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("counter", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("resist", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool IsSupportedColorType(DamageColorType colorType)
+        {
+            return colorType == DamageColorType.Red
+                || colorType == DamageColorType.Blue
+                || colorType == DamageColorType.Violet;
+        }
+
+        internal static string ResolveSpecialTextName(string specialTextName)
+        {
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                return "Miss";
+            }
+
+            string authoredName = specialTextName.Trim();
+            return authoredName.Equals("miss", StringComparison.OrdinalIgnoreCase)
+                ? "Miss"
+                : authoredName.Equals("guard", StringComparison.OrdinalIgnoreCase)
+                    ? "guard"
+                    : authoredName.Equals("shot", StringComparison.OrdinalIgnoreCase)
+                        ? "shot"
+                        : authoredName.Equals("counter", StringComparison.OrdinalIgnoreCase)
+                            ? "counter"
+                            : authoredName.Equals("resist", StringComparison.OrdinalIgnoreCase)
+                                ? "resist"
+                                : "Miss";
+        }
+
+        internal static string FormatDamageValue(int damage)
+        {
+            return BuildRecoveredTextFormatTrace(damage).FormattedText;
+        }
+
+        internal static CanvasLayerRecoveredEffectHpTextFormatTrace BuildRecoveredTextFormatTrace(
+            int damage,
+            bool isSpecialText = false,
+            string specialText = null)
+        {
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                DamageNumberFormatStringPoolId,
+                "{0}",
+                1,
+                out bool usedResolvedText);
+
+            if (isSpecialText)
+            {
+                return new CanvasLayerRecoveredEffectHpTextFormatTrace(
+                    DamageNumberFormatStringPoolId,
+                    compositeFormat,
+                    usedResolvedText,
+                    MaxPlaceholderCount: 1,
+                    RawDamageValue: damage,
+                    FormattedText: ResolveSpecialTextName(specialText),
+                    IsSpecialText: true);
+            }
+
+            string formattedText;
+            try
+            {
+                formattedText = string.Format(CultureInfo.InvariantCulture, compositeFormat, damage);
+            }
+            catch (FormatException)
+            {
+                formattedText = damage.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return new CanvasLayerRecoveredEffectHpTextFormatTrace(
+                DamageNumberFormatStringPoolId,
+                compositeFormat,
+                usedResolvedText,
+                MaxPlaceholderCount: 1,
+                damage,
+                formattedText,
+                IsSpecialText: false);
+        }
+
+        internal static (DigitLayoutEntry[] Entries, int LeftOffset, int TotalWidth, int RecoveredNativeAccumulatedCanvasWidth) BuildDigitLayout(
+            string damageString,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet,
+            bool addCriticalSpacing)
+        {
+            if (string.IsNullOrEmpty(damageString))
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0, 0);
+
+            List<DigitLayoutEntry> entries = new(damageString.Length);
+            int accumulatedX = addCriticalSpacing ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX : 0;
+            int previousOverlap = 0;
+            bool useLargeDigitSet = true;
+            int minLeft = int.MaxValue;
+            int maxRight = int.MinValue;
+
             foreach (char c in damageString)
             {
                 if (!char.IsDigit(c))
                     continue;
 
                 int digit = c - '0';
+                DamageNumberDigitSet digitSet = useLargeDigitSet ? largeDigitSet : smallDigitSet;
                 int width = digitSet.Widths[digit];
                 int originX = digitSet.Origins[digit].X;
+                int relativeX = accumulatedX + width - previousOverlap;
+                int drawLeft = relativeX - originX;
+                int drawRight = drawLeft + width;
 
-                // Position for this digit: accumulatedX + width - previousOverlap
-                // Binary: v35 = v15 + lWidth - lY; lEffX[i] = v35;
-                digitXPositions[digitCount] = accumulatedX + width - previousOverlap;
+                entries.Add(new DigitLayoutEntry(digit, useLargeDigitSet, relativeX));
+                minLeft = Math.Min(minLeft, drawLeft);
+                maxRight = Math.Max(maxRight, drawRight);
 
-                // Update accumulated position: accumulatedX = accumulatedX - previousOverlap + originX
-                // Binary: v15 = v15 - lY + idx; (where idx is origin.x)
                 accumulatedX = accumulatedX - previousOverlap + originX;
-
-                // Calculate overlap for next digit: lY = 3 * (origin.x - width) / 5
-                // Binary: lY = 3 * v34 / 5; where v34 = idx - lWidth = origin.x - width
                 previousOverlap = 3 * (originX - width) / 5;
-
-                digitCount++;
+                useLargeDigitSet = false;
             }
 
-            // Total width is the final accumulated position
-            // Binary: lWidth = v15; (line 305)
-            int totalWidth = accumulatedX;
-
-            // Center the number: startX = screenX - totalWidth / 2
-            // Binary: idx = lCenterLeft - lWidth / 2; (line 627)
-            int startX = screenX - totalWidth / 2;
-
-            // Second pass: draw each digit at the calculated position
-            digitCount = 0;
-            foreach (char c in damageString)
+            if (entries.Count == 0)
             {
-                if (!char.IsDigit(c))
-                    continue;
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0, 0);
+            }
 
-                int digit = c - '0';
-                Texture2D digitTexture = digitSet.Digits[digit];
-                if (digitTexture == null)
+            return (entries.ToArray(), minLeft, Math.Max(0, maxRight - minLeft), Math.Max(0, accumulatedX));
+        }
+
+        internal static PreparedDamageNumberVisual PrepareVisual(
+            int damage,
+            DamageColorType colorType,
+            bool isCritical,
+            bool isMiss,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet)
+        {
+            return PrepareVisual(
+                damage,
+                colorType,
+                isCritical,
+                isMiss,
+                specialTextName: null,
+                largeDigitSet,
+                smallDigitSet);
+        }
+
+        internal static PreparedDamageNumberVisual PrepareVisual(
+            int damage,
+            DamageColorType colorType,
+            bool isCritical,
+            bool isMiss,
+            string specialTextName,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet)
+        {
+            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace =
+                BuildRecoveredTextFormatTrace(damage, isMiss, specialTextName);
+            string damageString = textFormatTrace.FormattedText;
+            if (!IsSupportedColorType(colorType))
+            {
+                return new PreparedDamageNumberVisual(
+                    damageString,
+                    0,
+                    ResolveCompositeCanvasHeight(),
+                    colorType,
+                    isCritical,
+                    false,
+                    DamageNumberFormatStringPoolId,
+                    textFormatTrace,
+                    Array.Empty<PreparedDigitDrawInfo>(),
+                    null,
+                    null,
+                    CreateEmptyCompositionTrace());
+            }
+
+            bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
+
+            if (isMiss)
+            {
+                return PrepareSpecialTextVisual(
+                    damageString,
+                    ResolveSpecialTextDigitSet(),
+                    textFormatTrace,
+                    colorType,
+                    isCritical,
+                    useCriticalPresentation);
+            }
+
+            (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth, int recoveredNativeAccumulatedCanvasWidth) = BuildDigitLayout(
+                damageString,
+                largeDigitSet,
+                smallDigitSet,
+                useCriticalPresentation);
+            int criticalLeadingSpacing = useCriticalPresentation
+                ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX
+                : 0;
+            int composedWidth = Math.Max(0, totalWidth + criticalLeadingSpacing);
+
+            int baselineY = DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
+            PreparedDigitDrawInfo[] digits = new PreparedDigitDrawInfo[layoutEntries.Length];
+
+            for (int i = 0; i < layoutEntries.Length; i++)
+            {
+                DigitLayoutEntry entry = layoutEntries[i];
+                DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                Point origin = digitSet.Origins[entry.Digit];
+                digits[i] = new PreparedDigitDrawInfo(
+                    entry.Digit,
+                    entry.UseLargeDigitSet,
+                    entry.RelativeX - origin.X - leftOffset + criticalLeadingSpacing,
+                    baselineY - origin.Y);
+            }
+
+            PreparedSpriteDrawInfo? criticalBanner = null;
+            if (useCriticalPresentation
+                && (largeDigitSet.CriticalEffectTexture != null || largeDigitSet.CriticalEffectOrigin != Point.Zero))
+            {
+                string criticalBannerSpriteName = ResolveCriticalBannerSpriteName();
+                criticalBanner = new PreparedSpriteDrawInfo(
+                    criticalBannerSpriteName,
+                    -(largeDigitSet.CriticalEffectOrigin.X - composedWidth / 2),
+                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y
+                    + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
+                    - largeDigitSet.CriticalEffectOrigin.Y,
+                    largeDigitSet.CriticalEffectOrigin,
+                    largeDigitSet.CriticalEffectWidth,
+                    largeDigitSet.CriticalEffectHeight);
+            }
+
+            return new PreparedDamageNumberVisual(
+                damageString,
+                composedWidth,
+                ResolveCompositeCanvasHeight(),
+                colorType,
+                isCritical,
+                useCriticalPresentation,
+                DamageNumberFormatStringPoolId,
+                textFormatTrace,
+                digits,
+                null,
+                criticalBanner,
+                BuildRecoveredCompositionTrace(
+                    composedWidth,
+                    ResolveCompositeCanvasHeight(),
+                    recoveredNativeAccumulatedCanvasWidth,
+                    digits,
+                    largeDigitSet,
+                    smallDigitSet,
+                    criticalBanner));
+        }
+
+        internal static PreparedDamageNumberVisual PrepareSpecialTextVisual(
+            string specialTextName,
+            DamageNumberDigitSet authoredSpecialTextDigitSet)
+        {
+            return PrepareSpecialTextVisual(
+                specialTextName,
+                authoredSpecialTextDigitSet,
+                BuildRecoveredTextFormatTrace(0, isSpecialText: true, specialTextName),
+                DamageColorType.Red,
+                isCritical: false,
+                appliesCriticalPresentation: false);
+        }
+
+        private static PreparedDamageNumberVisual PrepareSpecialTextVisual(
+            string specialTextName,
+            DamageNumberDigitSet authoredSpecialTextDigitSet,
+            CanvasLayerRecoveredEffectHpTextFormatTrace textFormatTrace,
+            DamageColorType colorType,
+            bool isCritical,
+            bool appliesCriticalPresentation)
+        {
+            string damageString = ResolveSpecialTextName(specialTextName);
+            PreparedSpriteDrawInfo? missSprite = null;
+            int canvasWidth = 0;
+            int canvasHeight = ResolveCompositeCanvasHeight();
+
+            if (authoredSpecialTextDigitSet?.IsLoaded == true
+                && authoredSpecialTextDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
+            {
+                canvasWidth = ResolveSpecialTextWidth(authoredSpecialTextDigitSet, damageString);
+                int canvasOffsetX = canvasWidth > 0
+                    ? (canvasWidth / 2) - missOrigin.X
+                    : -missOrigin.X;
+                missSprite = new PreparedSpriteDrawInfo(
+                    damageString,
+                    canvasOffsetX,
+                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y,
+                    missOrigin,
+                    ResolveSpecialTextWidth(authoredSpecialTextDigitSet, damageString),
+                    ResolveSpecialTextHeight(authoredSpecialTextDigitSet, damageString));
+            }
+
+            return new PreparedDamageNumberVisual(
+                damageString,
+                canvasWidth,
+                canvasHeight,
+                colorType,
+                isCritical,
+                appliesCriticalPresentation,
+                DamageNumberFormatStringPoolId,
+                textFormatTrace,
+                Array.Empty<PreparedDigitDrawInfo>(),
+                missSprite,
+                null,
+                BuildRecoveredSpecialTextCompositionTrace(
+                    damageString,
+                    canvasWidth,
+                    canvasHeight,
+                    missSprite,
+                    authoredSpecialTextDigitSet));
+        }
+
+        private static PreparedDamageNumberCompositionTrace CreateEmptyCompositionTrace()
+        {
+            return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
+                new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
+                0,
+                Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                BuildRecoveredCompositionNativeOperations(
+                    0,
+                    ResolveCompositeCanvasHeight(),
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
+                KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerCanvasPath: null,
+                CriticalBannerLayerSprite: null);
+        }
+
+        private static PreparedDamageNumberCompositionTrace BuildRecoveredCompositionTrace(
+            int canvasWidth,
+            int canvasHeight,
+            int recoveredNativeAccumulatedCanvasWidth,
+            IReadOnlyList<PreparedDigitDrawInfo> digits,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet,
+            PreparedSpriteDrawInfo? criticalBanner)
+        {
+            CanvasLayerRecoveredCanvasSettings managedCanvasSettings = new(canvasWidth, canvasHeight);
+            CanvasLayerRecoveredCanvasSettings nativeTemporaryCanvasSettings = new(
+                Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
+                canvasHeight);
+
+            if (digits == null || digits.Count == 0)
+            {
+                return new PreparedDamageNumberCompositionTrace(
+                    managedCanvasSettings,
+                    nativeTemporaryCanvasSettings,
+                    Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    BuildRecoveredCompositionNativeOperations(
+                        nativeTemporaryCanvasSettings.Width,
+                        canvasHeight,
+                        Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
+                    criticalBanner.HasValue,
+                    BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
+                    criticalBanner);
+            }
+
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands =
+                new PreparedDamageNumberCompositionInsertCommand[digits.Count];
+            for (int i = 0; i < digits.Count; i++)
+            {
+                PreparedDigitDrawInfo digit = digits[i];
+                DamageNumberDigitSet digitSet = digit.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                insertCommands[i] = new PreparedDamageNumberCompositionInsertCommand(
+                    digitSet?.Name ?? string.Empty,
+                    digit.Digit.ToString(CultureInfo.InvariantCulture),
+                    BuildBasicEffCanvasPath(digitSet?.Name, digit.Digit.ToString(CultureInfo.InvariantCulture)),
+                    digit.UseLargeDigitSet,
+                    digitSet?.Origins[digit.Digit] ?? Point.Zero,
+                    digitSet?.Widths[digit.Digit] ?? 0,
+                    digitSet?.Heights[digit.Digit] ?? 0,
+                    new Point(digit.DrawOffsetX, digit.DrawOffsetY),
+                    ResolveRecoveredTemporaryCanvasInsertSettings(),
+                    AnimationCanvasLayerBlendMode.AlphaBlend);
+            }
+
+            return new PreparedDamageNumberCompositionTrace(
+                managedCanvasSettings,
+                nativeTemporaryCanvasSettings,
+                Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
+                insertCommands,
+                BuildRecoveredCompositionNativeOperations(
+                    nativeTemporaryCanvasSettings.Width,
+                    canvasHeight,
+                    insertCommands),
+                criticalBanner.HasValue,
+                BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
+                criticalBanner);
+        }
+
+        private static PreparedDamageNumberCompositionTrace BuildRecoveredSpecialTextCompositionTrace(
+            string spriteName,
+            int canvasWidth,
+            int canvasHeight,
+            PreparedSpriteDrawInfo? specialSprite,
+            DamageNumberDigitSet digitSet)
+        {
+            if (!specialSprite.HasValue)
+            {
+                return new PreparedDamageNumberCompositionTrace(
+                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    canvasWidth,
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    BuildRecoveredCompositionNativeOperations(
+                        canvasWidth,
+                        canvasHeight,
+                        Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
+                    KeepsCriticalBannerOnSeparateLayer: false,
+                    CriticalBannerLayerCanvasPath: null,
+                    CriticalBannerLayerSprite: null);
+            }
+
+            Point sourceOrigin = digitSet?.SpecialOrigins.TryGetValue(spriteName, out Point origin) == true
+                ? origin
+                : Point.Zero;
+            int sourceWidth = ResolveSpecialTextWidth(digitSet, spriteName);
+            int sourceHeight = ResolveSpecialTextHeight(digitSet, spriteName);
+            PreparedDamageNumberCompositionInsertCommand insertCommand = new(
+                digitSet?.Name ?? string.Empty,
+                spriteName ?? string.Empty,
+                BuildBasicEffCanvasPath(digitSet?.Name, spriteName),
+                UseLargeDigitSet: false,
+                sourceOrigin,
+                sourceWidth,
+                sourceHeight,
+                new Point(specialSprite.Value.DrawOffsetX, specialSprite.Value.DrawOffsetY),
+                ResolveRecoveredTemporaryCanvasInsertSettings(),
+                AnimationCanvasLayerBlendMode.AlphaBlend);
+
+            return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                canvasWidth,
+                new[] { insertCommand },
+                BuildRecoveredCompositionNativeOperations(
+                    canvasWidth,
+                    canvasHeight,
+                    new[] { insertCommand }),
+                KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerCanvasPath: null,
+                CriticalBannerLayerSprite: null);
+        }
+
+        private static PreparedDamageNumberCompositionNativeOperation[] BuildRecoveredCompositionNativeOperations(
+            int canvasWidth,
+            int canvasHeight,
+            IReadOnlyList<PreparedDamageNumberCompositionInsertCommand> insertCommands)
+        {
+            CanvasLayerRecoveredCanvasSettings canvasSettings = new(
+                Math.Max(0, canvasWidth),
+                Math.Max(0, canvasHeight));
+            int insertCount = insertCommands?.Count ?? 0;
+            PreparedDamageNumberCompositionNativeOperation[] operations =
+                new PreparedDamageNumberCompositionNativeOperation[insertCount + 1];
+            operations[0] = new PreparedDamageNumberCompositionNativeOperation(
+                DamageNumberRecoveredCompositionOperationKind.CreateCanvas,
+                canvasSettings,
+                default);
+
+            for (int i = 0; i < insertCount; i++)
+            {
+                operations[i + 1] = new PreparedDamageNumberCompositionNativeOperation(
+                    DamageNumberRecoveredCompositionOperationKind.InsertCanvas,
+                    canvasSettings,
+                    insertCommands[i]);
+            }
+
+            return operations;
+        }
+
+        internal static CanvasLayerRecoveredInsertCanvasSettings ResolveRecoveredTemporaryCanvasInsertSettings()
+        {
+            return new CanvasLayerRecoveredInsertCanvasSettings(
+                DurationMs: 0,
+                StartAlphaValue: 255,
+                EndAlphaValue: 255);
+        }
+
+        internal static string BuildBasicEffCanvasPath(string setName, string spriteName)
+        {
+            if (string.IsNullOrWhiteSpace(setName) || string.IsNullOrWhiteSpace(spriteName))
+            {
+                return null;
+            }
+
+            return string.Concat(
+                DamageNumberEffectCategoryName,
+                "/",
+                DamageNumberBasicEffectImageName,
+                "/",
+                setName.Trim(),
+                "/",
+                spriteName.Trim());
+        }
+
+        private static int ResolveSpecialTextWidth(DamageNumberDigitSet digitSet, string spriteName)
+        {
+            if (digitSet != null
+                && !string.IsNullOrWhiteSpace(spriteName))
+            {
+                if (digitSet.SpecialWidths.TryGetValue(spriteName, out int width))
                 {
-                    digitCount++;
-                    continue;
+                    return width;
                 }
 
-                Point origin = digitSet.Origins[digit];
-
-                // The X position from lEffX is relative to the canvas origin
-                // Binary draws at: lEffX[idx] - origin.x (line 598)
-                int drawX = startX + digitXPositions[digitCount] - origin.X;
-                int drawY = screenY - origin.Y;
-
-                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), color);
-                digitCount++;
+                if (digitSet.SpecialTextures.TryGetValue(spriteName, out Texture2D texture))
+                {
+                    return texture?.Width ?? 0;
+                }
             }
+
+            return 0;
+        }
+
+        private static int ResolveSpecialTextHeight(DamageNumberDigitSet digitSet, string spriteName)
+        {
+            if (digitSet != null
+                && !string.IsNullOrWhiteSpace(spriteName))
+            {
+                if (digitSet.SpecialHeights.TryGetValue(spriteName, out int height))
+                {
+                    return height;
+                }
+
+                if (digitSet.SpecialTextures.TryGetValue(spriteName, out Texture2D texture))
+                {
+                    return texture?.Height ?? 0;
+                }
+            }
+
+            return 0;
+        }
+
+        internal static int ResolveCompositeCanvasHeight()
+        {
+            return DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX;
+        }
+
+        private static DamageNumberDigitSet ResolveSpecialTextDigitSet()
+        {
+            DamageNumberDigitSet authoredSpecialTextSet = DamageNumberLoader.GetDigitSetByName(DamageNumberSpecialTextOwnerSetName);
+            if (authoredSpecialTextSet?.IsLoaded == true)
+            {
+                return authoredSpecialTextSet;
+            }
+
+            return null;
+        }
+
+        internal static DamageNumberAnimationTimeline ResolveAnimationTimeline()
+        {
+            return new DamageNumberAnimationTimeline(
+                DamageNumberConstants.DISPLAY_DURATION_MS,
+                DamageNumberConstants.FADE_DURATION_MS,
+                DamageNumberConstants.TOTAL_LIFETIME_MS,
+                DamageNumberConstants.CRITICAL_EFFECT_DELAY_MS,
+                (int)DamageNumberConstants.RISE_DISTANCE_PX);
+        }
+
+        internal static PreparedDamageNumberLayer PrepareLayer(PreparedDamageNumberVisual visual)
+        {
+            return new PreparedDamageNumberLayer(
+                visual.CanvasWidth,
+                visual.CanvasHeight,
+                ResolveAnimationTimeline());
+        }
+
+        internal static PreparedDamageNumberLayerRegistration BuildOneTimeLayerRegistration(
+            PreparedDamageNumberVisual visual,
+            PreparedDamageNumberLayer layer,
+            int centerX,
+            int centerTop)
+        {
+            PreparedDamageNumberCompositionTrace compositionTrace = visual?.CompositionTrace ?? CreateEmptyCompositionTrace();
+            CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
+                centerX,
+                centerTop,
+                layer?.CanvasWidth ?? visual?.CanvasWidth ?? 0);
+            CompositeCanvasPlacement nativePlacement = ResolveCompositeCanvasPlacement(
+                centerX,
+                centerTop,
+                compositionTrace.NativeTemporaryCanvasSettings.Width);
+            PreparedSpriteDrawInfo? criticalBanner = visual?.CriticalBannerSprite;
+            DamageNumberAnimationTimeline timeline = layer?.Timeline ?? ResolveAnimationTimeline();
+            Point criticalBannerOffset = criticalBanner is PreparedSpriteDrawInfo banner
+                ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
+                : Point.Zero;
+            bool hasCriticalBanner = criticalBanner.HasValue
+                && compositionTrace.KeepsCriticalBannerOnSeparateLayer;
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings = ResolveRecoveredLayerSettings();
+            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
+                timeline.HoldDurationMs,
+                timeline.FadeDurationMs,
+                timeline.RiseDistancePx,
+                hasCriticalBanner,
+                NormalizeCriticalBannerInsertOffset(criticalBannerOffset, hasCriticalBanner),
+                timeline.CriticalDelayMs);
+            CanvasLayerRecoveredRegistrationTrace recoveredRegistrationTrace =
+                OneTimeCanvasLayerAnimation.BuildRecoveredRegistrationTrace(
+                    placement.Left,
+                    placement.Top,
+                    placement.Width,
+                    placement.Height,
+                    insertDescriptors,
+                    recoveredLayerSettings,
+                    true,
+                    new CanvasLayerRecoveredPositionSettings(
+                        nativePlacement.Left,
+                        nativePlacement.Top));
+            return new PreparedDamageNumberLayerRegistration(
+                placement,
+                nativePlacement,
+                timeline,
+                criticalBannerOffset,
+                hasCriticalBanner,
+                compositionTrace,
+                insertDescriptors,
+                new PreparedOneTimeCanvasLayerRegistration(
+                    placement.Left,
+                    placement.Top,
+                    insertDescriptors,
+                    recoveredLayerSettings,
+                    recoveredRegistrationTrace,
+                    BuildRecoveredOwnerTrace(visual)),
+                recoveredLayerSettings,
+                recoveredRegistrationTrace);
+        }
+
+        private static Point NormalizeCriticalBannerInsertOffset(Point offset, bool hasCriticalBanner)
+        {
+            if (!hasCriticalBanner)
+            {
+                return offset;
+            }
+
+            return new Point(
+                offset.X,
+                offset.Y - DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y);
+        }
+
+        internal static CanvasLayerRecoveredOwnerTrace? BuildRecoveredOwnerTrace(PreparedDamageNumberVisual visual)
+        {
+            if (visual == null)
+            {
+                return null;
+            }
+
+            PreparedDamageNumberCompositionTrace compositionTrace = visual.CompositionTrace;
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands = compositionTrace.InsertCanvasCommands
+                ?? Array.Empty<PreparedDamageNumberCompositionInsertCommand>();
+            CanvasLayerRecoveredPreparedSourceTrace[] preparedSources = new CanvasLayerRecoveredPreparedSourceTrace[insertCommands.Length];
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                PreparedDamageNumberCompositionInsertCommand command = insertCommands[i];
+                preparedSources[i] = BuildRecoveredPreparedSourceTrace(
+                    command,
+                    compositionTrace.CanvasSettings);
+            }
+
+            PreparedDamageNumberCompositionNativeOperation[] nativeOperations = compositionTrace.NativeOperations
+                ?? Array.Empty<PreparedDamageNumberCompositionNativeOperation>();
+            CanvasLayerRecoveredTemporaryCanvasOperation[] temporaryCanvasOperations =
+                new CanvasLayerRecoveredTemporaryCanvasOperation[nativeOperations.Length];
+            for (int i = 0; i < nativeOperations.Length; i++)
+            {
+                PreparedDamageNumberCompositionNativeOperation operation = nativeOperations[i];
+                PreparedDamageNumberCompositionInsertCommand command = operation.InsertCommand;
+                CanvasLayerRecoveredPreparedSourceTrace sourceTrace = operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                    ? BuildRecoveredPreparedSourceTrace(
+                        command,
+                        operation.CanvasSettings)
+                    : default;
+                temporaryCanvasOperations[i] = new CanvasLayerRecoveredTemporaryCanvasOperation(
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.CreateCanvas
+                        ? CanvasLayerRecoveredTemporaryCanvasOperationKind.CreateCanvas
+                        : CanvasLayerRecoveredTemporaryCanvasOperationKind.InsertCanvas,
+                    operation.CanvasSettings,
+                    sourceTrace,
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                        ? operation.InsertCommand.RecoveredInsertCanvasSettings
+                        : default,
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                        ? operation.InsertCommand.RecoveredBlendMode
+                        : default);
+            }
+
+            PreparedSpriteDrawInfo? overlaySprite = compositionTrace.CriticalBannerLayerSprite;
+            Point overlayOffset = overlaySprite.HasValue
+                ? new Point(overlaySprite.Value.DrawOffsetX, overlaySprite.Value.DrawOffsetY)
+                : Point.Zero;
+            string overlaySpriteName = overlaySprite.HasValue
+                ? overlaySprite.Value.SpriteName
+                : null;
+            Point overlaySourceOrigin = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceOrigin
+                : Point.Zero;
+            int overlaySourceWidth = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceWidth
+                : 0;
+            int overlaySourceHeight = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceHeight
+                : 0;
+            bool keepsOverlayOnSeparateLayer = compositionTrace.KeepsCriticalBannerOnSeparateLayer
+                && overlaySprite.HasValue;
+            int overlayLayerPositionOffsetY = keepsOverlayOnSeparateLayer
+                ? DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
+                : 0;
+
+            return new CanvasLayerRecoveredOwnerTrace(
+                visual.DamageStringPoolId,
+                visual.DamageString,
+                compositionTrace.CanvasSettings,
+                compositionTrace.NativeTemporaryCanvasSettings,
+                ResolveRecoveredCompositeSurfaceSettings(),
+                BuildRecoveredEffectHpOwnerSelectionTrace(visual),
+                preparedSources,
+                temporaryCanvasOperations,
+                BuildRecoveredEffectHpDigitLayoutSteps(
+                    BuildRecoveredEffectHpOwnerSelectionTrace(visual),
+                    preparedSources,
+                    compositionTrace.RecoveredNativeAccumulatedCanvasWidth),
+                keepsOverlayOnSeparateLayer,
+                keepsOverlayOnSeparateLayer ? CriticalBannerSpriteStringPoolId : 0,
+                keepsOverlayOnSeparateLayer ? compositionTrace.CriticalBannerLayerCanvasPath : null,
+                keepsOverlayOnSeparateLayer ? overlaySpriteName : null,
+                keepsOverlayOnSeparateLayer ? overlayOffset : Point.Zero,
+                keepsOverlayOnSeparateLayer ? overlaySourceOrigin : Point.Zero,
+                keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
+                keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
+                overlayLayerPositionOffsetY,
+                BuildRecoveredSourceCleanupSteps(
+                    BuildRecoveredEffectHpOwnerSelectionTrace(visual),
+                    preparedSources),
+                visual.TextFormatTrace);
+        }
+
+        internal static CanvasLayerRecoveredEffectHpDigitLayoutStep[] BuildRecoveredEffectHpDigitLayoutSteps(
+            CanvasLayerRecoveredEffectHpOwnerSelectionTrace ownerSelection,
+            IReadOnlyList<CanvasLayerRecoveredPreparedSourceTrace> preparedSources,
+            int recoveredNativeAccumulatedCanvasWidth)
+        {
+            if (preparedSources == null
+                || preparedSources.Count == 0
+                || ownerSelection.UsesSpecialTextOwner)
+            {
+                return Array.Empty<CanvasLayerRecoveredEffectHpDigitLayoutStep>();
+            }
+
+            var steps = new CanvasLayerRecoveredEffectHpDigitLayoutStep[preparedSources.Count];
+            int nativeAccumulatedX = ownerSelection.UsesRedCriticalOwnerSplit
+                ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX
+                : 0;
+            int previousReductionOffset = 0;
+
+            for (int i = 0; i < preparedSources.Count; i++)
+            {
+                CanvasLayerRecoveredPreparedSourceTrace source = preparedSources[i];
+                int nativeEffX = nativeAccumulatedX + source.SourceWidth - previousReductionOffset;
+                int nextAccumulatedX = nativeAccumulatedX - previousReductionOffset + source.SourceOrigin.X;
+                int nextReductionOffset = ResolveNativeDigitReductionOffset(
+                    source.SourceOrigin.X,
+                    source.SourceWidth);
+
+                if (i == preparedSources.Count - 1 && recoveredNativeAccumulatedCanvasWidth > 0)
+                {
+                    nextAccumulatedX = recoveredNativeAccumulatedCanvasWidth;
+                }
+
+                steps[i] = new CanvasLayerRecoveredEffectHpDigitLayoutStep(
+                    i,
+                    source.SourceSetName,
+                    source.SpriteName,
+                    source.UseLargeDigitSet,
+                    source.SourceWidth,
+                    source.SourceOrigin.X,
+                    previousReductionOffset,
+                    nativeEffX,
+                    Math.Max(0, nextAccumulatedX),
+                    nextReductionOffset);
+
+                nativeAccumulatedX = nextAccumulatedX;
+                previousReductionOffset = nextReductionOffset;
+            }
+
+            return steps;
+        }
+
+        internal static int ResolveNativeDigitReductionOffset(int sourceOriginX, int sourceWidth)
+        {
+            return 3 * (sourceOriginX - sourceWidth) / 5;
+        }
+
+        internal static CanvasLayerRecoveredEffectHpSourceCleanupStep[] BuildRecoveredSourceCleanupSteps(
+            CanvasLayerRecoveredEffectHpOwnerSelectionTrace ownerSelection,
+            IReadOnlyList<CanvasLayerRecoveredPreparedSourceTrace> preparedSources)
+        {
+            var cleanupSteps = new List<CanvasLayerRecoveredEffectHpSourceCleanupStep>(4);
+
+            cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                cleanupSteps.Count,
+                CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseFormattedText,
+                OwnerSetName: null,
+                SourceCanvasPath: null,
+                RunsAfterOneTimeRegistration: true));
+
+            CanvasLayerRecoveredPreparedSourceTrace? lastSource = null;
+            if (preparedSources != null && preparedSources.Count > 0)
+            {
+                lastSource = preparedSources[preparedSources.Count - 1];
+            }
+
+            if (lastSource.HasValue)
+            {
+                CanvasLayerRecoveredPreparedSourceTrace source = lastSource.Value;
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseLastSourceCanvas,
+                    source.SourceSetName,
+                    source.SourceCanvasPath,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSelection.SmallOwnerSetName))
+            {
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseSmallOwnerProperty,
+                    ownerSelection.SmallOwnerSetName,
+                    SourceCanvasPath: null,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSelection.LargeOwnerSetName))
+            {
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseLargeOwnerProperty,
+                    ownerSelection.LargeOwnerSetName,
+                    SourceCanvasPath: null,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            return cleanupSteps.ToArray();
+        }
+
+        internal static CanvasLayerRecoveredEffectHpOwnerSelectionTrace BuildRecoveredEffectHpOwnerSelectionTrace(
+            PreparedDamageNumberVisual visual)
+        {
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands =
+                visual?.CompositionTrace.InsertCanvasCommands
+                ?? Array.Empty<PreparedDamageNumberCompositionInsertCommand>();
+            string largeOwnerSetName = null;
+            string smallOwnerSetName = null;
+            bool firstDigitUsesLargeOwner = false;
+            bool tailDigitsUseSmallOwner = false;
+            bool usesSpecialTextOwner = visual?.MissSprite.HasValue == true;
+
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                PreparedDamageNumberCompositionInsertCommand command = insertCommands[i];
+                if (command.UseLargeDigitSet)
+                {
+                    largeOwnerSetName ??= command.SourceSetName;
+                    if (i == 0)
+                    {
+                        firstDigitUsesLargeOwner = true;
+                    }
+                }
+                else
+                {
+                    smallOwnerSetName ??= command.SourceSetName;
+                    if (i > 0)
+                    {
+                        tailDigitsUseSmallOwner = true;
+                    }
+                }
+            }
+
+            if (usesSpecialTextOwner)
+            {
+                smallOwnerSetName ??= insertCommands.Length > 0
+                    ? insertCommands[0].SourceSetName
+                    : DamageNumberSpecialTextOwnerSetName;
+            }
+
+            bool usesRedCriticalOwnerSplit =
+                string.Equals(largeOwnerSetName, "NoCri1", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(smallOwnerSetName, "NoCri0", StringComparison.OrdinalIgnoreCase);
+            bool specialTextOwnerIsAuthoredNoRed0 = usesSpecialTextOwner
+                && string.Equals(smallOwnerSetName, DamageNumberSpecialTextOwnerSetName, StringComparison.OrdinalIgnoreCase);
+            bool supportedColor = visual != null && IsSupportedColorType(visual.ColorType);
+
+            return new CanvasLayerRecoveredEffectHpOwnerSelectionTrace(
+                visual != null ? (int)visual.ColorType : -1,
+                visual?.RequestedCriticalAttack == true,
+                visual?.AppliesCriticalPresentation == true,
+                visual?.RequestedCriticalAttack == true
+                    && visual?.AppliesCriticalPresentation != true
+                    && supportedColor
+                    && visual.ColorType != DamageColorType.Red,
+                visual != null && !supportedColor,
+                largeOwnerSetName,
+                smallOwnerSetName,
+                firstDigitUsesLargeOwner,
+                tailDigitsUseSmallOwner,
+                usesRedCriticalOwnerSplit,
+                usesSpecialTextOwner,
+                usesSpecialTextOwner ? DamageNumberSpecialTextOwnerSetName : null,
+                specialTextOwnerIsAuthoredNoRed0);
+        }
+
+        internal static CanvasLayerRecoveredCompositeSurfaceSettings ResolveRecoveredCompositeSurfaceSettings()
+        {
+            return new CanvasLayerRecoveredCompositeSurfaceSettings(
+                TemporaryCanvasFactoryStringPoolId,
+                NativeCanvasFactoryName: "Canvas",
+                NativeCanvasInterfaceName: "IWzCanvas",
+                NativeCanvasInterfaceGuid: "7600dc6c-9328-4bff-9624-5b0f5c01179e",
+                NativeLayerInterfaceName: "IWzGr2DLayer",
+                NativeLayerInterfaceGuid: "6dc8c7ce-8e81-4420-b4f6-4b60b7d5fcdf",
+                ManagedSurfaceType: nameof(RenderTarget2D),
+                ManagedSurfaceFormat: nameof(SurfaceFormat.Color),
+                ManagedClearColor: nameof(Color.Transparent),
+                ManagedSpriteSortMode: nameof(SpriteSortMode.Deferred),
+                ManagedBlendState: nameof(BlendState.AlphaBlend),
+                ManagedSamplerState: nameof(SamplerState.PointClamp),
+                ManagedDepthStencilState: nameof(DepthStencilState.None),
+                ManagedRasterizerState: nameof(RasterizerState.CullNone),
+                RestoresPreviousRenderTargets: true,
+                UsesNativeIWzCanvas: false,
+                UsesNativeIWzGr2DLayer: false,
+                IsByteIdenticalNativeComposite: false);
+        }
+
+        internal static CanvasLayerRecoveredPreparedSourceTrace BuildRecoveredPreparedSourceTrace(
+            PreparedDamageNumberCompositionInsertCommand command,
+            CanvasLayerRecoveredCanvasSettings canvasSettings)
+        {
+            Rectangle destinationBounds = ResolveCompositionInsertDestinationBounds(command);
+            Rectangle visibleBounds = ResolveCompositionInsertVisibleCanvasBounds(
+                destinationBounds,
+                canvasSettings);
+            return new CanvasLayerRecoveredPreparedSourceTrace(
+                command.SourceSetName,
+                command.SpriteName,
+                command.SourceCanvasPath,
+                command.UseLargeDigitSet,
+                command.SourceOrigin,
+                command.SourceWidth,
+                command.SourceHeight,
+                command.CanvasOffset,
+                destinationBounds,
+                visibleBounds,
+                visibleBounds != destinationBounds);
+        }
+
+        internal static Rectangle ResolveCompositionInsertDestinationBounds(
+            PreparedDamageNumberCompositionInsertCommand command)
+        {
+            return new Rectangle(
+                command.CanvasOffset.X,
+                command.CanvasOffset.Y,
+                Math.Max(0, command.SourceWidth),
+                Math.Max(0, command.SourceHeight));
+        }
+
+        internal static Rectangle ResolveCompositionInsertVisibleCanvasBounds(
+            Rectangle destinationBounds,
+            CanvasLayerRecoveredCanvasSettings canvasSettings)
+        {
+            Rectangle canvasBounds = new(
+                0,
+                0,
+                Math.Max(0, canvasSettings.Width),
+                Math.Max(0, canvasSettings.Height));
+            return Rectangle.Intersect(destinationBounds, canvasBounds);
+        }
+
+        internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()
+        {
+            return new CanvasLayerRecoveredLayerSettings(
+                CreateLayerCanvasValue: 0,
+                InitialLayerOptionValue: unchecked((int)0xC0050004),
+                LayerPriorityValue: -1,
+                FinalizeLayerOptionValue: 0);
+        }
+
+        internal static string ResolveCriticalBannerSpriteName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                CriticalBannerSpriteStringPoolId,
+                "effect",
+                appendFallbackSuffix: false);
+        }
+
+        internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(
+            int centerX,
+            int centerTop,
+            int totalWidth)
+        {
+            int width = Math.Max(0, totalWidth);
+            int height = ResolveCompositeCanvasHeight();
+            int left = centerX - width / 2;
+            int top = centerTop - DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
+            return new CompositeCanvasPlacement(left, top, width, height);
+        }
+
+        private static DamageNumberDigitSet ResolveLargeDigitSet(DamageColorType colorType, bool isCritical)
+        {
+            string setName = ResolveLargeDigitSetName(colorType, isCritical);
+            return ResolveDigitSetByName(setName);
+        }
+
+        private static DamageNumberDigitSet ResolveSmallDigitSet(DamageColorType colorType, bool isCritical)
+        {
+            string setName = ResolveSmallDigitSetName(colorType, isCritical);
+            return ResolveDigitSetByName(setName);
+        }
+
+        internal static string ResolveLargeDigitSetName(DamageColorType colorType, bool isCritical)
+        {
+            if (!IsSupportedColorType(colorType))
+            {
+                return null;
+            }
+
+            if (UsesCriticalPresentation(colorType, isCritical))
+            {
+                return "NoCri1";
+            }
+
+            return colorType switch
+            {
+                DamageColorType.Blue => "NoBlue1",
+                DamageColorType.Violet => "NoViolet1",
+                _ => "NoRed1"
+            };
+        }
+
+        internal static string ResolveSmallDigitSetName(DamageColorType colorType, bool isCritical)
+        {
+            if (!IsSupportedColorType(colorType))
+            {
+                return null;
+            }
+
+            if (UsesCriticalPresentation(colorType, isCritical))
+            {
+                return "NoCri0";
+            }
+
+            return colorType switch
+            {
+                DamageColorType.Blue => "NoBlue0",
+                DamageColorType.Violet => "NoViolet0",
+                _ => "NoRed0"
+            };
+        }
+
+        private static DamageNumberDigitSet ResolveDigitSetByName(string setName)
+        {
+            if (string.IsNullOrWhiteSpace(setName))
+            {
+                return null;
+            }
+
+            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSetByName(setName);
+            return digitSet?.IsLoaded == true
+                ? digitSet
+                : null;
+        }
+
+        private Texture2D CreateCompositeCanvasTexture(
+            PreparedDamageNumberVisual visual,
+            DamageColorType colorType,
+            bool isCritical)
+        {
+            if (_device == null || visual == null)
+                return null;
+
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(colorType, isCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(colorType, isCritical);
+            if (largeDigitSet == null || smallDigitSet == null)
+                return null;
+            DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet();
+
+            int canvasWidth = visual.CanvasWidth;
+            int canvasHeight = visual.CanvasHeight;
+
+            if (canvasWidth <= 0 || canvasHeight <= 0)
+                return null;
+
+            RenderTarget2D renderTarget = new RenderTarget2D(
+                _device,
+                canvasWidth,
+                canvasHeight,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            RenderTargetBinding[] previousRenderTargets = _device.GetRenderTargets();
+            try
+            {
+                _device.SetRenderTarget(renderTarget);
+                _device.Clear(Color.Transparent);
+
+                using (SpriteBatch compositeBatch = new SpriteBatch(_device))
+                {
+                    compositeBatch.Begin(
+                        SpriteSortMode.Deferred,
+                        BlendState.AlphaBlend,
+                        SamplerState.PointClamp,
+                        DepthStencilState.None,
+                        RasterizerState.CullNone);
+
+                    if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
+                        && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out Texture2D missTexture) == true)
+                    {
+                        compositeBatch.Draw(
+                            missTexture,
+                            new Vector2(preparedMiss.DrawOffsetX, preparedMiss.DrawOffsetY),
+                            Color.White);
+                    }
+                    else
+                    {
+                        foreach (PreparedDigitDrawInfo entry in visual.Digits)
+                        {
+                            DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                            Texture2D digitTexture = digitSet.Digits[entry.Digit];
+                            if (digitTexture == null)
+                                continue;
+
+                            compositeBatch.Draw(
+                                digitTexture,
+                                new Vector2(entry.DrawOffsetX, entry.DrawOffsetY),
+                                Color.White);
+                        }
+                    }
+
+                    compositeBatch.End();
+                }
+            }
+            finally
+            {
+                _device.SetRenderTargets(previousRenderTargets);
+            }
+
+            return renderTarget;
+        }
+
+        private bool TryRegisterPreparedCanvasLayer(WzDamageNumber dmgNumber)
+        {
+            if (_animationEffects == null
+                || dmgNumber?.PreparedVisual == null
+                || dmgNumber.LayerState == null
+                || dmgNumber.CompositeCanvasTexture == null)
+            {
+                return false;
+            }
+
+            PreparedDamageNumberLayerRegistration registration = BuildOneTimeLayerRegistration(
+                dmgNumber.PreparedVisual,
+                dmgNumber.LayerState,
+                (int)Math.Round(dmgNumber.X),
+                (int)Math.Round(dmgNumber.BaseY));
+
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            Texture2D criticalBannerTexture = registration.HasCriticalBanner
+                ? largeDigitSet?.CriticalEffectTexture
+                : null;
+
+            _animationEffects.RegisterOneTimeCanvasLayer(
+                dmgNumber.CompositeCanvasTexture,
+                dmgNumber.SpawnTime,
+                registration.PreparedRegistration,
+                criticalBannerTexture,
+                ownsCanvasTexture: true,
+                owner: AnimationCanvasLayerOwner.DamageNumber);
+
+            dmgNumber.CompositeCanvasTexture = null;
+            dmgNumber.PreparedVisual = null;
+            dmgNumber.LayerState = null;
+            _pool.Enqueue(dmgNumber);
+            return true;
+        }
+
+        private static void ReleaseCompositeCanvas(WzDamageNumber dmgNumber)
+        {
+            if (dmgNumber?.CompositeCanvasTexture == null)
+                return;
+
+            dmgNumber.CompositeCanvasTexture.Dispose();
+            dmgNumber.CompositeCanvasTexture = null;
         }
 
         /// <summary>
@@ -490,8 +1836,10 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void Clear()
         {
+            _animationEffects?.ClearDamageNumberLayers();
             foreach (var dmgNumber in _activeNumbers)
             {
+                ReleaseCompositeCanvas(dmgNumber);
                 _pool.Enqueue(dmgNumber);
             }
             _activeNumbers.Clear();
@@ -500,7 +1848,7 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>
         /// Get the count of active damage numbers.
         /// </summary>
-        public int ActiveCount => _activeNumbers.Count;
+        public int ActiveCount => _activeNumbers.Count + (_animationEffects?.DamageNumberLayerCount ?? 0);
 
         /// <summary>
         /// Dispose resources.

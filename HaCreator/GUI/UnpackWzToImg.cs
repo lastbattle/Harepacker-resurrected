@@ -415,7 +415,7 @@ namespace HaCreator.GUI
                         string dataBasePath = Path.Combine(_mapleStoryPath, "Data", "Base");
                         if (Directory.Exists(dataBasePath))
                         {
-                            var wzFiles = Directory.GetFiles(dataBasePath, "*.wz");
+                            var wzFiles = HaCreatorPaths.EnumerateFilesExcludingBackups(dataBasePath, "*.wz").ToArray();
                             baseWzPath = wzFiles.FirstOrDefault();
                         }
 
@@ -425,7 +425,10 @@ namespace HaCreator.GUI
                             string dataPath = Path.Combine(_mapleStoryPath, "Data");
                             if (Directory.Exists(dataPath))
                             {
-                                var wzFiles = Directory.GetFiles(dataPath, "*.wz", SearchOption.AllDirectories);
+                                var wzFiles = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                                    dataPath,
+                                    "*.wz",
+                                    SearchOption.AllDirectories).ToArray();
                                 baseWzPath = wzFiles.FirstOrDefault();
                             }
                         }
@@ -437,7 +440,7 @@ namespace HaCreator.GUI
                         if (!File.Exists(baseWzPath))
                         {
                             // Try to find any .wz file for detection
-                            var wzFiles = Directory.GetFiles(_mapleStoryPath, "*.wz");
+                            var wzFiles = HaCreatorPaths.EnumerateFilesExcludingBackups(_mapleStoryPath, "*.wz").ToArray();
                             baseWzPath = wzFiles.FirstOrDefault();
                         }
                     }
@@ -851,7 +854,7 @@ namespace HaCreator.GUI
                 string dataPath = Path.Combine(_mapleStoryPath, "Data");
                 if (Directory.Exists(dataPath))
                 {
-                    foreach (var dir in Directory.EnumerateDirectories(dataPath))
+                    foreach (var dir in HaCreatorPaths.EnumerateDirectoriesExcludingBackups(dataPath))
                     {
                         string dirName = Path.GetFileName(dir);
 
@@ -860,7 +863,10 @@ namespace HaCreator.GUI
                             continue;
 
                         // Get all .wz files in this category folder (including subfolders)
-                        var allWzFiles = Directory.EnumerateFiles(dir, "*.wz", SearchOption.AllDirectories).ToList();
+                        var allWzFiles = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                            dir,
+                            "*.wz",
+                            SearchOption.AllDirectories).ToList();
 
                         if (allWzFiles.Count > 0)
                         {
@@ -906,7 +912,10 @@ namespace HaCreator.GUI
                     string packsPath = Path.Combine(dataPath, "Packs");
                     if (Directory.Exists(packsPath))
                     {
-                        var allMsFiles = Directory.EnumerateFiles(packsPath, "*.ms", SearchOption.AllDirectories).ToList();
+                        var allMsFiles = HaCreatorPaths.EnumerateFilesExcludingBackups(
+                            packsPath,
+                            "*.ms",
+                            SearchOption.AllDirectories).ToList();
                         if (allMsFiles.Count > 0)
                         {
                             long totalSize = allMsFiles.Sum(f => new FileInfo(f).Length);
@@ -920,10 +929,14 @@ namespace HaCreator.GUI
             else
             {
                 // Standard: Look for .wz files in root
-                foreach (var wzFile in Directory.EnumerateFiles(_mapleStoryPath, "*.wz"))
+                foreach (var wzFile in HaCreatorPaths.EnumerateFilesExcludingBackups(_mapleStoryPath, "*.wz"))
                 {
                     string fileName = Path.GetFileName(wzFile);
                     string category = Path.GetFileNameWithoutExtension(wzFile);
+
+                    if (HaCreatorPaths.IsBackupsDirectoryName(category))
+                        continue;
+
                     long fileSize = new FileInfo(wzFile).Length;
 
                     // Skip backup files and non-standard names

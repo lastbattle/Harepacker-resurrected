@@ -21,9 +21,20 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingMapId { get; set; } = -1;
 
         /// <summary>
+        /// Target portal index for pending change (-1 = none)
+        /// </summary>
+        public int PendingPortalIndex { get; set; } = -1;
+
+        /// <summary>
         /// Target portal name for pending change
         /// </summary>
         public string PendingPortalName { get; set; } = null;
+
+        /// <summary>
+        /// Alternate target portal names for pending change when the primary handoff
+        /// comes from WZ reciprocal or map-return fallback metadata.
+        /// </summary>
+        public string[] PendingPortalNameCandidates { get; set; } = Array.Empty<string>();
 
         /// <summary>
         /// Tick count when portal interaction cooldown expires.
@@ -68,6 +79,81 @@ namespace HaCreator.MapSimulator.Managers
         /// True = player control mode, False = free camera mode
         /// </summary>
         public bool PlayerControlEnabled { get; set; } = true;
+
+        /// <summary>
+        /// True while locally inferred scripted UI or field owners hold direction mode.
+        /// </summary>
+        public bool ScriptedDirectionModeActive { get; private set; } = false;
+
+        /// <summary>
+        /// Tick count when a delayed scripted direction-mode release should occur.
+        /// int.MinValue means no delayed release is pending.
+        /// </summary>
+        public int ScriptedDirectionModeReleaseAt { get; private set; } = int.MinValue;
+
+        /// <summary>
+        /// True while the packet-owned SetDirectionMode seam is holding direction mode directly.
+        /// </summary>
+        public bool PacketDirectionModeActive { get; private set; } = false;
+
+        /// <summary>
+        /// Tick count when a delayed packet-authored direction-mode release should occur.
+        /// int.MinValue means no delayed release is pending.
+        /// </summary>
+        public int PacketDirectionModeReleaseAt { get; private set; } = int.MinValue;
+
+        /// <summary>
+        /// Combined direction-mode state visible to the rest of the simulator.
+        /// </summary>
+        public bool DirectionModeActive => ScriptedDirectionModeActive || PacketDirectionModeActive;
+
+        /// <summary>
+        /// Backward-compatible alias for the locally inferred release timer.
+        /// </summary>
+        public int DirectionModeReleaseAt => ScriptedDirectionModeReleaseAt;
+
+        /// <summary>
+        /// Mirrors the packet-authored CWvsContext stand-alone flag.
+        /// </summary>
+        public bool StandAloneModeActive { get; private set; } = false;
+
+        /// <summary>
+        /// True when local gameplay input should reach the player character.
+        /// </summary>
+        public bool IsPlayerInputEnabled => PlayerControlEnabled && !DirectionModeActive;
+
+        /// <summary>
+        /// True when later modeless owners should inherit direction-mode ownership from an
+        /// active scripted owner, packet-owned direction mode, or the packet-authored
+        /// CWvsContext stand-alone flag.
+        /// </summary>
+        public bool ShouldInheritDirectionModeOwner(
+            bool npcInteractionVisible,
+            bool trackedOwnerVisible,
+            bool scriptedOwnerActive,
+            bool weddingDialogVisible,
+            bool cakePieItemInfoVisible,
+            bool memoryGameVisible,
+            bool tournamentMatchTableVisible,
+            bool rockPaperScissorsVisible,
+            bool initialQuizVisible,
+            bool speedQuizVisible,
+            bool packetScriptDedicatedOwnerVisible)
+        {
+            return npcInteractionVisible
+                   || trackedOwnerVisible
+                   || DirectionModeActive
+                   || StandAloneModeActive
+                   || scriptedOwnerActive
+                   || weddingDialogVisible
+                   || cakePieItemInfoVisible
+                   || memoryGameVisible
+                   || tournamentMatchTableVisible
+                   || rockPaperScissorsVisible
+                   || initialQuizVisible
+                   || speedQuizVisible
+                   || packetScriptDedicatedOwnerVisible;
+        }
 
         /// <summary>
         /// Enable smooth camera scrolling
@@ -116,11 +202,13 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         /// <param name="mapId">Target map ID</param>
         /// <param name="portalName">Target portal name to spawn at</param>
-        public void RequestMapChange(int mapId, string portalName = null)
+        public void RequestMapChange(int mapId, string portalName = null, int portalIndex = -1, string[] portalNameCandidates = null)
         {
             PendingMapChange = true;
             PendingMapId = mapId;
             PendingPortalName = portalName;
+            PendingPortalIndex = portalIndex;
+            PendingPortalNameCandidates = portalNameCandidates ?? Array.Empty<string>();
         }
 
         /// <summary>
@@ -131,6 +219,8 @@ namespace HaCreator.MapSimulator.Managers
             PendingMapChange = false;
             PendingMapId = -1;
             PendingPortalName = null;
+            PendingPortalIndex = -1;
+            PendingPortalNameCandidates = Array.Empty<string>();
         }
 
         /// <summary>
@@ -166,6 +256,11 @@ namespace HaCreator.MapSimulator.Managers
 
             // Reset camera/control state
             PlayerControlEnabled = true;
+            ScriptedDirectionModeActive = false;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
+            PacketDirectionModeActive = false;
+            PacketDirectionModeReleaseAt = int.MinValue;
+            StandAloneModeActive = false;
             UseSmoothCamera = true;
 
             // Reset UI/debug state
@@ -208,6 +303,85 @@ namespace HaCreator.MapSimulator.Managers
         public void TogglePlayerControl()
         {
             PlayerControlEnabled = !PlayerControlEnabled;
+        }
+
+        /// <summary>
+        /// Enter direction mode immediately and cancel any pending delayed release.
+        /// </summary>
+        public void EnterDirectionMode()
+        {
+            ScriptedDirectionModeActive = true;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
+        }
+
+        /// <summary>
+        /// Schedule direction mode to end after a delay, mirroring the client's deferred release.
+        /// </summary>
+        public void RequestLeaveDirectionMode(int currentTickCount, int delayMs)
+        {
+            if (!ScriptedDirectionModeActive)
+            {
+                ScriptedDirectionModeReleaseAt = int.MinValue;
+                return;
+            }
+
+            ScriptedDirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
+        }
+
+        /// <summary>
+        /// Immediately clear direction mode and any pending delayed release.
+        /// </summary>
+        public void ExitDirectionModeImmediate()
+        {
+            ScriptedDirectionModeActive = false;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
+        }
+
+        /// <summary>
+        /// Apply the client-shaped packet-owned direction-mode write.
+        /// </summary>
+        public void SetPacketDirectionMode(bool enabled, int currentTickCount, int delayMs)
+        {
+            PacketDirectionModeReleaseAt = int.MinValue;
+
+            if (enabled || delayMs <= 0)
+            {
+                PacketDirectionModeActive = enabled;
+                return;
+            }
+
+            PacketDirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
+        }
+
+        /// <summary>
+        /// Apply the packet-authored CWvsContext stand-alone flag.
+        /// </summary>
+        public void SetStandAloneMode(bool enabled)
+        {
+            StandAloneModeActive = enabled;
+        }
+
+        /// <summary>
+        /// Advance delayed direction-mode release timers.
+        /// </summary>
+        public void UpdateDirectionMode(int currentTickCount)
+        {
+            if (PacketDirectionModeReleaseAt != int.MinValue
+                && unchecked(currentTickCount - PacketDirectionModeReleaseAt) >= 0)
+            {
+                PacketDirectionModeActive = false;
+                PacketDirectionModeReleaseAt = int.MinValue;
+            }
+
+            if (!ScriptedDirectionModeActive || ScriptedDirectionModeReleaseAt == int.MinValue)
+            {
+                return;
+            }
+
+            if (unchecked(currentTickCount - ScriptedDirectionModeReleaseAt) >= 0)
+            {
+                ExitDirectionModeImmediate();
+            }
         }
 
         /// <summary>

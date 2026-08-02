@@ -48,7 +48,50 @@ namespace HaCreator.MapSimulator.Entities
         Fly,
         Hit1,
         Die1,
-        Attack1
+        Attack1,
+        Attack2,
+        Attack3,
+        Attack4,
+        Attack5,
+        Attack6,
+        Attack7,
+        Attack8,
+        Attack9
+    }
+
+    public readonly record struct MobPacketMoveInterruptSnapshot(
+        float X,
+        float Y,
+        float VelocityX,
+        float VelocityY,
+        MobMoveType MoveType,
+        MobJumpState JumpState,
+        MobAction CurrentAction,
+        bool FacingRight,
+        int ReceiveTime,
+        int MoveAction);
+
+    public readonly record struct MobPacketMovePathElement(
+        float X,
+        float Y,
+        float VelocityX,
+        float VelocityY,
+        MobMoveType MoveType,
+        MobJumpState JumpState,
+        MobAction Action,
+        bool FacingRight,
+        int TimeStamp,
+        int MoveAction)
+    {
+        public int Attribute { get; init; } = -1;
+    }
+
+    public readonly record struct MobPacketMovePathTailInfo(
+        int PassiveKeyPadStateCount,
+        Microsoft.Xna.Framework.Rectangle PathBounds,
+        int ReceiveTime)
+    {
+        public IReadOnlyList<int> PassiveKeyPadStates { get; init; } = Array.Empty<int>();
     }
 
     /// <summary>
@@ -194,6 +237,8 @@ namespace HaCreator.MapSimulator.Entities
         // Position (dynamic, updates during simulation)
         public float X { get; set; }
         public float Y { get; set; }
+        public float PreviousX { get; set; }
+        public float PreviousY { get; set; }
 
         // Spawn position (for respawning and boundary calculations)
         public int SpawnX => _spawnX;
@@ -243,6 +288,8 @@ namespace HaCreator.MapSimulator.Entities
         private Random _random = new Random();
         private int _nextDirectionChangeTime = 0;
         private int _directionChangeCooldown = 0;  // Prevents rapid direction flipping
+        private readonly List<MobPacketMovePathElement> _packetMovePathBuffer = new();
+        private const int MaxBufferedPacketMovePathElements = 128;
 
         // Spawn position (for reference)
         private int _spawnX;
@@ -251,7 +298,6 @@ namespace HaCreator.MapSimulator.Entities
         // Flying mob fields
         private bool _isFlyingMob = false;
         private int _flyingYDirection = 1;  // 1 = moving down, -1 = moving up
-        private bool _flyingInitialized = false;  // One-time Y position adjustment
 
         // Jump physics fields - uses CVecCtrl constants for consistency with client
         // Official values from Map.wz/Physics.img (see CVecCtrl class)
@@ -298,6 +344,8 @@ namespace HaCreator.MapSimulator.Entities
             _yShift = yShift;
             X = x;
             Y = y;
+            PreviousX = x;
+            PreviousY = y;
             SrcY = y;
             _isFlyingMob = isFlyingMob;
             _isJumpingMob = isJumpingMob;
@@ -413,14 +461,15 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
-        /// Apply a simple knockback in a direction
+        /// Apply a simple grounded knockback in a direction.
+        /// Use the explicit velocity overload or ApplyImpact for launch effects.
         /// </summary>
         /// <param name="force">Knockback force</param>
         /// <param name="knockbackRight">True = knock right, False = knock left</param>
         public void ApplyKnockback(float force, bool knockbackRight)
         {
             float vx = knockbackRight ? force : -force;
-            float vy = -force * 0.5f; // Slight upward component
+            float vy = 0f;
             ApplyKnockback(vx, vy);
         }
 
@@ -626,6 +675,309 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
+        /// Mirrors the packet-owned CMovePath::DiscardByInterrupt landing branch used by CMob::OnMove.
+        /// The simulator does not replay remote mob move paths yet, but attack move headers still need
+        /// to clear pending steering and optionally snap airborne ground mobs back onto a foothold.
+        /// The client also refreshes CMovePath::m_elemLast from live CVecCtrl state while truncating
+        /// buffered path entries, so this seam stores an equivalent runtime snapshot.
+        /// </summary>
+        public MobPacketMoveInterruptSnapshot? LastPacketMoveInterruptSnapshot { get; private set; }
+        public int LastPacketMoveInterruptTruncatedElementCount { get; private set; }
+        public int LastPacketMovePathRebaseTime { get; private set; } = int.MinValue;
+        public int LastPacketOwnedMoveAction { get; private set; } = -1;
+        public int LastPacketOwnedMoveActionUpdateTime { get; private set; } = int.MinValue;
+        public MobPacketMovePathTailInfo? LastPacketMovePathTailInfo { get; private set; }
+        public IReadOnlyList<MobPacketMovePathElement> PacketMovePathBuffer => _packetMovePathBuffer;
+
+        internal void QueuePacketMovePathElement(MobPacketMovePathElement element)
+        {
+            _packetMovePathBuffer.Add(element);
+        }
+
+        internal void QueuePacketMovePathElements(IReadOnlyList<MobPacketMovePathElement> elements, int receiveTime)
+        {
+            if (elements == null || elements.Count == 0)
+            {
+                return;
+            }
+
+            int baseTime = Math.Max(0, receiveTime);
+            int cursorTime = _packetMovePathBuffer.Count > 0
+                ? _packetMovePathBuffer[_packetMovePathBuffer.Count - 1].TimeStamp
+                : baseTime;
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                MobPacketMovePathElement source = elements[i];
+                int candidateTime = Math.Max(baseTime + Math.Max(0, source.TimeStamp), cursorTime + 1);
+                _packetMovePathBuffer.Add(new MobPacketMovePathElement(
+                    source.X,
+                    source.Y,
+                    source.VelocityX,
+                    source.VelocityY,
+                    source.MoveType,
+                    source.JumpState,
+                    source.Action,
+                    source.FacingRight,
+                    candidateTime,
+                    source.MoveAction)
+                {
+                    Attribute = source.Attribute
+                });
+                cursorTime = candidateTime;
+            }
+
+            if (_packetMovePathBuffer.Count <= MaxBufferedPacketMovePathElements)
+            {
+                return;
+            }
+
+            int overflow = _packetMovePathBuffer.Count - MaxBufferedPacketMovePathElements;
+            _packetMovePathBuffer.RemoveRange(0, overflow);
+        }
+
+        internal bool TryApplyPacketMovePathProgression(int currentTime)
+        {
+            if (_packetMovePathBuffer.Count <= 1)
+            {
+                return false;
+            }
+
+            int sampleTime = Math.Max(0, currentTime);
+            while (_packetMovePathBuffer.Count > 1 &&
+                   sampleTime >= _packetMovePathBuffer[1].TimeStamp)
+            {
+                _packetMovePathBuffer.RemoveAt(0);
+            }
+
+            MobPacketMovePathElement sample = _packetMovePathBuffer[0];
+            if (_packetMovePathBuffer.Count > 1)
+            {
+                MobPacketMovePathElement next = _packetMovePathBuffer[1];
+                int segmentDuration = Math.Max(1, next.TimeStamp - sample.TimeStamp);
+                float t = Math.Clamp((sampleTime - sample.TimeStamp) / (float)segmentDuration, 0f, 1f);
+                sample = new MobPacketMovePathElement(
+                    Lerp(sample.X, next.X, t),
+                    Lerp(sample.Y, next.Y, t),
+                    Lerp(sample.VelocityX, next.VelocityX, t),
+                    Lerp(sample.VelocityY, next.VelocityY, t),
+                    t < 1f ? sample.MoveType : next.MoveType,
+                    t < 1f ? sample.JumpState : next.JumpState,
+                    t < 1f ? sample.Action : next.Action,
+                    t < 1f ? sample.FacingRight : next.FacingRight,
+                    sampleTime,
+                    t < 1f ? sample.MoveAction : next.MoveAction)
+                {
+                    Attribute = t < 1f ? sample.Attribute : next.Attribute
+                };
+            }
+
+            CapturePreviousPosition();
+            ApplyPacketMovePathSample(sample, sampleTime);
+            return true;
+        }
+
+        internal void ApplyPacketMovePathTailInfo(
+            int passiveKeyPadStateCount,
+            Microsoft.Xna.Framework.Rectangle pathBounds,
+            int receiveTime,
+            IReadOnlyList<int> passiveKeyPadStates = null)
+        {
+            LastPacketMovePathTailInfo = new MobPacketMovePathTailInfo(
+                Math.Max(0, passiveKeyPadStateCount),
+                pathBounds,
+                Math.Max(0, receiveTime))
+            {
+                PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<int>()
+            };
+        }
+
+        public void ApplyPacketMoveInterrupt(
+            bool notForceLandingWhenDiscard,
+            int receiveTime = 0,
+            int moveAction = -1,
+            bool? facingLeft = null)
+        {
+            if (facingLeft.HasValue && !NoFlip)
+            {
+                bool facingRight = !facingLeft.Value;
+                FlipX = facingRight;
+                MoveDirection = facingRight ? MobMoveDirection.Right : MobMoveDirection.Left;
+            }
+
+            if (moveAction >= 0)
+            {
+                CurrentAction = ResolvePacketOwnedMoveAction(moveAction, CurrentAction);
+                ApplyPacketOwnedMoveState(moveAction);
+                LastPacketOwnedMoveAction = moveAction;
+                LastPacketOwnedMoveActionUpdateTime = Math.Max(0, receiveTime);
+            }
+
+            LastPacketMoveInterruptSnapshot = new MobPacketMoveInterruptSnapshot(
+                X,
+                Y,
+                VelocityX,
+                VelocityY,
+                MoveType,
+                JumpState,
+                CurrentAction,
+                FlipX,
+                receiveTime,
+                moveAction);
+
+            RebasePacketMovePathBufferAtInterrupt(receiveTime, moveAction);
+
+            _pendingDirection = MobMoveDirection.None;
+            _framesSinceDirectionChange = 0;
+            _directionChangeCooldown = 0;
+
+            if (notForceLandingWhenDiscard || MoveType == MobMoveType.Fly)
+            {
+                return;
+            }
+
+            if (JumpState == MobJumpState.None && CurrentFoothold != null)
+            {
+                VelocityX = 0f;
+                Y = CalculateYOnFoothold(CurrentFoothold, X);
+                VelocityY = 0f;
+                CurrentAction = MobAction.Stand;
+                return;
+            }
+
+            if (_allFootholds == null)
+            {
+                return;
+            }
+
+            FootholdLine belowFoothold = FindBelow(X, Y - Math.Min(VelocityY, 0f) - 2f);
+            if (belowFoothold == null)
+            {
+                return;
+            }
+
+            Y = CalculateYOnFoothold(belowFoothold, X);
+            CurrentFoothold = belowFoothold;
+            JumpState = MobJumpState.None;
+            VelocityX = 0f;
+            VelocityY = 0f;
+            CurrentAction = MobAction.Stand;
+        }
+
+        internal static MobAction ResolvePacketOwnedMoveAction(int moveAction, MobAction fallback)
+        {
+            return moveAction switch
+            {
+                // Attack move-action lane (13-21) feeds CMob::DoAttack.
+                13 => MobAction.Attack1,
+                14 => MobAction.Attack2,
+                15 => MobAction.Attack3,
+                16 => MobAction.Attack4,
+                17 => MobAction.Attack5,
+                18 => MobAction.Attack6,
+                19 => MobAction.Attack7,
+                20 => MobAction.Attack8,
+                21 => MobAction.Attack9,
+                0 => MobAction.Stand,
+                1 => MobAction.Move,
+                2 or 3 => MobAction.Jump,
+                _ => fallback
+            };
+        }
+
+        private void RebasePacketMovePathBufferAtInterrupt(int receiveTime, int moveAction)
+        {
+            int rebaseTime = Math.Max(0, receiveTime);
+            int bufferedBefore = _packetMovePathBuffer.Count;
+            LastPacketMovePathRebaseTime = rebaseTime;
+
+            var rebasedElement = new MobPacketMovePathElement(
+                X,
+                Y,
+                VelocityX,
+                VelocityY,
+                MoveType,
+                JumpState,
+                CurrentAction,
+                FlipX,
+                rebaseTime,
+                moveAction)
+            {
+                Attribute = -1
+            };
+
+            _packetMovePathBuffer.Clear();
+            _packetMovePathBuffer.Add(rebasedElement);
+
+            // Mirrors CMovePath::DiscardByInterrupt reducing buffered elements to
+            // a fresh m_elemLast snapshot owned by the receive tick.
+            LastPacketMoveInterruptTruncatedElementCount = bufferedBefore;
+        }
+
+        private void ApplyPacketMovePathSample(MobPacketMovePathElement sample, int sampleTime)
+        {
+            X = sample.X;
+            Y = sample.Y;
+            VelocityX = sample.VelocityX;
+            VelocityY = sample.VelocityY;
+
+            if (!NoFlip)
+            {
+                FlipX = sample.FacingRight;
+                MoveDirection = sample.FacingRight
+                    ? MobMoveDirection.Right
+                    : MobMoveDirection.Left;
+            }
+
+            if (sample.MoveAction >= 0)
+            {
+                CurrentAction = ResolvePacketOwnedMoveAction(sample.MoveAction, sample.Action);
+                ApplyPacketOwnedMoveState(sample.MoveAction);
+                LastPacketOwnedMoveAction = sample.MoveAction;
+                LastPacketOwnedMoveActionUpdateTime = sampleTime;
+                return;
+            }
+
+            MoveType = sample.MoveType;
+            JumpState = sample.JumpState;
+            CurrentAction = sample.Action;
+        }
+
+        private static float Lerp(float start, float end, float t)
+        {
+            return start + ((end - start) * t);
+        }
+
+        private void CapturePreviousPosition()
+        {
+            PreviousX = X;
+            PreviousY = Y;
+        }
+
+        private void ApplyPacketOwnedMoveState(int moveAction)
+        {
+            switch (moveAction)
+            {
+                case 0:
+                    MoveType = MobMoveType.Stand;
+                    JumpState = MobJumpState.None;
+                    break;
+                case 1:
+                    MoveType = MobMoveType.Move;
+                    JumpState = MobJumpState.None;
+                    break;
+                case 2:
+                case 3:
+                    MoveType = MobMoveType.Jump;
+                    if (JumpState == MobJumpState.None)
+                    {
+                        JumpState = VelocityY >= 0f ? MobJumpState.Falling : MobJumpState.Jumping;
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
         /// Check if movement is stopped
         /// </summary>
         public bool IsStopped => _isStopped;
@@ -662,6 +1014,12 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         private void UpdateKnockbackPhysics(int deltaTimeMs, float speedFactor)
         {
+            if (CurrentFoothold != null && JumpState == MobJumpState.None && Math.Abs(VelocityY) <= 0.5f)
+            {
+                UpdateGroundedKnockbackPhysics(speedFactor);
+                return;
+            }
+
             // Apply gravity
             VelocityY += GravityAcc * speedFactor;
             if (VelocityY > MaxFallSpeed)
@@ -715,13 +1073,44 @@ namespace HaCreator.MapSimulator.Entities
             // Reset to spawn if fell off map
             if (MapBottom != int.MaxValue && Y > MapBottom + 100)
             {
-                X = _spawnX;
-                Y = _spawnY;
-                JumpState = MobJumpState.None;
+                ResetToSpawnAfterPhysics();
+            }
+        }
+
+        private void UpdateGroundedKnockbackPhysics(float speedFactor)
+        {
+            VelocityX *= (float)Math.Pow(CVecCtrl.GroundFriction, speedFactor);
+
+            int effectiveLeft = RX0;
+            int effectiveRight = RX1;
+            if (MapLeft != int.MinValue)
+                effectiveLeft = Math.Max(effectiveLeft, MapLeft + 30);
+            if (MapRight != int.MaxValue)
+                effectiveRight = Math.Min(effectiveRight, MapRight - 30);
+
+            int footholdLeft = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
+            int footholdRight = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
+            effectiveLeft = Math.Max(effectiveLeft, footholdLeft);
+            effectiveRight = Math.Min(effectiveRight, footholdRight);
+
+            X += VelocityX * speedFactor;
+            if (X < effectiveLeft)
+            {
+                X = effectiveLeft;
                 VelocityX = 0;
-                VelocityY = 0;
-                _knockbackRecoveryTime = 0;
-                FindCurrentFoothold(_allFootholds);
+            }
+            else if (X > effectiveRight)
+            {
+                X = effectiveRight;
+                VelocityX = 0;
+            }
+
+            Y = CalculateYOnFoothold(CurrentFoothold, X);
+            VelocityY = 0;
+
+            if (Math.Abs(VelocityX) < 0.05f)
+            {
+                VelocityX = 0;
             }
         }
 
@@ -734,6 +1123,8 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="deltaTimeMs">Time elapsed since last update in milliseconds</param>
         public void UpdateMovement(int deltaTimeMs)
         {
+            CapturePreviousPosition();
+
             // Update knockback recovery timer
             if (_knockbackRecoveryTime > 0)
             {
@@ -1175,9 +1566,9 @@ namespace HaCreator.MapSimulator.Entities
         /// <summary>
         /// Trigger a jump
         /// </summary>
-        private void TriggerJump()
+        private void TriggerJump(bool ignoreCooldown = false)
         {
-            if (JumpState != MobJumpState.None || _jumpCooldown > 0)
+            if (JumpState != MobJumpState.None || (!ignoreCooldown && _jumpCooldown > 0))
                 return;
 
             // Don't jump if too close to map boundaries (would jump off map)
@@ -1204,6 +1595,30 @@ namespace HaCreator.MapSimulator.Entities
             VelocityY = -JumpHeight;  // Negative = upward
             _jumpCooldown = _random.Next(1500, 3500);
             CurrentAction = MobAction.Jump;
+        }
+
+        public bool TryTriggerJump()
+        {
+            if (MoveType != MobMoveType.Jump)
+            {
+                return false;
+            }
+
+            MobJumpState previousState = JumpState;
+            TriggerJump();
+            return JumpState != previousState;
+        }
+
+        public bool TryTriggerAttackJump()
+        {
+            if (MoveType == MobMoveType.Stand || MoveType == MobMoveType.Fly)
+            {
+                return false;
+            }
+
+            MobJumpState previousState = JumpState;
+            TriggerJump(ignoreCooldown: true);
+            return JumpState != previousState;
         }
 
         /// <summary>
@@ -1250,10 +1665,25 @@ namespace HaCreator.MapSimulator.Entities
 
             if (fellTooFar || ((atLeftEdge || atRightEdge) && belowFH == null && Y > _spawnY + 50))
             {
-                X = _spawnX;
-                Y = _spawnY;
-                JumpState = MobJumpState.None;
-                VelocityY = 0;
+                ResetToSpawnAfterPhysics();
+            }
+        }
+
+        private void ResetToSpawnAfterPhysics()
+        {
+            X = _spawnX;
+            Y = _spawnY;
+            SrcY = _spawnY;
+            JumpState = MobJumpState.None;
+            CurrentFoothold = null;
+            VelocityX = 0;
+            VelocityY = 0;
+            _knockbackRecoveryTime = 0;
+            PlatformLeft = RX0;
+            PlatformRight = RX1;
+
+            if (MoveType != MobMoveType.Fly)
+            {
                 FindCurrentFoothold(_allFootholds);
             }
         }
@@ -1867,6 +2297,17 @@ namespace HaCreator.MapSimulator.Entities
         public void FindCurrentFoothold(IEnumerable<FootholdLine> footholds)
         {
             _allFootholds = footholds;
+
+            if (MoveType == MobMoveType.Fly || footholds == null)
+            {
+                CurrentFoothold = null;
+                PlatformLeft = RX0;
+                PlatformRight = RX1;
+                X = _spawnX;
+                Y = _spawnY;
+                SrcY = _spawnY;
+                return;
+            }
 
             // Calculate the expected foothold Y position
             // In WZ data: y = foothold Y, cy = mob display Y, yShift = cy - y

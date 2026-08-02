@@ -1,0 +1,352 @@
+using System;
+using System.Linq;
+using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Combat;
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private readonly MobAttackPacketInboxManager _mobAttackPacketInbox = new();
+
+        private void RegisterMobAttackPacketChatCommand()
+        {
+            _chat.CommandHandler.RegisterCommand(
+                "mobattackpacket",
+                "Inspect or drive packet-owned mob attack override traffic",
+                "/mobattackpacket [status|packet <move|287|0x11F> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|inbox [status|start [port]|stop]]",
+                HandleMobAttackPacketCommand);
+        }
+
+        private void EnsureMobAttackPacketInboxState(bool shouldRun)
+        {
+        }
+
+        private void DrainMobAttackPacketInbox()
+        {
+            while (_mobAttackPacketInbox.TryDequeue(out MobAttackPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyMobAttackPacket(message.PacketType, message.Payload, currTickCount, out string detail);
+                _mobAttackPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (string.IsNullOrWhiteSpace(detail))
+                {
+                    continue;
+                }
+
+                if (applied)
+                {
+                    _chat?.AddSystemMessage(detail, currTickCount);
+                }
+                else
+                {
+                    _chat?.AddErrorMessage(detail, currTickCount);
+                }
+            }
+        }
+
+        private string DescribeMobAttackPacketInboxStatus()
+        {
+            return "Mob attack packet inbox adapter-only; listener fallback retired.";
+        }
+
+        private bool TryApplyMobAttackPacket(int packetType, byte[] payload, int currentTime, out string message)
+        {
+            if (!MobMoveAttackPacketCodec.TryDecode(packetType, payload, out var decodedPacket, out string decodeError))
+            {
+                message = decodeError;
+                return false;
+            }
+
+            if (decodedPacket.IsSkillMoveAction)
+            {
+                return TryApplyMobSkillMovePacket(packetType, decodedPacket, currentTime, out message);
+            }
+
+            if (decodedPacket.AttackId <= 0)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: move action {decodedPacket.MoveAction} was not an attack branch.";
+                return false;
+            }
+
+            if ((_mobPool?.GetMob(decodedPacket.MobId))?.AI == null)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: mob was not active in the current pool.";
+                return false;
+            }
+
+            var liveMob = _mobPool.GetMob(decodedPacket.MobId);
+            MobAttackEntry packetAttack = liveMob?.AI?.GetAttackById(decodedPacket.AttackId);
+            liveMob?.MovementInfo?.ApplyPacketMoveInterrupt(
+                decodedPacket.NotForceLandingWhenDiscard,
+                currentTime,
+                decodedPacket.MoveAction,
+                decodedPacket.FacingLeft);
+            if (decodedPacket.MovePathElements?.Count > 0)
+            {
+                liveMob?.MovementInfo?.QueuePacketMovePathElements(decodedPacket.MovePathElements, currentTime);
+            }
+            if (decodedPacket.MovePathTailInfo is MobMoveAttackPacketCodec.DecodedMovePathTailInfo movePathTailInfo)
+            {
+                liveMob?.MovementInfo?.ApplyPacketMovePathTailInfo(
+                    movePathTailInfo.PassiveKeyPadStateCount,
+                    movePathTailInfo.PathBounds,
+                    currentTime,
+                    movePathTailInfo.PassiveKeyPadStates);
+            }
+
+            if (!decodedPacket.NextAttackPossible)
+            {
+                _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
+                message = $"Cleared packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because NextAttackPossible=0.";
+                return true;
+            }
+
+            if (!MobMoveAttackPacketCodec.ShouldQueueSimulatorAttackOverrides(decodedPacket))
+            {
+                _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
+                message = $"Ignored packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed CMob::DoAttack.";
+                return true;
+            }
+
+            bool sourceFacesRight = !decodedPacket.FacingLeft;
+            bool hasMultiTargetOverrides = decodedPacket.MultiTargetForBall?.Count > 0;
+            bool hasAreaDelayOverrides = decodedPacket.RandTimeForAreaAttack?.Count > 0;
+            ResolvePacketOwnedMobAttackTargetChannels(
+                packetAttack,
+                decodedPacket.TargetInfoRaw,
+                decodedPacket.LockedTargetInfo,
+                out MobTargetInfo lockedTargetOverride,
+                out int areaTargetMask);
+            bool hasAreaTargetMask = areaTargetMask != 0;
+            bool hasLockedTargetOverride = lockedTargetOverride?.IsValid == true;
+            if (!hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasLockedTargetOverride && !hasAreaTargetMask)
+            {
+                _mobAttackSystem.SetNextAttackPacketOverrides(
+                    decodedPacket.MobId,
+                    decodedPacket.AttackId,
+                    currentTime,
+                    sourceFacesRight: sourceFacesRight);
+                message = $"Queued packet facing override for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with no locked target, multiball lanes, or area delays.";
+                return true;
+            }
+
+            _mobAttackSystem.SetNextAttackPacketOverrides(
+                decodedPacket.MobId,
+                decodedPacket.AttackId,
+                currentTime,
+                lockedTargetOverride,
+                decodedPacket.MultiTargetForBall,
+                decodedPacket.RandTimeForAreaAttack,
+                sourceFacesRight,
+                areaTargetMask: areaTargetMask);
+
+            string multiTargetSummary = hasMultiTargetOverrides
+                ? $"{decodedPacket.MultiTargetForBall.Count} multiball lane point(s)"
+                : "no multiball lane points";
+            string randDelaySummary = hasAreaDelayOverrides
+                ? $"{decodedPacket.RandTimeForAreaAttack.Count} area-delay value(s)"
+                : "no area-delay values";
+            string lockedTargetSummary = hasLockedTargetOverride
+                ? $"locked target {lockedTargetOverride.TargetType}:{lockedTargetOverride.TargetId}"
+                : "no locked target";
+            string areaMaskSummary = hasAreaTargetMask
+                ? $"area target mask 0x{decodedPacket.TargetInfoRaw:X}"
+                : "no area target mask";
+            string facingSummary = sourceFacesRight ? "facing right" : "facing left";
+            message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, {randDelaySummary}, {areaMaskSummary}, and {facingSummary}.";
+            return true;
+        }
+
+        private bool TryApplyMobSkillMovePacket(
+            int packetType,
+            MobMoveAttackPacketCodec.DecodedMoveAttackPacket decodedPacket,
+            int currentTime,
+            out string message)
+        {
+            if (decodedPacket == null)
+            {
+                message = "Mob skill move packet was not decoded.";
+                return false;
+            }
+
+            if (decodedPacket.SkillId <= 0 || decodedPacket.SkillLevel <= 0)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: skill move action {decodedPacket.MoveAction} did not carry a valid skill id/level.";
+                return false;
+            }
+
+            var liveMob = _mobPool?.GetMob(decodedPacket.MobId);
+            if (liveMob?.AI == null)
+            {
+                message = $"Ignored {MobAttackPacketInboxManager.DescribePacketType(packetType)} for mob {decodedPacket.MobId}: mob was not active in the current pool.";
+                return false;
+            }
+
+            liveMob.MovementInfo?.ApplyPacketMoveInterrupt(
+                decodedPacket.NotForceLandingWhenDiscard,
+                currentTime,
+                decodedPacket.MoveAction,
+                decodedPacket.FacingLeft);
+            if (decodedPacket.MovePathElements?.Count > 0)
+            {
+                liveMob.MovementInfo?.QueuePacketMovePathElements(decodedPacket.MovePathElements, currentTime);
+            }
+            if (decodedPacket.MovePathTailInfo is MobMoveAttackPacketCodec.DecodedMovePathTailInfo movePathTailInfo)
+            {
+                liveMob.MovementInfo?.ApplyPacketMovePathTailInfo(
+                    movePathTailInfo.PassiveKeyPadStateCount,
+                    movePathTailInfo.PathBounds,
+                    currentTime,
+                    movePathTailInfo.PassiveKeyPadStates);
+            }
+
+            if (ShouldReplayPacketOwnedMobSkillPresentationOnlyForTests(decodedPacket))
+            {
+                bool playedPresentation = TryApplyPacketOwnedMobSkillPresentationOnly(
+                    liveMob,
+                    decodedPacket.SkillId,
+                    decodedPacket.SkillLevel,
+                    currentTime);
+                string presentationSummary = playedPresentation
+                    ? "replayed WZ-authored effect-only presentation"
+                    : "found no WZ-authored effect-only presentation to replay";
+                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed the local action transition; {presentationSummary}.";
+                return true;
+            }
+
+            if (!liveMob.AI.TryUseSkill(decodedPacket.SkillId, decodedPacket.SkillLevel, currentTime))
+            {
+                message = $"Ignored packet mob-skill start for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because the existing local skill gates rejected it.";
+                return false;
+            }
+
+            message = $"Started packet mob-skill action for mob {decodedPacket.MobId} skill {decodedPacket.SkillId}/{decodedPacket.SkillLevel} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} through the local skill gates.";
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedMobSkillPresentationOnly(MobItem liveMob, int skillId, int skillLevel, int currentTime)
+        {
+            if (liveMob == null || skillId <= 0 || skillLevel <= 0)
+            {
+                return false;
+            }
+
+            MobSkillEntry authoredSkill = liveMob.AI?.GetSkillEntry(skillId, skillLevel);
+            int presentationTime = ResolvePacketOwnedMobSkillPresentationStartTimeForTests(currentTime, authoredSkill);
+
+            return ApplyMobSkillVisualEffect(
+                liveMob,
+                authoredSkill ?? new MobSkillEntry
+                {
+                    SkillId = skillId,
+                    Level = skillLevel
+                },
+                presentationTime,
+                includeTileArea: false);
+        }
+
+        internal static bool ShouldReplayPacketOwnedMobSkillPresentationOnlyForTests(
+            MobMoveAttackPacketCodec.DecodedMoveAttackPacket decodedPacket)
+        {
+            return decodedPacket?.IsSkillMoveAction == true
+                && decodedPacket.NotChangeAction
+                && decodedPacket.SkillId > 0
+                && decodedPacket.SkillLevel > 0;
+        }
+
+        internal static int ResolvePacketOwnedMobSkillPresentationStartTimeForTests(int currentTime, MobSkillEntry skill)
+        {
+            int delay = 0;
+            if (skill != null)
+            {
+                delay = skill.EffectAfter > 0
+                    ? skill.EffectAfter
+                    : Math.Max(0, skill.SkillAfter);
+            }
+
+            return unchecked(currentTime + delay);
+        }
+
+        internal static void ResolvePacketOwnedMobAttackTargetChannels(
+            MobAttackEntry attack,
+            int targetInfoRaw,
+            MobMoveAttackPacketCodec.DecodedLockedTargetInfo? lockedTargetInfo,
+            out MobTargetInfo lockedTargetOverride,
+            out int areaTargetMask)
+        {
+            if (MobAttackSystem.ShouldUsePacketAreaTargetMask(attack, targetInfoRaw))
+            {
+                lockedTargetOverride = null;
+                areaTargetMask = targetInfoRaw;
+                return;
+            }
+
+            lockedTargetOverride = MobMoveAttackPacketCodec.CreateLockedTargetOverride(lockedTargetInfo);
+            areaTargetMask = 0;
+        }
+
+        private ChatCommandHandler.CommandResult HandleMobAttackPacketCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeMobAttackPacketInboxStatus()} {_mobAttackPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Info($"{DescribeMobAttackPacketInboxStatus()} {_mobAttackPacketInbox.LastStatus}");
+                }
+
+                if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Info("Mob attack packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
+                }
+
+                if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Info("Mob attack packet inbox loopback listener is already retired.");
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket inbox [status|start|stop]");
+            }
+
+            bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
+            if (!rawHex && !string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket [status|packet <move|287|0x11F> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|inbox [status|start [port]|stop]]");
+            }
+
+            if (args.Length < 2 || !MobAttackPacketInboxManager.TryParsePacketType(args[1], out int packetType))
+            {
+                return ChatCommandHandler.CommandResult.Error("Mob attack packet type must be move, 287, or 0x11F.");
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (rawHex)
+            {
+                if (args.Length < 3 || !TryDecodeHexBytes(string.Concat(args.Skip(2)), out payload))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket packetraw <type> <hex>");
+                }
+            }
+            else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
+            {
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Payload must use payloadhex=.. or payloadb64=..");
+            }
+
+            return TryApplyMobAttackPacket(packetType, payload, currTickCount, out string result)
+                ? ChatCommandHandler.CommandResult.Ok(result)
+                : ChatCommandHandler.CommandResult.Error(result);
+        }
+    }
+}

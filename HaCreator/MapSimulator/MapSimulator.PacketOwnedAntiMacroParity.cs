@@ -1,0 +1,2040 @@
+using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using HaSharedLibrary.Util;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using SD = System.Drawing;
+using SDG = System.Drawing.Graphics;
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private const int PacketOwnedAntiMacroPacketType = 1011;
+        private const int PacketOwnedAntiMacroChallengeMode = 6;
+        private const int PacketOwnedAntiMacroDestroyMode = 7;
+        private const int PacketOwnedAntiMacroResultMode = 9;
+        private const int PacketOwnedAntiMacroScreenshotReportMode = 4;
+        private const int PacketOwnedAntiMacroUserReportMode = 5;
+        private const int PacketOwnedAntiMacroScreenshotMode = 8;
+        private const int PacketOwnedAntiMacroChatReportMode = 10;
+        private const int PacketOwnedAntiMacroNoticeMode = 11;
+        private const int PacketOwnedAntiMacroAnswerSubmitOpcode = 117;
+        private const int PacketOwnedAntiMacroDefaultDurationMs = 60000;
+        private static readonly Point PacketOwnedAntiMacroBackground2Offset = new(3, 7);
+        private static readonly Point PacketOwnedAntiMacroBackground3Offset = new(5, 23);
+        private const string PacketOwnedAntiMacroPopupCanvasPath = "Macro/popup";
+        private const string PacketOwnedAntiMacroPopupOkButtonPath = "Macro/btOK";
+        private const string PacketOwnedAntiMacroPopupCancelButtonPath = "Macro/btCancle";
+        private const string PacketOwnedAntiMacroAdminCanvas0Path = "Macro/admin/0";
+        private const string PacketOwnedAntiMacroAdminCanvas1Path = "Macro/admin/1";
+        private const string PacketOwnedAntiMacroAdminCanvas2Path = "Macro/admin/2";
+        private const string PacketOwnedAntiMacroNormalStepPath = "step1";
+        private const string PacketOwnedAntiMacroAdminStepPath = "step1_admin";
+
+        private string _lastPacketOwnedAntiMacroSummary = "Packet-owned anti-macro idle.";
+        private string _lastPacketOwnedAntiMacroNotice = string.Empty;
+        private string _lastPacketOwnedAntiMacroScreenshotPath = string.Empty;
+        private string _lastPacketOwnedAntiMacroScreenshotBaseFolder = string.Empty;
+        private int _lastPacketOwnedAntiMacroMode = -1;
+        private int _lastPacketOwnedAntiMacroType = -1;
+        private int _lastPacketOwnedAntiMacroNoticeStringPoolId = -1;
+        private int _lastPacketOwnedAntiMacroChatStringPoolId = -1;
+        private int _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+        private int _packetOwnedAntiMacroCurrentRemainingMs;
+        private string _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+        private bool _packetOwnedAntiMacroComboHeld;
+        private bool _packetOwnedAntiMacroAwaitingResult;
+        private bool _lastPacketOwnedAntiMacroAuthoritativeRoundTrip;
+        private string _lastPacketOwnedAntiMacroResultSource = string.Empty;
+        private string _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+        private int _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
+        private int _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+        private int _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+        private PacketOwnedAntiMacroSubmitTransportPath _lastPacketOwnedAntiMacroSubmitTransportPath;
+        private byte[] _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+        private int _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+        private int _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
+        private string _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+        private int _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+        private int _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+
+        private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
+        private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
+        internal readonly record struct PacketOwnedAntiMacroNoticeMapping(int StringPoolId, string AvatarCanvasPath);
+        internal readonly record struct PacketOwnedAntiMacroChatMapping(int StringPoolId, bool SaveScreenshot);
+        internal enum PacketOwnedAntiMacroSubmitTransportPath
+        {
+            None = 0,
+            SimulatorOwned,
+            OfficialSessionBridge,
+            PacketOutbox,
+            DeferredOfficialSessionBridge,
+            DeferredPacketOutbox
+        }
+
+        internal static bool IsPacketOwnedAntiMacroChallengeLaunchMode(int mode)
+        {
+            return mode == PacketOwnedAntiMacroChallengeMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroCloseResultMode(int mode)
+        {
+            // `CWvsContext::OnAntiMacroResult` tears down challenge ownership
+            // and combo hold only on 7/9 before routing notice text.
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroSubmitTerminalMode(int mode)
+        {
+            // Mode 11 still belongs to the terminal result family for submit
+            // completion, but it is notice-only in `OnAntiMacroResult`.
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode
+                or PacketOwnedAntiMacroNoticeMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroSubmitResponseMode(int mode)
+        {
+            // `SetRet` waits for the packet-owned server response. Most accepted
+            // responses are terminal 7/9/11 branches, but mode 6 can also be the
+            // authoritative server answer when the server relaunches the challenge.
+            return IsPacketOwnedAntiMacroChallengeLaunchMode(mode)
+                || IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
+        internal static bool ShouldReleasePacketOwnedAntiMacroComboOnTerminalResult(
+            int mode,
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip)
+        {
+            // `CUIAntiMacro::SetRet` and `CUIAdminAntiMacro::SetRet` close the owner
+            // locally and keep the combo hold while the result is outstanding. Once
+            // the packet-owned terminal result is accepted, release that held input
+            // even for the mode 11 notice branch that does not enter the 7/9 teardown.
+            return wasAwaitingResult
+                && authoritativeRoundTrip
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
+        internal static bool ShouldClearPacketOwnedAntiMacroSubmitSnapshotOnTerminalResult(
+            int mode,
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip)
+        {
+            // Terminal server ownership has resolved the SetRet-shaped submit. Modes
+            // 7/9 clear through the teardown branch; mode 11 reaches the notice-only
+            // branch and needs the same submit snapshot cleanup there.
+            return wasAwaitingResult
+                && authoritativeRoundTrip
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
+        internal static bool ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(int mode)
+        {
+            // `CWvsContext::OnAntiMacroResult` zeroes m_tRemainAntiMacroQuestion only
+            // on the close/result teardown family (modes 7 and 9).
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroUserBranchMode(int mode)
+        {
+            return mode is PacketOwnedAntiMacroScreenshotReportMode
+                or PacketOwnedAntiMacroUserReportMode
+                or PacketOwnedAntiMacroScreenshotMode
+                or PacketOwnedAntiMacroChatReportMode;
+        }
+
+        internal static bool TryPreparePacketOwnedAntiMacroSubmittedAnswer(string answer, out string submittedAnswer)
+        {
+            if (string.IsNullOrWhiteSpace(answer))
+            {
+                submittedAnswer = string.Empty;
+                return false;
+            }
+
+            // `CUIAntiMacro::SetRet` trims only to reject all-whitespace submissions,
+            // then re-reads the original edit text for opcode 117.
+            submittedAnswer = answer;
+            return true;
+        }
+
+        internal static string ResolvePacketOwnedAntiMacroUserBranchName(string userName)
+        {
+            // `CWvsContext::OnAntiMacroResult` forwards the decoded ZXString directly to
+            // chat formatting and screenshot naming, so preserve whitespace and empty values.
+            return userName ?? string.Empty;
+        }
+
+        internal static bool TryDecodePacketOwnedAntiMacroSubmittedAnswerPayload(
+            IReadOnlyList<byte> payload,
+            out string submittedAnswer)
+        {
+            submittedAnswer = string.Empty;
+            if (payload == null || payload.Count < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                byte[] bytes = payload as byte[] ?? payload.ToArray();
+                using MemoryStream stream = new(bytes, writable: false);
+                using BinaryReader reader = new(stream);
+                submittedAnswer = ReadPacketOwnedMapleString(reader) ?? string.Empty;
+                return true;
+            }
+            catch
+            {
+                submittedAnswer = string.Empty;
+                return false;
+            }
+        }
+
+        private void RegisterPacketOwnedAntiMacroWindows()
+        {
+            if (uiWindowManager == null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            IntPtr simulatorWindowHandle = Window?.Handle ?? IntPtr.Zero;
+            WzSubProperty macroProperty = (Program.FindImage("UI", "UIWindow2.img")?["Macro"] as WzSubProperty);
+            WzCanvasProperty popupCanvas = ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroPopupCanvasPath);
+            Texture2D popupTexture = LoadUiCanvasTexture(popupCanvas);
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
+            {
+                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice);
+                window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
+                window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
+                window.EditFocusGained += HandlePacketOwnedAntiMacroEditFocusGained;
+                window.ClientForwardedFunctionKeyStateChanged += HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged;
+                uiWindowManager.RegisterCustomWindow(window);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) == null)
+            {
+                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice);
+                window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
+                window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
+                window.EditFocusGained += HandlePacketOwnedAntiMacroEditFocusGained;
+                window.ClientForwardedFunctionKeyStateChanged += HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged;
+                uiWindowManager.RegisterCustomWindow(window);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) == null)
+            {
+                AntiMacroNoticeWindow window = new(
+                    MapSimulatorWindowNames.AntiMacroNotice,
+                    popupTexture)
+                {
+                    Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(popupTexture)
+                };
+                window.CloseRequested += HandlePacketOwnedAntiMacroNoticeClosed;
+                uiWindowManager.RegisterCustomWindow(window);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
+            {
+                antiMacroWindow.TryAttachNativeEditHost(simulatorWindowHandle);
+                ApplyPacketOwnedAntiMacroOwnerVisuals(antiMacroWindow, macroProperty);
+                if (_fontChat != null)
+                {
+                    antiMacroWindow.SetFont(_fontChat);
+                }
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
+            {
+                adminWindow.TryAttachNativeEditHost(simulatorWindowHandle);
+                ApplyPacketOwnedAntiMacroOwnerVisuals(adminWindow, macroProperty);
+                if (_fontChat != null)
+                {
+                    adminWindow.SetFont(_fontChat);
+                }
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(popupTexture);
+                if (_fontChat != null)
+                {
+                    noticeWindow.SetFont(_fontChat);
+                }
+
+                ConfigurePacketOwnedAntiMacroNoticeVisuals(noticeWindow, PacketOwnedAntiMacroAdminCanvas0Path);
+            }
+        }
+
+        private void HandlePacketOwnedAntiMacroEditFocusGained()
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(Environment.TickCount);
+        }
+
+        private void HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged(int functionKeyIndex, bool keyDown)
+        {
+            HandleSkillMacroClientForwardedFunctionKeyStateChanged(functionKeyIndex, keyDown);
+        }
+
+        private void RefreshPacketOwnedAntiMacroWindowPositions()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
+            {
+                antiMacroWindow.Position = ResolvePacketOwnedAntiMacroWindowPosition(antiMacroWindow);
+                antiMacroWindow.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
+            {
+                adminWindow.Position = ResolvePacketOwnedAntiMacroWindowPosition(adminWindow);
+                adminWindow.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(noticeWindow.FrameSize);
+            }
+        }
+
+        private void ApplyPacketOwnedAntiMacroOwnerVisuals(AntiMacroChallengeWindow window, WzSubProperty macroProperty)
+        {
+            if (window == null || macroProperty == null)
+            {
+                return;
+            }
+
+            string stepPath = window.IsAdminVariant
+                ? PacketOwnedAntiMacroAdminStepPath
+                : PacketOwnedAntiMacroNormalStepPath;
+            WzSubProperty stepProperty = macroProperty[stepPath] as WzSubProperty;
+            if (stepProperty == null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = ComposePacketOwnedAntiMacroFrameTexture(stepProperty);
+            UIObject submitButton = CreatePacketOwnedAntiMacroButton(stepProperty["btOK"] as WzSubProperty);
+            (Texture2D[] digitTextures, Point[] digitOrigins, Texture2D commaTexture, Point commaOrigin) = LoadPacketOwnedAntiMacroDigits(macroProperty["num1"] as WzSubProperty);
+
+            window.ConfigureVisualAssets(
+                frameTexture,
+                digitTextures,
+                digitOrigins,
+                commaTexture,
+                commaOrigin,
+                submitButton);
+            window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
+        }
+
+        private Point ResolvePacketOwnedAntiMacroWindowPosition(AntiMacroChallengeWindow window)
+        {
+            Point frameSize = window?.ActiveFrameSize ?? Point.Zero;
+            int width = frameSize.X > 0 ? frameSize.X : 265;
+            int height = frameSize.Y > 0 ? frameSize.Y : 250;
+            return new Point(
+                Math.Max(24, (_renderParams.RenderWidth / 2) - (width / 2)),
+                Math.Max(24, (_renderParams.RenderHeight / 2) - (height / 2)));
+        }
+
+        private Point ResolvePacketOwnedAntiMacroNoticeWindowPosition(Texture2D frameTexture)
+        {
+            Point frameSize = frameTexture == null
+                ? new Point(260, 131)
+                : new Point(frameTexture.Width, frameTexture.Height);
+            return ResolvePacketOwnedAntiMacroNoticeWindowPosition(frameSize);
+        }
+
+        private Point ResolvePacketOwnedAntiMacroNoticeWindowPosition(Point frameSize)
+        {
+            int width = frameSize.X > 0 ? frameSize.X : 260;
+            int height = frameSize.Y > 0 ? frameSize.Y : 131;
+            return new Point(
+                Math.Max(24, (_renderParams.RenderWidth / 2) - (width / 2)),
+                Math.Max(24, (_renderParams.RenderHeight / 2) - (height / 2)));
+        }
+
+        private void ConfigurePacketOwnedAntiMacroNoticeVisuals(AntiMacroNoticeWindow noticeWindow, string avatarCanvasPath)
+        {
+            if (noticeWindow == null)
+            {
+                return;
+            }
+
+            WzCanvasProperty avatarCanvas = ResolvePacketOwnedAntiMacroCanvas(avatarCanvasPath);
+            noticeWindow.ConfigureVisuals(
+                LoadUiCanvasTexture(avatarCanvas),
+                ResolvePacketOwnedAntiMacroCanvasOrigin(avatarCanvas),
+                CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
+                CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
+        }
+
+        private Texture2D ComposePacketOwnedAntiMacroFrameTexture(WzSubProperty stepProperty)
+        {
+            if (GraphicsDevice == null || stepProperty == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty outerCanvas = stepProperty["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty middleCanvas = stepProperty["backgrnd2"] as WzCanvasProperty;
+            WzCanvasProperty innerCanvas = stepProperty["backgrnd3"] as WzCanvasProperty;
+
+            if (outerCanvas == null || middleCanvas == null || innerCanvas == null)
+            {
+                return null;
+            }
+
+            using SD.Bitmap outerBitmap = outerCanvas.GetLinkedWzCanvasBitmap();
+            using SD.Bitmap middleBitmap = middleCanvas.GetLinkedWzCanvasBitmap();
+            using SD.Bitmap innerBitmap = innerCanvas.GetLinkedWzCanvasBitmap();
+            if (outerBitmap == null || middleBitmap == null || innerBitmap == null)
+            {
+                return null;
+            }
+
+            using SDG graphics = SDG.FromImage(outerBitmap);
+            graphics.DrawImageUnscaled(middleBitmap, PacketOwnedAntiMacroBackground2Offset.X, PacketOwnedAntiMacroBackground2Offset.Y);
+            graphics.DrawImageUnscaled(innerBitmap, PacketOwnedAntiMacroBackground3Offset.X, PacketOwnedAntiMacroBackground3Offset.Y);
+            return outerBitmap.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private UIObject CreatePacketOwnedAntiMacroButton(WzSubProperty buttonProperty)
+        {
+            if (buttonProperty == null || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new UIObject(buttonProperty, null, null, flip: false, Point.Zero, GraphicsDevice);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private (Texture2D[] DigitTextures, Point[] DigitOrigins, Texture2D CommaTexture, Point CommaOrigin) LoadPacketOwnedAntiMacroDigits(WzSubProperty digitProperty)
+        {
+            Texture2D[] digitTextures = new Texture2D[10];
+            Point[] digitOrigins = new Point[10];
+            Texture2D commaTexture = null;
+            Point commaOrigin = Point.Zero;
+
+            if (digitProperty == null)
+            {
+                return (digitTextures, digitOrigins, commaTexture, commaOrigin);
+            }
+
+            for (int i = 0; i < digitTextures.Length; i++)
+            {
+                WzCanvasProperty canvas = digitProperty[i.ToString()] as WzCanvasProperty;
+                digitTextures[i] = LoadUiCanvasTexture(canvas);
+                digitOrigins[i] = ResolvePacketOwnedAntiMacroCanvasOrigin(canvas);
+            }
+
+            WzCanvasProperty commaCanvas = digitProperty["comma"] as WzCanvasProperty;
+            commaTexture = LoadUiCanvasTexture(commaCanvas);
+            commaOrigin = ResolvePacketOwnedAntiMacroCanvasOrigin(commaCanvas);
+            return (digitTextures, digitOrigins, commaTexture, commaOrigin);
+        }
+
+        private static Point ResolvePacketOwnedAntiMacroCanvasOrigin(WzCanvasProperty canvasProperty)
+        {
+            WzVectorProperty origin = canvasProperty?["origin"] as WzVectorProperty;
+            return origin == null
+                ? Point.Zero
+                : new Point(origin.X.Value, origin.Y.Value);
+        }
+
+        private void HandlePacketOwnedAntiMacroAnswerSubmitted(string answer)
+        {
+            if (!TryPreparePacketOwnedAntiMacroSubmittedAnswer(answer, out string submittedAnswer)
+                || !TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                return;
+            }
+
+            _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(
+                window.ExpiresAt,
+                Environment.TickCount);
+            _packetOwnedAntiMacroCurrentRemainingMs = _lastPacketOwnedAntiMacroSubmittedRemainingMs;
+            _packetOwnedAntiMacroAwaitingResult = true;
+            _lastPacketOwnedAntiMacroSubmittedTick = Environment.TickCount;
+            _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+            _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+            _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge.SentCount;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = _localUtilityOfficialSessionBridge.ForwardedOutboundCount;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge.ReceivedCount;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
+
+            window.ClearChallenge();
+            if (TrySendPacketOwnedAntiMacroAnswerToOfficialSession(
+                submittedAnswer,
+                _lastPacketOwnedAntiMacroSubmittedRemainingMs,
+                out string dispatchStatus,
+                out string payloadHex,
+                out bool externallyObserved,
+                out PacketOwnedAntiMacroSubmitTransportPath transportPath,
+                out byte[] rawPacket))
+            {
+                _lastPacketOwnedAntiMacroSubmitTransportPath = transportPath;
+                _lastPacketOwnedAntiMacroSubmittedRawPacket = rawPacket;
+                _lastPacketOwnedAntiMacroSummary =
+                    externallyObserved
+                        ? $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and handed it off to an external transport path. {dispatchStatus}"
+                        : $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and staged it for later external transport. {dispatchStatus}";
+                return;
+            }
+
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = rawPacket;
+            _lastPacketOwnedAntiMacroSummary =
+                $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms; no local-utility transport path accepted it, so the request remains simulator-owned while awaiting packet-owned result resolution. {dispatchStatus}";
+        }
+
+        private string DescribePacketOwnedAntiMacroStatus(int currentTickCount)
+        {
+            _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(currentTickCount);
+
+            string ownerState;
+            if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                int remainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
+                ownerState = $"{window.WindowName} active, remaining={remainingMs}ms, input=\"{window.CurrentInput}\"";
+            }
+            else
+            {
+                string transportState = DescribePacketOwnedAntiMacroAwaitingTransportState();
+                string sourceExpectation = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroSubmitExpectedSource)
+                    ? "expectedSource=any-official-session"
+                    : $"expectedSource={_lastPacketOwnedAntiMacroSubmitExpectedSource}";
+                ownerState = _packetOwnedAntiMacroAwaitingResult
+                    ? $"owner pending result, submitted=\"{_lastPacketOwnedAntiMacroSubmittedAnswer}\", remainingAtSubmit={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms, transport={transportState}, {sourceExpectation}"
+                    : "owner inactive";
+            }
+
+            string screenshotState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroScreenshotPath)
+                ? "no packet-authored screenshot saved"
+                : $"last screenshot={_lastPacketOwnedAntiMacroScreenshotPath}";
+            string screenshotBaseFolderState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroScreenshotBaseFolder)
+                ? "baseFolder=unresolved"
+                : $"baseFolder={_lastPacketOwnedAntiMacroScreenshotBaseFolder}";
+            string noticeState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroNotice)
+                ? "no notice"
+                : IsPacketOwnedAntiMacroNoticeVisible()
+                    ? $"notice active=\"{_lastPacketOwnedAntiMacroNotice}\""
+                    : $"lastNotice=\"{_lastPacketOwnedAntiMacroNotice}\" (closed)";
+            string resultSourceState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroResultSource)
+                ? "resultSource=none"
+                : _lastPacketOwnedAntiMacroAuthoritativeRoundTrip
+                    ? $"resultSource={_lastPacketOwnedAntiMacroResultSource} (authoritative round-trip, latency={_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms, bridgeInboundDelta={ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(_lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal, _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal)}, payload={_lastPacketOwnedAntiMacroResultPayloadHex})"
+                    : $"resultSource={_lastPacketOwnedAntiMacroResultSource}";
+            return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}, {resultSourceState}. {_lastPacketOwnedAntiMacroSummary}";
+        }
+
+        private string ClearPacketOwnedAntiMacro(bool releaseCombo, bool preserveAuthoritativeSubmitAwaitingState = false)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow normalWindow)
+            {
+                normalWindow.ClearChallenge();
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
+            {
+                adminWindow.ClearChallenge();
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Hide();
+            }
+
+            if (releaseCombo && _packetOwnedAntiMacroComboHeld)
+            {
+                SetPacketOwnedAntiMacroComboHold(false);
+            }
+
+            if (!preserveAuthoritativeSubmitAwaitingState)
+            {
+                ClearPacketOwnedAntiMacroSubmitSnapshot(resetRemainingQuestion: true);
+            }
+
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
+            _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+            _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+            _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+            _lastPacketOwnedAntiMacroSummary = preserveAuthoritativeSubmitAwaitingState
+                ? "Closed packet-owned anti-macro owner while keeping pending official-session submit tracking."
+                : "Closed packet-owned anti-macro owner.";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private void ClearPacketOwnedAntiMacroSubmitSnapshot(bool resetRemainingQuestion)
+        {
+            _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+            if (resetRemainingQuestion)
+            {
+                _packetOwnedAntiMacroCurrentRemainingMs = 0;
+            }
+
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroSubmittedTickAfterClearForTests(
+            int submittedTick,
+            bool preserveAuthoritativeSubmitAwaitingState)
+        {
+            return preserveAuthoritativeSubmitAwaitingState
+                ? submittedTick
+                : int.MinValue;
+        }
+
+        private int ResolvePacketOwnedAntiMacroCurrentRemainingMs(int currentTickCount)
+        {
+            if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                return AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
+            }
+
+            if (_packetOwnedAntiMacroAwaitingResult)
+            {
+                return ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
+                    _lastPacketOwnedAntiMacroSubmittedRemainingMs,
+                    _lastPacketOwnedAntiMacroSubmittedTick,
+                    currentTickCount);
+            }
+
+            return Math.Max(0, _packetOwnedAntiMacroCurrentRemainingMs);
+        }
+
+        private void SetPacketOwnedAntiMacroComboHold(bool held)
+        {
+            _packetOwnedAntiMacroComboHeld = held;
+            _playerManager?.Input?.SetCtrlComboSuppressed(held);
+        }
+
+        private string ApplyPacketOwnedAntiMacroChallenge(
+            int antiMacroType,
+            int firstAttemptFlag,
+            byte[] jpegBytes,
+            bool preserveAuthoritativeSubmitAwaitingState = false)
+        {
+            RegisterPacketOwnedAntiMacroWindows();
+
+            bool adminVariant = antiMacroType == 2;
+            string windowName = adminVariant ? MapSimulatorWindowNames.AdminAntiMacro : MapSimulatorWindowNames.AntiMacro;
+            if (uiWindowManager?.GetWindow(windowName) is not AntiMacroChallengeWindow challengeWindow)
+            {
+                _lastPacketOwnedAntiMacroSummary = $"Anti-macro launch for type {antiMacroType} could not resolve a simulator owner.";
+                return _lastPacketOwnedAntiMacroSummary;
+            }
+
+            uiWindowManager.HideWindow(adminVariant ? MapSimulatorWindowNames.AntiMacro : MapSimulatorWindowNames.AdminAntiMacro);
+
+            Texture2D challengeTexture = TryDecodePacketOwnedAntiMacroCanvas(jpegBytes);
+            int remainingMs = ResolvePacketOwnedAntiMacroLaunchRemainingMs(_packetOwnedAntiMacroCurrentRemainingMs, firstAttemptFlag);
+            int expiresAt = Environment.TickCount + remainingMs;
+            bool firstAttempt = firstAttemptFlag != 0;
+            string statusText = firstAttempt
+                ? "Packet-authored challenge; first attempt. Ctrl combo input is held."
+                : "Packet-authored challenge; retry attempt. Ctrl combo input is held.";
+            challengeWindow.Configure(challengeTexture, expiresAt, firstAttemptFlag, statusText);
+            ShowWindow(
+                windowName,
+                challengeWindow,
+                trackDirectionModeOwner: true);
+
+            SetPacketOwnedAntiMacroComboHold(true);
+            _packetOwnedAntiMacroCurrentRemainingMs = remainingMs;
+            if (!preserveAuthoritativeSubmitAwaitingState)
+            {
+                _packetOwnedAntiMacroAwaitingResult = false;
+                _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+                _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+                _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+                _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+                _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+                _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+                _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
+            }
+
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
+            _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+            _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+            _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+            _lastPacketOwnedAntiMacroSummary =
+                preserveAuthoritativeSubmitAwaitingState
+                    ? $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge with remaining={remainingMs}ms and held Ctrl combo input while keeping pending official-session submit tracking."
+                    : $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge with remaining={remainingMs}ms and held Ctrl combo input.";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private Texture2D TryDecodePacketOwnedAntiMacroCanvas(byte[] jpegBytes)
+        {
+            if (GraphicsDevice == null || jpegBytes == null || jpegBytes.Length == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(jpegBytes, writable: false);
+                using SD.Bitmap bitmap = new(stream);
+                return bitmap.ToTexture2D(GraphicsDevice);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private string ApplyPacketOwnedAntiMacroNotice(int noticeType, int antiMacroType)
+        {
+            RegisterPacketOwnedAntiMacroWindows();
+
+            PacketOwnedAntiMacroNoticeDefinition definition = ResolvePacketOwnedAntiMacroNoticeDefinition(noticeType, antiMacroType);
+            _lastPacketOwnedAntiMacroNotice = definition.Text;
+            _lastPacketOwnedAntiMacroNoticeStringPoolId = definition.StringPoolId;
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Configure(
+                    definition.Text,
+                    definition.StringPoolId);
+                ConfigurePacketOwnedAntiMacroNoticeVisuals(noticeWindow, definition.AvatarCanvasPath);
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(noticeWindow.FrameSize);
+                ShowWindow(
+                    MapSimulatorWindowNames.AntiMacroNotice,
+                    noticeWindow,
+                    trackDirectionModeOwner: true);
+            }
+
+            _lastPacketOwnedAntiMacroSummary = $"Opened anti-macro notice owner for type {noticeType} / mode {antiMacroType}.";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private string ApplyPacketOwnedAntiMacroCloseResult(int mode, int antiMacroType, bool preserveAuthoritativeSubmitAwaitingState = false)
+        {
+            string clearSummary = ClearPacketOwnedAntiMacro(
+                releaseCombo: ShouldReleasePacketOwnedAntiMacroComboOnCloseResult(preserveAuthoritativeSubmitAwaitingState),
+                preserveAuthoritativeSubmitAwaitingState: preserveAuthoritativeSubmitAwaitingState);
+            string noticeSummary = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
+            _lastPacketOwnedAntiMacroSummary = $"{clearSummary} {noticeSummary}";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static bool ShouldReleasePacketOwnedAntiMacroComboOnCloseResult(bool preserveAuthoritativeSubmitAwaitingState)
+        {
+            // `CUIAntiMacro::SetRet` closes the owner locally but leaves Ctrl-combo
+            // suppression held while the authoritative server result is outstanding.
+            // A non-authoritative mirrored 7/9 result can close local UI state, but
+            // it must not release the hold before the bridge-correlated result or
+            // the recovered timeout boundary.
+            return !preserveAuthoritativeSubmitAwaitingState;
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroLaunchRemainingMs(int currentRemainingMs, int firstAttemptFlag)
+        {
+            // `CWvsContext::OnAntiMacroResult` only reseeds the client timer to 60000ms
+            // when the decoded question counter is non-zero; otherwise it reuses the
+            // current context-owned anti-macro remaining time.
+            return firstAttemptFlag != 0
+                ? PacketOwnedAntiMacroDefaultDurationMs
+                : Math.Max(0, currentRemainingMs);
+        }
+
+        internal static bool ShouldPreferPacketOwnedAntiMacroDeferredBridge(
+            bool officialSessionBridgeEnabled,
+            bool hasAttachedClient,
+            bool hasConnectedSession)
+        {
+            // `CUIAntiMacro::SetRet` and `CUIAdminAntiMacro::SetRet` always target the
+            // live Maple socket. When the bridge already has an attached client but is
+            // still waiting for init/crypto completion, keep opcode 117 on that bridge
+            // instead of leaking it onto the generic local-utility outbox first.
+            return officialSessionBridgeEnabled
+                && hasAttachedClient
+                && !hasConnectedSession;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroAuthoritativeResultSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsPacketOwnedAntiMacroResultSourceMatch(string source, string expectedSource)
+        {
+            if (!IsPacketOwnedAntiMacroAuthoritativeResultSource(source))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(expectedSource))
+            {
+                return true;
+            }
+
+            return string.Equals(
+                ResolvePacketOwnedAntiMacroResultSource(source),
+                ResolvePacketOwnedAntiMacroResultSource(expectedSource),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+            int mode,
+            bool wasAwaitingResult,
+            string source,
+            string expectedSource,
+            bool hasAuthoritativeSubmitTransport,
+            bool hasBridgeCorrelatedInboundResult)
+        {
+            return wasAwaitingResult
+                && hasAuthoritativeSubmitTransport
+                && hasBridgeCorrelatedInboundResult
+                && IsPacketOwnedAntiMacroResultSourceMatch(source, expectedSource)
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
+        internal static bool ShouldCompletePacketOwnedAntiMacroSubmitResponseRoundTrip(
+            int mode,
+            bool wasAwaitingResult,
+            string source,
+            string expectedSource,
+            bool hasAuthoritativeSubmitTransport,
+            bool hasBridgeCorrelatedInboundResult)
+        {
+            return wasAwaitingResult
+                && hasAuthoritativeSubmitTransport
+                && hasBridgeCorrelatedInboundResult
+                && IsPacketOwnedAntiMacroResultSourceMatch(source, expectedSource)
+                && IsPacketOwnedAntiMacroSubmitResponseMode(mode);
+        }
+
+        internal static bool ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip,
+            bool hasPendingSubmitResolution)
+        {
+            // A local/synthetic 1011 result can still drive the visible notice/chat
+            // branch, but it must not validate the SetRet-shaped submit. `SetRet`
+            // has already closed the owner and sent opcode 117 through CClientSocket;
+            // completion requires a bridge-correlated official-session result.
+            // Otherwise keep the submit wait alive until the same timeout budget
+            // expires, even when the fallback transport was only simulator-owned.
+            return wasAwaitingResult
+                && !authoritativeRoundTrip
+                && hasPendingSubmitResolution;
+        }
+
+        internal static bool ShouldExpirePacketOwnedAntiMacroAwaitingResult(int remainingMs)
+        {
+            // `CWvsContext::OnAntiMacroResult` writes m_tRemainAntiMacroQuestion from
+            // owner timeout deltas and clears challenge ownership once the timer has
+            // elapsed. Keep simulator-side awaiting state tied to the same remaining
+            // budget instead of persisting indefinitely.
+            return remainingMs <= 0;
+        }
+
+        internal static bool HasPendingAuthoritativeSubmitTransportState(
+            bool usesOfficialSessionBridgeTransport,
+            bool hasSubmittedRawPacket,
+            bool bridgeHasQueuedPacket,
+            bool bridgeHasSentPacketAfterTrackedSubmit,
+            bool bridgeHasObservedClientOutboundPacketAfterTrackedSubmit = false)
+        {
+            return usesOfficialSessionBridgeTransport
+                && hasSubmittedRawPacket
+                && (bridgeHasQueuedPacket
+                    || bridgeHasSentPacketAfterTrackedSubmit
+                    || bridgeHasObservedClientOutboundPacketAfterTrackedSubmit);
+        }
+
+        internal static bool HasPendingPacketOwnedAntiMacroSubmitResolutionState(
+            PacketOwnedAntiMacroSubmitTransportPath transportPath,
+            bool isAwaitingResult,
+            bool hasSubmittedRawPacket,
+            bool hasSubmittedTick,
+            bool hasPendingAuthoritativeSubmitTransport,
+            bool packetOutboxHasSentPacket,
+            bool deferredPacketOutboxHasQueuedPacket,
+            bool deferredPacketOutboxHasSentPacket)
+        {
+            if (!isAwaitingResult
+                || transportPath == PacketOwnedAntiMacroSubmitTransportPath.None
+                || !hasSubmittedTick
+                || !hasSubmittedRawPacket)
+            {
+                return false;
+            }
+
+            if (hasPendingAuthoritativeSubmitTransport)
+            {
+                return true;
+            }
+
+            return transportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned => true,
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox => packetOutboxHasSentPacket,
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox
+                    => deferredPacketOutboxHasQueuedPacket || deferredPacketOutboxHasSentPacket,
+                _ => false
+            };
+        }
+
+        private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
+        {
+            if (_lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                && _lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge)
+            {
+                return false;
+            }
+
+            if (!IsPacketOwnedAntiMacroResultSourceMatch(resultSource, _lastPacketOwnedAntiMacroSubmitExpectedSource)
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket == null
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket.Length == 0)
+            {
+                return false;
+            }
+
+            return _localUtilityOfficialSessionBridge.HasSentOutboundPacketSince(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal))
+                || _localUtilityOfficialSessionBridge.HasObservedClientOutboundPacketSince(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal));
+        }
+
+        private bool HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport()
+        {
+            bool usesOfficialSessionBridgeTransport =
+                _lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                || _lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+            bool hasSubmittedRawPacket =
+                _lastPacketOwnedAntiMacroSubmittedRawPacket != null
+                && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
+            bool bridgeHasQueuedPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+            bool bridgeHasSentPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasSentOutboundPacketSince(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal));
+            bool bridgeHasObservedClientOutboundPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasObservedClientOutboundPacketSince(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal));
+
+            // Keep authoritative submit tracking only while opcode 117 is either
+            // still queued on the official-session bridge or has actually been
+            // injected into the bridged Maple socket after this submit was staged
+            // or observed leaving the attached client through the bridge.
+            return HasPendingAuthoritativeSubmitTransportState(
+                usesOfficialSessionBridgeTransport,
+                hasSubmittedRawPacket,
+                bridgeHasQueuedPacket,
+                bridgeHasSentPacket,
+                bridgeHasObservedClientOutboundPacket);
+        }
+
+        private bool HasPacketOwnedAntiMacroPendingSubmitResolution()
+        {
+            bool hasSubmittedRawPacket =
+                _lastPacketOwnedAntiMacroSubmittedRawPacket != null
+                && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
+            bool packetOutboxHasSentPacket = hasSubmittedRawPacket
+                && _localUtilityPacketOutbox.HasSentOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+            bool deferredPacketOutboxHasQueuedPacket = hasSubmittedRawPacket
+                && _localUtilityPacketOutbox.HasQueuedOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+
+            // No Maple session accepted opcode 117 in the simulator/generic-outbox
+            // cases, so the simulator can keep local state pending for timeout
+            // parity but cannot mark completion from synthetic or non-bridge 1011
+            // payloads.
+            return HasPendingPacketOwnedAntiMacroSubmitResolutionState(
+                _lastPacketOwnedAntiMacroSubmitTransportPath,
+                _packetOwnedAntiMacroAwaitingResult,
+                hasSubmittedRawPacket,
+                _lastPacketOwnedAntiMacroSubmittedTick != int.MinValue,
+                HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport(),
+                packetOutboxHasSentPacket,
+                deferredPacketOutboxHasQueuedPacket,
+                packetOutboxHasSentPacket);
+        }
+
+        private void UpdatePacketOwnedAntiMacroAwaitingResultState(int currentTickCount)
+        {
+            if (!_packetOwnedAntiMacroAwaitingResult)
+            {
+                return;
+            }
+
+            _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
+                _lastPacketOwnedAntiMacroSubmittedRemainingMs,
+                _lastPacketOwnedAntiMacroSubmittedTick,
+                currentTickCount);
+            if (!ShouldExpirePacketOwnedAntiMacroAwaitingResult(_packetOwnedAntiMacroCurrentRemainingMs))
+            {
+                return;
+            }
+
+            bool hadPendingAuthoritativeSubmit = HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport();
+            _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = 0;
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
+
+            if (_packetOwnedAntiMacroComboHeld)
+            {
+                SetPacketOwnedAntiMacroComboHold(false);
+            }
+
+            _lastPacketOwnedAntiMacroSummary = hadPendingAuthoritativeSubmit
+                ? "Anti-macro submit wait expired at timeout before an authoritative bridge-correlated result arrived."
+                : "Anti-macro submit wait expired at timeout.";
+        }
+
+        private bool HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(IReadOnlyList<byte> payload)
+        {
+            if (payload == null
+                || payload.Count == 0
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket == null
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket.Length == 0)
+            {
+                return false;
+            }
+
+            return _localUtilityOfficialSessionBridge.HasReceivedInboundPacketPayloadAfterOutboundSubmit(
+                PacketOwnedAntiMacroPacketType,
+                payload,
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal),
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal),
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal));
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroRoundTripLatencyMs(int submittedTick, int resultTick)
+        {
+            if (submittedTick == int.MinValue || resultTick == int.MinValue)
+            {
+                return -1;
+            }
+
+            unchecked
+            {
+                return Math.Max(0, resultTick - submittedTick);
+            }
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(
+            int submitReceivedOrdinalBaseline,
+            int resultReceivedOrdinal)
+        {
+            if (submitReceivedOrdinalBaseline < 0
+                || resultReceivedOrdinal < 0
+                || resultReceivedOrdinal <= submitReceivedOrdinalBaseline)
+            {
+                return -1;
+            }
+
+            return resultReceivedOrdinal - submitReceivedOrdinalBaseline;
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
+            int remainingAtSubmitMs,
+            int submittedTick,
+            int currentTick)
+        {
+            if (remainingAtSubmitMs <= 0)
+            {
+                return 0;
+            }
+
+            int elapsedMs = ResolvePacketOwnedAntiMacroRoundTripLatencyMs(submittedTick, currentTick);
+            if (elapsedMs < 0)
+            {
+                return Math.Max(0, remainingAtSubmitMs);
+            }
+
+            return Math.Max(0, remainingAtSubmitMs - elapsedMs);
+        }
+
+        internal static PacketOwnedAntiMacroNoticeMapping ResolvePacketOwnedAntiMacroNoticeMappingForTest(int noticeType, int antiMacroType)
+        {
+            PacketOwnedAntiMacroNoticeDefinition definition = ResolvePacketOwnedAntiMacroNoticeDefinition(noticeType, antiMacroType);
+            return new PacketOwnedAntiMacroNoticeMapping(definition.StringPoolId, definition.AvatarCanvasPath);
+        }
+
+        internal static bool TryResolvePacketOwnedAntiMacroChatMappingForTest(
+            int mode,
+            int antiMacroType,
+            out PacketOwnedAntiMacroChatMapping mapping)
+        {
+            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
+            if (definition == null)
+            {
+                mapping = default;
+                return false;
+            }
+
+            mapping = new PacketOwnedAntiMacroChatMapping(definition.StringPoolId, definition.SaveScreenshot);
+            return true;
+        }
+
+        private static PacketOwnedAntiMacroNoticeDefinition ResolvePacketOwnedAntiMacroNoticeDefinition(int noticeType, int antiMacroType)
+        {
+            return (noticeType, antiMacroType) switch
+            {
+                (0, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeUserNotFoundStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserNotFoundStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas0Path),
+                (1, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeTargetNotAttackingStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetNotAttackingStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas0Path),
+                (2, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeAlreadyTestedStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAlreadyTestedStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas0Path),
+                (3, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeTargetAlreadyTestingStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetAlreadyTestingStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas0Path),
+                (7, 2) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeMacroSanctionStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeMacroSanctionStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas2Path),
+                (7, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeFailureRestrictionStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeFailureRestrictionStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas2Path),
+                (9, 1) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeRewardThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeRewardThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 2) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeAdminThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAdminThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 3) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 4) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (11, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticeUserFailedRewardStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserFailedRewardStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                _ => new PacketOwnedAntiMacroNoticeDefinition(
+                    -1,
+                    string.Format(CultureInfo.InvariantCulture, "Anti-macro notice type {0} (mode {1}) reached the simulator bridge.", noticeType, antiMacroType),
+                    PacketOwnedAntiMacroAdminCanvas1Path)
+            };
+        }
+
+        private string SavePacketOwnedAntiMacroScreenshot(string userName)
+        {
+            _lastPacketOwnedAntiMacroScreenshotPath = string.Empty;
+            string screenshotDirectory = PacketOwnedAntiMacroScreenshotPathResolver.ResolveBaseFolder();
+            _lastPacketOwnedAntiMacroScreenshotBaseFolder = screenshotDirectory;
+            if (string.IsNullOrWhiteSpace(screenshotDirectory))
+            {
+                _lastPacketOwnedAntiMacroSummary = "Failed to resolve the packet-owned anti-macro screenshot base folder.";
+                return _lastPacketOwnedAntiMacroSummary;
+            }
+
+            Directory.CreateDirectory(screenshotDirectory);
+            string rawUserName = userName ?? string.Empty;
+            string filePath = PacketOwnedAntiMacroScreenshotPathResolver.BuildFilePath(
+                screenshotDirectory,
+                rawUserName,
+                DateTime.Now);
+
+            if (!_screenshotManager.TrySaveBackBufferAsJpeg(GraphicsDevice, filePath, out string error))
+            {
+                string fallbackFilePath = PacketOwnedAntiMacroScreenshotPathResolver.BuildFallbackSafeFilePath(
+                    screenshotDirectory,
+                    rawUserName,
+                    DateTime.Now);
+                string fallbackError = string.Empty;
+                bool canTryFallback =
+                    !string.Equals(
+                        filePath,
+                        fallbackFilePath,
+                        StringComparison.OrdinalIgnoreCase);
+                if (!canTryFallback
+                    || !_screenshotManager.TrySaveBackBufferAsJpeg(GraphicsDevice, fallbackFilePath, out fallbackError))
+                {
+                    string resolvedError = canTryFallback
+                        ? $"{error}; fallback save also failed: {fallbackError}"
+                        : error;
+                    _lastPacketOwnedAntiMacroSummary = $"Failed to save packet-owned anti-macro screenshot for {rawUserName}: {resolvedError}";
+                    return _lastPacketOwnedAntiMacroSummary;
+                }
+
+                _lastPacketOwnedAntiMacroScreenshotPath = fallbackFilePath;
+                _lastPacketOwnedAntiMacroSummary =
+                    $"Saved packet-owned anti-macro screenshot to {fallbackFilePath} after client-shaped raw-name save failed ({error}).";
+                return _lastPacketOwnedAntiMacroSummary;
+            }
+
+            _lastPacketOwnedAntiMacroScreenshotPath = filePath;
+            _lastPacketOwnedAntiMacroSummary = $"Saved packet-owned anti-macro screenshot to {filePath}.";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private string ApplyPacketOwnedAntiMacroUserBranch(int mode, int antiMacroType, string userName)
+        {
+            string resolvedName = ResolvePacketOwnedAntiMacroUserBranchName(userName);
+            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
+            _lastPacketOwnedAntiMacroChatStringPoolId = definition?.StringPoolId ?? -1;
+            string chatText = AntiMacroOwnerStringPoolText.FormatUserBranchText(
+                definition?.StringPoolId ?? -1,
+                definition?.FormatText,
+                resolvedName);
+            if (!string.IsNullOrWhiteSpace(chatText))
+            {
+                _chat?.AddClientChatMessage(
+                    chatText,
+                    Environment.TickCount,
+                    12);
+            }
+
+            if (definition?.SaveScreenshot == true)
+            {
+                string screenshotSummary = SavePacketOwnedAntiMacroScreenshot(resolvedName);
+                _lastPacketOwnedAntiMacroSummary =
+                    $"Anti-macro branch mode {mode} for {resolvedName} applied through the simulator packet bridge. {screenshotSummary}";
+                return _lastPacketOwnedAntiMacroSummary;
+            }
+
+            _lastPacketOwnedAntiMacroSummary = $"Anti-macro branch mode {mode} for {resolvedName} applied through the simulator packet bridge.";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private static PacketOwnedAntiMacroChatDefinition ResolvePacketOwnedAntiMacroChatDefinition(int mode, int antiMacroType)
+        {
+            return (mode, antiMacroType) switch
+            {
+                (PacketOwnedAntiMacroScreenshotReportMode, _) => new PacketOwnedAntiMacroChatDefinition(
+                    AntiMacroOwnerStringPoolText.ChatScreenshotReportStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatScreenshotReportStringPoolId),
+                    SaveScreenshot: true),
+                (PacketOwnedAntiMacroUserReportMode, 1) => new PacketOwnedAntiMacroChatDefinition(
+                    AntiMacroOwnerStringPoolText.ChatAdminLaunchStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminLaunchStringPoolId),
+                    SaveScreenshot: false),
+                (PacketOwnedAntiMacroUserReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(
+                    AntiMacroOwnerStringPoolText.ChatAdminActivateStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminActivateStringPoolId),
+                    SaveScreenshot: true),
+                (PacketOwnedAntiMacroScreenshotMode, 2) => new PacketOwnedAntiMacroChatDefinition(
+                    AntiMacroOwnerStringPoolText.ChatAdminScreenshotSavedStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminScreenshotSavedStringPoolId),
+                    SaveScreenshot: true),
+                (PacketOwnedAntiMacroChatReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(
+                    AntiMacroOwnerStringPoolText.ChatAdminPassedStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminPassedStringPoolId),
+                    SaveScreenshot: false),
+                _ => null
+            };
+        }
+
+        private bool TrySendPacketOwnedAntiMacroAnswerToOfficialSession(
+            string submittedAnswer,
+            int remainingMs,
+            out string status,
+            out string payloadHex,
+            out bool externallyObserved,
+            out PacketOwnedAntiMacroSubmitTransportPath transportPath,
+            out byte[] rawPacket)
+        {
+            byte[] payload = BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
+            payloadHex = BitConverter.ToString(payload).Replace("-", string.Empty);
+            externallyObserved = false;
+            transportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            rawPacket = BuildPacketOwnedAntiMacroAnswerRawPacket(payload);
+
+            string bridgeStatus;
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                payload,
+                out bridgeStatus))
+            {
+                status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms. {bridgeStatus}";
+                externallyObserved = true;
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge;
+                return true;
+            }
+
+            bool preferDeferredBridge = ShouldPreferPacketOwnedAntiMacroDeferredBridge(
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.HasAttachedClient,
+                _localUtilityOfficialSessionBridge.HasConnectedSession);
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (preferDeferredBridge
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} on the deferred official-session bridge while the attached Maple client is still waiting for init/crypto completion. Bridge: {bridgeStatus} Deferred bridge: {deferredBridgeStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+                return true;
+            }
+
+            string outboxStatus;
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                payload,
+                out outboxStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and dispatched opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                externallyObserved = true;
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox;
+                return true;
+            }
+
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+                return true;
+            }
+
+            string queuedOutboxStatus;
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out queuedOutboxStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox;
+                return true;
+            }
+
+            status =
+                $"Neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted opcode {PacketOwnedAntiMacroAnswerSubmitOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+            transportPath = PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned;
+            return false;
+        }
+
+        private string DescribePacketOwnedAntiMacroAwaitingTransportState()
+        {
+            if (!_packetOwnedAntiMacroAwaitingResult)
+            {
+                return "inactive";
+            }
+
+            if (_lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.None)
+            {
+                return "unknown";
+            }
+
+            if (_lastPacketOwnedAntiMacroSubmittedRawPacket == null
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket.Length == 0)
+            {
+                return DescribePacketOwnedAntiMacroSubmitTransportPath(_lastPacketOwnedAntiMacroSubmitTransportPath);
+            }
+
+            return _lastPacketOwnedAntiMacroSubmitTransportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                    => _localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(
+                        PacketOwnedAntiMacroAnswerSubmitOpcode,
+                        _lastPacketOwnedAntiMacroSubmittedRawPacket)
+                        ? "injected into the live Maple session"
+                        : "handed to the live Maple-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox
+                    => _localUtilityPacketOutbox.WasLastSentOutboundPacket(
+                        PacketOwnedAntiMacroAnswerSubmitOpcode,
+                        _lastPacketOwnedAntiMacroSubmittedRawPacket)
+                        ? "sent through the local-utility packet outbox"
+                        : "handed to the local-utility packet outbox",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge
+                    => DescribePacketOwnedAntiMacroDeferredBridgeTransportState(),
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox
+                    => DescribePacketOwnedAntiMacroDeferredOutboxTransportState(),
+                _ => DescribePacketOwnedAntiMacroSubmitTransportPath(_lastPacketOwnedAntiMacroSubmitTransportPath)
+            };
+        }
+
+        private string DescribePacketOwnedAntiMacroDeferredBridgeTransportState()
+        {
+            if (_localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return _localUtilityOfficialSessionBridge.HasAttachedClient
+                    ? "still queued on the deferred official-session bridge while the attached Maple client is waiting for crypto init"
+                    : "still queued on the deferred official-session bridge awaiting a Maple client/session";
+            }
+
+            if (_localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred official-session queue and was injected into the live Maple session";
+            }
+
+            if (_localUtilityOfficialSessionBridge.HasSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred official-session queue and was injected into the live Maple session";
+            }
+
+            return _localUtilityOfficialSessionBridge.HasConnectedSession
+                ? "left the deferred official-session queue without a confirmed opcode 117 injection record"
+                : "no longer present in the deferred official-session queue";
+        }
+
+        private string DescribePacketOwnedAntiMacroDeferredOutboxTransportState()
+        {
+            if (_localUtilityPacketOutbox.HasQueuedOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "still queued on the deferred local-utility packet outbox";
+            }
+
+            if (_localUtilityPacketOutbox.WasLastSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred local-utility packet outbox queue for delivery";
+            }
+
+            return "no longer present in the deferred local-utility packet outbox queue";
+        }
+
+        private static string DescribePacketOwnedAntiMacroSubmitTransportPath(PacketOwnedAntiMacroSubmitTransportPath transportPath)
+        {
+            return transportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned => "simulator-owned",
+                PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge => "live official-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox => "generic packet outbox",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge => "deferred official-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox => "deferred packet outbox",
+                _ => "none"
+            };
+        }
+
+        private static byte[] BuildPacketOwnedAntiMacroAnswerPayload(string submittedAnswer)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            WritePacketOwnedAntiMacroMapleString(writer, submittedAnswer);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildPacketOwnedAntiMacroAnswerRawPacket(IReadOnlyList<byte> payload)
+        {
+            using PacketWriter writer = new();
+            writer.Write((ushort)PacketOwnedAntiMacroAnswerSubmitOpcode);
+            if (payload is byte[] bytes)
+            {
+                writer.WriteBytes(bytes);
+            }
+            else if (payload != null)
+            {
+                for (int i = 0; i < payload.Count; i++)
+                {
+                    writer.WriteByte(payload[i]);
+                }
+            }
+
+            return writer.ToArray();
+        }
+
+        internal static byte[] BuildPacketOwnedAntiMacroAnswerPayloadForTest(string submittedAnswer)
+        {
+            return BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
+        }
+
+        internal static byte[] BuildPacketOwnedAntiMacroAnswerRawPacketForTest(string submittedAnswer)
+        {
+            return BuildPacketOwnedAntiMacroAnswerRawPacket(
+                BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer));
+        }
+
+        private static void WritePacketOwnedAntiMacroMapleString(BinaryWriter writer, string text)
+        {
+            string resolvedText = text ?? string.Empty;
+            byte[] bytes = Encoding.Default.GetBytes(resolvedText);
+            writer.Write((ushort)bytes.Length);
+            writer.Write(bytes);
+        }
+
+        private static WzCanvasProperty ResolvePacketOwnedAntiMacroCanvas(string path)
+        {
+            return ResolvePacketOwnedAntiMacroNode(path) as WzCanvasProperty;
+        }
+
+        private static WzSubProperty ResolvePacketOwnedAntiMacroSubProperty(string path)
+        {
+            return ResolvePacketOwnedAntiMacroNode(path) as WzSubProperty;
+        }
+
+        private static WzImageProperty ResolvePacketOwnedAntiMacroNode(string path)
+        {
+            WzImage image = Program.FindImage("UI", "UIWindow2.img");
+            if (image == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            WzImageProperty current = image[segments[0]];
+            for (int i = 1; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return current;
+        }
+
+        internal static bool TryReadPacketOwnedAntiMacroCanvasPayload(
+            BinaryReader reader,
+            bool requireClientLengthPrefix,
+            out byte[] jpegBytes,
+            out string error)
+        {
+            jpegBytes = Array.Empty<byte>();
+            error = string.Empty;
+            if (reader == null || reader.BaseStream.Position >= reader.BaseStream.Length)
+            {
+                if (requireClientLengthPrefix)
+                {
+                    error = "client JPEG length prefix is missing.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            long start = reader.BaseStream.Position;
+            long remaining = reader.BaseStream.Length - start;
+            if (remaining >= sizeof(int))
+            {
+                uint candidateLength = reader.ReadUInt32();
+                if (candidateLength <= reader.BaseStream.Length - reader.BaseStream.Position)
+                {
+                    jpegBytes = reader.ReadBytes((int)candidateLength);
+                    return true;
+                }
+
+                reader.BaseStream.Position = start;
+            }
+
+            if (requireClientLengthPrefix)
+            {
+                error = "client JPEG length prefix is malformed or exceeds the remaining packet bytes.";
+                return false;
+            }
+
+            jpegBytes = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message)
+        {
+            return TryApplyPacketOwnedAntiMacroPayload(payload, out message, source: null);
+        }
+
+        private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message, string source)
+        {
+            message = "Anti-macro payload is missing.";
+            if (payload == null || payload.Length < 2)
+            {
+                return false;
+            }
+
+            try
+            {
+                bool wasAwaitingResult = _packetOwnedAntiMacroAwaitingResult;
+                int submittedTickForLatency = _lastPacketOwnedAntiMacroSubmittedTick;
+                string resolvedSource = ResolvePacketOwnedAntiMacroResultSource(source);
+                _lastPacketOwnedAntiMacroResultSource = resolvedSource;
+                _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
+                _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int mode = reader.ReadByte();
+                int antiMacroType = reader.ReadByte();
+                _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(Environment.TickCount);
+
+                _lastPacketOwnedAntiMacroMode = mode;
+                _lastPacketOwnedAntiMacroType = antiMacroType;
+
+                if (IsPacketOwnedAntiMacroChallengeLaunchMode(mode))
+                {
+                    int firstAttemptFlag = reader.BaseStream.Position < reader.BaseStream.Length
+                        ? reader.ReadByte()
+                        : 0;
+                    if (!TryReadPacketOwnedAntiMacroCanvasPayload(
+                        reader,
+                        requireClientLengthPrefix: true,
+                        out byte[] jpegBytes,
+                        out string canvasError))
+                    {
+                        message = $"Anti-macro challenge JPEG payload could not be decoded: {canvasError}";
+                        return false;
+                    }
+
+                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = hasAuthoritativeSubmitTransport
+                        && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
+                    bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroSubmitResponseRoundTrip(
+                        mode,
+                        wasAwaitingResult,
+                        resolvedSource,
+                        _lastPacketOwnedAntiMacroSubmitExpectedSource,
+                        hasAuthoritativeSubmitTransport,
+                        hasAuthoritativeResultEvidence);
+                    bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                        wasAwaitingResult,
+                        authoritativeRoundTrip,
+                        HasPacketOwnedAntiMacroPendingSubmitResolution());
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroChallenge(
+                            antiMacroType,
+                            firstAttemptFlag,
+                            jpegBytes,
+                            preserveAuthoritativeSubmitAwaitingState: shouldKeepAwaitingAuthoritativeResult),
+                        payload,
+                        resolvedSource,
+                        authoritativeRoundTrip,
+                        awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult,
+                        submittedTickForLatency: submittedTickForLatency);
+                    return true;
+                }
+
+                if (IsPacketOwnedAntiMacroCloseResultMode(mode))
+                {
+                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = hasAuthoritativeSubmitTransport
+                        && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
+                    bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                        mode,
+                        wasAwaitingResult,
+                        resolvedSource,
+                        _lastPacketOwnedAntiMacroSubmitExpectedSource,
+                        hasAuthoritativeSubmitTransport,
+                        hasAuthoritativeResultEvidence);
+                    bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                        wasAwaitingResult,
+                        authoritativeRoundTrip,
+                        HasPacketOwnedAntiMacroPendingSubmitResolution());
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroCloseResult(
+                            mode,
+                            antiMacroType,
+                            preserveAuthoritativeSubmitAwaitingState: shouldKeepAwaitingAuthoritativeResult),
+                        payload,
+                        resolvedSource,
+                        authoritativeRoundTrip,
+                        awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult,
+                        submittedTickForLatency: submittedTickForLatency);
+                    if (ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(mode))
+                    {
+                        _packetOwnedAntiMacroCurrentRemainingMs = 0;
+                    }
+
+                    return true;
+                }
+
+                if (IsPacketOwnedAntiMacroUserBranchMode(mode))
+                {
+                    string userName = reader.BaseStream.Position < reader.BaseStream.Length
+                        ? ReadPacketOwnedMapleString(reader)
+                        : string.Empty;
+                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = hasAuthoritativeSubmitTransport
+                        && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
+                    bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                        mode,
+                        wasAwaitingResult,
+                        resolvedSource,
+                        _lastPacketOwnedAntiMacroSubmitExpectedSource,
+                        hasAuthoritativeSubmitTransport,
+                        hasAuthoritativeResultEvidence);
+                    bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                        wasAwaitingResult,
+                        authoritativeRoundTrip,
+                        HasPacketOwnedAntiMacroPendingSubmitResolution());
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
+                        payload,
+                        resolvedSource,
+                        authoritativeRoundTrip,
+                        awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult,
+                        submittedTickForLatency: submittedTickForLatency);
+                    return true;
+                }
+
+                bool hasNoticeAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                bool hasNoticeAuthoritativeResultEvidence = hasNoticeAuthoritativeSubmitTransport
+                    && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
+                bool noticeAuthoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                    mode,
+                    wasAwaitingResult,
+                    resolvedSource,
+                    _lastPacketOwnedAntiMacroSubmitExpectedSource,
+                    hasNoticeAuthoritativeSubmitTransport,
+                    hasNoticeAuthoritativeResultEvidence);
+                bool shouldKeepAwaitingNoticeAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip,
+                    HasPacketOwnedAntiMacroPendingSubmitResolution());
+                if (IsPacketOwnedAntiMacroSubmitTerminalMode(mode)
+                    && wasAwaitingResult
+                    && !shouldKeepAwaitingNoticeAuthoritativeResult)
+                {
+                    _packetOwnedAntiMacroAwaitingResult = false;
+                }
+
+                if (ShouldReleasePacketOwnedAntiMacroComboOnTerminalResult(
+                    mode,
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip)
+                    && _packetOwnedAntiMacroComboHeld)
+                {
+                    SetPacketOwnedAntiMacroComboHold(false);
+                }
+
+                message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                    ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType),
+                    payload,
+                    resolvedSource,
+                    noticeAuthoritativeRoundTrip,
+                    awaitingTerminalResult: shouldKeepAwaitingNoticeAuthoritativeResult,
+                    submittedTickForLatency: submittedTickForLatency);
+                if (ShouldClearPacketOwnedAntiMacroSubmitSnapshotOnTerminalResult(
+                    mode,
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip))
+                {
+                    ClearPacketOwnedAntiMacroSubmitSnapshot(
+                        resetRemainingQuestion: ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(mode));
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = $"Anti-macro payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAntiMacroCommand(string[] args)
+        {
+            int currentTickCount = Environment.TickCount;
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribePacketOwnedAntiMacroStatus(currentTickCount));
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "clear":
+                case "close":
+                    return ChatCommandHandler.CommandResult.Ok(ClearPacketOwnedAntiMacro(releaseCombo: true));
+
+                case "launch":
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro launch <normal|admin> [first|retry]");
+                    }
+
+                    bool adminVariant = string.Equals(args[1], "admin", StringComparison.OrdinalIgnoreCase);
+                    int firstAttemptFlag = args.Length >= 3 && string.Equals(args[2], "retry", StringComparison.OrdinalIgnoreCase)
+                        ? 0
+                        : 1;
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroChallenge(adminVariant ? 2 : 1, firstAttemptFlag, null));
+
+                case "notice":
+                    if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int noticeType))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro notice <noticeType> [antiMacroType]");
+                    }
+
+                    int noticeMode = 0;
+                    if (args.Length >= 3 && !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out noticeMode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro notice <noticeType> [antiMacroType]");
+                    }
+
+                    _lastPacketOwnedAntiMacroMode = noticeType;
+                    _lastPacketOwnedAntiMacroType = noticeMode;
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroNotice(noticeType, noticeMode));
+
+                case "result":
+                    if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int resultMode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro result <mode> [antiMacroType] [userName]");
+                    }
+
+                    int antiMacroType = 0;
+                    if (args.Length >= 3 && !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out antiMacroType))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro result <mode> [antiMacroType] [userName]");
+                    }
+
+                    _lastPacketOwnedAntiMacroMode = resultMode;
+                    _lastPacketOwnedAntiMacroType = antiMacroType;
+                    string userName = args.Length >= 4 ? string.Join(" ", args, 3, args.Length - 3) : string.Empty;
+                    if (IsPacketOwnedAntiMacroCloseResultMode(resultMode))
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroCloseResult(resultMode, antiMacroType));
+                    }
+
+                    if (IsPacketOwnedAntiMacroUserBranchMode(resultMode))
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroUserBranch(resultMode, antiMacroType, userName));
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroNotice(resultMode, antiMacroType));
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]");
+            }
+        }
+
+        private bool TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window)
+        {
+            window = null;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow && adminWindow.IsVisible)
+            {
+                window = adminWindow;
+                return true;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow normalWindow && normalWindow.IsVisible)
+            {
+                window = normalWindow;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void HandlePacketOwnedAntiMacroNoticeClosed(int responseCode)
+        {
+            _lastPacketOwnedAntiMacroSummary = responseCode == 2
+                ? "Dismissed anti-macro notice with Cancel."
+                : "Dismissed anti-macro notice with OK.";
+        }
+
+        private void HandlePacketOwnedAntiMacroClientOutboundPacketObserved(
+            object sender,
+            LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            if (e == null || e.Opcode != PacketOwnedAntiMacroAnswerSubmitOpcode)
+            {
+                return;
+            }
+
+            string submittedAnswer = TryDecodePacketOwnedAntiMacroSubmittedAnswerPayload(e.Payload, out string decodedAnswer)
+                ? decodedAnswer
+                : string.Empty;
+            int currentTickCount = Environment.TickCount;
+            int remainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(currentTickCount);
+            if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                remainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
+                window.ClearChallenge();
+            }
+
+            _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = remainingMs;
+            _packetOwnedAntiMacroCurrentRemainingMs = remainingMs;
+            _packetOwnedAntiMacroAwaitingResult = true;
+            _lastPacketOwnedAntiMacroSubmittedTick = currentTickCount;
+            _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+            _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+            _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = e.RawPacket?.ToArray() ?? Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge?.SentCount ?? -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = Math.Max(0, e.ObservedOrdinal - 1);
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
+            _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
+            _lastPacketOwnedAntiMacroSummary =
+                $"Observed live client anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} from {ResolvePacketOwnedAntiMacroResultSource(e.Source)} and started packet-owned result tracking with remaining={remainingMs}ms.";
+        }
+
+        private string AppendPacketOwnedAntiMacroResultSourceSummary(
+            string summary,
+            IReadOnlyList<byte> payload,
+            string source,
+            bool authoritativeRoundTrip,
+            bool awaitingTerminalResult = false,
+            int submittedTickForLatency = int.MinValue)
+        {
+            _lastPacketOwnedAntiMacroResultSource = source ?? string.Empty;
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = authoritativeRoundTrip;
+            _lastPacketOwnedAntiMacroResultPayloadHex = authoritativeRoundTrip && payload != null
+                ? Convert.ToHexString(payload is byte[] bytes ? bytes : payload.ToArray())
+                : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return summary;
+            }
+
+            string sourceSummary;
+            if (authoritativeRoundTrip)
+            {
+                _lastPacketOwnedAntiMacroResultTick = Environment.TickCount;
+                _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
+                int submittedTick = submittedTickForLatency == int.MinValue
+                    ? _lastPacketOwnedAntiMacroSubmittedTick
+                    : submittedTickForLatency;
+                _lastPacketOwnedAntiMacroRoundTripLatencyMs = ResolvePacketOwnedAntiMacroRoundTripLatencyMs(
+                    submittedTick,
+                    _lastPacketOwnedAntiMacroResultTick);
+                _packetOwnedAntiMacroAwaitingResult = false;
+                int bridgeInboundDelta = ResolvePacketOwnedAntiMacroInboundResponseOrdinalDelta(
+                    _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal,
+                    _lastPacketOwnedAntiMacroResultBridgeReceivedOrdinal);
+                string bridgeEvidence = bridgeInboundDelta >= 0
+                    ? $" bridgeInboundDelta={bridgeInboundDelta}."
+                    : string.Empty;
+                sourceSummary = $" Result arrived from {source} and completed the official-session anti-macro round-trip in {_lastPacketOwnedAntiMacroRoundTripLatencyMs}ms.{bridgeEvidence}";
+            }
+            else
+            {
+                sourceSummary = awaitingTerminalResult
+                    ? $" Result arrived from {source}; submit parity is still awaiting an authoritative anti-macro response from the tracked bridge path (mode 6/7/9/11)."
+                    : $" Result arrived from {source}.";
+            }
+
+            _lastPacketOwnedAntiMacroSummary = $"{summary}{sourceSummary}";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static string ResolvePacketOwnedAntiMacroResultSource(string source)
+        {
+            return string.IsNullOrWhiteSpace(source)
+                ? string.Empty
+                : source.Trim();
+        }
+
+        private static string ResolvePacketOwnedAntiMacroExpectedResultSource(string remoteEndpoint)
+        {
+            return string.IsNullOrWhiteSpace(remoteEndpoint)
+                ? string.Empty
+                : $"official-session:{remoteEndpoint.Trim()}";
+        }
+
+        internal static string ResolvePacketOwnedAntiMacroExpectedResultSourceForBridge(
+            string activeRemoteEndpoint,
+            string configuredRemoteHost,
+            int configuredRemotePort)
+        {
+            if (!string.IsNullOrWhiteSpace(activeRemoteEndpoint))
+            {
+                return ResolvePacketOwnedAntiMacroExpectedResultSource(activeRemoteEndpoint);
+            }
+
+            if (configuredRemotePort <= 0 || string.IsNullOrWhiteSpace(configuredRemoteHost))
+            {
+                return string.Empty;
+            }
+
+            return ResolvePacketOwnedAntiMacroExpectedResultSource(
+                $"{configuredRemoteHost.Trim()}:{configuredRemotePort}");
+        }
+
+        private string ResolvePacketOwnedAntiMacroExpectedResultSource()
+        {
+            // Deferred opcode 117 delivery can be queued before crypto/session init.
+            // The bridge already owns the target Maple endpoint, so bind later 1011
+            // completion to that same configured server endpoint instead of accepting
+            // any official-session source.
+            return ResolvePacketOwnedAntiMacroExpectedResultSourceForBridge(
+                _localUtilityOfficialSessionBridge.ActiveRemoteEndpoint,
+                _localUtilityOfficialSessionBridge.RemoteHost,
+                _localUtilityOfficialSessionBridge.RemotePort);
+        }
+
+        private bool IsPacketOwnedAntiMacroNoticeVisible()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow
+                && noticeWindow.IsVisible;
+        }
+    }
+}

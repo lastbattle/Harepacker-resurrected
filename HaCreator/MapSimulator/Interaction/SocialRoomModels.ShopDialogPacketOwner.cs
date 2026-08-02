@@ -1,0 +1,201 @@
+using MapleLib.PacketLib;
+using System;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    public sealed partial class SocialRoomRuntime
+    {
+        private ShopDialogPacketOwner CreateShopDialogPacketOwner()
+        {
+            return Kind switch
+            {
+                SocialRoomKind.PersonalShop => new PersonalShopDialogPacketOwner(this),
+                SocialRoomKind.EntrustedShop => new EntrustedShopDialogPacketOwner(this),
+                SocialRoomKind.TradingRoom => new TradingRoomDialogPacketOwner(this),
+                _ => null
+            };
+        }
+
+        private abstract class ShopDialogPacketOwner
+        {
+            private byte? _lastPacketType;
+            private string _lastDispatchDetail;
+            private int _dispatchCount;
+            private int _forwardCount;
+
+            protected ShopDialogPacketOwner(SocialRoomRuntime runtime)
+            {
+                Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+            }
+
+            protected SocialRoomRuntime Runtime { get; }
+            internal abstract string OwnerName { get; }
+            protected abstract string SupportedPacketSummary { get; }
+            protected virtual string ForwardingSummary => "No additional owner forwarding.";
+
+            internal bool TryDispatch(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message)
+            {
+                _dispatchCount++;
+                bool forwarded = false;
+                if (!TryDispatchCore(payload, reader, packetType, tickCount, out message, out forwarded))
+                {
+                    _lastPacketType = packetType;
+                    _lastDispatchDetail = message;
+                    Runtime.TrackPacketOwnerSummary(OwnerName, packetType, tickCount, handled: false, message);
+                    return false;
+                }
+
+                if (forwarded)
+                {
+                    _forwardCount++;
+                }
+
+                _lastPacketType = packetType;
+                _lastDispatchDetail = message;
+                Runtime.TrackPacketOwnerSummary(OwnerName, packetType, tickCount, handled: true, message);
+                return true;
+            }
+
+            internal string DescribeStatus(string lastSummary)
+            {
+                string lastPacket = _lastPacketType.HasValue ? _lastPacketType.Value.ToString() : "none";
+                string lastDetail = string.IsNullOrWhiteSpace(_lastDispatchDetail) ? "idle" : _lastDispatchDetail;
+                return $"{OwnerName} dispatches {SupportedPacketSummary} | forwarding={ForwardingSummary} | dispatches={_dispatchCount}, forwarded={_forwardCount}, lastPacket={lastPacket}, lastDetail={lastDetail} | last={lastSummary}";
+            }
+
+            protected abstract bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message, out bool forwarded);
+        }
+
+        private sealed class PersonalShopDialogPacketOwner : ShopDialogPacketOwner
+        {
+            internal PersonalShopDialogPacketOwner(SocialRoomRuntime runtime)
+                : base(runtime)
+            {
+            }
+
+            internal override string OwnerName => "CPersonalShopDlg::OnPacket";
+            protected override string SupportedPacketSummary => "24 buy-result, 25 base->CMiniRoomBaseDlg, 26 sold-item, 27 move-to-inventory";
+
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message, out bool forwarded)
+            {
+                forwarded = packetType == PersonalShopBasePacketType;
+                return Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out message);
+            }
+        }
+
+        private sealed class EntrustedShopDialogPacketOwner : ShopDialogPacketOwner
+        {
+            private const string ForwardedOwnerName = "CPersonalShopDlg::OnPacket";
+
+            internal EntrustedShopDialogPacketOwner(SocialRoomRuntime runtime)
+                : base(runtime)
+            {
+            }
+
+            internal override string OwnerName => "CEntrustedShopDlg::OnPacket";
+            protected override string SupportedPacketSummary => "40 arrange, 42 withdraw-all, 44 withdraw-money, 46 visit-list, 47 blacklist, then forwards shared shop packets to CPersonalShopDlg::OnPacket";
+            protected override string ForwardingSummary => "CEntrustedShopDlg::OnPacket -> CPersonalShopDlg::OnPacket for shared shop packet types.";
+
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message, out bool forwarded)
+            {
+                bool handled;
+                string detail;
+                forwarded = false;
+                switch (packetType)
+                {
+                    case EntrustedShopArrangeItemResultPacketType:
+                        Runtime.ApplyEntrustedArrangeResult(reader.ReadInt());
+                        handled = true;
+                        forwarded = true;
+                        detail = $"{OwnerName} handled arrange-result packet {packetType}, then forwarded it through {ForwardedOwnerName}. {Runtime.StatusMessage}";
+                        break;
+                    case EntrustedShopWithdrawAllResultPacketType:
+                        Runtime.ApplyEntrustedWithdrawAllResult(reader.ReadByte());
+                        handled = true;
+                        forwarded = true;
+                        detail = $"{OwnerName} handled withdraw-all packet {packetType}, then forwarded it through {ForwardedOwnerName}. {Runtime.StatusMessage}";
+                        break;
+                    case EntrustedShopWithdrawMoneyResultPacketType:
+                        Runtime.ApplyEntrustedWithdrawMoneyResult();
+                        handled = true;
+                        forwarded = true;
+                        detail = $"{OwnerName} handled withdraw-money packet {packetType}, then forwarded it through {ForwardedOwnerName}. {Runtime.StatusMessage}";
+                        break;
+                    case EntrustedShopVisitListResultPacketType:
+                    {
+                        bool entrustedHandled = Runtime.TryApplyEntrustedVisitListPacket(reader, out string entrustedDetail);
+                        bool sharedHandled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out string sharedDetail);
+                        forwarded = true;
+                        handled = entrustedHandled || sharedHandled;
+                        detail = entrustedHandled
+                            ? $"{OwnerName} handled visit-list packet {packetType}, then forwarded it through {ForwardedOwnerName}. {entrustedDetail}"
+                            : $"{OwnerName} could not decode visit-list packet {packetType}, but still forwarded it through {ForwardedOwnerName}. {entrustedDetail}";
+                        if (!string.IsNullOrWhiteSpace(sharedDetail))
+                        {
+                            detail = $"{detail} Forwarded owner detail: {sharedDetail}";
+                        }
+                        break;
+                    }
+                    case EntrustedShopBlackListResultPacketType:
+                    {
+                        bool entrustedHandled = Runtime.TryApplyEntrustedBlackListPacket(reader, out string entrustedDetail);
+                        bool sharedHandled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out string sharedDetail);
+                        forwarded = true;
+                        handled = entrustedHandled || sharedHandled;
+                        detail = entrustedHandled
+                            ? $"{OwnerName} handled blacklist packet {packetType}, then forwarded it through {ForwardedOwnerName}. {entrustedDetail}"
+                            : $"{OwnerName} could not decode blacklist packet {packetType}, but still forwarded it through {ForwardedOwnerName}. {entrustedDetail}";
+                        if (!string.IsNullOrWhiteSpace(sharedDetail))
+                        {
+                            detail = $"{detail} Forwarded owner detail: {sharedDetail}";
+                        }
+                        break;
+                    }
+                    default:
+                        forwarded = true;
+                        handled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out detail);
+                        if (handled)
+                        {
+                            detail = $"{OwnerName} forwarded packet {packetType} to {ForwardedOwnerName}. {detail}";
+                        }
+                        else
+                        {
+                            detail = $"{OwnerName} forwarded packet {packetType} to {ForwardedOwnerName}, but the shared personal-shop dispatcher did not model it. {detail}";
+                        }
+
+                        break;
+                }
+
+                message = detail;
+                return handled;
+            }
+        }
+
+        private sealed class TradingRoomDialogPacketOwner : ShopDialogPacketOwner
+        {
+            internal TradingRoomDialogPacketOwner(SocialRoomRuntime runtime)
+                : base(runtime)
+            {
+            }
+
+            internal override string OwnerName => "CTradingRoomDlg::OnPacket";
+            protected override string SupportedPacketSummary => "15 put-item, 16 put-money, 17 trade, 21 exceed-limit; subtype 20 CRC stays on the OnTrade follow-up branch";
+            protected override string ForwardingSummary => "17 trade prepares the verification path and subtype 20 stays modeled as the OnTrade checksum follow-up.";
+
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message, out bool forwarded)
+            {
+                forwarded = false;
+                if (packetType == 20)
+                {
+                    bool handled = Runtime.TryApplyTradingRoomCrcPacket(reader, out string detail);
+                    message = handled
+                        ? $"{OwnerName} modeled CRC subtype 20 as the checksum follow-up reached from CTradingRoomDlg::OnTrade. {detail}"
+                        : detail;
+                    return handled;
+                }
+
+                return Runtime.TryDispatchTradingRoomPacket(payload, reader, packetType, out message);
+            }
+        }
+    }
+}

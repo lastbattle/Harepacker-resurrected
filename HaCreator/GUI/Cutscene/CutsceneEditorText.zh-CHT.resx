@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="Cutscene_Title">
+    <value>過場動畫工作區</value>
+  </data>
+  <data name="Cutscene_Save">
+    <value>儲存變更</value>
+  </data>
+  <data name="Cutscene_Play">
+    <value>播放</value>
+  </data>
+  <data name="Cutscene_Pause">
+    <value>暫停</value>
+  </data>
+  <data name="Cutscene_Stop">
+    <value>停止</value>
+  </data>
+  <data name="Cutscene_Step">
+    <value>前進一格</value>
+  </data>
+  <data name="Cutscene_Loop">
+    <value>循環</value>
+  </data>
+  <data name="Cutscene_PreviewResolution">
+    <value>預覽</value>
+  </data>
+  <data name="Cutscene_SceneExplorer">
+    <value>場景瀏覽器</value>
+  </data>
+  <data name="Cutscene_SearchTooltip">
+    <value>依 WZ 路徑篩選 Direction 場景</value>
+  </data>
+  <data name="Cutscene_MapTriggers">
+    <value>地圖觸發器</value>
+  </data>
+  <data name="Cutscene_Add">
+    <value>新增</value>
+  </data>
+  <data name="Cutscene_Delete">
+    <value>刪除</value>
+  </data>
+  <data name="Cutscene_Properties">
+    <value>選取的事件</value>
+  </data>
+  <data name="Cutscene_Type">
+    <value>類型</value>
+  </data>
+  <data name="Cutscene_Start">
+    <value>開始（毫秒）</value>
+  </data>
+  <data name="Cutscene_Duration">
+    <value>持續時間（毫秒）</value>
+  </data>
+  <data name="Cutscene_Visual">
+    <value>視覺路徑</value>
+  </data>
+  <data name="Cutscene_Sound">
+    <value>音效路徑</value>
+  </data>
+  <data name="Cutscene_Action">
+    <value>動作</value>
+  </data>
+  <data name="Cutscene_Field">
+    <value>地圖 ID</value>
+  </data>
+  <data name="Cutscene_Appearance">
+    <value>裝備</value>
+  </data>
+  <data name="Cutscene_Raw">
+    <value>未知欄位</value>
+  </data>
+  <data name="Cutscene_TriggerBindings">
+    <value>觸發綁定</value>
+  </data>
+  <data name="Cutscene_EventQueue">
+    <value>EventQ 腳本</value>
+  </data>
+  <data name="Cutscene_Timeline">
+    <value>多軌時間軸</value>
+  </data>
+  <data name="Cutscene_Duplicate">
+    <value>複製</value>
+  </data>
+  <data name="Cutscene_Track">
+    <value>命令／資源</value>
+  </data>
+  <data name="Cutscene_Ready">
+    <value>就緒。</value>
+  </data>
+  <data name="Cutscene_Loading">
+    <value>正在載入 Direction 場景…</value>
+  </data>
+  <data name="Cutscene_ScenesLoaded">
+    <value>已載入 {0} 個 Direction 場景。</value>
+  </data>
+  <data name="Cutscene_LoadError">
+    <value>無法載入 Direction 場景：{0}</value>
+  </data>
+  <data name="Cutscene_Saved">
+    <value>過場動畫與地圖觸發器變更已可隨 WZ 儲存。</value>
+  </data>
+  <data name="Cutscene_ValidationSummary">
+    <value>已儲存，但有 {0} 個驗證問題：{1}</value>
+  </data>
+  <data name="Cutscene_UnsupportedType">
+    <value>事件 {0} 使用不支援的類型 {1}</value>
+  </data>
+  <data name="Cutscene_MissingVisual">
+    <value>事件 {0} 缺少視覺路徑</value>
+  </data>
+  <data name="Cutscene_MissingSound">
+    <value>事件 {0} 缺少音效路徑</value>
+  </data>
+  <data name="Cutscene_InvalidField">
+    <value>事件 {0} 的地圖 ID 無效</value>
+  </data>
+  <data name="Cutscene_TriggerOutside">
+    <value>觸發器 {0} 位於地圖範圍外</value>
+  </data>
+  <data name="Cutscene_NoScene">
+    <value>未選取場景</value>
+  </data>
+  <data name="Cutscene_UnsavedPrompt"><value>關閉前要儲存過場動畫與地圖觸發器變更嗎？</value></data>
+  <data name="Cutscene_UnsavedTitle"><value>未儲存的過場動畫變更</value></data>
+  <data name="Cutscene_TimeRuler" xml:space="preserve"><value>時間</value></data>
+  <data name="Cutscene_TrackVisual" xml:space="preserve"><value>視覺效果</value></data>
+  <data name="Cutscene_TrackCharacter" xml:space="preserve"><value>角色</value></data>
+  <data name="Cutscene_TrackSound" xml:space="preserve"><value>音效</value></data>
+  <data name="Cutscene_TrackTransition" xml:space="preserve"><value>地圖轉移</value></data>
+  <data name="Cutscene_TrackRaw" xml:space="preserve"><value>不支援 / 原始</value></data>
+  <data name="Cutscene_Browse" xml:space="preserve"><value>瀏覽…</value></data>
+  <data name="Cutscene_AssetSearchTooltip" xml:space="preserve"><value>篩選已引用的資源路徑</value></data>
+  <data name="Cutscene_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Cutscene_Select" xml:space="preserve"><value>選取</value></data>
+  <data name="Cutscene_SelectVisualTitle" xml:space="preserve"><value>選取視覺資源</value></data>
+  <data name="Cutscene_SelectSoundTitle" xml:space="preserve"><value>選取音效資源</value></data>
+  <data name="Cutscene_SelectVisualPurpose" xml:space="preserve"><value>選擇已載入 Direction 場景所引用的視覺路徑。</value></data>
+  <data name="Cutscene_SelectSoundPurpose" xml:space="preserve"><value>選擇已載入 Direction 場景所引用的音效路徑。</value></data>
+  <data name="Cutscene_AssetCount" xml:space="preserve"><value>{0} 個資源</value></data>
+  <data name="Cutscene_NoAssetSelected" xml:space="preserve"><value>尚未選取資源。</value></data>
+  <data name="Cutscene_ValidateScene" xml:space="preserve"><value>驗證場景</value></data>
+  <data name="Cutscene_ValidateAll" xml:space="preserve"><value>全部驗證</value></data>
+  <data name="Cutscene_SaveBlocked" xml:space="preserve"><value>無法儲存</value></data>
+  <data name="Cutscene_ValidationPassed" xml:space="preserve"><value>{0}：未發現問題。</value></data>
+  <data name="Cutscene_ValidationFound" xml:space="preserve"><value>{0}：{1} 個問題，{2} 個錯誤。</value></data>
+  <data name="Cutscene_MissingAction" xml:space="preserve"><value>事件 {0} 沒有角色動作</value></data>
+  <data name="Cutscene_MissingAppearance" xml:space="preserve"><value>事件 {0} 沒有裝備覆寫</value></data>
+  <data name="Cutscene_InvalidMotionDuration" xml:space="preserve"><value>移動視覺事件 {0} 需要正數持續時間</value></data>
+  <data name="Cutscene_NegativeStart" xml:space="preserve"><value>事件 {0} 的開始時間為負數</value></data>
+  <data name="Cutscene_NegativeDuration" xml:space="preserve"><value>事件 {0} 的持續時間為負數</value></data>
+  <data name="Cutscene_DuplicateEvent" xml:space="preserve"><value>事件 ID {0} 重複</value></data>
+  <data name="Cutscene_DuplicateTrigger" xml:space="preserve"><value>觸發器 ID {0} 重複</value></data>
+</root>

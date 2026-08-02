@@ -161,6 +161,7 @@ namespace HaRepacker.GUI
 
                     bool bSaveAs64BitWzFile = checkBox_64BitFile.IsChecked == true; // no version number
                     WzMapleVersion wzMapleVersionSelected = ((EncryptionKey)encryptionBox.SelectedItem).MapleVersion; // new encryption selected
+                    var wzFileManager = Program.EnsureWzFileManager();
                     if (this.IsRegularWzFile)
                     {
 
@@ -192,8 +193,7 @@ namespace HaRepacker.GUI
                         }
 
                         // Reload the new file
-                        var loadedFiles = Program.WzFileManager.WzFileList;
-                        WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
+                        WzFile loadedWzFile = wzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
                         if (loadedWzFile != null)
                         {
                             _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(loadedWzFile);
@@ -234,10 +234,11 @@ namespace HaRepacker.GUI
                         }
 
                         // Reload the new file
-                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected);
+                        WzImage img = wzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected);
                         if (img == null || error_noAdminPriviledge)
                         {
                             MessageBox.Show(Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                            return;
                         }
                         _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(img);
                     }

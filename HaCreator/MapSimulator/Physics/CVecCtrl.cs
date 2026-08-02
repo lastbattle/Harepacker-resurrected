@@ -221,11 +221,9 @@ namespace HaCreator.MapSimulator.Physics
         /// Ladder/rope Y range (bottom)
         /// </summary>
         public int LadderBottom { get; set; }
-
+        private Func<float, float, float, LadderOrRopeInfo?> _ladderOrRopeLookup;
         #endregion
-
         #region Movement State (m_nMoveAction)
-
         /// <summary>
         /// Current movement action/state
         /// </summary>
@@ -329,6 +327,17 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool HasFlyingAbility { get; set; }
 
+        /// <summary>
+        /// Some flying maps require the user's flying skill state to be active.
+        /// Client: CAttrField::bNeedSkillForFlying.
+        /// </summary>
+        public bool RequiresFlyingSkillForMap { get; set; }
+
+        /// <summary>
+        /// WZ field metadata noLanding prevents foothold landing while map-owned float state is active.
+        /// </summary>
+        public bool NoLandingMap { get; set; }
+
         #endregion
 
         #region Float State Preservation (SaveFloatState*)
@@ -357,6 +366,21 @@ namespace HaCreator.MapSimulator.Physics
         /// Whether float state has been saved
         /// </summary>
         private bool _floatStateSaved;
+
+        /// <summary>
+        /// Whether a float step saved its pre-move state this frame.
+        /// </summary>
+        public bool HasSavedFloatState => _floatStateSaved;
+
+        /// <summary>
+        /// X position captured before the last float step.
+        /// </summary>
+        public double SavedFloatX => _savedX;
+
+        /// <summary>
+        /// Y position captured before the last float step.
+        /// </summary>
+        public double SavedFloatY => _savedY;
 
         #endregion
 
@@ -397,9 +421,30 @@ namespace HaCreator.MapSimulator.Physics
         public bool IsRecordingPath { get; set; }
 
         /// <summary>
+        /// Latest client-owned move-path attribute recorded on this controller.
+        /// </summary>
+        public int CurrentMovePathAttribute { get; private set; }
+
+        /// <summary>
+        /// Total time currently gathered in the active move-path batch.
+        /// Mirrors the client-side gather-duration gate used before flush.
+        /// </summary>
+        private int _pathGatherDurationMs;
+
+        /// <summary>
         /// Last time path was flushed (for network sync timing)
         /// </summary>
         private int _lastPathFlushTime;
+
+        /// <summary>
+        /// Client-side CMovePath random counters appended to encoded move elements
+        /// when the random-count suffix option is enabled.
+        /// </summary>
+        private ushort _movePathRandomCount;
+        private ushort _movePathActualRandomCount;
+        private bool _hasClientMovePathEncodeHeader;
+        private MovePathElement _clientMovePathEncodeHeader;
+        private Func<byte?> _clientKeyPadStateProvider;
 
         /// <summary>
         /// Path flush interval in milliseconds
@@ -486,7 +531,17 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool IsUserFlying()
         {
-            return IsFlying || IsFlyingMap || HasFlyingAbility;
+            if (!IsFlyingMap)
+            {
+                return false;
+            }
+
+            if (!RequiresFlyingSkillForMap)
+            {
+                return true;
+            }
+
+            return IsFlying || HasFlyingAbility;
         }
 
         /// <summary>
@@ -498,10 +553,14 @@ namespace HaCreator.MapSimulator.Physics
             return CurrentFoothold;
         }
 
+        public void SetLadderOrRopeLookup(Func<float, float, float, LadderOrRopeInfo?> ladderOrRopeLookup)
+        {
+            _ladderOrRopeLookup = ladderOrRopeLookup;
+        }
+
         /// <summary>
         /// Get ladder or rope at the specified position.
         /// Client: CVecCtrl::GetLadderOrRope
-        /// This is a stub - actual implementation needs foothold/rope data.
         /// </summary>
         /// <param name="x">X position</param>
         /// <param name="y">Y position</param>
@@ -509,9 +568,32 @@ namespace HaCreator.MapSimulator.Physics
         /// <returns>True if ladder/rope found at position</returns>
         public bool GetLadderOrRope(double x, double y, out bool isLadder)
         {
+            if (TryGetLadderOrRope(x, y, 0f, out LadderOrRopeInfo ladderOrRope))
+            {
+                isLadder = ladderOrRope.IsLadder;
+                return true;
+            }
+
             isLadder = false;
-            // Stub - would need rope/ladder data from map
             return false;
+        }
+
+        public bool TryGetLadderOrRope(double x, double y, double searchRange, out LadderOrRopeInfo ladderOrRope)
+        {
+            ladderOrRope = default;
+            if (_ladderOrRopeLookup == null)
+            {
+                return false;
+            }
+
+            var result = _ladderOrRopeLookup((float)x, (float)y, (float)searchRange);
+            if (!result.HasValue)
+            {
+                return false;
+            }
+
+            ladderOrRope = result.Value;
+            return true;
         }
 
         #endregion
@@ -562,36 +644,27 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
+        /// Client overload used by movement skills: stamp the move-path attribute before
+        /// queuing the pending impact.
+        /// </summary>
+        public void SetImpactNext(int movePathAttribute, double vx, double vy, int? timeStampMs = null)
+        {
+            SetMovePathAttribute(movePathAttribute, timeStampMs: timeStampMs);
+            SetImpactNext(vx, vy);
+        }
+
+        /// <summary>
         /// Apply pending impact to velocity and clear it
         /// </summary>
         public void ApplyPendingImpact()
         {
             if (HasPendingImpact)
             {
-                VelocityX += ImpactVelocityX;
-                VelocityY += ImpactVelocityY;
-
-                // Set up knockback bounds from current foothold to prevent falling off
-                if (CurrentFoothold != null)
-                {
-                    // Record the foothold bounds for knockback clamping
-                    KnockbackMinX = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                    KnockbackMaxX = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                    IsInKnockback = true;
-                    _knockbackTimeRemaining = MaxKnockbackTime;
-                }
+                ApplyImpactVelocity(ImpactVelocityX, ImpactVelocityY);
 
                 ImpactVelocityX = 0;
                 ImpactVelocityY = 0;
                 HasPendingImpact = false;
-
-                // Leave foothold if knocked back vertically
-                if (CurrentFoothold != null && Math.Abs(VelocityY) > 0.1)
-                {
-                    FallStartFoothold = CurrentFoothold;
-                    CurrentFoothold = null;
-                    CurrentJumpState = JumpState.Falling;
-                }
             }
         }
 
@@ -613,6 +686,49 @@ namespace HaCreator.MapSimulator.Physics
                 IsInKnockback = false;
                 _knockbackTimeRemaining = 0;
             }
+        }
+
+        /// <summary>
+        /// Apply the reduced foothold jump used by swim/fly states in the client.
+        /// Client: CVecCtrl::JustJump on foothold multiplies the normal jump by 0.7.
+        /// </summary>
+        public void JumpFromFloatFoothold(double jumpScale = 0.7)
+        {
+            if (!IsOnFoothold() && !IsOnLadderOrRope)
+            {
+                return;
+            }
+
+            VelocityY = -JumpVelocity * jumpScale;
+            FallStartFoothold = CurrentFoothold;
+            CurrentFoothold = null;
+            IsOnLadderOrRope = false;
+            CurrentJumpState = JumpState.Jumping;
+            CurrentAction = MoveAction.Jump;
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
+        }
+
+        /// <summary>
+        /// Apply the client swim jump impulse while already floating.
+        /// Client: CVecCtrl::JustJump sets vy = -(swimSpeedV * dSwimSpeed * |field.fly| * 5.0).
+        /// The simulator uses tuned ground jump/gravity values, so preserve the client ratio by
+        /// scaling the raw swim impulse into the simulator's jump model.
+        /// </summary>
+        public void ApplySwimJumpImpulse(double verticalSpeedScale = 1.0, double fieldFloatScale = 1.0)
+        {
+            double floatScale = Math.Abs(fieldFloatScale);
+            if (floatScale <= 0.0)
+            {
+                floatScale = 1.0;
+            }
+
+            double rawImpulse = PhysicsConstants.Instance.SwimSpeed * verticalSpeedScale * floatScale * 5.0;
+            VelocityY = -(rawImpulse * PhysicsConstants.Instance.JumpSpeedTuningScale);
+            CurrentJumpState = JumpState.Jumping;
+            CurrentAction = MoveAction.Swim;
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
         }
 
         /// <summary>
@@ -857,25 +973,38 @@ namespace HaCreator.MapSimulator.Physics
             // Player input is handled separately in PlayerCharacter.ProcessFloatMovement
             int inputX = 0;
             int inputY = 0;
+            StepFloatMovement(inputX, inputY, maxSpeed, force, drag, mass, gravityFactor, deltaTime, mode);
+        }
 
-            // Save state before collision
+        /// <summary>
+        /// Apply one complete float-movement step, including physics integration and map bounds.
+        /// PlayerCharacter uses this directly for user-controlled swimming/flying so the
+        /// simulator does not skip the actual movement step while in float mode.
+        /// </summary>
+        public void StepFloatMovement(int inputX, int inputY, double maxSpeed, double force, double drag,
+            double mass, double gravityFactor, float deltaTime, FloatMode mode)
+        {
             SaveFloatStateBeforeCollision();
 
-            // Apply float physics
             CalcFloat(inputX, inputY, maxSpeed, force, drag, mass, gravityFactor, deltaTime);
 
-            // Update position
             double newX = X + VelocityX * deltaTime;
             double newY = Y + VelocityY * deltaTime;
 
-            // Collision detection
             if (CollisionDetectFloat(newX, newY, out double collidedX, out double collidedY))
             {
                 X = collidedX;
                 Y = collidedY;
-                // Zero velocity on collision
-                if (collidedX != newX) VelocityX = 0;
-                if (collidedY != newY) VelocityY = 0;
+
+                if (Math.Abs(collidedX - newX) > 0.001)
+                {
+                    VelocityX = 0;
+                }
+
+                if (Math.Abs(collidedY - newY) > 0.001)
+                {
+                    VelocityY = 0;
+                }
             }
             else
             {
@@ -883,21 +1012,15 @@ namespace HaCreator.MapSimulator.Physics
                 Y = newY;
             }
 
-            // Save state after collision
             SaveFloatStateAfterCollision();
-
-            // Bound to map
             BoundPosMapRange();
 
-            // Update action state
-            if (mode == FloatMode.Flying)
-                CurrentAction = MoveAction.Fly;
-            else if (mode == FloatMode.Swimming)
-                CurrentAction = MoveAction.Swim;
-            else
-                CurrentAction = VelocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
-
-            // Update jump state
+            CurrentAction = mode switch
+            {
+                FloatMode.Flying => MoveAction.Fly,
+                FloatMode.Swimming => MoveAction.Swim,
+                _ => VelocityY < 0 ? MoveAction.Jump : MoveAction.Fall
+            };
             CurrentJumpState = VelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
         }
 
@@ -930,6 +1053,12 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="fh">Foothold to land on</param>
         public void LandOnFoothold(FootholdLine fh)
         {
+            if (NoLandingMap)
+            {
+                DetachFromFoothold();
+                return;
+            }
+
             CurrentFoothold = fh;
             FallStartFoothold = null;
             VelocityY = 0;
@@ -980,12 +1109,50 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
-        /// Release from ladder/rope
+        /// Release from ladder/rope into an airborne state.
         /// </summary>
-        public void ReleaseLadder()
+        /// <param name="initialVelocityY">Optional vertical velocity to apply immediately after release.</param>
+        /// <param name="yOverride">Optional Y override for top/bottom ladder exits.</param>
+        public void ReleaseLadder(double initialVelocityY = 0, double? yOverride = null)
         {
             IsOnLadderOrRope = false;
-            CurrentJumpState = JumpState.Falling;
+            CurrentFoothold = null;
+            FallStartFoothold = null;
+            IsJumpingDown = false;
+            VelocityY = initialVelocityY;
+
+            if (yOverride.HasValue)
+            {
+                Y = yOverride.Value;
+            }
+
+            CurrentJumpState = initialVelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            CurrentAction = initialVelocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
+
+            // Releasing from a ladder is a deliberate state transition, not a lingering hit reaction.
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
+        }
+
+        /// <summary>
+        /// Jump away from a ladder or rope using explicit launch velocities.
+        /// This mirrors the client flow more closely than releasing and then invoking the generic jump path.
+        /// </summary>
+        public void JumpOffLadder(double velocityX, double velocityY)
+        {
+            IsOnLadderOrRope = false;
+            CurrentFoothold = null;
+            FallStartFoothold = null;
+            IsJumpingDown = false;
+
+            VelocityX = velocityX;
+            VelocityY = velocityY;
+            CurrentJumpState = velocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            CurrentAction = velocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
+
+            // Voluntary ladder jumps should not inherit knockback restrictions.
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
         }
 
         /// <summary>
@@ -1025,26 +1192,57 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="vy">Vertical impact velocity</param>
         public void Impact(double vx, double vy)
         {
-            // Impact applies immediately (unlike SetImpactNext which queues)
-            VelocityX = vx;
-            VelocityY = vy;
+            ApplyImpactVelocity(vx, vy);
+        }
 
-            WingsActive = false; // Disable wings on impact
-
-            // Detach from foothold if vertical impact
-            if (vy < 0 && CurrentFoothold != null)
+        private void ApplyImpactVelocity(double vx, double vy)
+        {
+            if (CurrentFoothold != null)
             {
                 DetachFromFoothold();
             }
-
-            // Set up knockback bounds
-            if (CurrentFoothold != null)
+            else if (IsOnLadderOrRope)
             {
-                KnockbackMinX = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                KnockbackMaxX = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                IsInKnockback = true;
-                _knockbackTimeRemaining = MaxKnockbackTime;
+                IsOnLadderOrRope = false;
+                CurrentFoothold = null;
+                FallStartFoothold = null;
             }
+
+            VelocityX = MergeImpactVelocity(VelocityX, vx);
+            VelocityY = MergeImpactVelocity(VelocityY, vy);
+
+            // Client impact truncates the resulting velocities to integer values.
+            VelocityX = Math.Truncate(VelocityX);
+            VelocityY = Math.Truncate(VelocityY);
+
+            WingsActive = false;
+            IsJumpingDown = false;
+            IsInKnockback = false;
+            KnockbackMinX = 0;
+            KnockbackMaxX = 0;
+            _knockbackTimeRemaining = 0;
+
+            if (!IsOnFoothold() && !IsOnLadderOrRope)
+            {
+                CurrentJumpState = VelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            }
+        }
+
+        private static double MergeImpactVelocity(double currentVelocity, double impactVelocity)
+        {
+            if (impactVelocity < 0.0 && impactVelocity < currentVelocity)
+            {
+                double combined = currentVelocity + impactVelocity;
+                return combined >= impactVelocity ? combined : impactVelocity;
+            }
+
+            if (impactVelocity > 0.0 && currentVelocity < impactVelocity)
+            {
+                double combined = currentVelocity + impactVelocity;
+                return combined <= impactVelocity ? combined : impactVelocity;
+            }
+
+            return currentVelocity;
         }
 
         #endregion
@@ -1127,7 +1325,7 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="force">Float force</param>
         /// <param name="drag">Float drag</param>
         /// <param name="mass">Entity mass</param>
-        /// <param name="gravityFactor">Gravity multiplier (0 for flying, 0.5 for swimming)</param>
+        /// <param name="gravityFactor">Passive downward drift multiplier (0 for flying, 0.3 for swim-style float)</param>
         /// <param name="tSec">Time in seconds</param>
         public void CalcFloat(int inputX, int inputY, double maxSpeed, double force, double drag,
             double mass, double gravityFactor, double tSec)
@@ -1161,33 +1359,54 @@ namespace HaCreator.MapSimulator.Physics
                 }
             }
 
-            // Vertical movement for swimming - simple and direct
-            // Max speeds: 30% up, 150% down
-            double maxUpSpeed = maxSpeed * 0.3;   // ~132 for swim
-            double maxDownSpeed = maxSpeed * 1.5; // ~660 for swim
-            double accel = maxSpeed * 3.0 * tSec; // Acceleration per frame
-
-            if (inputY == 0)
+            if (gravityFactor <= 0.0)
             {
-                // No input - sink due to gravity, apply drag
-                vy += accel * 0.3; // Gentle sink acceleration
-                // Apply drag to slow down
-                if (vy > 0) vy *= (1.0 - tSec * 2.0);
-                if (vy < 0) vy *= (1.0 - tSec * 2.0);
-                // Clamp sink speed
-                if (vy > maxSpeed * 0.3) vy = maxSpeed * 0.3;
-            }
-            else if (inputY > 0)
-            {
-                // Pressing DOWN - accelerate downward
-                vy += accel;
-                if (vy > maxDownSpeed) vy = maxDownSpeed;
+                // Flying maps use a symmetric vertical vector control with no passive sink.
+                if (inputY == 0)
+                {
+                    DecSpeed(ref vy, drag, mass, 0, tSec);
+                }
+                else if (inputY > 0)
+                {
+                    AccSpeed(ref vy, force, mass, maxSpeed, tSec);
+                }
+                else
+                {
+                    AccSpeed(ref vy, -force, mass, maxSpeed, tSec);
+                }
             }
             else
             {
-                // Pressing UP - accelerate upward
-                vy -= accel;
-                if (vy < -maxUpSpeed) vy = -maxUpSpeed;
+                // Swimming keeps the client-style asymmetric up/down limits plus passive drift.
+                double maxUpSpeed = maxSpeed * 0.3;
+                double maxDownSpeed = maxSpeed * 1.5;
+                double accel = maxSpeed * 3.0 * tSec;
+
+                if (inputY == 0)
+                {
+                    vy += accel * gravityFactor;
+
+                    double dragFactor = Math.Max(0.0, 1.0 - (tSec * 2.0));
+                    if (vy > 0.0 || vy < 0.0)
+                    {
+                        vy *= dragFactor;
+                    }
+
+                    if (vy > maxSpeed * gravityFactor)
+                    {
+                        vy = maxSpeed * gravityFactor;
+                    }
+                }
+                else if (inputY > 0)
+                {
+                    vy += accel;
+                    if (vy > maxDownSpeed) vy = maxDownSpeed;
+                }
+                else
+                {
+                    vy -= accel;
+                    if (vy < -maxUpSpeed) vy = -maxUpSpeed;
+                }
             }
 
             VelocityX = vx;
@@ -1394,8 +1613,10 @@ namespace HaCreator.MapSimulator.Physics
         /// Make a new movement path element.
         /// Client: CVecCtrl::MakeNewMovePathElem
         /// </summary>
-        public MovePathElement MakeNewMovePathElem()
+        public MovePathElement MakeNewMovePathElem(int? timeStampMs = null)
         {
+            AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount);
+            byte? clientKeyPadState = _clientKeyPadStateProvider?.Invoke();
             return new MovePathElement
             {
                 X = (int)X,
@@ -1404,8 +1625,175 @@ namespace HaCreator.MapSimulator.Physics
                 VelocityY = (short)VelocityY,
                 Action = CurrentAction,
                 FootholdId = CurrentFoothold?.num ?? 0,
-                TimeStamp = Environment.TickCount
+                FallStartFootholdId = FallStartFoothold?.num ?? 0,
+                TimeStamp = timeStampMs ?? Environment.TickCount,
+                Duration = 0,
+                FacingRight = FacingRight,
+                MovePathAttribute = CurrentMovePathAttribute,
+                XOffset = 0,
+                YOffset = 0,
+                RandomCount = randomCount,
+                ActualRandomCount = actualRandomCount,
+                HasClientKeyPadState = clientKeyPadState.HasValue,
+                ClientKeyPadState = clientKeyPadState.GetValueOrDefault(),
+                StatChanged = false
             };
+        }
+
+        internal void SetClientKeyPadStateProvider(Func<byte?> clientKeyPadStateProvider)
+        {
+            _clientKeyPadStateProvider = clientKeyPadStateProvider;
+        }
+
+        private void AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount)
+        {
+            unchecked
+            {
+                _movePathRandomCount++;
+                _movePathActualRandomCount++;
+            }
+
+            randomCount = _movePathRandomCount;
+            actualRandomCount = _movePathActualRandomCount;
+        }
+
+        /// <summary>
+        /// Record a client-owned move-path attribute transition on the active path.
+        /// </summary>
+        public void SetMovePathAttribute(int attribute, bool rebuildMovePath = true, int? timeStampMs = null)
+        {
+            CurrentMovePathAttribute = attribute;
+            if (!rebuildMovePath || !IsRecordingPath)
+            {
+                return;
+            }
+
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            if (_movePath.Count == 0)
+            {
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            int lastIndex = _movePath.Count - 1;
+            MovePathElement previous = _movePath[lastIndex];
+            int durationMs = GetClientTickElapsed(currentTimeMs, previous.TimeStamp);
+            previous.Duration = ClampPathDuration(durationMs);
+            _movePath[lastIndex] = previous;
+            _pathGatherDurationMs += durationMs;
+            _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+            _lastPathFlushTime = currentTimeMs;
+
+            while (_movePath.Count > 50)
+            {
+                _movePath.RemoveAt(0);
+            }
+        }
+
+        /// <summary>
+        /// Resolve the vec-ctrl attribute byte used by summon-skill cast packets.
+        /// Keeps raw byte-cast semantics and falls back to the active move-path tail
+        /// when the live attribute is still zero but the recorded path has advanced.
+        /// </summary>
+        internal byte ResolveClientSummonPacketMovePathAttributeByte()
+        {
+            int? tailAttribute = _movePath.Count > 0
+                ? _movePath[_movePath.Count - 1].MovePathAttribute
+                : null;
+            return ResolveClientSummonPacketMovePathAttributeByteForTesting(
+                CurrentMovePathAttribute,
+                IsRecordingPath,
+                tailAttribute);
+        }
+
+        internal static byte ResolveClientSummonPacketMovePathAttributeByteForTesting(
+            int currentMovePathAttribute,
+            bool isRecordingPath,
+            int? tailMovePathAttribute)
+        {
+            int attribute = currentMovePathAttribute;
+            if (attribute == 0
+                && isRecordingPath
+                && tailMovePathAttribute.HasValue
+                && tailMovePathAttribute.Value != 0)
+            {
+                attribute = tailMovePathAttribute.Value;
+            }
+
+            return unchecked((byte)attribute);
+        }
+
+        private static short ClampPathDuration(int durationMs)
+        {
+            return (short)Math.Min(short.MaxValue, Math.Max(0, durationMs));
+        }
+
+        private static bool HasGroundedFoothold(List<MovePathElement> path)
+        {
+            for (int i = path.Count - 1; i >= 0; i--)
+            {
+                if (path[i].FootholdId > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsShortMovePathAction(MoveAction action)
+        {
+            return action == MoveAction.Jump
+                || action == MoveAction.Fall
+                || action == MoveAction.Ladder
+                || action == MoveAction.Rope
+                || action == MoveAction.Swim
+                || action == MoveAction.Fly;
+        }
+
+        private bool IsShortMovePathUpdate(bool isFlying, bool hasDynamicFoothold)
+        {
+            if (isFlying || hasDynamicFoothold || IsOnLadderOrRope || IsShortMovePathAction(CurrentAction))
+            {
+                return true;
+            }
+
+            MovePathElement tail = _movePath[_movePath.Count - 1];
+            return IsShortMovePathAction(tail.Action);
+        }
+
+        private int GetCurrentGatherDuration(int currentTimeMs)
+        {
+            if (_movePath.Count == 0)
+            {
+                return 0;
+            }
+
+            MovePathElement tail = _movePath[_movePath.Count - 1];
+            return _pathGatherDurationMs + GetClientTickElapsed(currentTimeMs, tail.TimeStamp);
+        }
+
+        private List<MovePathElement> BuildMovePathSnapshot(int currentTimeMs, bool appendLatestState)
+        {
+            if (_movePath.Count == 0)
+            {
+                return MakeMovePath(currentTimeMs);
+            }
+
+            var path = new List<MovePathElement>(_movePath);
+            int lastIndex = path.Count - 1;
+            MovePathElement tail = path[lastIndex];
+            int tailDurationMs = GetClientTickElapsed(currentTimeMs, tail.TimeStamp);
+            tail.Duration = ClampPathDuration(tailDurationMs);
+            path[lastIndex] = tail;
+
+            if (appendLatestState && tailDurationMs > 0)
+            {
+                path.Add(MakeNewMovePathElem(currentTimeMs));
+            }
+
+            return path;
         }
 
         /// <summary>
@@ -1413,11 +1801,41 @@ namespace HaCreator.MapSimulator.Physics
         /// Client: CMovePath::MakeMovePath
         /// </summary>
         /// <returns>List of movement path elements</returns>
-        public List<MovePathElement> MakeMovePath()
+        public List<MovePathElement> MakeMovePath(int? timeStampMs = null)
         {
             var path = new List<MovePathElement>();
-            path.Add(MakeNewMovePathElem());
+            path.Add(MakeNewMovePathElem(timeStampMs));
             return path;
+        }
+
+        /// <summary>
+        /// Snapshot the current in-flight movement path without consuming it.
+        /// </summary>
+        public List<MovePathElement> GetMovePathSnapshot(int? timeStampMs = null)
+        {
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            return BuildMovePathSnapshot(currentTimeMs, appendLatestState: true);
+        }
+
+        /// <summary>
+        /// Snapshot movement path for packet-owned movement registration without appending
+        /// a synthetic latest-state element.
+        /// </summary>
+        public List<MovePathElement> GetMovePathPacketSnapshot(int? timeStampMs = null)
+        {
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            return BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+        }
+
+        internal MovePathElement? GetClientMovePathEncodeHeaderSnapshot(int? timeStampMs = null)
+        {
+            if (_hasClientMovePathEncodeHeader)
+            {
+                return _clientMovePathEncodeHeader;
+            }
+
+            List<MovePathElement> snapshot = GetMovePathPacketSnapshot(timeStampMs);
+            return snapshot.Count > 0 ? snapshot[0] : null;
         }
 
         /// <summary>
@@ -1430,10 +1848,23 @@ namespace HaCreator.MapSimulator.Physics
             if (!IsRecordingPath)
                 return;
 
-            // Add path element at intervals
-            if (currentTimeMs - _lastPathFlushTime >= PathFlushInterval)
+            if (_movePath.Count == 0)
             {
-                _movePath.Add(MakeNewMovePathElem());
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            // Add path element at intervals
+            if (GetClientTickElapsed(currentTimeMs, _lastPathFlushTime) >= PathFlushInterval)
+            {
+                int lastIndex = _movePath.Count - 1;
+                MovePathElement previous = _movePath[lastIndex];
+                int durationMs = GetClientTickElapsed(currentTimeMs, previous.TimeStamp);
+                previous.Duration = ClampPathDuration(durationMs);
+                _movePath[lastIndex] = previous;
+                _pathGatherDurationMs += durationMs;
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
                 _lastPathFlushTime = currentTimeMs;
 
                 // Limit path size
@@ -1448,20 +1879,171 @@ namespace HaCreator.MapSimulator.Physics
         /// Get and clear the current movement path.
         /// Client: CMovePath::Flush
         /// </summary>
-        public List<MovePathElement> FlushMovePath()
+        public List<MovePathElement> FlushMovePath(
+            int? timeStampMs = null,
+            bool applyClientRetention = false,
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
         {
-            var path = new List<MovePathElement>(_movePath);
-            _movePath.Clear();
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            var path = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+            SetClientMovePathEncodeHeaderToTail(path);
+            if (applyClientRetention)
+            {
+                ApplyClientFlushRetentionAfterPacketSnapshot(
+                    currentTimeMs,
+                    isFlying,
+                    hasDynamicFoothold);
+            }
+            else
+            {
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+            }
+
             return path;
+        }
+
+        /// <summary>
+        /// Apply the ownership side effects of CMovePath::Flush after a packet-owned
+        /// snapshot has already been encoded by the caller.
+        /// </summary>
+        internal void ApplyClientFlushRetentionAfterPacketSnapshot(
+            int currentTimeMs,
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
+        {
+            if (_movePath.Count == 0)
+            {
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            List<MovePathElement> snapshot = new(
+                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientFlushRetention(
+                    BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
+
+            bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
+            if (shortUpdate || isFlying)
+            {
+                SetClientMovePathEncodeHeaderToTail(snapshot);
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = snapshot.Count - 1; i >= 0; i--)
+            {
+                if (snapshot[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            if (lastGroundedIndex < 0 || lastGroundedIndex >= snapshot.Count - 1)
+            {
+                SetClientMovePathEncodeHeaderToTail(snapshot);
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            SetClientMovePathEncodeHeader(snapshot[lastGroundedIndex]);
+            _movePath.Clear();
+            _pathGatherDurationMs = 0;
+            for (int i = lastGroundedIndex + 1; i < snapshot.Count; i++)
+            {
+                MovePathElement retained = snapshot[i];
+                int retainedDurationMs = Math.Max(0, (int)retained.Duration);
+                _pathGatherDurationMs += retainedDurationMs;
+                retained.HasClientKeyPadState = false;
+                retained.ClientKeyPadState = 0;
+                if (i == snapshot.Count - 1)
+                {
+                    retained.TimeStamp = unchecked(currentTimeMs - retainedDurationMs);
+                }
+
+                _movePath.Add(retained);
+            }
+
+            _lastPathFlushTime = currentTimeMs;
+        }
+
+        private void SetClientMovePathEncodeHeader(MovePathElement element)
+        {
+            _clientMovePathEncodeHeader = element;
+            _hasClientMovePathEncodeHeader = true;
+        }
+
+        private void SetClientMovePathEncodeHeaderToTail(IReadOnlyList<MovePathElement> path)
+        {
+            if (path == null || path.Count == 0)
+            {
+                return;
+            }
+
+            SetClientMovePathEncodeHeader(path[path.Count - 1]);
+        }
+
+        internal static int GetClientTickElapsed(int currentTimeMs, int previousTimeMs)
+        {
+            int elapsed = unchecked(currentTimeMs - previousTimeMs);
+            return elapsed > 0 ? elapsed : 0;
+        }
+
+        internal bool RetainsPostGroundTailAfterClientFlush(
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
+        {
+            return !IsShortMovePathUpdate(isFlying, hasDynamicFoothold)
+                   && !isFlying;
         }
 
         /// <summary>
         /// Check if it's time to flush the movement path.
         /// Client: CMovePath::IsTimeForFlush
         /// </summary>
-        public bool IsTimeForFlush(int currentTimeMs)
+        public bool IsTimeForFlush(int currentTimeMs, bool isFlying = false, bool hasDynamicFoothold = false)
         {
-            return currentTimeMs - _lastPathFlushTime >= PathFlushInterval;
+            if (_movePath.Count == 0)
+            {
+                return false;
+            }
+
+            bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
+
+            int thresholdMs = shortUpdate
+                ? (hasDynamicFoothold ? 200 : 500)
+                : 1000;
+
+            // CMovePath::IsTimeForFlush checks m_tGatherDuration, which only
+            // includes closed gathered elements. The still-open tail is shaped
+            // during encode, but it does not admit the flush cadence early.
+            if (_pathGatherDurationMs < thresholdMs)
+            {
+                return false;
+            }
+
+            return shortUpdate || isFlying || HasGroundedFoothold(_movePath);
+        }
+
+        /// <summary>
+        /// Start recording movement path.
+        /// </summary>
+        public void StartPathRecording(int currentTimeMs)
+        {
+            IsRecordingPath = true;
+            _movePath.Clear();
+            _pathGatherDurationMs = 0;
+            _lastPathFlushTime = currentTimeMs;
+            _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+            _clientMovePathEncodeHeader = _movePath[0];
+            _hasClientMovePathEncodeHeader = true;
         }
 
         /// <summary>
@@ -1469,9 +2051,7 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public void StartPathRecording()
         {
-            IsRecordingPath = true;
-            _movePath.Clear();
-            _lastPathFlushTime = Environment.TickCount;
+            StartPathRecording(Environment.TickCount);
         }
 
         /// <summary>
@@ -1481,6 +2061,27 @@ namespace HaCreator.MapSimulator.Physics
         {
             IsRecordingPath = false;
             _movePath.Clear();
+            _pathGatherDurationMs = 0;
+            _hasClientMovePathEncodeHeader = false;
+        }
+
+        /// <summary>
+        /// Snapshot the passive movement state at the current position.
+        /// </summary>
+        public PassivePositionSnapshot MakePassivePositionSnapshot(int? timeStampMs = null)
+        {
+            return new PassivePositionSnapshot
+            {
+                X = (int)X,
+                Y = (int)Y,
+                VelocityX = (short)VelocityX,
+                VelocityY = (short)VelocityY,
+                Action = CurrentAction,
+                FootholdId = CurrentFoothold?.num ?? 0,
+                TimeStamp = timeStampMs ?? Environment.TickCount,
+                FacingRight = FacingRight,
+                MovePathAttribute = CurrentMovePathAttribute
+            };
         }
 
         #endregion
@@ -1543,6 +2144,9 @@ namespace HaCreator.MapSimulator.Physics
             IsFlying = false;
             IsFlyingMap = false;
             HasFlyingAbility = false;
+            RequiresFlyingSkillForMap = false;
+            NoLandingMap = false;
+            _ladderOrRopeLookup = null;
 
             // Float state preservation
             _savedX = 0;
@@ -1554,7 +2158,11 @@ namespace HaCreator.MapSimulator.Physics
             // Movement path
             _movePath.Clear();
             IsRecordingPath = false;
+            _pathGatherDurationMs = 0;
             _lastPathFlushTime = 0;
+            _movePathRandomCount = 0;
+            _movePathActualRandomCount = 0;
+            _hasClientMovePathEncodeHeader = false;
         }
 
         #endregion
@@ -1586,6 +2194,22 @@ namespace HaCreator.MapSimulator.Physics
         None = 0,
         Jumping = 1,  // Moving upward
         Falling = 2   // Moving downward
+    }
+
+    public readonly struct LadderOrRopeInfo
+    {
+        public LadderOrRopeInfo(int x, int top, int bottom, bool isLadder)
+        {
+            X = x;
+            Top = top;
+            Bottom = bottom;
+            IsLadder = isLadder;
+        }
+
+        public int X { get; }
+        public int Top { get; }
+        public int Bottom { get; }
+        public bool IsLadder { get; }
     }
 
     /// <summary>
@@ -1625,6 +2249,11 @@ namespace HaCreator.MapSimulator.Physics
         public int FootholdId;
 
         /// <summary>
+        /// Foothold where falling started (used by attribute 12 payload shape).
+        /// </summary>
+        public int FallStartFootholdId;
+
+        /// <summary>
         /// Timestamp when this element was created
         /// </summary>
         public int TimeStamp;
@@ -1640,9 +2269,49 @@ namespace HaCreator.MapSimulator.Physics
         public bool FacingRight;
 
         /// <summary>
+        /// Client-owned move-path attribute captured for this element.
+        /// </summary>
+        public int MovePathAttribute;
+
+        /// <summary>
+        /// Optional client movement offsets encoded for attr 0/12/14 families.
+        /// </summary>
+        public short XOffset;
+        public short YOffset;
+
+        /// <summary>
+        /// Optional CMovePath random-count suffix values.
+        /// </summary>
+        public ushort RandomCount;
+        public ushort ActualRandomCount;
+
+        /// <summary>
         /// Stat changed flag (for server validation)
         /// </summary>
         public bool StatChanged;
+
+        /// <summary>
+        /// Local-user passive keypad nibble sampled when this path element was opened.
+        /// Used by the recovered CMovePath::Encode flush tail.
+        /// </summary>
+        public bool HasClientKeyPadState;
+        public byte ClientKeyPadState;
+    }
+
+    /// <summary>
+    /// Passive movement snapshot used alongside queued move-path elements.
+    /// </summary>
+    public struct PassivePositionSnapshot
+    {
+        public int X;
+        public int Y;
+        public short VelocityX;
+        public short VelocityY;
+        public MoveAction Action;
+        public int FootholdId;
+        public int TimeStamp;
+        public bool FacingRight;
+        public int MovePathAttribute;
     }
 
     /// <summary>

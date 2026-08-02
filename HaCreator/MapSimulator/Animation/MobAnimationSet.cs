@@ -1,5 +1,8 @@
 using HaSharedLibrary.Render.DX;
+using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -32,8 +35,402 @@ namespace HaCreator.MapSimulator.Animation
     /// </summary>
     public class MobAnimationSet : AnimationSetBase
     {
+        public sealed class FrameMetadata
+        {
+            public Point FrameOrigin { get; init; }
+            public Point CanvasSize { get; init; }
+            public Rectangle VisualBounds { get; init; }
+            public Rectangle FrameBounds { get; init; }
+            public Rectangle BodyBounds { get; init; }
+            public bool HasHeadAnchor { get; init; }
+            public Point HeadAnchor { get; init; }
+            public IReadOnlyList<Rectangle> MultiBodyBounds { get; init; }
+            public IReadOnlyList<Rectangle> ClientMultiBodyBounds { get; init; }
+            public Rectangle ClientBodyBounds { get; init; }
+            public bool HasAlphaRange { get; init; }
+            public byte AlphaStart { get; init; } = byte.MaxValue;
+            public byte AlphaEnd { get; init; } = byte.MaxValue;
+            public bool HasLayerZ { get; init; }
+            public int LayerZ { get; init; }
+
+            public Rectangle EffectiveBodyBounds
+            {
+                get
+                {
+                    if (MultiBodyBounds == null || MultiBodyBounds.Count == 0)
+                    {
+                        return BodyBounds.IsEmpty ? FrameBounds : BodyBounds;
+                    }
+
+                    Rectangle union = MultiBodyBounds[0];
+                    for (int i = 1; i < MultiBodyBounds.Count; i++)
+                    {
+                        union = Rectangle.Union(union, MultiBodyBounds[i]);
+                    }
+
+                    return union;
+                }
+            }
+        }
+
+        public sealed class FrameOverlay
+        {
+            public string Name { get; init; }
+            public string LayerZ { get; init; }
+            public IReadOnlyList<IDXObject> Frames { get; init; }
+        }
+
+        public sealed class ActionSpeakMetadata
+        {
+            public int Probability { get; init; }
+            public int ChatBalloon { get; init; }
+            public int FloatNotice { get; init; }
+            public int HpThreshold { get; init; }
+            public int Width { get; init; }
+            public IReadOnlyList<string> Messages { get; init; }
+            public IReadOnlyList<ActionSpeakVariant> Variants { get; init; }
+            public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
+        }
+
+        public sealed class ActionSpeakVariant
+        {
+            public int Probability { get; init; }
+            public int ChatBalloon { get; init; }
+            public int FloatNotice { get; init; }
+            public int HpThreshold { get; init; }
+            public int Width { get; init; }
+            public IReadOnlyList<string> Messages { get; init; }
+            public IReadOnlyList<ActionSpeakConditionGroup> ConditionGroups { get; init; }
+        }
+
+        public sealed class ActionSpeakConditionGroup
+        {
+            public IReadOnlyList<ActionSpeakQuestCondition> QuestConditions { get; init; }
+            public IReadOnlyList<int> RequiredPetItemIds { get; init; }
+
+            public bool HasConditions =>
+                (QuestConditions != null && QuestConditions.Count > 0) ||
+                (RequiredPetItemIds != null && RequiredPetItemIds.Count > 0);
+        }
+
+        public sealed class ActionSpeakQuestCondition
+        {
+            public int QuestId { get; init; }
+            public int State { get; init; }
+        }
+
+        public sealed class ActionSpeakConditionContext
+        {
+            public Func<int, int?> QuestStateProvider { get; init; }
+            public Func<int, bool> HasPetItem { get; init; }
+        }
+
+        public sealed class AttackInfoMetadata
+        {
+            public int AttackType { get; set; } = -1;
+            public bool MagicAttack { get; set; }
+            public int HitAnimationSourceFrameIndex { get; set; }
+            public bool HitAttach { get; set; }
+            public bool HasHitAttachMetadata { get; set; }
+            public bool FacingAttach { get; set; }
+            public bool HasFacingAttachMetadata { get; set; }
+            public int HitAfterMs { get; set; }
+            public bool HasHitAfterMetadata { get; set; }
+            public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
+            public Dictionary<int, int> FrameHitAttachOverrideFrameCounts { get; } = new();
+            public Dictionary<int, bool> FrameFacingAttachOverrides { get; } = new();
+            public Dictionary<int, int> FrameFacingAttachOverrideFrameCounts { get; } = new();
+            public bool EffectFacingAttach { get; set; }
+            public bool HasRangeBounds { get; set; }
+            public Rectangle RangeBounds { get; set; }
+            public bool HasRangeOrigin { get; set; }
+            public Point RangeOrigin { get; set; }
+            public int RangeRadius { get; set; }
+            public int EffectAfter { get; set; }
+            public int AttackAfter { get; set; }
+            public bool HasAttackAfterMetadata { get; set; }
+            public int RandDelayAttack { get; set; }
+            public int AreaCount { get; set; }
+            public int AttackCount { get; set; }
+            public int StartOffset { get; set; }
+            public bool HasPrimaryEffect { get; set; }
+            public bool HasAreaWarning { get; set; }
+            public bool IsRushAttack { get; set; }
+            public bool IsJumpAttack { get; set; }
+            public bool Tremble { get; set; }
+            public bool IsAngerAttack { get; set; }
+            public bool IsSpecialAttack { get; set; }
+
+            public bool ResolveHitAttach(int frameIndex)
+            {
+                if (frameIndex >= 0
+                    && FrameHitAttachOverrides.TryGetValue(frameIndex, out bool overrideValue))
+                {
+                    return overrideValue;
+                }
+
+                if (frameIndex >= 0
+                    && TryResolveFrameHitAttachRangeOverride(frameIndex, out overrideValue))
+                {
+                    return overrideValue;
+                }
+
+                if (frameIndex >= 0
+                    && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool frameFacingAttach))
+                {
+                    return HitAttach || frameFacingAttach;
+                }
+
+                if (frameIndex >= 0
+                    && TryResolveFrameFacingAttachRangeOverride(frameIndex, out frameFacingAttach))
+                {
+                    return HitAttach || frameFacingAttach;
+                }
+
+                return HitAttach;
+            }
+
+            public bool HasExplicitHitAttachMetadata(int frameIndex)
+            {
+                return HasHitAttachMetadata
+                       || (frameIndex >= 0
+                           && (FrameHitAttachOverrides.ContainsKey(frameIndex)
+                               || HasFrameHitAttachRangeOverride(frameIndex)));
+            }
+
+            public bool ResolveHitAttachForHitAnimationFrame(int frameIndex)
+            {
+                return ResolveHitAttach(ResolveHitAnimationMetadataFrameIndex(frameIndex));
+            }
+
+            public bool ResolveFacingAttach(int frameIndex)
+            {
+                return frameIndex >= 0
+                       && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
+                    ? overrideValue
+                    : frameIndex >= 0 && TryResolveFrameFacingAttachRangeOverride(frameIndex, out overrideValue)
+                    ? overrideValue
+                    : FacingAttach;
+            }
+
+            public bool HasExplicitFacingAttachMetadata(int frameIndex)
+            {
+                return HasFacingAttachMetadata
+                       || (frameIndex >= 0
+                           && (FrameFacingAttachOverrides.ContainsKey(frameIndex)
+                               || HasFrameFacingAttachRangeOverride(frameIndex)));
+            }
+
+            public bool ResolveFacingAttachForHitAnimationFrame(int frameIndex)
+            {
+                return ResolveFacingAttach(ResolveHitAnimationMetadataFrameIndex(frameIndex));
+            }
+
+            public int ResolveHitAnimationMetadataFrameIndex(int frameIndex)
+            {
+                return frameIndex < 0
+                    ? frameIndex
+                    : HitAnimationSourceFrameIndex + frameIndex;
+            }
+
+            public void RegisterFrameOwnedHitMetadataRange(int sourceFrameIndex, int frameCount)
+            {
+                if (sourceFrameIndex < 0 || frameCount <= 1)
+                {
+                    return;
+                }
+
+                if (FrameHitAttachOverrides.ContainsKey(sourceFrameIndex))
+                {
+                    FrameHitAttachOverrideFrameCounts[sourceFrameIndex] = frameCount;
+                }
+
+                if (FrameFacingAttachOverrides.ContainsKey(sourceFrameIndex))
+                {
+                    FrameFacingAttachOverrideFrameCounts[sourceFrameIndex] = frameCount;
+                }
+            }
+
+            private bool TryResolveFrameHitAttachRangeOverride(int frameIndex, out bool value)
+            {
+                foreach (KeyValuePair<int, int> entry in FrameHitAttachOverrideFrameCounts)
+                {
+                    int startFrameIndex = entry.Key;
+                    int frameCount = entry.Value;
+                    if (frameCount <= 1
+                        || frameIndex < startFrameIndex
+                        || frameIndex >= startFrameIndex + frameCount
+                        || !FrameHitAttachOverrides.TryGetValue(startFrameIndex, out value))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                value = false;
+                return false;
+            }
+
+            private bool TryResolveFrameFacingAttachRangeOverride(int frameIndex, out bool value)
+            {
+                foreach (KeyValuePair<int, int> entry in FrameFacingAttachOverrideFrameCounts)
+                {
+                    int startFrameIndex = entry.Key;
+                    int frameCount = entry.Value;
+                    if (frameCount <= 1
+                        || frameIndex < startFrameIndex
+                        || frameIndex >= startFrameIndex + frameCount
+                        || !FrameFacingAttachOverrides.TryGetValue(startFrameIndex, out value))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                value = false;
+                return false;
+            }
+
+            private bool HasFrameHitAttachRangeOverride(int frameIndex)
+            {
+                return TryResolveFrameHitAttachRangeOverride(frameIndex, out _);
+            }
+
+            private bool HasFrameFacingAttachRangeOverride(int frameIndex)
+            {
+                return TryResolveFrameFacingAttachRangeOverride(frameIndex, out _);
+            }
+        }
+
+        public sealed class AttackHitEffectEntry
+        {
+            public List<IDXObject> Frames { get; init; }
+            public int SourceFrameIndex { get; init; }
+            public bool IsAttackFrameOwned { get; init; }
+            public bool UsesAttackInfoHitEffect { get; init; }
+            public string SourceUol { get; init; }
+        }
+
+        public sealed class AttackEffectNode
+        {
+            public string Name { get; set; }
+            public int EffectType { get; set; }
+            public int EffectDistance { get; set; }
+            public bool RandomPos { get; set; }
+            public int Delay { get; set; }
+            public int Start { get; set; }
+            public int Interval { get; set; }
+            public int Count { get; set; }
+            public int Duration { get; set; }
+            public int Fall { get; set; }
+            public int OffsetX { get; set; }
+            public int OffsetY { get; set; }
+            public bool HasRangeBounds { get; set; }
+            public Rectangle RangeBounds { get; set; }
+            public bool UseRangeGroupPlacement { get; set; }
+            public int RangeGroupIndex { get; set; }
+            public int RangeGroupCount { get; set; }
+            public string SourceUol { get; set; }
+            public List<List<IDXObject>> Sequences { get; } = new List<List<IDXObject>>();
+        }
+
         // Hit effect frames for each attack (attack1/info/hit, attack2/info/hit, etc.)
         private readonly Dictionary<string, List<IDXObject>> _attackHitEffects = new();
+        private readonly Dictionary<string, List<AttackHitEffectEntry>> _attackHitEffectEntries = new();
+        private readonly Dictionary<string, List<IDXObject>> _attackProjectileEffects = new();
+        private readonly Dictionary<string, List<IDXObject>> _attackEffects = new();
+        private readonly Dictionary<string, string> _attackEffectSourceUols = new();
+        private readonly Dictionary<string, List<IDXObject>> _attackWarningEffects = new();
+        private readonly Dictionary<string, List<AttackEffectNode>> _attackExtraEffects = new();
+        private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
+        private readonly Dictionary<string, List<FrameMetadata>> _frameMetadata = new();
+        private readonly Dictionary<string, List<FrameOverlay>> _frameOverlays = new();
+        private readonly Dictionary<string, ActionSpeakMetadata> _actionSpeakMetadata = new();
+        private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
+        private List<IDXObject> _angerGaugeEffect;
+        private string _angerGaugeEffectPath;
+
+        public void SetFrameMetadata(string action, List<FrameMetadata> frameMetadata)
+        {
+            if (string.IsNullOrWhiteSpace(action) || frameMetadata == null || frameMetadata.Count == 0)
+            {
+                return;
+            }
+
+            _frameMetadata[action.ToLowerInvariant()] = frameMetadata;
+        }
+
+        public FrameMetadata GetFrameMetadata(string action, int frameIndex)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            if (!_frameMetadata.TryGetValue(key, out List<FrameMetadata> frameMetadata) ||
+                frameMetadata == null ||
+                frameMetadata.Count == 0)
+            {
+                return null;
+            }
+
+            if (frameIndex < 0)
+            {
+                frameIndex = 0;
+            }
+
+            if (frameIndex >= frameMetadata.Count)
+            {
+                frameIndex = frameMetadata.Count - 1;
+            }
+
+            return frameMetadata[frameIndex];
+        }
+
+        public void AddFrameOverlay(string action, FrameOverlay overlay)
+        {
+            if (string.IsNullOrWhiteSpace(action) ||
+                overlay?.Frames == null ||
+                overlay.Frames.Count == 0)
+            {
+                return;
+            }
+
+            string key = action.ToLowerInvariant();
+            if (!_frameOverlays.TryGetValue(key, out List<FrameOverlay> overlays))
+            {
+                overlays = new List<FrameOverlay>();
+                _frameOverlays[key] = overlays;
+            }
+
+            overlays.Add(overlay);
+        }
+
+        public IReadOnlyList<FrameOverlay> GetFrameOverlays(string action)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            return _frameOverlays.TryGetValue(key, out List<FrameOverlay> overlays)
+                ? overlays
+                : null;
+        }
+
+        public void SetActionSpeakMetadata(string action, ActionSpeakMetadata metadata)
+        {
+            if (string.IsNullOrWhiteSpace(action) ||
+                metadata?.Messages == null ||
+                metadata.Messages.Count == 0)
+            {
+                return;
+            }
+
+            _actionSpeakMetadata[action.ToLowerInvariant()] = metadata;
+        }
+
+        public ActionSpeakMetadata GetActionSpeakMetadata(string action)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            return _actionSpeakMetadata.TryGetValue(key, out ActionSpeakMetadata metadata)
+                ? metadata
+                : null;
+        }
 
         /// <summary>
         /// Add hit effect frames for a specific attack action.
@@ -43,11 +440,40 @@ namespace HaCreator.MapSimulator.Animation
         /// <param name="hitFrames">Hit effect frames from attack/info/hit</param>
         public void AddAttackHitEffect(string attackAction, List<IDXObject> hitFrames)
         {
+            AddAttackHitEffect(attackAction, hitFrames, sourceFrameIndex: 0, isAttackFrameOwned: false);
+        }
+
+        public void AddAttackHitEffect(
+            string attackAction,
+            List<IDXObject> hitFrames,
+            int sourceFrameIndex,
+            bool isAttackFrameOwned,
+            bool usesAttackInfoHitEffect = false,
+            string sourceUol = null)
+        {
             if (hitFrames == null || hitFrames.Count == 0)
                 return;
 
             string key = attackAction.ToLower();
-            _attackHitEffects[key] = hitFrames;
+            if (!_attackHitEffectEntries.TryGetValue(key, out List<AttackHitEffectEntry> entries))
+            {
+                entries = new List<AttackHitEffectEntry>();
+                _attackHitEffectEntries[key] = entries;
+            }
+
+            entries.Add(new AttackHitEffectEntry
+            {
+                Frames = hitFrames,
+                SourceFrameIndex = sourceFrameIndex,
+                IsAttackFrameOwned = isAttackFrameOwned,
+                UsesAttackInfoHitEffect = usesAttackInfoHitEffect,
+                SourceUol = sourceUol
+            });
+
+            if (!_attackHitEffects.ContainsKey(key) || !isAttackFrameOwned)
+            {
+                _attackHitEffects[key] = hitFrames;
+            }
         }
 
         /// <summary>
@@ -57,13 +483,58 @@ namespace HaCreator.MapSimulator.Animation
         /// <returns>Hit effect frames, or null if not available</returns>
         public List<IDXObject> GetAttackHitEffect(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackHitEffects.TryGetValue(key, out var frames))
-                return frames;
+            AttackHitEffectEntry entry = GetAttackHitEffectEntry(attackAction);
+            if (entry != null)
+            {
+                return entry.Frames;
+            }
 
-            // Fallback to attack1's hit effect if specific attack hit not found
-            if (key != "attack1" && _attackHitEffects.TryGetValue("attack1", out frames))
-                return frames;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackHitEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
+
+            return null;
+        }
+
+        public AttackHitEffectEntry GetAttackHitEffectEntry(string attackAction, int? attackFrameIndex = null)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (!_attackHitEffectEntries.TryGetValue(key, out List<AttackHitEffectEntry> entries)
+                    || entries == null
+                    || entries.Count == 0)
+                {
+                    continue;
+                }
+
+                if (attackFrameIndex.HasValue)
+                {
+                    AttackHitEffectEntry frameOwnedEntry = entries.Find(entry =>
+                        entry?.IsAttackFrameOwned == true
+                        && entry.SourceFrameIndex == attackFrameIndex.Value);
+                    if (frameOwnedEntry != null)
+                    {
+                        return frameOwnedEntry;
+                    }
+
+                    // When the packet lands after the authored source frame has already advanced,
+                    // keep the latest frame-owned clip instead of rebasing immediately to info/hit.
+                    AttackHitEffectEntry nearestPriorFrameOwnedEntry = entries
+                        .Where(entry => entry?.IsAttackFrameOwned == true
+                                        && entry.SourceFrameIndex <= attackFrameIndex.Value)
+                        .OrderByDescending(entry => entry.SourceFrameIndex)
+                        .FirstOrDefault();
+                    if (nearestPriorFrameOwnedEntry != null)
+                    {
+                        return nearestPriorFrameOwnedEntry;
+                    }
+                }
+
+                AttackHitEffectEntry infoEntry = entries.Find(entry => entry?.IsAttackFrameOwned != true);
+                return infoEntry ?? entries[0];
+            }
 
             return null;
         }
@@ -74,6 +545,238 @@ namespace HaCreator.MapSimulator.Animation
         public bool HasAttackHitEffect(string attackAction)
         {
             return _attackHitEffects.ContainsKey(attackAction?.ToLower() ?? "");
+        }
+
+        /// <summary>
+        /// Add projectile frames for a specific attack action.
+        /// These come from attack/info/ball and are rendered while the projectile is in flight.
+        /// </summary>
+        public void AddAttackProjectileEffect(string attackAction, List<IDXObject> projectileFrames)
+        {
+            if (projectileFrames == null || projectileFrames.Count == 0)
+                return;
+
+            string key = attackAction.ToLower();
+            _attackProjectileEffects[key] = projectileFrames;
+        }
+
+        /// <summary>
+        /// Get projectile frames for a specific attack action.
+        /// </summary>
+        public List<IDXObject> GetAttackProjectileEffect(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackProjectileEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
+
+            return null;
+        }
+
+        public void AddAttackEffect(string attackAction, List<IDXObject> effectFrames)
+        {
+            AddAttackEffect(attackAction, effectFrames, sourceUol: null);
+        }
+
+        public void AddAttackEffect(string attackAction, List<IDXObject> effectFrames, string sourceUol)
+        {
+            if (effectFrames == null || effectFrames.Count == 0)
+                return;
+
+            string key = attackAction.ToLower();
+            _attackEffects[key] = effectFrames;
+            _attackEffectSourceUols[key] = sourceUol;
+        }
+
+        public List<IDXObject> GetAttackEffect(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
+
+            return null;
+        }
+
+        public string GetAttackEffectSourceUol(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackEffectSourceUols.TryGetValue(key, out string sourceUol))
+                    return sourceUol;
+            }
+
+            return null;
+        }
+
+        public void AddAttackWarningEffect(string attackAction, List<IDXObject> warningFrames)
+        {
+            if (warningFrames == null || warningFrames.Count == 0)
+                return;
+
+            string key = attackAction.ToLower();
+            _attackWarningEffects[key] = warningFrames;
+        }
+
+        public List<IDXObject> GetAttackWarningEffect(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackWarningEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
+
+            return null;
+        }
+
+        public void AddAttackExtraEffect(string attackAction, AttackEffectNode effectNode)
+        {
+            if (effectNode == null || effectNode.Sequences.Count == 0)
+                return;
+
+            string key = attackAction.ToLower();
+            if (!_attackExtraEffects.TryGetValue(key, out var effects))
+            {
+                effects = new List<AttackEffectNode>();
+                _attackExtraEffects[key] = effects;
+            }
+
+            effects.Add(effectNode);
+        }
+
+        public IReadOnlyList<AttackEffectNode> GetAttackExtraEffects(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackExtraEffects.TryGetValue(key, out var effects))
+                    return effects;
+            }
+
+            return null;
+        }
+
+        public void SetAttackInfoMetadata(string attackAction, AttackInfoMetadata metadata)
+        {
+            if (metadata == null)
+                return;
+
+            _attackMetadata[attackAction.ToLower()] = metadata;
+        }
+
+        public AttackInfoMetadata GetAttackInfoMetadata(string attackAction)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackMetadata.TryGetValue(key, out var metadata))
+                    return metadata;
+            }
+
+            return null;
+        }
+
+        public static bool AreSameIndexedAttackFamily(string requestedAttackAction, string observedAttackAction)
+        {
+            string requestedKey = requestedAttackAction?.ToLowerInvariant() ?? string.Empty;
+            string observedKey = observedAttackAction?.ToLowerInvariant() ?? string.Empty;
+            if (requestedKey.Length == 0 || observedKey.Length == 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(requestedKey, observedKey, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return TryResolveAlternateAttackKey(requestedKey, out string alternateKey)
+                   && string.Equals(alternateKey, observedKey, System.StringComparison.Ordinal);
+        }
+
+        private static IEnumerable<string> EnumerateCompatibleAttackKeys(string attackAction)
+        {
+            string key = attackAction?.ToLowerInvariant() ?? string.Empty;
+            if (key.Length == 0)
+            {
+                yield break;
+            }
+
+            yield return key;
+
+            if (TryResolveAlternateAttackKey(key, out string alternateKey))
+            {
+                yield return alternateKey;
+            }
+
+            if (!string.Equals(key, "attack1", System.StringComparison.Ordinal))
+            {
+                yield return "attack1";
+            }
+
+            if (!string.Equals(key, "skill1", System.StringComparison.Ordinal))
+            {
+                yield return "skill1";
+            }
+        }
+
+        private static bool TryResolveAlternateAttackKey(string key, out string alternateKey)
+        {
+            alternateKey = null;
+            if (key.StartsWith("attack", System.StringComparison.Ordinal))
+            {
+                string suffix = key["attack".Length..];
+                if (suffix.Length > 0)
+                {
+                    alternateKey = $"skill{suffix}";
+                    return true;
+                }
+            }
+            else if (key.StartsWith("skill", System.StringComparison.Ordinal))
+            {
+                string suffix = key["skill".Length..];
+                if (suffix.Length > 0)
+                {
+                    alternateKey = $"attack{suffix}";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void SetAngerGaugeAnimation(int stage, List<IDXObject> frames)
+        {
+            if (stage < 0 || frames == null || frames.Count == 0)
+                return;
+
+            _angerGaugeAnimations[stage] = frames;
+        }
+
+        public List<IDXObject> GetAngerGaugeAnimation(int stage)
+        {
+            return stage >= 0 && _angerGaugeAnimations.TryGetValue(stage, out var frames)
+                ? frames
+                : null;
+        }
+
+        public void SetAngerGaugeEffect(List<IDXObject> frames, string effectPath = null)
+        {
+            if (frames == null || frames.Count == 0)
+                return;
+
+            _angerGaugeEffect = frames;
+            _angerGaugeEffectPath = effectPath;
+        }
+
+        public List<IDXObject> GetAngerGaugeEffect()
+        {
+            return _angerGaugeEffect;
+        }
+
+        public string GetAngerGaugeEffectPath()
+        {
+            return _angerGaugeEffectPath;
         }
         /// <summary>
         /// Provides mob-specific fallback logic for movement animations.

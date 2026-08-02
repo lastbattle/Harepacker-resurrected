@@ -10,6 +10,7 @@ using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -136,6 +137,7 @@ namespace HaCreator.MapSimulator.Effects
         public int SpawnTime { get; set; }
         public bool IsCritical { get; set; }
         public bool IsMiss { get; set; }
+        public string SpecialTextName { get; set; }
         public float Alpha { get; set; } = 1.0f;
         public float Scale { get; set; } = 1.0f;
         public int ComboIndex { get; set; } = 0;    // For stacking multiple hits
@@ -153,6 +155,13 @@ namespace HaCreator.MapSimulator.Effects
         public const int CRITICAL_EFFECT_OFFSET_Y = -30; // Critical effect Y offset
 
         public bool IsExpired(int currentTime) => currentTime - SpawnTime > DISPLAY_DURATION;
+
+        internal string GetDamageString()
+        {
+            return IsMiss
+                ? DamageNumberRenderer.ResolveSpecialTextName(SpecialTextName)
+                : DamageNumberRenderer.FormatDamageValue(Damage);
+        }
 
         public void Update(int currentTime)
         {
@@ -177,16 +186,7 @@ namespace HaCreator.MapSimulator.Effects
                 Alpha = 1.0f - phase2Progress;
             }
 
-            // Critical scale pulse (optional visual enhancement)
-            if (IsCritical && elapsed < 200)
-            {
-                float pulseT = (float)elapsed / 200f;
-                Scale = 1.2f - (0.2f * pulseT); // Start big, shrink to normal
-            }
-            else
-            {
-                Scale = 1.0f;
-            }
+            Scale = 1.0f;
         }
 
         /// <summary>
@@ -195,7 +195,9 @@ namespace HaCreator.MapSimulator.Effects
         public bool ShouldShowCriticalEffect(int currentTime)
         {
             int elapsed = currentTime - SpawnTime;
-            return IsCritical && elapsed >= CRITICAL_EFFECT_DELAY && elapsed < DISPLAY_DURATION;
+            return DamageNumberRenderer.UsesCriticalPresentation(ColorType, IsCritical)
+                && elapsed >= CRITICAL_EFFECT_DELAY
+                && elapsed < DISPLAY_DURATION;
         }
     }
 
@@ -478,6 +480,8 @@ namespace HaCreator.MapSimulator.Effects
         // WZ-based damage number renderer
         private DamageNumberRenderer _wzDamageRenderer;
         private bool _useWzDamageNumbers = false;
+        private AnimationEffects _animationEffects;
+        private Action<string, float, float, int, DamageColorType> _animationDisplayerSpecialTextSink;
         #endregion
 
         #region State
@@ -538,6 +542,7 @@ namespace HaCreator.MapSimulator.Effects
                 // Initialize the WZ damage renderer
                 _wzDamageRenderer = new DamageNumberRenderer();
                 _wzDamageRenderer.Initialize(_device, _damageFont);
+                _wzDamageRenderer.SetAnimationEffects(_animationEffects);
                 _useWzDamageNumbers = true;
 
                 System.Diagnostics.Debug.WriteLine($"[CombatEffects] Loaded {DamageNumberLoader.LoadedSetCount} damage number digit sets from WZ");
@@ -554,6 +559,18 @@ namespace HaCreator.MapSimulator.Effects
         /// Whether WZ-based damage numbers are available.
         /// </summary>
         public bool HasWzDamageNumbers => _useWzDamageNumbers && _wzDamageRenderer != null;
+
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
+            _wzDamageRenderer?.SetAnimationEffects(animationEffects);
+        }
+
+        public void SetAnimationDisplayerSpecialTextSink(Action<string, float, float, int, DamageColorType> sink)
+        {
+            _animationDisplayerSpecialTextSink = sink;
+        }
+
         #endregion
 
         #region Add Effects
@@ -569,12 +586,26 @@ namespace HaCreator.MapSimulator.Effects
         /// <param name="comboIndex">Multi-hit combo index</param>
         /// <param name="colorType">Damage color type (Red=player damage, Blue=received, Violet=party)</param>
         public void AddDamageNumber(int damage, float x, float y, bool isCritical, bool isMiss, int currentTime,
-            int comboIndex = 0, DamageColorType colorType = DamageColorType.Red)
+            int comboIndex = 0, DamageColorType colorType = DamageColorType.Red, string specialTextName = null)
         {
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return;
+            }
+
             // Use WZ renderer if available
             if (_useWzDamageNumbers && _wzDamageRenderer != null)
             {
-                _wzDamageRenderer.SpawnDamageNumber(damage, x, y, colorType, isCritical, isMiss, currentTime, comboIndex);
+                _wzDamageRenderer.SpawnDamageNumber(
+                    damage,
+                    x,
+                    y,
+                    colorType,
+                    isCritical,
+                    isMiss,
+                    currentTime,
+                    comboIndex,
+                    specialTextName);
                 return;
             }
 
@@ -596,8 +627,11 @@ namespace HaCreator.MapSimulator.Effects
             display.SpawnTime = currentTime;
             display.IsCritical = isCritical;
             display.IsMiss = isMiss;
+            display.SpecialTextName = isMiss
+                ? DamageNumberRenderer.ResolveSpecialTextName(specialTextName)
+                : null;
             display.Alpha = 1.0f;
-            display.Scale = isCritical ? 1.2f : 1.0f;
+            display.Scale = 1.0f;
             display.ComboIndex = comboIndex;
             display.ColorType = colorType;
 
@@ -621,11 +655,11 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
-        /// Add party/summon damage (Red damage numbers, same as player damage).
+        /// Add party/summon damage (Violet damage numbers).
         /// </summary>
         public void AddPartyDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
         {
-            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Red);
+            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Violet);
         }
 
         /// <summary>
@@ -641,7 +675,51 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
         {
-            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType);
+            if (TryRouteSpecialTextToAnimationDisplayerOwner("Miss", x, y, currentTime, colorType))
+            {
+                return;
+            }
+
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, "Miss");
+        }
+
+        public void AddGuard(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
+        {
+            AddSpecialText("guard", x, y, currentTime, colorType);
+        }
+
+        public void AddSpecialText(string specialTextName, float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
+        {
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                AddMiss(x, y, currentTime, colorType);
+                return;
+            }
+
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            if (TryRouteSpecialTextToAnimationDisplayerOwner(resolvedSpecialTextName, x, y, currentTime, colorType))
+            {
+                return;
+            }
+
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, resolvedSpecialTextName);
+        }
+
+        private bool TryRouteSpecialTextToAnimationDisplayerOwner(
+            string resolvedSpecialTextName,
+            float x,
+            float y,
+            int currentTime,
+            DamageColorType colorType)
+        {
+            if (_animationDisplayerSpecialTextSink == null
+                || !DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return false;
+            }
+
+            _animationDisplayerSpecialTextSink(resolvedSpecialTextName, x, y, currentTime, colorType);
+            return true;
         }
 
         /// <summary>
@@ -949,13 +1027,18 @@ namespace HaCreator.MapSimulator.Effects
 
             // Skip regular mob HP bar if this mob has a boss HP bar at top of screen
             // Bosses with hpTagColor only show the top-screen HP bar, not the regular one
-            if (hasBossHpBar)
+            if (!ShouldShowRegularMobHpBar(mobData, hasBossHpBar))
             {
                 // Check if the WZ-based boss HP bar is tracking this mob
                 if (_useWzBossHPBar && _bossHPBarUI != null && _bossHPBarUI.HasBossHPBar(poolId))
                     return;
                 // Check if the fallback system is tracking this mob
                 if (_bossHPBars.Exists(b => b.Boss?.PoolId == poolId))
+                    return;
+
+                // damagedByMob encounter actors use their own client visual state instead
+                // of the ordinary delayed HP indicator.
+                if (mobData?.DamagedByMob == true)
                     return;
             }
 
@@ -1114,6 +1197,14 @@ namespace HaCreator.MapSimulator.Effects
                 // Only show HP bar if mob has taken damage
                 if (mob.AI.CurrentHp < mob.AI.MaxHp)
                 {
+                    var mobData = mob.MobInstance?.MobInfo?.MobData;
+                    bool hasBossHpBar = mobData != null && mobData.HpTagColor > 0;
+                    if (!ShouldShowRegularMobHpBar(mobData, hasBossHpBar))
+                    {
+                        _mobHPBars.Remove(mob.PoolId);
+                        continue;
+                    }
+
                     if (!_mobHPBars.ContainsKey(mob.PoolId))
                     {
                         // Auto-create HP bar for damaged mobs
@@ -1143,6 +1234,22 @@ namespace HaCreator.MapSimulator.Effects
                     }
                 }
             }
+        }
+
+        internal static bool ShouldShowRegularMobHpBarForTesting(MobData mobData, bool hasBossHpBar)
+        {
+            return ShouldShowRegularMobHpBar(mobData, hasBossHpBar);
+        }
+
+        private static bool ShouldShowRegularMobHpBar(MobData mobData, bool hasBossHpBar)
+        {
+            if (hasBossHpBar)
+            {
+                return false;
+            }
+
+            // Client CMob::Update skips the regular delayed HP indicator lane for bDamagedByMob.
+            return mobData?.DamagedByMob != true;
         }
         #endregion
 
@@ -1519,15 +1626,16 @@ namespace HaCreator.MapSimulator.Effects
                 int screenX = (int)dmg.X - mapShiftX + centerX;
                 int screenY = (int)dmg.Y - mapShiftY + centerY;
 
-                string text = dmg.IsMiss ? "MISS" : dmg.Damage.ToString();
+                string text = dmg.GetDamageString();
 
                 // Color based on damage type
                 Color color;
+                bool useCriticalPresentation = DamageNumberRenderer.UsesCriticalPresentation(dmg.ColorType, dmg.IsCritical);
                 if (dmg.IsMiss)
                 {
                     color = COLOR_MISS;
                 }
-                else if (dmg.IsCritical)
+                else if (useCriticalPresentation)
                 {
                     color = COLOR_CRITICAL;
                 }
@@ -1543,7 +1651,7 @@ namespace HaCreator.MapSimulator.Effects
                 }
                 color *= dmg.Alpha;
 
-                SpriteFont font = dmg.IsCritical ? _criticalFont : _damageFont;
+                SpriteFont font = useCriticalPresentation ? _criticalFont : _damageFont;
                 Vector2 textSize = font.MeasureString(text);
                 Vector2 position = new Vector2(screenX - textSize.X / 2, screenY - textSize.Y / 2);
 

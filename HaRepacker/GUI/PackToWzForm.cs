@@ -221,8 +221,12 @@ namespace HaRepacker.GUI
                 string categoryPath = Path.Combine(_versionPath, category);
                 if (Directory.Exists(categoryPath))
                 {
-                    int imgCount = Directory.EnumerateFiles(categoryPath, "*.img", SearchOption.AllDirectories).Count();
-                    int subDirCount = Directory.EnumerateDirectories(categoryPath, "*", SearchOption.AllDirectories).Count();
+                    int imgCount = WzPackingService.EnumeratePackableImageFiles(
+                        categoryPath,
+                        SearchOption.AllDirectories).Count();
+                    int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
+                        categoryPath,
+                        SearchOption.AllDirectories).Count();
                     bool hasListJson = category.Equals("List", StringComparison.OrdinalIgnoreCase) &&
                                        File.Exists(Path.Combine(categoryPath, "List.json"));
 
@@ -260,8 +264,12 @@ namespace HaRepacker.GUI
                     dirName.Equals("manifest", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                int imgCount = Directory.EnumerateFiles(dirPath, "*.img", SearchOption.AllDirectories).Count();
-                int subDirCount = Directory.EnumerateDirectories(dirPath, "*", SearchOption.AllDirectories).Count();
+                int imgCount = WzPackingService.EnumeratePackableImageFiles(
+                    dirPath,
+                    SearchOption.AllDirectories).Count();
+                int subDirCount = HaCreatorPaths.EnumerateDirectoriesExcludingBackups(
+                    dirPath,
+                    SearchOption.AllDirectories).Count();
                 bool hasListJson = dirName.Equals("List", StringComparison.OrdinalIgnoreCase) &&
                                    File.Exists(Path.Combine(dirPath, "List.json"));
 

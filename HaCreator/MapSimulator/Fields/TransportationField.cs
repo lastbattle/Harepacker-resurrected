@@ -1,9 +1,11 @@
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Fields
@@ -25,6 +27,8 @@ namespace HaCreator.MapSimulator.Fields
         #region Constants
         // Animation timing in milliseconds
         private const int ALPHA_FADE_DURATION = 1000; // Alpha fade for Balrog appear/disappear
+        private const int DefaultVoyageBalrogAttackDurationMs = 5000;
+        private const string VoyageBalrogAutoRouteSuffix = "/ship/ossyria/99";
         #endregion
 
         #region Ship Properties (matching CShip class structure)
@@ -49,6 +53,7 @@ namespace HaCreator.MapSimulator.Fields
         private ShipState _state = ShipState.Idle;
         private float _currentX, _currentY;
         private float _currentAlpha = 255f;
+        private float _deltaX, _deltaY;
         private int _moveStartTime;
         private float _startMoveX, _endMoveX;
         private float _startAlpha, _endAlpha;
@@ -61,8 +66,17 @@ namespace HaCreator.MapSimulator.Fields
         private int _balrogMoveStartTime;
         private float _balrogStartX, _balrogEndX;
         private float _balrogStartY, _balrogEndY;
-        private float _balrogStartAlpha, _balrogEndAlpha;
         private int _balrogMoveDuration = 1000;
+        private int _balrogApproachDirection = 1;
+        private bool _balrogFlip = true;
+        private bool _voyageBalrogAutoEnabled;
+        private int _voyageBalrogAutoTriggerOffsetMs;
+        private int _voyageBalrogAutoDurationMs = DefaultVoyageBalrogAttackDurationMs;
+        private int _voyageBalrogDepartureStartTime;
+        private bool _voyageBalrogAutoTriggered;
+        private string _lastVoyageBalrogEventOwner = "none";
+        private string _lastTransportPacketOwner = "none";
+        private string _lastTransportPacketRoute = "none";
         #endregion
 
         #region Visual Properties
@@ -102,11 +116,31 @@ namespace HaCreator.MapSimulator.Fields
         public float BalrogX => _balrogX;
         public float BalrogY => _balrogY;
         public float BalrogAlpha => _balrogAlpha;
+        public int VoyageBalrogApproachDirection => _balrogApproachDirection;
+        public bool VoyageBalrogUsesLeftApproach => _balrogApproachDirection < 0;
+        public bool BalrogFlip => _balrogFlip;
         public float BackgroundScrollX => _bgScrollX;
         public bool HasShipTextures => _shipFrames != null && _shipFrames.Count > 0;
         public bool HasBalrogTextures => _balrogFrames != null && _balrogFrames.Count > 0;
         public bool IsActive => _state != ShipState.Idle;
         public bool IsBalrogVisible => _balrogState != BalrogState.Hidden && _balrogAlpha > 0;
+        public bool HasActiveVoyageBalrogAttack => _balrogState != BalrogState.Hidden;
+        public bool HasAutoVoyageBalrogAttack => _voyageBalrogAutoEnabled;
+        public bool IsVoyageBalrogAutoRouteEligible => IsAutoVoyageBalrogRoute();
+        public int VoyageBalrogAutoTriggerOffsetMs => _voyageBalrogAutoTriggerOffsetMs;
+        public int VoyageBalrogAutoDurationMs => _voyageBalrogAutoDurationMs;
+        public bool VoyageBalrogAutoTriggered => _voyageBalrogAutoTriggered;
+        public string LastVoyageBalrogEventOwner => _lastVoyageBalrogEventOwner;
+        public string LastTransportPacketOwner => _lastTransportPacketOwner;
+        public string LastTransportPacketRoute => _lastTransportPacketRoute;
+        public bool HasRouteConfiguration => !string.IsNullOrWhiteSpace(_shipPath) || _x != 0 || _y != 0 || _x0 != 0 || _tMove != 0;
+        public int ShipKind => _shipKind;
+        public int DockX => _x;
+        public int DockY => _y;
+        public int AwayX => _x0;
+        public int Flip => _f;
+        public int MoveDurationSeconds => _tMove;
+        public string ShipPath => _shipPath ?? string.Empty;
 
         public float VoyageProgress
         {
@@ -163,8 +197,66 @@ namespace HaCreator.MapSimulator.Fields
 
             _state = ShipState.Idle;
             _balrogState = BalrogState.Hidden;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            _voyageBalrogAutoEnabled = IsAutoVoyageBalrogRoute();
+            _voyageBalrogAutoTriggerOffsetMs = ResolveDefaultVoyageBalrogTriggerOffsetMs();
+            _voyageBalrogAutoDurationMs = ResolveDefaultVoyageBalrogDurationMs();
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
 
             System.Diagnostics.Debug.WriteLine($"[TransportField] Initialized: kind={shipKind}, x={x}, y={y}, x0={x0}, f={f}, tMove={tMove}s");
+        }
+
+        public void SetIdleDockedState(bool queueAnnouncement = false)
+        {
+            _state = ShipState.Docked;
+            _currentX = _x;
+            _currentY = _y;
+            _currentAlpha = 255f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
+
+            if (queueAnnouncement)
+            {
+                QueueAnnouncement("The ship is waiting at the dock.", 2000);
+            }
+        }
+
+        public void SetIdleAwayState()
+        {
+            _state = ShipState.InTransit;
+            _currentX = _x0;
+            _currentY = _y;
+            _currentAlpha = 255f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+        }
+
+        public void SetIdleHiddenState()
+        {
+            _state = ShipState.Idle;
+            _currentX = _x;
+            _currentY = _y;
+            _currentAlpha = 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+        }
+
+        public void ApplyClientOwnedDefaultState(FieldType? fieldType)
+        {
+            if (_shipKind == 1 || fieldType == FieldType.FIELDTYPE_BALROG)
+            {
+                SetIdleHiddenState();
+                return;
+            }
+
+            SetIdleDockedState();
         }
 
         /// <summary>
@@ -232,6 +324,8 @@ namespace HaCreator.MapSimulator.Fields
             _startMoveX = _x;  // Start at dock
             _endMoveX = _x0;   // End at away position
             _currentX = _startMoveX;
+            _voyageBalrogDepartureStartTime = _moveStartTime;
+            _voyageBalrogAutoTriggered = false;
 
             OnDeparture?.Invoke();
             QueueAnnouncement("The ship is now departing.", 2000);
@@ -253,6 +347,9 @@ namespace HaCreator.MapSimulator.Fields
             _startMoveX = _x0; // Start at away position
             _endMoveX = _x;    // End at dock
             _currentX = _startMoveX;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
+            ClearVoyageBalrogAttackState(clearOwner: true);
 
             QueueAnnouncement("The ship is arriving.", 2000);
         }
@@ -295,6 +392,7 @@ namespace HaCreator.MapSimulator.Fields
         public void DisappearShip()
         {
             if (_shipKind != 1) return; // Only for Balrog type
+            if (!HasVisibleBalrogShipLayer()) return; // Client CShip::DisappearShip is a no-op when alpha is already 0.
 
             System.Diagnostics.Debug.WriteLine("[TransportField] DisappearShip - Balrog disappearing");
 
@@ -314,6 +412,11 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void TriggerBalrogAttack(int durationMs = 5000)
         {
+            TryStartVoyageBalrogAttack(durationMs, "simulator-direct", out _);
+        }
+
+        private void TriggerBalrogAttack(int durationMs, string owner)
+        {
             if (_balrogState != BalrogState.Hidden) return;
 
             System.Diagnostics.Debug.WriteLine("[TransportField] TriggerBalrogAttack");
@@ -321,21 +424,120 @@ namespace HaCreator.MapSimulator.Fields
             _balrogState = BalrogState.Appearing;
             _balrogMoveStartTime = Environment.TickCount;
             _balrogMoveDuration = durationMs;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
 
-            // Balrog appears from the right side of the ship
-            _balrogStartX = _currentX + _shipWidth + 200;
-            _balrogEndX = _currentX + _shipWidth / 2 + 100;
+            // Keep the local voyage-attack choreography aligned to the authored route flip.
+            _balrogStartX = _currentX + (_balrogApproachDirection * (_shipWidth + 200));
+            _balrogEndX = _currentX + (_balrogApproachDirection * (_shipWidth / 2f + 100f));
             _balrogStartY = _currentY - 50;
             _balrogEndY = _currentY - _shipHeight / 2;
             _balrogX = _balrogStartX;
             _balrogY = _balrogStartY;
-
-            _balrogStartAlpha = 0f;
-            _balrogEndAlpha = 255f;
             _balrogAlpha = 0f;
+            _lastVoyageBalrogEventOwner = string.IsNullOrWhiteSpace(owner) ? "unknown" : owner;
 
             OnBalrogAppear?.Invoke();
             QueueAnnouncement("Balrog has appeared!", 2000);
+        }
+
+        public bool TryStartVoyageBalrogAttack(int durationMs, out string message)
+        {
+            return TryStartVoyageBalrogAttack(durationMs, "transport-voyagebalrog-command", out message);
+        }
+
+        private bool TryStartVoyageBalrogAttack(int durationMs, string owner, out string message)
+        {
+            if (_shipKind != 0)
+            {
+                message = "Ignored voyage Balrog event; attack choreography only applies on regular transit ships.";
+                return false;
+            }
+
+            if (!IsVoyageBalrogAttackWindow())
+            {
+                message = $"Ignored voyage Balrog event while ship state is {_state}; the client-owned voyage attack only makes sense during departure or transit.";
+                return false;
+            }
+
+            if (_balrogState != BalrogState.Hidden)
+            {
+                message = $"Ignored voyage Balrog event because the Balrog attack is already {_balrogState}.";
+                return false;
+            }
+
+            int normalizedDuration = durationMs > 0 ? durationMs : 5000;
+            TriggerBalrogAttack(normalizedDuration, owner);
+            _voyageBalrogAutoTriggered = true;
+            message = $"Applied voyage Balrog event -> TriggerBalrogAttack ({normalizedDuration} ms).";
+            return true;
+        }
+
+        public bool TryResetVoyageBalrogAttack(out string message)
+        {
+            if (_balrogState == BalrogState.Hidden)
+            {
+                message = "Ignored voyage Balrog reset because no voyage Balrog attack is active.";
+                return false;
+            }
+
+            _balrogState = BalrogState.Hidden;
+            _balrogAlpha = 0f;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
+            message = "Applied voyage Balrog reset.";
+            return true;
+        }
+
+        public bool TryConfigureVoyageBalrogAutoEvent(bool enabled, int? triggerOffsetMs, int? durationMs, out string message)
+        {
+            if (enabled && !IsAutoVoyageBalrogRoute())
+            {
+                message = "Ignored voyage Balrog auto-event enable; auto scheduling only applies to regular transit routes with shipObj path /ship/ossyria/99.";
+                return false;
+            }
+
+            int resolvedTrigger = triggerOffsetMs ?? ResolveDefaultVoyageBalrogTriggerOffsetMs();
+            int resolvedDuration = durationMs ?? ResolveDefaultVoyageBalrogDurationMs();
+            if (resolvedTrigger <= 0)
+            {
+                message = "Voyage Balrog auto-event trigger offset must be greater than zero.";
+                return false;
+            }
+
+            if (resolvedDuration <= 0)
+            {
+                message = "Voyage Balrog auto-event duration must be greater than zero.";
+                return false;
+            }
+
+            _voyageBalrogAutoEnabled = enabled;
+            _voyageBalrogAutoTriggerOffsetMs = resolvedTrigger;
+            _voyageBalrogAutoDurationMs = resolvedDuration;
+            if (!enabled)
+            {
+                _voyageBalrogAutoTriggered = false;
+            }
+
+            message = enabled
+                ? $"Armed voyage Balrog auto-event at +{_voyageBalrogAutoTriggerOffsetMs} ms for {_voyageBalrogAutoDurationMs} ms."
+                : "Disarmed voyage Balrog auto-event.";
+            return true;
+        }
+
+        public bool TryResetRuntime(out string message)
+        {
+            Reset();
+            message = "Applied transport runtime reset.";
+            return true;
         }
 
         /// <summary>
@@ -389,12 +591,191 @@ namespace HaCreator.MapSimulator.Fields
             QueueAnnouncement("We have arrived at our destination.", 3000);
         }
 
+        public bool TryApplyStartShipMovePacket(int value, out string message)
+        {
+            return TryApplyStartShipMovePacket(value, null, out message);
+        }
+
+        public bool TryApplyContiMovePacket(int subtype, int value, string owner, out string message)
+        {
+            return subtype switch
+            {
+                8 => TryApplyStartShipMovePacket(value, owner, out message),
+                10 => TryApplyMoveFieldPacket(value, owner, out message),
+                12 => TryApplyEndShipMovePacket(value, owner, out message),
+                _ => TryRecordUnhandledContiMovePacket(subtype, value, owner, out message)
+            };
+        }
+
+        private bool TryRecordUnhandledContiMovePacket(int subtype, int value, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnContiMove({subtype},{value})");
+            message = $"Ignored OnContiMove subtype {subtype} value {value}; client switch has no handler outside 8, 10, and 12.";
+            return false;
+        }
+
+        public bool TryApplyStartShipMovePacket(int value, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnStartShipMoveField({value})");
+            if (value == 2)
+            {
+                if (_shipKind != 0)
+                {
+                    message = "Handled OnStartShipMoveField value 2 -> LeaveShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
+                }
+
+                LeaveShipMove();
+                message = "Applied OnStartShipMoveField value 2 -> LeaveShipMove.";
+                return true;
+            }
+
+            message = $"Ignored OnStartShipMoveField value {value}; client only reacts to 2.";
+            return false;
+        }
+
+        public bool TryApplyEndShipMovePacket(int value, out string message)
+        {
+            return TryApplyEndShipMovePacket(value, null, out message);
+        }
+
+        public bool TryApplyEndShipMovePacket(int value, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnEndShipMoveField({value})");
+            if (value == 6)
+            {
+                if (_shipKind != 0)
+                {
+                    message = "Handled OnEndShipMoveField value 6 -> EnterShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
+                }
+
+                bool hadVoyageBalrogAttack = HasActiveVoyageBalrogAttack;
+                EnterShipMove();
+                message = hadVoyageBalrogAttack
+                    ? "Applied OnEndShipMoveField value 6 -> EnterShipMove and cleared active departure-owned voyage Balrog attack."
+                    : "Applied OnEndShipMoveField value 6 -> EnterShipMove.";
+                return true;
+            }
+
+            message = $"Ignored OnEndShipMoveField value {value}; client only reacts to 6.";
+            return false;
+        }
+
+        public bool TryApplyMoveFieldPacket(int value, out string message)
+        {
+            return TryApplyMoveFieldPacket(value, null, out message);
+        }
+
+        public bool TryApplyMoveFieldPacket(int value, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnMoveField({value})");
+            switch (value)
+            {
+                case 4:
+                    if (_shipKind != 1)
+                    {
+                        message = "Handled OnMoveField value 4 -> AppearShip no-op; CShip gates appearance to Balrog-type ships.";
+                        return true;
+                    }
+
+                    AppearShip();
+                    message = "Applied OnMoveField value 4 -> AppearShip.";
+                    return true;
+                case 5:
+                    if (_shipKind != 1)
+                    {
+                        message = "Handled OnMoveField value 5 -> DisappearShip no-op; CShip gates disappearance to Balrog-type ships.";
+                        return true;
+                    }
+
+                    if (!HasVisibleBalrogShipLayer())
+                    {
+                        message = "Handled OnMoveField value 5 -> DisappearShip no-op; client alpha gate leaves an already-hidden Balrog ship unchanged.";
+                        return true;
+                    }
+
+                    DisappearShip();
+                    message = "Applied OnMoveField value 5 -> DisappearShip.";
+                    return true;
+                default:
+                    message = $"Ignored OnMoveField value {value}; client only reacts to 4 and 5.";
+                    return false;
+            }
+        }
+
+        public bool TryApplyContiState(int state, int stateValue, out string message)
+        {
+            return TryApplyContiState(state, stateValue, null, out message);
+        }
+
+        public bool TryApplyContiState(int state, int stateValue, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
+            switch (state)
+            {
+                case 0:
+                case 1:
+                case 6:
+                    if (_shipKind == 0)
+                    {
+                        bool hadVoyageBalrogAttack = HasActiveVoyageBalrogAttack;
+                        EnterShipMove();
+                        message = hadVoyageBalrogAttack
+                            ? $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove and cleared active departure-owned voyage Balrog attack."
+                            : $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove.";
+                        return true;
+                    }
+
+                    message = $"Handled OnContiState ({state}, {stateValue}) -> EnterShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
+
+                case 2:
+                case 5:
+                    if (_shipKind == 0)
+                    {
+                        LeaveShipMove();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove.";
+                        return true;
+                    }
+
+                    message = $"Handled OnContiState ({state}, {stateValue}) -> LeaveShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
+
+                case 3:
+                case 4:
+                    if (_shipKind == 1 && stateValue == 1)
+                    {
+                        AppearShip();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> AppearShip.";
+                        return true;
+                    }
+
+                    if (_shipKind == 0)
+                    {
+                        LeaveShipMove();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove through the recovered regular-ship fallthrough after the Balrog appear gate.";
+                        return true;
+                    }
+
+                    message = $"Handled OnContiState ({state}, {stateValue}) with no visible ship change; Balrog-type maps only appear when the second byte is 1.";
+                    return true;
+
+                default:
+                    message = $"Ignored OnContiState ({state}, {stateValue}); client switch has no handler for this state.";
+                    return false;
+            }
+        }
+
         #endregion
 
         #region Update
 
         public void Update(int currentTimeMs, float deltaSeconds)
         {
+            float previousX = _currentX;
+            float previousY = _currentY;
+
             switch (_state)
             {
                 case ShipState.WaitingDeparture:
@@ -415,7 +796,10 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             // Update Balrog attack (separate from ship state)
+            UpdateVoyageBalrogAutoEvent(currentTimeMs);
             UpdateBalrogAttack(currentTimeMs);
+            _deltaX = _currentX - previousX;
+            _deltaY = _currentY - previousY;
 
             // Update announcements
             UpdateAnnouncements(currentTimeMs);
@@ -470,6 +854,9 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     // Arrived at dock
                     _state = ShipState.Docked;
+                    _voyageBalrogDepartureStartTime = 0;
+                    _voyageBalrogAutoTriggered = false;
+                    ClearVoyageBalrogAttackState(clearOwner: true);
                     OnArrival?.Invoke();
                     System.Diagnostics.Debug.WriteLine("[TransportField] Ship docked");
                     QueueAnnouncement("We have arrived at our destination.", 3000);
@@ -550,7 +937,7 @@ namespace HaCreator.MapSimulator.Fields
                         _balrogY = _balrogEndY + hover;
 
                         // Track ship position
-                        _balrogX = _currentX + _shipWidth / 2 + 100;
+                        _balrogX = _currentX + (_balrogApproachDirection * (_shipWidth / 2f + 100f));
 
                         if (elapsed >= _balrogMoveDuration)
                         {
@@ -566,7 +953,7 @@ namespace HaCreator.MapSimulator.Fields
                     {
                         float progress = Math.Clamp((float)elapsed / 1000f, 0f, 1f);
 
-                        _balrogX = MathHelper.Lerp(_balrogStartX, _balrogStartX + 200, progress);
+                        _balrogX = MathHelper.Lerp(_balrogStartX, _balrogStartX + (200f * _balrogApproachDirection), progress);
                         _balrogAlpha = MathHelper.Lerp(255f, 0f, progress);
 
                         if (progress >= 1f)
@@ -615,16 +1002,34 @@ namespace HaCreator.MapSimulator.Fields
                 Duration = durationMs
             });
         }
-
         public TransportAnnouncement CurrentAnnouncement => _currentAnnouncement;
-
         #endregion
-
         #region Entity Sync
-
         public Vector2 GetShipOffset()
         {
             return new Vector2(_currentX - _x, 0);
+        }
+
+        public Vector2 GetShipDelta()
+        {
+            return new Vector2(_deltaX, _deltaY);
+        }
+
+        public bool TryGetDeckBounds(out float left, out float right, out float deckY)
+        {
+            if (_shipKind != 0 || _currentAlpha <= 0f || _shipWidth <= 0 || _shipHeight <= 0)
+            {
+                left = 0f;
+                right = 0f;
+                deckY = 0f;
+                return false;
+            }
+
+            float deckWidth = Math.Max(80f, _shipWidth * 0.7f);
+            left = _currentX - deckWidth / 2f;
+            right = _currentX + deckWidth / 2f;
+            deckY = _currentY - Math.Max(24f, _shipHeight * 0.35f);
+            return true;
         }
 
         public bool IsOnShipDeck(float x, float y, float deckY, float deckWidth)
@@ -695,7 +1100,7 @@ namespace HaCreator.MapSimulator.Fields
 
                     Color tint = new Color(255, 255, 255, (int)_balrogAlpha);
                     balrogFrame.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime,
-                        balrogScreenX, balrogScreenY, tint, true, null); // Flip to face ship
+                        balrogScreenX, balrogScreenY, tint, _balrogFlip, null);
                 }
             }
         }
@@ -780,17 +1185,220 @@ namespace HaCreator.MapSimulator.Fields
 
         #region Utility
 
+        public void ClearRouteConfiguration(bool clearVisuals = false)
+        {
+            _shipKind = 0;
+            _x = 0;
+            _y = 0;
+            _x0 = 0;
+            _f = 0;
+            _tMove = 0;
+            _shipPath = string.Empty;
+            _limitX0 = 0;
+            _limitX = 0;
+            _limitY0 = 0;
+            _limitY = 0;
+
+            _state = ShipState.Idle;
+            _currentX = 0f;
+            _currentY = 0f;
+            _currentAlpha = 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+            _moveStartTime = 0;
+            _startMoveX = 0f;
+            _endMoveX = 0f;
+            _startAlpha = 0f;
+            _endAlpha = 0f;
+
+            _balrogState = BalrogState.Hidden;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogAlpha = 0f;
+            _balrogMoveStartTime = 0;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            _balrogMoveDuration = 1000;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            _voyageBalrogAutoEnabled = false;
+            _voyageBalrogAutoTriggerOffsetMs = 0;
+            _voyageBalrogAutoDurationMs = DefaultVoyageBalrogAttackDurationMs;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
+
+            _bgScrollX = 0f;
+            _announcements.Clear();
+            _currentAnnouncement = null;
+
+            if (!clearVisuals)
+            {
+                return;
+            }
+
+            _shipFrames = null;
+            _shipFrameIndex = 0;
+            _lastShipFrameTime = 0;
+            _balrogFrames = null;
+            _balrogFrameIndex = 0;
+            _lastBalrogFrameTime = 0;
+        }
+
         public void Reset()
         {
-            _state = ShipState.Idle;
             _balrogState = BalrogState.Hidden;
-            _currentX = _shipKind == 0 ? _x0 : _x;
-            _currentY = _y;
-            _currentAlpha = _shipKind == 0 ? 255f : 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
             _balrogAlpha = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
+
+            if (_shipKind == 1)
+            {
+                SetIdleHiddenState();
+                return;
+            }
+
+            SetIdleDockedState();
+        }
+
+        public string DescribeStatus()
+        {
+            string shipPath = string.IsNullOrWhiteSpace(_shipPath) ? "<none>" : _shipPath;
+            string announcement = _currentAnnouncement?.Message ?? "<none>";
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, transportPacketOwner={_lastTransportPacketOwner}, transportPacketRoute={_lastTransportPacketRoute}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, voyageBalrogOwner={_lastVoyageBalrogEventOwner}, voyageBalrogAuto={DescribeVoyageBalrogAutoEventStatus()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+        }
+
+        private void RecordTransportPacketOwner(string owner, string route)
+        {
+            _lastTransportPacketOwner = string.IsNullOrWhiteSpace(owner) ? "transport-packet" : owner.Trim();
+            _lastTransportPacketRoute = string.IsNullOrWhiteSpace(route) ? "unknown" : route;
+        }
+
+        private int ResolveShipFacingDirection()
+        {
+            return _f == 0 ? 1 : -1;
+        }
+
+        private bool HasVisibleBalrogShipLayer()
+        {
+            return _shipKind == 1 && _currentAlpha > 0f;
+        }
+
+        private string DescribeBalrogApproachSide()
+        {
+            return _balrogApproachDirection < 0 ? "left" : "right";
+        }
+
+        private void UpdateVoyageBalrogAutoEvent(int currentTimeMs)
+        {
+            if (!_voyageBalrogAutoEnabled
+                || _voyageBalrogAutoTriggered
+                || _shipKind != 0
+                || _balrogState != BalrogState.Hidden
+                || !IsVoyageBalrogAttackWindow()
+                || _voyageBalrogDepartureStartTime == 0)
+            {
+                return;
+            }
+
+            int elapsedSinceDeparture = unchecked(currentTimeMs - _voyageBalrogDepartureStartTime);
+            if (elapsedSinceDeparture < _voyageBalrogAutoTriggerOffsetMs)
+            {
+                return;
+            }
+
+            TryStartVoyageBalrogAttack(_voyageBalrogAutoDurationMs, "wz-route-auto", out _);
+        }
+
+        private bool IsVoyageBalrogAttackWindow()
+        {
+            return _state == ShipState.InTransit
+                || (_state == ShipState.Moving && _voyageBalrogDepartureStartTime != 0);
+        }
+
+        private void ClearVoyageBalrogAttackState(bool clearOwner)
+        {
+            if (_balrogState == BalrogState.Hidden
+                && _balrogAlpha <= 0f
+                && _balrogX == 0f
+                && _balrogY == 0f)
+            {
+                if (clearOwner)
+                {
+                    _lastVoyageBalrogEventOwner = "none";
+                }
+
+                return;
+            }
+
+            _balrogState = BalrogState.Hidden;
+            _balrogAlpha = 0f;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            if (clearOwner)
+            {
+                _lastVoyageBalrogEventOwner = "none";
+            }
+        }
+
+        private int ResolveDefaultVoyageBalrogTriggerOffsetMs()
+        {
+            int routeDurationMs = Math.Max(1, _tMove) * 1000;
+            return Math.Clamp(routeDurationMs / 2, 1000, 30000);
+        }
+
+        private int ResolveDefaultVoyageBalrogDurationMs()
+        {
+            int routeDurationMs = Math.Max(1, _tMove) * 1000;
+            return Math.Clamp(routeDurationMs / 3, 2000, 10000);
+        }
+
+        private bool IsAutoVoyageBalrogRoute()
+        {
+            if (_shipKind != 0 || string.IsNullOrWhiteSpace(_shipPath))
+            {
+                return false;
+            }
+
+            string normalizedPath = _shipPath
+                .Replace('\\', '/')
+                .Replace(".img/", "/", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+            return normalizedPath.EndsWith(VoyageBalrogAutoRouteSuffix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string DescribeVoyageBalrogAutoEventStatus()
+        {
+            if (!IsVoyageBalrogAutoRouteEligible)
+            {
+                return "ineligible";
+            }
+
+            string armed = _voyageBalrogAutoEnabled ? "armed" : "off";
+            string triggered = _voyageBalrogAutoTriggered ? "triggered" : "pending";
+            return $"{armed}(+{_voyageBalrogAutoTriggerOffsetMs}ms/{_voyageBalrogAutoDurationMs}ms,{triggered})";
         }
 
         #endregion

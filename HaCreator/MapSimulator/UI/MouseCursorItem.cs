@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -27,10 +27,16 @@ namespace HaCreator.MapSimulator.UI
         private int _mouseCursorItemStates; // enum
         private bool _isHoveringToClickableButton = false;
         private bool _isHoveringToNpc = false;
+        private bool _isHoldingItem = false;
+        private bool _isForbidden = false;
+        private bool _isBusy = false;
 
         private readonly BaseDXDrawableItem _cursorPressedState; // default state of the cursor = this instance
         private readonly BaseDXDrawableItem _cursorClickableState;
         private readonly BaseDXDrawableItem _cursorNpcHoverState; // NPC hover cursor 
+        private readonly BaseDXDrawableItem _cursorHoldState;
+        private readonly BaseDXDrawableItem _cursorForbiddenState;
+        private readonly BaseDXDrawableItem _cursorBusyState;
 
         /// <summary>
         /// Mouse cursor constructor
@@ -40,7 +46,9 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="_cursorClickableState"></param>
         /// <param name="_cursorNpcHoverState"></param>
         public MouseCursorItem(List<IDXObject> frames, BaseDXDrawableItem _cursorPressedState,
-            BaseDXDrawableItem _cursorClickableState, BaseDXDrawableItem _cursorNpcHoverState = null)
+            BaseDXDrawableItem _cursorClickableState, BaseDXDrawableItem _cursorNpcHoverState = null,
+            BaseDXDrawableItem _cursorHoldState = null, BaseDXDrawableItem _cursorForbiddenState = null,
+            BaseDXDrawableItem _cursorBusyState = null)
             : base(frames, false)
         {
             _previousMouseState = Mouse.GetState();
@@ -49,6 +57,9 @@ namespace HaCreator.MapSimulator.UI
             this._cursorPressedState = _cursorPressedState;
             this._cursorClickableState = _cursorClickableState;
             this._cursorNpcHoverState = _cursorNpcHoverState;
+            this._cursorHoldState = _cursorHoldState;
+            this._cursorForbiddenState = _cursorForbiddenState;
+            this._cursorBusyState = _cursorBusyState;
         }
 
         /// <summary>
@@ -66,6 +77,30 @@ namespace HaCreator.MapSimulator.UI
         }
 
         /// <summary>
+        /// Sets the mouse to the hold-item cursor state for active drag flows.
+        /// </summary>
+        public void SetMouseCursorHold()
+        {
+            _isHoldingItem = true;
+        }
+
+        /// <summary>
+        /// Sets the mouse to the forbidden cursor state for blocked actions.
+        /// </summary>
+        public void SetMouseCursorForbidden()
+        {
+            _isForbidden = true;
+        }
+
+        /// <summary>
+        /// Sets the mouse to the busy cursor state for pending actions.
+        /// </summary>
+        public void SetMouseCursorBusy()
+        {
+            _isBusy = true;
+        }
+
+        /// <summary>
         /// Updates the cursor state
         /// </summary>
         public void UpdateCursorState()
@@ -73,6 +108,9 @@ namespace HaCreator.MapSimulator.UI
             // reset
             this._isHoveringToClickableButton = false;
             this._isHoveringToNpc = false;
+            this._isHoldingItem = false;
+            this._isForbidden = false;
+            this._isBusy = false;
 
             int newSetState = (int)MouseCursorItemStates.Normal; // 0
 
@@ -123,7 +161,31 @@ namespace HaCreator.MapSimulator.UI
         {
             Point MousePos = Mouse.GetState().Position; // relative to the window already
 
-            if ((_mouseCursorItemStates & (int)MouseCursorItemStates.LeftPress) != (int) MouseCursorItemStates.LeftPress
+            if (_isHoldingItem && _cursorHoldState != null)
+            {
+                _cursorHoldState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -MousePos.X, -MousePos.Y, centerX, centerY,
+                    drawReflectionInfo,
+                    renderParameters,
+                    TickCount);
+            }
+            else if (_isBusy && _cursorBusyState != null)
+            {
+                _cursorBusyState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -MousePos.X, -MousePos.Y, centerX, centerY,
+                    drawReflectionInfo,
+                    renderParameters,
+                    TickCount);
+            }
+            else if (_isForbidden && _cursorForbiddenState != null)
+            {
+                _cursorForbiddenState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -MousePos.X, -MousePos.Y, centerX, centerY,
+                    drawReflectionInfo,
+                    renderParameters,
+                    TickCount);
+            }
+            else if ((_mouseCursorItemStates & (int)MouseCursorItemStates.LeftPress) != (int) MouseCursorItemStates.LeftPress
                  && (_mouseCursorItemStates & (int)MouseCursorItemStates.RightPress) != (int)MouseCursorItemStates.RightPress)  // default
             {
                 if (_isHoveringToNpc && _cursorNpcHoverState != null) {

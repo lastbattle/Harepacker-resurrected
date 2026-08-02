@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="Cutscene_Title">
+    <value>カットシーン ワークスペース</value>
+  </data>
+  <data name="Cutscene_Save">
+    <value>変更を保存</value>
+  </data>
+  <data name="Cutscene_Play">
+    <value>再生</value>
+  </data>
+  <data name="Cutscene_Pause">
+    <value>一時停止</value>
+  </data>
+  <data name="Cutscene_Stop">
+    <value>停止</value>
+  </data>
+  <data name="Cutscene_Step">
+    <value>1 フレーム進む</value>
+  </data>
+  <data name="Cutscene_Loop">
+    <value>ループ</value>
+  </data>
+  <data name="Cutscene_PreviewResolution">
+    <value>プレビュー</value>
+  </data>
+  <data name="Cutscene_SceneExplorer">
+    <value>シーン エクスプローラー</value>
+  </data>
+  <data name="Cutscene_SearchTooltip">
+    <value>WZ パスで Direction シーンを絞り込み</value>
+  </data>
+  <data name="Cutscene_MapTriggers">
+    <value>マップ トリガー</value>
+  </data>
+  <data name="Cutscene_Add">
+    <value>追加</value>
+  </data>
+  <data name="Cutscene_Delete">
+    <value>削除</value>
+  </data>
+  <data name="Cutscene_Properties">
+    <value>選択中のイベント</value>
+  </data>
+  <data name="Cutscene_Type">
+    <value>種類</value>
+  </data>
+  <data name="Cutscene_Start">
+    <value>開始 (ms)</value>
+  </data>
+  <data name="Cutscene_Duration">
+    <value>長さ (ms)</value>
+  </data>
+  <data name="Cutscene_Visual">
+    <value>ビジュアル パス</value>
+  </data>
+  <data name="Cutscene_Sound">
+    <value>サウンド パス</value>
+  </data>
+  <data name="Cutscene_Action">
+    <value>アクション</value>
+  </data>
+  <data name="Cutscene_Field">
+    <value>マップ ID</value>
+  </data>
+  <data name="Cutscene_Appearance">
+    <value>装備</value>
+  </data>
+  <data name="Cutscene_Raw">
+    <value>不明なフィールド</value>
+  </data>
+  <data name="Cutscene_TriggerBindings">
+    <value>トリガー バインド</value>
+  </data>
+  <data name="Cutscene_EventQueue">
+    <value>EventQ スクリプト</value>
+  </data>
+  <data name="Cutscene_Timeline">
+    <value>マルチトラック タイムライン</value>
+  </data>
+  <data name="Cutscene_Duplicate">
+    <value>複製</value>
+  </data>
+  <data name="Cutscene_Track">
+    <value>コマンド / アセット</value>
+  </data>
+  <data name="Cutscene_Ready">
+    <value>準備完了。</value>
+  </data>
+  <data name="Cutscene_Loading">
+    <value>Direction シーンを読み込み中…</value>
+  </data>
+  <data name="Cutscene_ScenesLoaded">
+    <value>{0} 個の Direction シーンを読み込みました。</value>
+  </data>
+  <data name="Cutscene_LoadError">
+    <value>Direction シーンを読み込めません: {0}</value>
+  </data>
+  <data name="Cutscene_Saved">
+    <value>カットシーンとマップトリガーの変更を WZ と共に保存できます。</value>
+  </data>
+  <data name="Cutscene_ValidationSummary">
+    <value>{0} 件の検証問題を含めて保存しました: {1}</value>
+  </data>
+  <data name="Cutscene_UnsupportedType">
+    <value>イベント {0} は未対応の種類 {1} を使用しています</value>
+  </data>
+  <data name="Cutscene_MissingVisual">
+    <value>イベント {0} にビジュアル パスがありません</value>
+  </data>
+  <data name="Cutscene_MissingSound">
+    <value>イベント {0} にサウンド パスがありません</value>
+  </data>
+  <data name="Cutscene_InvalidField">
+    <value>イベント {0} のマップ ID が無効です</value>
+  </data>
+  <data name="Cutscene_TriggerOutside">
+    <value>トリガー {0} はマップ範囲外です</value>
+  </data>
+  <data name="Cutscene_NoScene">
+    <value>シーンが選択されていません</value>
+  </data>
+  <data name="Cutscene_UnsavedPrompt"><value>閉じる前にカットシーンとマップトリガーの変更を保存しますか？</value></data>
+  <data name="Cutscene_UnsavedTitle"><value>未保存のカットシーン変更</value></data>
+  <data name="Cutscene_TimeRuler" xml:space="preserve"><value>時間</value></data>
+  <data name="Cutscene_TrackVisual" xml:space="preserve"><value>ビジュアル</value></data>
+  <data name="Cutscene_TrackCharacter" xml:space="preserve"><value>キャラクター</value></data>
+  <data name="Cutscene_TrackSound" xml:space="preserve"><value>サウンド</value></data>
+  <data name="Cutscene_TrackTransition" xml:space="preserve"><value>マップ移動</value></data>
+  <data name="Cutscene_TrackRaw" xml:space="preserve"><value>未対応 / raw</value></data>
+  <data name="Cutscene_Browse" xml:space="preserve"><value>参照…</value></data>
+  <data name="Cutscene_AssetSearchTooltip" xml:space="preserve"><value>参照済みアセットパスを絞り込む</value></data>
+  <data name="Cutscene_Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Cutscene_Select" xml:space="preserve"><value>選択</value></data>
+  <data name="Cutscene_SelectVisualTitle" xml:space="preserve"><value>ビジュアルアセットを選択</value></data>
+  <data name="Cutscene_SelectSoundTitle" xml:space="preserve"><value>サウンドアセットを選択</value></data>
+  <data name="Cutscene_SelectVisualPurpose" xml:space="preserve"><value>読み込まれた Direction シーンが参照するビジュアルパスを選択します。</value></data>
+  <data name="Cutscene_SelectSoundPurpose" xml:space="preserve"><value>読み込まれた Direction シーンが参照するサウンドパスを選択します。</value></data>
+  <data name="Cutscene_AssetCount" xml:space="preserve"><value>{0} 件のアセット</value></data>
+  <data name="Cutscene_NoAssetSelected" xml:space="preserve"><value>アセットが選択されていません。</value></data>
+  <data name="Cutscene_ValidateScene" xml:space="preserve"><value>シーンを検証</value></data>
+  <data name="Cutscene_ValidateAll" xml:space="preserve"><value>すべて検証</value></data>
+  <data name="Cutscene_SaveBlocked" xml:space="preserve"><value>保存できません</value></data>
+  <data name="Cutscene_ValidationPassed" xml:space="preserve"><value>{0}: 問題は見つかりませんでした。</value></data>
+  <data name="Cutscene_ValidationFound" xml:space="preserve"><value>{0}: 問題 {1} 件、エラー {2} 件。</value></data>
+  <data name="Cutscene_MissingAction" xml:space="preserve"><value>イベント {0} にキャラクターアクションがありません</value></data>
+  <data name="Cutscene_MissingAppearance" xml:space="preserve"><value>イベント {0} に装備上書きがありません</value></data>
+  <data name="Cutscene_InvalidMotionDuration" xml:space="preserve"><value>移動ビジュアルイベント {0} には正の継続時間が必要です</value></data>
+  <data name="Cutscene_NegativeStart" xml:space="preserve"><value>イベント {0} の開始時間が負です</value></data>
+  <data name="Cutscene_NegativeDuration" xml:space="preserve"><value>イベント {0} の継続時間が負です</value></data>
+  <data name="Cutscene_DuplicateEvent" xml:space="preserve"><value>イベント ID {0} が重複しています</value></data>
+  <data name="Cutscene_DuplicateTrigger" xml:space="preserve"><value>トリガー ID {0} が重複しています</value></data>
+</root>

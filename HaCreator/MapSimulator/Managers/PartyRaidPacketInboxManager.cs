@@ -1,0 +1,398 @@
+using System;
+using System.Collections.Concurrent;
+using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    public enum PartyRaidPacketScope
+    {
+        Field,
+        Party,
+        Session,
+        Clock,
+        Packet
+    }
+
+    public sealed class PartyRaidPacketInboxMessage
+    {
+        public PartyRaidPacketInboxMessage(PartyRaidPacketScope scope, string key, string value, string source, string rawText)
+        {
+            Scope = scope;
+            Key = key ?? string.Empty;
+            Value = value ?? string.Empty;
+            Source = string.IsNullOrWhiteSpace(source) ? "partyraid-inbox" : source;
+            RawText = rawText ?? string.Empty;
+            Payload = Array.Empty<byte>();
+        }
+
+        public PartyRaidPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        {
+            Scope = PartyRaidPacketScope.Packet;
+            Key = string.Empty;
+            Value = string.Empty;
+            PacketType = packetType;
+            Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
+            Source = string.IsNullOrWhiteSpace(source) ? "partyraid-inbox" : source;
+            RawText = rawText ?? string.Empty;
+        }
+
+        public PartyRaidPacketScope Scope { get; }
+        public string Key { get; }
+        public string Value { get; }
+        public int PacketType { get; }
+        public byte[] Payload { get; }
+        public string Source { get; }
+        public string RawText { get; }
+    }
+
+    /// <summary>
+    /// Adapter inbox for Party Raid runtime updates.
+    /// Each line is encoded as "<scope> <key> <value>", where scope is
+    /// "field", "party", "session", "clock", or packet-oriented aliases such as
+    /// "packet 93 <payloadHex>", "packet 163 <relayPayloadHex>", or
+    /// "packetclientraw <opcodeFramedHex>".
+    /// </summary>
+    public sealed class PartyRaidPacketInboxManager : IDisposable
+    {
+        private readonly ConcurrentQueue<PartyRaidPacketInboxMessage> _pendingMessages = new();
+        public string LastStatus { get; private set; } = "Party Raid packet inbox ready for role-session/local ingress.";
+
+        public void EnqueueLocal(PartyRaidPacketScope scope, string key, string value, string source)
+        {
+            _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(scope, key, value, source, $"{scope} {key} {value}".Trim()));
+        }
+
+        public void EnqueuePacket(int packetType, byte[] payload, string source)
+        {
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
+            _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(packetType, payload, source, $"packet {packetType}"));
+        }
+
+        public void EnqueueProxy(PartyRaidPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribeScope(message.Scope, message.Scope == PartyRaidPacketScope.Packet ? message.PacketType.ToString() : message.Key)} from {message.Source}.";
+        }
+
+        public bool TryDequeue(out PartyRaidPacketInboxMessage message)
+        {
+            return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void RecordDispatchResult(string source, PartyRaidPacketScope scope, string key, bool success, string message)
+        {
+            string target = DescribeScope(scope, key);
+            string summary = string.IsNullOrWhiteSpace(message) ? target : $"{target}: {message}";
+            LastStatus = success
+                ? $"Applied {summary} from {source}."
+                : $"Ignored {summary} from {source}.";
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public static bool TryParsePacketLine(string text, out PartyRaidPacketScope scope, out string key, out string value, out string error)
+        {
+            scope = PartyRaidPacketScope.Field;
+            key = string.Empty;
+            value = string.Empty;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Party Raid inbox line is empty.";
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (TryParsePacketLine(trimmed, out int packetType, out byte[] packetPayload, out error))
+            {
+                scope = PartyRaidPacketScope.Packet;
+                key = packetType.ToString();
+                value = Convert.ToHexString(packetPayload);
+                return true;
+            }
+
+            if (TryParsePipeDelimitedPacketLine(trimmed, out scope, out key, out value))
+            {
+                return true;
+            }
+
+            string[] parts = trimmed.Split((char[])null, 3, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                error = "Party Raid inbox line must be '<scope> <key> <value>' or '<scope>|<key>|<value>'.";
+                return false;
+            }
+
+            if (!TryParseScope(parts[0], out scope))
+            {
+                error = $"Unsupported Party Raid scope: {parts[0]}";
+                return false;
+            }
+
+            key = parts[1];
+            value = parts.Length >= 3 ? parts[2] : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                error = "Party Raid inbox key is empty.";
+                return false;
+            }
+
+            if (scope == PartyRaidPacketScope.Clock
+                && string.IsNullOrWhiteSpace(value)
+                && !string.Equals(key, "clear", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Party Raid clock inbox lines require '<scope> <seconds|clear> [value]'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Party Raid packet line is empty.";
+                return false;
+            }
+
+            string[] parts = text.Split((char[])null, 3, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                error = "Party Raid packet line is empty.";
+                return false;
+            }
+
+            string action = parts[0].Trim().ToLowerInvariant();
+            if (action is "packetclientraw" or "packetraw" or "wrapped" or "opcode")
+            {
+                if (parts.Length < 2)
+                {
+                    error = "Party Raid packetclientraw requires an opcode-framed hex payload.";
+                    return false;
+                }
+
+                if (!TryParseHexPayload(parts.Length == 2 ? parts[1] : $"{parts[1]}{parts[2]}", out byte[] rawPacket))
+                {
+                    error = "Party Raid packetclientraw payload must be valid hex.";
+                    return false;
+                }
+
+                if (!TryDecodeClientOpcodePacket(rawPacket, out packetType, out payload, out error))
+                {
+                    return false;
+                }
+
+                if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                    packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                }
+
+                return true;
+            }
+
+            if (action != "packet")
+            {
+                error = $"Unsupported Party Raid packet action: {parts[0]}";
+                return false;
+            }
+
+            if (parts.Length < 2 || !int.TryParse(parts[1], out packetType) || !IsSupportedPartyRaidPacketType(packetType))
+            {
+                error = "Party Raid packet lines must be 'packet <93|94|95|149|163> <payloadhex>'.";
+                return false;
+            }
+
+            if (parts.Length < 3 || !TryParseHexPayload(parts[2], out payload))
+            {
+                error = $"Party Raid packet {packetType} requires a valid hex payload.";
+                return false;
+            }
+
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
+            return true;
+        }
+
+        private static bool TryParsePipeDelimitedPacketLine(string text, out PartyRaidPacketScope scope, out string key, out string value)
+        {
+            scope = PartyRaidPacketScope.Field;
+            key = string.Empty;
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string[] parts = text.Split('|', 3, StringSplitOptions.None);
+            if (parts.Length < 2 || !TryParseScope(parts[0], out scope))
+            {
+                return false;
+            }
+
+            key = parts[1]?.Trim() ?? string.Empty;
+            value = parts.Length >= 3 ? parts[2].Trim() : string.Empty;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (scope == PartyRaidPacketScope.Clock && parts.Length == 2)
+            {
+                value = key;
+            }
+
+            return !(scope == PartyRaidPacketScope.Clock
+                && string.IsNullOrWhiteSpace(value)
+                && !string.Equals(key, "clear", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryParseScope(string token, out PartyRaidPacketScope scope)
+        {
+            scope = PartyRaidPacketScope.Field;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            return token.Trim().ToLowerInvariant() switch
+            {
+                "field" => AssignScope(PartyRaidPacketScope.Field, out scope),
+                "party" => AssignScope(PartyRaidPacketScope.Party, out scope),
+                "session" or "result" => AssignScope(PartyRaidPacketScope.Session, out scope),
+                "clock" or "timer" => AssignScope(PartyRaidPacketScope.Clock, out scope),
+                "packet" => AssignScope(PartyRaidPacketScope.Packet, out scope),
+                _ => false
+            };
+        }
+
+        private static bool AssignScope(PartyRaidPacketScope value, out PartyRaidPacketScope scope)
+        {
+            scope = value;
+            return true;
+        }
+
+        private static bool IsSupportedPartyRaidPacketType(int packetType)
+        {
+            return packetType == PartyRaidField.ClientSessionValuePacketType
+                || packetType == PartyRaidField.ClientPartyValuePacketType
+                || packetType == PartyRaidField.ClientFieldSetVariablePacketType
+                || packetType == 149
+                || packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+        }
+
+        private static bool TryDecodeClientOpcodePacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Party Raid client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!IsSupportedPartyRaidPacketType(packetType))
+            {
+                error = $"Unsupported Party Raid client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
+        private static string DescribeScope(PartyRaidPacketScope scope, string key)
+        {
+            string suffix = string.IsNullOrWhiteSpace(key) ? string.Empty : $" {key}";
+            return scope switch
+            {
+                PartyRaidPacketScope.Field => $"field{suffix}",
+                PartyRaidPacketScope.Party => $"party{suffix}",
+                PartyRaidPacketScope.Session => $"session{suffix}",
+                PartyRaidPacketScope.Clock => $"clock{suffix}",
+                PartyRaidPacketScope.Packet => $"packet{suffix}",
+                _ => $"partyraid{suffix}"
+            };
+        }
+
+        private static bool TryParseHexPayload(string text, out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = RemoveWhitespace(text);
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[2..];
+            }
+
+            if ((normalized.Length & 1) != 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(normalized);
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static string RemoveWhitespace(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            char[] buffer = new char[value.Length];
+            int count = 0;
+            foreach (char c in value)
+            {
+                if (!char.IsWhiteSpace(c))
+                {
+                    buffer[count++] = c;
+                }
+            }
+
+            return new string(buffer, 0, count);
+        }
+
+    }
+}
