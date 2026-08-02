@@ -80,7 +80,8 @@ namespace HaRepacker.GUI.HotSwap
 
             _watcherService = new ImgDirectoryWatcherService(
                 HotSwapConstants.DebounceMs,
-                HotSwapConstants.TrackContentHash);
+                HotSwapConstants.TrackContentHash,
+                recordInitialState: false);
 
             _watcherService.ImgFileModified += OnImgFileModified;
             _watcherService.ImgFileAdded += OnImgFileAdded;

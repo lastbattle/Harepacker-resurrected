@@ -1272,29 +1272,47 @@ namespace HaRepacker.GUI
                     .ToList();
             }
 
+            var categoryNodes = new List<(string Category, VirtualWzDirectory Directory)>();
             foreach (string category in categories)
             {
                 var virtualDir = manager.GetDirectory(category);
                 if (virtualDir != null)
                 {
-                    currentDispatcher.Invoke(() =>
-                    {
-                        WzNode node = new WzNode(virtualDir);
-                        node.Text = $"{versionName}/{category}";
+                    categoryNodes.Add((category, virtualDir));
+                }
+            }
 
-                        MainPanel.DataTree.BeginUpdate();
+            // Marshal one short, batched tree update to the UI thread. Watcher creation remains on this
+            // worker thread so filesystem setup cannot stall input or painting.
+            var watchedNodes = new List<(string CategoryPath, WzNode Node)>();
+            currentDispatcher.Invoke(() =>
+            {
+                MainPanel.DataTree.BeginUpdate();
+                try
+                {
+                    foreach (var (category, virtualDir) in categoryNodes)
+                    {
+                        WzNode node = new WzNode(virtualDir)
+                        {
+                            Text = $"{versionName}/{category}"
+                        };
                         MainPanel.DataTree.Nodes.Add(node);
+                        watchedNodes.Add((Path.Combine(versionPath, category), node));
                         if (Program.ConfigurationManager.UserSettings.Sort)
                         {
                             SortNodesRecursively(node);
                         }
-                        MainPanel.DataTree.EndUpdate();
-
-                        // Enable hot-swap watching for this directory
-                        string categoryPath = Path.Combine(versionPath, category);
-                        _hotSwapManager?.WatchDirectory(categoryPath, node);
-                    });
+                    }
                 }
+                finally
+                {
+                    MainPanel.DataTree.EndUpdate();
+                }
+            });
+
+            foreach (var (categoryPath, node) in watchedNodes)
+            {
+                _hotSwapManager?.WatchDirectory(categoryPath, node);
             }
         }
 
