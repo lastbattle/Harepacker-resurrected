@@ -1213,9 +1213,7 @@ namespace HaCreator.GUI.Cutscene
                     trackIndex = tracks.Length - 1;
                 bool selected = ReferenceEquals(timelineGrid.SelectedItem, item);
                 double left = item.Start * TimelinePixelsPerMillisecond;
-                int effectiveEnd = item.Type == (int)ReservedSceneEventType.Visual
-                    ? CutscenePlaybackTiming.GetVisualEnd(_timelineEvents, item)
-                    : CutscenePlaybackTiming.GetEffectiveEnd(_timelineEvents, item);
+                int effectiveEnd = GetTimelineEventEnd(item);
                 double width = Math.Max(12, Math.Max(effectiveEnd - item.Start, 150) * TimelinePixelsPerMillisecond);
                 Border block = new()
                 {
@@ -1253,6 +1251,20 @@ namespace HaCreator.GUI.Cutscene
             };
             timelineTrackCanvas.Children.Add(_timelinePlayhead);
             UpdateTimelinePlayhead();
+        }
+
+        private int GetTimelineEventEnd(CutsceneEventModel cutsceneEvent)
+        {
+            if (cutsceneEvent.Type == (int)ReservedSceneEventType.Sound)
+            {
+                WzBinaryProperty sound = ResolveSoundPath(cutsceneEvent.Sound);
+                if (sound != null)
+                    return (int)Math.Clamp((long)cutsceneEvent.Start + sound.Length, 0, int.MaxValue);
+            }
+
+            return cutsceneEvent.Type == (int)ReservedSceneEventType.Visual
+                ? CutscenePlaybackTiming.GetVisualEnd(_timelineEvents, cutsceneEvent)
+                : CutscenePlaybackTiming.GetEffectiveEnd(_timelineEvents, cutsceneEvent);
         }
 
         private void TimelineBlock_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
