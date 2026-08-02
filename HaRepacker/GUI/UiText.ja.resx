@@ -617,6 +617,12 @@
   <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
     <value>MP3 audio (*.mp3)|*.mp3</value>
   </data>
+  <data name="Audio files (*.mp3;*.wav)|*.mp3;*.wav" xml:space="preserve">
+    <value>オーディオファイル (*.mp3;*.wav)|*.mp3;*.wav</value>
+  </data>
+  <data name="WAV audio (*.wav)|*.wav" xml:space="preserve">
+    <value>WAV オーディオ (*.wav)|*.wav</value>
+  </data>
   <data name="Name" xml:space="preserve">
     <value>名前</value>
   </data>
@@ -902,6 +908,9 @@
   <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
     <value>小さい WZ ファイルを選択し、IV キー空間を並列検索します。</value>
   </data>
+  <data name="Select audio file" xml:space="preserve">
+    <value>音声ファイルを選択</value>
+  </data>
   <data name="Select All" xml:space="preserve">
     <value>選択 すべて</value>
   </data>
@@ -925,6 +934,9 @@
   </data>
   <data name="Select where to save the MP3 file" xml:space="preserve">
     <value>選択 where へ 保存 the MP3 ファイル</value>
+  </data>
+  <data name="Select where to save the WAV file" xml:space="preserve">
+    <value>WAV ファイルの保存先を選択</value>
   </data>
   <data name="Settings" xml:space="preserve">
     <value>設定</value>

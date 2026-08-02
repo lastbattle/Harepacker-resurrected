@@ -1969,7 +1969,7 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
-        /// Export PNG / MP3
+        /// Export PNG / audio
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>

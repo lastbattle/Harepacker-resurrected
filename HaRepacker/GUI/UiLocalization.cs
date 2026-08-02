@@ -7,6 +7,10 @@ namespace HaRepacker.GUI
 {
     internal static class UiLocalization
     {
+        private const string AudioFilesFilter = "Audio files (*.mp3;*.wav)|*.mp3;*.wav";
+        private const string Mp3AudioFilter = "MP3 audio (*.mp3)|*.mp3";
+        private const string WavAudioFilter = "WAV audio (*.wav)|*.wav";
+
         private static readonly ResourceManager TextResources =
             new("HaRepacker.GUI.UiText", typeof(UiLocalization).Assembly);
 
@@ -41,6 +45,11 @@ namespace HaRepacker.GUI
                 return text;
             }
         }
+
+        public static string AudioFileDialogFilter => string.Join("|",
+            Translate(AudioFilesFilter),
+            Translate(Mp3AudioFilter),
+            Translate(WavAudioFilter));
 
         public static void Apply(DependencyObject root)
         {

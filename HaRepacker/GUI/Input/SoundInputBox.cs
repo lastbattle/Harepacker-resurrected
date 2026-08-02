@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using HaRepacker.GUI;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -37,8 +38,8 @@ namespace HaRepacker.GUI.Input
         {
             OpenFileDialog dialog = new()
             {
-                Title = Properties.Resources.SelectMp3,
-                Filter = $"{Properties.Resources.Mp3Filter}|*.mp3"
+                Title = UiLocalization.Translate("Select audio file"),
+                Filter = UiLocalization.AudioFileDialogFilter
             };
             if (dialog.ShowDialog(this) == true) pathBox.Text = dialog.FileName;
         }

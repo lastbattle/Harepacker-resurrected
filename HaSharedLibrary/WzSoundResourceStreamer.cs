@@ -47,25 +47,21 @@ namespace HaSharedLibrary
             wavePlayer = new WaveOut(WaveCallbackInfo.FunctionCallback());
             try
             {
-                if (sound.WavFormat.Encoding == WaveFormatEncoding.MpegLayer3)
+                if (sound.WavFormat?.Encoding == WaveFormatEncoding.MpegLayer3)
                 {
                     this.byteStream = new MemoryStream(sound.GetBytes(false));
                     mpegStream = new Mp3FileReader(byteStream);
 
                     wavePlayer.Init(mpegStream);
                 }
-                else if (sound.WavFormat.Encoding == WaveFormatEncoding.Pcm)
+                else if (sound.WavFormat?.Encoding == WaveFormatEncoding.Pcm)
                 {
-                    // PCM playback not yet implemented
-                    bPlaybackLoadedSuccess = false;
-                    /*byte[] wavSoundBytes = sound.GetBytesForWAVPlayback();
+                    byte[] wavSoundBytes = sound.GetBytesForWAVPlayback();
 
                     this.byteStream = new MemoryStream(wavSoundBytes);
-                    Debug.WriteLine(HexTool.ByteArrayToString(wavSoundBytes));
-
                     waveFileStream = new WaveFileReader(byteStream);
 
-                    wavePlayer.Init(waveFileStream);*/
+                    wavePlayer.Init(waveFileStream);
                 }
                 else
                 {
@@ -93,8 +89,10 @@ namespace HaSharedLibrary
                 }
                 if (mpegStream != null)
                     mpegStream.Seek(0, SeekOrigin.Begin);
-                else
+                else if (waveFileStream != null)
                     waveFileStream.Seek(0, SeekOrigin.Begin);
+                else
+                    return;
 
                 wavePlayer.Pause();
                 wavePlayer.Play();
@@ -110,7 +108,7 @@ namespace HaSharedLibrary
         }
         public void Dispose()
         {
-            if (!bPlaybackLoadedSuccess)
+            if (disposed)
                 return;
 
             disposed = true;
@@ -125,7 +123,7 @@ namespace HaSharedLibrary
                 waveFileStream.Dispose();
                 waveFileStream = null;
             }
-            byteStream.Dispose();
+            byteStream?.Dispose();
         }
 
         public void Play()

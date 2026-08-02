@@ -617,6 +617,12 @@
   <data name="MP3 audio (*.mp3)|*.mp3" xml:space="preserve">
     <value>MP3 audio (*.mp3)|*.mp3</value>
   </data>
+  <data name="Audio files (*.mp3;*.wav)|*.mp3;*.wav" xml:space="preserve">
+    <value>오디오 파일 (*.mp3;*.wav)|*.mp3;*.wav</value>
+  </data>
+  <data name="WAV audio (*.wav)|*.wav" xml:space="preserve">
+    <value>WAV 오디오 (*.wav)|*.wav</value>
+  </data>
   <data name="Name" xml:space="preserve">
     <value>이름</value>
   </data>
@@ -902,6 +908,9 @@
   <data name="Select a small WZ file and search the IV key space in parallel." xml:space="preserve">
     <value>작은 WZ 파일을 선택하고 IV 키 공간을 병렬로 검색합니다.</value>
   </data>
+  <data name="Select audio file" xml:space="preserve">
+    <value>오디오 파일 선택</value>
+  </data>
   <data name="Select All" xml:space="preserve">
     <value>선택 모두</value>
   </data>
@@ -925,6 +934,9 @@
   </data>
   <data name="Select where to save the MP3 file" xml:space="preserve">
     <value>선택 where 에 저장 the MP3 파일</value>
+  </data>
+  <data name="Select where to save the WAV file" xml:space="preserve">
+    <value>WAV 파일을 저장할 위치 선택</value>
   </data>
   <data name="Settings" xml:space="preserve">
     <value>설정</value>

@@ -1556,7 +1556,7 @@ namespace HaRepacker.GUI.Panels
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
                 {
                     Title = UiLocalization.Translate("Select the sound"),
-                    Filter = UiLocalization.Translate("MP3 audio (*.mp3)|*.mp3")
+                    Filter = UiLocalization.AudioFileDialogFilter
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
                 WzBinaryProperty prop;
@@ -1587,18 +1587,30 @@ namespace HaRepacker.GUI.Panels
         {
             if (!(DataTree.SelectedNode.Tag is WzBinaryProperty))
                 return;
-            WzBinaryProperty mp3 = (WzBinaryProperty)DataTree.SelectedNode.Tag;
+            WzBinaryProperty sound = (WzBinaryProperty)DataTree.SelectedNode.Tag;
+            string extension = sound.FileExtension;
+            string fileName = sound.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
+                ? sound.Name
+                : sound.Name + extension;
+            string saveTitle = sound.IsWaveFile
+                ? "Select where to save the WAV file"
+                : "Select where to save the MP3 file";
+            string saveFilter = sound.IsWaveFile
+                ? "WAV audio (*.wav)|*.wav"
+                : "MP3 audio (*.mp3)|*.mp3";
 
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
-                FileName = mp3.Name,
-                Title = UiLocalization.Translate("Select where to save the MP3 file"),
-                Filter = UiLocalization.Translate("MP3 audio (*.mp3)|*.mp3")
+                FileName = fileName,
+                DefaultExt = extension.TrimStart('.'),
+                AddExtension = true,
+                Title = UiLocalization.Translate(saveTitle),
+                Filter = UiLocalization.Translate(saveFilter)
             };
             if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 return;
 
-            mp3.SaveToFile(dialog.FileName);
+            sound.SaveToFile(dialog.FileName);
         }
 
         /// <summary>
