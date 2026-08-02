@@ -61,14 +61,11 @@ namespace HaCreator.MapSimulator.Entities
         private int _mapleTvMessageY;
         private int _mapleTvAdX;
         private int _mapleTvAdY;
-        private int _clientFloatVectorStartedAtTick = int.MinValue;
         private const int MapleTvNativeMessageLineHeight = 16;
         private const int MapleTvNativeSenderNameXDelta = -57;
         private const int MapleTvNativeReceiverNameXDelta = 146;
         private const int MapleTvNativeNameYDelta = 71;
         private const int MapleTvNativeReceiverGlyphWidth = 4;
-        private const int ClientFloatVectorRadiusPx = 5;
-        private const int ClientFloatVectorRotateMs = 2000;
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
@@ -92,7 +89,6 @@ namespace HaCreator.MapSimulator.Entities
         internal CharacterBuild ImitatedBuild => _imitatedBuild;
         public bool HasImitatedLook => !string.IsNullOrWhiteSpace(_imitatedName) || _imitatedAvatarLookPayload.Length > 0;
         public bool HasMapleTvPresentation { get; private set; }
-        public bool HasClientFloatPresentation { get; private set; }
         public int MapleTvMessageX => _mapleTvMessageX;
         public int MapleTvMessageY => _mapleTvMessageY;
         public int MapleTvAdX => _mapleTvAdX;
@@ -381,12 +377,6 @@ namespace HaCreator.MapSimulator.Entities
             _mapleTvAdY = adY;
         }
 
-        public void MarkClientFloatPresentationAvailable(bool available)
-        {
-            HasClientFloatPresentation = available;
-            _clientFloatVectorStartedAtTick = int.MinValue;
-        }
-
         internal void ConfigureMapleTvPresentation(
             Func<MapleTvVisualAssets> visualAssetsProvider,
             Func<MapleTvSnapshot> snapshotProvider,
@@ -602,10 +592,6 @@ namespace HaCreator.MapSimulator.Entities
                 positionOffsetY = (int)(MovementInfo.Y - _npcInstance.Y);
             }
 
-            Point floatOffset = ResolveClientFloatVisualOffsetAtTick(TickCount);
-            positionOffsetX += floatOffset.X;
-            positionOffsetY += floatOffset.Y;
-
             int adjustedMapShiftX = mapShiftX - positionOffsetX;
             int adjustedMapShiftY = mapShiftY - positionOffsetY;
 
@@ -616,8 +602,8 @@ namespace HaCreator.MapSimulator.Entities
                                            ?? _imitatedAssembler?.GetFrameAtTime(ResolveFallbackImitatedAvatarAction(), TickCount);
             if (imitatedFrame != null)
             {
-                int screenX = CurrentX + floatOffset.X - mapShiftX + centerX;
-                int screenY = CurrentY + floatOffset.Y - mapShiftY + centerY;
+                int screenX = CurrentX - mapShiftX + centerX;
+                int screenY = CurrentY - mapShiftY + centerY;
                 imitatedFrame.Draw(sprite, skeletonMeshRenderer, screenX, screenY, flip, Color.White);
             }
             else if (drawFrame != null)
@@ -773,13 +759,12 @@ namespace HaCreator.MapSimulator.Entities
 
             UpdateMapleTvNativeCanvasGraph(visualAssets, snapshot);
 
-            Point floatOffset = ResolveClientFloatVisualOffsetAtTick(tickCount);
             if (!snapshot.IsShowingMessage)
             {
                 IReadOnlyList<MapleTvAnimationFrame> idleFrames = ResolveActorLocalMapleTvIdleFrames(visualAssets, snapshot.QueueExists);
                 MapleTvAnimationFrame idleFrame = SelectMapleTvFrame(idleFrames, ResolveActorLocalMapleTvAnimationTick(snapshot, tickCount));
-                int idleOriginX = CurrentX + floatOffset.X + _mapleTvAdX - mapShiftX + centerX;
-                int idleOriginY = CurrentY + floatOffset.Y + _mapleTvAdY - mapShiftY + centerY;
+                int idleOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
+                int idleOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
                 DrawMapleTvFrame(
                     idleFrame,
                     sprite,
@@ -810,8 +795,8 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            int adOriginX = CurrentX + floatOffset.X + _mapleTvAdX - mapShiftX + centerX;
-            int adOriginY = CurrentY + floatOffset.Y + _mapleTvAdY - mapShiftY + centerY;
+            int adOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
+            int adOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
             DrawMapleTvFrame(
                 mediaFrame,
                 sprite,
@@ -829,8 +814,8 @@ namespace HaCreator.MapSimulator.Entities
                 adOriginX,
                 adOriginY);
 
-            int chatOriginX = CurrentX + floatOffset.X + _mapleTvMessageX - mapShiftX + centerX;
-            int chatOriginY = CurrentY + floatOffset.Y + _mapleTvMessageY - mapShiftY + centerY;
+            int chatOriginX = CurrentX + _mapleTvMessageX - mapShiftX + centerX;
+            int chatOriginY = CurrentY + _mapleTvMessageY - mapShiftY + centerY;
             DrawMapleTvFrame(
                 chatFrame,
                 sprite,
@@ -1090,58 +1075,6 @@ namespace HaCreator.MapSimulator.Entities
                 2 => "m_pLayerMapleTVLoveBGAnimation",
                 _ => "m_pLayerMapleTVMSGBasicUI"
             };
-        }
-
-        internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount)
-        {
-            return ResolveClientFloatVisualOffset(hasFloatPresentation, tickCount, 0);
-        }
-
-        internal static Point ResolveClientFloatVisualOffset(bool hasFloatPresentation, int tickCount, int startedAtTick)
-        {
-            if (!hasFloatPresentation || ClientFloatVectorRotateMs <= 0)
-            {
-                return Point.Zero;
-            }
-
-            int elapsedTick = Math.Max(0, tickCount - startedAtTick);
-            int normalizedTick = elapsedTick % ClientFloatVectorRotateMs;
-            double angle = normalizedTick / (double)ClientFloatVectorRotateMs * Math.PI * 2.0;
-            return new Point(
-                (int)Math.Round(Math.Cos(angle) * ClientFloatVectorRadiusPx),
-                (int)Math.Round(Math.Sin(angle) * ClientFloatVectorRadiusPx));
-        }
-
-        internal static IReadOnlyList<NpcFloatVectorNativeOperation> BuildClientFloatVectorNativeOperationPlan(
-            bool hasFloatPresentation)
-        {
-            if (!hasFloatPresentation)
-            {
-                return Array.Empty<NpcFloatVectorNativeOperation>();
-            }
-
-            return new[]
-            {
-                NpcFloatVectorNativeOperation.CreateVector(0x03D2, "Shape2D#Vector2D"),
-                NpcFloatVectorNativeOperation.BindToNpcVectorControl(),
-                NpcFloatVectorNativeOperation.Rotate(ClientFloatVectorRotateMs),
-                NpcFloatVectorNativeOperation.RelativeMove(ClientFloatVectorRadiusPx, 0, ClientFloatVectorRotateMs)
-            };
-        }
-
-        private Point ResolveClientFloatVisualOffsetAtTick(int tickCount)
-        {
-            if (!HasClientFloatPresentation)
-            {
-                return Point.Zero;
-            }
-
-            if (_clientFloatVectorStartedAtTick == int.MinValue)
-            {
-                _clientFloatVectorStartedAtTick = tickCount;
-            }
-
-            return ResolveClientFloatVisualOffset(true, tickCount, _clientFloatVectorStartedAtTick);
         }
 
         private static int ResolveActorLocalMapleTvChatVariantKey(
@@ -1569,66 +1502,4 @@ namespace HaCreator.MapSimulator.Entities
         internal IReadOnlyList<string> OperationHistory { get; }
     }
 
-    internal enum NpcFloatVectorNativeOperationKind
-    {
-        CreateVector,
-        BindToNpcVectorControl,
-        Rotate,
-        RelativeMove
-    }
-
-    internal sealed class NpcFloatVectorNativeOperation
-    {
-        private NpcFloatVectorNativeOperation(
-            NpcFloatVectorNativeOperationKind kind,
-            int stringPoolId = 0,
-            string className = null,
-            int x = 0,
-            int y = 0,
-            int durationMs = 0)
-        {
-            Kind = kind;
-            StringPoolId = stringPoolId;
-            ClassName = className;
-            X = x;
-            Y = y;
-            DurationMs = durationMs;
-        }
-
-        internal NpcFloatVectorNativeOperationKind Kind { get; }
-        internal int StringPoolId { get; }
-        internal string ClassName { get; }
-        internal int X { get; }
-        internal int Y { get; }
-        internal int DurationMs { get; }
-
-        internal static NpcFloatVectorNativeOperation CreateVector(int stringPoolId, string className)
-        {
-            return new NpcFloatVectorNativeOperation(
-                NpcFloatVectorNativeOperationKind.CreateVector,
-                stringPoolId: stringPoolId,
-                className: className);
-        }
-
-        internal static NpcFloatVectorNativeOperation BindToNpcVectorControl()
-        {
-            return new NpcFloatVectorNativeOperation(NpcFloatVectorNativeOperationKind.BindToNpcVectorControl);
-        }
-
-        internal static NpcFloatVectorNativeOperation Rotate(int durationMs)
-        {
-            return new NpcFloatVectorNativeOperation(
-                NpcFloatVectorNativeOperationKind.Rotate,
-                durationMs: durationMs);
-        }
-
-        internal static NpcFloatVectorNativeOperation RelativeMove(int x, int y, int durationMs)
-        {
-            return new NpcFloatVectorNativeOperation(
-                NpcFloatVectorNativeOperationKind.RelativeMove,
-                x: x,
-                y: y,
-                durationMs: durationMs);
-        }
-    }
 }

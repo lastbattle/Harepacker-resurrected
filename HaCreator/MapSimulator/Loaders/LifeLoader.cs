@@ -3209,7 +3209,7 @@ namespace HaCreator.MapSimulator.Loaders
                 infoProperty?["MapleTVmsgY"]?.GetInt() ?? 0,
                 infoProperty?["MapleTVadX"]?.GetInt() ?? 0,
                 infoProperty?["MapleTVadY"]?.GetInt() ?? 0);
-            npcItem.MarkClientFloatPresentationAvailable(infoProperty?["float"]?.GetInt() != 0);
+            // info/float is metadata, not an instruction to orbit the NPC around its spawn point.
             return npcItem;
         }
 
